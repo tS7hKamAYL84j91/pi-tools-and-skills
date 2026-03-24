@@ -1,0 +1,19 @@
+{
+  "schemas": {
+    "semantic_scholar": {
+      "description": "Schema for Semantic Scholar API responses",
+      "type": "object",
+      "properties": {}
+    },
+    "github_api": {
+      "description": "Schema for GitHub API responses",
+      "type": "object",
+      "properties": {}
+    },
+    "tavily_api": {
+      "description": "Schema for Tavily API responses",
+      "type": "object",
+      "properties": {}
+    }
+  }
+}
