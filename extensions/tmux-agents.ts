@@ -261,10 +261,10 @@ export default function (pi: ExtensionAPI) {
 					default: "claude-sonnet-4-6",
 				}),
 			),
-			pane: Type.Optional(
-				Type.Boolean({
-					description: "If true, spawn as a vertical split pane in the current window (no focus change). Default: false (new detached session).",
-					default: false,
+			layout: Type.Optional(
+				Type.String({
+					description: 'Where to spawn: "session" (default, new detached session), "window" (new window in current session), or "pane" (vertical split in current window). None steal focus.',
+					default: "session",
 				}),
 			),
 		}),
@@ -303,14 +303,18 @@ export default function (pi: ExtensionAPI) {
 				await copyFile(parentAgentsMd, join(agentPath, "AGENTS.md"));
 			}
 
-			// 4. Launch pi — detached session (default) or split pane, never steals focus
-			const usePane = params.pane ?? false;
-			const sessionName = `pi:${name}`;
+			// 4. Launch pi — never steals focus (-d flag on all modes)
+			const layout = params.layout ?? "session";
 			const piCmd = `pi --model ${model}`;
 			const tmuxFmt = "-P -F '#{session_name}:#{window_index}.#{pane_index}'";
-			const tmuxCmd = usePane
-				? `tmux split-window -d -v -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`
-				: `tmux new-session -d -s ${JSON.stringify(sessionName)} -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`;
+			let tmuxCmd: string;
+			if (layout === "pane") {
+				tmuxCmd = `tmux split-window -d -v -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`;
+			} else if (layout === "window") {
+				tmuxCmd = `tmux new-window -d -n ${JSON.stringify(`pi:${name}`)} -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`;
+			} else {
+				tmuxCmd = `tmux new-session -d -s ${JSON.stringify(`pi:${name}`)} -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`;
+			}
 			const { stdout: newPane } = await execAsync(tmuxCmd);
 			const paneAddress = newPane.trim();
 
