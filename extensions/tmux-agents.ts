@@ -275,10 +275,19 @@ export default function (pi: ExtensionAPI) {
 			const brief = params.brief;
 			const model = params.model ?? "claude-sonnet-4-6";
 
-			// Validate model against available models
+			// Validate model against available models (parse the tabular output)
 			try {
 				const { stdout: modelsOutput } = await execAsync("pi --list-models 2>&1");
-				if (!modelsOutput.includes(model)) {
+				// Extract model IDs from the second column (provider  model  context ...)
+				const modelIds = modelsOutput
+					.split("\n")
+					.filter((line) => line.trim() && !line.startsWith("provider"))
+					.map((line) => {
+						const cols = line.trim().split(/\s{2,}/);
+						return cols[1]?.trim() ?? "";
+					})
+					.filter(Boolean);
+				if (!modelIds.includes(model)) {
 					throw new Error(
 						`Model '${model}' not found. Run \`pi --list-models\` to see available models.`,
 					);
@@ -305,7 +314,7 @@ export default function (pi: ExtensionAPI) {
 
 			// 4. Launch pi — never steals focus (-d flag on all modes)
 			const layout = params.layout ?? "session";
-			const piCmd = `pi --model ${model}`;
+			const piCmd = `pi --model ${JSON.stringify(model)}`;
 			const tmuxFmt = "-P -F '#{session_name}:#{window_index}.#{pane_index}'";
 			let tmuxCmd: string;
 			if (layout === "pane") {
