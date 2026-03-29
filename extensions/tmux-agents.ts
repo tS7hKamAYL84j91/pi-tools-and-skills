@@ -236,10 +236,11 @@ export default function (pi: ExtensionAPI) {
 		name: "spawn_agent",
 		label: "Spawn Agent",
 		description:
-			"Spawn a new pi agent in a new tmux window (default) or pane. " +
+			"Spawn a new pi agent in a detached tmux session (default) or pane. " +
+			"Never steals focus from the current session. " +
 			"Creates the working directory, writes a BRIEF.md with mission instructions, " +
 			"copies the parent directory's AGENTS.md if present, and launches pi.",
-		promptSnippet: "Spawn a new pi coding agent in its own tmux window or pane",
+		promptSnippet: "Spawn a new pi coding agent in its own tmux session (no focus change)",
 		promptGuidelines: [
 			"Give each agent a clear, self-contained brief so it can work autonomously.",
 			"Use agent_peek after spawning to confirm the agent started.",
@@ -262,7 +263,7 @@ export default function (pi: ExtensionAPI) {
 			),
 			pane: Type.Optional(
 				Type.Boolean({
-					description: "If true, spawn as a vertical split pane instead of a new window. Default: false.",
+					description: "If true, spawn as a vertical split pane in the current window (no focus change). Default: false (new detached session).",
 					default: false,
 				}),
 			),
@@ -302,11 +303,14 @@ export default function (pi: ExtensionAPI) {
 				await copyFile(parentAgentsMd, join(agentPath, "AGENTS.md"));
 			}
 
-			// 4. Launch pi in a new tmux window (default) or pane
+			// 4. Launch pi — detached session (default) or split pane, never steals focus
 			const usePane = params.pane ?? false;
+			const sessionName = `pi:${name}`;
+			const piCmd = `pi --model ${model}`;
+			const tmuxFmt = "-P -F '#{session_name}:#{window_index}.#{pane_index}'";
 			const tmuxCmd = usePane
-				? `tmux split-window -v -c ${JSON.stringify(agentPath)} -P -F '#{session_name}:#{window_index}.#{pane_index}' "pi --model ${model}"`
-				: `tmux new-window -n ${JSON.stringify(`pi:${name}`)} -c ${JSON.stringify(agentPath)} -P -F '#{session_name}:#{window_index}.#{pane_index}' "pi --model ${model}"`;
+				? `tmux split-window -d -v -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`
+				: `tmux new-session -d -s ${JSON.stringify(sessionName)} -c ${JSON.stringify(agentPath)} ${tmuxFmt} ${JSON.stringify(piCmd)}`;
 			const { stdout: newPane } = await execAsync(tmuxCmd);
 			const paneAddress = newPane.trim();
 
