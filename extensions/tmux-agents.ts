@@ -455,4 +455,39 @@ export default function (pi: ExtensionAPI) {
 			}
 		},
 	});
+
+	// Commit and push current work
+	pi.registerCommand("commit-and-push", {
+		description: "Commit and push. Usage: /commit-and-push [optional message or instructions]",
+		handler: async (args, ctx) => {
+			try {
+				// Check for changes
+				const { stdout: status } = await execAsync("git status --short");
+				if (!status.trim()) {
+					ctx.ui.notify("Nothing to commit — working tree clean.", "info");
+					return;
+				}
+
+				// Stage all changes
+				await execAsync("git add -A");
+
+				// Build commit message
+				const message = args?.trim()
+					? args.trim()
+					: "chore: commit current work";
+
+				// Commit
+				const escaped = message.replace(/"/g, '\\"');
+				await execAsync(`git commit -m "${escaped}"`);
+
+				// Push
+				await execAsync("git push");
+
+				const fileCount = status.trim().split("\n").length;
+				ctx.ui.notify(`Pushed ${fileCount} file(s): ${message.slice(0, 60)}`, "info");
+			} catch (err) {
+				ctx.ui.notify(`commit-and-push failed: ${err}`, "error");
+			}
+		},
+	});
 }
