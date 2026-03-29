@@ -236,10 +236,10 @@ export default function (pi: ExtensionAPI) {
 		name: "spawn_agent",
 		label: "Spawn Agent",
 		description:
-			"Spawn a new pi agent in a tmux pane (vertical split). " +
+			"Spawn a new pi agent in a new tmux window (default) or pane. " +
 			"Creates the working directory, writes a BRIEF.md with mission instructions, " +
 			"copies the parent directory's AGENTS.md if present, and launches pi.",
-		promptSnippet: "Spawn a new pi coding agent in its own tmux pane",
+		promptSnippet: "Spawn a new pi coding agent in its own tmux window or pane",
 		promptGuidelines: [
 			"Give each agent a clear, self-contained brief so it can work autonomously.",
 			"Use agent_peek after spawning to confirm the agent started.",
@@ -258,6 +258,12 @@ export default function (pi: ExtensionAPI) {
 				Type.String({
 					description: 'Model passed to `pi --model <value>`. Accepts any model string (e.g. "claude-sonnet-4-6", "ollama/glm-5:cloud", "google-gemini-cli/gemini-2.5-pro"). Default: "claude-sonnet-4-6".',
 					default: "claude-sonnet-4-6",
+				}),
+			),
+			pane: Type.Optional(
+				Type.Boolean({
+					description: "If true, spawn as a vertical split pane instead of a new window. Default: false.",
+					default: false,
 				}),
 			),
 		}),
@@ -296,10 +302,12 @@ export default function (pi: ExtensionAPI) {
 				await copyFile(parentAgentsMd, join(agentPath, "AGENTS.md"));
 			}
 
-			// 4. Launch pi in a new tmux pane
-			const { stdout: newPane } = await execAsync(
-				`tmux split-window -v -c ${JSON.stringify(agentPath)} -P -F '#{session_name}:#{window_index}.#{pane_index}' "pi --model ${model}"`,
-			);
+			// 4. Launch pi in a new tmux window (default) or pane
+			const usePane = params.pane ?? false;
+			const tmuxCmd = usePane
+				? `tmux split-window -v -c ${JSON.stringify(agentPath)} -P -F '#{session_name}:#{window_index}.#{pane_index}' "pi --model ${model}"`
+				: `tmux new-window -n ${JSON.stringify(`pi:${name}`)} -c ${JSON.stringify(agentPath)} -P -F '#{session_name}:#{window_index}.#{pane_index}' "pi --model ${model}"`;
+			const { stdout: newPane } = await execAsync(tmuxCmd);
 			const paneAddress = newPane.trim();
 
 			return {
