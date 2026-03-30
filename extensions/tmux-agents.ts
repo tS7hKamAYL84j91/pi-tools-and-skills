@@ -8,9 +8,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { exec } from "node:child_process";
-import { existsSync } from "node:fs";
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 type ContentBlock = { type: "text"; text: string };
@@ -239,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 			"Spawn a new pi agent in a detached tmux session (default) or pane. " +
 			"Never steals focus from the current session. " +
 			"Creates the working directory, writes a BRIEF.md with mission instructions, " +
-			"copies the parent directory's AGENTS.md if present, and launches pi.",
+			"and launches pi.",
 		promptSnippet: "Spawn a new pi coding agent in its own tmux session (no focus change)",
 		promptGuidelines: [
 			"Give each agent a clear, self-contained brief so it can work autonomously.",
@@ -306,13 +305,7 @@ export default function (pi: ExtensionAPI) {
 			// 2. Write BRIEF.md
 			await writeFile(join(agentPath, "BRIEF.md"), brief, "utf-8");
 
-			// 3. Copy parent AGENTS.md if it exists
-			const parentAgentsMd = join(dirname(agentPath), "AGENTS.md");
-			if (existsSync(parentAgentsMd)) {
-				await copyFile(parentAgentsMd, join(agentPath, "AGENTS.md"));
-			}
-
-			// 4. Launch pi — never steals focus (-d flag on all modes)
+			// 3. Launch pi — never steals focus (-d flag on all modes)
 			const layout = params.layout ?? "session";
 			const piCmd = `pi --model ${JSON.stringify(model)}`;
 			const tmuxFmt = "-P -F '#{session_name}:#{window_index}.#{pane_index}'";
