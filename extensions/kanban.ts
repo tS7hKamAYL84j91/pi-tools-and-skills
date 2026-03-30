@@ -1,9 +1,13 @@
 /**
- * Kanban Extension
+ * Kanban Extension — Pure TypeScript
  *
- * Wraps the CoAS kanban shell scripts as pi tools.
- * Scripts are resolved via KANBAN_SCRIPTS_DIR env var, falling back to
- * common locations (~/git/coas/kanban/scripts, ./kanban/scripts).
+ * All board operations work directly on board.log (no shell scripts required).
+ * Shell scripts remain as CLI fallback but tools do not depend on them.
+ *
+ * Board.log format:
+ *   {ISO8601Z} {EVENT} {TASK_ID} {AGENT} {key=value pairs}
+ *
+ * Events: CREATE, MOVE, CLAIM, COMPLETE, BLOCK, UNBLOCK, NOTE, UNCLAIM, EXPIRE, SNAPSHOT
  *
  * Tools:
  *   kanban_create   — create a new task in the backlog
@@ -22,10 +26,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { exec } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
@@ -33,10 +37,306 @@ const execAsync = promisify(exec);
 type ContentBlock = { type: "text"; text: string };
 type ToolResult = { content: ContentBlock[]; details: Record<string, unknown> };
 
+// ── Board.log location resolution ───────────────────────────────────────────
+
+const WIP_LIMIT = 3;
+
+const PRIORITY_ORDER: Record<string, number> = {
+	critical: 1,
+	high: 2,
+	medium: 3,
+	low: 4,
+};
+
+function findKanbanDir(): string | null {
+	const env = process.env.KANBAN_DIR;
+	if (env && existsSync(env)) return env;
+
+	// ~/git/coas/kanban
+	const home = join(homedir(), "git", "coas", "kanban");
+	if (existsSync(home)) return home;
+
+	// ./kanban relative to CWD
+	const cwd = join(process.cwd(), "kanban");
+	if (existsSync(cwd)) return cwd;
+
+	return null;
+}
+
+function kanbanDir(): string {
+	const dir = findKanbanDir();
+	if (!dir) {
+		throw new Error(
+			"Kanban directory not found. Set KANBAN_DIR or ensure ~/git/coas/kanban exists.",
+		);
+	}
+	return dir;
+}
+
+function boardLogPath(): string {
+	return join(kanbanDir(), "board.log");
+}
+
+function snapshotPath(): string {
+	return join(kanbanDir(), "snapshot.md");
+}
+
+function nowZ(): string {
+	return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+async function logAppend(line: string): Promise<void> {
+	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
+}
+
+// ── board.log parser ────────────────────────────────────────────────────────
+
+interface TaskState {
+	id: string;
+	col: string;
+	title: string;
+	priority: string;
+	tags: string;
+	agent: string;
+	claimed: boolean;
+	claimAgent: string;
+	expires: string;
+	reason: string;
+	notes: string[];
+	completedAt: string;
+	duration: string;
+	doneAgent: string;
+	createdAt: string;
+}
+
+function newTask(id: string, ts: string): TaskState {
+	return {
+		id,
+		col: "backlog",
+		title: "",
+		priority: "medium",
+		tags: "",
+		agent: "",
+		claimed: false,
+		claimAgent: "",
+		expires: "",
+		reason: "",
+		notes: [],
+		completedAt: "",
+		duration: "",
+		doneAgent: "",
+		createdAt: ts,
+	};
+}
+
+/** Parse key=value (with quoted values that may contain spaces) from fields */
+function parseKV(fields: string[]): Record<string, string> {
+	const kv: Record<string, string> = {};
+	let i = 0;
+	while (i < fields.length) {
+		const field = fields[i] ?? "";
+		const eq = field.indexOf("=");
+		if (eq <= 0) { i++; continue; }
+		const key = field.slice(0, eq);
+		let val = field.slice(eq + 1);
+		if (val.startsWith('"')) {
+			val = val.slice(1);
+			while (!val.endsWith('"') && i + 1 < fields.length) {
+				i++;
+				val += ` ${fields[i] ?? ""}`;
+			}
+			if (val.endsWith('"')) val = val.slice(0, -1);
+		}
+		kv[key] = val;
+		i++;
+	}
+	return kv;
+}
+
+interface BoardState {
+	tasks: Map<string, TaskState>;
+	/** Insertion-ordered task IDs */
+	order: string[];
+	totalEvents: number;
+}
+
+async function parseBoard(): Promise<BoardState> {
+	const raw = await readFile(boardLogPath(), "utf-8");
+	const lines = raw.split("\n").filter((l) => l.trim());
+	const tasks = new Map<string, TaskState>();
+	const order: string[] = [];
+
+	for (const line of lines) {
+		const parts = line.split(/\s+/);
+		const ts = parts[0] ?? "";
+		const event = parts[1] ?? "";
+		const tid = parts[2] ?? "";
+		const agent = parts[3] ?? "";
+		const payload = parts.slice(4);
+
+		if (!/^T-\d+$/.test(tid)) continue;
+
+		if (!tasks.has(tid)) {
+			const t = newTask(tid, ts);
+			tasks.set(tid, t);
+			order.push(tid);
+		}
+		const task = tasks.get(tid) as TaskState;
+		const kv = parseKV(payload);
+
+		switch (event) {
+			case "CREATE":
+				if (kv.title) task.title = kv.title;
+				if (kv.priority) task.priority = kv.priority;
+				if (kv.tags) task.tags = kv.tags;
+				task.createdAt = ts;
+				break;
+			case "MOVE":
+				if (kv.to) task.col = kv.to;
+				break;
+			case "CLAIM":
+				if (!task.claimed) {
+					task.claimed = true;
+					task.claimAgent = agent;
+					if (kv.expires) task.expires = kv.expires;
+				}
+				break;
+			case "UNCLAIM":
+			case "EXPIRE":
+				task.claimed = false;
+				task.claimAgent = "";
+				task.expires = "";
+				break;
+			case "COMPLETE":
+				task.claimed = false;
+				task.claimAgent = "";
+				task.expires = "";
+				task.completedAt = ts;
+				task.col = "done";
+				if (kv.duration) task.duration = kv.duration;
+				task.doneAgent = agent;
+				break;
+			case "BLOCK":
+				task.claimed = false;
+				task.claimAgent = "";
+				if (kv.reason) task.reason = kv.reason;
+				break;
+			case "UNBLOCK":
+				task.reason = "";
+				break;
+			case "NOTE":
+				task.notes.push(`${ts} [${agent}] ${kv.text ?? ""}`);
+				break;
+		}
+	}
+
+	return { tasks, order, totalEvents: lines.length };
+}
+
+// ── Snapshot generator (pure TS, replaces awk) ──────────────────────────────
+
+function generateSnapshot(board: BoardState): string {
+	const { tasks, order, totalEvents } = board;
+	const now = nowZ();
+
+	// Bucket by column, preserving log order
+	const backlog: TaskState[] = [];
+	const todo: TaskState[] = [];
+	const inProgress: TaskState[] = [];
+	const blocked: TaskState[] = [];
+	const done: TaskState[] = [];
+
+	for (const tid of order) {
+		const t = tasks.get(tid);
+		if (!t) continue;
+		switch (t.col) {
+			case "backlog": backlog.push(t); break;
+			case "todo": todo.push(t); break;
+			case "in-progress": inProgress.push(t); break;
+			case "blocked": blocked.push(t); break;
+			case "done": done.push(t); break;
+		}
+	}
+
+	const wip = inProgress.length;
+	const lines: string[] = [];
+
+	lines.push("# CoAS Kanban — Snapshot");
+	lines.push(`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`);
+	lines.push("");
+
+	// Backlog
+	lines.push(`## 📋 Backlog (${backlog.length})`);
+	if (backlog.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push("| ID | Title | Priority | Tags |");
+		lines.push("|----|-------|----------|------|");
+		for (const t of backlog) {
+			lines.push(`| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`);
+		}
+	}
+	lines.push("");
+
+	// Todo
+	lines.push(`## 🔜 Todo (${todo.length})`);
+	if (todo.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push("| ID | Title | Priority | Tags |");
+		lines.push("|----|-------|----------|------|");
+		for (const t of todo) {
+			lines.push(`| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`);
+		}
+	}
+	lines.push("");
+
+	// In Progress
+	lines.push(`## 🔄 In Progress (${wip}/${WIP_LIMIT})`);
+	if (inProgress.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push("| ID | Title | Agent | Expires |");
+		lines.push("|----|-------|-------|---------|");
+		for (const t of inProgress) {
+			lines.push(`| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.expires} |`);
+		}
+	}
+	lines.push("");
+
+	// Blocked
+	lines.push(`## 🚫 Blocked (${blocked.length})`);
+	if (blocked.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push("| ID | Title | Reason |");
+		lines.push("|----|-------|--------|");
+		for (const t of blocked) {
+			lines.push(`| ${t.id} | ${t.title} | ${t.reason} |`);
+		}
+	}
+	lines.push("");
+
+	// Done (last 10)
+	lines.push(`## ✅ Done (last 10 of ${done.length})`);
+	if (done.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push("| ID | Title | Agent | Completed | Duration |");
+		lines.push("|----|-------|-------|-----------|----------|");
+		const last10 = done.slice(-10);
+		for (const t of last10) {
+			lines.push(`| ${t.id} | ${t.title} | ${t.doneAgent || "—"} | ${t.completedAt || "—"} | ${t.duration || "—"} |`);
+		}
+	}
+	lines.push("");
+	lines.push("---");
+	lines.push("_Source: kanban/board.log | Read-only: do not edit this file_");
+
+	return lines.join("\n");
+}
+
 // ── Monitor: stall-detection state ──────────────────────────────────────────
-// State files live in /tmp/kanban-monitor-state/{tid}.{hash|stall}
-// hash  — md5 of last captured pane content
-// stall — integer count of consecutive unchanged cycles
 
 const MONITOR_STATE_DIR = "/tmp/kanban-monitor-state";
 const MONITOR_STALL_DEFAULT = 3;
@@ -62,52 +362,6 @@ async function getLastHash(tid: string): Promise<string> {
 }
 async function saveHash(tid: string, hash: string): Promise<void> {
 	await monitorStateWrite(`${MONITOR_STATE_DIR}/${tid}.hash`, hash);
-}
-
-// ── Script resolution ─────────────────────────────────────────────────────
-
-function findScriptsDir(): string | null {
-	// 1. Explicit env var
-	const env = process.env.KANBAN_SCRIPTS_DIR;
-	if (env && existsSync(env)) return env;
-
-	// 2. ~/git/coas/kanban/scripts
-	const home = join(homedir(), "git", "coas", "kanban", "scripts");
-	if (existsSync(home)) return home;
-
-	// 3. ./kanban/scripts relative to CWD
-	const cwd = join(process.cwd(), "kanban", "scripts");
-	if (existsSync(cwd)) return cwd;
-
-	return null;
-}
-
-function scriptsDir(): string {
-	const dir = findScriptsDir();
-	if (!dir) {
-		throw new Error(
-			"Kanban scripts not found. Set KANBAN_SCRIPTS_DIR or run from the coas project root.",
-		);
-	}
-	return dir;
-}
-
-async function runScript(scriptName: string, args: string[]): Promise<string> {
-	const dir = scriptsDir();
-	const script = join(dir, scriptName);
-
-	if (!existsSync(script)) {
-		throw new Error(`Script not found: ${script}`);
-	}
-
-	// Shell-quote each argument: wrap in single quotes, escape internal single quotes
-	const quoted = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
-	const cmd = `bash ${JSON.stringify(script)} ${quoted}`;
-
-	const { stdout, stderr } = await execAsync(cmd);
-	const out = stdout.trim();
-	const err = stderr.trim();
-	return err ? `${out}\n[stderr] ${err}`.trim() : out;
 }
 
 // ── Extension export ──────────────────────────────────────────────────────
@@ -144,19 +398,21 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			const args = [params.task_id, params.agent, params.title, params.priority];
-			if (params.tags) args.push(params.tags);
+			const { task_id, agent, title, priority } = params;
+			const tags = params.tags ?? "";
 
-			const output = await runScript("kanban-create.sh", args);
+			// Validate T-NNN format
+			if (!/^T-\d+$/.test(task_id)) {
+				throw new Error(`task_id must match T-NNN format (got "${task_id}")`);
+			}
+
+			const ts = nowZ();
+			await logAppend(`${ts} CREATE ${task_id} ${agent} title="${title}" priority=${priority} tags=${tags}`);
+			await logAppend(`${ts} MOVE ${task_id} ${agent} from=created to=backlog`);
 
 			return {
-				content: [{ type: "text", text: output }],
-				details: {
-					task_id: params.task_id,
-					title: params.title,
-					priority: params.priority,
-					tags: params.tags ?? "",
-				},
+				content: [{ type: "text", text: `Created ${task_id}: ${title} (priority=${priority})` }],
+				details: { task_id, title, priority, tags },
 			};
 		},
 	});
@@ -178,22 +434,58 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			const output = await runScript("kanban-pick.sh", [params.agent]);
+			const { agent } = params;
+			const board = await parseBoard();
 
-			const taskId = output.split("\n")[0]?.trim() ?? "";
-			const claimed =
-				taskId !== "NO_TASK_AVAILABLE" && !taskId.startsWith("WIP_LIMIT");
+			// Check WIP limit
+			let wip = 0;
+			for (const t of board.tasks.values()) {
+				if (t.col === "in-progress") wip++;
+			}
+			if (wip >= WIP_LIMIT) {
+				return {
+					content: [{ type: "text", text: `WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})` }],
+					details: { agent, result: "WIP_LIMIT_REACHED", claimed: false },
+				};
+			}
+
+			// Find highest-priority todo task (not claimed)
+			let bestId = "";
+			let bestPri = 99;
+			for (const tid of board.order) {
+				const t = board.tasks.get(tid);
+				if (!t || t.col !== "todo" || t.claimed) continue;
+				const pri = PRIORITY_ORDER[t.priority] ?? 99;
+				if (pri < bestPri || (pri === bestPri && tid < bestId)) {
+					bestPri = pri;
+					bestId = tid;
+				}
+			}
+
+			if (!bestId) {
+				return {
+					content: [{ type: "text", text: "NO_TASK_AVAILABLE" }],
+					details: { agent, result: "NO_TASK_AVAILABLE", claimed: false },
+				};
+			}
+
+			// Calculate expires = now + 2 hours
+			const now = new Date();
+			const expires = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+				.toISOString().replace(/\.\d{3}Z$/, "Z");
+			const ts = nowZ();
+
+			await logAppend(`${ts} CLAIM ${bestId} ${agent} expires=${expires}`);
+			await logAppend(`${ts} MOVE ${bestId} ${agent} from=todo to=in-progress`);
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: claimed
-							? `Claimed ${taskId} for agent "${params.agent}".\nRun kanban_snapshot to see full task details.`
-							: output,
+						text: `Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`,
 					},
 				],
-				details: { agent: params.agent, result: taskId, claimed },
+				details: { agent, result: bestId, claimed: true },
 			};
 		},
 	});
@@ -222,18 +514,16 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			const args = [params.task_id, params.agent];
-			if (params.duration) args.push(params.duration);
+			const { task_id, agent } = params;
+			const duration = params.duration ?? "unknown";
+			const ts = nowZ();
 
-			const output = await runScript("kanban-complete.sh", args);
+			await logAppend(`${ts} COMPLETE ${task_id} ${agent} duration=${duration}`);
+			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=done`);
 
 			return {
-				content: [{ type: "text", text: output }],
-				details: {
-					task_id: params.task_id,
-					agent: params.agent,
-					duration: params.duration ?? "unknown",
-				},
+				content: [{ type: "text", text: `Completed ${task_id} (agent=${agent}, duration=${duration})` }],
+				details: { task_id, agent, duration },
 			};
 		},
 	});
@@ -260,19 +550,15 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			const output = await runScript("kanban-block.sh", [
-				params.task_id,
-				params.agent,
-				params.reason,
-			]);
+			const { task_id, agent, reason } = params;
+			const ts = nowZ();
+
+			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${reason}"`);
+			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=blocked`);
 
 			return {
-				content: [{ type: "text", text: output }],
-				details: {
-					task_id: params.task_id,
-					agent: params.agent,
-					reason: params.reason,
-				},
+				content: [{ type: "text", text: `Blocked ${task_id}: ${reason}` }],
+				details: { task_id, agent, reason },
 			};
 		},
 	});
@@ -299,19 +585,14 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			const output = await runScript("kanban-note.sh", [
-				params.task_id,
-				params.agent,
-				params.text,
-			]);
+			const { task_id, agent, text } = params;
+			const ts = nowZ();
+
+			await logAppend(`${ts} NOTE ${task_id} ${agent} text="${text}"`);
 
 			return {
-				content: [{ type: "text", text: output }],
-				details: {
-					task_id: params.task_id,
-					agent: params.agent,
-					text: params.text,
-				},
+				content: [{ type: "text", text: `Note added to ${task_id}` }],
+				details: { task_id, agent, text },
 			};
 		},
 	});
@@ -328,29 +609,23 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({}),
 
 		async execute(_toolCallId, _params, _signal): Promise<ToolResult> {
-			// Run the snapshot script (writes snapshot.md)
-			const scriptOutput = await runScript("kanban-snapshot.sh", []);
+			const board = await parseBoard();
+			const snapshot = generateSnapshot(board);
+			const sp = snapshotPath();
 
-			// Read the generated snapshot.md
-			const dir = scriptsDir();
-			// scripts live in kanban/scripts/, snapshot.md is in kanban/
-			const snapshotPath = resolve(dir, "..", "snapshot.md");
+			await writeFile(sp, snapshot, "utf-8");
 
-			let snapshot = "";
-			try {
-				snapshot = await readFile(snapshotPath, "utf-8");
-			} catch {
-				snapshot = `(Could not read snapshot.md at ${snapshotPath})`;
-			}
+			// Append SNAPSHOT marker
+			await logAppend(`${nowZ()} SNAPSHOT T-000 orchestrator seq=${board.totalEvents}`);
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: `${scriptOutput}\n\n---\n\n${snapshot}`,
+						text: `Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\n\n---\n\n${snapshot}`,
 					},
 				],
-				details: { snapshotPath, scriptOutput },
+				details: { snapshotPath: sp, totalEvents: board.totalEvents },
 			};
 		},
 	});
@@ -367,7 +642,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Kanban Monitor",
 		description:
 			"Check progress on all in-progress kanban tasks. " +
-			"Calls kanban_snapshot, then uses agent_peek to inspect each agent's tmux pane. " +
+			"Parses board.log directly, then uses tmux to inspect each agent's pane. " +
 			"Detects ACTIVE, STALLED (no pane change for N cycles), BLOCKED, DONE (REPORT.md), " +
 			"and MISSING states. With prod=true (or --prod flag) sends a status nudge to stalled agents.",
 		promptSnippet: "Check progress on all in-progress kanban tasks",
@@ -392,37 +667,24 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			// --prod flag (CLI) can override the parameter default
 			const isProd = params.prod ?? (pi.getFlag("--prod") as boolean | undefined) ?? false;
 			const stallThreshold = params.stall_cycles ?? MONITOR_STALL_DEFAULT;
 			const verbose = params.verbose ?? false;
 
-			// ── 1. Refresh snapshot & locate files ───────────────────
-			const sDir = scriptsDir();
-			await runScript("kanban-snapshot.sh", []);
-			const snapshotPath = resolve(sDir, "..", "snapshot.md");
-			const monitorLog = resolve(sDir, "..", "monitor.log");
-			const commFile = resolve(sDir, "..", "..", "COMMUNICATION.md");
-
-			const snapshot = await readFile(snapshotPath, "utf-8");
+			// ── 1. Parse board directly (no shell script) ────────────
+			const board = await parseBoard();
+			const kDir = kanbanDir();
+			const monitorLog = join(kDir, "monitor.log");
+			const commFile = resolve(kDir, "..", "COMMUNICATION.md");
 			const ts = new Date().toISOString();
 
-			// ── 2. Parse in-progress tasks from snapshot ─────────────
-			// Table row format under "## 🔄 In Progress":
-			//   | T-NNN | Title | agent | Expires |
+			// ── 2. Get in-progress tasks from parsed board ───────────
 			type TaskRow = { id: string; agent: string; title: string };
 			const tasks: TaskRow[] = [];
-			let inSection = false;
-			for (const line of snapshot.split("\n")) {
-				if (/^## .* In Progress/.test(line)) { inSection = true; continue; }
-				if (/^## /.test(line)) { inSection = false; continue; }
-				if (!inSection) continue;
-				if (!/^\| T-/.test(line)) continue;
-				const cols = line.split("|").map((c) => c.trim()).filter(Boolean);
-				// cols: [id, title, agent, expires]
-				const colId = cols[0] ?? "";
-				if (cols.length >= 3 && /^T-\d+$/.test(colId)) {
-					tasks.push({ id: colId, title: cols[1] ?? "", agent: cols[2] ?? "unknown" });
+			for (const tid of board.order) {
+				const t = board.tasks.get(tid);
+				if (t && t.col === "in-progress") {
+					tasks.push({ id: t.id, agent: t.claimAgent || t.agent, title: t.title });
 				}
 			}
 
@@ -465,7 +727,6 @@ export default function (pi: ExtensionAPI) {
 						break;
 					} catch { /* not found */ }
 				}
-				// Fallback: fuzzy match across all windows
 				if (!pane) {
 					try {
 						const { stdout: wins } = await execAsync(
@@ -487,17 +748,13 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 
-				// 3c. Peek pane (strip ANSI)
+				// 3c. Peek pane (strip ANSI via sed — avoids regex control char lint)
 				let paneContent = "";
 				try {
 					const { stdout: raw } = await execAsync(
-						`tmux capture-pane -p -t ${JSON.stringify(pane)} 2>/dev/null | tail -15`,
+						`tmux capture-pane -p -t ${JSON.stringify(pane)} 2>/dev/null | sed 's/\\x1b\\[[0-9;]*[mGKHFJ]//g' | tail -15`,
 					);
-					// Strip ANSI escape sequences (ESC = \u001b)
-					const esc = "\u001b";
-					paneContent = raw
-						.replace(new RegExp(`${esc}\\[[0-9;]*[mGKHFJ]`, "g"), "")
-						.replace(new RegExp(`${esc}[()][AB012]`, "g"), "");
+					paneContent = raw;
 				} catch { /* pane vanished */ }
 
 				const lastLine = paneContent.split("\n").filter((l) => l.trim()).at(-1)?.trim().slice(0, 80) ?? "";
@@ -525,11 +782,10 @@ export default function (pi: ExtensionAPI) {
 						status = "STALLED";
 						detail = `no pane change for ${stallCount} cycle(s)`;
 						counts.stalled++;
-						// --prod: nudge the agent via agent_send (tmux send-keys)
 						if (isProd) {
 							const nudge = `Status update? ${task.id} appears stalled. Please share progress or call kanban_block if stuck.`;
 							try {
-								const escaped = nudge.replace(/'/g, "'\\''" );
+								const escaped = nudge.replace(/'/g, "'\\''");
 								await execAsync(`tmux send-keys -t ${JSON.stringify(pane)} '${escaped}' Enter`);
 								detail += " — nudge sent";
 							} catch {
