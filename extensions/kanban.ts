@@ -739,11 +739,11 @@ export default function (pi: ExtensionAPI) {
 				default: false,
 			})),
 			stall_cycles: Type.Optional(Type.Number({
-				description: "Consecutive unchanged pane-captures before declaring STALLED (default: 3)",
+				description: "Consecutive unchanged activity snapshots before declaring STALLED (default: 3)",
 				default: 3,
 			})),
 			verbose: Type.Optional(Type.Boolean({
-				description: "Include raw last-line of pane output for ACTIVE tasks (default: false)",
+				description: "Include raw last-line of activity output for ACTIVE tasks (default: false)",
 				default: false,
 			})),
 		}),
