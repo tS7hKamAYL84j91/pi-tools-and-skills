@@ -1,30 +1,26 @@
 /**
- * spawn-agent — Minimal agent spawner with IPC
+ * spawn-agent — Agent spawner with RPC + IPC
  *
- * Spawns a pi agent as a child process that:
- * 1. Inherits global extensions (panopticon gets loaded → socket IPC works)
- * 2. Runs in print mode (-p) — processes task and exits
- * 3. Streams structured JSON events on stdout
- * 4. Registers in panopticon → visible to agent_peek / agent_send
+ * Spawns pi agents in --mode rpc, giving us:
+ * 1. Bidirectional stdin/stdout JSON protocol (prompt, steer, abort, get_state)
+ * 2. Global extensions inherited (panopticon → socket IPC from any agent)
+ * 3. Agent stays alive — send multiple tasks without respawning
+ * 4. Two communication channels:
+ *    - RPC stdin  (from parent, structured commands)
+ *    - Unix socket (from any peer, via agent_send)
  *
- * Unlike pi-subagents which uses --mode json and may strip extensions,
- * this spawner keeps things simple: global config is inherited, the
- * agent gets a socket, and we can talk to it.
- *
- * Usage (from LLM):
- *   spawn_agent({ name: "researcher", task: "Find papers on X", cwd: "/path" })
- *
- * The spawned agent appears in agent_peek and can receive messages via agent_send.
+ * Tools:
+ *   spawn_agent  — launch a new agent
+ *   rpc_send     — send an RPC command to a spawned agent's stdin
+ *   list_spawned — show all agents spawned by this session
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { spawn, type ChildProcess } from "node:child_process";
 import {
-	existsSync,
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -34,155 +30,144 @@ import { join } from "node:path";
 // ── Types ───────────────────────────────────────────────────────
 
 interface SpawnedAgent {
-	id: string;
 	name: string;
 	proc: ChildProcess;
 	pid: number;
 	cwd: string;
-	task: string;
 	model?: string;
 	startedAt: number;
-	outputLines: string[];
-	exitCode: number | null;
+	recentEvents: string[];
+	tempDir?: string;
 	done: boolean;
 }
 
 // ── Constants ───────────────────────────────────────────────────
 
-const MAX_OUTPUT_LINES = 500;
+const MAX_RECENT_EVENTS = 100;
 const TASK_ARG_LIMIT = 8000;
 
 // ── Extension entry ─────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	const spawned = new Map<string, SpawnedAgent>();
+	const agents = new Map<string, SpawnedAgent>();
 
-	/** Build the pi CLI args for spawning. Minimal — inherits global config. */
-	function buildArgs(opts: {
-		task: string;
-		model?: string;
-		tools?: string[];
-		skills?: string[];
-		systemPrompt?: string;
-		sessionDir?: string;
-	}): { args: string[]; tempDir?: string } {
-		const args: string[] = ["-p"]; // print mode: run task, exit
-		let tempDir: string | undefined;
-
-		// Model
-		if (opts.model) {
-			args.push("--models", opts.model);
-		}
-
-		// Tools (restrict if specified, otherwise inherit all)
-		if (opts.tools?.length) {
-			args.push("--tools", opts.tools.join(","));
-		}
-
-		// Skills
-		if (opts.skills?.length) {
-			for (const skill of opts.skills) {
-				args.push("--skill", skill);
-			}
-		}
-
-		// System prompt (write to temp file, pass via --append-system-prompt)
-		if (opts.systemPrompt) {
-			tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
-			const promptPath = join(tempDir, "system-prompt.md");
-			writeFileSync(promptPath, opts.systemPrompt, { mode: 0o600 });
-			args.push("--append-system-prompt", promptPath);
-		}
-
-		// Session
-		if (opts.sessionDir) {
-			mkdirSync(opts.sessionDir, { recursive: true });
-			args.push("--session-dir", opts.sessionDir);
-		} else {
-			args.push("--no-session");
-		}
-
-		// Task — inline or via file if too long
-		if (opts.task.length > TASK_ARG_LIMIT) {
-			if (!tempDir) tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
-			const taskPath = join(tempDir, "task.md");
-			writeFileSync(taskPath, opts.task, { mode: 0o600 });
-			args.push(`@${taskPath}`);
-		} else {
-			args.push(opts.task);
-		}
-
-		// NOTE: We do NOT pass --no-extensions or --extension
-		// This means global extensions from settings.json load automatically
-		// → panopticon loads → agent gets a socket → IPC works
-
-		return { args, tempDir };
+	/** Send a JSON command to an agent's stdin. */
+	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
+		if (agent.done || !agent.proc.stdin?.writable) return false;
+		agent.proc.stdin.write(JSON.stringify(cmd) + "\n");
+		return true;
 	}
 
-	// ── spawn_agent tool ────────────────────────────────────────
+	/** Read recent events, formatted as text. */
+	function recentOutput(agent: SpawnedAgent, lines = 20): string {
+		const recent = agent.recentEvents.slice(-lines);
+		if (recent.length === 0) return "(no events yet)";
+		return recent.map((line) => {
+			try {
+				const evt = JSON.parse(line);
+				const t = evt.type ?? "?";
+				// Compact formatting for common events
+				if (t === "message_update") {
+					const delta = evt.assistantMessageEvent;
+					if (delta?.type === "text_delta") return delta.delta;
+					return "";
+				}
+				if (t === "tool_execution_start") return `\n⚙ ${evt.toolName}(${JSON.stringify(evt.args ?? {}).slice(0, 80)})`;
+				if (t === "tool_execution_end") return `  → ${evt.result?.content?.[0]?.text?.slice(0, 100) ?? "(done)"}`;
+				if (t === "agent_start") return "\n▶ agent started";
+				if (t === "agent_end") return "\n■ agent finished";
+				if (t === "response") return `  [${evt.command}: ${evt.success ? "ok" : evt.error}]`;
+				return `  [${t}]`;
+			} catch {
+				return line.slice(0, 120);
+			}
+		}).filter(Boolean).join("");
+	}
+
+	// ── spawn_agent ─────────────────────────────────────────────
 
 	pi.registerTool({
 		name: "spawn_agent",
 		label: "Spawn Agent",
 		description:
-			"Spawn a new pi agent as a background process. The agent inherits global extensions " +
-			"(including panopticon) so it gets a socket for IPC. Use agent_peek to monitor and " +
-			"agent_send to communicate with it.",
-		promptSnippet: "Spawn a background pi agent that registers in panopticon for IPC",
+			"Spawn a new pi agent in RPC mode. The agent stays alive and can receive " +
+			"multiple tasks. It inherits global extensions (panopticon → socket IPC). " +
+			"After spawning, send it a task with rpc_send, or use agent_send from any peer.",
+		promptSnippet: "Spawn a persistent RPC agent with IPC",
 		promptGuidelines: [
-			"After spawning, use agent_peek to find the agent once it registers (may take a few seconds).",
-			"Use agent_send to send follow-up instructions to a running agent.",
-			"The agent runs independently — you don't need to wait for it to finish.",
+			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
+			"Or use agent_send once it registers in panopticon (takes 1-2 seconds).",
+			"Use agent_peek to monitor its activity log.",
 		],
 		parameters: Type.Object({
 			name: Type.String({
-				description: 'Human-readable name for the agent (e.g. "researcher", "test-runner")',
+				description: 'Unique name for the agent (e.g. "researcher", "test-runner")',
 			}),
-			task: Type.String({
-				description: "The task/prompt to give the agent",
-			}),
+			task: Type.Optional(
+				Type.String({ description: "Initial task/prompt. If omitted, agent starts idle — send a task later with rpc_send." }),
+			),
 			cwd: Type.Optional(
-				Type.String({ description: "Working directory for the agent (default: current cwd)" }),
+				Type.String({ description: "Working directory (default: current cwd)" }),
 			),
 			model: Type.Optional(
-				Type.String({ description: 'Model to use (e.g. "anthropic/claude-sonnet-4-6"). Defaults to global default.' }),
+				Type.String({ description: 'Model (e.g. "anthropic/claude-sonnet-4-6"). Default: global default.' }),
 			),
 			tools: Type.Optional(
-				Type.Array(Type.String(), { description: 'Restrict to specific tools (e.g. ["read", "bash"]). Default: all tools.' }),
-			),
-			skills: Type.Optional(
-				Type.Array(Type.String(), { description: "Skills to inject" }),
+				Type.Array(Type.String(), { description: 'Restrict tools (e.g. ["read", "bash"]). Default: all.' }),
 			),
 			systemPrompt: Type.Optional(
 				Type.String({ description: "Additional system prompt to append" }),
 			),
 			sessionDir: Type.Optional(
-				Type.String({ description: "Session directory for persistence. Default: no session." }),
+				Type.String({ description: "Session directory for persistence" }),
 			),
 		}),
 
 		async execute(_toolCallId, params, _signal) {
-			const agentCwd = params.cwd ?? process.cwd();
-			const { args, tempDir } = buildArgs({
-				task: params.task,
-				model: params.model,
-				tools: params.tools,
-				skills: params.skills,
-				systemPrompt: params.systemPrompt,
-				sessionDir: params.sessionDir,
-			});
+			if (agents.has(params.name)) {
+				const existing = agents.get(params.name)!;
+				if (!existing.done) {
+					return {
+						content: [{ type: "text" as const, text: `Agent "${params.name}" already running (pid ${existing.pid}). Use rpc_send to send it tasks.` }],
+						details: { error: "already_running", pid: existing.pid },
+					};
+				}
+				// Dead agent — clean up and respawn
+				agents.delete(params.name);
+			}
 
-			// Spawn the process
+			const agentCwd = params.cwd ?? process.cwd();
+			const args: string[] = ["--mode", "rpc"];
+			let tempDir: string | undefined;
+
+			if (params.model) args.push("--models", params.model);
+			if (params.tools?.length) args.push("--tools", params.tools.join(","));
+
+			if (params.systemPrompt) {
+				tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
+				const promptPath = join(tempDir, "system-prompt.md");
+				writeFileSync(promptPath, params.systemPrompt, { mode: 0o600 });
+				args.push("--append-system-prompt", promptPath);
+			}
+
+			if (params.sessionDir) {
+				mkdirSync(params.sessionDir, { recursive: true });
+				args.push("--session-dir", params.sessionDir);
+			} else {
+				args.push("--no-session");
+			}
+
+			// NOTE: No --no-extensions — global config flows through
+			// → panopticon loads → agent gets a socket → IPC works
+
 			const proc = spawn("pi", args, {
 				cwd: agentCwd,
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: ["pipe", "pipe", "pipe"],  // stdin for RPC commands
 				env: {
 					...process.env,
-					// Depth guard (prevent recursive spawning)
 					PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
 					PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH ?? "3",
 				},
-				detached: false,
 			});
 
 			if (!proc.pid) {
@@ -194,73 +179,214 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const agent: SpawnedAgent = {
-				id: `${proc.pid}-${Date.now().toString(36)}`,
 				name: params.name,
 				proc,
 				pid: proc.pid,
 				cwd: agentCwd,
-				task: params.task.slice(0, 200),
 				model: params.model,
 				startedAt: Date.now(),
-				outputLines: [],
-				exitCode: null,
+				recentEvents: [],
+				tempDir,
 				done: false,
 			};
-			spawned.set(params.name, agent);
+			agents.set(params.name, agent);
 
-			// Capture output
+			// Capture stdout events (JSONL)
+			let buf = "";
 			proc.stdout?.on("data", (chunk: Buffer) => {
-				const lines = chunk.toString().split("\n").filter((l) => l.trim());
-				agent.outputLines.push(...lines);
-				if (agent.outputLines.length > MAX_OUTPUT_LINES) {
-					agent.outputLines.splice(0, agent.outputLines.length - MAX_OUTPUT_LINES);
+				buf += chunk.toString();
+				const lines = buf.split("\n");
+				buf = lines.pop() ?? "";
+				for (const line of lines) {
+					if (line.trim()) {
+						agent.recentEvents.push(line);
+						if (agent.recentEvents.length > MAX_RECENT_EVENTS) {
+							agent.recentEvents.shift();
+						}
+					}
 				}
 			});
+
 			proc.stderr?.on("data", (chunk: Buffer) => {
-				agent.outputLines.push(`[stderr] ${chunk.toString().trim()}`);
+				agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
 			});
 
 			proc.on("close", (code) => {
-				agent.exitCode = code;
 				agent.done = true;
+				agent.recentEvents.push(`[process exited with code ${code}]`);
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 			});
 
-			proc.on("error", () => {
+			proc.on("error", (err) => {
 				agent.done = true;
-				agent.exitCode = 1;
+				agent.recentEvents.push(`[process error: ${err.message}]`);
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 			});
 
-			// Don't keep parent alive waiting for child
 			proc.unref();
+
+			// If an initial task was provided, send it
+			if (params.task) {
+				rpcWrite(agent, { type: "prompt", message: params.task });
+			}
 
 			return {
 				content: [{
 					type: "text" as const,
-					text: `Spawned agent "${params.name}" (pid ${proc.pid})\n` +
+					text: `Spawned "${params.name}" in RPC mode (pid ${proc.pid})\n` +
 						`  cwd: ${agentCwd}\n` +
 						`  model: ${params.model ?? "(default)"}\n` +
-						`  task: ${params.task.slice(0, 100)}${params.task.length > 100 ? "…" : ""}\n\n` +
-						`The agent will register in panopticon within a few seconds.\n` +
-						`Use agent_peek to find it, agent_send to message it.`,
+						(params.task
+							? `  task: ${params.task.slice(0, 100)}${params.task.length > 100 ? "…" : ""}\n`
+							: `  (idle — use rpc_send to give it a task)\n`) +
+						`\nAgent will register in panopticon within seconds.\n` +
+						`Use rpc_send for direct RPC commands, agent_send from any peer.`,
 				}],
-				details: {
-					name: params.name,
-					pid: proc.pid,
-					cwd: agentCwd,
-					model: params.model,
-				},
+				details: { name: params.name, pid: proc.pid, cwd: agentCwd },
 			};
 		},
 	});
 
-	// ── Cleanup on shutdown ─────────────────────────────────────
+	// ── rpc_send ────────────────────────────────────────────────
+
+	pi.registerTool({
+		name: "rpc_send",
+		label: "RPC Send",
+		description:
+			"Send an RPC command to a spawned agent's stdin. Supports: " +
+			"prompt (new task), steer (mid-task redirect), follow_up (after current task), " +
+			"abort, get_state, compact.",
+		promptSnippet: "Send an RPC command to a spawned agent",
+		parameters: Type.Object({
+			name: Type.String({ description: "Agent name (as given to spawn_agent)" }),
+			command: Type.String({
+				description: 'RPC command type: "prompt", "steer", "follow_up", "abort", "get_state", "compact"',
+			}),
+			message: Type.Optional(
+				Type.String({ description: "Message text (required for prompt, steer, follow_up)" }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const agent = agents.get(params.name);
+			if (!agent) {
+				return {
+					content: [{ type: "text" as const, text: `No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}` }],
+					details: { error: "not_found" },
+				};
+			}
+			if (agent.done) {
+				return {
+					content: [{
+						type: "text" as const,
+						text: `Agent "${params.name}" has exited.\n\nLast output:\n${recentOutput(agent, 10)}`,
+					}],
+					details: { error: "exited", exitCode: agent.proc.exitCode },
+				};
+			}
+
+			const cmd: Record<string, unknown> = { type: params.command };
+			if (params.message) cmd.message = params.message;
+
+			const ok = rpcWrite(agent, cmd);
+			if (!ok) {
+				return {
+					content: [{ type: "text" as const, text: `Failed to write to agent "${params.name}" stdin.` }],
+					details: { error: "write_failed" },
+				};
+			}
+
+			return {
+				content: [{
+					type: "text" as const,
+					text: `Sent ${params.command} to "${params.name}" (pid ${agent.pid})` +
+						(params.message ? `\n  message: ${params.message.slice(0, 100)}${params.message.length > 100 ? "…" : ""}` : "") +
+						`\n\nUse agent_peek "${params.name}" to see activity.`,
+				}],
+				details: { name: params.name, command: params.command },
+			};
+		},
+	});
+
+	// ── list_spawned ────────────────────────────────────────────
+
+	pi.registerTool({
+		name: "list_spawned",
+		label: "List Spawned",
+		description: "Show all agents spawned by this session, with their status and recent output.",
+		promptSnippet: "List agents spawned by this session",
+		parameters: Type.Object({
+			name: Type.Optional(
+				Type.String({ description: "Show detailed output for a specific agent" }),
+			),
+			lines: Type.Optional(
+				Type.Number({ description: "Number of recent event lines to show (default 20)", default: 20 }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			if (agents.size === 0) {
+				return {
+					content: [{ type: "text" as const, text: "No agents spawned in this session." }],
+					details: { count: 0 },
+				};
+			}
+
+			// Detail view for one agent
+			if (params.name) {
+				const agent = agents.get(params.name);
+				if (!agent) {
+					return {
+						content: [{ type: "text" as const, text: `No agent named "${params.name}". Known: ${[...agents.keys()].join(", ")}` }],
+						details: { error: "not_found" },
+					};
+				}
+				const uptime = Math.round((Date.now() - agent.startedAt) / 1000);
+				const output = recentOutput(agent, params.lines ?? 20);
+				return {
+					content: [{
+						type: "text" as const,
+						text: `Agent "${agent.name}" (pid ${agent.pid})\n` +
+							`  status: ${agent.done ? `exited (code ${agent.proc.exitCode})` : "running"}\n` +
+							`  uptime: ${uptime}s\n` +
+							`  cwd: ${agent.cwd}\n` +
+							`  model: ${agent.model ?? "(default)"}\n` +
+							`  events: ${agent.recentEvents.length}\n\n` +
+							`Recent output:\n${output}`,
+					}],
+					details: { name: agent.name, pid: agent.pid, done: agent.done },
+				};
+			}
+
+			// Summary view
+			const lines = [...agents.values()].map((a) => {
+				const status = a.done ? `✗ exited(${a.proc.exitCode})` : "● running";
+				const uptime = Math.round((Date.now() - a.startedAt) / 1000);
+				return `  ${status} ${a.name.padEnd(20)} pid=${a.pid}  up=${uptime}s  events=${a.recentEvents.length}`;
+			});
+
+			return {
+				content: [{
+					type: "text" as const,
+					text: `${agents.size} spawned agent(s):\n${lines.join("\n")}\n\nUse list_spawned with a name for details.`,
+				}],
+				details: { count: agents.size, agents: [...agents.keys()] },
+			};
+		},
+	});
+
+	// ── Cleanup ─────────────────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
-		for (const agent of spawned.values()) {
+		for (const agent of agents.values()) {
 			if (!agent.done) {
-				try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+				try {
+					rpcWrite(agent, { type: "abort" });
+					// Give it a moment, then kill
+					setTimeout(() => {
+						if (!agent.done) try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+					}, 2000);
+				} catch { /* */ }
 			}
 		}
 	});
