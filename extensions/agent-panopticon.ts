@@ -61,7 +61,7 @@ import { basename, join } from "node:path";
 
 // ── Types ───────────────────────────────────────────────────────
 
-type AgentStatus = "running" | "waiting" | "stalled" | "terminated" | "unknown";
+type AgentStatus = "running" | "waiting" | "done" | "blocked" | "stalled" | "terminated" | "unknown";
 
 interface AgentRecord {
 	id: string;
@@ -119,11 +119,13 @@ const MAX_MAILDIR_ENTRIES = 200;
 const SOCKET_TIMEOUT_MS = 3_000;
 
 const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "🟢",
-	waiting: "🔴",
-	stalled: "🟡",
-	terminated: "⚫",
-	unknown: "⚪",
+	running: "🟢",   // active — agent turn in progress
+	waiting: "🟡",   // idle — awaiting input
+	done: "✅",      // completed — REPORT.md exists
+	blocked: "🚧",   // needs attention — idle, might need human
+	stalled: "🛑",   // stalled/timeout — heartbeat aging or error
+	terminated: "⚫", // dead — PID gone
+	unknown: "⚪",   // can't determine
 };
 
 // ── Pure functions ──────────────────────────────────────────────
@@ -144,7 +146,16 @@ function buildRecord(
 	status: AgentStatus,
 	task: string | undefined,
 ): AgentRecord {
-	return { ...base, heartbeat: Date.now(), status, task };
+	// Refine status based on REPORT.md presence when idle
+	let refined = status;
+	if (status === "waiting") {
+		try {
+			if (existsSync(join(base.cwd, "REPORT.md"))) {
+				refined = "done";
+			}
+		} catch { /* best-effort */ }
+	}
+	return { ...base, heartbeat: Date.now(), status: refined, task };
 }
 
 /** Format age as human-readable string. */
@@ -390,21 +401,22 @@ function renderPowerlineWidget(
 	const segments = sorted.map((rec) => {
 		const isSelf = rec.id === selfId;
 		const sym = STATUS_SYMBOL[rec.status];
-		const done = existsSync(join(rec.cwd, "REPORT.md")) ? " ☑" : "";
 		const name = rec.name;
 
 		// Transport indicator: ⚡ = socket (can message), ○ = no transport
 		const transport = isSelf ? "" : (rec.socket ? theme.fg("dim", "⚡") : theme.fg("error", "○"));
 
 		if (isSelf) {
-			return `${sym} ${theme.fg("accent", theme.bold(name))}${done}`;
+			return `${sym} ${theme.fg("accent", theme.bold(name))}`;
 		} else {
 			const nameStr = rec.status === "running"
 				? theme.fg("success", name)
-				: rec.status === "stalled"
+				: rec.status === "stalled" || rec.status === "blocked"
 					? theme.fg("warning", name)
-					: theme.fg("muted", name);
-			return `${sym} ${transport}${nameStr}${done}`;
+					: rec.status === "done"
+						? theme.fg("dim", name)
+						: theme.fg("muted", name);
+			return `${sym} ${transport}${nameStr}`;
 		}
 	});
 
@@ -476,10 +488,9 @@ async function openAgentOverlay(
 		const transport = rec.socket ? "⚡socket" : "no-transport";
 		const age = formatAge(rec.startedAt);
 		const model = rec.model || "?";
-		const done = existsSync(join(rec.cwd, "REPORT.md")) ? " ☑" : "";
 		const selfTag = isSelf ? " (you)" : "";
 
-		const description = `${rec.status} │ ${transport} │ ${model} │ up ${age}${done}`
+		const description = `${rec.status} │ ${transport} │ ${model} │ up ${age}`
 			+ (rec.task ? ` │ ${rec.task.slice(0, 50)}` : "");
 
 		return {

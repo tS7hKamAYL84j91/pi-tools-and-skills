@@ -889,7 +889,6 @@ export default function (pi: ExtensionAPI) {
 							}
 						}
 					} else {
-					} else {
 						status = "ACTIVE";
 						detail = `unchanged ${stallCount}/${stallThreshold} cycles`;
 						if (verbose) detail += ` — ${lastLine}`;
