@@ -58,6 +58,61 @@ export default function (pi: ExtensionAPI) {
 		return true;
 	}
 
+	/**
+	 * Send an RPC command and wait for the response event.
+	 * RPC responses have {type: "response", command: "...", success: true/false, ...}
+	 * For commands like "prompt" that trigger async work, also captures streaming
+	 * events until agent_end.
+	 */
+	function rpcCall(
+		agent: SpawnedAgent,
+		cmd: Record<string, unknown>,
+		opts: { waitForAgent?: boolean; timeoutMs?: number } = {},
+	): Promise<{ response: Record<string, unknown> | null; events: string[] }> {
+		const { waitForAgent = false, timeoutMs = 30_000 } = opts;
+		return new Promise((resolve) => {
+			const eventsBefore = agent.recentEvents.length;
+			const ok = rpcWrite(agent, cmd);
+			if (!ok) {
+				resolve({ response: null, events: [] });
+				return;
+			}
+
+			let resolved = false;
+			let response: Record<string, unknown> | null = null;
+
+			const timer = setTimeout(() => finish(), timeoutMs);
+
+			function finish() {
+				if (resolved) return;
+				resolved = true;
+				clearTimeout(timer);
+				clearInterval(poller);
+				const newEvents = agent.recentEvents.slice(eventsBefore);
+				resolve({ response, events: newEvents });
+			}
+
+			// Poll for response/agent_end in the event stream
+			const poller = setInterval(() => {
+				if (agent.done) { finish(); return; }
+
+				// Scan new events since we sent the command
+				for (let i = eventsBefore; i < agent.recentEvents.length; i++) {
+					try {
+						const evt = JSON.parse(agent.recentEvents[i]);
+						if (evt.type === "response" && evt.command === cmd.type) {
+							response = evt;
+							if (!waitForAgent) { finish(); return; }
+						}
+						if (waitForAgent && evt.type === "agent_end") {
+							finish(); return;
+						}
+					} catch { /* not json */ }
+				}
+			}, 100);
+		});
+	}
+
 	/** Read recent events, formatted as text. */
 	function recentOutput(agent: SpawnedAgent, lines = 20): string {
 		const recent = agent.recentEvents.slice(-lines);
@@ -253,17 +308,25 @@ export default function (pi: ExtensionAPI) {
 		name: "rpc_send",
 		label: "RPC Send",
 		description:
-			"Send an RPC command to a spawned agent's stdin. Supports: " +
+			"Send an RPC command to a spawned agent and return the response. Supports: " +
 			"prompt (new task), steer (mid-task redirect), follow_up (after current task), " +
-			"abort, get_state, compact.",
-		promptSnippet: "Send an RPC command to a spawned agent",
+			"abort, get_state, get_messages, compact. " +
+			"For get_state/abort/compact, returns the response immediately. " +
+			"For prompt/steer/follow_up, set wait=true to wait for the agent to finish.",
+		promptSnippet: "Send an RPC command to a spawned agent and get the response",
 		parameters: Type.Object({
 			name: Type.String({ description: "Agent name (as given to spawn_agent)" }),
 			command: Type.String({
-				description: 'RPC command type: "prompt", "steer", "follow_up", "abort", "get_state", "compact"',
+				description: 'RPC command type: "prompt", "steer", "follow_up", "abort", "get_state", "get_messages", "compact"',
 			}),
 			message: Type.Optional(
 				Type.String({ description: "Message text (required for prompt, steer, follow_up)" }),
+			),
+			wait: Type.Optional(
+				Type.Boolean({ description: "Wait for agent to finish processing (default: false for queries, true for prompt)", default: false }),
+			),
+			timeout: Type.Optional(
+				Type.Number({ description: "Max seconds to wait for response (default: 30)", default: 30 }),
 			),
 		}),
 
@@ -288,22 +351,49 @@ export default function (pi: ExtensionAPI) {
 			const cmd: Record<string, unknown> = { type: params.command };
 			if (params.message) cmd.message = params.message;
 
-			const ok = rpcWrite(agent, cmd);
-			if (!ok) {
+			// Determine if we should wait for agent_end
+			const isAsync = ["prompt", "steer", "follow_up"].includes(params.command);
+			const waitForAgent = params.wait ?? isAsync;
+			const timeoutMs = (params.timeout ?? 30) * 1000;
+
+			const { response, events } = await rpcCall(agent, cmd, { waitForAgent, timeoutMs });
+
+			if (!response && events.length === 0) {
 				return {
-					content: [{ type: "text" as const, text: `Failed to write to agent "${params.name}" stdin.` }],
+					content: [{ type: "text" as const, text: `Failed to communicate with agent "${params.name}".` }],
 					details: { error: "write_failed" },
 				};
 			}
 
+			// Format response
+			const responseSummary = response
+				? JSON.stringify(response, null, 2).slice(0, 2000)
+				: "(no response received — may have timed out)";
+
+			// Extract text output from events if we waited
+			let agentOutput = "";
+			if (waitForAgent && events.length > 0) {
+				agentOutput = events.map((line) => {
+					try {
+						const evt = JSON.parse(line);
+						if (evt.type === "message_update" && evt.assistantMessageEvent?.type === "text_delta") {
+							return evt.assistantMessageEvent.delta;
+						}
+					} catch { /* */ }
+					return "";
+				}).join("");
+			}
+
+			const parts: string[] = [
+				`RPC ${params.command} → "${params.name}" (pid ${agent.pid})`,
+			];
+			if (params.message) parts.push(`  message: ${params.message.slice(0, 100)}${params.message.length > 100 ? "…" : ""}`);
+			parts.push("", `Response:\n${responseSummary}`);
+			if (agentOutput) parts.push("", `Agent output:\n${agentOutput.slice(0, 3000)}`);
+
 			return {
-				content: [{
-					type: "text" as const,
-					text: `Sent ${params.command} to "${params.name}" (pid ${agent.pid})` +
-						(params.message ? `\n  message: ${params.message.slice(0, 100)}${params.message.length > 100 ? "…" : ""}` : "") +
-						`\n\nUse agent_peek "${params.name}" to see activity.`,
-				}],
-				details: { name: params.name, command: params.command },
+				content: [{ type: "text" as const, text: parts.join("\n") }],
+				details: { name: params.name, command: params.command, response, eventCount: events.length },
 			};
 		},
 	});
