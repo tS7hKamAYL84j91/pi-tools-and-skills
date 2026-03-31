@@ -36,7 +36,7 @@ Pi has a rich TUI component system via `@mariozechner/pi-tui`. Extensions access
 
 ### Key Patterns for Dashboard/Monitor UIs
 
-1. **Widgets** (`setWidget`) — Best for persistent status displays. Can go above or below editor. Our `tmux-agents.ts` already uses this for the agent list widget.
+1. **Widgets** (`setWidget`) — Best for persistent status displays. Can go above or below editor. Our `agent-panopticon.ts` uses this for the agent list widget.
 
 2. **Status line** (`setStatus`) — Footer-bar indicators. Lightweight, multiple extensions can each add one.
 
@@ -65,7 +65,7 @@ Pi has a rich TUI component system via `@mariozechner/pi-tui`. Extensions access
 | Extension | Description | Repo |
 |---|---|---|
 | **pi-messenger** | Multi-agent communication extension | `nicobailon/pi-messenger` |
-| **agent-of-empires** | Terminal session manager via tmux and git worktrees | `njbrake/agent-of-empires` |
+| **agent-of-empires** | Terminal session manager with git worktrees | `njbrake/agent-of-empires` |
 | **gob** | Process manager for AI agents with background job support and TUI interface | `juanibiapina/gob` |
 | **overstory** | Multi-agent orchestration with pluggable runtime adapters | `jayminwest/overstory` |
 | **pi-notification-extension** | Telegram/bell alerts when agent finishes | `lsj5031/pi-notification-extension` |
@@ -88,9 +88,11 @@ Pi has a rich TUI component system via `@mariozechner/pi-tui`. Extensions access
 
 ## What We Already Have
 
-Our `tmux-agents.ts` uses:
-- `setWidget("tmux-agents", lines, { placement: "belowEditor" })` — agent list widget
-- `setStatus("tmux-agents", text)` — agent count in footer
+Our `agent-panopticon.ts` uses:
+- `setWidget("agent-panopticon", lines, { placement: "belowEditor" })` — agent list widget
+- `setStatus("agent-panopticon", text)` — agent count in footer
+- Unix socket IPC (`~/.pi/agents/{id}.sock`) for agent-to-agent messaging
+- Maildir (`~/.pi/agents/{id}/`) for passive activity observation
 
 ## Opportunities for a Kanban Dashboard
 

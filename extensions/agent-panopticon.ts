@@ -9,7 +9,7 @@
  * - Agent discovery by name
  * - Status/task/model tracking via heartbeat
  * - Widget showing all agents and their state in the pi UI
- * - Tools to peek at agent panes and send messages
+ * - Tools to peek at agent activity and send messages
  *
  * Registry: ~/.pi/agents/{id}.json
  * - Written by each agent on session_start
@@ -17,10 +17,9 @@
  * - Removed on session_shutdown
  * - Stale entries (>30s no heartbeat) cleaned by readers
  *
- * Transport (layered, with fallback):
- * 1. Unix socket    — primary IPC (direct message delivery via pi.sendUserMessage)
- * 2. Maildir        — passive progress observation for agent_peek
- * 3. tmux send-keys — legacy fallback for agents with tmux panes
+ * Transport:
+ * 1. Unix socket — direct message delivery via pi.sendUserMessage()
+ * 2. Maildir     — passive progress observation for agent_peek
  *
  * Maildir: ~/.pi/agents/{id}/
  * - Each lifecycle event written as an individual JSON file
@@ -43,9 +42,10 @@
  * - agent_send        — send messages to peers
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { exec } from "node:child_process";
+import { Container, Text, type SelectItem, SelectList, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
 	existsSync,
 	mkdirSync,
@@ -58,9 +58,6 @@ import {
 import * as net from "node:net";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -72,7 +69,6 @@ interface AgentRecord {
 	pid: number;
 	cwd: string;
 	model: string;
-	tmux?: string;
 	socket?: string;
 	startedAt: number;
 	heartbeat: number;
@@ -207,7 +203,6 @@ function readAllRecords(): AgentRecord[] {
 			const cls = classifyRecord(record, now, isPidAlive(record.pid));
 			if (cls === "dead") {
 				unlinkSync(fullPath);
-				// Clean up stale socket and maildir
 				cleanupAgentFiles(record.id);
 			} else {
 				if (cls === "stalled") record.status = "stalled";
@@ -243,7 +238,6 @@ function maildirWrite(maildirPath: string, entry: MaildirEntry): void {
 		const filename = `${entry.ts}-${seq}-${eventName}.json`;
 		writeFileSync(join(maildirPath, filename), JSON.stringify(entry), "utf-8");
 
-		// Prune old entries
 		maildirPrune(maildirPath, MAX_MAILDIR_ENTRIES);
 	} catch { /* best-effort */ }
 }
@@ -307,7 +301,6 @@ function formatMaildirEntries(entries: MaildirEntry[]): string {
 function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketResponse> {
 	return new Promise((resolve, reject) => {
 		const client = net.createConnection({ path: socketPath }, () => {
-			// write + half-close: signals EOF so server's 'end' handler fires
 			client.end(JSON.stringify(cmd) + "\n");
 		});
 		let buf = "";
@@ -330,33 +323,6 @@ function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketRespo
 	});
 }
 
-// ── Tmux IO ─────────────────────────────────────────────────────
-
-async function findOwnTmuxPane(): Promise<string | undefined> {
-	try {
-		const pid = process.pid;
-		const { stdout } = await execAsync(
-			`tmux list-panes -a -F '#{pane_pid}\t#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null`,
-		);
-		for (const line of stdout.trim().split("\n")) {
-			const [panePid, addr] = line.split("\t");
-			if (!panePid || !addr) continue;
-			try {
-				const { stdout: tree } = await execAsync(
-					`pgrep -P ${panePid} 2>/dev/null; pgrep -g $(pgrep -P ${panePid} 2>/dev/null | head -5 | tr '\\n' ',') 2>/dev/null || true`,
-				);
-				if (tree.trim().split("\n").map(Number).includes(pid)) return addr;
-			} catch { continue; }
-		}
-	} catch { /* not in tmux */ }
-	return undefined;
-}
-
-async function sendToPane(target: string, message: string): Promise<void> {
-	const escaped = message.replace(/'/g, "'\\''");
-	await execAsync(`tmux send-keys -t ${target} '${escaped}' Enter`);
-}
-
 // ── Name resolution ─────────────────────────────────────────────
 
 function resolveByName(name: string, selfId: string): AgentRecord | undefined {
@@ -364,14 +330,11 @@ function resolveByName(name: string, selfId: string): AgentRecord | undefined {
 	return readAllRecords().find((r) => r.name.toLowerCase() === lower && r.id !== selfId);
 }
 
-/** Resolve target to transport info. Returns tmux OR socket OR maildir path. */
+/** Resolve target to socket + maildir paths. */
 function resolveTarget(
 	raw: string,
 	selfId: string,
-): { tmux?: string; socket?: string; maildirPath?: string; name?: string; id?: string } {
-	// Direct tmux address
-	if (/^[\w-]+:\d+\.\d+$/.test(raw)) return { tmux: raw };
-
+): { socket?: string; maildirPath?: string; name?: string; id?: string } {
 	const peer = resolveByName(raw, selfId);
 	if (!peer) {
 		throw new Error(
@@ -379,35 +342,59 @@ function resolveTarget(
 		);
 	}
 
-	if (peer.tmux) return { tmux: peer.tmux, name: peer.name, id: peer.id };
-
-	// Non-tmux: use socket for sending, maildir for peeking
 	const socket = peer.socket ?? join(REGISTRY_DIR, `${peer.id}.sock`);
 	const maildirPath = join(REGISTRY_DIR, peer.id);
 	return { socket, maildirPath, name: peer.name, id: peer.id };
 }
 
-// ── Widget rendering ────────────────────────────────────────────
+// ── Powerline characters ────────────────────────────────────────
 
-function renderWidget(records: AgentRecord[], selfId: string, theme: ExtensionContext["ui"]["theme"]): string[] {
-	const sorted = [...records].sort((a, b) => {
+const PL_SEP_THIN = "\uE0B1"; // Powerline thin right arrow
+
+// ── Widget rendering (Powerline compact view) ───────────────────
+
+/** Sort records: self first, then by startedAt. */
+function sortRecords(records: AgentRecord[], selfId: string): AgentRecord[] {
+	return [...records].sort((a, b) => {
 		if (a.id === selfId) return -1;
 		if (b.id === selfId) return 1;
 		return a.startedAt - b.startedAt;
 	});
+}
 
-	return sorted.map((rec) => {
-		const marker = rec.id === selfId ? theme.fg("accent", "●") : theme.fg("dim", "○");
+/** Build a single powerline-style status line showing all agents as colored segments. */
+function renderPowerlineWidget(
+	records: AgentRecord[],
+	selfId: string,
+	theme: ExtensionContext["ui"]["theme"],
+	availableWidth: number,
+): string[] {
+	const sorted = sortRecords(records, selfId);
+
+	// Build compact segments: status_icon name
+	const segments = sorted.map((rec) => {
+		const isSelf = rec.id === selfId;
 		const sym = STATUS_SYMBOL[rec.status];
 		const done = existsSync(join(rec.cwd, "REPORT.md")) ? " ☑" : "";
-		const transport = rec.tmux
-			? theme.fg("dim", ` ${rec.tmux}`)
-			: rec.socket
-				? theme.fg("dim", " ⚡sock")
-				: "";
-		const task = rec.task ? theme.fg("dim", ` ${rec.task.slice(0, 40)}`) : "";
-		return `${marker} ${sym} ${theme.fg("success", rec.name)}${transport}${done}${task}`;
+		const name = rec.name;
+
+		if (isSelf) {
+			return `${sym} ${theme.fg("accent", theme.bold(name))}${done}`;
+		} else {
+			const nameStr = rec.status === "running"
+				? theme.fg("success", name)
+				: rec.status === "stalled"
+					? theme.fg("warning", name)
+					: theme.fg("muted", name);
+			return `${sym} ${nameStr}${done}`;
+		}
 	});
+
+	// Join with thin powerline separators
+	const separator = theme.fg("dim", ` ${PL_SEP_THIN} `);
+	const line = segments.join(separator);
+
+	return [truncateToWidth(line, availableWidth)];
 }
 
 function refreshWidget(ctx: ExtensionContext, selfId: string): void {
@@ -419,16 +406,231 @@ function refreshWidget(ctx: ExtensionContext, selfId: string): void {
 			return;
 		}
 
-		ctx.ui.setWidget("agent-panopticon", renderWidget(records, selfId, ctx.ui.theme), {
-			placement: "belowEditor",
-		});
+		// Powerline compact widget
+		ctx.ui.setWidget("agent-panopticon", (_tui, theme) => {
+			return {
+				render(width: number): string[] {
+					return renderPowerlineWidget(readAllRecords(), selfId, theme, width);
+				},
+				invalidate(): void { /* re-render fetches fresh data */ },
+			};
+		}, { placement: "belowEditor" });
 
-		const others = records.length - 1;
-		const label = others === 0 ? "just you" : `${others} peer${others !== 1 ? "s" : ""}`;
-		ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("accent", label));
+		// Compact status in footer
+		const running = records.filter(r => r.status === "running" && r.id !== selfId).length;
+		const waiting = records.filter(r => r.status === "waiting" && r.id !== selfId).length;
+		const total = records.length - 1;
+		let label: string;
+		if (total === 0) {
+			label = "solo";
+		} else {
+			const parts: string[] = [];
+			if (running > 0) parts.push(`${running}▶`);
+			if (waiting > 0) parts.push(`${waiting}⏸`);
+			label = parts.length > 0 ? parts.join(" ") : `${total} peer${total !== 1 ? "s" : ""}`;
+		}
+		ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("accent", `⚡${label}`));
 	} catch {
 		ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("error", "agents: err"));
 	}
+}
+
+// ── Agent detail overlay ────────────────────────────────────────
+
+/** Open an interactive overlay showing all agents with details and activity logs. */
+async function openAgentOverlay(
+	ctx: ExtensionCommandContext,
+	selfId: string,
+	selfRecord: AgentRecord | undefined,
+): Promise<void> {
+	const records = readAllRecords();
+	if (records.length === 0) {
+		ctx.ui.notify("No agents registered", "info");
+		return;
+	}
+
+	const sorted = sortRecords(records, selfId);
+
+	// Build select items with rich detail
+	const items: SelectItem[] = sorted.map((rec) => {
+		const sym = STATUS_SYMBOL[rec.status];
+		const isSelf = rec.id === selfId;
+		const transport = rec.socket ? "⚡socket" : "no-transport";
+		const age = formatAge(rec.startedAt);
+		const model = rec.model || "?";
+		const done = existsSync(join(rec.cwd, "REPORT.md")) ? " ☑" : "";
+		const selfTag = isSelf ? " (you)" : "";
+
+		const description = `${rec.status} │ ${transport} │ ${model} │ up ${age}${done}`
+			+ (rec.task ? ` │ ${rec.task.slice(0, 50)}` : "");
+
+		return {
+			value: rec.name,
+			label: `${sym} ${rec.name}${selfTag}`,
+			description,
+		};
+	});
+
+	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+		const container = new Container();
+
+		// Top border
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		// Title
+		container.addChild(new Text(
+			theme.fg("accent", theme.bold(" Agent Panopticon")) +
+			theme.fg("dim", ` — ${records.length} agent${records.length !== 1 ? "s" : ""}`),
+			1, 0,
+		));
+
+		// SelectList
+		const selectList = new SelectList(items, Math.min(items.length, 12), {
+			selectedPrefix: (t: string) => theme.fg("accent", t),
+			selectedText: (t: string) => theme.fg("accent", t),
+			description: (t: string) => theme.fg("muted", t),
+			scrollInfo: (t: string) => theme.fg("dim", t),
+			noMatch: (t: string) => theme.fg("warning", t),
+		});
+		selectList.onSelect = (item) => done(item.value);
+		selectList.onCancel = () => done(null);
+		container.addChild(selectList);
+
+		// Help text
+		container.addChild(new Text(
+			theme.fg("dim", "  ↑↓ navigate • enter view detail • esc close"),
+			1, 0,
+		));
+
+		// Bottom border
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		return {
+			render: (w: number) => container.render(w),
+			invalidate: () => container.invalidate(),
+			handleInput: (data: string) => { selectList.handleInput(data); tui.requestRender(); },
+		};
+	});
+
+	if (!selected) return;
+
+	// Show detail view for selected agent
+	await showAgentDetail(ctx, selfId, selfRecord, selected);
+}
+
+/** Show detailed view for a specific agent with activity log. */
+async function showAgentDetail(
+	ctx: ExtensionCommandContext,
+	selfId: string,
+	selfRecord: AgentRecord | undefined,
+	agentName: string,
+): Promise<void> {
+	const records = readAllRecords();
+	const rec = records.find(r => r.name.toLowerCase() === agentName.toLowerCase());
+	if (!rec) {
+		ctx.ui.notify(`Agent "${agentName}" not found`, "warning");
+		return;
+	}
+
+	const isSelf = rec.id === selfId;
+
+	// Read activity log
+	const maildirPath = join(REGISTRY_DIR, rec.id);
+	const entries = maildirRead(maildirPath, 20);
+
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+		const container = new Container();
+
+		// Top border
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		// Agent header
+		const sym = STATUS_SYMBOL[rec.status];
+		const selfTag = isSelf ? theme.fg("dim", " (you)") : "";
+		container.addChild(new Text(
+			`  ${sym} ${theme.fg("accent", theme.bold(rec.name))}${selfTag}  ${theme.fg("muted", rec.status)}`,
+			1, 0,
+		));
+
+		// Details grid
+		const details = [
+			["Model", rec.model || "unknown"],
+			["CWD", rec.cwd],
+			["PID", String(rec.pid)],
+			["Transport", rec.socket ? "⚡ Unix socket" : "none"],
+			["Uptime", formatAge(rec.startedAt)],
+			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "—"],
+		];
+		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
+
+		for (const [label, value] of details) {
+			container.addChild(new Text(
+				`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`,
+				1, 0,
+			));
+		}
+
+		// Activity log
+		container.addChild(new Text(
+			`\n  ${theme.fg("accent", theme.bold("Recent Activity"))} ${theme.fg("dim", `(${entries.length} events)`)}`,
+			1, 0,
+		));
+
+		if (entries.length === 0) {
+			container.addChild(new Text(
+				`  ${theme.fg("dim", "(no activity recorded)")}`,
+				1, 0,
+			));
+		} else {
+			for (const entry of entries.slice(-15)) {
+				const ts = new Date(entry.ts).toISOString().slice(11, 19);
+				const event = String(entry.event ?? "?");
+				const extra: string[] = [];
+				for (const [k, v] of Object.entries(entry)) {
+					if (k === "ts" || k === "event") continue;
+					const val = typeof v === "string" ? v.slice(0, 60) : JSON.stringify(v)?.slice(0, 60) ?? "";
+					extra.push(`${k}=${val}`);
+				}
+				const extraStr = extra.length > 0 ? " " + extra.join(" ") : "";
+
+				const eventColor = event.includes("error") ? "error"
+					: event.includes("start") ? "success"
+					: event.includes("end") ? "warning"
+					: "dim";
+
+				container.addChild(new Text(
+					`  ${theme.fg("dim", ts)} ${theme.fg(eventColor as any, event)}${theme.fg("muted", extraStr)}`,
+					1, 0,
+				));
+			}
+		}
+
+		// Help text
+		const helpParts = ["esc back"];
+		if (!isSelf) helpParts.push("m send message");
+		container.addChild(new Text(
+			`\n  ${theme.fg("dim", helpParts.join(" • "))}`,
+			1, 0,
+		));
+
+		// Bottom border
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		return {
+			render: (w: number) => container.render(w),
+			invalidate: () => container.invalidate(),
+			handleInput: (data: string) => {
+				if (matchesKey(data, "escape")) {
+					done();
+				} else if (!isSelf && (data === "m" || data === "M")) {
+					// Close overlay and prompt for message
+					done();
+					// After overlay closes, the /send command can be used
+					ctx.ui.setEditorText(`/send ${rec.name} `);
+				}
+			},
+		};
+	});
 }
 
 // ── Tool result helpers ─────────────────────────────────────────
@@ -471,7 +673,6 @@ export default function (pi: ExtensionAPI) {
 	/** Start the Unix domain socket server for receiving messages. */
 	function startSocket(): void {
 		try {
-			// Clean up stale socket file if it exists
 			if (existsSync(selfSocketPath)) {
 				try { unlinkSync(selfSocketPath); } catch { /* */ }
 			}
@@ -481,7 +682,6 @@ export default function (pi: ExtensionAPI) {
 				conn.setTimeout(SOCKET_TIMEOUT_MS);
 				conn.on("data", (chunk) => {
 					buf += chunk.toString();
-					// Process as soon as we have a complete line (newline-delimited)
 					const nlIdx = buf.indexOf("\n");
 					if (nlIdx !== -1) {
 						const line = buf.slice(0, nlIdx).trim();
@@ -498,14 +698,8 @@ export default function (pi: ExtensionAPI) {
 				conn.on("error", () => { /* client disconnect, ignore */ });
 			});
 
-			socketServer.listen(selfSocketPath, () => {
-				// Socket is ready
-			});
-			socketServer.on("error", () => {
-				// Socket failed to bind — non-fatal, tmux/maildir still work
-				socketServer = null;
-			});
-			// Don't keep process alive just for the socket
+			socketServer.listen(selfSocketPath, () => { /* ready */ });
+			socketServer.on("error", () => { socketServer = null; });
 			socketServer.unref();
 		} catch {
 			socketServer = null;
@@ -522,7 +716,6 @@ export default function (pi: ExtensionAPI) {
 					conn.end(JSON.stringify({ ok: false, error: "Empty message" }) + "\n");
 					return;
 				}
-				// Inject message into this agent's conversation
 				try {
 					pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
 					emit("message_received", { from, text: text.slice(0, 200) });
@@ -555,7 +748,6 @@ export default function (pi: ExtensionAPI) {
 	// ── Lifecycle ───────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
-		const tmux = await findOwnTmuxPane();
 		const records = readAllRecords();
 
 		try {
@@ -566,7 +758,6 @@ export default function (pi: ExtensionAPI) {
 			}
 		} catch { /* */ }
 
-		// Start socket server for IPC
 		startSocket();
 
 		record = {
@@ -575,7 +766,6 @@ export default function (pi: ExtensionAPI) {
 			pid: process.pid,
 			cwd: process.cwd(),
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "",
-			tmux,
 			socket: selfSocketPath,
 			startedAt: Date.now(),
 			heartbeat: Date.now(),
@@ -591,7 +781,6 @@ export default function (pi: ExtensionAPI) {
 			pid: process.pid,
 			cwd: process.cwd(),
 			model: record.model,
-			tmux: tmux ?? null,
 		});
 
 		if (ctx.hasUI) {
@@ -644,7 +833,6 @@ export default function (pi: ExtensionAPI) {
 		clearTimers();
 		stopSocket();
 		removeRecord(selfId);
-		// Clean up maildir
 		try { rmSync(selfMaildir, { recursive: true, force: true }); } catch { /* */ }
 	});
 
@@ -677,12 +865,18 @@ export default function (pi: ExtensionAPI) {
 	// ── /agents command ─────────────────────────────────────────
 
 	pi.registerCommand("agents", {
-		description: "Show all registered agents",
+		description: "Open agent panopticon overlay — browse all agents, view details & activity",
 		handler: async (_args, ctx) => {
-			const summary = readAllRecords().map((r) =>
-				`${STATUS_SYMBOL[r.status]} ${r.name}${r.id === selfId ? " (you)" : ""}`,
-			);
-			ctx.ui.notify(summary.join("  "), "info");
+			await openAgentOverlay(ctx, selfId, record);
+		},
+	});
+
+	// ── Keyboard shortcut ──────────────────────────────────────
+
+	pi.registerShortcut("ctrl+shift+a", {
+		description: "Open agent panopticon overlay",
+		handler: async (ctx) => {
+			await openAgentOverlay(ctx as unknown as ExtensionCommandContext, selfId, record);
 		},
 	});
 
@@ -698,18 +892,15 @@ export default function (pi: ExtensionAPI) {
 			}
 			try {
 				const resolved = resolveTarget(match[1], selfId);
-				if (resolved.tmux) {
-					await sendToPane(resolved.tmux, match[2]);
-				} else if (resolved.socket) {
-					await socketSend(resolved.socket, {
-						type: "message",
-						from: record?.name ?? "unknown",
-						text: match[2],
-					});
-				} else {
-					ctx.ui.notify(`No transport available for "${match[1]}"`, "error");
+				if (!resolved.socket) {
+					ctx.ui.notify(`No socket available for "${match[1]}"`, "error");
 					return;
 				}
+				await socketSend(resolved.socket, {
+					type: "message",
+					from: record?.name ?? "unknown",
+					text: match[2],
+				});
 				ctx.ui.notify(`→ ${match[1]}: ${match[2].slice(0, 50)}${match[2].length > 50 ? "…" : ""}`, "info");
 			} catch (err) {
 				ctx.ui.notify(`${err}`, "error");
@@ -725,14 +916,14 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"List agents discovered in the shared registry, or read the activity log of a specific agent. " +
 			"With no target: returns all registered agents and their status. " +
-			"With a target (agent name): reads the agent's Maildir activity log or captures tmux pane output if available.",
+			"With a target (agent name): reads the agent's activity log.",
 		promptSnippet: "Discover agents or read a specific agent's activity log",
 		parameters: Type.Object({
 			target: Type.Optional(
 				Type.String({ description: "Agent name to inspect. Omit to list all agents." }),
 			),
 			lines: Type.Optional(
-				Type.Number({ description: "Number of lines to capture from the pane (default 50)", default: 50 }),
+				Type.Number({ description: "Number of events to read (default 50)", default: 50 }),
 			),
 		}),
 
@@ -742,7 +933,7 @@ export default function (pi: ExtensionAPI) {
 				if (records.length === 0) return textResult("No agents registered.", { agents: [] });
 
 				const listing = records.map((r) => {
-					const transport = r.socket ? "⚡socket" : r.tmux ? r.tmux : "no-transport";
+					const transport = r.socket ? "⚡socket" : "no-socket";
 					const self = r.id === selfId ? " (you)" : "";
 					const done = existsSync(join(r.cwd, "REPORT.md")) ? " ☑ done" : "";
 					const taskStr = r.task ? `  "${r.task.slice(0, 50)}"` : "";
@@ -758,7 +949,6 @@ export default function (pi: ExtensionAPI) {
 			const resolved = resolveTarget(params.target.replace(/^@/, ""), selfId);
 			const lineCount = params.lines ?? 50;
 
-			// Primary: read Maildir entries (works for all agents)
 			const maildirPath = resolved.maildirPath ?? (resolved.id ? join(REGISTRY_DIR, resolved.id) : undefined);
 			if (maildirPath && existsSync(maildirPath)) {
 				const entries = maildirRead(maildirPath, lineCount);
@@ -768,20 +958,6 @@ export default function (pi: ExtensionAPI) {
 					`Agent "${label}" activity (last ${entries.length} events):\n\n${content}`,
 					{ target: label, transport: "maildir", events: entries.length },
 				);
-			}
-
-			// Fallback: try tmux if available
-			if (resolved.tmux) {
-				try {
-					const { stdout } = await execAsync(`tmux capture-pane -t ${resolved.tmux} -p -S -${lineCount} 2>/dev/null`);
-					const content = stdout.trimEnd();
-					if (content) {
-						return textResult(
-							`Agent "${resolved.name ?? params.target}" (tmux fallback, last ${lineCount} lines):\n\n${content}`,
-							{ target: resolved.tmux, lines: content.split("\n").length, transport: "tmux" },
-						);
-					}
-				} catch { /* tmux not available */ }
 			}
 
 			return textResult(`Agent "${params.target}" has no activity log yet.`, {});
@@ -812,55 +988,36 @@ export default function (pi: ExtensionAPI) {
 			const resolved = resolveTarget(params.name, selfId);
 			const preview = params.message.slice(0, 200) + (params.message.length > 200 ? "…" : "");
 
-			// Primary: Unix socket
-			const sockPath = resolved.socket ?? (resolved.id ? join(REGISTRY_DIR, `${resolved.id}.sock`) : undefined);
-			if (sockPath && existsSync(sockPath)) {
-				try {
-					const resp = await socketSend(sockPath, {
-						type: "message",
-						from: record?.name ?? "unknown",
-						text: params.message,
-					});
-					if (!resp.ok) {
-						return textResult(
-							`Agent "${params.name}" rejected the message: ${resp.error ?? "unknown error"}`,
-							{ name: params.name, transport: "socket", error: resp.error },
-						);
-					}
+			const sockPath = resolved.socket;
+			if (!sockPath || !existsSync(sockPath)) {
+				return textResult(
+					`Agent "${params.name}" has no socket. The agent may not be running or may need to be restarted.`,
+					{ name: params.name, error: "no_socket" },
+				);
+			}
+
+			try {
+				const resp = await socketSend(sockPath, {
+					type: "message",
+					from: record?.name ?? "unknown",
+					text: params.message,
+				});
+				if (!resp.ok) {
 					return textResult(
-						`Sent to ${params.name}: ${preview}\n\nMessage delivered. Use agent_peek "${params.name}" to see their activity.`,
-						{ name: params.name, transport: "socket", messageLength: params.message.length },
-					);
-				} catch (err) {
-					// Socket failed — try tmux fallback
-					if (resolved.tmux) {
-						try {
-							await sendToPane(resolved.tmux, params.message);
-							return textResult(
-								`Sent to ${params.name} (tmux fallback): ${preview}\n\nUse agent_peek "${params.name}" to read the response.`,
-								{ name: params.name, transport: "tmux", messageLength: params.message.length },
-							);
-						} catch { /* tmux also failed */ }
-					}
-					return textResult(
-						`Failed to reach agent "${params.name}": ${err}\n\nThe agent may be busy or unresponsive.`,
-						{ name: params.name, error: String(err) },
+						`Agent "${params.name}" rejected the message: ${resp.error ?? "unknown error"}`,
+						{ name: params.name, transport: "socket", error: resp.error },
 					);
 				}
+				return textResult(
+					`Sent to ${params.name}: ${preview}\n\nMessage delivered. Use agent_peek "${params.name}" to see their activity.`,
+					{ name: params.name, transport: "socket", messageLength: params.message.length },
+				);
+			} catch (err) {
+				return textResult(
+					`Failed to reach agent "${params.name}": ${err}\n\nThe agent may be busy or unresponsive.`,
+					{ name: params.name, error: String(err) },
+				);
 			}
-
-			// Fallback: try tmux if socket not available
-			if (resolved.tmux) {
-				try {
-					await sendToPane(resolved.tmux, params.message);
-					return textResult(
-						`Sent to ${params.name} (tmux fallback): ${preview}\n\nUse agent_peek "${params.name}" to read the response.`,
-						{ name: params.name, transport: "tmux", messageLength: params.message.length },
-					);
-				} catch { /* tmux also failed */ }
-			}
-
-			return textResult(`Agent "${params.name}" is unreachable. No socket or tmux pane available.`, {});
 		},
 	});
 }

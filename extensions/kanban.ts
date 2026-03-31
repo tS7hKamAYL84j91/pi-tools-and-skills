@@ -724,7 +724,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Kanban Monitor",
 		description:
 			"Check progress on all in-progress kanban tasks. " +
-			"Parses board.log directly, then uses tmux to inspect each agent's pane. " +
+			"Parses board.log directly, then inspects each agent via the panopticon registry. " +
 			"Detects ACTIVE, STALLED (no pane change for N cycles), BLOCKED, DONE (REPORT.md), " +
 			"and MISSING states. With prod=true (or --prod flag) sends a status nudge to stalled agents.",
 		promptSnippet: "Check progress on all in-progress kanban tasks",
@@ -800,51 +800,52 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 
-				// 3b. Find pane — convention: pi:{agent} session or pi_{agent}
-				let pane = "";
-				for (const sessionName of [`pi:${task.agent}`, `pi_${task.agent}`]) {
-					try {
-						await execAsync(`tmux has-session -t ${JSON.stringify(sessionName)} 2>/dev/null`);
-						pane = `${sessionName}:0.0`;
-						break;
-					} catch { /* not found */ }
-				}
-				if (!pane) {
-					try {
-						const { stdout: wins } = await execAsync(
-							"tmux list-windows -a -F '#{session_name}:#{window_index}.#{pane_index} #{session_name}' 2>/dev/null || true",
-						);
-						for (const wline of wins.split("\n")) {
-							const [pid, sname] = wline.split(" ");
-							if (pid && sname?.toLowerCase().includes(task.agent.toLowerCase())) {
-								pane = pid; break;
-							}
+				// 3b. Find agent in panopticon registry
+				const AGENTS_DIR = join(homedir(), ".pi", "agents");
+				let agentRecord: { id: string; socket?: string } | null = null;
+				try {
+					if (existsSync(AGENTS_DIR)) {
+						const { readdirSync: rdSync, readFileSync: rfSync } = require("node:fs");
+						for (const f of (rdSync(AGENTS_DIR) as string[]).filter((f: string) => f.endsWith(".json"))) {
+							try {
+								const rec = JSON.parse(rfSync(join(AGENTS_DIR, f), "utf-8"));
+								if (rec.name?.toLowerCase() === task.agent.toLowerCase()) {
+									agentRecord = rec;
+									break;
+								}
+							} catch { /* skip corrupt */ }
 						}
-					} catch { /* ignore */ }
-				}
+					}
+				} catch { /* ignore */ }
 
-				if (!pane) {
-					status = "MISSING"; detail = `no tmux pane found for agent '${task.agent}'`;
+				if (!agentRecord) {
+					status = "MISSING"; detail = `no registered agent found for '${task.agent}'`;
 					counts.missing++;
 					results.push({ ...task, status, detail });
 					continue;
 				}
 
-				// 3c. Peek pane (strip ANSI via sed — avoids regex control char lint)
-				let paneContent = "";
+				// 3c. Read agent's Maildir activity log
+				let activityContent = "";
 				try {
-					const { stdout: raw } = await execAsync(
-						`tmux capture-pane -p -t ${JSON.stringify(pane)} 2>/dev/null | sed 's/\\x1b\\[[0-9;]*[mGKHFJ]//g' | tail -15`,
-					);
-					paneContent = raw;
-				} catch { /* pane vanished */ }
+					const maildirPath = join(AGENTS_DIR, agentRecord.id);
+					if (existsSync(maildirPath)) {
+						const { readdirSync: rdSync, readFileSync: rfSync } = require("node:fs");
+						const files = (rdSync(maildirPath) as string[]).filter((f: string) => f.endsWith(".json")).sort();
+						const recent = files.slice(-15);
+						const entries = recent.map((f: string) => {
+							try { return rfSync(join(maildirPath, f), "utf-8"); } catch { return ""; }
+						}).filter(Boolean);
+						activityContent = entries.join("\n");
+					}
+				} catch { /* maildir read failed */ }
 
-				const lastLine = paneContent.split("\n").filter((l) => l.trim()).at(-1)?.trim().slice(0, 80) ?? "";
+				const lastLine = activityContent.split("\n").filter((l) => l.trim()).at(-1)?.trim().slice(0, 80) ?? "";
 
 				// 3d. BLOCKED?
-				if (paneContent.includes("BLOCKED:")) {
-					const bLine = paneContent.split("\n").find((l) => l.includes("BLOCKED:"))
-						?.replace(/.*BLOCKED:/, "BLOCKED:").slice(0, 80) ?? "BLOCKED: (see pane)";
+				if (activityContent.includes("BLOCKED:") || activityContent.includes('"blocked"')) {
+					const bLine = activityContent.split("\n").find((l) => l.includes("BLOCKED:") || l.includes('"blocked"'))
+						?.replace(/.*BLOCKED:/, "BLOCKED:").slice(0, 80) ?? "BLOCKED: (see activity log)";
 					status = "BLOCKED"; detail = bLine;
 					counts.blocked++;
 					await setStallCount(task.id, 0);
@@ -853,7 +854,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// 3e. Stall detection
-				const curHash = md5(paneContent);
+				const curHash = md5(activityContent);
 				const lastHash = await getLastHash(task.id);
 				let stallCount = await getStallCount(task.id);
 
@@ -862,18 +863,32 @@ export default function (pi: ExtensionAPI) {
 					await setStallCount(task.id, stallCount);
 					if (stallCount >= stallThreshold) {
 						status = "STALLED";
-						detail = `no pane change for ${stallCount} cycle(s)`;
+						detail = `no activity change for ${stallCount} cycle(s)`;
 						counts.stalled++;
 						if (isProd) {
 							const nudge = `Status update? ${task.id} appears stalled. Please share progress or call kanban_block if stuck.`;
+							const sockPath = agentRecord.socket ?? join(AGENTS_DIR, `${agentRecord.id}.sock`);
 							try {
-								const escaped = nudge.replace(/'/g, "'\\''");
-								await execAsync(`tmux send-keys -t ${JSON.stringify(pane)} '${escaped}' Enter`);
-								detail += " — nudge sent";
+								if (existsSync(sockPath)) {
+									const net = require("node:net");
+									await new Promise<void>((res, rej) => {
+										const client = net.createConnection({ path: sockPath }, () => {
+											client.end(JSON.stringify({ type: "message", from: "kanban-monitor", text: nudge }) + "\n");
+										});
+										client.on("end", () => res());
+										client.on("error", (e: Error) => rej(e));
+										client.setTimeout(3000);
+										client.on("timeout", () => { client.destroy(); rej(new Error("timeout")); });
+									});
+									detail += " — nudge sent";
+								} else {
+									detail += " — no socket, nudge skipped";
+								}
 							} catch {
 								detail += " — nudge failed";
 							}
 						}
+					} else {
 					} else {
 						status = "ACTIVE";
 						detail = `unchanged ${stallCount}/${stallThreshold} cycles`;
