@@ -1,36 +1,26 @@
-# Refactor Command: Clean, Pure, & Minimal
-
-**Role:** Expert Software Engineer / Architect
-**Objective:** Refactor the codebase to maximize maintainability and simplify logic without altering external behavior.
-
 ---
-
-## 🛠 Core Principles
-* **YAGNI (You Ain't Gonna Need It):** Identify and delete speculative features, unused abstractions, and "just-in-case" code.
-* **KISS (Keep It Simple, Stupid):** Reduce cyclomatic complexity. Favor readable, straightforward logic over clever or nested patterns.
-* **Functional Purity:** Ensure functions are deterministic. Move side effects to the edges of the system; internal logic must be composed of **pure functions**.
-* **Interface Stability:** Maintain existing public API contracts and interfaces. Internal refactoring must not break downstream dependencies.
-
+description: Refactor code to be clean, pure, and minimal — YAGNI, KISS, TDD
 ---
+Refactor the codebase (or the file/module $@) to maximize maintainability without altering external behaviour.
 
-## 🔄 Execution Process (Red-Green TDD)
-1.  **Baseline:** Verify the current state by running the full test suite.
-2.  **Characterization:** If a module lacks coverage, write tests to "lock in" current behavior before touching the code.
-3.  **Refactor:** Apply changes in small increments.
-4.  **Verify:** Run tests after every change to ensure zero regressions in functionality.
+## Principles
+- **YAGNI** — delete speculative features, unused abstractions, and "just-in-case" code.
+- **KISS** — reduce cyclomatic complexity; favour readable, linear logic over clever or deeply nested patterns.
+- **Functional purity** — move side effects to the edges; internal logic should be composed of pure, deterministic functions.
+- **Interface stability** — preserve all public API contracts; downstream callers must not break.
 
----
+## Process
+1. **Baseline** — run the full test suite and confirm it is green.
+2. **Characterise** — if a module lacks coverage, write characterisation tests to lock in current behaviour before touching the code.
+3. **Refactor** — apply changes in small, incremental steps.
+4. **Verify** — run tests after every change; zero regressions permitted.
 
-## 🔍 Quality & Static Analysis
-Use the following tools (or equivalents) to identify technical debt and dead code:
-* **Python:** Run `vulture` to find unused objects and `mypy` for strict type enforcement.
-* **TypeScript:** Run `knip` or `ts-prune` to find unused exports, files, and dependencies.
-* **Complexity:** Use `radon` (Python) or `eslint-plugin-sonarjs` (TS) to flag overly complex blocks.
+## Static analysis (run before and after)
+- **TypeScript:** `knip` or `ts-prune` for unused exports/files; `eslint-plugin-sonarjs` for complexity.
+- **Python:** `vulture` for dead code; `mypy --strict` for types; `radon` for complexity.
 
----
-
-## 📤 Expected Output
-1.  **Deletion Log:** List of all files, functions, and variables removed.
-2.  **Purity Report:** List of functions refactored into pure, side-effect-free versions.
-3.  **Test Results:** Confirmation that the TDD cycle is complete and all tests pass.
-4.  **Refactored Code:** The final, clean, and strictly typed source code.
+## Output
+1. **Deletion log** — files, functions, and variables removed.
+2. **Purity report** — functions converted to pure, side-effect-free form.
+3. **Test results** — confirmation all tests pass after refactoring.
+4. **Final code** — clean, strictly typed, with no dead paths.
