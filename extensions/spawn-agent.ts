@@ -375,6 +375,82 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	// ── kill_agent ──────────────────────────────────────────────
+
+	pi.registerTool({
+		name: "kill_agent",
+		label: "Kill Agent",
+		description:
+			"Stop a spawned agent. Sends abort via RPC, waits briefly, then SIGTERM/SIGKILL. " +
+			"Removes the agent from the spawned list.",
+		promptSnippet: "Stop and remove a spawned agent",
+		parameters: Type.Object({
+			name: Type.String({ description: "Agent name to kill" }),
+			force: Type.Optional(
+				Type.Boolean({ description: "Skip graceful abort, SIGKILL immediately (default: false)", default: false }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const agent = agents.get(params.name);
+			if (!agent) {
+				return {
+					content: [{ type: "text" as const, text: `No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}` }],
+					details: { error: "not_found" },
+				};
+			}
+
+			if (agent.done) {
+				agents.delete(params.name);
+				return {
+					content: [{ type: "text" as const, text: `Agent "${params.name}" already exited (code ${agent.proc.exitCode}). Removed from list.` }],
+					details: { name: params.name, alreadyDead: true },
+				};
+			}
+
+			const pid = agent.pid;
+
+			if (params.force) {
+				try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+				agents.delete(params.name);
+				return {
+					content: [{ type: "text" as const, text: `Force-killed "${params.name}" (pid ${pid}).` }],
+					details: { name: params.name, pid, method: "SIGKILL" },
+				};
+			}
+
+			// Graceful: abort RPC → wait 2s → SIGTERM → wait 2s → SIGKILL
+			rpcWrite(agent, { type: "abort" });
+
+			await new Promise<void>((resolve) => {
+				if (agent.done) { resolve(); return; }
+
+				const onClose = () => { clearTimeout(t1); resolve(); };
+				agent.proc.once("close", onClose);
+
+				const t1 = setTimeout(() => {
+					if (agent.done) { resolve(); return; }
+					try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+
+					setTimeout(() => {
+						if (!agent.done) {
+							try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+						}
+						agent.proc.removeListener("close", onClose);
+						resolve();
+					}, 2000);
+				}, 2000);
+			});
+
+			agents.delete(params.name);
+
+			return {
+				content: [{ type: "text" as const, text: `Stopped "${params.name}" (pid ${pid}). Exit code: ${agent.proc.exitCode ?? "killed"}.` }],
+				details: { name: params.name, pid, exitCode: agent.proc.exitCode },
+			};
+		},
+	});
+
 	// ── Cleanup ─────────────────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
