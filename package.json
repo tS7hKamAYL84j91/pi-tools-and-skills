@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint extensions/",
     "type-coverage": "type-coverage --strict --at-least 95",
-    "check": "npm run typecheck && npm run lint && npm run type-coverage"
+    "check": "npm run typecheck && npm run lint && npm run type-coverage",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "repository": {
     "type": "git",
@@ -19,7 +21,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/tS7hKamAYL84j91/tools-and-skills/issues"
   },
@@ -29,6 +31,7 @@
     "@mariozechner/pi-coding-agent": "^0.63.2",
     "@sinclair/typebox": "^0.34.49",
     "type-coverage": "^2.29.7",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.2"
   }
 }
