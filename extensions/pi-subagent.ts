@@ -44,9 +44,14 @@ interface SpawnedAgent {
 // ── Constants ───────────────────────────────────────────────────
 
 const MAX_RECENT_EVENTS = 100;
-const TASK_ARG_LIMIT = 8000;
 
 // ── Extension entry ─────────────────────────────────────────────
+
+type ToolResult = {
+	content: { type: "text"; text: string }[];
+	details: Record<string, unknown>;
+	isError?: boolean;
+};
 
 export default function (pi: ExtensionAPI) {
 	const agents = new Map<string, SpawnedAgent>();
@@ -99,7 +104,7 @@ export default function (pi: ExtensionAPI) {
 				// Scan new events since we sent the command
 				for (let i = eventsBefore; i < agent.recentEvents.length; i++) {
 					try {
-						const evt = JSON.parse(agent.recentEvents[i]);
+						const evt = JSON.parse(agent.recentEvents[i]!);
 						if (evt.type === "response" && evt.command === cmd.type) {
 							response = evt;
 							if (!waitForAgent) { finish(); return; }
@@ -178,7 +183,7 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 
-		async execute(_toolCallId, params, _signal) {
+		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			if (agents.has(params.name)) {
 				const existing = agents.get(params.name)!;
 				if (!existing.done) {
@@ -330,7 +335,7 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 
-		async execute(_toolCallId, params, _signal) {
+		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const agent = agents.get(params.name);
 			if (!agent) {
 				return {
@@ -414,7 +419,7 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 
-		async execute(_toolCallId, params, _signal) {
+		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			if (agents.size === 0) {
 				return {
 					content: [{ type: "text" as const, text: "No agents spawned in this session." }],
@@ -481,7 +486,7 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 
-		async execute(_toolCallId, params, _signal) {
+		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const agent = agents.get(params.name);
 			if (!agent) {
 				return {

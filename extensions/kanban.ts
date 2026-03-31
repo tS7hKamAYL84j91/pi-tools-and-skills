@@ -26,7 +26,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { exec } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import * as net from "node:net";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -805,10 +806,9 @@ export default function (pi: ExtensionAPI) {
 				let agentRecord: { id: string; socket?: string } | null = null;
 				try {
 					if (existsSync(AGENTS_DIR)) {
-						const { readdirSync: rdSync, readFileSync: rfSync } = require("node:fs");
-						for (const f of (rdSync(AGENTS_DIR) as string[]).filter((f: string) => f.endsWith(".json"))) {
+						for (const f of readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".json"))) {
 							try {
-								const rec = JSON.parse(rfSync(join(AGENTS_DIR, f), "utf-8"));
+								const rec = JSON.parse(readFileSync(join(AGENTS_DIR, f), "utf-8"));
 								if (rec.name?.toLowerCase() === task.agent.toLowerCase()) {
 									agentRecord = rec;
 									break;
@@ -830,11 +830,10 @@ export default function (pi: ExtensionAPI) {
 				try {
 					const maildirPath = join(AGENTS_DIR, agentRecord.id);
 					if (existsSync(maildirPath)) {
-						const { readdirSync: rdSync, readFileSync: rfSync } = require("node:fs");
-						const files = (rdSync(maildirPath) as string[]).filter((f: string) => f.endsWith(".json")).sort();
+						const files = readdirSync(maildirPath).filter((f) => f.endsWith(".json")).sort();
 						const recent = files.slice(-15);
-						const entries = recent.map((f: string) => {
-							try { return rfSync(join(maildirPath, f), "utf-8"); } catch { return ""; }
+						const entries = recent.map((f) => {
+							try { return readFileSync(join(maildirPath, f), "utf-8"); } catch { return ""; }
 						}).filter(Boolean);
 						activityContent = entries.join("\n");
 					}
@@ -870,10 +869,10 @@ export default function (pi: ExtensionAPI) {
 							const sockPath = agentRecord.socket ?? join(AGENTS_DIR, `${agentRecord.id}.sock`);
 							try {
 								if (existsSync(sockPath)) {
-									const net = require("node:net");
+									
 									await new Promise<void>((res, rej) => {
 										const client = net.createConnection({ path: sockPath }, () => {
-											client.end(JSON.stringify({ type: "message", from: "kanban-monitor", text: nudge }) + "\n");
+											client.end(JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge }) + "\n");
 										});
 										client.on("end", () => res());
 										client.on("error", (e: Error) => rej(e));

@@ -19,7 +19,7 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { Container, Text, type SelectItem, SelectList, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Container, Text, type SelectItem, SelectList, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import {
 	existsSync,
 	mkdirSync,
@@ -66,13 +66,6 @@ interface SocketCommand {
 	payload?: unknown;
 }
 
-interface SocketResponse {
-	ok: boolean;
-	ref?: string;
-	error?: string;
-	entries?: MaildirEntry[];
-	data?: unknown;
-}
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -226,9 +219,7 @@ function formatMaildirEntries(entries: MaildirEntry[]): string {
 	return entries.map((e) => {
 		const ts = new Date(e.ts).toISOString().slice(11, 19);
 		const event = e.event ?? "?";
-		const rest = { ...e };
-		delete rest.ts;
-		delete rest.event;
+		const { ts: _ts, event: _evt, ...rest } = e;
 		const extra = Object.keys(rest).length > 0
 			? " " + Object.entries(rest).map(([k, v]) => {
 				const val = typeof v === "string" ? v.slice(0, 120) : JSON.stringify(v)?.slice(0, 120) ?? "";
@@ -290,7 +281,7 @@ function refreshWidget(ctx: ExtensionContext, selfId: string): void {
 			return;
 		}
 
-		ctx.ui.setWidget("agent-panopticon", (_tui, theme) => ({
+		ctx.ui.setWidget("agent-panopticon", (_tui: unknown, theme: ExtensionContext["ui"]["theme"]) => ({
 			render(width: number): string[] {
 				return renderPowerlineWidget(readAllRecords(), selfId, theme, width);
 			},
@@ -395,7 +386,7 @@ async function showAgentDetail(
 	const isSelf = rec.id === selfId;
 	const entries = maildirRead(join(REGISTRY_DIR, rec.id), 20);
 
-	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
@@ -417,10 +408,12 @@ async function showAgentDetail(
 		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
 
 		for (const [label, value] of details) {
-			container.addChild(new Text(
-				`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`,
-				1, 0,
-			));
+			if (label && value) {
+				container.addChild(new Text(
+					`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`,
+					1, 0,
+				));
+			}
 		}
 
 		container.addChild(new Text(

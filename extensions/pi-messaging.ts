@@ -110,11 +110,6 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details };
 }
 
-function findSelfId(): string {
-	// Derive selfId the same way pi-panopticon does
-	return `${process.pid}-${Date.now().toString(36)}`;
-}
-
 // ── Extension entry ─────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
