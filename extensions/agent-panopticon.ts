@@ -82,17 +82,32 @@ interface MaildirEntry {
 	[key: string]: unknown;
 }
 
+/**
+ * Socket protocol — Erlang-inspired messaging primitives:
+ *
+ * cast    — async fire-and-forget message (no response expected by sender,
+ *           but we still reply {ok:true} for delivery confirmation)
+ * call    — sync request/response (sender blocks until reply)
+ * peek    — read activity log (convenience alias for call)
+ */
 interface SocketCommand {
-	type: "message" | "peek";
+	type: "cast" | "call" | "peek";
 	from?: string;
 	text?: string;
 	lines?: number;
+	// call-specific
+	ref?: string;          // correlation id for call responses
+	command?: string;      // sub-command for call (e.g. "get_status")
+	payload?: unknown;     // arbitrary data for call
+	// Legacy compat
 }
 
 interface SocketResponse {
 	ok: boolean;
+	ref?: string;
 	error?: string;
 	entries?: MaildirEntry[];
+	data?: unknown;
 }
 
 // ── Constants ───────────────────────────────────────────────────
@@ -378,6 +393,9 @@ function renderPowerlineWidget(
 		const done = existsSync(join(rec.cwd, "REPORT.md")) ? " ☑" : "";
 		const name = rec.name;
 
+		// Transport indicator: ⚡ = socket (can message), ○ = no transport
+		const transport = isSelf ? "" : (rec.socket ? theme.fg("dim", "⚡") : theme.fg("error", "○"));
+
 		if (isSelf) {
 			return `${sym} ${theme.fg("accent", theme.bold(name))}${done}`;
 		} else {
@@ -386,7 +404,7 @@ function renderPowerlineWidget(
 				: rec.status === "stalled"
 					? theme.fg("warning", name)
 					: theme.fg("muted", name);
-			return `${sym} ${nameStr}${done}`;
+			return `${sym} ${transport}${nameStr}${done}`;
 		}
 	});
 
@@ -708,8 +726,12 @@ export default function (pi: ExtensionAPI) {
 
 	/** Handle an incoming socket command. */
 	function handleSocketCommand(cmd: SocketCommand, conn: net.Socket): void {
-		switch (cmd.type) {
-			case "message": {
+		// Legacy compat: treat "message" as "cast"
+		const type = (cmd as any).type === "message" ? "cast" : cmd.type;
+
+		switch (type) {
+			// ── cast: async fire-and-forget message ──────────────
+			case "cast": {
 				const from = cmd.from ?? "unknown";
 				const text = cmd.text ?? "";
 				if (!text) {
@@ -718,21 +740,60 @@ export default function (pi: ExtensionAPI) {
 				}
 				try {
 					pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
-					emit("message_received", { from, text: text.slice(0, 200) });
+					emit("cast_received", { from, text: text.slice(0, 200) });
 					conn.end(JSON.stringify({ ok: true }) + "\n");
 				} catch (err) {
 					conn.end(JSON.stringify({ ok: false, error: String(err) }) + "\n");
 				}
 				break;
 			}
+
+			// ── call: sync request/response ──────────────────────
+			case "call": {
+				const ref = cmd.ref;
+				const subCmd = cmd.command ?? "get_status";
+
+				switch (subCmd) {
+					case "get_status": {
+						conn.end(JSON.stringify({
+							ok: true, ref,
+							data: {
+								name: record?.name,
+								status,
+								task,
+								model: record?.model,
+								uptime: record ? Date.now() - record.startedAt : 0,
+								pid: process.pid,
+							},
+						}) + "\n");
+						break;
+					}
+					case "peek": {
+						const lines = (cmd.payload as any)?.lines ?? cmd.lines ?? 50;
+						const entries = maildirRead(selfMaildir, lines);
+						conn.end(JSON.stringify({ ok: true, ref, entries }) + "\n");
+						break;
+					}
+					case "ping": {
+						conn.end(JSON.stringify({ ok: true, ref, data: "pong" }) + "\n");
+						break;
+					}
+					default:
+						conn.end(JSON.stringify({ ok: false, ref, error: `Unknown call command: ${subCmd}` }) + "\n");
+				}
+				break;
+			}
+
+			// ── peek: shorthand for call/peek ─────────────────────
 			case "peek": {
 				const lines = cmd.lines ?? 50;
 				const entries = maildirRead(selfMaildir, lines);
 				conn.end(JSON.stringify({ ok: true, entries }) + "\n");
 				break;
 			}
+
 			default:
-				conn.end(JSON.stringify({ ok: false, error: `Unknown command: ${(cmd as any).type}` }) + "\n");
+				conn.end(JSON.stringify({ ok: false, error: `Unknown command: ${type}` }) + "\n");
 		}
 	}
 
@@ -873,7 +934,7 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Keyboard shortcut ──────────────────────────────────────
 
-	pi.registerShortcut("ctrl+shift+a", {
+	pi.registerShortcut("ctrl+shift+o", {
 		description: "Open agent panopticon overlay",
 		handler: async (ctx) => {
 			await openAgentOverlay(ctx as unknown as ExtensionCommandContext, selfId, record);
@@ -897,7 +958,7 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 				await socketSend(resolved.socket, {
-					type: "message",
+					type: "cast",
 					from: record?.name ?? "unknown",
 					text: match[2],
 				});
@@ -964,7 +1025,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// ── agent_send tool ─────────────────────────────────────────
+	// ── agent_send tool (cast — async fire-and-forget) ─────────────
 
 	pi.registerTool({
 		name: "agent_send",
@@ -998,26 +1059,82 @@ export default function (pi: ExtensionAPI) {
 
 			try {
 				const resp = await socketSend(sockPath, {
-					type: "message",
+					type: "cast",
 					from: record?.name ?? "unknown",
 					text: params.message,
 				});
 				if (!resp.ok) {
 					return textResult(
-						`Agent "${params.name}" rejected the message: ${resp.error ?? "unknown error"}`,
-						{ name: params.name, transport: "socket", error: resp.error },
+						`Agent "${params.name}" rejected: ${resp.error ?? "unknown error"}`,
+						{ name: params.name, error: resp.error },
 					);
 				}
 				return textResult(
-					`Sent to ${params.name}: ${preview}\n\nMessage delivered. Use agent_peek "${params.name}" to see their activity.`,
-					{ name: params.name, transport: "socket", messageLength: params.message.length },
+					`→ ${params.name}: ${preview}`,
+					{ name: params.name, pattern: "cast", messageLength: params.message.length },
 				);
 			} catch (err) {
 				return textResult(
-					`Failed to reach agent "${params.name}": ${err}\n\nThe agent may be busy or unresponsive.`,
+					`Failed to reach "${params.name}": ${err}`,
 					{ name: params.name, error: String(err) },
 				);
 			}
+		},
+	});
+
+	// ── agent_broadcast tool (fan out to all/filtered peers) ───
+
+	pi.registerTool({
+		name: "agent_broadcast",
+		label: "Agent Broadcast",
+		description:
+			"Broadcast a message to all registered agents (or a filtered subset). " +
+			"Each agent receives the message as an async cast via their socket.",
+		promptSnippet: "Broadcast a message to all registered agents",
+		parameters: Type.Object({
+			message: Type.String({ description: "Message to broadcast" }),
+			filter: Type.Optional(
+				Type.String({ description: 'Filter agents by name pattern (substring match). Omit for all peers.' }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const records = readAllRecords().filter((r) => r.id !== selfId);
+			const targets = params.filter
+				? records.filter((r) => r.name.toLowerCase().includes(params.filter!.toLowerCase()))
+				: records;
+
+			if (targets.length === 0) {
+				return textResult(
+					params.filter ? `No agents matching "${params.filter}".` : "No peer agents registered.",
+					{ sent: 0 },
+				);
+			}
+
+			const from = record?.name ?? "unknown";
+			const results: { name: string; ok: boolean; error?: string }[] = [];
+
+			for (const target of targets) {
+				const sockPath = target.socket ?? join(REGISTRY_DIR, `${target.id}.sock`);
+				if (!existsSync(sockPath)) {
+					results.push({ name: target.name, ok: false, error: "no socket" });
+					continue;
+				}
+				try {
+					const resp = await socketSend(sockPath, { type: "cast", from, text: params.message });
+					results.push({ name: target.name, ok: resp.ok, error: resp.error });
+				} catch (err) {
+					results.push({ name: target.name, ok: false, error: String(err) });
+				}
+			}
+
+			const sent = results.filter((r) => r.ok).length;
+			const summary = results.map((r) => `  ${r.ok ? "✓" : "✗"} ${r.name}${r.error ? ` (${r.error})` : ""}`).join("\n");
+
+			return textResult(
+				`Broadcast to ${targets.length} agent(s), ${sent} delivered:\n${summary}`,
+				{ pattern: "broadcast", sent, failed: results.length - sent, targets: targets.map((t) => t.name) },
+			);
 		},
 	});
 }
