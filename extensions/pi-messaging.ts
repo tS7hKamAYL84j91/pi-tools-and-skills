@@ -7,6 +7,7 @@
  *
  * Responsibilities (messaging ONLY):
  * - agent_send tool (cast to a single peer)
+ * - agent_send_durable tool (crash-safe Maildir delivery)
  * - agent_broadcast tool (fan out to all/filtered peers)
  * - /send command
  *
@@ -18,97 +19,17 @@ import { Type } from "@sinclair/typebox";
 import {
 	existsSync,
 	mkdirSync,
-	readdirSync,
-	readFileSync,
 	renameSync,
 	writeFileSync,
 } from "node:fs";
 import * as crypto from "node:crypto";
-import * as net from "node:net";
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
-
-// ── Types (shared with pi-panopticon) ───────────────────────────
-
-interface AgentRecord {
-	id: string;
-	name: string;
-	pid: number;
-	cwd: string;
-	model: string;
-	socket?: string;
-	startedAt: number;
-	heartbeat: number;
-	status: string;
-	task?: string;
-	inboxCapable?: boolean;
-	pendingMessages?: number;
-}
-
-interface SocketCommand {
-	type: "cast" | "call" | "peek";
-	from?: string;
-	text?: string;
-	[key: string]: unknown;
-}
-
-interface SocketResponse {
-	ok: boolean;
-	error?: string;
-	[key: string]: unknown;
-}
-
-// ── Constants ───────────────────────────────────────────────────
-
-const REGISTRY_DIR = join(homedir(), ".pi", "agents");
-const STALE_MS = 30_000;
-const SOCKET_TIMEOUT_MS = 3_000;
-
-// ── Registry read (read-only, no writes) ────────────────────────
-
-function isPidAlive(pid: number): boolean {
-	try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
-/** Read all live agent records from the shared registry. */
-function readAllRecords(): AgentRecord[] {
-	try {
-		if (!existsSync(REGISTRY_DIR)) return [];
-		const now = Date.now();
-		const records: AgentRecord[] = [];
-
-		for (const file of readdirSync(REGISTRY_DIR)) {
-			if (!file.endsWith(".json")) continue;
-			try {
-				const record: AgentRecord = JSON.parse(readFileSync(join(REGISTRY_DIR, file), "utf-8"));
-				if (!record.name) record.name = basename(record.cwd) || record.id.slice(0, 8);
-				// Skip dead agents
-				if (now - record.heartbeat > STALE_MS && !isPidAlive(record.pid)) continue;
-				records.push(record);
-			} catch { /* skip corrupt */ }
-		}
-		return records;
-	} catch { return []; }
-}
-
-// ── Socket IO ───────────────────────────────────────────────────
-
-function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketResponse> {
-	return new Promise((resolve, reject) => {
-		const client = net.createConnection({ path: socketPath }, () => {
-			client.end(`${JSON.stringify(cmd)}\n`);
-		});
-		let buf = "";
-		client.setTimeout(SOCKET_TIMEOUT_MS);
-		client.on("data", (chunk) => { buf += chunk.toString(); });
-		client.on("end", () => {
-			try { resolve(JSON.parse(buf.trim()) as SocketResponse); }
-			catch { resolve({ ok: false, error: "Invalid response from agent socket" }); }
-		});
-		client.on("timeout", () => { client.destroy(); reject(new Error("Socket timeout")); });
-		client.on("error", (err) => { reject(new Error(`Socket error: ${err.message}`)); });
-	});
-}
+import { join } from "node:path";
+import {
+	type AgentRecord,
+	REGISTRY_DIR,
+	readAllAgentRecords,
+	socketSend,
+} from "./agent-registry.js";
 
 // ── Durable Maildir write (atomic tmp/ → new/) ─────────────────
 
@@ -158,12 +79,10 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 // ── Extension entry ─────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	// We need to know our own ID to exclude self from targets.
-	// Read it from the registry by matching our PID.
 	let selfName: string | undefined;
 
 	function getSelfRecord(): AgentRecord | undefined {
-		return readAllRecords().find((r) => r.pid === process.pid);
+		return readAllAgentRecords().find((r) => r.pid === process.pid);
 	}
 
 	function getSelfName(): string {
@@ -177,14 +96,14 @@ export default function (pi: ExtensionAPI) {
 	function resolvePeer(name: string): AgentRecord | undefined {
 		const lower = name.toLowerCase();
 		const self = getSelfRecord();
-		return readAllRecords().find((r) =>
-			r.name.toLowerCase() === lower && (!self || r.id !== self.id)
+		return readAllAgentRecords().find((r) =>
+			r.name.toLowerCase() === lower && (!self || r.id !== self.id),
 		);
 	}
 
 	function peerNames(): string {
 		const self = getSelfRecord();
-		const names = readAllRecords()
+		const names = readAllAgentRecords()
 			.filter((r) => !self || r.id !== self.id)
 			.map((r) => r.name);
 		return names.length ? names.join(", ") : "(none)";
@@ -216,11 +135,7 @@ export default function (pi: ExtensionAPI) {
 			// Then try socket for immediate delivery
 			if (peer.socket && existsSync(peer.socket)) {
 				try {
-					await socketSend(peer.socket, {
-						type: "cast",
-						from,
-						text: match[2],
-					});
+					await socketSend(peer.socket, { type: "cast", from, text: match[2] });
 					ctx.ui.notify(`→ ${match[1]}: ${preview} (socket + inbox)`, "info");
 					return;
 				} catch {
@@ -272,11 +187,7 @@ export default function (pi: ExtensionAPI) {
 			// Try socket first (low latency path)
 			if (sockPath && existsSync(sockPath)) {
 				try {
-					const resp = await socketSend(sockPath, {
-						type: "cast",
-						from,
-						text: params.message,
-					});
+					const resp = await socketSend(sockPath, { type: "cast", from, text: params.message });
 					if (resp.ok) {
 						return textResult(
 							`Sent to ${params.name}: ${preview}\n\nMessage delivered via socket. Use agent_peek "${params.name}" to see their activity.`,
@@ -288,7 +199,7 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			// Graceful fallback: write to Maildir inbox (durable, at-least-once)
+			// Graceful fallback: write to Maildir inbox
 			const writeResult = durableWrite(peer.id, from, params.message);
 			if (writeResult.ok) {
 				return textResult(
@@ -323,7 +234,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal) {
 			const self = getSelfRecord();
-			const allPeers = readAllRecords().filter((r) => !self || r.id !== self.id);
+			const allPeers = readAllAgentRecords().filter((r) => !self || r.id !== self.id);
 			const targets = params.filter
 				? allPeers.filter((r) => r.name.toLowerCase().includes(params.filter?.toLowerCase() ?? ""))
 				: allPeers;
@@ -354,7 +265,7 @@ export default function (pi: ExtensionAPI) {
 
 			const sent = results.filter((r) => r.ok).length;
 			const summary = results.map((r) =>
-				`  ${r.ok ? "✓" : "✗"} ${r.name}${r.error ? ` (${r.error})` : ""}`
+				`  ${r.ok ? "✓" : "✗"} ${r.name}${r.error ? ` (${r.error})` : ""}`,
 			).join("\n");
 
 			return textResult(
@@ -371,7 +282,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Agent Send (Durable)",
 		description:
 			"Send a durable message to a named peer agent via Maildir inbox. " +
-			"The message is atomically written to the agent's inbox (tmp/ \u2192 new/) and persists across " +
+			"The message is atomically written to the agent's inbox (tmp/ → new/) and persists across " +
 			"crashes, Mac sleep, and agent restarts. Also attempts socket delivery for low latency. " +
 			"If the socket is down, the message is still queued and delivered when the agent wakes.",
 		promptSnippet: "Send a crash-safe durable message to a peer agent",
@@ -397,7 +308,7 @@ export default function (pi: ExtensionAPI) {
 			const from = getSelfName();
 			const preview = params.message.slice(0, 200) + (params.message.length > 200 ? "\u2026" : "");
 
-			// Stage 1: Durable write (atomic tmp/ \u2192 new/)
+			// Stage 1: Durable write (atomic tmp/ → new/)
 			const writeResult = durableWrite(peer.id, from, params.message);
 			if (!writeResult.ok) {
 				return textResult(
@@ -411,14 +322,10 @@ export default function (pi: ExtensionAPI) {
 			const sockPath = peer.socket;
 			if (sockPath && existsSync(sockPath)) {
 				try {
-					const resp = await socketSend(sockPath, {
-						type: "cast",
-						from,
-						text: params.message,
-					});
+					const resp = await socketSend(sockPath, { type: "cast", from, text: params.message });
 					socketDelivered = resp.ok;
 				} catch {
-					// Socket failed — message is still durably queued, no error
+					// Socket failed — message is still durably queued
 				}
 			}
 

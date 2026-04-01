@@ -31,27 +31,19 @@ import {
 	writeFileSync,
 } from "node:fs";
 import * as net from "node:net";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import {
+	type AgentRecord,
+	type AgentStatus,
+	type SocketCommand,
+	REGISTRY_DIR,
+	STALE_MS,
+	SOCKET_TIMEOUT_MS,
+	isPidAlive,
+	ensureRegistryDir,
+} from "./agent-registry.js";
 
-// ── Types ───────────────────────────────────────────────────────
-
-type AgentStatus = "running" | "waiting" | "done" | "blocked" | "stalled" | "terminated" | "unknown";
-
-interface AgentRecord {
-	id: string;
-	name: string;
-	pid: number;
-	cwd: string;
-	model: string;
-	socket?: string;
-	startedAt: number;
-	heartbeat: number;
-	status: AgentStatus;
-	task?: string;
-	inboxCapable?: boolean;
-	pendingMessages?: number;
-}
+// ── Types (local to panopticon) ─────────────────────────────────
 
 interface MaildirEntry {
 	ts: number;
@@ -59,24 +51,10 @@ interface MaildirEntry {
 	[key: string]: unknown;
 }
 
-interface SocketCommand {
-	type: "cast" | "call" | "peek";
-	from?: string;
-	text?: string;
-	lines?: number;
-	ref?: string;
-	command?: string;
-	payload?: unknown;
-}
-
-
 // ── Constants ───────────────────────────────────────────────────
 
-const REGISTRY_DIR = join(homedir(), ".pi", "agents");
 const HEARTBEAT_MS = 5_000;
-const STALE_MS = 30_000;
 const MAX_MAILDIR_ENTRIES = 200;
-const SOCKET_TIMEOUT_MS = 3_000;
 const INBOX_SUBDIRS = ["tmp", "new", "cur"] as const;
 
 const STATUS_SYMBOL: Record<AgentStatus, string> = {
@@ -131,13 +109,9 @@ function pickName(cwd: string, records: AgentRecord[], selfId: string): string {
 
 // ── Registry IO ─────────────────────────────────────────────────
 
-function ensureDir(): void {
-	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true });
-}
-
 function writeRecord(record: AgentRecord): void {
 	try {
-		ensureDir();
+		ensureRegistryDir();
 		writeFileSync(join(REGISTRY_DIR, `${record.id}.json`), JSON.stringify(record, null, 2), "utf-8");
 	} catch { /* best-effort */ }
 }
@@ -146,12 +120,8 @@ function removeRecord(id: string): void {
 	try { unlinkSync(join(REGISTRY_DIR, `${id}.json`)); } catch { /* already gone */ }
 }
 
-function isPidAlive(pid: number): boolean {
-	try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
 function readAllRecords(): AgentRecord[] {
-	ensureDir();
+	ensureRegistryDir();
 	const now = Date.now();
 	const records: AgentRecord[] = [];
 
