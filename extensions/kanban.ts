@@ -241,154 +241,104 @@ async function parseBoard(): Promise<BoardState> {
 
 // ── Snapshot generator (pure TS, replaces awk) ──────────────────────────────
 
+// ── Snapshot rendering helpers (pure) ───────────────────────────────────────
+
+interface ColumnDef {
+	heading: string;
+	headers: string[];
+	separators: string[];
+	row: (t: TaskState) => string;
+}
+
+const COLUMN_DEFS: Record<string, ColumnDef> = {
+	backlog: {
+		heading: "📋 Backlog",
+		headers: ["| ID | Title | Priority | Tags |"],
+		separators: ["|----|-------|----------|------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`,
+	},
+	todo: {
+		heading: "🔜 Todo",
+		headers: ["| ID | Title | Priority | Tags |"],
+		separators: ["|----|-------|----------|------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`,
+	},
+	"in-progress": {
+		heading: "🔄 In Progress",
+		headers: ["| ID | Title | Agent | Expires |"],
+		separators: ["|----|-------|-------|---------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.expires} |`,
+	},
+	blocked: {
+		heading: "🚫 Blocked",
+		headers: ["| ID | Title | Reason |"],
+		separators: ["|----|-------|--------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.reason} |`,
+	},
+	done: {
+		heading: "✅ Done",
+		headers: ["| ID | Title | Agent | Completed | Duration |"],
+		separators: ["|----|-------|-------|-----------|----------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.doneAgent || "—"} | ${t.completedAt || "—"} | ${t.duration || "—"} |`,
+	},
+};
+
+/** Render a column section: heading, table, and notes. Pure function. */
+function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): string[] {
+	const def = COLUMN_DEFS[colKey];
+	if (!def) return [];
+	const lines: string[] = [];
+
+	lines.push(`## ${def.heading} (${countLabel})`);
+	if (tasks.length === 0) {
+		lines.push("_empty_");
+	} else {
+		lines.push(...def.headers, ...def.separators);
+		for (const t of tasks) lines.push(def.row(t));
+	}
+
+	// Render notes
+	for (const t of tasks) {
+		if (t.notes.length > 0) {
+			lines.push("");
+			lines.push(`**Notes for ${t.id}:**`);
+			for (const note of t.notes) lines.push(`- ${note}`);
+		}
+	}
+	lines.push("");
+	return lines;
+}
+
 function generateSnapshot(board: BoardState): string {
 	const { tasks, order, totalEvents } = board;
 	const now = nowZ();
 
 	// Bucket by column, preserving log order
-	const backlog: TaskState[] = [];
-	const todo: TaskState[] = [];
-	const inProgress: TaskState[] = [];
-	const blocked: TaskState[] = [];
-	const done: TaskState[] = [];
-
+	const buckets: Record<string, TaskState[]> = {
+		backlog: [], todo: [], "in-progress": [], blocked: [], done: [],
+	};
 	for (const tid of order) {
 		const t = tasks.get(tid);
 		if (!t || t.deleted) continue;
-		switch (t.col) {
-			case "backlog": backlog.push(t); break;
-			case "todo": todo.push(t); break;
-			case "in-progress": inProgress.push(t); break;
-			case "blocked": blocked.push(t); break;
-			case "done": done.push(t); break;
-		}
+		buckets[t.col]?.push(t);
 	}
 
-	const wip = inProgress.length;
-	const lines: string[] = [];
+	const wip = buckets["in-progress"]?.length ?? 0;
+	const doneAll = buckets.done ?? [];
+	const doneLast10 = doneAll.slice(-10);
 
-	lines.push("# CoAS Kanban — Snapshot");
-	lines.push(`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`);
-	lines.push("");
-
-	// Backlog
-	lines.push(`## 📋 Backlog (${backlog.length})`);
-	if (backlog.length === 0) {
-		lines.push("_empty_");
-	} else {
-		lines.push("| ID | Title | Priority | Tags |");
-		lines.push("|----|-------|----------|------|");
-		for (const t of backlog) {
-			lines.push(`| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`);
-		}
-	}
-	// Render notes for backlog tasks
-	for (const t of backlog) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) {
-				lines.push(`- ${note}`);
-			}
-		}
-	}
-	lines.push("");
-
-	// Todo
-	lines.push(`## 🔜 Todo (${todo.length})`);
-	if (todo.length === 0) {
-		lines.push("_empty_");
-	} else {
-		lines.push("| ID | Title | Priority | Tags |");
-		lines.push("|----|-------|----------|------|");
-		for (const t of todo) {
-			lines.push(`| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`);
-		}
-	}
-	// Render notes for todo tasks
-	for (const t of todo) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) {
-				lines.push(`- ${note}`);
-			}
-		}
-	}
-	lines.push("");
-
-	// In Progress
-	lines.push(`## 🔄 In Progress (${wip}/${WIP_LIMIT})`);
-	if (inProgress.length === 0) {
-		lines.push("_empty_");
-	} else {
-		lines.push("| ID | Title | Agent | Expires |");
-		lines.push("|----|-------|-------|---------|");
-		for (const t of inProgress) {
-			lines.push(`| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.expires} |`);
-		}
-	}
-	// Render notes for in-progress tasks
-	for (const t of inProgress) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) {
-				lines.push(`- ${note}`);
-			}
-		}
-	}
-	lines.push("");
-
-	// Blocked
-	lines.push(`## 🚫 Blocked (${blocked.length})`);
-	if (blocked.length === 0) {
-		lines.push("_empty_");
-	} else {
-		lines.push("| ID | Title | Reason |");
-		lines.push("|----|-------|--------|");
-		for (const t of blocked) {
-			lines.push(`| ${t.id} | ${t.title} | ${t.reason} |`);
-		}
-	}
-	// Render notes for blocked tasks
-	for (const t of blocked) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) {
-				lines.push(`- ${note}`);
-			}
-		}
-	}
-	lines.push("");
-
-	// Done (last 10)
-	lines.push(`## ✅ Done (last 10 of ${done.length})`);
-	if (done.length === 0) {
-		lines.push("_empty_");
-	} else {
-		lines.push("| ID | Title | Agent | Completed | Duration |");
-		lines.push("|----|-------|-------|-----------|----------|");
-		const last10 = done.slice(-10);
-		for (const t of last10) {
-			lines.push(`| ${t.id} | ${t.title} | ${t.doneAgent || "—"} | ${t.completedAt || "—"} | ${t.duration || "—"} |`);
-		}
-	}
-	// Render notes for done tasks (last 10)
-	const last10Done = done.slice(-10);
-	for (const t of last10Done) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) {
-				lines.push(`- ${note}`);
-			}
-		}
-	}
-	lines.push("");
-	lines.push("---");
-	lines.push("_Source: kanban/board.log | Read-only: do not edit this file_");
+	const lines: string[] = [
+		"# CoAS Kanban — Snapshot",
+		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
+		"",
+		...renderColumn(buckets.backlog ?? [], "backlog", String(buckets.backlog?.length ?? 0)),
+		...renderColumn(buckets.todo ?? [], "todo", String(buckets.todo?.length ?? 0)),
+		...renderColumn(buckets["in-progress"] ?? [], "in-progress", `${wip}/${WIP_LIMIT}`),
+		...renderColumn(buckets.blocked ?? [], "blocked", String(buckets.blocked?.length ?? 0)),
+		...renderColumn(doneLast10, "done", `last 10 of ${doneAll.length}`),
+		"---",
+		"_Source: kanban/board.log | Read-only: do not edit this file_",
+	];
 
 	return lines.join("\n");
 }
