@@ -371,6 +371,112 @@ async function saveHash(tid: string, hash: string): Promise<void> {
 	await monitorStateWrite(`${MONITOR_STATE_DIR}/${tid}.hash`, hash);
 }
 
+// ── Monitor: types ──────────────────────────────────────────────────────
+
+type MonitorStatus = "ACTIVE" | "STALLED" | "BLOCKED" | "DONE" | "MISSING";
+interface TaskRow { id: string; agent: string; title: string }
+interface TaskResult { id: string; agent: string; status: MonitorStatus; detail: string }
+interface MonitorCounts { active: number; stalled: number; blocked: number; done: number; missing: number }
+
+// ── Monitor: extracted helpers ──────────────────────────────────────────
+
+/** Extract in-progress tasks from a parsed board. */
+function getInProgressTasks(board: BoardState): TaskRow[] {
+	const tasks: TaskRow[] = [];
+	for (const tid of board.order) {
+		const t = board.tasks.get(tid);
+		if (t && t.col === "in-progress") {
+			tasks.push({ id: t.id, agent: t.claimAgent || t.agent, title: t.title });
+		}
+	}
+	return tasks;
+}
+
+/** Check if REPORT.md exists for a given agent. */
+async function checkReportDone(agentName: string): Promise<boolean> {
+	const researchBase = process.env.KANBAN_REPORT_BASE ?? join(homedir(), "git", "working-notes", "research");
+	const exactReport = join(researchBase, agentName, "REPORT.md");
+	if (existsSync(exactReport)) return true;
+	try {
+		const { stdout } = await execAsync(
+			`find ${JSON.stringify(researchBase)} -maxdepth 2 -name REPORT.md -path "*${agentName}*" 2>/dev/null | head -1`,
+		);
+		return stdout.trim().length > 0;
+	} catch { return false; }
+}
+
+/** Find an agent record by name in the panopticon registry. */
+function findAgentInRegistry(agentName: string): { id: string; socket?: string } | null {
+	const agentsDir = join(homedir(), ".pi", "agents");
+	try {
+		if (!existsSync(agentsDir)) return null;
+		for (const f of readdirSync(agentsDir).filter((f) => f.endsWith(".json"))) {
+			try {
+				const rec = JSON.parse(readFileSync(join(agentsDir, f), "utf-8"));
+				if (rec.name?.toLowerCase() === agentName.toLowerCase()) return rec;
+			} catch { /* skip corrupt */ }
+		}
+	} catch { /* ignore */ }
+	return null;
+}
+
+/** Read recent activity from an agent's Maildir. */
+function readAgentActivity(agentId: string): string {
+	const agentsDir = join(homedir(), ".pi", "agents");
+	try {
+		const maildirPath = join(agentsDir, agentId);
+		if (!existsSync(maildirPath)) return "";
+		const files = readdirSync(maildirPath).filter((f) => f.endsWith(".json")).sort();
+		return files.slice(-15).map((f) => {
+			try { return readFileSync(join(maildirPath, f), "utf-8"); } catch { return ""; }
+		}).filter(Boolean).join("\n");
+	} catch { return ""; }
+}
+
+/** Detect if activity content indicates a blocked state. Pure. */
+function detectBlocked(activityContent: string): string | null {
+	if (!activityContent.includes("BLOCKED:") && !activityContent.includes('"blocked"')) return null;
+	return activityContent.split("\n")
+		.find((l) => l.includes("BLOCKED:") || l.includes('"blocked"'))
+		?.replace(/.*BLOCKED:/, "BLOCKED:").slice(0, 80)
+		?? "BLOCKED: (see activity log)";
+}
+
+/** Send a nudge message to an agent via socket. */
+async function sendNudge(sockPath: string, nudge: string): Promise<"sent" | "no_socket" | "failed"> {
+	try {
+		if (!existsSync(sockPath)) return "no_socket";
+		await new Promise<void>((res, rej) => {
+			const client = net.createConnection({ path: sockPath }, () => {
+				client.end(`${JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge })}\n`);
+			});
+			client.on("end", () => res());
+			client.on("error", (e: Error) => rej(e));
+			client.setTimeout(3000);
+			client.on("timeout", () => { client.destroy(); rej(new Error("timeout")); });
+		});
+		return "sent";
+	} catch { return "failed"; }
+}
+
+/** Format a monitor report from results and counts. Pure. */
+function formatMonitorReport(ts: string, results: TaskResult[], counts: MonitorCounts): string {
+	const lines: string[] = [`=== Progress Check [${ts}] ===`];
+	if (results.length === 0) {
+		lines.push("  (no in-progress tasks)");
+	} else {
+		for (const r of results) {
+			lines.push(`  ${r.id} (${r.agent}): ${r.status} — ${r.detail}`);
+		}
+	}
+	lines.push("---");
+	lines.push(
+		`  Running: ${counts.active} | Stalled: ${counts.stalled} | ` +
+		`Blocked: ${counts.blocked} | Done: ${counts.done} | Missing: ${counts.missing}`,
+	);
+	return lines.join("\n");
+}
+
 // ── Extension export ──────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -716,39 +822,16 @@ export default function (pi: ExtensionAPI) {
 			const commFile = resolve(kDir, "..", "COMMUNICATION.md");
 			const ts = new Date().toISOString();
 
-			// ── 2. Get in-progress tasks from parsed board ───────────
-			type TaskRow = { id: string; agent: string; title: string };
-			const tasks: TaskRow[] = [];
-			for (const tid of board.order) {
-				const t = board.tasks.get(tid);
-				if (t && t.col === "in-progress") {
-					tasks.push({ id: t.id, agent: t.claimAgent || t.agent, title: t.title });
-				}
-			}
-
-			// ── 3. Check each task ───────────────────────────────────
-			type Status = "ACTIVE" | "STALLED" | "BLOCKED" | "DONE" | "MISSING";
-			type TaskResult = { id: string; agent: string; status: Status; detail: string };
+			const tasks = getInProgressTasks(board);
 			const results: TaskResult[] = [];
-			const counts = { active: 0, stalled: 0, blocked: 0, done: 0, missing: 0 };
+			const counts: MonitorCounts = { active: 0, stalled: 0, blocked: 0, done: 0, missing: 0 };
 
 			for (const task of tasks) {
-				let status: Status = "ACTIVE";
+				let status: MonitorStatus = "ACTIVE";
 				let detail = "";
 
-				// 3a. DONE? — REPORT.md in common research paths
-				const researchBase = process.env.KANBAN_REPORT_BASE ?? join(homedir(), "git", "working-notes", "research");
-				const exactReport = join(researchBase, task.agent, "REPORT.md");
-				let hasDone = existsSync(exactReport);
-				if (!hasDone) {
-					try {
-						const { stdout: found } = await execAsync(
-							`find ${JSON.stringify(researchBase)} -maxdepth 2 -name REPORT.md -path "*${task.agent}*" 2>/dev/null | head -1`,
-						);
-						hasDone = found.trim().length > 0;
-					} catch { /* ignore */ }
-				}
-				if (hasDone) {
+				// DONE? — REPORT.md exists
+				if (await checkReportDone(task.agent)) {
 					status = "DONE"; detail = "REPORT.md found";
 					counts.done++;
 					await setStallCount(task.id, 0);
@@ -756,23 +839,8 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 
-				// 3b. Find agent in panopticon registry
-				const AGENTS_DIR = join(homedir(), ".pi", "agents");
-				let agentRecord: { id: string; socket?: string } | null = null;
-				try {
-					if (existsSync(AGENTS_DIR)) {
-						for (const f of readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".json"))) {
-							try {
-								const rec = JSON.parse(readFileSync(join(AGENTS_DIR, f), "utf-8"));
-								if (rec.name?.toLowerCase() === task.agent.toLowerCase()) {
-									agentRecord = rec;
-									break;
-								}
-							} catch { /* skip corrupt */ }
-						}
-					}
-				} catch { /* ignore */ }
-
+				// Find agent in panopticon registry
+				const agentRecord = findAgentInRegistry(task.agent);
 				if (!agentRecord) {
 					status = "MISSING"; detail = `no registered agent found for '${task.agent}'`;
 					counts.missing++;
@@ -780,34 +848,20 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 
-				// 3c. Read agent's Maildir activity log
-				let activityContent = "";
-				try {
-					const maildirPath = join(AGENTS_DIR, agentRecord.id);
-					if (existsSync(maildirPath)) {
-						const files = readdirSync(maildirPath).filter((f) => f.endsWith(".json")).sort();
-						const recent = files.slice(-15);
-						const entries = recent.map((f) => {
-							try { return readFileSync(join(maildirPath, f), "utf-8"); } catch { return ""; }
-						}).filter(Boolean);
-						activityContent = entries.join("\n");
-					}
-				} catch { /* maildir read failed */ }
-
+				// Read activity & check blocked
+				const activityContent = readAgentActivity(agentRecord.id);
 				const lastLine = activityContent.split("\n").filter((l) => l.trim()).at(-1)?.trim().slice(0, 80) ?? "";
 
-				// 3d. BLOCKED?
-				if (activityContent.includes("BLOCKED:") || activityContent.includes('"blocked"')) {
-					const bLine = activityContent.split("\n").find((l) => l.includes("BLOCKED:") || l.includes('"blocked"'))
-						?.replace(/.*BLOCKED:/, "BLOCKED:").slice(0, 80) ?? "BLOCKED: (see activity log)";
-					status = "BLOCKED"; detail = bLine;
+				const blockedDetail = detectBlocked(activityContent);
+				if (blockedDetail) {
+					status = "BLOCKED"; detail = blockedDetail;
 					counts.blocked++;
 					await setStallCount(task.id, 0);
 					results.push({ ...task, status, detail });
 					continue;
 				}
 
-				// 3e. Stall detection
+				// Stall detection
 				const curHash = md5(activityContent);
 				const lastHash = await getLastHash(task.id);
 				let stallCount = await getStallCount(task.id);
@@ -821,26 +875,12 @@ export default function (pi: ExtensionAPI) {
 						counts.stalled++;
 						if (isProd) {
 							const nudge = `Status update? ${task.id} appears stalled. Please share progress or call kanban_block if stuck.`;
-							const sockPath = agentRecord.socket ?? join(AGENTS_DIR, `${agentRecord.id}.sock`);
-							try {
-								if (existsSync(sockPath)) {
-									
-									await new Promise<void>((res, rej) => {
-										const client = net.createConnection({ path: sockPath }, () => {
-											client.end(`${JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge })}\n`);
-										});
-										client.on("end", () => res());
-										client.on("error", (e: Error) => rej(e));
-										client.setTimeout(3000);
-										client.on("timeout", () => { client.destroy(); rej(new Error("timeout")); });
-									});
-									detail += " — nudge sent";
-								} else {
-									detail += " — no socket, nudge skipped";
-								}
-							} catch {
-								detail += " — nudge failed";
-							}
+							const agentsDir = join(homedir(), ".pi", "agents");
+							const sockPath = agentRecord.socket ?? join(agentsDir, `${agentRecord.id}.sock`);
+							const nudgeResult = await sendNudge(sockPath, nudge);
+							detail += nudgeResult === "sent" ? " — nudge sent"
+								: nudgeResult === "no_socket" ? " — no socket, nudge skipped"
+								: " — nudge failed";
 						}
 					} else {
 						status = "ACTIVE";
@@ -859,23 +899,9 @@ export default function (pi: ExtensionAPI) {
 				results.push({ ...task, status, detail });
 			}
 
-			// ── 4. Format report ────────────────────────────────────
-			const reportLines: string[] = [`=== Progress Check [${ts}] ===`];
-			if (results.length === 0) {
-				reportLines.push("  (no in-progress tasks)");
-			} else {
-				for (const r of results) {
-					reportLines.push(`  ${r.id} (${r.agent}): ${r.status} — ${r.detail}`);
-				}
-			}
-			reportLines.push("---");
-			reportLines.push(
-				`  Running: ${counts.active} | Stalled: ${counts.stalled} | ` +
-				`Blocked: ${counts.blocked} | Done: ${counts.done} | Missing: ${counts.missing}`,
-			);
-			const report = reportLines.join("\n");
+			const report = formatMonitorReport(ts, results, counts);
 
-			// ── 5. Append to monitor.log ─────────────────────────────
+			// Append to monitor.log (non-fatal)
 			try {
 				const logLines = [`${ts} CHECK start`];
 				for (const r of results) {
@@ -886,9 +912,9 @@ export default function (pi: ExtensionAPI) {
 					`blocked=${counts.blocked} done=${counts.done} missing=${counts.missing}`,
 				);
 				await appendFile(monitorLog, `${logLines.join("\n")}\n`, "utf-8");
-			} catch { /* log failures are non-fatal */ }
+			} catch { /* non-fatal */ }
 
-			// ── 6. Alert COMMUNICATION.md if issues detected ─────────
+			// Alert COMMUNICATION.md if issues detected (non-fatal)
 			if (counts.stalled > 0 || counts.blocked > 0) {
 				try {
 					const issues = results.filter((r) => r.status === "STALLED" || r.status === "BLOCKED");
