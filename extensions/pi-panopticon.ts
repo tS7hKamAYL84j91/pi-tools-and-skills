@@ -25,6 +25,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	unlinkSync,
 	writeFileSync,
@@ -48,6 +49,8 @@ interface AgentRecord {
 	heartbeat: number;
 	status: AgentStatus;
 	task?: string;
+	inboxCapable?: boolean;
+	pendingMessages?: number;
 }
 
 interface MaildirEntry {
@@ -74,6 +77,7 @@ const HEARTBEAT_MS = 5_000;
 const STALE_MS = 30_000;
 const MAX_MAILDIR_ENTRIES = 200;
 const SOCKET_TIMEOUT_MS = 3_000;
+const INBOX_SUBDIRS = ["tmp", "new", "cur"] as const;
 
 const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "🟢",   // active — agent turn in progress
@@ -176,8 +180,71 @@ function readAllRecords(): AgentRecord[] {
 function cleanupAgentFiles(id: string): void {
 	const sockPath = join(REGISTRY_DIR, `${id}.sock`);
 	const maildirPath = join(REGISTRY_DIR, id);
+	const inboxPath = join(REGISTRY_DIR, id, "inbox");
 	try { unlinkSync(sockPath); } catch { /* */ }
+	try { rmSync(inboxPath, { recursive: true, force: true }); } catch { /* */ }
 	try { rmSync(maildirPath, { recursive: true, force: true }); } catch { /* */ }
+}
+
+// ── Inbox Maildir IO ────────────────────────────────────────────
+
+function ensureInbox(agentId: string): string {
+	const inboxPath = join(REGISTRY_DIR, agentId, "inbox");
+	for (const sub of INBOX_SUBDIRS) {
+		const dir = join(inboxPath, sub);
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+	}
+	return inboxPath;
+}
+
+function inboxPendingCount(agentId: string): number {
+	try {
+		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
+		if (!existsSync(newDir)) return 0;
+		return readdirSync(newDir).filter((f) => f.endsWith(".json")).length;
+	} catch { return 0; }
+}
+
+interface InboxMessage {
+	id: string;
+	from: string;
+	text: string;
+	ts: number;
+	metadata?: Record<string, unknown>;
+}
+
+function inboxReadNew(agentId: string): { filename: string; message: InboxMessage }[] {
+	try {
+		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
+		if (!existsSync(newDir)) return [];
+		const files = readdirSync(newDir).filter((f) => f.endsWith(".json")).sort();
+		return files.map((f) => {
+			try {
+				const msg = JSON.parse(readFileSync(join(newDir, f), "utf-8")) as InboxMessage;
+				return { filename: f, message: msg };
+			} catch { return null; }
+		}).filter(Boolean) as { filename: string; message: InboxMessage }[];
+	} catch { return []; }
+}
+
+function inboxAcknowledge(agentId: string, filename: string): void {
+	try {
+		const src = join(REGISTRY_DIR, agentId, "inbox", "new", filename);
+		const dst = join(REGISTRY_DIR, agentId, "inbox", "cur", filename);
+		renameSync(src, dst);
+	} catch { /* best-effort: message may already be moved */ }
+}
+
+function inboxPruneCur(agentId: string, keep: number = 50): void {
+	try {
+		const curDir = join(REGISTRY_DIR, agentId, "inbox", "cur");
+		if (!existsSync(curDir)) return;
+		const files = readdirSync(curDir).filter((f) => f.endsWith(".json")).sort();
+		if (files.length <= keep) return;
+		for (const f of files.slice(0, files.length - keep)) {
+			try { unlinkSync(join(curDir, f)); } catch { /* */ }
+		}
+	} catch { /* */ }
 }
 
 // ── Maildir IO ──────────────────────────────────────────────────
@@ -285,12 +352,18 @@ function buildPowerlineSegments(
 
 		if (isSelf) {
 			// Highlighted: bold accent name + dim status label
-			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}`;
+			const inboxTag = (rec.pendingMessages ?? 0) > 0
+				? theme.fg("warning", `(✉${rec.pendingMessages})`)
+				: "";
+			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inboxTag}`;
 		}
 
 		const transport = rec.socket ? "" : theme.fg("error", "○");
+		const inboxTag = (rec.pendingMessages ?? 0) > 0
+			? theme.fg("warning", `(✉${rec.pendingMessages})`)
+			: "";
 		const col = statusColor(rec.status);
-		return `${sym} ${transport}${theme.fg(col as any, rec.name)}${theme.fg("dim", `:${label}`)}`;
+		return `${sym} ${transport}${theme.fg(col as any, rec.name)}${theme.fg("dim", `:${label}`)}${inboxTag}`;
 	});
 }
 
@@ -457,6 +530,7 @@ async function showAgentDetail(
 			["CWD", rec.cwd],
 			["PID", String(rec.pid)],
 			["Transport", rec.socket ? "⚡ Unix socket" : "none"],
+			["Inbox", rec.inboxCapable ? `✉ Maildir (pending: ${rec.pendingMessages ?? 0})` : "not available"],
 			["Uptime", formatAge(rec.startedAt)],
 			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "—"],
 		];
@@ -542,7 +616,18 @@ export default function (pi: ExtensionAPI) {
 
 	function heartbeat(): void {
 		if (!record) return;
+		// If socket died (sleep/wake, error), try to rebind it
+		if (!socketServer) {
+			startSocket();
+		}
 		record = buildRecord(record, status, task);
+		// Only advertise socket path if server is actually listening
+		record = {
+			...record,
+			socket: socketServer ? selfSocketPath : undefined,
+			inboxCapable: true,
+			pendingMessages: inboxPendingCount(selfId),
+		};
 		writeRecord(record);
 	}
 
@@ -585,7 +670,11 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			socketServer.listen(selfSocketPath);
-			socketServer.on("error", () => { socketServer = null; });
+			socketServer.on("error", () => {
+				socketServer = null;
+				// Remove stale socket file so retries can rebind
+				try { unlinkSync(selfSocketPath); } catch { /* */ }
+			});
 			socketServer.unref();
 		} catch {
 			socketServer = null;
@@ -631,6 +720,24 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Lifecycle ───────────────────────────────────────────────
 
+	/** Drain inbox: read new/ messages, inject each via sendUserMessage, move to cur/. */
+	function drainInbox(): void {
+		const pending = inboxReadNew(selfId);
+		for (const { filename, message } of pending) {
+			try {
+				pi.sendUserMessage(`[from ${message.from}]: ${message.text}`, { deliverAs: "followUp" });
+				emit("inbox_delivered", { from: message.from, text: message.text.slice(0, 200), file: filename });
+			} catch (err) {
+				emit("inbox_delivery_error", { file: filename, error: String(err) });
+				continue; // Don't acknowledge failed deliveries — retry next cycle
+			}
+			inboxAcknowledge(selfId, filename);
+		}
+		if (pending.length > 0) {
+			inboxPruneCur(selfId);
+		}
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		const records = readAllRecords();
 
@@ -644,17 +751,26 @@ export default function (pi: ExtensionAPI) {
 
 		startSocket();
 
+		// Create inbox Maildir directories
+		ensureInbox(selfId);
+
+		// Drain any messages queued while offline (Mac sleep, crash recovery)
+		drainInbox();
+
 		record = {
 			id: selfId,
 			name: pickName(process.cwd(), records, selfId),
 			pid: process.pid,
 			cwd: process.cwd(),
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "",
-			socket: selfSocketPath,
+			// Only advertise socket if it actually bound successfully
+			socket: socketServer ? selfSocketPath : undefined,
 			startedAt: Date.now(),
 			heartbeat: Date.now(),
 			status: "waiting",
 			task,
+			inboxCapable: true,
+			pendingMessages: inboxPendingCount(selfId),
 		};
 
 		writeRecord(record);
@@ -681,6 +797,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_end", async () => {
 		status = "waiting";
+		// Drain inbox between turns — delivers messages queued during LLM call
+		drainInbox();
 		heartbeat();
 		emit("agent_end", { status: "waiting" });
 	});
@@ -795,16 +913,19 @@ export default function (pi: ExtensionAPI) {
 				const records = readAllRecords();
 				if (records.length === 0) return textResult("No agents registered.", { agents: [] });
 
-				const listing = records.map((r) => {
+					const listing = records.map((r) => {
 					const transport = r.socket ? "⚡socket" : "no-socket";
 					const self = r.id === selfId ? " (you)" : "";
 					const taskStr = r.task ? `  "${r.task.slice(0, 50)}"` : "";
-					return `  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${transport.padEnd(12)} ${r.model || "?"} up=${formatAge(r.startedAt)}${self}${taskStr}`;
+					const inbox = r.inboxCapable
+						? ` inbox:${r.pendingMessages ?? 0}`
+						: "";
+					return `  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${transport.padEnd(12)} ${r.model || "?"} up=${formatAge(r.startedAt)}${inbox}${self}${taskStr}`;
 				});
 
 				return textResult(
-					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send to message a peer.`,
-					{ agents: records.map((r) => ({ name: r.name, pid: r.pid, socket: r.socket, cwd: r.cwd, status: r.status, model: r.model, task: r.task, isSelf: r.id === selfId })) },
+					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send or agent_send_durable to message a peer.`,
+					{ agents: records.map((r) => ({ name: r.name, pid: r.pid, socket: r.socket, cwd: r.cwd, status: r.status, model: r.model, task: r.task, isSelf: r.id === selfId, inboxCapable: r.inboxCapable, pendingMessages: r.pendingMessages })) },
 				);
 			}
 

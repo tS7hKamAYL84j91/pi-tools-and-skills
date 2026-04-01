@@ -17,9 +17,13 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import {
 	existsSync,
+	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
+	writeFileSync,
 } from "node:fs";
+import * as crypto from "node:crypto";
 import * as net from "node:net";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -37,6 +41,8 @@ interface AgentRecord {
 	heartbeat: number;
 	status: string;
 	task?: string;
+	inboxCapable?: boolean;
+	pendingMessages?: number;
 }
 
 interface SocketCommand {
@@ -104,6 +110,45 @@ function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketRespo
 	});
 }
 
+// ── Durable Maildir write (atomic tmp/ → new/) ─────────────────
+
+function durableWrite(targetId: string, from: string, text: string, metadata?: Record<string, unknown>): { ok: boolean; filename?: string; error?: string } {
+	try {
+		const inboxBase = join(REGISTRY_DIR, targetId, "inbox");
+		const tmpDir = join(inboxBase, "tmp");
+		const newDir = join(inboxBase, "new");
+
+		// Ensure inbox dirs exist (idempotent)
+		for (const dir of [tmpDir, newDir, join(inboxBase, "cur")]) {
+			if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+		}
+
+		const ts = Date.now();
+		const uuid = crypto.randomUUID();
+		const filename = `${ts}-${uuid}.json`;
+
+		const message = {
+			id: uuid,
+			from,
+			text,
+			ts,
+			...(metadata ? { metadata } : {}),
+		};
+
+		// Stage 1: Write to tmp/ (crash here = message never delivered, safe)
+		const tmpPath = join(tmpDir, filename);
+		writeFileSync(tmpPath, JSON.stringify(message), "utf-8");
+
+		// Stage 2: Atomic rename to new/ (POSIX guarantees atomicity)
+		const newPath = join(newDir, filename);
+		renameSync(tmpPath, newPath);
+
+		return { ok: true, filename };
+	} catch (err) {
+		return { ok: false, error: String(err) };
+	}
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 function textResult(text: string, details: Record<string, unknown> = {}) {
@@ -162,21 +207,31 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			if (!peer.socket || !existsSync(peer.socket)) {
-				ctx.ui.notify(`No socket for "${match[1]}"`, "error");
-				return;
+			const from = getSelfName();
+			const preview = match[2].slice(0, 50) + (match[2].length > 50 ? "…" : "");
+
+			// Always write durably first
+			const writeResult = durableWrite(peer.id, from, match[2]);
+
+			// Then try socket for immediate delivery
+			if (peer.socket && existsSync(peer.socket)) {
+				try {
+					await socketSend(peer.socket, {
+						type: "cast",
+						from,
+						text: match[2],
+					});
+					ctx.ui.notify(`→ ${match[1]}: ${preview} (socket + inbox)`, "info");
+					return;
+				} catch {
+					// Socket failed — durable write is our fallback
+				}
 			}
 
-			try {
-				await socketSend(peer.socket, {
-					type: "cast",
-					from: getSelfName(),
-					text: match[2],
-				});
-				const preview = match[2].slice(0, 50) + (match[2].length > 50 ? "…" : "");
-				ctx.ui.notify(`→ ${match[1]}: ${preview}`, "info");
-			} catch (err) {
-				ctx.ui.notify(`${err}`, "error");
+			if (writeResult.ok) {
+				ctx.ui.notify(`→ ${match[1]}: ${preview} (queued in inbox)`, "info");
+			} else {
+				ctx.ui.notify(`Failed to reach "${match[1]}": no socket, inbox write failed`, "error");
 			}
 		},
 	});
@@ -210,38 +265,43 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
-			const preview = params.message.slice(0, 200) + (params.message.length > 200 ? "…" : "");
+			const from = getSelfName();
+			const preview = params.message.slice(0, 200) + (params.message.length > 200 ? "\u2026" : "");
 			const sockPath = peer.socket;
 
-			if (!sockPath || !existsSync(sockPath)) {
+			// Try socket first (low latency path)
+			if (sockPath && existsSync(sockPath)) {
+				try {
+					const resp = await socketSend(sockPath, {
+						type: "cast",
+						from,
+						text: params.message,
+					});
+					if (resp.ok) {
+						return textResult(
+							`Sent to ${params.name}: ${preview}\n\nMessage delivered via socket. Use agent_peek "${params.name}" to see their activity.`,
+							{ name: params.name, pattern: "cast", messageLength: params.message.length },
+						);
+					}
+				} catch {
+					// Socket failed — fall through to durable write
+				}
+			}
+
+			// Graceful fallback: write to Maildir inbox (durable, at-least-once)
+			const writeResult = durableWrite(peer.id, from, params.message);
+			if (writeResult.ok) {
 				return textResult(
-					`Agent "${params.name}" has no socket. The agent may not be running or may need to be restarted.`,
-					{ name: params.name, error: "no_socket" },
+					`Socket unavailable for "${params.name}". Message queued in Maildir inbox (durable).\n` +
+					`Will deliver on agent's next turn or session start.\n\nSent: ${preview}`,
+					{ name: params.name, pattern: "cast_fallback_durable", messageLength: params.message.length, filename: writeResult.filename },
 				);
 			}
 
-			try {
-				const resp = await socketSend(sockPath, {
-					type: "cast",
-					from: getSelfName(),
-					text: params.message,
-				});
-				if (!resp.ok) {
-					return textResult(
-						`Agent "${params.name}" rejected: ${resp.error ?? "unknown error"}`,
-						{ name: params.name, error: resp.error },
-					);
-				}
-				return textResult(
-					`Sent to ${params.name}: ${preview}\n\nMessage delivered. Use agent_peek "${params.name}" to see their activity.`,
-					{ name: params.name, pattern: "cast", messageLength: params.message.length },
-				);
-			} catch (err) {
-				return textResult(
-					`Failed to reach "${params.name}": ${err}\n\nThe agent may be busy or unresponsive.`,
-					{ name: params.name, error: String(err) },
-				);
-			}
+			return textResult(
+				`Failed to reach "${params.name}": socket down and inbox write failed.\nThe agent may not be running.`,
+				{ name: params.name, error: "both_failed" },
+			);
 		},
 	});
 
@@ -300,6 +360,81 @@ export default function (pi: ExtensionAPI) {
 			return textResult(
 				`Broadcast to ${targets.length} agent(s), ${sent} delivered:\n${summary}`,
 				{ pattern: "broadcast", sent, failed: results.length - sent, targets: targets.map((t) => t.name) },
+			);
+		},
+	});
+
+	// ── agent_send_durable tool ────────────────────────────────
+
+	pi.registerTool({
+		name: "agent_send_durable",
+		label: "Agent Send (Durable)",
+		description:
+			"Send a durable message to a named peer agent via Maildir inbox. " +
+			"The message is atomically written to the agent's inbox (tmp/ \u2192 new/) and persists across " +
+			"crashes, Mac sleep, and agent restarts. Also attempts socket delivery for low latency. " +
+			"If the socket is down, the message is still queued and delivered when the agent wakes.",
+		promptSnippet: "Send a crash-safe durable message to a peer agent",
+		promptGuidelines: [
+			"Prefer agent_send_durable over agent_send for important messages that must not be lost.",
+			"Messages are delivered at-least-once: on session_start (wake from sleep) and on agent_end (between turns).",
+			"If the agent is offline, the message queues in their Maildir inbox and is delivered when they come back.",
+		],
+		parameters: Type.Object({
+			name: Type.String({ description: 'Agent name (e.g. "alice", "api-builder")' }),
+			message: Type.String({ description: "Message to send" }),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const peer = resolvePeer(params.name);
+			if (!peer) {
+				return textResult(
+					`No agent named "${params.name}". Known peers: ${peerNames()}`,
+					{ name: params.name, error: "not_found" },
+				);
+			}
+
+			const from = getSelfName();
+			const preview = params.message.slice(0, 200) + (params.message.length > 200 ? "\u2026" : "");
+
+			// Stage 1: Durable write (atomic tmp/ \u2192 new/)
+			const writeResult = durableWrite(peer.id, from, params.message);
+			if (!writeResult.ok) {
+				return textResult(
+					`Failed to write durable message for "${params.name}": ${writeResult.error}`,
+					{ name: params.name, error: writeResult.error, transport: "maildir" },
+				);
+			}
+
+			// Stage 2: Opportunistic socket delivery for low latency
+			let socketDelivered = false;
+			const sockPath = peer.socket;
+			if (sockPath && existsSync(sockPath)) {
+				try {
+					const resp = await socketSend(sockPath, {
+						type: "cast",
+						from,
+						text: params.message,
+					});
+					socketDelivered = resp.ok;
+				} catch {
+					// Socket failed — message is still durably queued, no error
+				}
+			}
+
+			const deliveryMethod = socketDelivered
+				? "Delivered via socket (+ durable backup in inbox)"
+				: "Queued in Maildir inbox (will deliver on agent's next turn or wake)";
+
+			return textResult(
+				`Durable send to ${params.name}: ${preview}\n\n${deliveryMethod}\nFile: ${writeResult.filename}`,
+				{
+					name: params.name,
+					pattern: "durable",
+					socketDelivered,
+					messageLength: params.message.length,
+					filename: writeResult.filename,
+				},
 			);
 		},
 	});
