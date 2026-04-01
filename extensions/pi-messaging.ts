@@ -96,7 +96,7 @@ function readAllRecords(): AgentRecord[] {
 function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketResponse> {
 	return new Promise((resolve, reject) => {
 		const client = net.createConnection({ path: socketPath }, () => {
-			client.end(JSON.stringify(cmd) + "\n");
+			client.end(`${JSON.stringify(cmd)}\n`);
 		});
 		let buf = "";
 		client.setTimeout(SOCKET_TIMEOUT_MS);
@@ -325,7 +325,7 @@ export default function (pi: ExtensionAPI) {
 			const self = getSelfRecord();
 			const allPeers = readAllRecords().filter((r) => !self || r.id !== self.id);
 			const targets = params.filter
-				? allPeers.filter((r) => r.name.toLowerCase().includes(params.filter!.toLowerCase()))
+				? allPeers.filter((r) => r.name.toLowerCase().includes(params.filter?.toLowerCase() ?? ""))
 				: allPeers;
 
 			if (targets.length === 0) {

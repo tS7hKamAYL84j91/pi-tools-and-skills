@@ -289,10 +289,10 @@ function formatMaildirEntries(entries: MaildirEntry[]): string {
 		const event = e.event ?? "?";
 		const { ts: _ts, event: _evt, ...rest } = e;
 		const extra = Object.keys(rest).length > 0
-			? " " + Object.entries(rest).map(([k, v]) => {
+			? ` ${Object.entries(rest).map(([k, v]) => {
 				const val = typeof v === "string" ? v.slice(0, 120) : JSON.stringify(v)?.slice(0, 120) ?? "";
 				return `${k}=${val}`;
-			}).join(" ")
+			}).join(" ")}`
 			: "";
 		return `[${ts}] ${event}${extra}`;
 	}).join("\n");
@@ -319,8 +319,10 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
 	unknown:    "?",
 };
 
+type ThemeColor = Parameters<ExtensionContext["ui"]["theme"]["fg"]>[0];
+
 /** Map status → theme colour key for the name portion of a segment. */
-function statusColor(s: AgentStatus): "accent" | "success" | "warning" | "error" | "dim" | "muted" {
+function statusColor(s: AgentStatus): ThemeColor {
 	switch (s) {
 		case "running":    return "success";
 		case "waiting":    return "accent";
@@ -363,7 +365,7 @@ function buildPowerlineSegments(
 			? theme.fg("warning", `(✉${rec.pendingMessages})`)
 			: "";
 		const col = statusColor(rec.status);
-		return `${sym} ${transport}${theme.fg(col as any, rec.name)}${theme.fg("dim", `:${label}`)}${inboxTag}`;
+		return `${sym} ${transport}${theme.fg(col, rec.name)}${theme.fg("dim", `:${label}`)}${inboxTag}`;
 	});
 }
 
@@ -467,7 +469,7 @@ async function openAgentOverlay(
 		const segs = buildPowerlineSegments(sorted, selfId, theme);
 		const sep  = theme.fg("dim", ` ${PL_SEP} `);
 		container.addChild(new Text(
-			" " + segs.join(sep),
+			` ${segs.join(sep)}`,
 			1, 1,
 		));
 		container.addChild(new Text(
@@ -562,13 +564,13 @@ async function showAgentDetail(
 					const val = typeof v === "string" ? v.slice(0, 60) : JSON.stringify(v)?.slice(0, 60) ?? "";
 					extra.push(`${k}=${val}`);
 				}
-				const extraStr = extra.length > 0 ? " " + extra.join(" ") : "";
+				const extraStr = extra.length > 0 ? ` ${extra.join(" ")}` : "";
 				const eventColor = event.includes("error") ? "error"
 					: event.includes("start") ? "success"
 					: event.includes("end") ? "warning"
 					: "dim";
 				container.addChild(new Text(
-					`  ${theme.fg("dim", ts)} ${theme.fg(eventColor as any, event)}${theme.fg("muted", extraStr)}`,
+					`  ${theme.fg("dim", ts)} ${theme.fg(eventColor as ThemeColor, event)}${theme.fg("muted", extraStr)}`,
 					1, 0,
 				));
 			}
@@ -661,7 +663,7 @@ export default function (pi: ExtensionAPI) {
 							const cmd = JSON.parse(line) as SocketCommand;
 							handleSocketCommand(cmd, conn);
 						} catch {
-							conn.end(JSON.stringify({ ok: false, error: "Invalid JSON" }) + "\n");
+							conn.end(`${JSON.stringify({ ok: false, error: "Invalid JSON" })}\n`);
 						}
 					}
 				});
@@ -687,26 +689,26 @@ export default function (pi: ExtensionAPI) {
 				const from = cmd.from ?? "unknown";
 				const text = cmd.text ?? "";
 				if (!text) {
-					conn.end(JSON.stringify({ ok: false, error: "Empty message" }) + "\n");
+					conn.end(`${JSON.stringify({ ok: false, error: "Empty message" })}\n`);
 					return;
 				}
 				try {
 					pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
 					emit("message_received", { from, text: text.slice(0, 200) });
-					conn.end(JSON.stringify({ ok: true }) + "\n");
+					conn.end(`${JSON.stringify({ ok: true })}\n`);
 				} catch (err) {
-					conn.end(JSON.stringify({ ok: false, error: String(err) }) + "\n");
+					conn.end(`${JSON.stringify({ ok: false, error: String(err) })}\n`);
 				}
 				break;
 			}
 			case "peek": {
 				const lines = cmd.lines ?? 50;
 				const entries = maildirRead(selfMaildir, lines);
-				conn.end(JSON.stringify({ ok: true, entries }) + "\n");
+				conn.end(`${JSON.stringify({ ok: true, entries })}\n`);
 				break;
 			}
 			default:
-				conn.end(JSON.stringify({ ok: false, error: `Unknown command: ${(cmd as any).type}` }) + "\n");
+				conn.end(`${JSON.stringify({ ok: false, error: `Unknown command: ${cmd.type}` })}\n`);
 		}
 	}
 

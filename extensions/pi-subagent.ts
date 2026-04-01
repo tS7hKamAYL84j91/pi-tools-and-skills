@@ -25,10 +25,8 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-const REGISTRY_DIR = join(homedir(), ".pi", "agents");
 
 /** Resolve the absolute path to the `pi` binary once at load time. */
 function resolvePiBinary(): string {
@@ -82,7 +80,7 @@ export default function (pi: ExtensionAPI) {
 	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
 		if (agent.done || !agent.proc.stdin?.writable) return false;
 		try {
-			agent.proc.stdin.write(JSON.stringify(cmd) + "\n", (err) => {
+			agent.proc.stdin.write(`${JSON.stringify(cmd)}\n`, (err) => {
 				if (err) {
 					agent.done = true;
 					agent.recentEvents.push(`[stdin write error: ${err.message}]`);
@@ -137,7 +135,9 @@ export default function (pi: ExtensionAPI) {
 				// Scan new events since we sent the command
 				for (let i = eventsBefore; i < agent.recentEvents.length; i++) {
 					try {
-						const evt = JSON.parse(agent.recentEvents[i]!);
+						const line = agent.recentEvents[i];
+						if (!line) continue;
+						const evt = JSON.parse(line);
 						if (evt.type === "response" && evt.command === cmd.type) {
 							response = evt;
 							if (!waitForAgent) { finish(); return; }
@@ -218,7 +218,8 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			if (agents.has(params.name)) {
-				const existing = agents.get(params.name)!;
+				const existing = agents.get(params.name);
+				if (!existing) throw new Error("unreachable");
 				if (!existing.done) {
 					return {
 						content: [{ type: "text" as const, text: `Agent "${params.name}" already running (pid ${existing.pid}). Use rpc_send to send it tasks.` }],

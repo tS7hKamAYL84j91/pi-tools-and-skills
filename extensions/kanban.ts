@@ -877,7 +877,7 @@ export default function (pi: ExtensionAPI) {
 									
 									await new Promise<void>((res, rej) => {
 										const client = net.createConnection({ path: sockPath }, () => {
-											client.end(JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge }) + "\n");
+											client.end(`${JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge })}\n`);
 										});
 										client.on("end", () => res());
 										client.on("error", (e: Error) => rej(e));
