@@ -85,7 +85,8 @@ const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	unknown: "⚪",   // can't determine
 };
 
-const PL_SEP_THIN = "\uE0B1";
+const PL_SEP      = "\uE0B0"; // ❯ filled right-pointing triangle
+const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
 
 // ── Pure functions ──────────────────────────────────────────────
 
@@ -240,36 +241,76 @@ function sortRecords(records: AgentRecord[], selfId: string): AgentRecord[] {
 	});
 }
 
+/** Map status → short label shown after the colon in powerline segments. */
+const STATUS_LABEL: Record<AgentStatus, string> = {
+	running:    "active",
+	waiting:    "idle",
+	done:       "done",
+	blocked:    "blocked",
+	stalled:    "stalled",
+	terminated: "dead",
+	unknown:    "?",
+};
+
+/** Map status → theme colour key for the name portion of a segment. */
+function statusColor(s: AgentStatus): "accent" | "success" | "warning" | "error" | "dim" | "muted" {
+	switch (s) {
+		case "running":    return "success";
+		case "waiting":    return "accent";
+		case "done":       return "dim";
+		case "blocked":    return "warning";
+		case "stalled":    return "warning";
+		case "terminated": return "error";
+		default:           return "muted";
+	}
+}
+
+/**
+ * Build a single compact Powerline-style line for all agents.
+ *
+ * Format:  🟢 me:idle ❯ 🟢 worker:active ❯ 🛑 stale:stalled
+ *
+ * The current agent (selfId) is always listed first and rendered in accent/bold.
+ */
+function buildPowerlineSegments(
+	records: AgentRecord[],
+	selfId: string,
+	theme: ExtensionContext["ui"]["theme"],
+): string[] {
+	const sorted = sortRecords(records, selfId);
+	return sorted.map((rec) => {
+		const sym   = STATUS_SYMBOL[rec.status];
+		const label = STATUS_LABEL[rec.status];
+		const isSelf = rec.id === selfId;
+
+		if (isSelf) {
+			// Highlighted: bold accent name + dim status label
+			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}`;
+		}
+
+		const transport = rec.socket ? "" : theme.fg("error", "○");
+		const col = statusColor(rec.status);
+		return `${sym} ${transport}${theme.fg(col as any, rec.name)}${theme.fg("dim", `:${label}`)}`;
+	});
+}
+
 function renderPowerlineWidget(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
 	availableWidth: number,
 ): string[] {
-	const sorted = sortRecords(records, selfId);
-
-	const segments = sorted.map((rec) => {
-		const isSelf = rec.id === selfId;
-		const sym = STATUS_SYMBOL[rec.status];
-		const name = rec.name;
-		const transport = isSelf ? "" : (rec.socket ? theme.fg("dim", "⚡") : theme.fg("error", "○"));
-
-		if (isSelf) {
-			return `${sym} ${theme.fg("accent", theme.bold(name))}`;
-		} else {
-			const nameStr = rec.status === "running"
-				? theme.fg("success", name)
-				: rec.status === "stalled" || rec.status === "blocked"
-					? theme.fg("warning", name)
-					: rec.status === "done"
-						? theme.fg("dim", name)
-						: theme.fg("muted", name);
-			return `${sym} ${transport}${nameStr}`;
-		}
-	});
-
+	const segs = buildPowerlineSegments(records, selfId, theme);
 	const separator = theme.fg("dim", ` ${PL_SEP_THIN} `);
-	return [truncateToWidth(segments.join(separator), availableWidth)];
+	return [truncateToWidth(segs.join(separator), availableWidth)];
+}
+
+/** Plain-text compact status line (no ANSI) — used for notify() and log output. */
+function renderCompactStatusText(records: AgentRecord[], selfId: string): string {
+	const sorted = sortRecords(records, selfId);
+	return sorted
+		.map((r) => `${STATUS_SYMBOL[r.status]} ${r.name}:${STATUS_LABEL[r.status]}`)
+		.join(` ${PL_SEP_THIN} `);
 }
 
 function refreshWidget(ctx: ExtensionContext, selfId: string): void {
@@ -341,9 +382,23 @@ async function openAgentOverlay(
 	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		// ── Compact Powerline status header ────────────────────────────────────
 		container.addChild(new Text(
 			theme.fg("accent", theme.bold(" Agent Panopticon")) +
 			theme.fg("dim", ` — ${records.length} agent${records.length !== 1 ? "s" : ""}`),
+			1, 0,
+		));
+
+		// Render a compact Powerline bar with all agents
+		const segs = buildPowerlineSegments(sorted, selfId, theme);
+		const sep  = theme.fg("dim", ` ${PL_SEP} `);
+		container.addChild(new Text(
+			" " + segs.join(sep),
+			1, 1,
+		));
+		container.addChild(new Text(
+			theme.fg("dim", " ─────────────────────────────────────────────────────"),
 			1, 0,
 		));
 
@@ -694,8 +749,17 @@ export default function (pi: ExtensionAPI) {
 	// ── /agents overlay ─────────────────────────────────────────
 
 	pi.registerCommand("agents", {
-		description: "Open agent panopticon overlay — browse all agents, view details & activity",
+		description: "Show compact Powerline status bar for all agents, then open detail overlay",
 		handler: async (_args, ctx) => {
+			// Always flash the compact status line as a quick scannable summary
+			const records = readAllRecords();
+			if (records.length === 0) {
+				ctx.ui.notify("No agents registered", "info");
+				return;
+			}
+			const statusLine = renderCompactStatusText(records, selfId);
+			ctx.ui.notify(statusLine, "info");
+			// Then open full interactive overlay for details
 			await openAgentOverlay(ctx, selfId);
 		},
 	});
