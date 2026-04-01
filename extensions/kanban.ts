@@ -7,7 +7,7 @@
  * Board.log format:
  *   {ISO8601Z} {EVENT} {TASK_ID} {AGENT} {key=value pairs}
  *
- * Events: CREATE, MOVE, CLAIM, COMPLETE, BLOCK, UNBLOCK, NOTE, UNCLAIM, EXPIRE, SNAPSHOT
+ * Events: CREATE, MOVE, CLAIM, COMPLETE, BLOCK, UNBLOCK, NOTE, UNCLAIM, EXPIRE, SNAPSHOT, DELETE
  *
  * Tools:
  *   kanban_create   — create a new task in the backlog
@@ -95,6 +95,7 @@ async function logAppend(line: string): Promise<void> {
 interface TaskState {
 	id: string;
 	col: string;
+	deleted: boolean;
 	title: string;
 	priority: string;
 	tags: string;
@@ -114,6 +115,7 @@ function newTask(id: string, ts: string): TaskState {
 	return {
 		id,
 		col: "backlog",
+		deleted: false,
 		title: "",
 		priority: "medium",
 		tags: "",
@@ -228,6 +230,9 @@ async function parseBoard(): Promise<BoardState> {
 			case "NOTE":
 				task.notes.push(`${ts} [${agent}] ${kv.text ?? ""}`);
 				break;
+			case "DELETE":
+				task.deleted = true;
+				break;
 		}
 	}
 
@@ -249,7 +254,7 @@ function generateSnapshot(board: BoardState): string {
 
 	for (const tid of order) {
 		const t = tasks.get(tid);
-		if (!t) continue;
+		if (!t || t.deleted) continue;
 		switch (t.col) {
 			case "backlog": backlog.push(t); break;
 			case "todo": todo.push(t); break;
@@ -1072,6 +1077,78 @@ export default function (pi: ExtensionAPI) {
 					},
 				],
 				details: { task_id, agent, from, to },
+			};
+		},
+	});
+
+	// ── kanban_delete ───────────────────────────────────────────────
+	pi.registerTool({
+		name: "kanban_delete",
+		label: "Kanban Delete",
+		description:
+			"Permanently remove a kanban task from the board by appending a DELETE event. " +
+			"Tasks that are in-progress or blocked cannot be deleted — complete or unblock them first. " +
+			"The deletion is recorded in board.log for audit purposes and the task will no longer " +
+			"appear in kanban_snapshot output.",
+		promptSnippet: "Delete a kanban task from the board",
+		parameters: Type.Object({
+			task_id: Type.String({
+				description: 'Task ID in T-NNN format',
+			}),
+			agent: Type.String({
+				description: 'Agent name performing the deletion (lowercase, hyphens only)',
+			}),
+			reason: Type.Optional(
+				Type.String({
+					description: 'Optional reason for deletion (e.g. "duplicate of T-042", "no longer needed")',
+					default: "",
+				}),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
+			const { task_id, agent } = params;
+			const reason = params.reason ?? "";
+			const ts = nowZ();
+
+			// Validate T-NNN format
+			if (!/^T-\d+$/.test(task_id)) {
+				throw new Error(`task_id must match T-NNN format (got "${task_id}")`);
+			}
+
+			// Parse board to verify state
+			const board = await parseBoard();
+			const task = board.tasks.get(task_id);
+
+			if (!task) {
+				throw new Error(`Task ${task_id} not found in board.log`);
+			}
+
+			if (task.deleted) {
+				throw new Error(`Task ${task_id} has already been deleted`);
+			}
+
+			// Safety: refuse to delete tasks that are actively worked on
+			const activeCols = ["in-progress", "blocked"];
+			if (activeCols.includes(task.col)) {
+				throw new Error(
+					`Cannot delete task ${task_id}: it is currently in '${task.col}'. ` +
+					`Complete or unblock the task before deleting it.`,
+				);
+			}
+
+			// Append DELETE event (append-only, never modify history)
+			const reasonSuffix = reason ? ` reason="${reason}"` : "";
+			await logAppend(`${ts} DELETE ${task_id} ${agent}${reasonSuffix}`);
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
+					},
+				],
+				details: { task_id, agent, reason, previousCol: task.col },
 			};
 		},
 	});
