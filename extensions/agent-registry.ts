@@ -12,6 +12,8 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
+	unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -91,6 +93,69 @@ export function readAllAgentRecords(): AgentRecord[] {
 		}
 		return records;
 	} catch { return []; }
+}
+
+// ── Inbox Maildir IO ────────────────────────────────────────────
+
+const INBOX_SUBDIRS = ["tmp", "new", "cur"] as const;
+
+export interface InboxMessage {
+	id: string;
+	from: string;
+	text: string;
+	ts: number;
+	metadata?: Record<string, unknown>;
+}
+
+export function ensureInbox(agentId: string): string {
+	const inboxPath = join(REGISTRY_DIR, agentId, "inbox");
+	for (const sub of INBOX_SUBDIRS) {
+		const dir = join(inboxPath, sub);
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+	}
+	return inboxPath;
+}
+
+export function inboxPendingCount(agentId: string): number {
+	try {
+		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
+		if (!existsSync(newDir)) return 0;
+		return readdirSync(newDir).filter((f) => f.endsWith(".json")).length;
+	} catch { return 0; }
+}
+
+export function inboxReadNew(agentId: string): { filename: string; message: InboxMessage }[] {
+	try {
+		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
+		if (!existsSync(newDir)) return [];
+		const files = readdirSync(newDir).filter((f) => f.endsWith(".json")).sort();
+		return files.map((f) => {
+			try {
+				const msg = JSON.parse(readFileSync(join(newDir, f), "utf-8")) as InboxMessage;
+				return { filename: f, message: msg };
+			} catch { return null; }
+		}).filter(Boolean) as { filename: string; message: InboxMessage }[];
+	} catch { return []; }
+}
+
+export function inboxAcknowledge(agentId: string, filename: string): void {
+	try {
+		const src = join(REGISTRY_DIR, agentId, "inbox", "new", filename);
+		const dst = join(REGISTRY_DIR, agentId, "inbox", "cur", filename);
+		renameSync(src, dst);
+	} catch { /* best-effort: message may already be moved */ }
+}
+
+export function inboxPruneCur(agentId: string, keep = 50): void {
+	try {
+		const curDir = join(REGISTRY_DIR, agentId, "inbox", "cur");
+		if (!existsSync(curDir)) return;
+		const files = readdirSync(curDir).filter((f) => f.endsWith(".json")).sort();
+		if (files.length <= keep) return;
+		for (const f of files.slice(0, files.length - keep)) {
+			try { unlinkSync(join(curDir, f)); } catch { /* */ }
+		}
+	} catch { /* */ }
 }
 
 // ── Socket IO ───────────────────────────────────────────────────

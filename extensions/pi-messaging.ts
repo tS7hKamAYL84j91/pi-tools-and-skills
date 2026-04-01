@@ -29,6 +29,10 @@ import {
 	REGISTRY_DIR,
 	readAllAgentRecords,
 	socketSend,
+	ensureInbox,
+	inboxReadNew,
+	inboxAcknowledge,
+	inboxPruneCur,
 } from "./agent-registry.js";
 
 // ── Durable Maildir write (atomic tmp/ → new/) ─────────────────
@@ -80,6 +84,42 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 
 export default function (pi: ExtensionAPI) {
 	let selfName: string | undefined;
+
+	// ── Inbox draining (receives durable messages) ─────────────
+
+	function findSelfId(): string | undefined {
+		return readAllAgentRecords().find((r) => r.pid === process.pid)?.id;
+	}
+
+	/** Drain inbox: read new/ messages, inject via sendUserMessage, move to cur/. */
+	function drainInbox(): void {
+		const selfId = findSelfId();
+		if (!selfId) return;
+		const pending = inboxReadNew(selfId);
+		for (const { filename, message } of pending) {
+			try {
+				pi.sendUserMessage(`[from ${message.from}]: ${message.text}`, { deliverAs: "followUp" });
+			} catch {
+				continue; // Don't acknowledge failed deliveries — retry next cycle
+			}
+			inboxAcknowledge(selfId, filename);
+		}
+		if (pending.length > 0) inboxPruneCur(selfId);
+	}
+
+	pi.on("session_start", async () => {
+		// Create inbox dirs + drain messages queued while offline
+		const selfId = findSelfId();
+		if (selfId) {
+			ensureInbox(selfId);
+			drainInbox();
+		}
+	});
+
+	pi.on("agent_end", async () => {
+		// Drain between turns — delivers messages queued during LLM call
+		drainInbox();
+	});
 
 	function getSelfRecord(): AgentRecord | undefined {
 		return readAllAgentRecords().find((r) => r.pid === process.pid);
