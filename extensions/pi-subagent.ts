@@ -17,15 +17,37 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
+const REGISTRY_DIR = join(homedir(), ".pi", "agents");
+
+/** Resolve the absolute path to the `pi` binary once at load time. */
+function resolvePiBinary(): string {
+	// 1. Try: same directory as the running node binary (works with nvm)
+	const nodeDir = dirname(process.execPath);
+	const candidate = join(nodeDir, "pi");
+	if (existsSync(candidate)) return candidate;
+
+	// 2. Try: `which pi`
+	try {
+		const resolved = execSync("which pi", { encoding: "utf-8" }).trim();
+		if (resolved && existsSync(resolved)) return resolved;
+	} catch { /* not found */ }
+
+	// 3. Fallback — hope PATH works at spawn time
+	return "pi";
+}
+
+const PI_BINARY = resolvePiBinary();
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -59,8 +81,19 @@ export default function (pi: ExtensionAPI) {
 	/** Send a JSON command to an agent's stdin. */
 	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
 		if (agent.done || !agent.proc.stdin?.writable) return false;
-		agent.proc.stdin.write(JSON.stringify(cmd) + "\n");
-		return true;
+		try {
+			agent.proc.stdin.write(JSON.stringify(cmd) + "\n", (err) => {
+				if (err) {
+					agent.done = true;
+					agent.recentEvents.push(`[stdin write error: ${err.message}]`);
+				}
+			});
+			return true;
+		} catch (err) {
+			agent.done = true;
+			agent.recentEvents.push(`[stdin write error: ${err}]`);
+			return false;
+		}
 	}
 
 	/**
@@ -220,7 +253,7 @@ export default function (pi: ExtensionAPI) {
 			// NOTE: No --no-extensions — global config flows through
 			// → panopticon loads → agent gets a socket → IPC works
 
-			const proc = spawn("pi", args, {
+			const proc = spawn(PI_BINARY, args, {
 				cwd: agentCwd,
 				stdio: ["pipe", "pipe", "pipe"],  // stdin for RPC commands
 				env: {
