@@ -885,7 +885,7 @@ export default function (pi: ExtensionAPI) {
 				const records = readAllRecords();
 				if (records.length === 0) return textResult("No agents registered.", { agents: [] });
 
-					const listing = records.map((r) => {
+				const listing = records.map((r) => {
 					const transport = r.socket ? "⚡socket" : "no-socket";
 					const self = r.id === selfId ? " (you)" : "";
 					const taskStr = r.task ? `  "${r.task.slice(0, 50)}"` : "";

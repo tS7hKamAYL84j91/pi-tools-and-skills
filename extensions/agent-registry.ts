@@ -46,9 +46,6 @@ export interface SocketCommand {
 	from?: string;
 	text?: string;
 	lines?: number;
-	ref?: string;
-	command?: string;
-	payload?: unknown;
 }
 
 export interface SocketResponse {
