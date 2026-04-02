@@ -57,13 +57,8 @@ interface MaildirEntry {
 const HEARTBEAT_MS = 5_000;
 const MAX_MAILDIR_ENTRIES = 200;
 const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "🟢",   // active — agent turn in progress
-	waiting: "🟡",   // idle — awaiting input
-	done: "✅",      // completed — REPORT.md exists
-	blocked: "🚧",   // needs attention — idle, might need human
-	stalled: "🛑",   // stalled/timeout — heartbeat aging or error
-	terminated: "⚫", // dead — PID gone
-	unknown: "⚪",   // can't determine
+	running: "🟢", waiting: "🟡", done: "✅",
+	blocked: "🚧", stalled: "🛑", terminated: "⚫", unknown: "⚪",
 };
 
 const PL_SEP      = "\uE0B0"; // ❯ filled right-pointing triangle
@@ -71,32 +66,30 @@ const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
 
 // ── Pure functions ──────────────────────────────────────────────
 
-function classifyRecord(record: AgentRecord, now: number, pidAlive: boolean): "live" | "stalled" | "dead" {
+export function classifyRecord(record: AgentRecord, now: number, pidAlive: boolean): "live" | "stalled" | "dead" {
 	if (now - record.heartbeat <= STALE_MS) return "live";
 	return pidAlive ? "stalled" : "dead";
 }
 
-function buildRecord(base: AgentRecord, status: AgentStatus, task: string | undefined): AgentRecord {
+/** @internal exported for tests */ export function buildRecord(base: AgentRecord, status: AgentStatus, task: string | undefined): AgentRecord {
 	let refined = status;
 	if (status === "waiting") {
-		try {
-			if (existsSync(join(base.cwd, "REPORT.md"))) refined = "done";
-		} catch { /* best-effort */ }
+		try { if (existsSync(join(base.cwd, "REPORT.md"))) refined = "done"; } catch { /* best-effort */ }
 	}
 	return { ...base, heartbeat: Date.now(), status: refined, task };
 }
 
-function formatAge(startedAt: number): string {
+export function formatAge(startedAt: number): string {
 	const secs = Math.round((Date.now() - startedAt) / 1000);
 	return secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
 }
 
-function nameTaken(name: string, records: AgentRecord[], selfId: string): boolean {
+export function nameTaken(name: string, records: AgentRecord[], selfId: string): boolean {
 	const lower = name.toLowerCase();
 	return records.some((r) => r.name.toLowerCase() === lower && r.id !== selfId);
 }
 
-function pickName(cwd: string, records: AgentRecord[], selfId: string): string {
+export function pickName(cwd: string, records: AgentRecord[], selfId: string): string {
 	const base = basename(cwd) || "agent";
 	if (!nameTaken(base, records, selfId)) return base;
 	for (let i = 2; i < 100; i++) {
@@ -122,37 +115,22 @@ function removeRecord(id: string): void {
 function readAllRecords(): AgentRecord[] {
 	ensureRegistryDir();
 	const now = Date.now();
-	const records: AgentRecord[] = [];
-
-	for (const file of readdirSync(REGISTRY_DIR)) {
-		if (!file.endsWith(".json")) continue;
+	return readdirSync(REGISTRY_DIR).filter(f => f.endsWith(".json")).flatMap((file) => {
 		const fullPath = join(REGISTRY_DIR, file);
 		try {
 			const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
 			if (!record.name) record.name = basename(record.cwd) || record.id.slice(0, 8);
-
 			const cls = classifyRecord(record, now, isPidAlive(record.pid));
-			if (cls === "dead") {
-				unlinkSync(fullPath);
-				cleanupAgentFiles(record.id);
-			} else {
-				if (cls === "stalled") record.status = "stalled";
-				records.push(record);
-			}
-		} catch {
-			try { unlinkSync(fullPath); } catch { /* */ }
-		}
-	}
-	return records;
+			if (cls === "dead") { unlinkSync(fullPath); cleanupAgentFiles(record.id); return []; }
+			if (cls === "stalled") record.status = "stalled";
+			return [record];
+		} catch { try { unlinkSync(fullPath); } catch { /* */ } return []; }
+	});
 }
 
 function cleanupAgentFiles(id: string): void {
-	const sockPath = join(REGISTRY_DIR, `${id}.sock`);
-	const maildirPath = join(REGISTRY_DIR, id);
-	const inboxPath = join(REGISTRY_DIR, id, "inbox");
-	try { unlinkSync(sockPath); } catch { /* */ }
-	try { rmSync(inboxPath, { recursive: true, force: true }); } catch { /* */ }
-	try { rmSync(maildirPath, { recursive: true, force: true }); } catch { /* */ }
+	try { unlinkSync(join(REGISTRY_DIR, `${id}.sock`)); } catch { /* */ }
+	rmSync(join(REGISTRY_DIR, id), { recursive: true, force: true });
 }
 
 // ── Maildir IO ──────────────────────────────────────────────────
@@ -161,54 +139,43 @@ let maildirSeq = 0;
 
 function maildirWrite(maildirPath: string, entry: MaildirEntry): void {
 	try {
-		if (!existsSync(maildirPath)) mkdirSync(maildirPath, { recursive: true });
+		mkdirSync(maildirPath, { recursive: true });
 		const seq = (maildirSeq++).toString().padStart(4, "0");
-		const eventName = String(entry.event || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
-		const filename = `${entry.ts}-${seq}-${eventName}.json`;
-		writeFileSync(join(maildirPath, filename), JSON.stringify(entry), "utf-8");
-		maildirPrune(maildirPath, MAX_MAILDIR_ENTRIES);
-	} catch { /* best-effort */ }
-}
-
-function maildirPrune(maildirPath: string, keep: number): void {
-	try {
+		const safe = String(entry.event || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+		writeFileSync(join(maildirPath, `${entry.ts}-${seq}-${safe}.json`), JSON.stringify(entry), "utf-8");
 		const files = readdirSync(maildirPath).filter((f) => f.endsWith(".json")).sort();
-		if (files.length <= keep) return;
-		for (const f of files.slice(0, files.length - keep)) {
-			try { unlinkSync(join(maildirPath, f)); } catch { /* */ }
-		}
-	} catch { /* */ }
+		if (files.length > MAX_MAILDIR_ENTRIES)
+			for (const f of files.slice(0, files.length - MAX_MAILDIR_ENTRIES))
+				try { unlinkSync(join(maildirPath, f)); } catch { /* */ }
+	} catch { /* best-effort */ }
 }
 
 function maildirRead(maildirPath: string, count: number): MaildirEntry[] {
 	try {
-		if (!existsSync(maildirPath)) return [];
-		const files = readdirSync(maildirPath).filter((f) => f.endsWith(".json")).sort();
-		return files.slice(-count).map((f) => {
-			try { return JSON.parse(readFileSync(join(maildirPath, f), "utf-8")); } catch { return null; }
-		}).filter(Boolean) as MaildirEntry[];
+		return readdirSync(maildirPath).filter(f => f.endsWith(".json")).sort().slice(-count)
+			.flatMap(f => { try { return [JSON.parse(readFileSync(join(maildirPath, f), "utf-8")) as MaildirEntry]; } catch { return []; } });
 	} catch { return []; }
 }
 
-function formatMaildirEntries(entries: MaildirEntry[]): string {
+/** Serialise extra fields of a maildir entry as `k=v` pairs. */
+function entryExtras(entry: MaildirEntry, maxLen = 120): string {
+	const parts = Object.entries(entry)
+		.filter(([k]) => k !== "ts" && k !== "event")
+		.map(([k, v]) => `${k}=${(typeof v === "string" ? v : JSON.stringify(v) ?? "").slice(0, maxLen)}`);
+	return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
+export function formatMaildirEntries(entries: MaildirEntry[]): string {
 	if (entries.length === 0) return "(no activity recorded yet)";
 	return entries.map((e) => {
 		const ts = new Date(e.ts).toISOString().slice(11, 19);
-		const event = e.event ?? "?";
-		const { ts: _ts, event: _evt, ...rest } = e;
-		const extra = Object.keys(rest).length > 0
-			? ` ${Object.entries(rest).map(([k, v]) => {
-				const val = typeof v === "string" ? v.slice(0, 120) : JSON.stringify(v)?.slice(0, 120) ?? "";
-				return `${k}=${val}`;
-			}).join(" ")}`
-			: "";
-		return `[${ts}] ${event}${extra}`;
+		return `[${ts}] ${e.event ?? "?"}${entryExtras(e)}`;
 	}).join("\n");
 }
 
 // ── Powerline widget ────────────────────────────────────────────
 
-function sortRecords(records: AgentRecord[], selfId: string): AgentRecord[] {
+export function sortRecords(records: AgentRecord[], selfId: string): AgentRecord[] {
 	return [...records].sort((a, b) => {
 		if (a.id === selfId) return -1;
 		if (b.id === selfId) return 1;
@@ -218,62 +185,32 @@ function sortRecords(records: AgentRecord[], selfId: string): AgentRecord[] {
 
 /** Map status → short label shown after the colon in powerline segments. */
 const STATUS_LABEL: Record<AgentStatus, string> = {
-	running:    "active",
-	waiting:    "idle",
-	done:       "done",
-	blocked:    "blocked",
-	stalled:    "stalled",
-	terminated: "dead",
-	unknown:    "?",
+	running: "active", waiting: "idle", done: "done",
+	blocked: "blocked", stalled: "stalled", terminated: "dead", unknown: "?",
 };
 
 type ThemeColor = Parameters<ExtensionContext["ui"]["theme"]["fg"]>[0];
 
 /** Map status → theme colour key for the name portion of a segment. */
-function statusColor(s: AgentStatus): ThemeColor {
-	switch (s) {
-		case "running":    return "success";
-		case "waiting":    return "accent";
-		case "done":       return "dim";
-		case "blocked":    return "warning";
-		case "stalled":    return "warning";
-		case "terminated": return "error";
-		default:           return "muted";
-	}
-}
+const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
+	running: "success", waiting: "accent", done: "dim",
+	blocked: "warning", stalled: "warning", terminated: "error", unknown: "muted",
+};
 
-/**
- * Build a single compact Powerline-style line for all agents.
- *
- * Format:  🟢 me:idle ❯ 🟢 worker:active ❯ 🛑 stale:stalled
- *
- * The current agent (selfId) is always listed first and rendered in accent/bold.
- */
+/** Build Powerline segments for all agents; self is bold accent, peers use STATUS_COLOR. */
 function buildPowerlineSegments(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
 ): string[] {
-	const sorted = sortRecords(records, selfId);
-	return sorted.map((rec) => {
-		const sym   = STATUS_SYMBOL[rec.status];
+	return sortRecords(records, selfId).map((rec) => {
+		const sym = STATUS_SYMBOL[rec.status];
 		const label = STATUS_LABEL[rec.status];
-		const isSelf = rec.id === selfId;
-
-		if (isSelf) {
-			// Highlighted: bold accent name + dim status label
-			const inboxTag = (rec.pendingMessages ?? 0) > 0
-				? theme.fg("warning", `(✉${rec.pendingMessages})`)
-				: "";
-			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inboxTag}`;
-		}
-
-		const transport = rec.socket ? "" : theme.fg("error", "○");
-		const inboxTag = (rec.pendingMessages ?? 0) > 0
-			? theme.fg("warning", `(✉${rec.pendingMessages})`)
-			: "";
-		const col = statusColor(rec.status);
-		return `${sym} ${transport}${theme.fg(col, rec.name)}${theme.fg("dim", `:${label}`)}${inboxTag}`;
+		const inbox = (rec.pendingMessages ?? 0) > 0 ? theme.fg("warning", `(✉${rec.pendingMessages})`) : "";
+		if (rec.id === selfId)
+			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inbox}`;
+		const offline = rec.socket ? "" : theme.fg("error", "○");
+		return `${sym} ${offline}${theme.fg(STATUS_COLOR[rec.status], rec.name)}${theme.fg("dim", `:${label}`)}${inbox}`;
 	});
 }
 
@@ -286,14 +223,6 @@ function renderPowerlineWidget(
 	const segs = buildPowerlineSegments(records, selfId, theme);
 	const separator = theme.fg("dim", ` ${PL_SEP_THIN} `);
 	return [truncateToWidth(segs.join(separator), availableWidth)];
-}
-
-/** Plain-text compact status line (no ANSI) — used for notify() and log output. */
-function renderCompactStatusText(records: AgentRecord[], selfId: string): string {
-	const sorted = sortRecords(records, selfId);
-	return sorted
-		.map((r) => `${STATUS_SYMBOL[r.status]} ${r.name}:${STATUS_LABEL[r.status]}`)
-		.join(` ${PL_SEP_THIN} `);
 }
 
 function refreshWidget(ctx: ExtensionContext, selfId: string): void {
@@ -312,18 +241,13 @@ function refreshWidget(ctx: ExtensionContext, selfId: string): void {
 			invalidate(): void { /* fresh data on each render */ },
 		}), { placement: "belowEditor" });
 
-		const running = records.filter(r => r.status === "running" && r.id !== selfId).length;
-		const waiting = records.filter(r => r.status === "waiting" && r.id !== selfId).length;
-		const total = records.length - 1;
-		let label: string;
-		if (total === 0) {
-			label = "solo";
-		} else {
-			const parts: string[] = [];
-			if (running > 0) parts.push(`${running}▶`);
-			if (waiting > 0) parts.push(`${waiting}⏸`);
-			label = parts.length > 0 ? parts.join(" ") : `${total} peer${total !== 1 ? "s" : ""}`;
-		}
+		const peers = records.filter(r => r.id !== selfId);
+		const running = peers.filter(r => r.status === "running").length;
+		const waiting = peers.filter(r => r.status === "waiting").length;
+		const label = peers.length === 0 ? "solo"
+			: (running > 0 || waiting > 0)
+				? [[running, "▶"], [waiting, "⏸"]].filter(([n]) => n).map(([n, s]) => `${n}${s}`).join(" ")
+				: `${peers.length} peer${peers.length !== 1 ? "s" : ""}`;
 		ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("accent", `⚡${label}`));
 	} catch {
 		ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("error", "agents: err"));
@@ -344,47 +268,27 @@ async function openAgentOverlay(
 
 	const sorted = sortRecords(records, selfId);
 
-	const items: SelectItem[] = sorted.map((rec) => {
-		const sym = STATUS_SYMBOL[rec.status];
-		const isSelf = rec.id === selfId;
-		const transport = rec.socket ? "⚡socket" : "no-transport";
-		const age = formatAge(rec.startedAt);
-		const model = rec.model || "?";
-		const selfTag = isSelf ? " (you)" : "";
-
-		const description = `${rec.status} │ ${transport} │ ${model} │ up ${age}`
-			+ (rec.task ? ` │ ${rec.task.slice(0, 50)}` : "");
-
-		return {
-			value: rec.name,
-			label: `${sym} ${rec.name}${selfTag}`,
-			description,
-		};
-	});
+	const items: SelectItem[] = sorted.map((rec) => ({
+		value: rec.name,
+		label: `${STATUS_SYMBOL[rec.status]} ${rec.name}${rec.id === selfId ? " (you)" : ""}`,
+		description: `${rec.status} │ ${rec.socket ? "⚡socket" : "no-transport"} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}`
+			+ (rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""),
+	}));
 
 	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
 		const container = new Container();
-		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-		// ── Compact Powerline status header ────────────────────────────────────
+		container.addChild(border());
 		container.addChild(new Text(
 			theme.fg("accent", theme.bold(" Agent Panopticon")) +
 			theme.fg("dim", ` — ${records.length} agent${records.length !== 1 ? "s" : ""}`),
 			1, 0,
 		));
-
-		// Render a compact Powerline bar with all agents
-		const segs = buildPowerlineSegments(sorted, selfId, theme);
-		const sep  = theme.fg("dim", ` ${PL_SEP} `);
 		container.addChild(new Text(
-			` ${segs.join(sep)}`,
+			` ${buildPowerlineSegments(sorted, selfId, theme).join(theme.fg("dim", ` ${PL_SEP} `))}`,
 			1, 1,
 		));
-		container.addChild(new Text(
-			theme.fg("dim", " ─────────────────────────────────────────────────────"),
-			1, 0,
-		));
-
+		container.addChild(new Text(theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
 		const selectList = new SelectList(items, Math.min(items.length, 12), {
 			selectedPrefix: (t: string) => theme.fg("accent", t),
 			selectedText: (t: string) => theme.fg("accent", t),
@@ -396,7 +300,7 @@ async function openAgentOverlay(
 		selectList.onCancel = () => done(null);
 		container.addChild(selectList);
 		container.addChild(new Text(theme.fg("dim", "  ↑↓ navigate • enter view detail • esc close"), 1, 0));
-		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+		container.addChild(border());
 
 		return {
 			render: (w: number) => container.render(w),
@@ -425,69 +329,39 @@ async function showAgentDetail(
 	const entries = maildirRead(join(REGISTRY_DIR, rec.id), 20);
 
 	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
+		const add = (s: string) => container.addChild(new Text(s, 1, 0));
+		const row = (label: string, value: string) =>
+			add(`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`);
 		const container = new Container();
-		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-		const sym = STATUS_SYMBOL[rec.status];
-		const selfTag = isSelf ? theme.fg("dim", " (you)") : "";
-		container.addChild(new Text(
-			`  ${sym} ${theme.fg("accent", theme.bold(rec.name))}${selfTag}  ${theme.fg("muted", rec.status)}`,
-			1, 0,
-		));
-
-		const details = [
-			["Model", rec.model || "unknown"],
-			["CWD", rec.cwd],
-			["PID", String(rec.pid)],
+		container.addChild(border());
+		add(`  ${STATUS_SYMBOL[rec.status]} ${theme.fg("accent", theme.bold(rec.name))}${isSelf ? theme.fg("dim", " (you)") : ""}  ${theme.fg("muted", rec.status)}`);
+		const details: [string, string][] = [
+			["Model",     rec.model || "unknown"],
+			["CWD",       rec.cwd],
+			["PID",       String(rec.pid)],
 			["Transport", rec.socket ? "⚡ Unix socket" : "none"],
-			["Inbox", rec.inboxCapable ? `✉ Maildir (pending: ${rec.pendingMessages ?? 0})` : "not available"],
-			["Uptime", formatAge(rec.startedAt)],
+			["Inbox",     rec.inboxCapable ? `✉ Maildir (pending: ${rec.pendingMessages ?? 0})` : "not available"],
+			["Uptime",    formatAge(rec.startedAt)],
 			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "—"],
 		];
 		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
-
-		for (const [label, value] of details) {
-			if (label && value) {
-				container.addChild(new Text(
-					`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`,
-					1, 0,
-				));
-			}
-		}
-
-		container.addChild(new Text(
-			`\n  ${theme.fg("accent", theme.bold("Recent Activity"))} ${theme.fg("dim", `(${entries.length} events)`)}`,
-			1, 0,
-		));
-
+		for (const [label, value] of details) row(label, value);
+		add(`\n  ${theme.fg("accent", theme.bold("Recent Activity"))} ${theme.fg("dim", `(${entries.length} events)`)}`);
 		if (entries.length === 0) {
-			container.addChild(new Text(`  ${theme.fg("dim", "(no activity recorded)")}`, 1, 0));
+			add(`  ${theme.fg("dim", "(no activity recorded)")}`);
 		} else {
 			for (const entry of entries.slice(-15)) {
 				const ts = new Date(entry.ts).toISOString().slice(11, 19);
 				const event = String(entry.event ?? "?");
-				const extra: string[] = [];
-				for (const [k, v] of Object.entries(entry)) {
-					if (k === "ts" || k === "event") continue;
-					const val = typeof v === "string" ? v.slice(0, 60) : JSON.stringify(v)?.slice(0, 60) ?? "";
-					extra.push(`${k}=${val}`);
-				}
-				const extraStr = extra.length > 0 ? ` ${extra.join(" ")}` : "";
-				const eventColor = event.includes("error") ? "error"
+				const col: ThemeColor = event.includes("error") ? "error"
 					: event.includes("start") ? "success"
-					: event.includes("end") ? "warning"
-					: "dim";
-				container.addChild(new Text(
-					`  ${theme.fg("dim", ts)} ${theme.fg(eventColor as ThemeColor, event)}${theme.fg("muted", extraStr)}`,
-					1, 0,
-				));
+					: event.includes("end") ? "warning" : "dim";
+				add(`  ${theme.fg("dim", ts)} ${theme.fg(col, event)}${theme.fg("muted", entryExtras(entry, 60))}`);
 			}
 		}
-
-		const helpParts = ["esc back"];
-		if (!isSelf) helpParts.push("m send message");
-		container.addChild(new Text(`\n  ${theme.fg("dim", helpParts.join(" • "))}`, 1, 0));
-		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+		add(`\n  ${theme.fg("dim", ["esc back", ...(!isSelf ? ["m send message"] : [])].join(" • "))}`);
+		container.addChild(border());
 
 		return {
 			render: (w: number) => container.render(w),
@@ -526,14 +400,9 @@ export default function (pi: ExtensionAPI) {
 
 	function heartbeat(): void {
 		if (!record) return;
-		// If socket died (sleep/wake, error), try to rebind it
-		if (!socketServer) {
-			startSocket();
-		}
-		record = buildRecord(record, status, task);
-		// Only advertise socket path if server is actually listening
+		if (!socketServer) startSocket(); // rebind after sleep/wake
 		record = {
-			...record,
+			...buildRecord(record, status, task),
 			socket: socketServer ? selfSocketPath : undefined,
 			inboxCapable: true,
 			pendingMessages: inboxPendingCount(selfId),
@@ -592,31 +461,27 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function handleSocketCommand(cmd: SocketCommand, conn: net.Socket): void {
+		const reply = (payload: object) => conn.end(`${JSON.stringify(payload)}\n`);
 		switch (cmd.type) {
 			case "cast": {
 				const from = cmd.from ?? "unknown";
 				const text = cmd.text ?? "";
-				if (!text) {
-					conn.end(`${JSON.stringify({ ok: false, error: "Empty message" })}\n`);
-					return;
-				}
+				if (!text) { reply({ ok: false, error: "Empty message" }); return; }
 				try {
 					pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
 					emit("message_received", { from, text: text.slice(0, 200) });
-					conn.end(`${JSON.stringify({ ok: true })}\n`);
+					reply({ ok: true });
 				} catch (err) {
-					conn.end(`${JSON.stringify({ ok: false, error: String(err) })}\n`);
+					reply({ ok: false, error: String(err) });
 				}
 				break;
 			}
 			case "peek": {
-				const lines = cmd.lines ?? 50;
-				const entries = maildirRead(selfMaildir, lines);
-				conn.end(`${JSON.stringify({ ok: true, entries })}\n`);
+				reply({ ok: true, entries: maildirRead(selfMaildir, cmd.lines ?? 50) });
 				break;
 			}
 			default:
-				conn.end(`${JSON.stringify({ ok: false, error: `Unknown command: ${cmd.type}` })}\n`);
+				reply({ ok: false, error: `Unknown command: ${cmd.type}` });
 		}
 	}
 
@@ -632,28 +497,23 @@ export default function (pi: ExtensionAPI) {
 
 
 	pi.on("session_start", async (_event, ctx) => {
-		const records = readAllRecords();
-
+		const cwd = process.cwd();
 		try {
-			if (existsSync(join(process.cwd(), "BRIEF.md"))) {
-				const brief = readFileSync(join(process.cwd(), "BRIEF.md"), "utf-8");
-				const line = brief.split("\n").find((l) => l.trim() && !l.startsWith("#"));
-				if (line) task = line.trim();
-			}
+			const brief = existsSync(join(cwd, "BRIEF.md")) ? readFileSync(join(cwd, "BRIEF.md"), "utf-8") : "";
+			const line = brief.split("\n").find((l) => l.trim() && !l.startsWith("#"));
+			if (line) task = line.trim();
 		} catch { /* */ }
 
 		startSocket();
-
-		// Create inbox Maildir directories
 		ensureInbox(selfId);
 
+		const records = readAllRecords();
 		record = {
 			id: selfId,
-			name: pickName(process.cwd(), records, selfId),
+			name: pickName(cwd, records, selfId),
 			pid: process.pid,
-			cwd: process.cwd(),
+			cwd,
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "",
-			// Only advertise socket if it actually bound successfully
 			socket: socketServer ? selfSocketPath : undefined,
 			startedAt: Date.now(),
 			heartbeat: Date.now(),
@@ -662,17 +522,9 @@ export default function (pi: ExtensionAPI) {
 			inboxCapable: true,
 			pendingMessages: inboxPendingCount(selfId),
 		};
-
 		writeRecord(record);
 		heartbeatTimer = setInterval(() => heartbeat(), HEARTBEAT_MS);
-
-		emit("session_start", {
-			name: record.name,
-			pid: process.pid,
-			cwd: process.cwd(),
-			model: record.model,
-		});
-
+		emit("session_start", { name: record.name, pid: process.pid, cwd, model: record.model });
 		if (ctx.hasUI) {
 			refreshWidget(ctx, selfId);
 			widgetTimer = setInterval(() => refreshWidget(ctx, selfId), HEARTBEAT_MS);
@@ -698,9 +550,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_result", async (event) => {
 		const summary = (event.content ?? [])
-			.map((c: { type: string; text?: string }) => (c.type === "text" ? c.text ?? "" : `[${c.type}]`))
-			.join(" ")
-			.slice(0, 200);
+			.map((c: { type: string; text?: string }) => c.type === "text" ? c.text ?? "" : `[${c.type}]`)
+			.join(" ").slice(0, 200);
 		emit("tool_result", { tool: event.toolName, summary, isError: event.isError });
 	});
 
@@ -763,8 +614,12 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("No agents registered", "info");
 				return;
 			}
-			const statusLine = renderCompactStatusText(records, selfId);
-			ctx.ui.notify(statusLine, "info");
+			ctx.ui.notify(
+				sortRecords(records, selfId)
+					.map((r) => `${STATUS_SYMBOL[r.status]} ${r.name}:${STATUS_LABEL[r.status]}`)
+					.join(` ${PL_SEP_THIN} `),
+				"info",
+			);
 			// Then open full interactive overlay for details
 			await openAgentOverlay(ctx, selfId);
 		},
@@ -797,20 +652,15 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal) {
+			const records = readAllRecords();
 			if (!params.target) {
-				const records = readAllRecords();
 				if (records.length === 0) return textResult("No agents registered.", { agents: [] });
-
-				const listing = records.map((r) => {
-					const transport = r.socket ? "⚡socket" : "no-socket";
-					const self = r.id === selfId ? " (you)" : "";
-					const taskStr = r.task ? `  "${r.task.slice(0, 50)}"` : "";
-					const inbox = r.inboxCapable
-						? ` inbox:${r.pendingMessages ?? 0}`
-						: "";
-					return `  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${transport.padEnd(12)} ${r.model || "?"} up=${formatAge(r.startedAt)}${inbox}${self}${taskStr}`;
-				});
-
+				const listing = records.map((r) =>
+					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${
+						(r.socket ? "⚡socket" : "no-socket").padEnd(12)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
+						r.inboxCapable ? ` inbox:${r.pendingMessages ?? 0}` : ""}${
+						r.id === selfId ? " (you)" : ""}${r.task ? `  "${r.task.slice(0, 50)}"` : ""}`,
+				);
 				return textResult(
 					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send or agent_send_durable to message a peer.`,
 					{ agents: records.map((r) => ({ name: r.name, pid: r.pid, socket: r.socket, cwd: r.cwd, status: r.status, model: r.model, task: r.task, isSelf: r.id === selfId, inboxCapable: r.inboxCapable, pendingMessages: r.pendingMessages })) },
@@ -819,27 +669,18 @@ export default function (pi: ExtensionAPI) {
 
 			// Resolve target by name
 			const lower = params.target.replace(/^@/, "").toLowerCase();
-			const records = readAllRecords();
 			const peer = records.find((r) => r.name.toLowerCase() === lower && r.id !== selfId);
 			if (!peer) {
 				const names = records.filter((r) => r.id !== selfId).map((r) => r.name);
-				return textResult(
-					`No agent named "${params.target}". Known peers: ${names.length ? names.join(", ") : "(none)"}`,
-				);
+				return textResult(`No agent named "${params.target}". Known peers: ${names.length ? names.join(", ") : "(none)"}`);
 			}
-
-			const lineCount = params.lines ?? 50;
 			const maildirPath = join(REGISTRY_DIR, peer.id);
-			if (existsSync(maildirPath)) {
-				const entries = maildirRead(maildirPath, lineCount);
-				const content = formatMaildirEntries(entries);
-				return textResult(
-					`Agent "${peer.name}" activity (last ${entries.length} events):\n\n${content}`,
-					{ target: peer.name, transport: "maildir", events: entries.length },
-				);
-			}
-
-			return textResult(`Agent "${params.target}" has no activity log yet.`, {});
+			if (!existsSync(maildirPath)) return textResult(`Agent "${params.target}" has no activity log yet.`, {});
+			const entries = maildirRead(maildirPath, params.lines ?? 50);
+			return textResult(
+				`Agent "${peer.name}" activity (last ${entries.length} events):\n\n${formatMaildirEntries(entries)}`,
+				{ target: peer.name, transport: "maildir", events: entries.length },
+			);
 		},
 	});
 }
