@@ -239,9 +239,7 @@ async function parseBoard(): Promise<BoardState> {
 	return { tasks, order, totalEvents: lines.length };
 }
 
-// ── Snapshot generator (pure TS, replaces awk) ──────────────────────────────
-
-// ── Snapshot rendering helpers (pure) ───────────────────────────────────────
+// ── Snapshot rendering helpers (pure) ─────────────────────────────────────
 
 interface ColumnDef {
 	heading: string;
@@ -297,13 +295,8 @@ function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): s
 		for (const t of tasks) lines.push(def.row(t));
 	}
 
-	// Render notes
-	for (const t of tasks) {
-		if (t.notes.length > 0) {
-			lines.push("");
-			lines.push(`**Notes for ${t.id}:**`);
-			for (const note of t.notes) lines.push(`- ${note}`);
-		}
+	for (const t of tasks.filter((t) => t.notes.length > 0)) {
+		lines.push("", `**Notes for ${t.id}:**`, ...t.notes.map((n) => `- ${n}`));
 	}
 	lines.push("");
 	return lines;
