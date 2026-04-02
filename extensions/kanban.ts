@@ -348,28 +348,20 @@ function generateSnapshot(board: BoardState): string {
 const MONITOR_STATE_DIR = process.env.KANBAN_MONITOR_STATE_DIR ?? "/tmp/kanban-monitor-state";
 const MONITOR_STALL_DEFAULT = 3;
 
-async function monitorStateRead(file: string, fallback: string): Promise<string> {
-	try { return (await readFile(file, "utf-8")).trim(); } catch { return fallback; }
+async function readState(key: string, fallback = ""): Promise<string> {
+	try { return (await readFile(`${MONITOR_STATE_DIR}/${key}`, "utf-8")).trim(); } catch { return fallback; }
 }
-async function monitorStateWrite(file: string, value: string): Promise<void> {
+async function writeState(key: string, value: string): Promise<void> {
 	await mkdir(MONITOR_STATE_DIR, { recursive: true });
-	await writeFile(file, value, "utf-8");
+	await writeFile(`${MONITOR_STATE_DIR}/${key}`, value, "utf-8");
 }
 function md5(s: string): string {
 	return createHash("md5").update(s).digest("hex");
 }
-async function getStallCount(tid: string): Promise<number> {
-	return parseInt(await monitorStateRead(`${MONITOR_STATE_DIR}/${tid}.stall`, "0"), 10) || 0;
-}
-async function setStallCount(tid: string, n: number): Promise<void> {
-	await monitorStateWrite(`${MONITOR_STATE_DIR}/${tid}.stall`, String(n));
-}
-async function getLastHash(tid: string): Promise<string> {
-	return monitorStateRead(`${MONITOR_STATE_DIR}/${tid}.hash`, "");
-}
-async function saveHash(tid: string, hash: string): Promise<void> {
-	await monitorStateWrite(`${MONITOR_STATE_DIR}/${tid}.hash`, hash);
-}
+const getStallCount = (tid: string) => readState(`${tid}.stall`, "0").then((v) => parseInt(v, 10) || 0);
+const setStallCount = (tid: string, n: number) => writeState(`${tid}.stall`, String(n));
+const getLastHash = (tid: string) => readState(`${tid}.hash`);
+const saveHash = (tid: string, hash: string) => writeState(`${tid}.hash`, hash);
 
 // ── Monitor: types ──────────────────────────────────────────────────────
 
@@ -477,6 +469,28 @@ function formatMonitorReport(ts: string, results: TaskResult[], counts: MonitorC
 	return lines.join("\n");
 }
 
+// ── Shared helpers ────────────────────────────────────────────────────────
+
+/** Throw if task_id doesn't match T-NNN format. */
+function validateTaskId(task_id: string): void {
+	if (!/^T-\d+$/.test(task_id)) {
+		throw new Error(`task_id must match T-NNN format (got "${task_id}")`);
+	}
+}
+
+/** Parse board, look up taskId, throw if missing. */
+async function getTask(taskId: string): Promise<TaskState> {
+	const board = await parseBoard();
+	const task = board.tasks.get(taskId);
+	if (!task) throw new Error(`Task ${taskId} not found`);
+	return task;
+}
+
+/** Wrap text + details into the standard ToolResult shape. */
+function result(text: string, details: Record<string, unknown>): ToolResult {
+	return { content: [{ type: "text", text }], details };
+}
+
 // ── Extension export ──────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -514,13 +528,9 @@ export default function (pi: ExtensionAPI) {
 			const { task_id, agent, title, priority } = params;
 			const tags = params.tags ?? "";
 
-			// Validate T-NNN format
-			if (!/^T-\d+$/.test(task_id)) {
-				throw new Error(`task_id must match T-NNN format (got "${task_id}")`);
-			}
+			validateTaskId(task_id);
 
 			const ts = nowZ();
-			// Validate no duplicate
 			const existing = await parseBoard();
 			if (existing.tasks.has(task_id)) {
 				throw new Error(`Task ID ${task_id} already exists`);
@@ -529,10 +539,7 @@ export default function (pi: ExtensionAPI) {
 			await logAppend(`${ts} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=created to=backlog`);
 
-			return {
-				content: [{ type: "text", text: `Created ${task_id}: ${title} (priority=${priority})` }],
-				details: { task_id, title, priority, tags },
-			};
+			return result(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags });
 		},
 	});
 
@@ -557,15 +564,9 @@ export default function (pi: ExtensionAPI) {
 			const board = await parseBoard();
 
 			// Check WIP limit
-			let wip = 0;
-			for (const t of board.tasks.values()) {
-				if (t.col === "in-progress") wip++;
-			}
+			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
 			if (wip >= WIP_LIMIT) {
-				return {
-					content: [{ type: "text", text: `WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})` }],
-					details: { agent, result: "WIP_LIMIT_REACHED", claimed: false },
-				};
+				return result(`WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})`, { agent, result: "WIP_LIMIT_REACHED", claimed: false });
 			}
 
 			// Find highest-priority todo or backlog task (not claimed)
@@ -582,31 +583,20 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (!bestId) {
-				return {
-					content: [{ type: "text", text: "NO_TASK_AVAILABLE" }],
-					details: { agent, result: "NO_TASK_AVAILABLE", claimed: false },
-				};
+				return result("NO_TASK_AVAILABLE", { agent, result: "NO_TASK_AVAILABLE", claimed: false });
 			}
 
-			// Calculate expires = now + 2 hours
-			const now = new Date();
-			const expires = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-				.toISOString();
 			const ts = nowZ();
+			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			const fromCol = board.tasks.get(bestId)?.col ?? "todo";
 
 			await logAppend(`${ts} CLAIM ${bestId} ${agent} expires=${expires}`);
 			await logAppend(`${ts} MOVE ${bestId} ${agent} from=${fromCol} to=in-progress`);
 
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`,
-					},
-				],
-				details: { agent, result: bestId, claimed: true },
-			};
+			return result(
+				`Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`,
+				{ agent, result: bestId, claimed: true },
+			);
 		},
 	});
 
@@ -636,29 +626,19 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			const duration = params.duration ?? "unknown";
-			const ts = nowZ();
 
-			// Validate task exists and is in-progress
-			const board = await parseBoard();
-			const task = board.tasks.get(task_id);
-			if (!task) {
-				throw new Error(`Task ${task_id} not found`);
-			}
+			const task = await getTask(task_id);
 			if (task.col !== "in-progress") {
 				throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
 			}
 
+			const ts = nowZ();
 			await logAppend(`${ts} COMPLETE ${task_id} ${agent} duration=${duration}`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=done`);
-
-			// Clean up stall state
 			await setStallCount(task_id, 0);
-			await saveHash(task_id, '');
+			await saveHash(task_id, "");
 
-			return {
-				content: [{ type: "text", text: `Completed ${task_id} (agent=${agent}, duration=${duration})` }],
-				details: { task_id, agent, duration },
-			};
+			return result(`Completed ${task_id} (agent=${agent}, duration=${duration})`, { task_id, agent, duration });
 		},
 	});
 
@@ -685,25 +665,17 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, reason } = params;
-			const ts = nowZ();
 
-			// Validate task exists and is in-progress
-			const board = await parseBoard();
-			const task = board.tasks.get(task_id);
-			if (!task) {
-				throw new Error(`Task ${task_id} not found`);
-			}
+			const task = await getTask(task_id);
 			if (task.col !== "in-progress") {
 				throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
 			}
 
+			const ts = nowZ();
 			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${reason}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=blocked`);
 
-			return {
-				content: [{ type: "text", text: `Blocked ${task_id}: ${reason}` }],
-				details: { task_id, agent, reason },
-			};
+			return result(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});
 
@@ -730,14 +702,8 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, text } = params;
-			const ts = nowZ();
-
-			await logAppend(`${ts} NOTE ${task_id} ${agent} text="${text}"`);
-
-			return {
-				content: [{ type: "text", text: `Note added to ${task_id}` }],
-				details: { task_id, agent, text },
-			};
+			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${text}"`);
+			return result(`Note added to ${task_id}`, { task_id, agent, text });
 		},
 	});
 
@@ -758,19 +724,12 @@ export default function (pi: ExtensionAPI) {
 			const sp = snapshotPath();
 
 			await writeFile(sp, snapshot, "utf-8");
-
-			// Append SNAPSHOT marker
 			await logAppend(`${nowZ()} SNAPSHOT T-000 orchestrator seq=${board.totalEvents}`);
 
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\n\n---\n\n${snapshot}`,
-					},
-				],
-				details: { snapshotPath: sp, totalEvents: board.totalEvents },
-			};
+			return result(
+				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\n\n---\n\n${snapshot}`,
+				{ snapshotPath: sp, totalEvents: board.totalEvents },
+			);
 		},
 	});
 
@@ -815,7 +774,6 @@ export default function (pi: ExtensionAPI) {
 			const stallThreshold = params.stall_cycles ?? MONITOR_STALL_DEFAULT;
 			const verbose = params.verbose ?? false;
 
-			// ── 1. Parse board directly (no shell script) ────────────
 			const board = await parseBoard();
 			const kDir = kanbanDir();
 			const monitorLog = join(kDir, "monitor.log");
@@ -903,40 +861,25 @@ export default function (pi: ExtensionAPI) {
 
 			// Append to monitor.log (non-fatal)
 			try {
-				const logLines = [`${ts} CHECK start`];
-				for (const r of results) {
-					logLines.push(`${ts} ${r.id} agent=${r.agent} status=${r.status} detail=${r.detail.replace(/\n/g, " ")}`);
-				}
-				logLines.push(
-					`${ts} SUMMARY active=${counts.active} stalled=${counts.stalled} ` +
-					`blocked=${counts.blocked} done=${counts.done} missing=${counts.missing}`,
-				);
+				const logLines = [
+					`${ts} CHECK start`,
+					...results.map((r) => `${ts} ${r.id} agent=${r.agent} status=${r.status} detail=${r.detail.replace(/\n/g, " ")}`),
+					`${ts} SUMMARY active=${counts.active} stalled=${counts.stalled} blocked=${counts.blocked} done=${counts.done} missing=${counts.missing}`,
+				];
 				await appendFile(monitorLog, `${logLines.join("\n")}\n`, "utf-8");
 			} catch { /* non-fatal */ }
 
 			// Alert COMMUNICATION.md if issues detected (non-fatal)
-			if (counts.stalled > 0 || counts.blocked > 0) {
-				try {
-					const issues = results.filter((r) => r.status === "STALLED" || r.status === "BLOCKED");
-					const alertLines = [
-						`[TO: lead] [FROM: kanban-monitor] ${ts} — ${counts.blocked} blocked, ${counts.stalled} stalled`,
-						...issues.map((r) => `  ${r.id} (${r.agent}): ${r.status} — ${r.detail}`),
-						"",
-					];
-					await appendFile(commFile, alertLines.join("\n"), "utf-8");
-				} catch { /* non-fatal */ }
-			}
+			if (counts.stalled > 0 || counts.blocked > 0) try {
+				const issues = results.filter((r) => r.status === "STALLED" || r.status === "BLOCKED");
+				await appendFile(commFile, [
+					`[TO: lead] [FROM: kanban-monitor] ${ts} — ${counts.blocked} blocked, ${counts.stalled} stalled`,
+					...issues.map((r) => `  ${r.id} (${r.agent}): ${r.status} — ${r.detail}`),
+					"",
+				].join("\n"), "utf-8");
+			} catch { /* non-fatal */ }
 
-			return {
-				content: [{ type: "text", text: report }],
-				details: {
-					timestamp: ts,
-					counts,
-					tasks: results,
-					prod: isProd,
-					stallThreshold,
-				},
-			};
+			return result(report, { timestamp: ts, counts, tasks: results, prod: isProd, stallThreshold });
 		},
 	});
 
@@ -967,35 +910,19 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			const reason = params.reason ?? "";
-			const ts = nowZ();
 
-			// Parse board to verify task is in blocked column
-			const board = await parseBoard();
-			const task = board.tasks.get(task_id);
-
-			if (!task) {
-				throw new Error(`Task ${task_id} not found`);
-			}
-
+			const task = await getTask(task_id);
 			if (task.col !== "blocked") {
 				throw new Error(
 					`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
 				);
 			}
 
-			// Log UNBLOCK and MOVE events
+			const ts = nowZ();
 			await logAppend(`${ts} UNBLOCK ${task_id} ${agent} resolution="${reason}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=blocked to=todo`);
 
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Unblocked ${task_id}, moved to todo`,
-					},
-				],
-				details: { task_id, agent, reason },
-			};
+			return result(`Unblocked ${task_id}, moved to todo`, { task_id, agent, reason });
 		},
 	});
 
@@ -1022,38 +949,20 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, to } = params;
-			const ts = nowZ();
 
-			// Parse board to verify task is in an allowed column
-			const board = await parseBoard();
-			const task = board.tasks.get(task_id);
-
-			if (!task) {
-				throw new Error(`Task ${task_id} not found`);
-			}
-
-			const forbiddenCols = ["in-progress", "blocked", "done"];
-			if (forbiddenCols.includes(task.col)) {
+			const task = await getTask(task_id);
+			if (["in-progress", "blocked", "done"].includes(task.col)) {
 				throw new Error(
-					`Cannot move task ${task_id} from '${task.col}' column. " +
-					"Can only move from backlog or todo.`,
+					`Cannot move task ${task_id} from '${task.col}' column. ` +
+					`Can only move from backlog or todo.`,
 				);
 			}
 
 			const from = task.col;
-
-			// Log MOVE event
+			const ts = nowZ();
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=${from} to=${to}`);
 
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Moved ${task_id} from ${from} to ${to}`,
-					},
-				],
-				details: { task_id, agent, from, to },
-			};
+			return result(`Moved ${task_id} from ${from} to ${to}`, { task_id, agent, from, to });
 		},
 	});
 
@@ -1085,47 +994,28 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			const reason = params.reason ?? "";
-			const ts = nowZ();
 
-			// Validate T-NNN format
-			if (!/^T-\d+$/.test(task_id)) {
-				throw new Error(`task_id must match T-NNN format (got "${task_id}")`);
-			}
+			validateTaskId(task_id);
 
-			// Parse board to verify state
-			const board = await parseBoard();
-			const task = board.tasks.get(task_id);
-
-			if (!task) {
-				throw new Error(`Task ${task_id} not found in board.log`);
-			}
-
+			const task = await getTask(task_id);
 			if (task.deleted) {
 				throw new Error(`Task ${task_id} has already been deleted`);
 			}
-
-			// Safety: refuse to delete tasks that are actively worked on
-			const activeCols = ["in-progress", "blocked"];
-			if (activeCols.includes(task.col)) {
+			if (["in-progress", "blocked"].includes(task.col)) {
 				throw new Error(
 					`Cannot delete task ${task_id}: it is currently in '${task.col}'. ` +
 					`Complete or unblock the task before deleting it.`,
 				);
 			}
 
-			// Append DELETE event (append-only, never modify history)
+			const ts = nowZ();
 			const reasonSuffix = reason ? ` reason="${reason}"` : "";
 			await logAppend(`${ts} DELETE ${task_id} ${agent}${reasonSuffix}`);
 
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
-					},
-				],
-				details: { task_id, agent, reason, previousCol: task.col },
-			};
+			return result(
+				`Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
+				{ task_id, agent, reason, previousCol: task.col },
+			);
 		},
 	});
 }
