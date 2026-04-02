@@ -15,6 +15,7 @@ import {
 	renameSync,
 	unlinkSync,
 } from "node:fs";
+import * as net from "node:net";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -56,7 +57,7 @@ export interface SocketResponse {
 	[key: string]: unknown;
 }
 
-// ── Pure functions ──────────────────────────────────────────────
+// ── Pure helpers ────────────────────────────────────────────────
 
 export function isPidAlive(pid: number): boolean {
 	try { process.kill(pid, 0); return true; } catch { return false; }
@@ -66,38 +67,23 @@ export function ensureRegistryDir(): void {
 	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true });
 }
 
-/**
- * Read all agent records from the registry, filtering out stale/dead agents.
- * This is a read-only scan — it does NOT delete stale files.
- * Callers that need cleanup (panopticon) do that separately.
- */
 export function readAllAgentRecords(): AgentRecord[] {
 	try {
-		if (!existsSync(REGISTRY_DIR)) return [];
 		const now = Date.now();
-		const records: AgentRecord[] = [];
-
-		for (const file of readdirSync(REGISTRY_DIR)) {
-			if (!file.endsWith(".json")) continue;
-			try {
-				const record: AgentRecord = JSON.parse(
-					readFileSync(join(REGISTRY_DIR, file), "utf-8"),
-				);
-				if (!record.name) {
-					record.name = basename(record.cwd) || record.id.slice(0, 8);
-				}
-				// Skip dead agents (stale heartbeat + PID gone)
-				if (now - record.heartbeat > STALE_MS && !isPidAlive(record.pid)) continue;
-				records.push(record);
-			} catch { /* skip corrupt */ }
-		}
-		return records;
+		return readdirSync(REGISTRY_DIR)
+			.filter((f) => f.endsWith(".json"))
+			.flatMap((file) => {
+				try {
+					const record = JSON.parse(readFileSync(join(REGISTRY_DIR, file), "utf-8")) as AgentRecord;
+					if (!record.name) record.name = basename(record.cwd) || record.id.slice(0, 8);
+					if (now - record.heartbeat > STALE_MS && !isPidAlive(record.pid)) return [];
+					return [record];
+				} catch { return []; }
+			});
 	} catch { return []; }
 }
 
 // ── Inbox Maildir IO ────────────────────────────────────────────
-
-const INBOX_SUBDIRS = ["tmp", "new", "cur"] as const;
 
 export interface InboxMessage {
 	id: string;
@@ -109,49 +95,46 @@ export interface InboxMessage {
 
 export function ensureInbox(agentId: string): string {
 	const inboxPath = join(REGISTRY_DIR, agentId, "inbox");
-	for (const sub of INBOX_SUBDIRS) {
-		const dir = join(inboxPath, sub);
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+	for (const sub of ["tmp", "new", "cur"]) {
+		mkdirSync(join(inboxPath, sub), { recursive: true });
 	}
 	return inboxPath;
 }
 
 export function inboxPendingCount(agentId: string): number {
 	try {
-		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
-		if (!existsSync(newDir)) return 0;
-		return readdirSync(newDir).filter((f) => f.endsWith(".json")).length;
+		return readdirSync(join(REGISTRY_DIR, agentId, "inbox", "new"))
+			.filter((f) => f.endsWith(".json")).length;
 	} catch { return 0; }
 }
 
 export function inboxReadNew(agentId: string): { filename: string; message: InboxMessage }[] {
 	try {
 		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
-		if (!existsSync(newDir)) return [];
-		const files = readdirSync(newDir).filter((f) => f.endsWith(".json")).sort();
-		return files.map((f) => {
-			try {
-				const msg = JSON.parse(readFileSync(join(newDir, f), "utf-8")) as InboxMessage;
-				return { filename: f, message: msg };
-			} catch { return null; }
-		}).filter(Boolean) as { filename: string; message: InboxMessage }[];
+		return readdirSync(newDir)
+			.filter((f) => f.endsWith(".json"))
+			.sort()
+			.flatMap((f) => {
+				try {
+					return [{ filename: f, message: JSON.parse(readFileSync(join(newDir, f), "utf-8")) as InboxMessage }];
+				} catch { return []; }
+			});
 	} catch { return []; }
 }
 
 export function inboxAcknowledge(agentId: string, filename: string): void {
 	try {
-		const src = join(REGISTRY_DIR, agentId, "inbox", "new", filename);
-		const dst = join(REGISTRY_DIR, agentId, "inbox", "cur", filename);
-		renameSync(src, dst);
+		renameSync(
+			join(REGISTRY_DIR, agentId, "inbox", "new", filename),
+			join(REGISTRY_DIR, agentId, "inbox", "cur", filename),
+		);
 	} catch { /* best-effort: message may already be moved */ }
 }
 
 export function inboxPruneCur(agentId: string, keep = 50): void {
 	try {
 		const curDir = join(REGISTRY_DIR, agentId, "inbox", "cur");
-		if (!existsSync(curDir)) return;
 		const files = readdirSync(curDir).filter((f) => f.endsWith(".json")).sort();
-		if (files.length <= keep) return;
 		for (const f of files.slice(0, files.length - keep)) {
 			try { unlinkSync(join(curDir, f)); } catch { /* */ }
 		}
@@ -159,8 +142,6 @@ export function inboxPruneCur(agentId: string, keep = 50): void {
 }
 
 // ── Socket IO ───────────────────────────────────────────────────
-
-import * as net from "node:net";
 
 export function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketResponse> {
 	return new Promise((resolve, reject) => {
