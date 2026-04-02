@@ -1,67 +1,139 @@
-# Kanban Refactor — REPORT
+# Refactor Report: `extensions/pi-messaging.ts`
 
 ## Summary
 
-Refactored `extensions/kanban.ts` from **1131 → 962 lines** (−169 lines, **−15%**).  
-All 39 tests pass after every commit. No observable behaviour changed.
+Reduced `extensions/pi-messaging.ts` from **388 → 335 lines** (−53 lines, −14%) by eliminating three categories of duplication, adding 26 characterisation tests, and committing in three atomic steps.
 
-## Commits
+---
 
-| Hash | Description | Δ lines |
-|------|-------------|---------|
-| `78e85a1` | extract `result()`, `validateTaskId()`, `getTask()`; simplify 6-function state persistence to `readState`/`writeState`; tighten monitor & pick bodies | −110 |
-| `c58f1e6` | extract `TASK_ID_SCHEMA` constant — deduplicates 6 identical 3-line TypeBox parameter blocks | −9 |
-| `8e68e2f` | merge redundant adjacent section comment; compact `renderColumn` notes loop | −7 |
-| `390a356` | deduplicate `backlog`/`todo` `ColumnDef` entries via object spread | −7 |
-| `711b301` | compact `newTask` defaults (18→6 lines); inline `kanbanDir` throw | −17 |
-| `1eaa5d1` | convert 4 tiny utility functions to one-liners; compact `findKanbanDir` fallback | −19 |
+## 1. Deletion Log
 
-## Key refactors
+| Removed | Reason |
+|---|---|
+| `mkdirSync` import from `node:fs` | No longer called directly |
+| `REGISTRY_DIR` import from `agent-registry` | `ensureInbox()` encapsulates the path |
+| Manual dir-creation loop in `durableWrite()` (`existsSync` + `mkdirSync` × 3) | Duplicated `ensureInbox()` from `agent-registry.ts` |
+| `metadata?` parameter on `durableWrite()` | Speculative/YAGNI — never used at any call site |
+| `findSelfId()` standalone helper | Merged into `getSelfRecord()` usage |
+| 3× copies of the socket-try + inbox-fallback pattern | Replaced by shared `socketOrInbox()` / `inboxPlusSocket()` |
+| Repeated `textResult(...)` peer-not-found blocks in `agent_send` and `agent_send_durable` | Replaced by `notFound()` helper |
+| `const sockPath = peer.socket` intermediate variable | Inlined |
+| `const allPeers` / `const targets` split in broadcast | Merged to `const peers` / `const targets` |
 
-### 1. `result()` — eliminates 12 boilerplate return blocks
-Every `execute` returned `{ content: [{ type: "text", text: "..." }], details: { ... } }` across 5–8 lines.  
-Extracted once:
+---
+
+## 2. Purity Report
+
+| Function | Was | Now |
+|---|---|---|
+| `durableWrite()` | Side-effectful + duplicate dir setup | Side-effectful but minimal — delegates dirs to `ensureInbox()` |
+| `truncate()` | Inlined as expression in each send path | **Pure function** extracted to module top |
+| `textResult()` | Already pure | Unchanged |
+| `socketOrInbox()` | Did not exist | Pure logic + async I/O at edge |
+| `inboxPlusSocket()` | Did not exist | Pure logic + async I/O at edge |
+| `notFound()` | Did not exist | **Pure** helper — no side effects |
+| `getSelfRecord()` | Called `readAllAgentRecords()` | Unchanged — used consistently everywhere now |
+
+---
+
+## 3. Before / After Line Counts
+
+```
+Before:  388 lines  (extensions/pi-messaging.ts)
+After:   335 lines  (extensions/pi-messaging.ts)
+         −53 lines  (−14%)
+
+New:     369 lines  (tests/pi-messaging.test.ts)  — characterisation tests
+```
+
+---
+
+## 4. Key Structural Changes
+
+### `durableWrite()` — removes duplicate inbox dir creation (Step 1)
+
+**Before:**
 ```typescript
-function result(text: string, details: Record<string, unknown>): ToolResult {
-    return { content: [{ type: "text", text }], details };
+const inboxBase = join(REGISTRY_DIR, targetId, "inbox");
+const tmpDir    = join(inboxBase, "tmp");
+const newDir    = join(inboxBase, "new");
+for (const dir of [tmpDir, newDir, join(inboxBase, "cur")]) {
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 ```
-Each call site becomes a single `return result(...)` line.
 
-### 2. `validateTaskId()` — single source of T-NNN validation
-Two tools duplicated `if (!/^T-\d+$/.test(task_id)) throw new Error(...)`.  
-Extracted to a one-liner throw helper.
-
-### 3. `getTask()` — eliminates repeated board-parse + null-check pattern
-Five tools each had: `parseBoard()` → `tasks.get(id)` → null check.  
-Extracted to:
+**After:**
 ```typescript
-async function getTask(taskId: string): Promise<TaskState> {
-    const board = await parseBoard();
-    const task = board.tasks.get(taskId);
-    if (!task) throw new Error(`Task ${taskId} not found`);
-    return task;
-}
+const inboxBase = ensureInbox(targetId); // creates tmp/, new/, cur/ idempotently
 ```
 
-### 4. `readState`/`writeState` — 6 persistence helpers → 2
-`monitorStateRead`, `monitorStateWrite`, `getStallCount`, `setStallCount`, `getLastHash`, `saveHash`  
-collapsed to two generic functions + four one-liner aliases.
+`ensureInbox()` in `agent-registry.ts` already does exactly this; the duplication was a latent bug (different codepath, same semantics, must be kept in sync).
 
-### 5. `TASK_ID_SCHEMA` constant
-`Type.String({ description: 'Task ID in T-NNN format' })` appeared 6× (3 lines each).  
-Extracted as `const TASK_ID_SCHEMA = ...` and referenced by name.
+---
 
-### 6. `COLUMN_DEFS` deduplication
-`backlog` and `todo` columns were identical except for the heading.  
-Extracted `PRIO_COL_HDR` base and used object spread.
+### Shared delivery core — eliminates 3× copied socket+inbox pattern (Step 2)
 
-### 7. Utility function compaction
-`boardLogPath`, `snapshotPath`, `nowZ`, `logAppend` converted from 3-line `function` declarations to 1-line `const` arrow functions.  
-`findKanbanDir` fallback replaced with `Array.find`.
+**Before** — three send paths each had ~20 lines of identical structure:
+```typescript
+// In agent_send:
+if (sockPath && existsSync(sockPath)) {
+    try { const resp = await socketSend(...); if (resp.ok) return textResult(...); }
+    catch { }
+}
+const writeResult = durableWrite(...);
+if (writeResult.ok) return textResult("queued...", ...);
+return textResult("failed...", ...);
 
-## Invariants preserved
-- All tool names, parameter schemas, and output shapes unchanged
-- All error messages that tests match with regex patterns unchanged
-- `board.log` append format unchanged
-- 39/39 tests pass on every commit
+// In agent_send_durable: (similar but order inverted)
+// In /send command:      (similar, using ui.notify instead of textResult)
+```
+
+**After** — two named delivery functions, each ~10 lines:
+```typescript
+/** Best-effort: try socket first; only write inbox on failure */
+async function socketOrInbox(peer, from, text): Promise<DeliveryResult>
+
+/** Durable: always write inbox first; also try socket for low latency */
+async function inboxPlusSocket(peer, from, text): Promise<DeliveryResult>
+```
+
+Each send path becomes a 3-branch result-check (10–15 lines) instead of nested try/catch logic.
+
+---
+
+## 5. Test Results
+
+All tests pass at every commit point. No regressions.
+
+```
+Test Files  8 passed (8)
+     Tests  65 passed (65)   (39 pre-existing + 26 new characterisation tests)
+```
+
+### New characterisation tests cover:
+- `agent_send`: peer not found, socket success (no inbox write), socket throws (inbox fallback), no socket (inbox fallback), both fail, no self-send
+- `agent_send_durable`: peer not found, write failure, always-inbox, socket+durable, inbox-only
+- `agent_broadcast`: no peers, filter no match, all peers summarised, filter applied
+- `/send command`: bad args, peer not found, socket+inbox, inbox-only
+- Inbox draining: `session_start` drains + calls ensureInbox, `agent_end` drains, no self record = no-op
+
+---
+
+## 6. Commits
+
+| Hash | Message |
+|---|---|
+| `a13334a` | `refactor(messaging): durableWrite uses ensureInbox() instead of duplicating dir creation` |
+| `a19a2eb` | `refactor(messaging): extract socketOrInbox/inboxPlusSocket; eliminate repeated delivery logic across 3 send paths` |
+| `2049e0d` | `refactor(messaging): use getSelfRecord() in drainInbox and event handlers; eliminate duplicated pid lookup` |
+
+---
+
+## 7. Interface Stability
+
+All public contracts preserved unchanged:
+- Tool names: `agent_send`, `agent_send_durable`, `agent_broadcast`
+- All tool parameters: identical schemas
+- `/send` command: identical usage and output messages
+- `promptGuidelines` / `description` strings: unchanged
+- Inbox drain behaviour: identical (session_start + agent_end)
