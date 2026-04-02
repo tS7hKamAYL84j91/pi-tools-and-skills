@@ -3,7 +3,7 @@
  * These lock in existing behaviour before refactoring.
  */
 import { describe, it, expect } from "vitest";
-import type { AgentRecord } from "../extensions/agent-registry.js";
+import type { AgentRecord } from "../lib/agent-registry.js";
 import {
 	classifyRecord,
 	buildRecord,

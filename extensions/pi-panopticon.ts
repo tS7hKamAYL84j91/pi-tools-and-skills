@@ -42,7 +42,7 @@ import {
 	ensureRegistryDir,
 	inboxPendingCount,
 	ensureInbox,
-} from "./agent-registry.js";
+} from "../lib/agent-registry.js";
 
 // ── Types (local to panopticon) ─────────────────────────────────
 

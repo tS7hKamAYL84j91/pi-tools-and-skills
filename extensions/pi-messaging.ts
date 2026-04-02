@@ -27,7 +27,7 @@ import {
 	inboxReadNew,
 	inboxAcknowledge,
 	inboxPruneCur,
-} from "./agent-registry.js";
+} from "../lib/agent-registry.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
 

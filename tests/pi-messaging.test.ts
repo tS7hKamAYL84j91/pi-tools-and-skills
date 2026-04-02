@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from "vitest";
 
 // ── Mock agent-registry BEFORE importing pi-messaging ──────────
-vi.mock("../extensions/agent-registry.js", () => ({
+vi.mock("../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
 	readAllAgentRecords: vi.fn(),
 	socketSend: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("node:crypto", () => ({
 	randomUUID: vi.fn(() => "test-uuid-1234"),
 }));
 
-import * as registry from "../extensions/agent-registry.js";
+import * as registry from "../lib/agent-registry.js";
 import * as nodefs from "node:fs";
 import initMessaging from "../extensions/pi-messaging.js";
 
