@@ -491,6 +491,9 @@ function result(text: string, details: Record<string, unknown>): ToolResult {
 	return { content: [{ type: "text", text }], details };
 }
 
+/** Reusable schema for the task_id parameter (T-NNN format). */
+const TASK_ID_SCHEMA = Type.String({ description: 'Task ID in T-NNN format' });
+
 // ── Extension export ──────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -609,9 +612,7 @@ export default function (pi: ExtensionAPI) {
 			"Optionally provide how long the task took (e.g. '45m', '2h').",
 		promptSnippet: "Mark a kanban task as completed",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name that completed the task (must match the claiming agent)',
 			}),
@@ -652,9 +653,7 @@ export default function (pi: ExtensionAPI) {
 			"The orchestrator will see this and can unblock by resolving the dependency.",
 		promptSnippet: "Mark a kanban task as blocked with a reason",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name that is blocked',
 			}),
@@ -689,9 +688,7 @@ export default function (pi: ExtensionAPI) {
 			"Notes appear in the snapshot under the task.",
 		promptSnippet: "Add a progress note to a kanban task",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name adding the note',
 			}),
@@ -893,9 +890,7 @@ export default function (pi: ExtensionAPI) {
 			"Records the resolution reason in the log.",
 		promptSnippet: "Unblock a kanban task and move to todo",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name unblocking the task',
 			}),
@@ -935,9 +930,7 @@ export default function (pi: ExtensionAPI) {
 			"Task must not be in in-progress, blocked, or done columns.",
 		promptSnippet: "Move a kanban task between backlog and todo",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name moving the task',
 			}),
@@ -977,9 +970,7 @@ export default function (pi: ExtensionAPI) {
 			"appear in kanban_snapshot output.",
 		promptSnippet: "Delete a kanban task from the board",
 		parameters: Type.Object({
-			task_id: Type.String({
-				description: 'Task ID in T-NNN format',
-			}),
+			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({
 				description: 'Agent name performing the deletion (lowercase, hyphens only)',
 			}),
