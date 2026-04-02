@@ -16,17 +16,11 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import {
-	existsSync,
-	mkdirSync,
-	renameSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, renameSync, writeFileSync } from "node:fs";
 import * as crypto from "node:crypto";
 import { join } from "node:path";
 import {
 	type AgentRecord,
-	REGISTRY_DIR,
 	readAllAgentRecords,
 	socketSend,
 	ensureInbox,
@@ -39,14 +33,9 @@ import {
 
 function durableWrite(targetId: string, from: string, text: string, metadata?: Record<string, unknown>): { ok: boolean; filename?: string; error?: string } {
 	try {
-		const inboxBase = join(REGISTRY_DIR, targetId, "inbox");
+		const inboxBase = ensureInbox(targetId); // creates tmp/, new/, cur/ idempotently
 		const tmpDir = join(inboxBase, "tmp");
 		const newDir = join(inboxBase, "new");
-
-		// Ensure inbox dirs exist (idempotent)
-		for (const dir of [tmpDir, newDir, join(inboxBase, "cur")]) {
-			if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		}
 
 		const ts = Date.now();
 		const uuid = crypto.randomUUID();
