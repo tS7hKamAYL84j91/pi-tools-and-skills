@@ -52,16 +52,8 @@ const PRIORITY_ORDER: Record<string, number> = {
 function findKanbanDir(): string | null {
 	const env = process.env.KANBAN_DIR;
 	if (env && existsSync(env)) return env;
-
-	// ~/git/coas/kanban
-	const home = join(homedir(), "git", "coas", "kanban");
-	if (existsSync(home)) return home;
-
-	// ./kanban relative to CWD
-	const cwd = join(process.cwd(), "kanban");
-	if (existsSync(cwd)) return cwd;
-
-	return null;
+	const fallbacks = [join(homedir(), "git", "coas", "kanban"), join(process.cwd(), "kanban")];
+	return fallbacks.find(existsSync) ?? null;
 }
 
 function kanbanDir(): string {
@@ -70,21 +62,10 @@ function kanbanDir(): string {
 	return dir;
 }
 
-function boardLogPath(): string {
-	return join(kanbanDir(), "board.log");
-}
-
-function snapshotPath(): string {
-	return join(kanbanDir(), "snapshot.md");
-}
-
-function nowZ(): string {
-	return new Date().toISOString();
-}
-
-async function logAppend(line: string): Promise<void> {
-	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
-}
+const boardLogPath = () => join(kanbanDir(), "board.log");
+const snapshotPath = () => join(kanbanDir(), "snapshot.md");
+const nowZ = () => new Date().toISOString();
+const logAppend = (line: string) => appendFile(boardLogPath(), `${line}\n`, "utf-8");
 
 // ── board.log parser ────────────────────────────────────────────────────────
 
