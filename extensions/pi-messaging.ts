@@ -136,7 +136,7 @@ export default function (pi: ExtensionAPI) {
 	// ── Inbox draining (receives durable messages) ─────────────
 
 	function drainInbox(): void {
-		const selfId = readAllAgentRecords().find((r) => r.pid === process.pid)?.id;
+		const selfId = getSelfRecord()?.id;
 		if (!selfId) return;
 		const pending = inboxReadNew(selfId);
 		for (const { filename, message } of pending) {
@@ -151,7 +151,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", async () => {
-		const selfId = readAllAgentRecords().find((r) => r.pid === process.pid)?.id;
+		const selfId = getSelfRecord()?.id;
 		if (selfId) {
 			ensureInbox(selfId);
 			drainInbox();
