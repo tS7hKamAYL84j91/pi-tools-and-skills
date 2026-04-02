@@ -13,11 +13,13 @@
  *   spawn_agent  — launch a new agent
  *   rpc_send     — send an RPC command to a spawned agent's stdin
  *   list_spawned — show all agents spawned by this session
+ *   kill_agent   — stop a spawned agent
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import {
 	existsSync,
 	mkdirSync,
@@ -28,24 +30,105 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-/** Resolve the absolute path to the `pi` binary once at load time. */
-function resolvePiBinary(): string {
-	// 1. Try: same directory as the running node binary (works with nvm)
-	const nodeDir = dirname(process.execPath);
-	const candidate = join(nodeDir, "pi");
-	if (existsSync(candidate)) return candidate;
+// ── PI binary ───────────────────────────────────────────────────
 
-	// 2. Try: `which pi`
+function resolvePiBinary(): string {
+	const candidate = join(dirname(process.execPath), "pi");
+	if (existsSync(candidate)) return candidate;
 	try {
 		const resolved = execSync("which pi", { encoding: "utf-8" }).trim();
 		if (resolved && existsSync(resolved)) return resolved;
 	} catch { /* not found */ }
-
-	// 3. Fallback — hope PATH works at spawn time
 	return "pi";
 }
 
 const PI_BINARY = resolvePiBinary();
+
+// ── Utilities ───────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+
+// ── ToolResult helpers ──────────────────────────────────────────
+
+type ToolResult = {
+	content: { type: "text"; text: string }[];
+	details: Record<string, unknown>;
+	isError?: boolean;
+};
+
+function ok(text: string, details: Record<string, unknown> = {}): ToolResult {
+	return { content: [{ type: "text" as const, text }], details };
+}
+
+function fail(text: string, details: Record<string, unknown> = {}): ToolResult {
+	return { content: [{ type: "text" as const, text }], details, isError: true };
+}
+
+// ── Event formatting ────────────────────────────────────────────
+
+type Evt = Record<string, unknown>;
+
+const EVENT_FORMATTERS: Record<string, (e: Evt) => string> = {
+	message_update: (e) => {
+		const d = e.assistantMessageEvent as Evt | undefined;
+		return d?.type === "text_delta" ? String(d.delta) : "";
+	},
+	tool_execution_start: (e) =>
+		`\n⚙ ${e.toolName}(${JSON.stringify(e.args ?? {}).slice(0, 80)})`,
+	tool_execution_end: (e) => {
+		const text = (e.result as Evt | undefined)?.content;
+		const first = Array.isArray(text) ? (text[0] as Evt | undefined)?.text : undefined;
+		return `  → ${String(first ?? "(done)").slice(0, 100)}`;
+	},
+	agent_start: () => "\n▶ agent started",
+	agent_end: () => "\n■ agent finished",
+	response: (e) => `  [${e.command}: ${e.success ? "ok" : e.error}]`,
+};
+
+/** Format a single JSONL event line into a compact human-readable string. */
+export function formatEvent(line: string): string {
+	try {
+		const evt = JSON.parse(line) as Evt;
+		const fmt = EVENT_FORMATTERS[String(evt.type ?? "?")];
+		return fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`;
+	} catch {
+		return line.slice(0, 120);
+	}
+}
+
+/** Format the last `lines` events from an array into readable output. */
+export function recentOutputFromEvents(events: string[], lines = 20): string {
+	if (events.length === 0) return "(no events yet)";
+	return events
+		.slice(-lines)
+		.map(formatEvent)
+		.filter(Boolean)
+		.join("");
+}
+
+// ── Spawn arg building ──────────────────────────────────────────
+
+interface ArgParams {
+	model?: string;
+	tools?: string[];
+	sessionDir?: string;
+}
+
+/**
+ * Build the CLI arg list for spawning a pi agent (pure — no side effects).
+ * System-prompt file creation is handled separately in spawn_agent.
+ */
+export function buildArgList(p: ArgParams): string[] {
+	const args = ["--mode", "rpc"];
+	if (p.model) args.push("--models", p.model);
+	if (p.tools?.length) args.push("--tools", p.tools.join(","));
+	if (p.sessionDir) {
+		args.push("--session-dir", p.sessionDir);
+	} else {
+		args.push("--no-session");
+	}
+	return args;
+}
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -57,26 +140,19 @@ interface SpawnedAgent {
 	model?: string;
 	startedAt: number;
 	recentEvents: string[];
+	emitter: EventEmitter;
 	tempDir?: string;
 	done: boolean;
 }
-
-// ── Constants ───────────────────────────────────────────────────
 
 const MAX_RECENT_EVENTS = 100;
 
 // ── Extension entry ─────────────────────────────────────────────
 
-type ToolResult = {
-	content: { type: "text"; text: string }[];
-	details: Record<string, unknown>;
-	isError?: boolean;
-};
-
 export default function (pi: ExtensionAPI) {
 	const agents = new Map<string, SpawnedAgent>();
 
-	/** Send a JSON command to an agent's stdin. */
+	/** Write a JSON command to an agent's stdin. Returns false on failure. */
 	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
 		if (agent.done || !agent.proc.stdin?.writable) return false;
 		try {
@@ -95,10 +171,9 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	/**
-	 * Send an RPC command and wait for the response event.
-	 * RPC responses have {type: "response", command: "...", success: true/false, ...}
-	 * For commands like "prompt" that trigger async work, also captures streaming
-	 * events until agent_end.
+	 * Send an RPC command and resolve when a matching "response" event arrives
+	 * (or "agent_end" when waitForAgent=true). Uses the agent's EventEmitter
+	 * rather than polling.
 	 */
 	function rpcCall(
 		agent: SpawnedAgent,
@@ -108,73 +183,38 @@ export default function (pi: ExtensionAPI) {
 		const { waitForAgent = false, timeoutMs = 30_000 } = opts;
 		return new Promise((resolve) => {
 			const eventsBefore = agent.recentEvents.length;
-			const ok = rpcWrite(agent, cmd);
-			if (!ok) {
+			if (!rpcWrite(agent, cmd)) {
 				resolve({ response: null, events: [] });
 				return;
 			}
 
-			let resolved = false;
 			let response: Record<string, unknown> | null = null;
+			let finished = false;
 
-			const timer = setTimeout(() => finish(), timeoutMs);
-
-			function finish() {
-				if (resolved) return;
-				resolved = true;
+			const finish = () => {
+				if (finished) return;
+				finished = true;
 				clearTimeout(timer);
-				clearInterval(poller);
-				const newEvents = agent.recentEvents.slice(eventsBefore);
-				resolve({ response, events: newEvents });
-			}
+				agent.emitter.off("line", onLine);
+				resolve({ response, events: agent.recentEvents.slice(eventsBefore) });
+			};
 
-			// Poll for response/agent_end in the event stream
-			const poller = setInterval(() => {
+			const onLine = (line: string) => {
 				if (agent.done) { finish(); return; }
+				try {
+					const evt = JSON.parse(line) as Record<string, unknown>;
+					if (evt.type === "response" && evt.command === cmd.type) {
+						response = evt;
+						if (!waitForAgent) { finish(); return; }
+					}
+					if (waitForAgent && evt.type === "agent_end") { finish(); return; }
+				} catch { /* not JSON */ }
+			};
 
-				// Scan new events since we sent the command
-				for (let i = eventsBefore; i < agent.recentEvents.length; i++) {
-					try {
-						const line = agent.recentEvents[i];
-						if (!line) continue;
-						const evt = JSON.parse(line);
-						if (evt.type === "response" && evt.command === cmd.type) {
-							response = evt;
-							if (!waitForAgent) { finish(); return; }
-						}
-						if (waitForAgent && evt.type === "agent_end") {
-							finish(); return;
-						}
-					} catch { /* not json */ }
-				}
-			}, 100);
+			const timer = setTimeout(finish, timeoutMs);
+			agent.emitter.on("line", onLine);
+			if (agent.done) finish();
 		});
-	}
-
-	/** Read recent events, formatted as text. */
-	function recentOutput(agent: SpawnedAgent, lines = 20): string {
-		const recent = agent.recentEvents.slice(-lines);
-		if (recent.length === 0) return "(no events yet)";
-		return recent.map((line) => {
-			try {
-				const evt = JSON.parse(line);
-				const t = evt.type ?? "?";
-				// Compact formatting for common events
-				if (t === "message_update") {
-					const delta = evt.assistantMessageEvent;
-					if (delta?.type === "text_delta") return delta.delta;
-					return "";
-				}
-				if (t === "tool_execution_start") return `\n⚙ ${evt.toolName}(${JSON.stringify(evt.args ?? {}).slice(0, 80)})`;
-				if (t === "tool_execution_end") return `  → ${evt.result?.content?.[0]?.text?.slice(0, 100) ?? "(done)"}`;
-				if (t === "agent_start") return "\n▶ agent started";
-				if (t === "agent_end") return "\n■ agent finished";
-				if (t === "response") return `  [${evt.command}: ${evt.success ? "ok" : evt.error}]`;
-				return `  [${t}]`;
-			} catch {
-				return line.slice(0, 120);
-			}
-		}).filter(Boolean).join("");
 	}
 
 	// ── spawn_agent ─────────────────────────────────────────────
@@ -217,25 +257,18 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
-			if (agents.has(params.name)) {
-				const existing = agents.get(params.name);
-				if (!existing) throw new Error("unreachable");
-				if (!existing.done) {
-					return {
-						content: [{ type: "text" as const, text: `Agent "${params.name}" already running (pid ${existing.pid}). Use rpc_send to send it tasks.` }],
-						details: { error: "already_running", pid: existing.pid },
-					};
-				}
-				// Dead agent — clean up and respawn
-				agents.delete(params.name);
+			const existing = agents.get(params.name);
+			if (existing && !existing.done) {
+				return ok(
+					`Agent "${params.name}" already running (pid ${existing.pid}). Use rpc_send to send it tasks.`,
+					{ error: "already_running", pid: existing.pid },
+				);
 			}
+			agents.delete(params.name); // clean up dead agent if present
 
 			const agentCwd = params.cwd ?? process.cwd();
-			const args: string[] = ["--mode", "rpc"];
+			const args = buildArgList(params);
 			let tempDir: string | undefined;
-
-			if (params.model) args.push("--models", params.model);
-			if (params.tools?.length) args.push("--tools", params.tools.join(","));
 
 			if (params.systemPrompt) {
 				tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
@@ -244,19 +277,11 @@ export default function (pi: ExtensionAPI) {
 				args.push("--append-system-prompt", promptPath);
 			}
 
-			if (params.sessionDir) {
-				mkdirSync(params.sessionDir, { recursive: true });
-				args.push("--session-dir", params.sessionDir);
-			} else {
-				args.push("--no-session");
-			}
-
-			// NOTE: No --no-extensions — global config flows through
-			// → panopticon loads → agent gets a socket → IPC works
+			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
 
 			const proc = spawn(PI_BINARY, args, {
 				cwd: agentCwd,
-				stdio: ["pipe", "pipe", "pipe"],  // stdin for RPC commands
+				stdio: ["pipe", "pipe", "pipe"],
 				env: {
 					...process.env,
 					PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
@@ -266,38 +291,27 @@ export default function (pi: ExtensionAPI) {
 
 			if (!proc.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
-				return {
-					content: [{ type: "text" as const, text: `Failed to spawn agent "${params.name}".` }],
-					details: { error: "spawn_failed" },
-				};
+				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });
 			}
 
 			const agent: SpawnedAgent = {
-				name: params.name,
-				proc,
-				pid: proc.pid,
-				cwd: agentCwd,
-				model: params.model,
-				startedAt: Date.now(),
-				recentEvents: [],
-				tempDir,
-				done: false,
+				name: params.name, proc, pid: proc.pid, cwd: agentCwd,
+				model: params.model, startedAt: Date.now(),
+				recentEvents: [], emitter: new EventEmitter(), tempDir, done: false,
 			};
 			agents.set(params.name, agent);
 
-			// Capture stdout events (JSONL)
+			// Wire up stdout → recentEvents + emitter
 			let buf = "";
 			proc.stdout?.on("data", (chunk: Buffer) => {
 				buf += chunk.toString();
 				const lines = buf.split("\n");
 				buf = lines.pop() ?? "";
 				for (const line of lines) {
-					if (line.trim()) {
-						agent.recentEvents.push(line);
-						if (agent.recentEvents.length > MAX_RECENT_EVENTS) {
-							agent.recentEvents.shift();
-						}
-					}
+					if (!line.trim()) continue;
+					agent.recentEvents.push(line);
+					if (agent.recentEvents.length > MAX_RECENT_EVENTS) agent.recentEvents.shift();
+					agent.emitter.emit("line", line);
 				}
 			});
 
@@ -305,39 +319,35 @@ export default function (pi: ExtensionAPI) {
 				agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
 			});
 
-			proc.on("close", (code) => {
+			const onExit = (code: number | null) => {
 				agent.done = true;
 				agent.recentEvents.push(`[process exited with code ${code}]`);
+				agent.emitter.emit("line", JSON.stringify({ type: "process_exit", code }));
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
-			});
+			};
 
+			proc.on("close", onExit);
 			proc.on("error", (err) => {
 				agent.done = true;
 				agent.recentEvents.push(`[process error: ${err.message}]`);
+				agent.emitter.emit("line", JSON.stringify({ type: "process_error", message: err.message }));
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 			});
 
 			proc.unref();
+			if (params.task) rpcWrite(agent, { type: "prompt", message: params.task });
 
-			// If an initial task was provided, send it
-			if (params.task) {
-				rpcWrite(agent, { type: "prompt", message: params.task });
-			}
-
-			return {
-				content: [{
-					type: "text" as const,
-					text: `Spawned "${params.name}" in RPC mode (pid ${proc.pid})\n` +
-						`  cwd: ${agentCwd}\n` +
-						`  model: ${params.model ?? "(default)"}\n` +
-						(params.task
-							? `  task: ${params.task.slice(0, 100)}${params.task.length > 100 ? "…" : ""}\n`
-							: `  (idle — use rpc_send to give it a task)\n`) +
-						`\nAgent will register in panopticon within seconds.\n` +
-						`Use rpc_send for direct RPC commands, agent_send from any peer.`,
-				}],
-				details: { name: params.name, pid: proc.pid, cwd: agentCwd },
-			};
+			return ok(
+				`Spawned "${params.name}" in RPC mode (pid ${proc.pid})\n` +
+				`  cwd: ${agentCwd}\n` +
+				`  model: ${params.model ?? "(default)"}\n` +
+				(params.task
+					? `  task: ${params.task.slice(0, 100)}${params.task.length > 100 ? "…" : ""}\n`
+					: `  (idle — use rpc_send to give it a task)\n`) +
+				`\nAgent will register in panopticon within seconds.\n` +
+				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
+				{ name: params.name, pid: proc.pid, cwd: agentCwd },
+			);
 		},
 	});
 
@@ -372,25 +382,21 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const agent = agents.get(params.name);
 			if (!agent) {
-				return {
-					content: [{ type: "text" as const, text: `No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}` }],
-					details: { error: "not_found" },
-				};
+				return fail(
+					`No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}`,
+					{ error: "not_found" },
+				);
 			}
 			if (agent.done) {
-				return {
-					content: [{
-						type: "text" as const,
-						text: `Agent "${params.name}" has exited.\n\nLast output:\n${recentOutput(agent, 10)}`,
-					}],
-					details: { error: "exited", exitCode: agent.proc.exitCode },
-				};
+				return fail(
+					`Agent "${params.name}" has exited.\n\nLast output:\n${recentOutputFromEvents(agent.recentEvents, 10)}`,
+					{ error: "exited", exitCode: agent.proc.exitCode },
+				);
 			}
 
 			const cmd: Record<string, unknown> = { type: params.command };
 			if (params.message) cmd.message = params.message;
 
-			// Determine if we should wait for agent_end
 			const isAsync = ["prompt", "steer", "follow_up"].includes(params.command);
 			const waitForAgent = params.wait ?? isAsync;
 			const timeoutMs = (params.timeout ?? 30) * 1000;
@@ -398,42 +404,37 @@ export default function (pi: ExtensionAPI) {
 			const { response, events } = await rpcCall(agent, cmd, { waitForAgent, timeoutMs });
 
 			if (!response && events.length === 0) {
-				return {
-					content: [{ type: "text" as const, text: `Failed to communicate with agent "${params.name}".` }],
-					details: { error: "write_failed" },
-				};
+				return fail(`Failed to communicate with agent "${params.name}".`, { error: "write_failed" });
 			}
 
-			// Format response
 			const responseSummary = response
 				? JSON.stringify(response, null, 2).slice(0, 2000)
 				: "(no response received — may have timed out)";
 
-			// Extract text output from events if we waited
-			let agentOutput = "";
-			if (waitForAgent && events.length > 0) {
-				agentOutput = events.map((line) => {
+			const agentOutput = waitForAgent
+				? events.map((line) => {
 					try {
-						const evt = JSON.parse(line);
-						if (evt.type === "message_update" && evt.assistantMessageEvent?.type === "text_delta") {
-							return evt.assistantMessageEvent.delta;
+						const evt = JSON.parse(line) as Record<string, unknown>;
+						if (evt.type === "message_update") {
+							const d = evt.assistantMessageEvent as Record<string, unknown> | undefined;
+							if (d?.type === "text_delta") return String(d.delta);
 						}
 					} catch { /* */ }
 					return "";
-				}).join("");
-			}
+				}).join("")
+				: "";
 
-			const parts: string[] = [
+			const parts = [
 				`RPC ${params.command} → "${params.name}" (pid ${agent.pid})`,
+				...(params.message ? [`  message: ${params.message.slice(0, 100)}${params.message.length > 100 ? "…" : ""}`] : []),
+				"",
+				`Response:\n${responseSummary}`,
+				...(agentOutput ? ["", `Agent output:\n${agentOutput.slice(0, 3000)}`] : []),
 			];
-			if (params.message) parts.push(`  message: ${params.message.slice(0, 100)}${params.message.length > 100 ? "…" : ""}`);
-			parts.push("", `Response:\n${responseSummary}`);
-			if (agentOutput) parts.push("", `Agent output:\n${agentOutput.slice(0, 3000)}`);
 
-			return {
-				content: [{ type: "text" as const, text: parts.join("\n") }],
-				details: { name: params.name, command: params.command, response, eventCount: events.length },
-			};
+			return ok(parts.join("\n"), {
+				name: params.name, command: params.command, response, eventCount: events.length,
+			});
 		},
 	});
 
@@ -455,52 +456,39 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			if (agents.size === 0) {
-				return {
-					content: [{ type: "text" as const, text: "No agents spawned in this session." }],
-					details: { count: 0 },
-				};
+				return ok("No agents spawned in this session.", { count: 0 });
 			}
 
-			// Detail view for one agent
 			if (params.name) {
 				const agent = agents.get(params.name);
 				if (!agent) {
-					return {
-						content: [{ type: "text" as const, text: `No agent named "${params.name}". Known: ${[...agents.keys()].join(", ")}` }],
-						details: { error: "not_found" },
-					};
+					return fail(
+						`No agent named "${params.name}". Known: ${[...agents.keys()].join(", ")}`,
+						{ error: "not_found" },
+					);
 				}
 				const uptime = Math.round((Date.now() - agent.startedAt) / 1000);
-				const output = recentOutput(agent, params.lines ?? 20);
-				return {
-					content: [{
-						type: "text" as const,
-						text: `Agent "${agent.name}" (pid ${agent.pid})\n` +
-							`  status: ${agent.done ? `exited (code ${agent.proc.exitCode})` : "running"}\n` +
-							`  uptime: ${uptime}s\n` +
-							`  cwd: ${agent.cwd}\n` +
-							`  model: ${agent.model ?? "(default)"}\n` +
-							`  events: ${agent.recentEvents.length}\n\n` +
-							`Recent output:\n${output}`,
-					}],
-					details: { name: agent.name, pid: agent.pid, done: agent.done },
-				};
+				return ok(
+					`Agent "${agent.name}" (pid ${agent.pid})\n` +
+					`  status: ${agent.done ? `exited (code ${agent.proc.exitCode})` : "running"}\n` +
+					`  uptime: ${uptime}s\n` +
+					`  cwd: ${agent.cwd}\n` +
+					`  model: ${agent.model ?? "(default)"}\n` +
+					`  events: ${agent.recentEvents.length}\n\n` +
+					`Recent output:\n${recentOutputFromEvents(agent.recentEvents, params.lines ?? 20)}`,
+					{ name: agent.name, pid: agent.pid, done: agent.done },
+				);
 			}
 
-			// Summary view
-			const lines = [...agents.values()].map((a) => {
+			const rows = [...agents.values()].map((a) => {
 				const status = a.done ? `✗ exited(${a.proc.exitCode})` : "● running";
 				const uptime = Math.round((Date.now() - a.startedAt) / 1000);
 				return `  ${status} ${a.name.padEnd(20)} pid=${a.pid}  up=${uptime}s  events=${a.recentEvents.length}`;
 			});
-
-			return {
-				content: [{
-					type: "text" as const,
-					text: `${agents.size} spawned agent(s):\n${lines.join("\n")}\n\nUse list_spawned with a name for details.`,
-				}],
-				details: { count: agents.size, agents: [...agents.keys()] },
-			};
+			return ok(
+				`${agents.size} spawned agent(s):\n${rows.join("\n")}\n\nUse list_spawned with a name for details.`,
+				{ count: agents.size, agents: [...agents.keys()] },
+			);
 		},
 	});
 
@@ -523,60 +511,43 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const agent = agents.get(params.name);
 			if (!agent) {
-				return {
-					content: [{ type: "text" as const, text: `No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}` }],
-					details: { error: "not_found" },
-				};
+				return fail(
+					`No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}`,
+					{ error: "not_found" },
+				);
 			}
-
 			if (agent.done) {
 				agents.delete(params.name);
-				return {
-					content: [{ type: "text" as const, text: `Agent "${params.name}" already exited (code ${agent.proc.exitCode}). Removed from list.` }],
-					details: { name: params.name, alreadyDead: true },
-				};
+				return ok(
+					`Agent "${params.name}" already exited (code ${agent.proc.exitCode}). Removed from list.`,
+					{ name: params.name, alreadyDead: true },
+				);
 			}
 
-			const pid = agent.pid;
+			const { pid } = agent;
 
 			if (params.force) {
 				try { agent.proc.kill("SIGKILL"); } catch { /* */ }
 				agents.delete(params.name);
-				return {
-					content: [{ type: "text" as const, text: `Force-killed "${params.name}" (pid ${pid}).` }],
-					details: { name: params.name, pid, method: "SIGKILL" },
-				};
+				return ok(`Force-killed "${params.name}" (pid ${pid}).`, { name: params.name, pid, method: "SIGKILL" });
 			}
 
-			// Graceful: abort RPC → wait 2s → SIGTERM → wait 2s → SIGKILL
+			// Graceful: abort → 2s → SIGTERM → 2s → SIGKILL
 			rpcWrite(agent, { type: "abort" });
+			const closed = new Promise<void>((res) => agent.proc.once("close", res));
 
-			await new Promise<void>((resolve) => {
-				if (agent.done) { resolve(); return; }
-
-				const onClose = () => { clearTimeout(t1); resolve(); };
-				agent.proc.once("close", onClose);
-
-				const t1 = setTimeout(() => {
-					if (agent.done) { resolve(); return; }
-					try { agent.proc.kill("SIGTERM"); } catch { /* */ }
-
-					setTimeout(() => {
-						if (!agent.done) {
-							try { agent.proc.kill("SIGKILL"); } catch { /* */ }
-						}
-						agent.proc.removeListener("close", onClose);
-						resolve();
-					}, 2000);
-				}, 2000);
-			});
+			await Promise.race([closed, sleep(2000)]);
+			if (!agent.done) {
+				try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+				await Promise.race([closed, sleep(2000)]);
+				if (!agent.done) try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+			}
 
 			agents.delete(params.name);
-
-			return {
-				content: [{ type: "text" as const, text: `Stopped "${params.name}" (pid ${pid}). Exit code: ${agent.proc.exitCode ?? "killed"}.` }],
-				details: { name: params.name, pid, exitCode: agent.proc.exitCode },
-			};
+			return ok(
+				`Stopped "${params.name}" (pid ${pid}). Exit code: ${agent.proc.exitCode ?? "killed"}.`,
+				{ name: params.name, pid, exitCode: agent.proc.exitCode },
+			);
 		},
 	});
 
@@ -585,13 +556,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		for (const agent of agents.values()) {
 			if (!agent.done) {
-				try {
-					rpcWrite(agent, { type: "abort" });
-					// Give it a moment, then kill
-					setTimeout(() => {
-						if (!agent.done) try { agent.proc.kill("SIGTERM"); } catch { /* */ }
-					}, 2000);
-				} catch { /* */ }
+				rpcWrite(agent, { type: "abort" });
+				const p = agent.proc;
+				setTimeout(() => { if (!agent.done) try { p.kill("SIGTERM"); } catch { /* */ } }, 2000);
 			}
 		}
 	});
