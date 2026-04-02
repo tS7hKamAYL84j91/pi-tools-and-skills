@@ -66,11 +66,7 @@ function findKanbanDir(): string | null {
 
 function kanbanDir(): string {
 	const dir = findKanbanDir();
-	if (!dir) {
-		throw new Error(
-			"Kanban directory not found. Set KANBAN_DIR or ensure ~/git/coas/kanban exists.",
-		);
-	}
+	if (!dir) throw new Error("Kanban directory not found. Set KANBAN_DIR or ensure ~/git/coas/kanban exists.");
 	return dir;
 }
 
@@ -113,22 +109,9 @@ interface TaskState {
 
 function newTask(id: string, ts: string): TaskState {
 	return {
-		id,
-		col: "backlog",
-		deleted: false,
-		title: "",
-		priority: "medium",
-		tags: "",
-		agent: "",
-		claimed: false,
-		claimAgent: "",
-		expires: "",
-		reason: "",
-		notes: [],
-		completedAt: "",
-		duration: "",
-		doneAgent: "",
-		createdAt: ts,
+		id, col: "backlog", deleted: false, priority: "medium", claimed: false, notes: [], createdAt: ts,
+		title: "", tags: "", agent: "", claimAgent: "", expires: "",
+		reason: "", completedAt: "", duration: "", doneAgent: "",
 	};
 }
 
