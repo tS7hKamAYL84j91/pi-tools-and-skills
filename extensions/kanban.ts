@@ -248,19 +248,12 @@ interface ColumnDef {
 	row: (t: TaskState) => string;
 }
 
+const PRIO_COL_ROW = (t: TaskState) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`;
+const PRIO_COL_HDR: ColumnDef = { heading: "", headers: ["| ID | Title | Priority | Tags |"], separators: ["|----|-------|----------|------|"], row: PRIO_COL_ROW };
+
 const COLUMN_DEFS: Record<string, ColumnDef> = {
-	backlog: {
-		heading: "📋 Backlog",
-		headers: ["| ID | Title | Priority | Tags |"],
-		separators: ["|----|-------|----------|------|"],
-		row: (t) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`,
-	},
-	todo: {
-		heading: "🔜 Todo",
-		headers: ["| ID | Title | Priority | Tags |"],
-		separators: ["|----|-------|----------|------|"],
-		row: (t) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`,
-	},
+	backlog:       { ...PRIO_COL_HDR, heading: "📋 Backlog" },
+	todo:          { ...PRIO_COL_HDR, heading: "🔜 Todo" },
 	"in-progress": {
 		heading: "🔄 In Progress",
 		headers: ["| ID | Title | Agent | Expires |"],
