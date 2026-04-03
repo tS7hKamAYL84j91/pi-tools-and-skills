@@ -244,6 +244,42 @@ describe("/send command", () => {
 	});
 });
 
+// ── Self-record caching ─────────────────────────────────────────
+
+describe("self-record caching", () => {
+	it("caches self-record after session_start so subsequent sends skip the PID scan", async () => {
+		// Fire session_start — populates cache via one PID scan
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		const callsAfterStart = mockReadAll.mock.calls.length;
+
+		// agent_send resolves the peer (1 readAllAgentRecords) but should NOT re-scan for self
+		await executeTool("agent_send", { name: "alice", message: "hi" });
+		expect(mockReadAll.mock.calls.length).toBe(callsAfterStart + 1);
+	});
+
+	it("warm cache: agent_send triggers exactly one readAllAgentRecords for peer resolution", async () => {
+		// Warm the cache via session_start
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		vi.clearAllMocks();
+		mockReadAll.mockReturnValue([SELF, PEER_A, PEER_B, PEER_C]);
+
+		await executeTool("agent_send", { name: "alice", message: "hi" });
+		expect(mockReadAll).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries PID scan when self not found at session_start", async () => {
+		// Simulate: our record not yet registered when session_start fires
+		mockReadAll.mockReturnValue([]);
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		expect(sendTransport.init).not.toHaveBeenCalled();
+
+		// Later our record appears — getSelfRecord() should re-scan and find it
+		mockReadAll.mockReturnValue([SELF, PEER_A]);
+		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
+		expect(getText(result)).toContain("Sent to alice");
+	});
+});
+
 // ── Inbox draining ──────────────────────────────────────────────
 
 describe("inbox draining", () => {

@@ -23,7 +23,6 @@ import {
 	existsSync,
 	readFileSync,
 	readdirSync,
-	rmSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -34,18 +33,25 @@ import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 import {
 	type AgentRecord,
 	type AgentStatus,
-	type SocketCommand,
 	REGISTRY_DIR,
 	STALE_MS,
-	SOCKET_TIMEOUT_MS,
 	isPidAlive,
 	ensureRegistryDir,
-	ensureInbox,
 } from "../lib/agent-registry.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
 const HEARTBEAT_MS = 5_000;
+
+// Panopticon socket wire protocol — local to this extension
+interface SocketCommand {
+	type: "cast" | "call" | "peek";
+	from?: string;
+	text?: string;
+	lines?: number;
+}
+
+const SOCKET_TIMEOUT_MS = 3_000;
 const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "🟢", waiting: "🟡", done: "✅",
 	blocked: "🚧", stalled: "🛑", terminated: "⚫", unknown: "⚪",
@@ -115,9 +121,18 @@ function readAllRecords(): AgentRecord[] {
 	});
 }
 
+/** @internal exported for tests */
+export function agentCleanupPaths(id: string): string[] {
+	return [
+		join(REGISTRY_DIR, `${id}.json`),
+		join(REGISTRY_DIR, `${id}.sock`),
+	];
+}
+
 function cleanupAgentFiles(id: string): void {
 	try { unlinkSync(join(REGISTRY_DIR, `${id}.sock`)); } catch { /* */ }
-	rmSync(join(REGISTRY_DIR, id), { recursive: true, force: true });
+	// NOTE: Do NOT delete REGISTRY_DIR/{id}/ — that’s messaging infrastructure
+	// owned by the transport. Panopticon only cleans its own artifacts.
 }
 
 // ── Powerline widget ────────────────────────────────────────────
@@ -444,7 +459,6 @@ export default function (pi: ExtensionAPI) {
 		} catch { /* */ }
 
 		startSocket();
-		ensureInbox(selfId);
 
 		const records = readAllRecords();
 		record = {

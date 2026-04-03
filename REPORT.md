@@ -1,67 +1,71 @@
-# Report: Decouple Messaging Transport from Agent Registry
+# T-122 Report: Messaging Self-Identity Caching
 
-## Summary
+## What Was Done
 
-Completed Tasks 1-5 from Phase 4.1, 4.2, 4.3, 4.4 and Phase 2 of the plan. The messaging system is now properly decoupled from the agent registry, and subagents always have session files for `agent_peek` to read.
+### Problem
+`getSelfRecord()` in `extensions/pi-messaging.ts` called `readAllAgentRecords().find(r => r.pid === process.pid)` on every invocation — an O(n) filesystem scan reading every `.json` file in `~/.pi/agents/`. With 9+ call sites (resolvePeer, peerNames, drainInbox, updatePendingCount, session_start, agent_broadcast, getSelfName, etc.), a single `agent_send` previously triggered **3 filesystem scans**; a full `session_start` triggered **4+**.
 
-## Changes Made
+### TDD Process
 
-### Task 1: Add pendingCount to MessageTransport (lib/message-transport.ts)
+**Red** — Added 3 failing tests in `tests/pi-messaging.test.ts` under `describe("self-record caching")`:
+1. After `session_start`, each subsequent `agent_send` should add exactly 1 `readAllAgentRecords` call (peer resolution only).
+2. With a warm cache, `agent_send` triggers exactly 1 `readAllAgentRecords` call total.
+3. When self-record is absent at `session_start` (panopticon not yet registered), messaging handles gracefully and retries the PID scan on the next operation.
 
-Added `pendingCount(agentId: string): number` to the `MessageTransport` interface. This method returns the number of pending inbound messages for an agent.
+Both count-based tests failed as expected (got 7 calls where 5 were expected; got 3 where 1 was expected).
 
-### Task 2: Implement pendingCount in MaildirTransport (lib/transports/maildir.ts)
+**Green** — Three targeted changes to `extensions/pi-messaging.ts`:
 
-Implemented `pendingCount()` in MaildirTransport:
-- Counts `.json` files in `~/.pi/agents/{agentId}/inbox/new/`
-- Returns 0 on error (directory not found, etc.)
-- Same logic that was previously in `inboxPendingCount()` in agent-registry.ts
+1. **Added `cachedSelf` state variable** (`let cachedSelf: AgentRecord | undefined`) alongside the existing `selfName` cache.
 
-### Task 3: Subagents always get sessions (extensions/pi-subagent.ts)
+2. **Updated `getSelfRecord()`** to return the cached record immediately on subsequent calls, and populate the cache on first successful PID scan:
+   ```typescript
+   function getSelfRecord(): AgentRecord | undefined {
+       if (cachedSelf) return cachedSelf;
+       const record = readAllAgentRecords().find((r) => r.pid === process.pid);
+       if (record) cachedSelf = record;
+       return record;
+   }
+   ```
 
-Changed `buildArgList()` to always use a session directory:
-- Added `defaultSubagentSessionDir(name)` function returning `~/.pi/agent/sessions/subagents/{name}/`
-- Removed `--no-session` fallback
-- Now always passes `--session-dir` with either the provided value or the default
-- This ensures spawned agents always write session JSONL that `agent_peek` can read
+3. **Updated `session_start` handler** to eagerly populate `cachedSelf` with a single scan, so all downstream helpers (`updatePendingCount`, `drainInbox`, `getSelfName`, `resolvePeer`, `peerNames`) return from the cache with zero additional filesystem reads:
+   ```typescript
+   pi.on("session_start", async () => {
+       cachedSelf = readAllAgentRecords().find((r) => r.pid === process.pid);
+       if (cachedSelf) {
+           config.send.init(cachedSelf.id);
+           updatePendingCount();
+           drainInbox();
+       }
+   });
+   ```
 
-### Task 4: Clean up agent-registry.ts (lib/agent-registry.ts)
+4. **Updated `updatePendingCount()`** to assign `cachedSelf = self` after writing, keeping the cache consistent with the persisted record.
 
-- Removed `inboxCapable?: boolean` from `AgentRecord` interface
-- Removed `inboxPendingCount()` function (moved to transport)
-- Added `writeAgentRecord(record)` function for messaging extension to update `pendingMessages`
+### Why `resolvePeer` Didn't Need Changing
+`resolvePeer` calls `getSelfRecord()` (now cached, 0 scans) then `readAllAgentRecords()` (1 scan for peer lookup). With a warm cache this is already exactly 1 scan. Replacing `getSelfRecord()` with a raw `cachedSelf?.id` access would break self-exclusion in the cold-cache path (e.g., "does not send to self" test when session_start hasn't fired).
 
-### Task 5: Messaging extension owns the count (extensions/pi-messaging.ts)
+### Result
 
-- Added `updatePendingCount()` helper that reads from `transport.pendingCount()` and writes to the agent record
-- Calls `updatePendingCount()` after inbox draining
-- Calls `updatePendingCount()` on `session_start` after `init()`
-- Imports `writeAgentRecord` from agent-registry
-
-## Tests Updated
-
-### tests/pi-subagent.test.ts
-- Updated `buildArgList` tests to include `name` parameter (now required)
-- Changed test for `--no-session` to test default session dir behavior
-
-### tests/pi-messaging.test.ts
-- Added `pendingCount` to mock transport
-- Added `writeAgentRecord` mock
-
-### tests/maildir-transport.test.ts
-- Added `readdirSync` mock
-- Added 4 tests for `pendingCount()` method
+| Scenario | Before | After |
+|---|---|---|
+| `session_start` scans | 4+ | 1 |
+| `agent_send` scans (warm) | 3 | 1 |
+| `agent_broadcast` scans (warm) | 2 | 1 |
+| Self-exclusion when cold | ✓ | ✓ |
+| Retry when not found at start | ✓ | ✓ |
 
 ## Test Results
 
-All 75 tests passing across 4 test files.
+```
+Test Files  4 passed (4)
+     Tests  87 passed (87)   ← was 84 before (3 new caching tests added)
+  Duration  ~320ms
+```
 
-## Ownership Summary (After Changes)
+`npx tsc --noEmit` — no errors.
 
-| Concern | Owner | Storage |
-|---------|-------|---------|
-| Agent registry (who's alive) | panopticon | `~/.pi/agents/{id}.json` |
-| Activity log (what happened) | pi core | `~/.pi/agent/sessions/…/*.jsonl` |
-| Message delivery | messaging ext | transport-dependent (maildir: `~/.pi/agents/{id}/inbox/`) |
-| Pending message count | messaging ext | writes to AgentRecord, panopticon reads |
-| Subagent sessions | subagent ext | `~/.pi/agent/sessions/subagents/{name}/` |
+## Files Modified
+
+- `extensions/pi-messaging.ts` — added `cachedSelf` variable, updated `getSelfRecord()`, `updatePendingCount()`, and `session_start` handler
+- `tests/pi-messaging.test.ts` — added `describe("self-record caching")` block with 3 new tests

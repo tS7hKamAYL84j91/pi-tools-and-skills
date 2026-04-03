@@ -11,6 +11,7 @@ import {
 	nameTaken,
 	pickName,
 	sortRecords,
+	agentCleanupPaths,
 } from "../extensions/pi-panopticon.js";
 import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 
@@ -187,6 +188,33 @@ describe("readSessionLog", () => {
 	it("returns empty array for non-existent file", () => {
 		const events = readSessionLog("/tmp/nonexistent-session-file.jsonl", 50);
 		expect(events).toEqual([]);
+	});
+});
+
+// ── agentCleanupPaths ───────────────────────────────────────────
+
+describe("agentCleanupPaths", () => {
+	it("returns exactly two paths: .json and .sock", () => {
+		const paths = agentCleanupPaths("test-agent-123");
+		expect(paths).toHaveLength(2);
+		expect(paths.some((p) => p.endsWith("test-agent-123.json"))).toBe(true);
+		expect(paths.some((p) => p.endsWith("test-agent-123.sock"))).toBe(true);
+	});
+
+	it("does NOT include the agent inbox directory path", () => {
+		const paths = agentCleanupPaths("test-agent-123");
+		// Every path must have a file extension — never a bare directory
+		for (const p of paths) {
+			expect(p).toMatch(/\.(json|sock)$/);
+		}
+	});
+
+	it("uses the agent id in both returned paths", () => {
+		const id = "unique-id-xyz";
+		const paths = agentCleanupPaths(id);
+		for (const p of paths) {
+			expect(p).toContain(id);
+		}
 	});
 });
 

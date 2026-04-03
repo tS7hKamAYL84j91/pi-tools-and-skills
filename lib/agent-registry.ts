@@ -5,6 +5,9 @@
  * directory (~/.pi/agents/) and the same record format. This module
  * provides the shared types and low-level IO functions so neither
  * extension duplicates the other.
+ *
+ * Does NOT contain: Maildir IO (see transports/maildir.ts),
+ * socket protocol (see pi-panopticon.ts).
  */
 
 import {
@@ -13,8 +16,6 @@ import {
 	readdirSync,
 	readFileSync,
 	writeFileSync,
-	renameSync,
-	unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -23,7 +24,6 @@ import { basename, join } from "node:path";
 
 export const REGISTRY_DIR = join(homedir(), ".pi", "agents");
 export const STALE_MS = 30_000;
-export const SOCKET_TIMEOUT_MS = 3_000;
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -44,15 +44,6 @@ export interface AgentRecord {
 	sessionDir?: string;
 	sessionFile?: string;
 }
-
-export interface SocketCommand {
-	type: "cast" | "call" | "peek";
-	from?: string;
-	text?: string;
-	lines?: number;
-}
-
-
 
 // ── Pure helpers ────────────────────────────────────────────────
 
@@ -85,55 +76,3 @@ export function writeAgentRecord(record: AgentRecord): void {
 	const path = join(REGISTRY_DIR, `${record.id}.json`);
 	writeFileSync(path, JSON.stringify(record, null, 2), "utf-8");
 }
-
-// ── Inbox Maildir IO ────────────────────────────────────────────
-
-interface InboxMessage {
-	id: string;
-	from: string;
-	text: string;
-	ts: number;
-	metadata?: Record<string, unknown>;
-}
-
-export function ensureInbox(agentId: string): string {
-	const inboxPath = join(REGISTRY_DIR, agentId, "inbox");
-	for (const sub of ["tmp", "new", "cur"]) {
-		mkdirSync(join(inboxPath, sub), { recursive: true });
-	}
-	return inboxPath;
-}
-
-export function inboxReadNew(agentId: string): { filename: string; message: InboxMessage }[] {
-	try {
-		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
-		return readdirSync(newDir)
-			.filter((f) => f.endsWith(".json"))
-			.sort()
-			.flatMap((f) => {
-				try {
-					return [{ filename: f, message: JSON.parse(readFileSync(join(newDir, f), "utf-8")) as InboxMessage }];
-				} catch { return []; }
-			});
-	} catch { return []; }
-}
-
-export function inboxAcknowledge(agentId: string, filename: string): void {
-	try {
-		renameSync(
-			join(REGISTRY_DIR, agentId, "inbox", "new", filename),
-			join(REGISTRY_DIR, agentId, "inbox", "cur", filename),
-		);
-	} catch { /* best-effort: message may already be moved */ }
-}
-
-export function inboxPruneCur(agentId: string, keep = 50): void {
-	try {
-		const curDir = join(REGISTRY_DIR, agentId, "inbox", "cur");
-		const files = readdirSync(curDir).filter((f) => f.endsWith(".json")).sort();
-		for (const f of files.slice(0, files.length - keep)) {
-			try { unlinkSync(join(curDir, f)); } catch { /* */ }
-		}
-	} catch { /* */ }
-}
-

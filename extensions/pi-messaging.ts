@@ -45,11 +45,15 @@ export interface MessagingConfig {
 export function createMessagingExtension(config: MessagingConfig) {
 	return (pi: ExtensionAPI) => {
 		let selfName: string | undefined;
+		let cachedSelf: AgentRecord | undefined;
 
 		// ── Registry helpers ────────────────────────────────────
 
 		function getSelfRecord(): AgentRecord | undefined {
-			return readAllAgentRecords().find((r) => r.pid === process.pid);
+			if (cachedSelf) return cachedSelf;
+			const record = readAllAgentRecords().find((r) => r.pid === process.pid);
+			if (record) cachedSelf = record;
+			return record;
 		}
 
 		function getSelfName(): string {
@@ -65,6 +69,7 @@ export function createMessagingExtension(config: MessagingConfig) {
 			if (self.pendingMessages !== count) {
 				self.pendingMessages = count;
 				writeAgentRecord(self);
+				cachedSelf = self; // keep cache in sync
 			}
 		}
 
@@ -111,9 +116,10 @@ export function createMessagingExtension(config: MessagingConfig) {
 		}
 
 		pi.on("session_start", async () => {
-			const selfId = getSelfRecord()?.id;
-			if (selfId) {
-				config.send.init(selfId);
+			// Eagerly cache self-record; downstream helpers skip the PID scan
+			cachedSelf = readAllAgentRecords().find((r) => r.pid === process.pid);
+			if (cachedSelf) {
+				config.send.init(cachedSelf.id);
 				updatePendingCount();
 				drainInbox();
 			}
