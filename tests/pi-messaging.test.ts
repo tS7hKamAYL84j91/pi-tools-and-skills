@@ -1,52 +1,28 @@
 /**
- * Characterisation tests for pi-messaging.ts
+ * Tests for pi-messaging.ts
  *
- * These tests lock in the observable behaviour of the three send paths
- * (agent_send, agent_send_durable, agent_broadcast) and inbox draining
- * before any refactoring. They mock agent-registry and node:fs so no
- * real sockets or dirs are touched.
+ * Injects mock MessageTransports for send and broadcast.
+ * No real sockets, dirs, or transports touched.
  */
 
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from "vitest";
 
-// ── Mock agent-registry BEFORE importing pi-messaging ──────────
 vi.mock("../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
 	readAllAgentRecords: vi.fn(),
-	socketSend: vi.fn(),
-	ensureInbox: vi.fn(),
-	inboxReadNew: vi.fn(),
-	inboxAcknowledge: vi.fn(),
-	inboxPruneCur: vi.fn(),
+	writeAgentRecord: vi.fn(),
 }));
 
-// Mock node:fs so durableWrite doesn't touch the real filesystem
-vi.mock("node:fs", () => ({
-	existsSync: vi.fn(),
-	mkdirSync: vi.fn(),
-	renameSync: vi.fn(),
-	writeFileSync: vi.fn(),
-}));
-
-vi.mock("node:crypto", () => ({
-	randomUUID: vi.fn(() => "test-uuid-1234"),
+vi.mock("../lib/transports/maildir.js", () => ({
+	createMaildirTransport: vi.fn(() => ({})),
 }));
 
 import * as registry from "../lib/agent-registry.js";
-import * as nodefs from "node:fs";
-import initMessaging from "../extensions/pi-messaging.js";
-
-// ── Typed mocks ─────────────────────────────────────────────────
+import { createMessagingExtension } from "../extensions/pi-messaging.js";
+import type { MessageTransport, DeliveryResult, InboundMessage } from "../lib/message-transport.js";
 
 const mockReadAll = registry.readAllAgentRecords as MockedFunction<typeof registry.readAllAgentRecords>;
-const mockSocketSend = registry.socketSend as MockedFunction<typeof registry.socketSend>;
-const mockEnsureInbox = registry.ensureInbox as MockedFunction<typeof registry.ensureInbox>;
-const mockInboxReadNew = registry.inboxReadNew as MockedFunction<typeof registry.inboxReadNew>;
-const mockInboxAck = registry.inboxAcknowledge as MockedFunction<typeof registry.inboxAcknowledge>;
-const mockInboxPrune = registry.inboxPruneCur as MockedFunction<typeof registry.inboxPruneCur>;
-const mockExistsSync = nodefs.existsSync as MockedFunction<typeof nodefs.existsSync>;
-const mockWriteFileSync = nodefs.writeFileSync as MockedFunction<typeof nodefs.writeFileSync>;
-const mockRenameSync = nodefs.renameSync as MockedFunction<typeof nodefs.renameSync>;
+const mockWriteRecord = registry.writeAgentRecord as MockedFunction<typeof registry.writeAgentRecord>;
 
 // ── Minimal ExtensionAPI mock ───────────────────────────────────
 
@@ -80,33 +56,57 @@ function makeMockAPI(): MockAPI {
 	return api;
 }
 
+// ── Mock transport ──────────────────────────────────────────────
+
+function makeMockTransport(): MessageTransport & {
+	send: MockedFunction<MessageTransport["send"]>;
+	receive: MockedFunction<MessageTransport["receive"]>;
+	ack: MockedFunction<MessageTransport["ack"]>;
+	prune: MockedFunction<MessageTransport["prune"]>;
+	init: MockedFunction<MessageTransport["init"]>;
+	pendingCount: MockedFunction<MessageTransport["pendingCount"]>;
+} {
+	return {
+		send: vi.fn(),
+		receive: vi.fn().mockReturnValue([]),
+		ack: vi.fn(),
+		prune: vi.fn(),
+		init: vi.fn(),
+		pendingCount: vi.fn().mockReturnValue(0),
+	};
+}
+
 // ── Fixtures ────────────────────────────────────────────────────
 
-const SELF_RECORD = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_A = { id: "peer-a-id", name: "alice", pid: 999, cwd: "/", model: "x", socket: "/tmp/alice.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_B = { id: "peer-b-id", name: "bob", pid: 998, cwd: "/", model: "x", socket: "/tmp/bob.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_NO_SOCK = { id: "nosock-id", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const SELF = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const PEER_A = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", socket: "/tmp/a.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const PEER_B = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", socket: "/tmp/b.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const PEER_C = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+
+const ACCEPTED: DeliveryResult = { accepted: true, immediate: false, reference: "ref-001" };
+const FAILED: DeliveryResult = { accepted: false, immediate: false, error: "ENOSPC" };
 
 // ── Setup ───────────────────────────────────────────────────────
 
 let api: MockAPI;
+let sendTransport: ReturnType<typeof makeMockTransport>;
+let broadcastTransport: ReturnType<typeof makeMockTransport>;
 
 beforeEach(() => {
-	vi.resetAllMocks(); // resets implementations AND call counts
+	vi.resetAllMocks();
+	mockReadAll.mockReturnValue([SELF, PEER_A, PEER_B, PEER_C]);
 
-	// Default: self is in registry; durable write ops succeed
-	mockReadAll.mockReturnValue([SELF_RECORD, PEER_A, PEER_B, PEER_NO_SOCK]);
-	mockExistsSync.mockReturnValue(false);    // socket file absent by default
-	mockSocketSend.mockResolvedValue({ ok: true });
-	mockInboxReadNew.mockReturnValue([]);
-	mockEnsureInbox.mockReturnValue("/fake/inbox");
-	// writeFileSync / renameSync / mkdirSync: no-ops by default (vi.fn())
+	sendTransport = makeMockTransport();
+	sendTransport.send.mockResolvedValue(ACCEPTED);
+
+	broadcastTransport = makeMockTransport();
+	broadcastTransport.send.mockResolvedValue(ACCEPTED);
 
 	api = makeMockAPI();
-	initMessaging(api as unknown as Parameters<typeof initMessaging>[0]);
+	createMessagingExtension({ send: sendTransport, broadcast: broadcastTransport })(
+		api as unknown as Parameters<ReturnType<typeof createMessagingExtension>>[0],
+	);
 });
-
-// ── Helpers ─────────────────────────────────────────────────────
 
 function executeTool(name: string, params: Record<string, unknown>) {
 	const tool = api.registeredTools.get(name);
@@ -125,53 +125,29 @@ describe("agent_send", () => {
 		expect(api.registeredTools.has("agent_send")).toBe(true);
 	});
 
+	it("does not register agent_send_durable", () => {
+		expect(api.registeredTools.has("agent_send_durable")).toBe(false);
+	});
+
 	it("returns error when peer not found", async () => {
 		const result = await executeTool("agent_send", { name: "nobody", message: "hi" });
 		expect(getText(result)).toContain('No agent named "nobody"');
 		expect(getText(result)).toContain("alice");
 	});
 
-	it("delivers via socket when available and succeeds", async () => {
-		mockExistsSync.mockReturnValue(true);  // socket file exists
-		mockSocketSend.mockResolvedValue({ ok: true });
-
+	it("sends via the send transport", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		const text = getText(result);
-
-		expect(mockSocketSend).toHaveBeenCalledOnce();
-		expect(text).toContain("alice");
-		expect(text).toContain("hello");
-		// No durable write attempted when socket succeeds
-		expect(mockWriteFileSync).not.toHaveBeenCalled();
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello");
+		expect(getText(result)).toContain("Sent to alice");
 	});
 
-	it("falls back to durable inbox when socket throws", async () => {
-		mockExistsSync.mockReturnValue(true);
-		mockSocketSend.mockRejectedValue(new Error("ECONNREFUSED"));
-
-		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		const text = getText(result);
-
-		expect(mockWriteFileSync).toHaveBeenCalled();
-		expect(mockRenameSync).toHaveBeenCalled();
-		expect(text).toContain("queued");
+	it("does not use the broadcast transport", async () => {
+		await executeTool("agent_send", { name: "alice", message: "hello" });
+		expect(broadcastTransport.send).not.toHaveBeenCalled();
 	});
 
-	it("falls back to durable inbox when no socket path", async () => {
-		mockExistsSync.mockReturnValue(false);
-
-		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		const text = getText(result);
-
-		expect(mockSocketSend).not.toHaveBeenCalled();
-		expect(mockWriteFileSync).toHaveBeenCalled();
-		expect(text).toContain("queued");
-	});
-
-	it("returns failure when socket down and inbox write fails", async () => {
-		mockExistsSync.mockReturnValue(false);
-		mockWriteFileSync.mockImplementation(() => { throw new Error("ENOSPC"); });
-
+	it("returns failure when transport rejects", async () => {
+		sendTransport.send.mockResolvedValue(FAILED);
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
 		expect(getText(result)).toContain("Failed");
 	});
@@ -182,55 +158,6 @@ describe("agent_send", () => {
 	});
 });
 
-// ── agent_send_durable ──────────────────────────────────────────
-
-describe("agent_send_durable", () => {
-	it("registers the tool", () => {
-		expect(api.registeredTools.has("agent_send_durable")).toBe(true);
-	});
-
-	it("returns error when peer not found", async () => {
-		const result = await executeTool("agent_send_durable", { name: "ghost", message: "hi" });
-		expect(getText(result)).toContain("No agent named");
-	});
-
-	it("returns error when durable write fails", async () => {
-		mockWriteFileSync.mockImplementation(() => { throw new Error("disk full"); });
-
-		const result = await executeTool("agent_send_durable", { name: "alice", message: "hi" });
-		expect(getText(result)).toContain("Failed to write durable");
-	});
-
-	it("always writes to inbox first", async () => {
-		const result = await executeTool("agent_send_durable", { name: "alice", message: "important" });
-
-		expect(mockWriteFileSync).toHaveBeenCalled();
-		expect(mockRenameSync).toHaveBeenCalled();
-		expect(getText(result)).toContain("alice");
-	});
-
-	it("also delivers via socket when available (+ durable backup)", async () => {
-		mockExistsSync.mockReturnValue(true);
-		mockSocketSend.mockResolvedValue({ ok: true });
-
-		const result = await executeTool("agent_send_durable", { name: "alice", message: "important" });
-		const text = getText(result);
-
-		expect(mockSocketSend).toHaveBeenCalledOnce();
-		expect(text).toContain("socket");
-	});
-
-	it("reports inbox-only when socket unavailable", async () => {
-		mockExistsSync.mockReturnValue(false);
-
-		const result = await executeTool("agent_send_durable", { name: "alice", message: "important" });
-		const text = getText(result);
-
-		expect(mockSocketSend).not.toHaveBeenCalled();
-		expect(text).toContain("inbox");
-	});
-});
-
 // ── agent_broadcast ─────────────────────────────────────────────
 
 describe("agent_broadcast", () => {
@@ -238,40 +165,43 @@ describe("agent_broadcast", () => {
 		expect(api.registeredTools.has("agent_broadcast")).toBe(true);
 	});
 
-	it("reports no peers when registry is empty (excluding self)", async () => {
-		mockReadAll.mockReturnValue([SELF_RECORD]);
-
+	it("reports no peers when registry is empty", async () => {
+		mockReadAll.mockReturnValue([SELF]);
 		const result = await executeTool("agent_broadcast", { message: "hi" });
 		expect(getText(result)).toContain("No peer agents");
 	});
 
 	it("reports no matches when filter matches nobody", async () => {
-		const result = await executeTool("agent_broadcast", { message: "hi", filter: "zzznobody" });
+		const result = await executeTool("agent_broadcast", { message: "hi", filter: "zzz" });
 		expect(getText(result)).toContain("No agents matching");
 	});
 
-	it("sends to all peers and summarises results", async () => {
-		mockExistsSync.mockReturnValue(true);
-		mockSocketSend.mockResolvedValue({ ok: true });
-
+	it("sends to all peers via broadcast transport", async () => {
 		const result = await executeTool("agent_broadcast", { message: "everyone" });
-		const text = getText(result);
+		expect(broadcastTransport.send).toHaveBeenCalledTimes(3);
+		expect(getText(result)).toContain("✓ alice");
+		expect(getText(result)).toContain("✓ bob");
+		expect(getText(result)).toContain("✓ charlie");
+	});
 
-		// alice, bob have sockets; charlie has no socket
-		expect(mockSocketSend).toHaveBeenCalledTimes(2);
-		expect(text).toContain("✓ alice");
-		expect(text).toContain("✓ bob");
-		expect(text).toContain("✗ charlie");
+	it("does not use the send transport", async () => {
+		await executeTool("agent_broadcast", { message: "everyone" });
+		expect(sendTransport.send).not.toHaveBeenCalled();
 	});
 
 	it("applies name filter", async () => {
-		mockExistsSync.mockReturnValue(true);
-		mockSocketSend.mockResolvedValue({ ok: true });
-
 		await executeTool("agent_broadcast", { message: "hey", filter: "ali" });
-		expect(mockSocketSend).toHaveBeenCalledTimes(1);
-		const call = mockSocketSend.mock.calls[0];
-		expect(call?.[0]).toBe("/tmp/alice.sock");
+		expect(broadcastTransport.send).toHaveBeenCalledTimes(1);
+		expect(broadcastTransport.send.mock.calls[0]?.[0]).toEqual(PEER_A);
+	});
+
+	it("reports failures per peer", async () => {
+		broadcastTransport.send.mockImplementation(async (peer) => {
+			return peer.name === "charlie" ? FAILED : ACCEPTED;
+		});
+		const result = await executeTool("agent_broadcast", { message: "hi" });
+		expect(getText(result)).toContain("✓ alice");
+		expect(getText(result)).toContain("✗ charlie");
 	});
 });
 
@@ -295,62 +225,51 @@ describe("/send command", () => {
 	});
 
 	it("warns when peer not found", async () => {
-		const { promise, ui } = runSend("ghost hello there");
+		const { promise, ui } = runSend("ghost hello");
 		await promise;
 		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("No agent"), "warning");
 	});
 
-	it("sends durable + socket when socket available", async () => {
-		mockExistsSync.mockReturnValue(true);
-		mockSocketSend.mockResolvedValue({ ok: true });
-
-		const { promise, ui } = runSend("alice hello from send command");
+	it("sends via send transport", async () => {
+		const { promise, ui } = runSend("alice hello from cmd");
 		await promise;
-
-		expect(mockWriteFileSync).toHaveBeenCalled();
-		expect(mockSocketSend).toHaveBeenCalledOnce();
-		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("socket"), "info");
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello from cmd");
+		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("alice"), "info");
 	});
 
-	it("reports queued when socket fails", async () => {
-		mockExistsSync.mockReturnValue(false);
-
+	it("reports error on failure", async () => {
+		sendTransport.send.mockResolvedValue(FAILED);
 		const { promise, ui } = runSend("alice hello");
 		await promise;
-
-		expect(mockWriteFileSync).toHaveBeenCalled();
-		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("queued"), "info");
+		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed"), "error");
 	});
 });
 
 // ── Inbox draining ──────────────────────────────────────────────
 
 describe("inbox draining", () => {
-	it("drains on session_start: calls ensureInbox and delivers messages", async () => {
-		mockInboxReadNew.mockReturnValue([
-			{ filename: "001.json", message: { id: "1", from: "alice", text: "ping", ts: 1 } },
-		]);
+	it("inits and drains on session_start", async () => {
+		const inbound: InboundMessage[] = [
+			{ id: "001.json", from: "alice", text: "ping", ts: 1 },
+		];
+		sendTransport.receive.mockReturnValue(inbound);
 
-		const handlers = api.eventHandlers.get("session_start") ?? [];
-		for (const h of handlers) await h();
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
 
-		expect(mockEnsureInbox).toHaveBeenCalledWith(SELF_RECORD.id);
+		expect(sendTransport.init).toHaveBeenCalledWith(SELF.id);
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("ping"),
 			expect.anything(),
 		);
-		expect(mockInboxAck).toHaveBeenCalledWith(SELF_RECORD.id, "001.json");
-		expect(mockInboxPrune).toHaveBeenCalled();
+		expect(sendTransport.ack).toHaveBeenCalledWith(SELF.id, "001.json");
+		expect(sendTransport.prune).toHaveBeenCalled();
 	});
 
 	it("drains on agent_end", async () => {
-		mockInboxReadNew.mockReturnValue([
-			{ filename: "002.json", message: { id: "2", from: "bob", text: "pong", ts: 2 } },
+		sendTransport.receive.mockReturnValue([
+			{ id: "002.json", from: "bob", text: "pong", ts: 2 },
 		]);
-
-		const handlers = api.eventHandlers.get("agent_end") ?? [];
-		for (const h of handlers) await h();
-
+		for (const h of api.eventHandlers.get("agent_end") ?? []) await h();
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("pong"),
 			expect.anything(),
@@ -359,11 +278,7 @@ describe("inbox draining", () => {
 
 	it("does nothing when no self record", async () => {
 		mockReadAll.mockReturnValue([]);
-
-		const handlers = api.eventHandlers.get("session_start") ?? [];
-		for (const h of handlers) await h();
-
-		expect(mockEnsureInbox).not.toHaveBeenCalled();
-		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		expect(sendTransport.init).not.toHaveBeenCalled();
 	});
 });

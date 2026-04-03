@@ -125,36 +125,39 @@ describe("recentOutputFromEvents", () => {
 
 describe("buildArgList", () => {
 	it("always includes --mode rpc", () => {
-		expect(buildArgList({})).toEqual(["--mode", "rpc", "--no-session"]);
+		const args = buildArgList({ name: "test-agent" });
+		expect(args).toContain("--mode");
+		expect(args).toContain("rpc");
 	});
 
 	it("includes model flag when provided", () => {
-		const args = buildArgList({ model: "anthropic/claude-sonnet" });
+		const args = buildArgList({ name: "test-agent", model: "anthropic/claude-sonnet" });
 		expect(args).toContain("--models");
 		expect(args).toContain("anthropic/claude-sonnet");
 	});
 
 	it("includes tools flag when provided", () => {
-		const args = buildArgList({ tools: ["read", "bash"] });
+		const args = buildArgList({ name: "test-agent", tools: ["read", "bash"] });
 		expect(args).toContain("--tools");
 		expect(args).toContain("read,bash");
 	});
 
 	it("uses --session-dir when provided", () => {
-		const args = buildArgList({ sessionDir: "/tmp/my-session" });
+		const args = buildArgList({ name: "test-agent", sessionDir: "/tmp/my-session" });
 		expect(args).toContain("--session-dir");
 		expect(args).toContain("/tmp/my-session");
-		expect(args).not.toContain("--no-session");
 	});
 
-	it("uses --no-session when no sessionDir", () => {
-		const args = buildArgList({});
-		expect(args).toContain("--no-session");
-		expect(args).not.toContain("--session-dir");
+	it("uses default session dir when no sessionDir provided", () => {
+		const args = buildArgList({ name: "my-agent" });
+		expect(args).toContain("--session-dir");
+		expect(args.some(a => a.includes("subagents") && a.includes("my-agent"))).toBe(true);
+		expect(args).not.toContain("--no-session");
 	});
 
 	it("combines multiple flags correctly", () => {
 		const args = buildArgList({
+			name: "test-agent",
 			model: "mymodel",
 			tools: ["read"],
 			sessionDir: "/tmp/s",

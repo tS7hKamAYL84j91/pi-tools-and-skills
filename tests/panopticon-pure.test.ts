@@ -10,7 +10,8 @@ import {
 	formatAge,
 	nameTaken,
 	pickName,
-	formatMaildirEntries,
+	readSessionLog,
+	formatSessionLog,
 	sortRecords,
 } from "../extensions/pi-panopticon.js";
 
@@ -134,38 +135,59 @@ describe("pickName", () => {
 	});
 });
 
-// ── formatMaildirEntries ─────────────────────────────────────────
+// ── formatSessionLog ─────────────────────────────────────────────
 
-describe("formatMaildirEntries", () => {
+describe("formatSessionLog", () => {
 	it("returns placeholder for empty array", () => {
-		expect(formatMaildirEntries([])).toBe("(no activity recorded yet)");
+		expect(formatSessionLog([])).toBe("(no activity recorded yet)");
 	});
 
-	it("formats a single entry with timestamp and event", () => {
-		const entry = { ts: new Date("2025-01-01T12:34:56Z").getTime(), event: "session_start" };
-		const result = formatMaildirEntries([entry]);
-		expect(result).toContain("[12:34:56]");
-		expect(result).toContain("session_start");
-	});
-
-	it("includes extra key=value pairs beyond ts and event", () => {
-		const entry = {
-			ts: new Date("2025-01-01T00:00:00Z").getTime(),
+	it("formats a tool_call event", () => {
+		const events = [{
+			ts: new Date("2025-01-01T12:34:56Z").getTime(),
 			event: "tool_call",
 			tool: "bash",
-			args: "echo hi",
-		};
-		const result = formatMaildirEntries([entry]);
+			args: '{"command":"echo hi"}',
+		}];
+		const result = formatSessionLog(events);
+		expect(result).toContain("[12:34:56]");
+		expect(result).toContain("tool_call");
 		expect(result).toContain("tool=bash");
-		expect(result).toContain("args=echo hi");
 	});
 
-	it("truncates long string values to 120 chars", () => {
-		const longVal = "x".repeat(200);
-		const entry = { ts: Date.now(), event: "test", payload: longVal };
-		const result = formatMaildirEntries([entry]);
-		expect(result).toContain("payload=" + "x".repeat(120));
-		expect(result).not.toContain("x".repeat(121));
+	it("formats a message event", () => {
+		const events = [{
+			ts: new Date("2025-01-01T00:00:00Z").getTime(),
+			event: "message",
+			role: "user",
+			text: "hello world",
+		}];
+		const result = formatSessionLog(events);
+		expect(result).toContain("role=user");
+		expect(result).toContain('text="hello world"');
+	});
+
+	it("formats a tool_result event", () => {
+		const events = [{
+			ts: Date.now(),
+			event: "tool_result",
+			tool: "read",
+			summary: "file contents here",
+			isError: false,
+		}];
+		const result = formatSessionLog(events);
+		expect(result).toContain("tool_result");
+		expect(result).toContain("tool=read");
+		expect(result).toContain('summary="file contents here"');
+	});
+});
+
+// ── readSessionLog ───────────────────────────────────────────────
+
+describe("readSessionLog", () => {
+	it("returns empty array for non-existent file", () => {
+		const events = readSessionLog("/tmp/nonexistent-session-file.jsonl", 50);
+		expect(events).toEqual([]);
 	});
 });
 

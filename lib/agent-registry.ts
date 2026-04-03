@@ -40,8 +40,9 @@ export interface AgentRecord {
 	heartbeat: number;
 	status: AgentStatus;
 	task?: string;
-	inboxCapable?: boolean;
 	pendingMessages?: number;
+	sessionDir?: string;
+	sessionFile?: string;
 }
 
 export interface SocketCommand {
@@ -83,6 +84,12 @@ export function readAllAgentRecords(): AgentRecord[] {
 	} catch { return []; }
 }
 
+export function writeAgentRecord(record: AgentRecord): void {
+	ensureRegistryDir();
+	const path = join(REGISTRY_DIR, `${record.id}.json`);
+	writeFileSync(path, JSON.stringify(record, null, 2), "utf-8");
+}
+
 // ── Inbox Maildir IO ────────────────────────────────────────────
 
 export interface InboxMessage {
@@ -99,13 +106,6 @@ export function ensureInbox(agentId: string): string {
 		mkdirSync(join(inboxPath, sub), { recursive: true });
 	}
 	return inboxPath;
-}
-
-export function inboxPendingCount(agentId: string): number {
-	try {
-		return readdirSync(join(REGISTRY_DIR, agentId, "inbox", "new"))
-			.filter((f) => f.endsWith(".json")).length;
-	} catch { return 0; }
 }
 
 export function inboxReadNew(agentId: string): { filename: string; message: InboxMessage }[] {

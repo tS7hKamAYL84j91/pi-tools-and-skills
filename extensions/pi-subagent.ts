@@ -27,7 +27,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 // ── PI binary ───────────────────────────────────────────────────
@@ -112,6 +112,12 @@ interface ArgParams {
 	model?: string;
 	tools?: string[];
 	sessionDir?: string;
+	name: string;
+}
+
+/** Default session directory for subagents. */
+export function defaultSubagentSessionDir(name: string): string {
+	return join(homedir(), ".pi", "agent", "sessions", "subagents", name);
 }
 
 /**
@@ -122,11 +128,9 @@ export function buildArgList(p: ArgParams): string[] {
 	const args = ["--mode", "rpc"];
 	if (p.model) args.push("--models", p.model);
 	if (p.tools?.length) args.push("--tools", p.tools.join(","));
-	if (p.sessionDir) {
-		args.push("--session-dir", p.sessionDir);
-	} else {
-		args.push("--no-session");
-	}
+	// Always use a session dir — subagents need JSONL for agent_peek
+	const sessionDir = p.sessionDir ?? defaultSubagentSessionDir(p.name);
+	args.push("--session-dir", sessionDir);
 	return args;
 }
 
