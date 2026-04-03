@@ -19,6 +19,7 @@ import {
 	type AgentRecord,
 	readAllAgentRecords,
 	writeAgentRecord,
+	onAgentCleanup,
 } from "../lib/agent-registry.js";
 import type { MessageTransport } from "../lib/message-transport.js";
 import { createMaildirTransport } from "../lib/transports/maildir.js";
@@ -123,6 +124,8 @@ export function createMessagingExtension(config: MessagingConfig) {
 				updatePendingCount();
 				drainInbox();
 			}
+			// Register transport cleanup for dead-agent reaping
+			onAgentCleanup((agentId) => config.send.cleanup(agentId));
 		});
 
 		pi.on("agent_end", async () => drainInbox());

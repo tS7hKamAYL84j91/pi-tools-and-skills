@@ -12,6 +12,7 @@ import {
 	readdirSync,
 	readFileSync,
 	renameSync,
+	rmSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -167,6 +168,17 @@ class MaildirTransport implements MessageTransport {
 			).length;
 		} catch {
 			return 0;
+		}
+	}
+
+	cleanup(agentId: string): void {
+		try {
+			rmSync(join(REGISTRY_DIR, agentId, "inbox"), {
+				recursive: true,
+				force: true,
+			});
+		} catch {
+			/* best-effort */
 		}
 	}
 }

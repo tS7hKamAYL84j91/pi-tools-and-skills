@@ -1,5 +1,5 @@
 /**
- * Pi Panopticon — Agent Registry & Monitoring
+ * Pi Panopticon - Agent Registry & Monitoring
  *
  * Central observation point for all running pi agents.
  * Every pi instance registers itself on startup and heartbeats its status.
@@ -37,17 +37,16 @@ import {
 	STALE_MS,
 	isPidAlive,
 	ensureRegistryDir,
+	runAgentCleanup,
 } from "../lib/agent-registry.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
 const HEARTBEAT_MS = 5_000;
 
-// Panopticon socket wire protocol — local to this extension
+// Panopticon socket wire protocol - local to this extension
 interface SocketCommand {
-	type: "cast" | "call" | "peek";
-	from?: string;
-	text?: string;
+	type: "peek";
 	lines?: number;
 }
 
@@ -131,8 +130,8 @@ export function agentCleanupPaths(id: string): string[] {
 
 function cleanupAgentFiles(id: string): void {
 	try { unlinkSync(join(REGISTRY_DIR, `${id}.sock`)); } catch { /* */ }
-	// NOTE: Do NOT delete REGISTRY_DIR/{id}/ — that’s messaging infrastructure
-	// owned by the transport. Panopticon only cleans its own artifacts.
+	// Let registered extensions clean up their own storage (e.g. transport inboxes)
+	runAgentCleanup(id);
 }
 
 // ── Powerline widget ────────────────────────────────────────────
@@ -243,7 +242,7 @@ async function openAgentOverlay(
 		container.addChild(border());
 		container.addChild(new Text(
 			theme.fg("accent", theme.bold(" Agent Panopticon")) +
-			theme.fg("dim", ` — ${records.length} agent${records.length !== 1 ? "s" : ""}`),
+			theme.fg("dim", ` - ${records.length} agent${records.length !== 1 ? "s" : ""}`),
 			1, 0,
 		));
 		container.addChild(new Text(
@@ -306,7 +305,7 @@ async function showAgentDetail(
 			["Transport", rec.socket ? "⚡ Unix socket" : "none"],
 			["Messages",  `pending: ${pending}`],
 			["Uptime",    formatAge(rec.startedAt)],
-			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "—"],
+			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "-"],
 		];
 		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
 		for (const [label, value] of details) row(label, value);
@@ -417,18 +416,6 @@ export default function (pi: ExtensionAPI) {
 	function handleSocketCommand(cmd: SocketCommand, conn: net.Socket): void {
 		const reply = (payload: object) => conn.end(`${JSON.stringify(payload)}\n`);
 		switch (cmd.type) {
-			case "cast": {
-				const from = cmd.from ?? "unknown";
-				const text = cmd.text ?? "";
-				if (!text) { reply({ ok: false, error: "Empty message" }); return; }
-				try {
-					pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
-					reply({ ok: true });
-				} catch (err) {
-					reply({ ok: false, error: String(err) });
-				}
-				break;
-			}
 			case "peek": {
 				const events = record?.sessionFile ? readSessionLog(record.sessionFile, cmd.lines ?? 50) : [];
 				reply({ ok: true, events });

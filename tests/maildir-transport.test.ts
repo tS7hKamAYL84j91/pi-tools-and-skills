@@ -25,6 +25,7 @@ vi.mock("node:fs", () => ({
 	readdirSync: vi.fn(),
 	renameSync: vi.fn(),
 	unlinkSync: vi.fn(),
+	rmSync: vi.fn(),
 }));
 
 vi.mock("node:crypto", () => ({
@@ -54,6 +55,9 @@ const mockRenameSync = nodefs.renameSync as MockedFunction<
 >;
 const mockUnlinkSync = nodefs.unlinkSync as MockedFunction<
 	typeof nodefs.unlinkSync
+>;
+const mockRmSync = nodefs.rmSync as MockedFunction<
+	typeof nodefs.rmSync
 >;
 
 const PEER: AgentRecord = {
@@ -273,5 +277,34 @@ describe("pendingCount", () => {
 			throw new Error("ENOENT");
 		});
 		expect(transport.pendingCount("my-id")).toBe(0);
+	});
+});
+
+// ── cleanup ──────────────────────────────────────────────────────
+
+describe("cleanup", () => {
+	it("calls rmSync on the agent's inbox directory", () => {
+		transport.cleanup("my-id");
+		expect(mockRmSync).toHaveBeenCalledWith(
+			"/fake/.pi/agents/my-id/inbox",
+			{ recursive: true, force: true },
+		);
+	});
+
+	it("does not throw when directory does not exist", () => {
+		mockRmSync.mockImplementation(() => {
+			const err = new Error("ENOENT") as NodeJS.ErrnoException;
+			err.code = "ENOENT";
+			throw err;
+		});
+		expect(() => transport.cleanup("my-id")).not.toThrow();
+	});
+
+	it("uses correct path under REGISTRY_DIR", () => {
+		transport.cleanup("agent-123");
+		expect(mockRmSync).toHaveBeenCalledWith(
+			"/fake/.pi/agents/agent-123/inbox",
+			expect.any(Object),
+		);
 	});
 });

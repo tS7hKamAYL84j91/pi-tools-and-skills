@@ -58,4 +58,7 @@ export interface MessageTransport {
 
 	/** Return the number of pending inbound messages for `agentId`. */
 	pendingCount(agentId: string): number;
+
+	/** Remove all transport storage for a dead agent (inbox dirs, queues, etc.). */
+	cleanup(agentId: string): void;
 }

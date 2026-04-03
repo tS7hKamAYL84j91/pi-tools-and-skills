@@ -11,6 +11,7 @@ vi.mock("../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
 	readAllAgentRecords: vi.fn(),
 	writeAgentRecord: vi.fn(),
+	onAgentCleanup: vi.fn(),
 }));
 
 vi.mock("../lib/transports/maildir.js", () => ({
@@ -64,6 +65,7 @@ function makeMockTransport(): MessageTransport & {
 	prune: MockedFunction<MessageTransport["prune"]>;
 	init: MockedFunction<MessageTransport["init"]>;
 	pendingCount: MockedFunction<MessageTransport["pendingCount"]>;
+	cleanup: MockedFunction<MessageTransport["cleanup"]>;
 } {
 	return {
 		send: vi.fn(),
@@ -72,6 +74,7 @@ function makeMockTransport(): MessageTransport & {
 		prune: vi.fn(),
 		init: vi.fn(),
 		pendingCount: vi.fn().mockReturnValue(0),
+		cleanup: vi.fn(),
 	};
 }
 
@@ -277,6 +280,24 @@ describe("self-record caching", () => {
 		mockReadAll.mockReturnValue([SELF, PEER_A]);
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
 		expect(getText(result)).toContain("Sent to alice");
+	});
+});
+
+// ── Cleanup hook ──────────────────────────────────────────────
+
+describe("cleanup hook", () => {
+	it("registers a cleanup hook on session_start that delegates to transport.cleanup", async () => {
+		const mockOnCleanup = registry.onAgentCleanup as MockedFunction<typeof registry.onAgentCleanup>;
+		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+
+		// onAgentCleanup should have been called with a function
+		expect(mockOnCleanup).toHaveBeenCalledTimes(1);
+		const hook = mockOnCleanup.mock.calls[0]?.[0];
+		expect(typeof hook).toBe("function");
+
+		// Invoking the hook should delegate to transport.cleanup
+		hook?.("dead-agent-id");
+		expect(sendTransport.cleanup).toHaveBeenCalledWith("dead-agent-id");
 	});
 });
 

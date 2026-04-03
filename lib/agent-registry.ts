@@ -45,6 +45,23 @@ export interface AgentRecord {
 	sessionFile?: string;
 }
 
+// ── Dead-agent cleanup hooks ────────────────────────────────────
+
+type CleanupHook = (agentId: string) => void;
+const cleanupHooks: CleanupHook[] = [];
+
+/** Register a callback invoked when a dead agent is reaped. */
+export function onAgentCleanup(hook: CleanupHook): void {
+	cleanupHooks.push(hook);
+}
+
+/** Run all registered cleanup hooks for a dead agent. */
+export function runAgentCleanup(agentId: string): void {
+	for (const hook of cleanupHooks) {
+		try { hook(agentId); } catch { /* best-effort */ }
+	}
+}
+
 // ── Pure helpers ────────────────────────────────────────────────
 
 export function isPidAlive(pid: number): boolean {

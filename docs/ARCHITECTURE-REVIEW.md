@@ -1,55 +1,59 @@
 # Architecture Review: Extension Abstraction Boundaries
 
-_2026-04-03 — Post-refactor audit of pi-panopticon, pi-messaging, pi-subagent_
+_2026-04-03 - Post-parallel-refactor audit of pi-panopticon, pi-messaging, pi-subagent_
 
-## 1. Intended Architecture
+---
 
-Three extensions with distinct responsibilities, sharing types through a common lib layer:
+## 1. Current Architecture
+
+Three extensions with distinct responsibilities, sharing types through a lean lib layer:
 
 ```mermaid
 graph TB
     subgraph "Extensions (runtime)"
-        PAN["pi-panopticon<br/><i>Registry · Monitoring · Socket server</i>"]
-        MSG["pi-messaging<br/><i>agent_send · agent_broadcast · /send</i>"]
-        SUB["pi-subagent<br/><i>spawn_agent · rpc_send · kill_agent</i>"]
+        PAN["pi-panopticon · 612 lines<br/><i>Registry · Monitoring · Socket server</i>"]
+        MSG["pi-messaging · 252 lines<br/><i>agent_send · agent_broadcast · /send</i>"]
+        SUB["pi-subagent · 555 lines<br/><i>spawn_agent · rpc_send · kill_agent</i>"]
     end
 
-    subgraph "Shared lib (compile-time)"
-        AR["agent-registry.ts<br/><i>AgentRecord · IO helpers</i>"]
-        MT["message-transport.ts<br/><i>MessageTransport interface</i>"]
-        SL["session-log.ts<br/><i>JSONL reader · formatter</i>"]
-        TR["tool-result.ts<br/><i>ok() · fail()</i>"]
+    subgraph "Shared lib"
+        AR["agent-registry.ts · 95 lines<br/><i>AgentRecord · CRUD · cleanup hooks</i>"]
+        MT["message-transport.ts · 64 lines<br/><i>MessageTransport interface</i>"]
+        SL["session-log.ts · 90 lines<br/><i>JSONL reader · formatter</i>"]
+        TR["tool-result.ts · 22 lines<br/><i>ok() · fail()</i>"]
     end
 
     subgraph "Transports"
-        MD["maildir.ts<br/><i>MaildirTransport</i>"]
+        MD["maildir.ts · 190 lines<br/><i>MaildirTransport + private inbox IO</i>"]
     end
 
-    PAN --> AR
-    PAN --> SL
-    PAN --> TR
-    MSG --> AR
-    MSG --> MT
-    MSG --> TR
-    SUB --> TR
-    MD --> AR
-    MD --> MT
+    PAN -->|"types, CRUD, constants"| AR
+    PAN -->|"readSessionLog"| SL
+    PAN -->|"ok()"| TR
+    MSG -->|"readAllAgentRecords,<br/>writeAgentRecord"| AR
+    MSG -->|"MessageTransport"| MT
+    MSG -->|"ok()"| TR
+    MSG -->|"createMaildirTransport"| MD
+    SUB -->|"ok(), fail()"| TR
+    MD -->|"REGISTRY_DIR,<br/>type AgentRecord"| AR
+    MD -.->|"implements"| MT
+    MT -->|"type AgentRecord"| AR
 ```
 
-**Intended ownership:**
+### Ownership after refactor
 
-| Concern | Owner |
-|---------|-------|
-| Who's alive (registry) | panopticon |
-| What happened (activity) | pi core session JSONL |
-| Message delivery | messaging → transport |
-| Spawning child agents | subagent |
+| Concern | Owner | Storage |
+|---------|-------|---------|
+| Agent record CRUD | panopticon (writes), messaging (updates `pendingMessages`) | `~/.pi/agents/{id}.json` |
+| Activity log | pi core | `~/.pi/agent/sessions/.../*.jsonl` |
+| Socket server | panopticon | `~/.pi/agents/{id}.sock` |
+| Message delivery (durable) | messaging → MaildirTransport | `~/.pi/agents/{id}/inbox/` |
+| Message delivery (socket) | removed (YAGNI) — future: SocketTransport | — |
+| Spawning child agents | subagent | stdin/stdout RPC |
 
 ---
 
 ## 2. Actual Dependency Graph
-
-When we trace every `import` and runtime coupling:
 
 ```mermaid
 graph TB
@@ -67,184 +71,63 @@ graph TB
         MD["transports/maildir.ts"]
     end
 
-    FS["~/.pi/agents/ <br/><i>filesystem</i>"]
-
-    PAN -->|"types, IO, constants"| AR
-    PAN -->|"readSessionLog"| SL
+    PAN -->|"AgentRecord, AgentStatus,<br/>REGISTRY_DIR, STALE_MS,<br/>isPidAlive, ensureRegistryDir"| AR
+    PAN -->|"readSessionLog,<br/>formatSessionLog"| SL
     PAN -->|"ok()"| TR
-    MSG -->|"readAllAgentRecords,<br/>writeAgentRecord"| AR
+    MSG -->|"AgentRecord,<br/>readAllAgentRecords,<br/>writeAgentRecord"| AR
     MSG -->|"MessageTransport"| MT
     MSG -->|"ok()"| TR
     MSG -->|"createMaildirTransport"| MD
     SUB -->|"ok(), fail()"| TR
-
-    MD -->|"ensureInbox, inboxReadNew,<br/>inboxAcknowledge, inboxPruneCur"| AR
+    MD -->|"REGISTRY_DIR,<br/>type AgentRecord"| AR
     MT -->|"type AgentRecord"| AR
 
-    PAN -.->|"ensureInbox(selfId)"| AR
-    PAN -.->|"rmSync agent dir<br/>(incl. inbox/)"| FS
     PAN -.->|"handles 'cast' cmd<br/>→ sendUserMessage"| MSG
-
-    MSG -.->|"finds self via<br/>PID scan"| AR
-    MSG -.->|"writes pendingMessages<br/>to AgentRecord"| AR
 
     style PAN fill:#e8f5e9
     style MSG fill:#e3f2fd
     style SUB fill:#fff3e0
 
-    linkStyle 9 stroke:#e53935,stroke-width:2
     linkStyle 10 stroke:#e53935,stroke-width:2
-    linkStyle 11 stroke:#e53935,stroke-width:2
-    linkStyle 12 stroke:#ff9800,stroke-width:2
-    linkStyle 13 stroke:#ff9800,stroke-width:2
 ```
 
-Dashed red/orange lines = abstraction bleeds.
+All solid lines are clean dependencies. The single dashed red line is the one remaining abstraction bleed.
 
 ---
 
-## 3. Abstraction Bleeds Found
+## 3. Bleeds Resolved (this session)
 
-### 🔴 BLEED-1: Panopticon's socket server handles message delivery
+### ✅ BLEED-2 (was 🔴): Maildir IO extracted from agent-registry
 
-**Location:** `pi-panopticon.ts:402–416` (`handleSocketCommand` → `case "cast"`)
+**Fix applied (T-120):** `ensureInbox`, `inboxReadNew`, `inboxAcknowledge`, `inboxPruneCur` and the `InboxMessage` interface moved from `lib/agent-registry.ts` into `lib/transports/maildir.ts` as **private** functions. The transport is now fully self-contained.
 
-```typescript
-// In panopticon — a MONITORING extension
-case "cast": {
-    pi.sendUserMessage(`[from ${from}]: ${text}`, { deliverAs: "followUp" });
-    reply({ ok: true });
-}
-```
+**Before:** agent-registry (139 lines, 14 exports) included Maildir plumbing.
+**After:** agent-registry (95 lines, 10 exports) is purely about the agent record.
 
-**Problem:** Panopticon receives messages from peers via its Unix socket and injects them into the user's conversation using `sendUserMessage`. This is **message delivery** — a messaging concern — living inside the monitoring extension. The messaging extension (`pi-messaging.ts`) has its own `drainInbox()` that does the same thing for Maildir messages.
+### ✅ BLEED-3 (was 🔴): Panopticon no longer manages messaging infrastructure
 
-**Consequence:** Two independent message delivery paths exist:
-1. **Socket path** → panopticon's `handleSocketCommand("cast")` → immediate
-2. **Maildir path** → messaging's `drainInbox()` → deferred
+**Fix applied (T-121):**
+- Removed `ensureInbox(selfId)` from panopticon's `session_start`.
+- `cleanupAgentFiles` now only deletes `.json` and `.sock` - no longer `rmSync`s the inbox directory.
+- New pure function `agentCleanupPaths(id)` returns exactly the two paths panopticon owns, pinned by tests.
 
-Neither knows about the other. Message ordering is undefined across the two paths.
+### ✅ BLEED-4 (was 🟡): Socket types are local to panopticon
 
-```mermaid
-sequenceDiagram
-    participant Peer as Peer Agent
-    participant Sock as Panopticon Socket
-    participant Inbox as Maildir Inbox
-    participant Drain as Messaging drainInbox
-    participant User as User Conversation
+**Fix applied (T-121):** `SocketCommand` interface and `SOCKET_TIMEOUT_MS` constant moved from agent-registry to local definitions in `pi-panopticon.ts`.
 
-    Note over Sock,Drain: Two independent delivery paths
+### ✅ BLEED-5 (was 🟡): Messaging caches self-identity
 
-    Peer->>Sock: cast {from, text}
-    Sock->>User: sendUserMessage (immediate)
-
-    Peer->>Inbox: write to new/
-    Note over Inbox: survives crash
-    Drain->>Inbox: read new/
-    Drain->>User: sendUserMessage (deferred)
-```
-
-**Severity:** High — message delivery has two owners.
+**Fix applied (T-122):** `cachedSelf: AgentRecord | undefined` is populated eagerly on `session_start`. `getSelfRecord()` returns the cached record on subsequent calls. `updatePendingCount()` keeps the cache in sync after writes. Eliminates repeated PID scans.
 
 ---
 
-### 🔴 BLEED-2: Inbox Maildir IO lives in agent-registry
+## 4. Remaining Bleeds
 
-**Location:** `lib/agent-registry.ts:95–139`
+### ✅ BLEED-1 (was 🔴): Socket `cast` handler removed
 
-```
-agent-registry.ts exports:
-  ├── ensureInbox()       ← Maildir concern
-  ├── inboxReadNew()      ← Maildir concern
-  ├── inboxAcknowledge()  ← Maildir concern
-  └── inboxPruneCur()     ← Maildir concern
-```
+**Fix applied:** The `cast` case was removed from `handleSocketCommand`. `SocketCommand` type trimmed to `{ type: "peek"; lines?: number }`. The dual delivery path no longer exists - message delivery is exclusively via messaging's transport layer.
 
-**Problem:** The shared registry module contains four Maildir-specific functions. These are transport implementation details — they belong in the Maildir transport, not in the registry that's supposed to be transport-agnostic.
-
-**Consequence:** The `MessageTransport` interface was designed as a DIP boundary, but the actual Maildir IO bypasses it by living in the shared layer. Both `MaildirTransport` (correctly) and `panopticon` (incorrectly) import from here.
-
-```mermaid
-graph LR
-    subgraph "Should be"
-        MT2["MessageTransport"] --> MD2["MaildirTransport<br/><i>owns all Maildir IO</i>"]
-    end
-
-    subgraph "Actually is"
-        AR2["agent-registry.ts<br/><i>has ensureInbox, inboxReadNew,<br/>inboxAcknowledge, inboxPruneCur</i>"]
-        MD3["MaildirTransport"] --> AR2
-        PAN2["Panopticon"] --> AR2
-    end
-
-    style AR2 fill:#ffcdd2
-```
-
-**Severity:** High — violates the transport abstraction the team explicitly designed.
-
----
-
-### 🔴 BLEED-3: Panopticon creates inboxes and cleans up messaging infrastructure
-
-**Location:** `pi-panopticon.ts:447` and `pi-panopticon.ts:118–120`
-
-```typescript
-// session_start — panopticon creates a messaging inbox
-ensureInbox(selfId);
-
-// cleanupAgentFiles — panopticon deletes messaging infrastructure
-function cleanupAgentFiles(id: string): void {
-    unlinkSync(join(REGISTRY_DIR, `${id}.sock`));
-    rmSync(join(REGISTRY_DIR, id), { recursive: true, force: true });
-    // ↑ This recursively deletes the inbox/ directory tree
-}
-```
-
-**Problem:** Panopticon creates the Maildir inbox on startup and destroys it when cleaning up dead agents. This means the monitoring extension manages the messaging extension's storage lifecycle.
-
-**Consequence:** If the transport changes from Maildir to Redis, panopticon would still be creating empty Maildir directories and recursively deleting them — operating on infrastructure that no longer exists.
-
-**Severity:** High — ownership of storage lifecycle is split across extensions.
-
----
-
-### 🟡 BLEED-4: SocketCommand and SOCKET_TIMEOUT_MS in agent-registry
-
-**Location:** `lib/agent-registry.ts:26,48`
-
-```typescript
-export const SOCKET_TIMEOUT_MS = 3_000;
-
-export interface SocketCommand {
-    type: "cast" | "call" | "peek";
-    from?: string;
-    text?: string;
-    lines?: number;
-}
-```
-
-**Problem:** These are exclusively consumed by panopticon's socket server. The `SocketCommand` type (with `cast`, `call`, `peek` variants) describes panopticon's wire protocol, not a shared registry concept. The constant `SOCKET_TIMEOUT_MS` is a socket server tuning parameter.
-
-**Severity:** Medium — misplaced types, no functional consequence.
-
----
-
-### 🟡 BLEED-5: Messaging discovers itself via PID scan
-
-**Location:** `pi-messaging.ts:51–53`
-
-```typescript
-function getSelfRecord(): AgentRecord | undefined {
-    return readAllAgentRecords().find((r) => r.pid === process.pid);
-}
-```
-
-**Problem:** Messaging reads the entire `~/.pi/agents/` directory and scans every JSON file to find its own record, matching by PID. This is called on every `agent_send`, `agent_broadcast`, `drainInbox`, and `updatePendingCount` — at least 9 call sites.
-
-Panopticon knows its own `selfId` from the moment it creates it (`${process.pid}-${Date.now().toString(36)}`), but there's no mechanism to share this with messaging.
-
-**Consequence:** O(n) filesystem reads per tool call. Fragile if two extensions in the same process somehow register different records (unlikely but architecturally unsound).
-
-**Severity:** Medium — performance cost, implicit coupling on PID uniqueness.
+If socket-speed delivery is needed in the future, the correct approach is to implement a `SocketTransport` that satisfies `MessageTransport` and wire it into `MessagingConfig`.
 
 ---
 
@@ -255,127 +138,166 @@ Panopticon knows its own `selfId` from the moment it creates it (`${process.pid}
 ```typescript
 export interface AgentRecord {
     // ...registry fields...
-    pendingMessages?: number;  // ← messaging concept
+    pendingMessages?: number;  // ← messaging concept in registry schema
 }
 ```
 
-**Problem:** The registry schema includes a messaging-specific field. Messaging writes it; panopticon reads and displays it. This was an intentional design decision (agreed in the planning docs) but it does mean the registry type is aware of messaging.
+**Status:** Unchanged. Messaging writes it; panopticon reads and displays it. This is a pragmatic trade-off: it avoids cross-extension function calls by using the shared record as a message bus. Well-documented, accepted.
 
-**Severity:** Low — pragmatic trade-off, well-documented. Would become a problem if more extensions want to stash data in AgentRecord (leads to a god-type).
+**Risk:** If more extensions want to stash domain data in `AgentRecord`, it becomes a god-type. Mitigate by keeping it to `pendingMessages` only and documenting the pattern.
 
 ---
 
-### 🟢 CLEAN: pi-subagent is fully decoupled
+### 🟡 BLEED-7 (new): Duplicate `readAllRecords` implementations
 
-Subagent has zero imports from panopticon or messaging. Its only shared dependency is `lib/tool-result.ts`. It communicates with spawned agents via stdin/stdout RPC — a protocol that's entirely internal. Spawned agents inherit panopticon and messaging via pi's global extension loading, not via code coupling.
+**Location:** Panopticon has a private `readAllRecords()` (lines 108-122) that reads + classifies + cleans up dead agents. Agent-registry exports `readAllAgentRecords()` (lines 62-76) that reads + filters dead (without deleting).
 
 ```mermaid
 graph LR
-    SUB["pi-subagent"] -->|"ok(), fail()"| TR["tool-result.ts"]
-    SUB -.->|"spawns process<br/>inherits extensions"| CHILD["Child pi agent"]
-    CHILD -.->|"registers via"| PAN["panopticon"]
-    CHILD -.->|"gets inbox via"| MSG["messaging"]
-
-    style SUB fill:#c8e6c9
+    subgraph "panopticon (private)"
+        RAR1["readAllRecords()<br/><i>reads + classifies + deletes dead + cleans .sock</i>"]
+    end
+    subgraph "agent-registry (shared)"
+        RAR2["readAllAgentRecords()<br/><i>reads + filters dead (no cleanup)</i>"]
+    end
+    MSG["messaging"] --> RAR2
+    PAN["panopticon"] --> RAR1
+    style RAR1 fill:#fff3e0
+    style RAR2 fill:#e3f2fd
 ```
 
----
+**Why it exists:** Panopticon is the registry owner - it's the only extension that should delete stale `.json` records and `.sock` files. The shared function is a read-only snapshot for consumers. The separation is intentional but creates two divergent code paths that read the same directory.
 
-## 4. Ownership Matrix (Actual vs Intended)
+**Risk:** Bug fixes to record parsing must be applied to both. A consumer calling `readAllAgentRecords()` may see dead records that panopticon hasn't cleaned up yet.
 
-| Concern | Intended Owner | Actual Owner(s) | Bleed? |
-|---------|---------------|-----------------|--------|
-| Agent record CRUD | panopticon | panopticon + messaging (writes `pendingMessages`) | 🟡 minor |
-| Socket server | panopticon | panopticon ✅ | — |
-| Socket message delivery (`cast`) | messaging | **panopticon** | 🔴 |
-| Maildir inbox creation | messaging/transport | **panopticon** + transport | 🔴 |
-| Maildir inbox cleanup | messaging/transport | **panopticon** (`cleanupAgentFiles`) | 🔴 |
-| Maildir IO functions | transport | **agent-registry.ts** | 🔴 |
-| Inbox draining (deferred msgs) | messaging | messaging ✅ | — |
-| `SocketCommand` type | panopticon | **agent-registry.ts** | 🟡 |
-| Self-identity | panopticon (creates ID) | messaging discovers via PID scan | 🟡 |
-| Session JSONL reading | lib/session-log | lib/session-log ✅ | — |
-| Agent spawning | subagent | subagent ✅ | — |
-| RPC protocol | subagent | subagent ✅ | — |
+**Severity:** Low - intentional separation, but warrants a comment or a shared inner reader.
 
 ---
 
-## 5. Root Cause
+## 5. Ownership Matrix (Current)
 
-The bleeds share a common root: **panopticon was the first extension and accumulated responsibilities before messaging was extracted.**
+| Concern | Intended Owner | Actual Owner | Status |
+|---------|---------------|--------------|--------|
+| Agent record schema | shared (agent-registry) | agent-registry ✅ | clean |
+| Agent record write | panopticon | panopticon ✅ | clean |
+| Agent record update (`pendingMessages`) | messaging | messaging → `writeAgentRecord` | 🟡 accepted |
+| Dead agent cleanup | panopticon | panopticon (`.json` + `.sock` only) ✅ | clean |
+| Socket server | panopticon | panopticon ✅ | clean |
+| Socket server commands | panopticon | panopticon (`peek` only - `cast` removed) ✅ | clean |
+| Maildir inbox IO | transport | `transports/maildir.ts` (private) ✅ | clean |
+| Inbox storage lifecycle | transport | transport creates + `cleanup()` via hook ✅ | clean |
+| Inbox draining | messaging | messaging ✅ | clean |
+| Session JSONL reading | shared (session-log) | `lib/session-log.ts` ✅ | clean |
+| Self-identity | panopticon creates, messaging caches | messaging caches on session_start ✅ | clean |
+| Agent spawning | subagent | subagent ✅ | clean |
+| RPC protocol | subagent | subagent ✅ | clean |
+| Tool result types | shared (tool-result) | `lib/tool-result.ts` ✅ | clean |
+
+---
+
+## 6. Open Design Questions
+
+### ✅ Q1: Orphaned inbox cleanup - RESOLVED
+
+Implemented Option A from v2: `cleanup(agentId): void` added to `MessageTransport` interface. MaildirTransport implementation does `rmSync` on the inbox dir. Wired via a cleanup hook registry in `agent-registry.ts`:
 
 ```mermaid
-timeline
-    title Extension evolution
-    section Phase 1
-        Panopticon does everything : Registry, socket, messaging, monitoring
-    section Phase 2
-        Messaging extracted : agent_send, broadcast, Maildir transport
-        But : Socket delivery stayed in panopticon
-        And : Inbox IO stayed in agent-registry (shared)
-        And : Panopticon kept ensureInbox + cleanup
-    section Phase 3 (current)
-        Transport interface added : MessageTransport DIP boundary
-        But : Maildir IO still in agent-registry
-        And : Two delivery paths still exist
+sequenceDiagram
+    participant PAN as Panopticon
+    participant AR as agent-registry
+    participant MSG as Messaging
+    participant TR as MaildirTransport
+
+    Note over MSG: session_start
+    MSG->>AR: onAgentCleanup(hook)
+    Note over AR: stores hook
+
+    Note over PAN: detects dead agent
+    PAN->>AR: runAgentCleanup(id)
+    AR->>MSG: hook(id)
+    MSG->>TR: transport.cleanup(id)
+    TR->>TR: rmSync inbox dir
 ```
+
+### ✅ Q2: Socket `cast` handler - RESOLVED
+
+Implemented Option A: `cast` case removed from `handleSocketCommand`. `SocketCommand` type trimmed to `{ type: "peek"; lines?: number }`. If socket-speed delivery is needed later, implement a `SocketTransport`.
+
+### Q3: Should `readAllRecords` share a common inner reader?
+
+Both `readAllRecords` (panopticon) and `readAllAgentRecords` (agent-registry) parse the same `.json` files. They could share a private `readRawRecords()` that returns all records unparsed/unfiltered, with each consumer applying its own classification/cleanup.
+
+**Recommendation:** Not now - the implementations are short (15 lines each) and their purposes differ enough that forcing a shared inner reader would couple classification logic. Revisit if a bug fix needs to be applied to both.
 
 ---
 
-## 6. Recommended Fixes
+## 7. Module Health Summary
 
-### Fix A: Move Maildir IO into the transport (BLEED-2)
+```mermaid
+graph LR
+    subgraph "✅ Clean boundary"
+        AR["agent-registry.ts<br/>95 lines · 10 exports"]
+        MT["message-transport.ts<br/>64 lines · 3 types"]
+        SL["session-log.ts<br/>90 lines · pure"]
+        TR["tool-result.ts<br/>22 lines · pure"]
+        MD["maildir.ts<br/>190 lines · self-contained"]
+        SUB["pi-subagent.ts<br/>555 lines · zero cross-deps"]
+        MSG["pi-messaging.ts<br/>249 lines · cached identity + cleanup hook"]
+    end
 
-Move `ensureInbox`, `inboxReadNew`, `inboxAcknowledge`, `inboxPruneCur` from `agent-registry.ts` into `transports/maildir.ts`. They're implementation details of the Maildir transport.
+    subgraph "🟡 Minor concerns"
+        PAN["pi-panopticon.ts<br/>625 lines · 4 concerns"]
+    end
 
-**Impact:** `agent-registry.ts` becomes purely about the agent record. Maildir transport becomes self-contained.
-
-### Fix B: Panopticon delegates `cast` to messaging (BLEED-1)
-
-The socket server should not call `sendUserMessage` directly. Instead:
-
-Option 1 — **Panopticon writes to Maildir inbox** when it receives a `cast`, then messaging drains it. Single delivery path.
-
-Option 2 — **Socket becomes a transport** (`SocketTransport`), wired into `MessagingConfig`. The socket server moves to the transport layer.
-
-Option 3 (minimal) — **Panopticon emits an event** that messaging subscribes to. Socket stays in panopticon but delivery moves to messaging.
-
-### Fix C: Panopticon stops managing inboxes (BLEED-3)
-
-- Remove `ensureInbox(selfId)` from panopticon's `session_start`.
-- Make `cleanupAgentFiles` only clean up registry artifacts (`.json`, `.sock`). Add a transport-level cleanup hook or let messaging handle its own cleanup on detection of dead agents.
-
-### Fix D: Move `SocketCommand` and `SOCKET_TIMEOUT_MS` to panopticon (BLEED-4)
-
-These are panopticon's wire protocol types. Define them locally or in a `lib/panopticon-types.ts` if other extensions need them.
-
-### Fix E: Share self-identity across extensions (BLEED-5)
-
-Options:
-- pi's `ExtensionContext` could carry an `agentId` field set during panopticon registration.
-- Simpler: messaging caches `selfId` after first successful lookup instead of scanning every time.
-
-### Priority order:
-
+    style AR fill:#c8e6c9
+    style MT fill:#c8e6c9
+    style SL fill:#c8e6c9
+    style TR fill:#c8e6c9
+    style MD fill:#c8e6c9
+    style SUB fill:#c8e6c9
+    style MSG fill:#c8e6c9
+    style PAN fill:#fff9c4
 ```
-Fix A (Maildir IO → transport)     — clean, low risk, unblocks Fix C
-Fix C (panopticon stops inbox mgmt) — removes ownership split
-Fix D (move socket types)           — trivial cleanup
-Fix E (cache self-identity)         — performance win
-Fix B (unify delivery path)         — highest impact but needs design decision
-```
+
+| Module | Lines | Exports | Purity | Concern count | Verdict |
+|--------|-------|---------|--------|---------------|---------|
+| `agent-registry.ts` | 95 | 10 | mixed (IO) | 1 (registry) | ✅ clean |
+| `message-transport.ts` | 64 | 3 types | pure (interface) | 1 (contract) | ✅ clean |
+| `session-log.ts` | 90 | 3 | pure | 1 (JSONL parsing) | ✅ clean |
+| `tool-result.ts` | 22 | 3 | pure | 1 (helpers) | ✅ clean |
+| `maildir.ts` | 190 | 1 factory | mixed (IO) | 1 (transport) | ✅ clean |
+| `pi-subagent.ts` | 555 | 1 default | mixed (spawn) | 1 (lifecycle) | ✅ clean |
+| `pi-messaging.ts` | 252 | 1 factory + default | mixed (IO) | 1 (delivery) | ✅ clean |
+| `pi-panopticon.ts` | 612 | 1 default + test helpers | mixed (IO + UI) | 4 (registry, socket, widget, overlay) | 🟡 large |
+
+### Panopticon concern count
+
+Panopticon has 4 internal concerns in one file:
+1. **Registry IO** - write/read/classify/cleanup agent records
+2. **Socket server** - Unix socket for `cast` + `peek`
+3. **Powerline widget** - status bar rendering
+4. **Agent overlay** - interactive detail UI
+
+This isn't a bleed (all relate to monitoring), but at 625 lines it's the largest file. If it grows further, splitting into `panopticon-registry.ts`, `panopticon-socket.ts`, and `panopticon-ui.ts` would improve navigability.
 
 ---
 
-## 7. What's Clean
+## 8. Proposed Next Steps
 
-Despite the bleeds, significant architectural progress has been made:
+| Priority | Action | Fixes | Effort |
+|----------|--------|-------|--------|
+| 1 | Consider splitting panopticon if it exceeds ~700 lines (registry, socket, UI) | M |
+| 2 | Add `SocketTransport` if real-time message delivery is needed again | M |
+| 3 | Monitor `AgentRecord` for god-type creep (`pendingMessages` is the only extension field) | — |
 
-- **`MessageTransport` DIP boundary** is well-designed. The interface is minimal and transport-agnostic.
-- **`pi-subagent` is fully decoupled** — zero knowledge of how registry or messaging work.
-- **Session JSONL reading is properly extracted** — `lib/session-log.ts` has no extension dependencies.
-- **`lib/tool-result.ts`** — unified, no duplication.
-- **`AgentRecord` is the single schema** — both extensions read/write the same format.
-- **Factory pattern** (`createMessagingExtension`) allows transport injection at configuration time.
+All critical bleeds are resolved. Remaining work is preventive.
 
-The codebase is in a strong position. The remaining bleeds are all traceable to the original monolithic panopticon and can be resolved incrementally without API changes.
+---
+
+## 9. Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-04-03 (v1) | Initial review: identified BLEED-1 through BLEED-6 |
+| 2026-04-03 (v2) | Post-refactor update: BLEED-2,3,4,5 resolved. Added BLEED-7 (duplicate readers). Added §6 (open questions), §7 (module health), §8 (next steps) |
+| 2026-04-03 (v3) | BLEED-1 resolved (cast removed). Q1 resolved (cleanup hook via `onAgentCleanup`/`runAgentCleanup` + `transport.cleanup`). Q2 resolved (cast removed). 91 tests, all green |
