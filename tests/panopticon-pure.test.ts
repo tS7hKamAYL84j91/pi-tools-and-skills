@@ -10,10 +10,9 @@ import {
 	formatAge,
 	nameTaken,
 	pickName,
-	readSessionLog,
-	formatSessionLog,
 	sortRecords,
 } from "../extensions/pi-panopticon.js";
+import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 
 // ── Fixtures ────────────────────────────────────────────────────
 

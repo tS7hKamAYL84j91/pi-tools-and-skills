@@ -23,14 +23,12 @@ import {
 import type { MessageTransport } from "../lib/message-transport.js";
 import { createMaildirTransport } from "../lib/transports/maildir.js";
 
+import { ok } from "../lib/tool-result.js";
+
 // ── Pure helpers ────────────────────────────────────────────────
 
 function truncate(s: string, max = 200): string {
 	return s.length <= max ? s : `${s.slice(0, max)}\u2026`;
-}
-
-function textResult(text: string, details: Record<string, unknown> = {}) {
-	return { content: [{ type: "text" as const, text }], details };
 }
 
 // ── Config ──────────────────────────────────────────────────────
@@ -45,7 +43,7 @@ export interface MessagingConfig {
 // ── Factory ─────────────────────────────────────────────────────
 
 export function createMessagingExtension(config: MessagingConfig) {
-	return function (pi: ExtensionAPI) {
+	return (pi: ExtensionAPI) => {
 		let selfName: string | undefined;
 
 		// ── Registry helpers ────────────────────────────────────
@@ -87,7 +85,7 @@ export function createMessagingExtension(config: MessagingConfig) {
 		}
 
 		function notFound(name: string) {
-			return textResult(
+			return ok(
 				`No agent named "${name}". Known peers: ${peerNames()}`,
 				{ name, error: "not_found" },
 			);
@@ -177,11 +175,11 @@ export function createMessagingExtension(config: MessagingConfig) {
 				const preview = truncate(params.message);
 				const d = await config.send.send(peer, from, params.message);
 
-				if (!d.accepted) return textResult(
+				if (!d.accepted) return ok(
 					`Failed to send to "${params.name}": ${d.error}`,
 					{ name: params.name, error: d.error },
 				);
-				return textResult(
+				return ok(
 					`Sent to ${params.name}: ${preview}`,
 					{ name: params.name, messageLength: params.message.length, immediate: d.immediate, reference: d.reference },
 				);
@@ -212,7 +210,7 @@ export function createMessagingExtension(config: MessagingConfig) {
 					: peers;
 
 				if (targets.length === 0) {
-					return textResult(
+					return ok(
 						params.filter ? `No agents matching "${params.filter}".` : "No peer agents registered.",
 						{ sent: 0 },
 					);
@@ -231,7 +229,7 @@ export function createMessagingExtension(config: MessagingConfig) {
 					.map((r) => `  ${r.ok ? "✓" : "✗"} ${r.name}${r.error ? ` (${r.error})` : ""}`)
 					.join("\n");
 
-				return textResult(
+				return ok(
 					`Broadcast to ${targets.length} agent(s), ${sent} accepted:\n${summary}`,
 					{ sent, failed: results.length - sent, targets: targets.map((t) => t.name) },
 				);

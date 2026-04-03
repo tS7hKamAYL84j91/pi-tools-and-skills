@@ -22,12 +22,15 @@ import { Container, Text, type SelectItem, SelectList, matchesKey, truncateToWid
 import {
 	existsSync,
 	readFileSync,
+	readdirSync,
 	rmSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import * as net from "node:net";
 import { basename, join } from "node:path";
+import { ok } from "../lib/tool-result.js";
+import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 import {
 	type AgentRecord,
 	type AgentStatus,
@@ -58,11 +61,8 @@ export function classifyRecord(record: AgentRecord, now: number, pidAlive: boole
 	return pidAlive ? "stalled" : "dead";
 }
 
-/** @internal exported for tests */ export function buildRecord(base: AgentRecord, status: AgentStatus, task: string | undefined): AgentRecord {
-	let refined = status;
-	if (status === "waiting") {
-		try { if (existsSync(join(base.cwd, "REPORT.md"))) refined = "done"; } catch { /* best-effort */ }
-	}
+/** @internal exported for tests */ export function buildRecord(base: AgentRecord, status: AgentStatus, task: string | undefined, reportExists = false): AgentRecord {
+	const refined = (status === "waiting" && reportExists) ? "done" : status;
 	return { ...base, heartbeat: Date.now(), status: refined, task };
 }
 
@@ -102,7 +102,7 @@ function removeRecord(id: string): void {
 function readAllRecords(): AgentRecord[] {
 	ensureRegistryDir();
 	const now = Date.now();
-	return readdirSync(REGISTRY_DIR).filter(f => f.endsWith(".json")).flatMap((file) => {
+	return (readdirSync(REGISTRY_DIR) as string[]).filter((f) => typeof f === "string" && f.endsWith(".json")).flatMap((file) => {
 		const fullPath = join(REGISTRY_DIR, file);
 		try {
 			const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
@@ -118,89 +118,6 @@ function readAllRecords(): AgentRecord[] {
 function cleanupAgentFiles(id: string): void {
 	try { unlinkSync(join(REGISTRY_DIR, `${id}.sock`)); } catch { /* */ }
 	rmSync(join(REGISTRY_DIR, id), { recursive: true, force: true });
-}
-
-// ── Session JSONL reader ─────────────────────────────────────────
-
-interface SessionEvent {
-	ts: number;
-	event: string;
-	[key: string]: unknown;
-}
-
-/** Read the tail of a session JSONL file and extract events in compact format. */
-export function readSessionLog(sessionFile: string, count: number): SessionEvent[] {
-	const events: SessionEvent[] = [];
-	try {
-		if (!existsSync(sessionFile)) return events;
-		const content = readFileSync(sessionFile, "utf-8");
-		const lines = content.split("\n").filter((l) => l.trim());
-		// Take the last `count` lines
-		const recent = lines.slice(-count);
-		for (const line of recent) {
-			try {
-				const entry = JSON.parse(line);
-				// Session JSONL format: {type: "message", message: {role, content, ...}}
-				if (entry.type === "message" && entry.message) {
-					const msg = entry.message as { role?: string; content?: unknown[]; timestamp?: number };
-					const ts = msg.timestamp ?? entry.ts ?? Date.now();
-					const role = msg.role ?? "?";
-					// Flatten content blocks into individual events
-					if (Array.isArray(msg.content)) {
-						for (const block of msg.content) {
-							if (!block || typeof block !== "object") continue;
-							const b = block as { type?: string; name?: string; text?: string; input?: unknown; content?: unknown[]; isError?: boolean; id?: string };
-							if (b.type === "text" && b.text) {
-								events.push({ ts, event: "message", role, text: b.text.slice(0, 100) });
-							} else if (b.type === "toolCall") {
-								const argsPreview = b.input ? JSON.stringify(b.input).slice(0, 100) : "";
-								events.push({ ts, event: "tool_call", tool: b.name, args: argsPreview, id: b.id });
-							} else if (b.type === "toolResult") {
-								const summary = b.content
-									? b.content.map((c: { type: string; text?: string }) => c.type === "text" ? c.text ?? "" : `[${c.type}]`).join(" ").slice(0, 100)
-									: "";
-								events.push({ ts, event: "tool_result", tool: b.name, summary, isError: b.isError, id: b.id });
-							}
-						}
-					} else {
-						// Message without content blocks (e.g., empty assistant message)
-						events.push({ ts, event: "message", role });
-					}
-				} else if (entry.type === "session") {
-					// Session header: version, id, timestamp, cwd
-					events.push({ ts: entry.timestamp ?? Date.now(), event: "session_start", id: entry.id, cwd: entry.cwd });
-				} else if (entry.type === "model_change") {
-					events.push({ ts: entry.timestamp ?? Date.now(), event: "model_change", model: entry.model });
-				}
-			} catch { /* skip malformed lines */ }
-		}
-	} catch { /* best-effort */ }
-	return events;
-}
-
-/** Format session events into compact `[HH:MM:SS] event_type key=value...` format. */
-export function formatSessionLog(events: SessionEvent[]): string {
-	if (events.length === 0) return "(no activity recorded yet)";
-	return events.map((e) => {
-		const ts = new Date(e.ts).toISOString().slice(11, 19);
-		const parts: string[] = [];
-		if (e.event === "message") {
-			parts.push(`role=${e.role}`);
-			if (e.text) parts.push(`text="${e.text}"`);
-		} else if (e.event === "tool_call") {
-			parts.push(`tool=${e.tool}`);
-			if (e.args) parts.push(`args=${e.args}`);
-		} else if (e.event === "tool_result") {
-			parts.push(`tool=${e.tool}`);
-			if (e.summary) parts.push(`summary="${e.summary}"`);
-			if (e.isError) parts.push(`error`);
-		} else if (e.event === "session_start") {
-			if (e.cwd) parts.push(`cwd=${e.cwd}`);
-		} else if (e.event === "model_change") {
-			parts.push(`model=${e.model}`);
-		}
-		return `[${ts}] ${e.event} ${parts.join(" ")}`;
-	}).join("\n");
 }
 
 // ── Powerline widget ────────────────────────────────────────────
@@ -410,11 +327,7 @@ async function showAgentDetail(
 	});
 }
 
-// ── Tool result helper ──────────────────────────────────────────
 
-function textResult(text: string, details: Record<string, unknown> = {}) {
-	return { content: [{ type: "text" as const, text }], details };
-}
 
 // ── Extension entry ─────────────────────────────────────────────
 
@@ -432,8 +345,9 @@ export default function (pi: ExtensionAPI) {
 	function heartbeat(): void {
 		if (!record) return;
 		if (!socketServer) startSocket(); // rebind after sleep/wake
+		const hasReport = status === "waiting" && (() => { try { return existsSync(join(record.cwd, "REPORT.md")); } catch { return false; } })();
 		record = {
-			...buildRecord(record, status, task),
+			...buildRecord(record, status, task, hasReport),
 			socket: socketServer ? selfSocketPath : undefined,
 		};
 		writeRecord(record);
@@ -663,14 +577,14 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal) {
 			const records = readAllRecords();
 			if (!params.target) {
-				if (records.length === 0) return textResult("No agents registered.", { agents: [] });
+				if (records.length === 0) return ok("No agents registered.", { agents: [] });
 				const listing = records.map((r) =>
 					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${
 						(r.socket ? "⚡socket" : "no-socket").padEnd(12)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
 						(r.pendingMessages ?? 0) > 0 ? ` ✉${r.pendingMessages}` : ""}${
 						r.id === selfId ? " (you)" : ""}${r.task ? `  "${r.task.slice(0, 50)}"` : ""}`,
 				);
-				return textResult(
+				return ok(
 					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send or agent_send_durable to message a peer.`,
 					{ agents: records.map((r) => ({ name: r.name, pid: r.pid, socket: r.socket, cwd: r.cwd, status: r.status, model: r.model, task: r.task, isSelf: r.id === selfId, pendingMessages: r.pendingMessages })) },
 				);
@@ -681,14 +595,14 @@ export default function (pi: ExtensionAPI) {
 			const peer = records.find((r) => r.name.toLowerCase() === lower && r.id !== selfId);
 			if (!peer) {
 				const names = records.filter((r) => r.id !== selfId).map((r) => r.name);
-				return textResult(`No agent named "${params.target}". Known peers: ${names.length ? names.join(", ") : "(none)"}`);
+				return ok(`No agent named "${params.target}". Known peers: ${names.length ? names.join(", ") : "(none)"}`);
 			}
 			// Use session JSONL instead of maildir (Phase 3)
 			if (!peer.sessionFile) {
-				return textResult(`Agent "${params.target}" has no session log yet.`, { target: peer.name, hasSessionFile: false });
+				return ok(`Agent "${params.target}" has no session log yet.`, { target: peer.name, hasSessionFile: false });
 			}
 			const sessionEvents = readSessionLog(peer.sessionFile, params.lines ?? 50);
-			return textResult(
+			return ok(
 				`Agent "${peer.name}" activity (last ${sessionEvents.length} events):\n\n${formatSessionLog(sessionEvents)}`,
 				{ target: peer.name, transport: "session", events: sessionEvents.length },
 			);

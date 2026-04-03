@@ -22,7 +22,6 @@ import { createMessagingExtension } from "../extensions/pi-messaging.js";
 import type { MessageTransport, DeliveryResult, InboundMessage } from "../lib/message-transport.js";
 
 const mockReadAll = registry.readAllAgentRecords as MockedFunction<typeof registry.readAllAgentRecords>;
-const mockWriteRecord = registry.writeAgentRecord as MockedFunction<typeof registry.writeAgentRecord>;
 
 // ── Minimal ExtensionAPI mock ───────────────────────────────────
 

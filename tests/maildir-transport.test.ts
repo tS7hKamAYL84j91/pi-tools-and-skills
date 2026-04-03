@@ -126,12 +126,12 @@ describe("pendingCount", () => {
 	});
 
 	it("counts .json files in new/ directory", () => {
-		mockReaddirSync.mockReturnValue(["001.json", "002.json", "003.json"]);
+		mockReaddirSync.mockReturnValue(["001.json", "002.json", "003.json"] as any);
 		expect(transport.pendingCount("my-id")).toBe(3);
 	});
 
 	it("ignores non-json files", () => {
-		mockReaddirSync.mockReturnValue(["001.json", "readme.txt", "002.json"]);
+		mockReaddirSync.mockReturnValue(["001.json", "readme.txt", "002.json"] as any);
 		expect(transport.pendingCount("my-id")).toBe(2);
 	});
 

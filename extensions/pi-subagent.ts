@@ -48,21 +48,7 @@ const PI_BINARY = resolvePiBinary();
 
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
-// ── ToolResult helpers ──────────────────────────────────────────
-
-type ToolResult = {
-	content: { type: "text"; text: string }[];
-	details: Record<string, unknown>;
-	isError?: boolean;
-};
-
-function ok(text: string, details: Record<string, unknown> = {}): ToolResult {
-	return { content: [{ type: "text" as const, text }], details };
-}
-
-function fail(text: string, details: Record<string, unknown> = {}): ToolResult {
-	return { content: [{ type: "text" as const, text }], details, isError: true };
-}
+import { type ToolResult, ok, fail } from "../lib/tool-result.js";
 
 // ── Event formatting ────────────────────────────────────────────
 

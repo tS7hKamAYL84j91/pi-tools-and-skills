@@ -12,10 +12,10 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	writeFileSync,
 	renameSync,
 	unlinkSync,
 } from "node:fs";
-import * as net from "node:net";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -52,11 +52,7 @@ export interface SocketCommand {
 	lines?: number;
 }
 
-export interface SocketResponse {
-	ok: boolean;
-	error?: string;
-	[key: string]: unknown;
-}
+
 
 // ── Pure helpers ────────────────────────────────────────────────
 
@@ -92,7 +88,7 @@ export function writeAgentRecord(record: AgentRecord): void {
 
 // ── Inbox Maildir IO ────────────────────────────────────────────
 
-export interface InboxMessage {
+interface InboxMessage {
 	id: string;
 	from: string;
 	text: string;
@@ -141,21 +137,3 @@ export function inboxPruneCur(agentId: string, keep = 50): void {
 	} catch { /* */ }
 }
 
-// ── Socket IO ───────────────────────────────────────────────────
-
-export function socketSend(socketPath: string, cmd: SocketCommand): Promise<SocketResponse> {
-	return new Promise((resolve, reject) => {
-		const client = net.createConnection({ path: socketPath }, () => {
-			client.end(`${JSON.stringify(cmd)}\n`);
-		});
-		let buf = "";
-		client.setTimeout(SOCKET_TIMEOUT_MS);
-		client.on("data", (chunk) => { buf += chunk.toString(); });
-		client.on("end", () => {
-			try { resolve(JSON.parse(buf.trim()) as SocketResponse); }
-			catch { resolve({ ok: false, error: "Invalid response from agent socket" }); }
-		});
-		client.on("timeout", () => { client.destroy(); reject(new Error("Socket timeout")); });
-		client.on("error", (err) => { reject(new Error(`Socket error: ${err.message}`)); });
-	});
-}
