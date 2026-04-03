@@ -1,8 +1,10 @@
 /**
- * Pi Messaging — Agent-to-Agent Communication
+ * Pi Agents Messaging — Registry-based Agent-to-Agent Communication
  *
  * Provides tools for sending messages between registered agents.
  * Delegates all transport to injected MessageTransport implementations.
+ *
+ * Uses a Registry interface for agent record access instead of PID scanning.
  *
  * Tools:
  * - agent_send (send to a single peer)
@@ -15,16 +17,11 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import {
-	type AgentRecord,
-	readAllAgentRecords,
-	writeAgentRecord,
-	onAgentCleanup,
-} from "../lib/agent-registry.js";
-import type { MessageTransport } from "../lib/message-transport.js";
-import { createMaildirTransport } from "../lib/transports/maildir.js";
+import { onAgentCleanup } from "../../lib/agent-registry.js";
+import type { MessageTransport } from "../../lib/message-transport.js";
+import { createMaildirTransport } from "../../lib/transports/maildir.js";
 
-import { ok } from "../lib/tool-result.js";
+import { ok, type Registry } from "./types.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
 
@@ -41,50 +38,47 @@ export interface MessagingConfig {
 	broadcast: MessageTransport;
 }
 
+// ── Messaging Module ────────────────────────────────────────────
+
+export interface MessagingModule {
+	/** Initialize transport for self, drain inbox, register cleanup hook. */
+	init(): void;
+	/** Read pending messages, deliver via pi.sendUserMessage, ack, prune, update pending count. */
+	drainInbox(): void;
+}
+
 // ── Factory ─────────────────────────────────────────────────────
 
-export function createMessagingExtension(config: MessagingConfig) {
-	return (pi: ExtensionAPI) => {
-		let selfName: string | undefined;
-		let cachedSelf: AgentRecord | undefined;
-
+export function createMessaging(config: MessagingConfig) {
+	return function setup(pi: ExtensionAPI, registry: Registry): MessagingModule {
 		// ── Registry helpers ────────────────────────────────────
 
-		function getSelfRecord(): AgentRecord | undefined {
-			if (cachedSelf) return cachedSelf;
-			const record = readAllAgentRecords().find((r) => r.pid === process.pid);
-			if (record) cachedSelf = record;
-			return record;
-		}
-
 		function getSelfName(): string {
-			if (!selfName) selfName = getSelfRecord()?.name ?? "unknown";
-			return selfName;
+			const record = registry.getRecord();
+			return record?.name ?? "unknown";
 		}
 
 		/** Update pendingMessages in this agent's record. */
 		function updatePendingCount(): void {
-			const self = getSelfRecord();
-			if (!self) return;
-			const count = config.send.pendingCount(self.id);
-			if (self.pendingMessages !== count) {
-				self.pendingMessages = count;
-				writeAgentRecord(self);
-				cachedSelf = self; // keep cache in sync
+			const record = registry.getRecord();
+			if (!record) return;
+			const count = config.send.pendingCount(record.id);
+			if (record.pendingMessages !== count) {
+				registry.updatePendingMessages(count);
 			}
 		}
 
-		function resolvePeer(name: string): AgentRecord | undefined {
+		function resolvePeer(name: string): ReturnType<typeof registry.readAllPeers>[number] | undefined {
 			const lower = name.toLowerCase();
-			const self = getSelfRecord();
-			return readAllAgentRecords().find(
+			const self = registry.getRecord();
+			return registry.readAllPeers().find(
 				(r) => r.name.toLowerCase() === lower && (!self || r.id !== self.id),
 			);
 		}
 
 		function peerNames(): string {
-			const self = getSelfRecord();
-			const names = readAllAgentRecords()
+			const self = registry.getRecord();
+			const names = registry.readAllPeers()
 				.filter((r) => !self || r.id !== self.id)
 				.map((r) => r.name);
 			return names.length ? names.join(", ") : "(none)";
@@ -100,35 +94,21 @@ export function createMessagingExtension(config: MessagingConfig) {
 		// ── Inbox draining ─────────────────────────────────────
 
 		function drainInbox(): void {
-			const selfId = getSelfRecord()?.id;
-			if (!selfId) return;
-			const pending = config.send.receive(selfId);
+			const record = registry.getRecord();
+			if (!record) return;
+			const pending = config.send.receive(record.id);
 			for (const msg of pending) {
 				try {
 					pi.sendUserMessage(`[from ${msg.from}]: ${msg.text}`, { deliverAs: "followUp" });
 				} catch {
 					continue;
 				}
-				config.send.ack(selfId, msg.id);
+				config.send.ack(record.id, msg.id);
 			}
-			if (pending.length > 0) config.send.prune(selfId);
+			if (pending.length > 0) config.send.prune(record.id);
 			// Update pending count after draining
 			updatePendingCount();
 		}
-
-		pi.on("session_start", async () => {
-			// Eagerly cache self-record; downstream helpers skip the PID scan
-			cachedSelf = readAllAgentRecords().find((r) => r.pid === process.pid);
-			if (cachedSelf) {
-				config.send.init(cachedSelf.id);
-				updatePendingCount();
-				drainInbox();
-			}
-			// Register transport cleanup for dead-agent reaping
-			onAgentCleanup((agentId) => config.send.cleanup(agentId));
-		});
-
-		pi.on("agent_end", async () => drainInbox());
 
 		// ── /send command ──────────────────────────────────────
 
@@ -212,8 +192,8 @@ export function createMessagingExtension(config: MessagingConfig) {
 			}),
 
 			async execute(_id, params, _signal) {
-				const self = getSelfRecord();
-				const peers = readAllAgentRecords().filter((r) => !self || r.id !== self.id);
+				const self = registry.getRecord();
+				const peers = registry.readAllPeers().filter((r) => !self || r.id !== self.id);
 				const targets = params.filter
 					? peers.filter((r) => r.name.toLowerCase().includes(params.filter?.toLowerCase() ?? ""))
 					: peers;
@@ -244,9 +224,26 @@ export function createMessagingExtension(config: MessagingConfig) {
 				);
 			},
 		});
+
+		// ── Return MessagingModule ──────────────────────────────
+
+		const module: MessagingModule = {
+			init() {
+				const record = registry.getRecord();
+				if (!record) return;
+				config.send.init(record.id);
+				updatePendingCount();
+				drainInbox();
+				// Register transport cleanup for dead-agent reaping
+				onAgentCleanup((agentId) => config.send.cleanup(agentId));
+			},
+			drainInbox,
+		};
+
+		return module;
 	};
 }
 
 // Default: maildir for both (at-least-once everywhere)
 const maildir = createMaildirTransport();
-export default createMessagingExtension({ send: maildir, broadcast: maildir });
+export default createMessaging({ send: maildir, broadcast: maildir });

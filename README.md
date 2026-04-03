@@ -5,7 +5,7 @@ Pi agent infrastructure: multi-agent messaging, spawning, and monitoring as a si
 ## Structure
 
 ```
-extensions/pi-jb-agents/   Unified extension (auto-discovered by pi)
+extensions/pi-panopticon/   Unified extension (auto-discovered by pi)
   index.ts                 Lifecycle orchestrator
   registry.ts              Agent registration + heartbeat
   messaging.ts             agent_send, agent_broadcast, /send

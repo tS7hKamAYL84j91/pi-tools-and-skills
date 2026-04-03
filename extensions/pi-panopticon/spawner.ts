@@ -1,5 +1,5 @@
 /**
- * spawn-agent — Agent spawner with RPC + IPC
+ * spawner — Agent spawner with RPC + IPC
  *
  * Spawns pi agents in --mode rpc, giving us:
  * 1. Bidirectional stdin/stdout JSON protocol (prompt, steer, abort, get_state)
@@ -9,11 +9,9 @@
  *    - RPC stdin  (from parent, structured commands)
  *    - Unix socket (from any peer, via agent_send)
  *
- * Tools:
- *   spawn_agent  — launch a new agent
- *   rpc_send     — send an RPC command to a spawned agent's stdin
- *   list_spawned — show all agents spawned by this session
- *   kill_agent   — stop a spawned agent
+ * Exports:
+ *   - setupSpawner(pi: ExtensionAPI): SpawnerModule
+ *   - Helper functions: formatEvent, recentOutputFromEvents, buildArgList, defaultSubagentSessionDir
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -29,6 +27,7 @@ import {
 } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { ok, fail, type ToolResult } from "./types.js";
 
 // ── PI binary ───────────────────────────────────────────────────
 
@@ -47,8 +46,6 @@ const PI_BINARY = resolvePiBinary();
 // ── Utilities ───────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
-
-import { type ToolResult, ok, fail } from "../lib/tool-result.js";
 
 // ── Event formatting ────────────────────────────────────────────
 
@@ -137,9 +134,15 @@ interface SpawnedAgent {
 
 const MAX_RECENT_EVENTS = 100;
 
+// ── SpawnerModule interface ─────────────────────────────────────
+
+export interface SpawnerModule {
+	shutdownAll(): Promise<void>;
+}
+
 // ── Extension entry ─────────────────────────────────────────────
 
-export default function (pi: ExtensionAPI) {
+export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 	const agents = new Map<string, SpawnedAgent>();
 
 	/** Write a JSON command to an agent's stdin. Returns false on failure. */
@@ -541,15 +544,17 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// ── Cleanup ─────────────────────────────────────────────────
+	// ── Return module interface ─────────────────────────────────
 
-	pi.on("session_shutdown", async () => {
-		for (const agent of agents.values()) {
-			if (!agent.done) {
-				rpcWrite(agent, { type: "abort" });
-				const p = agent.proc;
-				setTimeout(() => { if (!agent.done) try { p.kill("SIGTERM"); } catch { /* */ } }, 2000);
+	return {
+		async shutdownAll(): Promise<void> {
+			for (const agent of agents.values()) {
+				if (!agent.done) {
+					rpcWrite(agent, { type: "abort" });
+					const p = agent.proc;
+					setTimeout(() => { if (!agent.done) try { p.kill("SIGTERM"); } catch { /* */ } }, 2000);
+				}
 			}
-		}
-	});
+		},
+	};
 }

@@ -18,9 +18,11 @@ vi.mock("../lib/transports/maildir.js", () => ({
 	createMaildirTransport: vi.fn(() => ({})),
 }));
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as registry from "../lib/agent-registry.js";
-import { createMessagingExtension } from "../extensions/pi-messaging.js";
+import { createMessaging } from "../extensions/pi-panopticon/messaging.js";
 import type { MessageTransport, DeliveryResult, InboundMessage } from "../lib/message-transport.js";
+import type { Registry } from "../extensions/pi-panopticon/types.js";
 
 const mockReadAll = registry.readAllAgentRecords as MockedFunction<typeof registry.readAllAgentRecords>;
 
@@ -85,6 +87,25 @@ const PEER_A = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", so
 const PEER_B = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", socket: "/tmp/b.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
 const PEER_C = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
 
+// ── Mock Registry ───────────────────────────────────────────────
+
+function makeMockRegistry(): Registry & { pendingMessages: number } {
+	return {
+		selfId: "self-id",
+		getRecord: vi.fn(() => SELF),
+		register: vi.fn(),
+		unregister: vi.fn(),
+		setStatus: vi.fn(),
+		updateModel: vi.fn(),
+		setTask: vi.fn(),
+		updatePendingMessages: vi.fn(),
+		setSocket: vi.fn(),
+		readAllPeers: vi.fn(() => [SELF, PEER_A, PEER_B, PEER_C]),
+		flush: vi.fn(),
+		pendingMessages: 0,
+	};
+}
+
 const ACCEPTED: DeliveryResult = { accepted: true, immediate: false, reference: "ref-001" };
 const FAILED: DeliveryResult = { accepted: false, immediate: false, error: "ENOSPC" };
 
@@ -93,6 +114,8 @@ const FAILED: DeliveryResult = { accepted: false, immediate: false, error: "ENOS
 let api: MockAPI;
 let sendTransport: ReturnType<typeof makeMockTransport>;
 let broadcastTransport: ReturnType<typeof makeMockTransport>;
+let mockRegistry: ReturnType<typeof makeMockRegistry>;
+let messagingModule: ReturnType<ReturnType<typeof createMessaging>>;
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -105,8 +128,10 @@ beforeEach(() => {
 	broadcastTransport.send.mockResolvedValue(ACCEPTED);
 
 	api = makeMockAPI();
-	createMessagingExtension({ send: sendTransport, broadcast: broadcastTransport })(
-		api as unknown as Parameters<ReturnType<typeof createMessagingExtension>>[0],
+	mockRegistry = makeMockRegistry();
+	messagingModule = createMessaging({ send: sendTransport, broadcast: broadcastTransport })(
+		api as unknown as ExtensionAPI,
+		mockRegistry,
 	);
 });
 
@@ -168,7 +193,7 @@ describe("agent_broadcast", () => {
 	});
 
 	it("reports no peers when registry is empty", async () => {
-		mockReadAll.mockReturnValue([SELF]);
+		(mockRegistry.readAllPeers as MockedFunction<typeof mockRegistry.readAllPeers>).mockReturnValue([SELF]);
 		const result = await executeTool("agent_broadcast", { message: "hi" });
 		expect(getText(result)).toContain("No peer agents");
 	});
@@ -249,35 +274,15 @@ describe("/send command", () => {
 
 // ── Self-record caching ─────────────────────────────────────────
 
-describe("self-record caching", () => {
-	it("caches self-record after session_start so subsequent sends skip the PID scan", async () => {
-		// Fire session_start — populates cache via one PID scan
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
-		const callsAfterStart = mockReadAll.mock.calls.length;
-
-		// agent_send resolves the peer (1 readAllAgentRecords) but should NOT re-scan for self
+describe("registry integration", () => {
+	it("uses registry.getRecord() for self instead of PID scan", async () => {
+		// agent_send uses registry.readAllPeers() for peer resolution, not readAllAgentRecords
 		await executeTool("agent_send", { name: "alice", message: "hi" });
-		expect(mockReadAll.mock.calls.length).toBe(callsAfterStart + 1);
+		expect(mockRegistry.readAllPeers).toHaveBeenCalled();
+		expect(mockRegistry.getRecord).toHaveBeenCalled();
 	});
 
-	it("warm cache: agent_send triggers exactly one readAllAgentRecords for peer resolution", async () => {
-		// Warm the cache via session_start
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
-		vi.clearAllMocks();
-		mockReadAll.mockReturnValue([SELF, PEER_A, PEER_B, PEER_C]);
-
-		await executeTool("agent_send", { name: "alice", message: "hi" });
-		expect(mockReadAll).toHaveBeenCalledTimes(1);
-	});
-
-	it("retries PID scan when self not found at session_start", async () => {
-		// Simulate: our record not yet registered when session_start fires
-		mockReadAll.mockReturnValue([]);
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
-		expect(sendTransport.init).not.toHaveBeenCalled();
-
-		// Later our record appears — getSelfRecord() should re-scan and find it
-		mockReadAll.mockReturnValue([SELF, PEER_A]);
+	it("agent_send resolves peers from registry", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
 		expect(getText(result)).toContain("Sent to alice");
 	});
@@ -286,9 +291,9 @@ describe("self-record caching", () => {
 // ── Cleanup hook ──────────────────────────────────────────────
 
 describe("cleanup hook", () => {
-	it("registers a cleanup hook on session_start that delegates to transport.cleanup", async () => {
+	it("registers a cleanup hook on init that delegates to transport.cleanup", () => {
 		const mockOnCleanup = registry.onAgentCleanup as MockedFunction<typeof registry.onAgentCleanup>;
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		messagingModule.init();
 
 		// onAgentCleanup should have been called with a function
 		expect(mockOnCleanup).toHaveBeenCalledTimes(1);
@@ -304,13 +309,13 @@ describe("cleanup hook", () => {
 // ── Inbox draining ──────────────────────────────────────────────
 
 describe("inbox draining", () => {
-	it("inits and drains on session_start", async () => {
+	it("inits and drains on init()", () => {
 		const inbound: InboundMessage[] = [
 			{ id: "001.json", from: "alice", text: "ping", ts: 1 },
 		];
 		sendTransport.receive.mockReturnValue(inbound);
 
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+		messagingModule.init();
 
 		expect(sendTransport.init).toHaveBeenCalledWith(SELF.id);
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
@@ -321,20 +326,20 @@ describe("inbox draining", () => {
 		expect(sendTransport.prune).toHaveBeenCalled();
 	});
 
-	it("drains on agent_end", async () => {
+	it("drains on drainInbox()", () => {
 		sendTransport.receive.mockReturnValue([
 			{ id: "002.json", from: "bob", text: "pong", ts: 2 },
 		]);
-		for (const h of api.eventHandlers.get("agent_end") ?? []) await h();
+		messagingModule.drainInbox();
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("pong"),
 			expect.anything(),
 		);
 	});
 
-	it("does nothing when no self record", async () => {
-		mockReadAll.mockReturnValue([]);
-		for (const h of api.eventHandlers.get("session_start") ?? []) await h();
+	it("does nothing when no self record", () => {
+		(mockRegistry.getRecord as MockedFunction<typeof mockRegistry.getRecord>).mockReturnValue(undefined);
+		messagingModule.init();
 		expect(sendTransport.init).not.toHaveBeenCalled();
 	});
 });

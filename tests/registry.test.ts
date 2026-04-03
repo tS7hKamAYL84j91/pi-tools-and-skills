@@ -12,7 +12,7 @@ import {
 	pickName,
 	sortRecords,
 	agentCleanupPaths,
-} from "../extensions/pi-panopticon.js";
+} from "../extensions/pi-panopticon/registry.js";
 import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 
 // ── Fixtures ────────────────────────────────────────────────────

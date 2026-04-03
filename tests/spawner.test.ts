@@ -10,7 +10,7 @@ import {
 	formatEvent,
 	recentOutputFromEvents,
 	buildArgList,
-} from "../extensions/pi-subagent.ts";
+} from "../extensions/pi-panopticon/spawner.js";
 
 // ── formatEvent ────────────────────────────────────────────────
 
