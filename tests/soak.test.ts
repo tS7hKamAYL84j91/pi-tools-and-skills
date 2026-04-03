@@ -23,7 +23,6 @@ import { REGISTRY_DIR } from "../lib/agent-registry.js";
 
 const NUM_AGENTS = 10;
 const NUM_MESSAGES = 100;
-const AGENT_TIMEOUT_MS = 10_000;
 const MESSAGE_BATCH_SIZE = 10;
 
 // ── Types ──────────────────────────────────────────────────────
@@ -267,7 +266,9 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 				const from = agents[fromIdx];
 				const to = agents[toIdx];
 
-				simulateSendMessage(from, to, messages);
+				if (from && to) {
+					simulateSendMessage(from, to, messages);
+				}
 				sent++;
 			}
 		}
@@ -360,7 +361,11 @@ export async function runSoakTest(): Promise<void> {
 			toIdx = Math.floor(Math.random() * agents.length);
 		}
 
-		simulateSendMessage(agents[fromIdx], agents[toIdx], messages);
+		const from = agents[fromIdx];
+		const to = agents[toIdx];
+		if (from && to) {
+			simulateSendMessage(from, to, messages);
+		}
 	}
 
 	const endTime = Date.now();
