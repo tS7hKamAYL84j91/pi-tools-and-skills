@@ -3,74 +3,60 @@
 ## Architecture: Current State
 
 ### Three extensions provide agent infrastructure:
-1. **pi-panopticon.ts** — Agent registry, monitoring, activity log, `agent_peek` tool
-2. **pi-messaging.ts** — `agent_send`, `agent_broadcast` tools, maildir inbox delivery
-3. **pi-subagent.ts** — `spawn_agent`, `rpc_send`, `list_spawned`, `kill_agent`
+1. **pi-panopticon.ts** (612 LOC) — Agent registry, monitoring, `agent_peek` tool, socket server, UI widget/overlay
+2. **pi-messaging.ts** (252 LOC) — `agent_send`, `agent_broadcast` tools, maildir inbox delivery
+3. **pi-subagent.ts** (555 LOC) — `spawn_agent`, `rpc_send`, `list_spawned`, `kill_agent`
+
+### Shared library layer (lib/):
+- `agent-registry.ts` (95 LOC) — `AgentRecord` type, `readAllAgentRecords()`, `writeAgentRecord()`, `onAgentCleanup()`
+- `message-transport.ts` (64 LOC) — `MessageTransport` interface (DI boundary)
+- `transports/maildir.ts` (190 LOC) — `MaildirTransport` (atomic write via tmp/→new/)
+- `session-log.ts` (90 LOC) — `readSessionLog()`, `formatSessionLog()` (reads pi JSONL)
+- `tool-result.ts` (22 LOC) — `ok()`, `fail()` helpers
 
 ### Agent registry (`~/.pi/agents/`)
-- Each agent writes `{id}.json` with: id, name, pid, cwd, model, socket, startedAt, heartbeat, status, task
+- Each agent writes `{id}.json` with: id, name, pid, cwd, model, socket, startedAt, heartbeat, status, task, pendingMessages, sessionDir, sessionFile
 - Agent id format: `{pid}-{random}` (e.g. `22130-mni1cqda`)
-- No sessionId or sessionDir in AgentRecord
+- Stale threshold: 30 seconds (`STALE_MS`)
+- Dead agents reaped on every `readAllRecords()` call
 
-### Panopticon activity log (THE PROBLEM)
-- Panopticon writes its own activity maildir at `~/.pi/agents/{agent-id}/`
-- Files like `1775229679437-0439-tool_result.json` with `{ts, event, tool, summary, ...}`
-- `agent_peek` reads from this panopticon-internal maildir
-- This is a **custom activity log that duplicates session data** and couples peek to maildir
+### Pi session logs
+- Pi writes session JSONL to `~/.pi/agent/sessions/{encoded-cwd}/{timestamp}_{uuid}.jsonl`
+- `agent_peek` reads these via `readSessionLog()` — no custom activity log needed
+- Subagents get sessions via `--session-dir ~/.pi/agent/sessions/subagents/{name}/`
 
-### Pi session logs (THE ANSWER)
-- Pi always writes session JSONL to `~/.pi/agent/sessions/{encoded-cwd}/{timestamp}_{uuid}.jsonl`
-- Encoded cwd: `--Users-jim-git-tools-and-skills--` (replace `/` with `-`, wrap in `--`)
-- Encoding function: `getDefaultSessionDir()` in session-manager.js
-- Session JSONL header: `{type: "session", version: 3, id: uuid, timestamp, cwd}`
-- Events: `message` (user/assistant/toolResult), `model_change`, `thinking_level_change`
-- Tool calls appear as content blocks inside assistant messages: `{type: "toolCall", name, arguments}`
-- Rich data: full LLM responses, usage stats, timestamps
+### Pi extension auto-discovery
+- `settings.json` has `"extensions": ["/Users/jim/git/tools-and-skills/extensions"]`
+- Pi discovers `extensions/*.ts` (single file) and `extensions/*/index.ts` (directory)
+- After merge: `extensions/pi-agents/index.ts` replaces three `extensions/*.ts` files
+- Pi will see it as one extension
 
-### ExtensionContext provides:
-- `ctx.sessionManager: ReadonlySessionManager` with:
-  - `getSessionId()` — UUID of current session
-  - `getSessionDir()` — directory path
-  - `getSessionFile()` — path to the .jsonl file
-  - `getCwd()` — working directory
-  - `getBranch()` — current branch entries
-  - `getEntries()` — all entries
+### Operational coupling (pre-merge)
+1. **Concurrent writes**: Both panopticon and messaging write full JSON to `{id}.json`. Last `writeFileSync` wins.
+2. **Load-order race**: Messaging's `session_start` does `readAllAgentRecords().find(r => r.pid === process.pid)` — returns undefined if panopticon hasn't written the record yet.
+3. **Implicit cleanup**: Panopticon reaps dead agents → `runAgentCleanup()` → messaging's hook cleans inbox. If panopticon not loaded, inboxes never cleaned.
+4. **Assumed co-loading**: Spawned subagents self-register via panopticon. Without panopticon globally, spawned agents are invisible to `agent_peek`/`agent_send`.
+5. **Cross-extension data**: `pendingMessages` field in `AgentRecord` — written by messaging, read/displayed by panopticon.
 
-### Subagent sessions
-- `spawn_agent` with no `sessionDir` param uses `--no-session` → **no JSONL written**
-- `spawn_agent` with `sessionDir` param writes JSONL to that directory
-- For peek to work on subagents, we need them to have sessions
+### Test infrastructure
+- Vitest, 4 test files, 91 tests
+- `panopticon-pure.test.ts` — tests exported pure functions (classifyRecord, buildRecord, formatAge, nameTaken, pickName, sortRecords, formatSessionLog, readSessionLog, agentCleanupPaths)
+- `pi-messaging.test.ts` — mocks `lib/agent-registry.js` and transports, tests tool execute + command handler + inbox drain + cleanup hooks
+- `pi-subagent.test.ts` — tests pure helpers (formatEvent, recentOutputFromEvents, buildArgList)
+- `maildir-transport.test.ts` — mocks `node:fs`, tests send/receive/ack/prune/init/pendingCount/cleanup
 
-### Key insight
-- If AgentRecord stored `sessionDir` and `sessionFile`, then `agent_peek` could read the session JSONL directly
-- No dependency on any transport or custom activity log format
-- Pi already writes the data — we just need to find it
+### Key constraint: createMessagingExtension factory
+Messaging uses a factory pattern `createMessagingExtension(config)` that returns `(pi: ExtensionAPI) => void`. This allows injecting mock transports in tests. The factory pattern should be preserved but adapted — instead of returning a full extension function, it should return a module setup function that takes a `Registry` reference.
 
-### Matching agent → session
-- Option A: Add `sessionDir` + `sessionFile` to AgentRecord (panopticon writes it on register)
-- Option B: Derive from cwd using `getDefaultSessionDir(cwd)` + find most recent .jsonl
-- Option A is cleaner — the agent knows its own session
-
-### `--no-session` subagents
-- Currently invisible to peek (no session file)
-- Fix: always pass `--session-dir` when spawning subagents
-- The subagent extension already supports `sessionDir` param — just make it default instead of optional
-
-### Inbox count bleeds transport into registry
-- `AgentRecord` has `inboxCapable?: boolean` and `pendingMessages?: number`
-- Panopticon calls `inboxPendingCount(selfId)` which does `readdirSync(…/inbox/new/)` — hardcoded maildir
-- Messaging extension (`pi-messaging.ts`) doesn't even use these fields
-- Panopticon bypasses the transport interface entirely to get the count
-- `MessageTransport` has `receive()` (returns messages) but no `pendingCount()`
-- The registry should not know **how** messages are stored
-
-### Fix: pendingCount on MessageTransport
-- Add `pendingCount(agentId: string): number` to `MessageTransport` interface
-- The messaging extension knows its transport — it should expose the count
-- Panopticon should ask messaging for the count, or messaging should publish it
-- Options:
-  - A: Add `pendingCount()` to `MessageTransport`, messaging extension sets a field panopticon can read
-  - B: Messaging extension updates AgentRecord.pendingMessages itself during heartbeat
-  - C: Use pi's `EventBus` — messaging publishes count, panopticon subscribes
-- Option B is simplest: messaging owns the count, writes it to the record. Panopticon just reads the field without knowing where it came from.
-- Remove `inboxCapable` (if there's a transport, there's a transport) and `inboxPendingCount()` from agent-registry.ts
+### Pi extension API relevant details
+- `pi.on("session_start")` — fired on initial session load, ctx has sessionManager
+- `pi.on("session_shutdown")` — fired on exit (Ctrl+C, Ctrl+D, SIGTERM)
+- `pi.on("agent_start")` / `pi.on("agent_end")` — fired per user prompt
+- `pi.on("model_select")` — fired when model changes
+- `pi.on("input")` — fired when user input received
+- `pi.registerTool()` — works during load AND after startup
+- `pi.registerCommand()` — duplicate names get numeric suffixes
+- `pi.registerShortcut()` — keyboard shortcut registration
+- `ctx.sessionManager.getSessionDir()` / `getSessionFile()` — session JSONL location
+- `pi.sendUserMessage()` — inject user messages (used by messaging inbox drain)
+- `pi.appendEntry()` — persist extension state (not used by these extensions currently)
