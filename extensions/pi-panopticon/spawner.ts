@@ -109,7 +109,8 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 	}
 
 	/** Spawn a child process, wire up stdout/stderr, and register in the agents map. */
-	function spawnChild(name: string, agentCwd: string, args: string[], model: string | undefined, task: string | undefined, tempDir: string | undefined): SpawnedAgent {
+	function spawnChild(opts: { name: string; cwd: string; args: string[]; model?: string; task?: string; tempDir?: string }): SpawnedAgent {
+		const { name, cwd: agentCwd, args, model, task, tempDir } = opts;
 		const proc = spawn(PI_BINARY, args, {
 			cwd: agentCwd,
 			stdio: ["pipe", "pipe", "pipe"],
@@ -227,7 +228,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
 
-			const agent = spawnChild(params.name, agentCwd, args, params.model, params.task, tempDir);
+			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: params.model, task: params.task, tempDir });
 			if (!agent.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });

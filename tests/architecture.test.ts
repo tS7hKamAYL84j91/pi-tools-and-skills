@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { projectFiles } from "archunit";
+import { projectFiles, metrics } from "archunit";
 
 // ── 1. Dependency Direction: lib/ never imports from extensions/ ─────
 
@@ -157,6 +157,108 @@ describe("documentation", () => {
 			.adhereTo(
 				(file) => file.content.trimStart().startsWith("/**"),
 				"Extension files must start with a /** JSDoc */ module comment",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+});
+
+// ── 8. Clean Code: Function parameter limits (Bob Martin: ≤3) ───
+
+function countFuncParams(content: string, maxParams: number): boolean {
+	const funcPattern = /function\s+\w+\s*\(([^)]*?)\)/g;
+	let match;
+	while ((match = funcPattern.exec(content)) !== null) {
+		// Strip trailing comma and whitespace before counting
+		const params = match[1]?.replace(/,\s*$/, "").trim();
+		if (!params) continue;
+		let depth = 0;
+		let count = 1;
+		for (const ch of params) {
+			if (ch === "<" || ch === "(") depth++;
+			else if (ch === ">" || ch === ")") depth--;
+			else if (ch === "," && depth === 0) count++;
+		}
+		if (count > maxParams) return false;
+	}
+	return true;
+}
+
+describe("function parameters", () => {
+	it("extension functions should have at most 4 parameters", async () => {
+		const rule = projectFiles()
+			.inFolder("extensions/**")
+			.should()
+			.adhereTo(
+				(file) => countFuncParams(file.content, 4),
+				"Functions should have at most 4 parameters (Clean Code: 3 ideal, 4 max)",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+
+	it("lib functions should have at most 4 parameters", async () => {
+		const rule = projectFiles()
+			.inFolder("lib/**")
+			.should()
+			.adhereTo(
+				(file) => countFuncParams(file.content, 4),
+				"Functions should have at most 4 parameters (Clean Code: 3 ideal, 4 max)",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+});
+
+// ── 9. Clean Code: Class cohesion (LCOM) ─────────────────────────
+
+describe("class cohesion", () => {
+	it("classes should have high cohesion (LCOM96b < 0.8)", async () => {
+		const rule = metrics()
+			.inFolder("extensions/**")
+			.lcom()
+			.lcom96b()
+			.shouldBeBelow(0.8);
+
+		await expect(rule).toPassAsync({ allowEmptyTests: true });
+	});
+});
+
+// ── 10. Clean Code: No empty catch blocks ────────────────────────
+
+describe("error handling", () => {
+	it("catch blocks must contain at least a comment", async () => {
+		const rule = projectFiles()
+			.inFolder("extensions/**")
+			.should()
+			.adhereTo(
+				(file) => {
+					// Match catch blocks with absolutely nothing inside
+					// Our codebase uses `catch { /* comment */ }` which is acceptable
+					const emptyCatch = /catch\s*(?:\([^)]*\))?\s*\{\s*\}/g;
+					return !emptyCatch.test(file.content);
+				},
+				"Empty catch blocks must have a comment explaining why the error is ignored",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+});
+
+// ── 11. Module structure: single entry point per extension ───────
+
+describe("module structure", () => {
+	it("index.ts should have exactly one default export", async () => {
+		const rule = projectFiles()
+			.withName("index.ts")
+			.inFolder("extensions/**")
+			.should()
+			.adhereTo(
+				(file) => {
+					const defaults = file.content.match(/export default/g);
+					return defaults !== null && defaults.length === 1;
+				},
+				"Extension index.ts must have exactly one default export (the entry point)",
 			);
 
 		await expect(rule).toPassAsync();
