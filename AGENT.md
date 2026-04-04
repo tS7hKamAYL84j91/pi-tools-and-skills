@@ -70,6 +70,18 @@ Follow the Google TypeScript Style Guide. Key rules for this codebase:
 - **Strict TypeScript** — All extensions must use: `strict: true`, `noUncheckedIndexedAccess: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
 - **Type Coverage** — Minimum 95% type coverage (`type-coverage --strict --at-least 95`).
 - **Lint** — Use Biome with: `noExplicitAny: warn`, `noUnusedVariables: error`, `noUnusedImports: error`, `useConst: error`, `useImportType: error`, `useNodejsImportProtocol: error`.
+- **Dead Code** — Run `npm run knip` to detect unused files, exports, dependencies, and types. Knip must pass clean (zero findings) before commit. See [knip.dev](https://knip.dev) for docs. Config is in `knip.json`.
+  - **Do not** export functions, types, or constants unless they are consumed outside the file.
+  - Tag intentionally public API types with `/** @public */` if knip flags them.
+  - If a new dependency is only needed at runtime via a transitive package, add it to `ignoreDependencies` in `knip.json` with a comment.
+  - Setup: `npm init @knip/config` (already configured in this repo).
 - **Pre-commit Hook** — If husky is present, run `lint-staged` + `typecheck` + `type-coverage` before commit.
 - **Architecture Docs:** Always update C4 architecture models in `docs/` using Mermaid before a commit.
 - **No Dependency Bloat** — Prefer native Node APIs over npm packages. Every new dependency must justify its existence.
+
+## Validation Workflow
+Run the full check suite before committing:
+```bash
+npm run check   # typecheck → lint → knip → type-coverage
+npm test        # vitest
+```

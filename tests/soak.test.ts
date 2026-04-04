@@ -65,7 +65,7 @@ function readAllAgents(): AgentRecord[] {
 
 	const files = fs.readdirSync(REGISTRY_DIR);
 	for (const file of files) {
-		if (file.endsWith(".json") && !file.endsWith(".sock")) {
+		if (file.endsWith(".json")) {
 			try {
 				const path = join(REGISTRY_DIR, file);
 				const data = fs.readFileSync(path, "utf-8");
@@ -89,7 +89,7 @@ function createMockAgent(name: string): AgentRecord {
 		pid: process.pid + Math.floor(Math.random() * 1000),
 		cwd: process.cwd(),
 		model: "test/model",
-		socket: undefined,
+
 		heartbeat: now,
 		startedAt: now,
 		status: "running",
@@ -329,7 +329,7 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 		// In a real soak test, we'd measure:
 		// - Memory before/after
 		// - File handles open
-		// - Socket connections
+
 		// For now, just verify we can clean up
 
 		messages = [];

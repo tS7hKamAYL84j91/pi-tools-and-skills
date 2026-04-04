@@ -8,12 +8,12 @@ C4Context
     Person(id_1, "Developer", "Uses pi CLI interactively")
 
     System(id_2, "Pi Coding Agent", "CLI + LLM agent loop. Loads extensions, skills, prompts.")
-    System_Ext(id_8, "LLM Provider", "Anthropic, OpenAI, etc.")
-    System_Ext(id_9, "Shared Filesystem", "~/.pi/agents/ registry, Maildir queues, session JSONL")
+    System_Ext(id_3, "LLM Provider", "Anthropic, OpenAI, etc.")
+    System_Ext(id_4, "Shared Filesystem", "~/.pi/agents/ registry, Maildir queues, session JSONL")
 
     Rel(id_1, id_2, "Prompts, commands, /alias, /agents")
-    Rel(id_2, id_8, "API calls (chat completions)")
-    Rel(id_2, id_9, "Reads/writes agent records, messages, session logs")
+    Rel(id_2, id_3, "API calls (chat completions)")
+    Rel(id_2, id_4, "Reads/writes agent records, messages, session logs")
 ```
 <!-- c4-auto-end: context -->
 

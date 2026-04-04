@@ -6,19 +6,15 @@
  * provides the shared types and low-level IO functions so neither
  * extension duplicates the other.
  *
- * Does NOT contain: Maildir IO (see transports/maildir.ts),
- * socket protocol (see pi-panopticon.ts).
+ * Does NOT contain: Maildir IO (see transports/maildir.ts).
  */
 
 import {
 	existsSync,
 	mkdirSync,
-	readdirSync,
-	readFileSync,
-	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -35,7 +31,6 @@ export interface AgentRecord {
 	pid: number;
 	cwd: string;
 	model: string;
-	socket?: string;
 	startedAt: number;
 	heartbeat: number;
 	status: AgentStatus;
@@ -48,11 +43,12 @@ export interface AgentRecord {
 // ── Dead-agent cleanup hooks ────────────────────────────────────
 
 type CleanupHook = (agentId: string) => void;
-const cleanupHooks: CleanupHook[] = [];
+const cleanupHooks = new Set<CleanupHook>();
 
-/** Register a callback invoked when a dead agent is reaped. */
-export function onAgentCleanup(hook: CleanupHook): void {
-	cleanupHooks.push(hook);
+/** Register a callback invoked when a dead agent is reaped. Returns a dispose function. */
+export function onAgentCleanup(hook: CleanupHook): () => void {
+	cleanupHooks.add(hook);
+	return () => { cleanupHooks.delete(hook); };
 }
 
 /** Run all registered cleanup hooks for a dead agent. */
@@ -72,24 +68,4 @@ export function ensureRegistryDir(): void {
 	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true });
 }
 
-export function readAllAgentRecords(): AgentRecord[] {
-	try {
-		const now = Date.now();
-		return readdirSync(REGISTRY_DIR)
-			.filter((f) => f.endsWith(".json"))
-			.flatMap((file) => {
-				try {
-					const record = JSON.parse(readFileSync(join(REGISTRY_DIR, file), "utf-8")) as AgentRecord;
-					if (!record.name) record.name = basename(record.cwd) || record.id.slice(0, 8);
-					if (now - record.heartbeat > STALE_MS && !isPidAlive(record.pid)) return [];
-					return [record];
-				} catch { return []; }
-			});
-	} catch { return []; }
-}
 
-export function writeAgentRecord(record: AgentRecord): void {
-	ensureRegistryDir();
-	const path = join(REGISTRY_DIR, `${record.id}.json`);
-	writeFileSync(path, JSON.stringify(record, null, 2), "utf-8");
-}

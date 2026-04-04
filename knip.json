@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "extensions/*/index.ts",
+    "lib/*.ts",
+    "lib/**/*.ts",
+    "scripts/*.ts"
+  ],
+  "project": [
+    "extensions/**/*.ts",
+    "lib/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "ignoreDependencies": [
+    "@mariozechner/pi-tui",
+    "@vitest/coverage-v8"
+  ],
+  "tags": [
+    "-lintignore"
+  ]
+}

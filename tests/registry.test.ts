@@ -194,22 +194,20 @@ describe("readSessionLog", () => {
 // ── agentCleanupPaths ───────────────────────────────────────────
 
 describe("agentCleanupPaths", () => {
-	it("returns exactly two paths: .json and .sock", () => {
+	it("returns the .json registry path", () => {
 		const paths = agentCleanupPaths("test-agent-123");
-		expect(paths).toHaveLength(2);
-		expect(paths.some((p) => p.endsWith("test-agent-123.json"))).toBe(true);
-		expect(paths.some((p) => p.endsWith("test-agent-123.sock"))).toBe(true);
+		expect(paths).toHaveLength(1);
+		expect(paths[0]).toMatch(/test-agent-123\.json$/);
 	});
 
 	it("does NOT include the agent inbox directory path", () => {
 		const paths = agentCleanupPaths("test-agent-123");
-		// Every path must have a file extension — never a bare directory
 		for (const p of paths) {
-			expect(p).toMatch(/\.(json|sock)$/);
+			expect(p).toMatch(/\.json$/);
 		}
 	});
 
-	it("uses the agent id in both returned paths", () => {
+	it("uses the agent id in the returned path", () => {
 		const id = "unique-id-xyz";
 		const paths = agentCleanupPaths(id);
 		for (const p of paths) {

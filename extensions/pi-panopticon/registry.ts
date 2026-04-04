@@ -31,6 +31,16 @@ import type { Registry as RegistryInterface } from "./types.js";
 
 const HEARTBEAT_MS = 5_000;
 
+export const STATUS_SYMBOL: Record<AgentStatus, string> = {
+	running: "🟢",
+	waiting: "🟡",
+	done: "✅",
+	blocked: "🚧",
+	stalled: "🛑",
+	terminated: "⚫",
+	unknown: "⚪",
+};
+
 // ── Pure functions (exported for tests) ─────────────────────────
 
 /**
@@ -120,14 +130,13 @@ export function sortRecords(
 }
 
 /**
- * Return cleanup paths for a dead agent (registry file + socket).
+ * Return cleanup paths for a dead agent (registry file).
  * Used by external cleanup logic.
  * @internal exported for tests
  */
 export function agentCleanupPaths(id: string): string[] {
 	return [
 		join(REGISTRY_DIR, `${id}.json`),
-		join(REGISTRY_DIR, `${id}.sock`),
 	];
 }
 
@@ -147,7 +156,7 @@ export default class Registry implements RegistryInterface {
 		this.record = undefined;
 	}
 
-	getRecord(): AgentRecord | undefined {
+	getRecord(): Readonly<AgentRecord> | undefined {
 		return this.record;
 	}
 
@@ -235,16 +244,16 @@ export default class Registry implements RegistryInterface {
 		}
 	}
 
-	updatePendingMessages(count: number): void {
+	setName(name: string): void {
 		if (this.record) {
-			this.record.pendingMessages = count;
+			this.record.name = name;
 			this.flush();
 		}
 	}
 
-	setSocket(path: string | undefined): void {
+	updatePendingMessages(count: number): void {
 		if (this.record) {
-			this.record.socket = path;
+			this.record.pendingMessages = count;
 			this.flush();
 		}
 	}

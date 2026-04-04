@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 // ── Types ───────────────────────────────────────────────────────
 
+/** @public */
 export interface SessionEvent {
 	ts: number;
 	event: string;

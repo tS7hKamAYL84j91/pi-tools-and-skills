@@ -31,7 +31,7 @@ function truncate(s: string, max = 200): string {
 
 // ── Config ──────────────────────────────────────────────────────
 
-export interface MessagingConfig {
+interface MessagingConfig {
 	/** Transport for point-to-point sends (agent_send, /send). */
 	send: MessageTransport;
 	/** Transport for broadcast (agent_broadcast). */
@@ -40,11 +40,13 @@ export interface MessagingConfig {
 
 // ── Messaging Module ────────────────────────────────────────────
 
-export interface MessagingModule {
+interface MessagingModule {
 	/** Initialize transport for self, drain inbox, register cleanup hook. */
 	init(): void;
 	/** Read pending messages, deliver via pi.sendUserMessage, ack, prune, update pending count. */
 	drainInbox(): void;
+	/** Remove the cleanup hook registered by init(). Call on shutdown. */
+	dispose(): void;
 }
 
 // ── Factory ─────────────────────────────────────────────────────
@@ -227,6 +229,8 @@ export function createMessaging(config: MessagingConfig) {
 
 		// ── Return MessagingModule ──────────────────────────────
 
+		let disposeCleanupHook: (() => void) | null = null;
+
 		const module: MessagingModule = {
 			init() {
 				const record = registry.getRecord();
@@ -235,9 +239,14 @@ export function createMessaging(config: MessagingConfig) {
 				updatePendingCount();
 				drainInbox();
 				// Register transport cleanup for dead-agent reaping
-				onAgentCleanup((agentId) => config.send.cleanup(agentId));
+				disposeCleanupHook?.();
+				disposeCleanupHook = onAgentCleanup((agentId) => config.send.cleanup(agentId));
 			},
 			drainInbox,
+			dispose() {
+				disposeCleanupHook?.();
+				disposeCleanupHook = null;
+			},
 		};
 
 		return module;

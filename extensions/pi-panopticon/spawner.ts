@@ -3,15 +3,15 @@
  *
  * Spawns pi agents in --mode rpc, giving us:
  * 1. Bidirectional stdin/stdout JSON protocol (prompt, steer, abort, get_state)
- * 2. Global extensions inherited (panopticon → socket IPC from any agent)
+ * 2. Global extensions inherited (panopticon → IPC from any agent)
  * 3. Agent stays alive — send multiple tasks without respawning
  * 4. Two communication channels:
  *    - RPC stdin  (from parent, structured commands)
- *    - Unix socket (from any peer, via agent_send)
+ *    - Maildir    (from any peer, via agent_send)
  *
  * Exports:
  *   - setupSpawner(pi: ExtensionAPI): SpawnerModule
- *   - Helper functions: formatEvent, recentOutputFromEvents, buildArgList, defaultSubagentSessionDir
+ *   - Helper functions: formatEvent, recentOutputFromEvents, buildArgList
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -99,7 +99,7 @@ interface ArgParams {
 }
 
 /** Default session directory for subagents. */
-export function defaultSubagentSessionDir(name: string): string {
+function defaultSubagentSessionDir(name: string): string {
 	return join(homedir(), ".pi", "agent", "sessions", "subagents", name);
 }
 
@@ -136,7 +136,7 @@ const MAX_RECENT_EVENTS = 100;
 
 // ── SpawnerModule interface ─────────────────────────────────────
 
-export interface SpawnerModule {
+interface SpawnerModule {
 	shutdownAll(): Promise<void>;
 }
 
@@ -217,7 +217,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 		label: "Spawn Agent",
 		description:
 			"Spawn a new pi agent in RPC mode. The agent stays alive and can receive " +
-			"multiple tasks. It inherits global extensions (panopticon → socket IPC). " +
+			"multiple tasks. It inherits global extensions (panopticon → IPC). " +
 			"After spawning, send it a task with rpc_send, or use agent_send from any peer.",
 		promptSnippet: "Spawn a persistent RPC agent with IPC",
 		promptGuidelines: [
@@ -548,13 +548,23 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 	return {
 		async shutdownAll(): Promise<void> {
+			const pending: Promise<void>[] = [];
 			for (const agent of agents.values()) {
-				if (!agent.done) {
-					rpcWrite(agent, { type: "abort" });
-					const p = agent.proc;
-					setTimeout(() => { if (!agent.done) try { p.kill("SIGTERM"); } catch { /* */ } }, 2000);
-				}
+				if (agent.done) continue;
+				rpcWrite(agent, { type: "abort" });
+				const p = agent.proc;
+				const closed = new Promise<void>((res) => p.once("close", res));
+				pending.push(
+					Promise.race([closed, sleep(2000)]).then(async () => {
+						if (!agent.done) {
+							try { p.kill("SIGTERM"); } catch { /* */ }
+							await Promise.race([closed, sleep(2000)]);
+							if (!agent.done) try { p.kill("SIGKILL"); } catch { /* */ }
+						}
+					}),
+				);
 			}
+			await Promise.all(pending);
 		},
 	};
 }

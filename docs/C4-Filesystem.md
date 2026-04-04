@@ -5,7 +5,6 @@ graph LR
     subgraph "~/.pi/agents/"
         A1["{id-A}.json<br/>AgentRecord"]
         A2["{id-B}.json<br/>AgentRecord"]
-        S1["{id-A}.sock<br/>Unix socket"]
         subgraph "inbox-B [id-B/inbox/]"
             tmp["tmp/<br/>(staging)"]
             new["new/<br/>(delivered)"]
@@ -17,7 +16,6 @@ graph LR
         sess["…/*.jsonl<br/>Pi session logs"]
     end
 
-    A1 -.- S1
     tmp -->|"renameSync<br/>(atomic)"| new
     new -->|"ack"| cur
 ```

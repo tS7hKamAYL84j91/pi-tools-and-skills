@@ -1,5 +1,6 @@
 # Level 4: Code (key interfaces)
 
+<!-- c4-auto-start: code -->
 ### Core types (lib/)
 
 ```mermaid
@@ -21,7 +22,6 @@ classDiagram
         +pid: number
         +cwd: string
         +model: string
-        +socket?: string
         +startedAt: number
         +heartbeat: number
         +status: AgentStatus
@@ -80,14 +80,14 @@ classDiagram
     class Registry {
         <<interface>>
         +selfId: string
-        +getRecord() AgentRecord | undefined
+        +getRecord() Readonly~AgentRecord~ | undefined
         +register(ctx: ExtensionContext) void
         +unregister() void
         +setStatus(status: AgentStatus) void
         +updateModel(model: string) void
         +setTask(task: string) void
+        +setName(name: string) void
         +updatePendingMessages(count: number) void
-        +setSocket(path: string | undefined) void
         +readAllPeers() AgentRecord[]
         +flush() void
     }
@@ -101,8 +101,8 @@ classDiagram
         +setStatus(status) void
         +updateModel(model) void
         +setTask(task) void
+        +setName(name) void
         +updatePendingMessages(count) void
-        +setSocket(path) void
         +flush() void
         +readAllPeers() AgentRecord[]
         -heartbeat() void
@@ -112,6 +112,7 @@ classDiagram
         <<interface>>
         +init() void
         +drainInbox() void
+        +dispose() void
     }
 
     class SpawnerModule {
@@ -126,18 +127,9 @@ classDiagram
         +refresh(ctx: ExtensionContext) void
     }
 
-    class SocketServer {
-        -server: net.Server | null
-        -socketPath: string | null
-        +start(path, getSessionFile) void
-        +stop() void
-        +isRunning() boolean
-    }
-
     class Orchestrator {
         <<index.ts>>
         -registry: RegistryImpl
-        -socket: SocketServer
         -messaging: MessagingModule
         -spawner: SpawnerModule
         -ui: UIModule
@@ -148,15 +140,13 @@ classDiagram
     RegistryImpl --> "0..*" AgentRecord : reads (peers)
 
     Orchestrator --> RegistryImpl
-    Orchestrator --> SocketServer
     Orchestrator --> MessagingModule
     Orchestrator --> SpawnerModule
     Orchestrator --> UIModule
 
     MessagingModule --> Registry : getRecord, readAllPeers, updatePendingMessages
     MessagingModule --> MessageTransport : send, receive, ack, init, prune, pendingCount, cleanup
-    UIModule --> Registry : readAllPeers, getRecord, flush
-    SocketServer --> SessionLog : readSessionLog
+    UIModule --> Registry : readAllPeers, getRecord, setName
 ```
 
 ### Dependency direction
@@ -164,47 +154,38 @@ classDiagram
 ```mermaid
 graph TD
     subgraph "pi-panopticon extension"
-        index[index.ts]
-        registry[registry.ts]
-        messaging[messaging.ts]
-        spawner[spawner.ts]
-        peek[peek.ts]
-        socket[socket.ts]
-        ui[ui.ts]
-        types[types.ts]
+        id_10[index]
+        id_11[registry]
+        id_12[messaging]
+        id_13[spawner]
+        id_14[peek]
+        id_15[ui]
+        id_16[types]
     end
 
     subgraph "lib"
-        agentReg[agent-registry.ts]
-        transport[message-transport.ts]
-        maildir[transports/maildir.ts]
-        sessionLog[session-log.ts]
-        toolResult[tool-result.ts]
+        id_17[agent-registry]
+        id_18[message-transport]
+        id_19[transports/maildir]
+        id_20[session-log]
+        id_21[tool-result]
     end
 
-    index --> registry
-    index --> messaging
-    index --> spawner
-    index --> peek
-    index --> socket
-    index --> ui
-    index --> types
-
-    registry --> agentReg
-    messaging --> types
-    messaging --> agentReg
-    messaging --> maildir
-    spawner --> types
-    peek --> types
-    peek --> registry
-    peek --> sessionLog
-    socket --> sessionLog
-    ui --> types
-    ui --> registry
-    ui --> sessionLog
-    types --> agentReg
-    types --> transport
-    types --> toolResult
-    maildir --> agentReg
-    maildir --> transport
+    id_10 --> id_11
+    id_10 --> id_12
+    id_10 --> id_13
+    id_10 --> id_15
+    id_12 --> id_11
+    id_12 --> id_18
+    id_12 --> id_17
+    id_14 --> id_11
+    id_14 --> id_20
+    id_15 --> id_11
+    id_15 --> id_20
+    id_11 --> id_17
+    id_19 --> id_18
+    id_19 --> id_17
+    id_16 --> id_17
+    id_16 --> id_21
 ```
+<!-- c4-auto-end: code -->

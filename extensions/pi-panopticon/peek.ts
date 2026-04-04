@@ -9,20 +9,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 import { ok } from "./types.js";
-import type { Registry, AgentStatus } from "./types.js";
-import { formatAge } from "./registry.js";
-
-// ── Constants ───────────────────────────────────────────────────
-
-const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "🟢",
-	waiting: "🟡",
-	done: "✅",
-	blocked: "🚧",
-	stalled: "🛑",
-	terminated: "⚫",
-	unknown: "⚪",
-};
+import type { Registry } from "./types.js";
+import { formatAge, STATUS_SYMBOL } from "./registry.js";
 
 // ── Setup ───────────────────────────────────────────────────────
 
@@ -64,9 +52,7 @@ export function setupPeek(
 					return ok("No agents registered.", { agents: [] });
 
 				const listing = records.map((r) =>
-					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${
-						(r.socket ? "⚡socket" : "no-socket").padEnd(12)
-					} ${r.model || "?"} up=${formatAge(r.startedAt)}${
+					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
 						(r.pendingMessages ?? 0) > 0
 							? ` ✉${r.pendingMessages}`
 							: ""
@@ -76,12 +62,11 @@ export function setupPeek(
 				);
 
 				return ok(
-					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send or agent_send_durable to message a peer.`,
+					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send to message a peer.`,
 					{
 						agents: records.map((r) => ({
 							name: r.name,
 							pid: r.pid,
-							socket: r.socket,
 							cwd: r.cwd,
 							status: r.status,
 							model: r.model,

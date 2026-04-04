@@ -4,8 +4,7 @@
  * Leaf-level module — no imports from sibling modules.
  */
 
-export { type AgentRecord, type AgentStatus, REGISTRY_DIR, STALE_MS } from "../../lib/agent-registry.js";
-export type { MessageTransport } from "../../lib/message-transport.js";
+export type { AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
 export { ok, fail, type ToolResult } from "../../lib/tool-result.js";
 
 import type { AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
@@ -17,8 +16,8 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 export interface Registry {
 	/** The current agent's id. */
 	readonly selfId: string;
-	/** Get a snapshot of the current record (undefined before register). */
-	getRecord(): AgentRecord | undefined;
+	/** Get a read-only view of the current record (undefined before register). */
+	getRecord(): Readonly<AgentRecord> | undefined;
 	/** Register this agent. Creates the record and starts heartbeat. */
 	register(ctx: ExtensionContext): void;
 	/** Unregister. Stops heartbeat and removes the record file. */
@@ -29,10 +28,11 @@ export interface Registry {
 	updateModel(model: string): void;
 	/** Update task string and flush. */
 	setTask(task: string): void;
+	/** Update agent name and flush. */
+	setName(name: string): void;
 	/** Update pending message count and flush. */
 	updatePendingMessages(count: number): void;
-	/** Update the socket path and flush. */
-	setSocket(path: string | undefined): void;
+
 	/** Read all live agent records (reaps dead ones). */
 	readAllPeers(): AgentRecord[];
 	/** Flush the in-memory record to disk. */

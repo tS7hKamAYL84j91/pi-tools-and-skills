@@ -27,22 +27,10 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readSessionLog } from "../../lib/session-log.js";
 import type { Registry, AgentRecord, AgentStatus } from "./types.js";
-import { formatAge, nameTaken, sortRecords } from "./registry.js";
-
-// ── Constants (exported for tests) ──────────────────────────────
-
-export const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "🟢",
-	waiting: "🟡",
-	done: "✅",
-	blocked: "🚧",
-	stalled: "🛑",
-	terminated: "⚫",
-	unknown: "⚪",
-};
+import { formatAge, nameTaken, sortRecords, STATUS_SYMBOL } from "./registry.js";
 
 /** Map status → short label shown after the colon in powerline segments. */
-export const STATUS_LABEL: Record<AgentStatus, string> = {
+const STATUS_LABEL: Record<AgentStatus, string> = {
 	running: "active",
 	waiting: "idle",
 	done: "done",
@@ -56,7 +44,7 @@ type ThemeColor =
 	Parameters<ExtensionContext["ui"]["theme"]["fg"]>[0];
 
 /** Map status → theme colour key for the name portion of a segment. */
-export const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
+const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
 	running: "success",
 	waiting: "accent",
 	done: "dim",
@@ -66,8 +54,8 @@ export const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
 	unknown: "muted",
 };
 
-export const PL_SEP = "\uE0B0"; // ❯ filled right-pointing triangle
-export const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
+const PL_SEP = "\uE0B0"; // ❯ filled right-pointing triangle
+const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
 
 // ── Pure functions (exported for tests) ────────────────────────
 
@@ -75,7 +63,7 @@ export const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
  * Build Powerline segments for all agents; self is bold accent, peers use STATUS_COLOR.
  * @internal exported for tests
  */
-export function buildPowerlineSegments(
+function buildPowerlineSegments(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
@@ -89,8 +77,7 @@ export function buildPowerlineSegments(
 				: "";
 		if (rec.id === selfId)
 			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inbox}`;
-		const offline = rec.socket ? "" : theme.fg("error", "○");
-		return `${sym} ${offline}${theme.fg(STATUS_COLOR[rec.status], rec.name)}${theme.fg("dim", `:${label}`)}${inbox}`;
+		return `${sym} ${theme.fg(STATUS_COLOR[rec.status], rec.name)}${theme.fg("dim", `:${label}`)}${inbox}`;
 	});
 }
 
@@ -98,7 +85,7 @@ export function buildPowerlineSegments(
  * Render Powerline widget with ellipsis truncation to available width.
  * @internal exported for tests
  */
-export function renderPowerlineWidget(
+function renderPowerlineWidget(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
@@ -127,7 +114,7 @@ async function openAgentOverlay(
 	const items: SelectItem[] = sorted.map((rec) => ({
 		value: rec.name,
 		label: `${STATUS_SYMBOL[rec.status]} ${rec.name}${rec.id === selfId ? " (you)" : ""}`,
-		description: `${rec.status} │ ${rec.socket ? "⚡socket" : "no-transport"} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
+		description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
 	}));
 
 	const selected = await ctx.ui.custom<string | null>(
@@ -244,7 +231,6 @@ async function showAgentDetail(
 			["Model", rec.model || "unknown"],
 			["CWD", rec.cwd],
 			["PID", String(rec.pid)],
-			["Transport", rec.socket ? "⚡ Unix socket" : "none"],
 			["Messages", `pending: ${pending}`],
 			["Uptime", formatAge(rec.startedAt)],
 			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "-"],
@@ -304,7 +290,7 @@ async function showAgentDetail(
 
 // ── UIModule interface and setup ───────────────────────────────
 
-export interface UIModule {
+interface UIModule {
 	start(ctx: ExtensionContext): void;
 	stop(): void;
 	refresh(ctx: ExtensionContext): void;
@@ -345,12 +331,8 @@ export function setupUI(
 				);
 				return;
 			}
-			const record = registry.getRecord();
-			if (record) {
-				record.name = name;
-				registry.flush();
-				ctx.ui.notify(`You are now "${name}"`, "info");
-			}
+			registry.setName(name);
+			ctx.ui.notify(`You are now "${name}"`, "info");
 		},
 	});
 
@@ -412,14 +394,14 @@ export function setupUI(
 				(_tui: unknown, theme: ExtensionContext["ui"]["theme"]) => ({
 					render(width: number): string[] {
 						return renderPowerlineWidget(
-							registry.readAllPeers(),
+							records,
 							selfId,
 							theme,
 							width,
 						);
 					},
 					invalidate(): void {
-						/* fresh data on each render */
+						/* data refreshed every 5s via refreshWidget timer */
 					},
 				}),
 				{ placement: "belowEditor" },

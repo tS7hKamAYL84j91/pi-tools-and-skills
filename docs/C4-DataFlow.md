@@ -33,17 +33,14 @@ sequenceDiagram
     participant Pi as Pi Runtime
     participant I as index.ts
     participant R as Registry
-    participant S as Socket
     participant M as Messaging
     participant U as UI
 
     Pi->>I: session_start
     I->>R: register(ctx)
     R->>R: pickName, writeFileSync, start heartbeat
-    I->>S: start(socketPath)
-    I->>R: setSocket(path)
     I->>M: init()
-    M->>M: transport.init, drainInbox
+    M->>M: transport.init, drainInbox, onAgentCleanup
     I->>U: start(ctx)
     U->>U: refreshWidget, start timer
 
@@ -55,9 +52,9 @@ sequenceDiagram
     I->>M: drainInbox()
 
     Pi->>I: session_shutdown
-    I->>I: spawner.shutdownAll()
+    I->>I: spawner.shutdownAll() (await all children)
     I->>M: drainInbox()
-    I->>S: stop()
+    I->>M: dispose() (remove cleanup hook)
     I->>U: stop()
     I->>R: unregister()
     R->>R: stop heartbeat, unlinkSync({id}.json)
@@ -85,5 +82,8 @@ sequenceDiagram
 
     A->>SP: kill_agent("worker")
     SP->>Child: stdin: {type: "abort"}
-    SP->>Child: SIGTERM → SIGKILL
+    SP->>SP: await 2s
+    SP->>Child: SIGTERM (if still alive)
+    SP->>SP: await 2s
+    SP->>Child: SIGKILL (if still alive)
 ```

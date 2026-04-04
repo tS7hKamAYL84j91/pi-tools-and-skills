@@ -2,16 +2,14 @@
  * Tests for pi-messaging.ts
  *
  * Injects mock MessageTransports for send and broadcast.
- * No real sockets, dirs, or transports touched.
+ * No real dirs or transports touched.
  */
 
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from "vitest";
 
 vi.mock("../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
-	readAllAgentRecords: vi.fn(),
-	writeAgentRecord: vi.fn(),
-	onAgentCleanup: vi.fn(),
+	onAgentCleanup: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("../lib/transports/maildir.js", () => ({
@@ -24,7 +22,7 @@ import { createMessaging } from "../extensions/pi-panopticon/messaging.js";
 import type { MessageTransport, DeliveryResult, InboundMessage } from "../lib/message-transport.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 
-const mockReadAll = registry.readAllAgentRecords as MockedFunction<typeof registry.readAllAgentRecords>;
+
 
 // ── Minimal ExtensionAPI mock ───────────────────────────────────
 
@@ -83,8 +81,8 @@ function makeMockTransport(): MessageTransport & {
 // ── Fixtures ────────────────────────────────────────────────────
 
 const SELF = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_A = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", socket: "/tmp/a.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_B = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", socket: "/tmp/b.sock", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const PEER_A = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const PEER_B = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
 const PEER_C = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
 
 // ── Mock Registry ───────────────────────────────────────────────
@@ -98,8 +96,8 @@ function makeMockRegistry(): Registry & { pendingMessages: number } {
 		setStatus: vi.fn(),
 		updateModel: vi.fn(),
 		setTask: vi.fn(),
+		setName: vi.fn(),
 		updatePendingMessages: vi.fn(),
-		setSocket: vi.fn(),
 		readAllPeers: vi.fn(() => [SELF, PEER_A, PEER_B, PEER_C]),
 		flush: vi.fn(),
 		pendingMessages: 0,
@@ -119,7 +117,6 @@ let messagingModule: ReturnType<ReturnType<typeof createMessaging>>;
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	mockReadAll.mockReturnValue([SELF, PEER_A, PEER_B, PEER_C]);
 
 	sendTransport = makeMockTransport();
 	sendTransport.send.mockResolvedValue(ACCEPTED);
@@ -276,7 +273,7 @@ describe("/send command", () => {
 
 describe("registry integration", () => {
 	it("uses registry.getRecord() for self instead of PID scan", async () => {
-		// agent_send uses registry.readAllPeers() for peer resolution, not readAllAgentRecords
+		// agent_send uses registry.readAllPeers() for peer resolution
 		await executeTool("agent_send", { name: "alice", message: "hi" });
 		expect(mockRegistry.readAllPeers).toHaveBeenCalled();
 		expect(mockRegistry.getRecord).toHaveBeenCalled();

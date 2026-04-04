@@ -14,7 +14,6 @@ const mockUnregister = vi.fn();
 const mockSetStatus = vi.fn();
 const mockUpdateModel = vi.fn();
 const mockSetTask = vi.fn();
-const mockSetSocket = vi.fn();
 const mockGetRecord = vi.fn((): { task: string | undefined; sessionFile: string } => ({ task: undefined, sessionFile: "/tmp/s.jsonl" }));
 const mockFlush = vi.fn();
 const mockReadAllPeers = vi.fn(() => []);
@@ -28,7 +27,6 @@ vi.mock("../extensions/pi-panopticon/registry.js", () => {
 			setStatus = mockSetStatus;
 			updateModel = mockUpdateModel;
 			setTask = mockSetTask;
-			setSocket = mockSetSocket;
 			getRecord = mockGetRecord;
 			flush = mockFlush;
 			readAllPeers = mockReadAllPeers;
@@ -36,25 +34,12 @@ vi.mock("../extensions/pi-panopticon/registry.js", () => {
 	};
 });
 
-const mockSocketStart = vi.fn();
-const mockSocketStop = vi.fn();
-const mockSocketIsRunning = vi.fn(() => true);
-
-vi.mock("../extensions/pi-panopticon/socket.js", () => {
-	return {
-		default: class MockSocketServer {
-			start = mockSocketStart;
-			stop = mockSocketStop;
-			isRunning = mockSocketIsRunning;
-		},
-	};
-});
-
 const mockMessagingInit = vi.fn();
 const mockDrainInbox = vi.fn();
+const mockMessagingDispose = vi.fn();
 
 vi.mock("../extensions/pi-panopticon/messaging.js", () => ({
-	default: vi.fn(() => ({ init: mockMessagingInit, drainInbox: mockDrainInbox })),
+	default: vi.fn(() => ({ init: mockMessagingInit, drainInbox: mockDrainInbox, dispose: mockMessagingDispose })),
 }));
 
 const mockShutdownAll = vi.fn(async () => {});
@@ -131,27 +116,14 @@ beforeEach(() => {
 });
 
 describe("session_start", () => {
-	it("calls register → socket.start → messaging.init in order", async () => {
+	it("calls register → messaging.init in order", async () => {
 		const order: string[] = [];
 		mockRegister.mockImplementation(() => order.push("register"));
-		mockSocketStart.mockImplementation(() => order.push("socket.start"));
 		mockMessagingInit.mockImplementation(() => order.push("messaging.init"));
 
 		await fire(pi, "session_start", {}, makeMockCtx());
 
-		expect(order).toEqual(["register", "socket.start", "messaging.init"]);
-	});
-
-	it("sets socket path on registry when socket is running", async () => {
-		mockSocketIsRunning.mockReturnValue(true);
-		await fire(pi, "session_start", {}, makeMockCtx());
-		expect(mockSetSocket).toHaveBeenCalledWith(expect.stringContaining(".sock"));
-	});
-
-	it("sets socket undefined when socket fails to start", async () => {
-		mockSocketIsRunning.mockReturnValue(false);
-		await fire(pi, "session_start", {}, makeMockCtx());
-		expect(mockSetSocket).toHaveBeenCalledWith(undefined);
+		expect(order).toEqual(["register", "messaging.init"]);
 	});
 
 	it("starts UI when ctx.hasUI is true", async () => {
@@ -209,16 +181,16 @@ describe("input", () => {
 });
 
 describe("session_shutdown", () => {
-	it("calls shutdownAll → drainInbox → socket.stop → ui.stop → unregister in order", async () => {
+	it("calls shutdownAll → drainInbox → dispose → ui.stop → unregister in order", async () => {
 		const order: string[] = [];
 		mockShutdownAll.mockImplementation(async () => { order.push("shutdownAll"); });
 		mockDrainInbox.mockImplementation(() => { order.push("drainInbox"); });
-		mockSocketStop.mockImplementation(() => { order.push("socket.stop"); });
+		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
 		mockUIStop.mockImplementation(() => { order.push("ui.stop"); });
 		mockUnregister.mockImplementation(() => { order.push("unregister"); });
 
 		await fire(pi, "session_shutdown", {});
 
-		expect(order).toEqual(["shutdownAll", "drainInbox", "socket.stop", "ui.stop", "unregister"]);
+		expect(order).toEqual(["shutdownAll", "drainInbox", "dispose", "ui.stop", "unregister"]);
 	});
 });

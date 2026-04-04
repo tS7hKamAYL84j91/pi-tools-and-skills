@@ -3,22 +3,18 @@
  *
  * Single extension entry point that orchestrates:
  * - Registry: agent registration, heartbeat, dead-agent reaping
- * - Socket: Unix socket server for peek protocol
  * - Messaging: agent_send, agent_broadcast, /send command
  * - Spawner: spawn_agent, rpc_send, list_spawned, kill_agent
  * - Peek: agent_peek tool
  * - UI: powerline widget, /agents overlay, /alias command
  *
  * Lifecycle ordering:
- *   start:    registry.register → socket.start → messaging.init → ui.start
- *   shutdown: spawner.shutdownAll → messaging.drainInbox → socket.stop → ui.stop → registry.unregister
+ *   start:    registry.register → messaging.init → ui.start
+ *   shutdown: spawner.shutdownAll → messaging.drainInbox → ui.stop → registry.unregister
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { join } from "node:path";
-import { REGISTRY_DIR } from "./types.js";
 import Registry from "./registry.js";
-import SocketServer from "./socket.js";
 import defaultMessaging from "./messaging.js";
 import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
@@ -27,8 +23,6 @@ import { setupUI } from "./ui.js";
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId);
-	const socket = new SocketServer();
-	const socketPath = join(REGISTRY_DIR, `${selfId}.sock`);
 
 	// Set up modules — registers tools/commands, returns module handles
 	const messaging = defaultMessaging(pi, registry);
@@ -40,8 +34,6 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		registry.register(ctx);
-		socket.start(socketPath, () => registry.getRecord()?.sessionFile);
-		registry.setSocket(socket.isRunning() ? socketPath : undefined);
 		messaging.init();
 		if (ctx.hasUI) {
 			ui.start(ctx);
@@ -78,7 +70,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		await spawner.shutdownAll();
 		messaging.drainInbox();
-		socket.stop();
+		messaging.dispose();
 		ui.stop();
 		registry.unregister();
 	});

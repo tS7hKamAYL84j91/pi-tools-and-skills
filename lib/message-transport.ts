@@ -2,7 +2,7 @@
  * MessageTransport — Dependency Inversion boundary for agent messaging.
  *
  * All messaging code depends on this interface, never on concrete
- * transports (Maildir, sockets, Redis, HTTP…).  Swap implementations
+ * transports (Maildir, Redis, HTTP…).  Swap implementations
  * without touching the business logic.
  *
  * The transport determines the delivery semantics (at-least-once,
