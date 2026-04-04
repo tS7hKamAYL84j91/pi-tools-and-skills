@@ -1,200 +1,86 @@
-# Plan: Merge Three Extensions into One — ✅ COMPLETE (2026-04-03)
+# Plan: Panopticon — Next Steps
 
-**Status:** All 9 phases executed successfully. See [IMPROVEMENTS.md](../IMPROVEMENTS.md) for Phase 2+ roadmap and [CHANGELOG.md](../CHANGELOG.md) for completion summary.
-
----
-
-## Original Goal
-Consolidate `pi-panopticon.ts`, `pi-messaging.ts`, and `pi-subagent.ts` into a single `extensions/pi-agents/` directory extension with separate modules. Eliminate operational coupling: load-order races, concurrent record writes, implicit cleanup hooks, and the assumption that panopticon is loaded for messaging/subagent to work.
-
-## Current State (at completion)
-- ✅ Single unified `extensions/pi-agents/` with 7 focused modules (~1,060 LOC)
-- ✅ Shared `lib/` layer unchanged (~460 LOC)
-- ✅ Test suite expanded: 102 tests, 99% passing
-- ✅ Type coverage: 98.88% (8,165/8,257 symbols)
-- ✅ Zero lint warnings, zero type errors
-- ✅ Explicit lifecycle ordering, no concurrent writes, no load-order races
-
-## Completion Summary
-
-### All 9 Phases Executed
-
-#### Phase 1: Create extension directory and entry point ✅
-- [x] 1.1 Create `extensions/pi-agents/` directory structure
-- [x] 1.2 Create `extensions/pi-agents/types.ts` with shared interfaces
-- [x] 1.3 Create `extensions/pi-agents/index.ts` single entry point
-- [x] Explicit lifecycle: session_start → register → socket → messaging → ui
-- [x] Shutdown: spawner → drain → socket → ui → unregister
-
-#### Phase 2: Extract registry module ✅
-- [x] 2.1 Create `registry.ts` with Registry class
-- [x] 2.2 Move pure functions (classifyRecord, buildRecord, pickName, etc.)
-- [x] 2.3 Single flush() method, in-memory heartbeat timer
-- [x] 2.4 Heartbeat checks for REPORT.md, marks agents as "done"
-- [x] All tests pass (panopticon-pure.test.ts)
-
-#### Phase 3: Extract socket module ✅
-- [x] 3.1 Create `socket.ts` with SocketServer class
-- [x] 3.2 Move Unix socket server start/stop
-- [x] 3.3 Handle "peek" command, read session files via Registry reference
-
-#### Phase 4: Extract messaging module ✅
-- [x] 4.1 Create `messaging.ts` with createMessaging factory
-- [x] 4.2 Move agent_send, agent_broadcast, /send command
-- [x] 4.3 Registry reference (no PID scans)
-- [x] 4.4 drainInbox() and init() methods
-- [x] 4.5 All tests pass (pi-messaging.test.ts)
-
-#### Phase 5: Extract spawner module ✅
-- [x] 5.1 Create `spawner.ts` with setupSpawner factory
-- [x] 5.2 Move spawn_agent, rpc_send, list_spawned, kill_agent
-- [x] 5.3 Move pure helpers (formatEvent, buildArgList)
-- [x] 5.4 shutdownAll() called on session_shutdown
-- [x] All tests pass (pi-subagent.test.ts)
-
-#### Phase 6: Extract peek module ✅
-- [x] 6.1 Create `peek.ts` with agent_peek tool
-- [x] 6.2 Uses Registry.readAllPeers() and Registry.getRecord()
-
-#### Phase 7: Extract UI module ✅
-- [x] 7.1 Create `ui.ts` with setupUI factory
-- [x] 7.2 Move widget, /agents overlay, /alias command, Ctrl+Shift+O
-- [x] 7.3 Powerline rendering, status display
-
-#### Phase 8: Update tests ✅
-- [x] 8.1 Import paths updated (pi-agents/* instead of pi-panopticon, pi-messaging, pi-subagent)
-- [x] 8.2 Mock structure updated (direct Registry reference, no PID scanning)
-- [x] 8.3 Pure function tests verified (classifyRecord, etc.)
-- [x] 8.4 Added lifecycle integration tests
-- [x] 8.5 All 102 tests passing
-
-#### Phase 9: Delete old files and verify ✅
-- [x] 9.1 Deleted `extensions/pi-panopticon.ts`
-- [x] 9.2 Deleted `extensions/pi-messaging.ts`
-- [x] 9.3 Deleted `extensions/pi-subagent.ts`
-- [x] 9.4 All tests pass, zero type errors
-- [x] 9.5 `npm run check` (typecheck + lint + type-coverage) green
-- [x] 9.6 Manual smoke test verified
+**Date:** 2026-04-04
+**Status:** Active
+**Source:** Review of research corpus (T-056, T-058, T-073, T-074, T-075, T-076, Kim et al. 2025)
 
 ---
 
-## Key Design Achievements
+## Priority 1: Brief Template Enforcement
 
-### Single Record, Single Write Path ✅
-Registry class holds one AgentRecord in memory. All mutations (heartbeat, status, pending count, model, task) go through `updateField()` → `flush()`. No more concurrent writes from panopticon + messaging.
+Highest-impact change for agent output quality. Kim et al. showed architecture-task alignment matters more than agent count. The T-056 brief template exists but isn't enforced.
 
-### Explicit Lifecycle Ordering ✅
-```
-session_start:    registry.register → socket.start → messaging.init → ui.start
-session_shutdown: spawner.shutdownAll → messaging.flush → socket.stop → ui.stop → registry.unregister
-```
-No ambiguity. Messaging always gets valid registry reference.
+- [ ] 1.1 Make `Task Classification` a mandatory field in BRIEF.md (Sequential / Parallelisable / High-entropy search / Tool-heavy)
+- [ ] 1.2 Enforce classification check before spawning agents — sequential tasks go to SAS (single agent), parallelisable to Centralised MAS
+- [ ] 1.3 Include success criteria and explicit scope boundaries in every brief
 
-### Keep lib/ Unchanged ✅
-`lib/` layer stays clean and independent:
-- agent-registry.ts (AgentRecord type, CRUD, cleanup hooks)
-- message-transport.ts (interface)
-- session-log.ts (JSONL reader)
-- tool-result.ts (ok/fail helpers)
-- transports/maildir.ts (implementation)
-
-### Pure Functions Exported for Tests ✅
-All logic extracted: `classifyRecord`, `buildRecord`, `formatAge`, `pickName`, `sortRecords` — testable without mocking.
-
-### Factory Pattern Preserved ✅
-messaging.ts still has `createMessaging(config)` factory for test transport injection.
+**Why:** Incorrectly parallelised sequential tasks degrade performance by 39–70% (Kim et al.). A well-structured brief eliminates the most common source of agent output failure.
 
 ---
 
-## Before → After Metrics
+## Priority 2: Model Routing
 
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| Extensions | 3 files | 1 directory (7 modules) | Unified |
-| LOC (extensions) | 1,419 | 1,060 | -359 (cleaner) |
-| LOC (lib) | 461 | 461 | — |
-| LOC (tests) | 1,038 | 1,060 | +22 (lifecycle tests) |
-| Type Coverage | 98.6% | 98.88% | +0.28% |
-| Tests | 91 passing | 102 passing | +11 (lifecycle) |
-| Concurrent Writes | 2 (pan + msg) | 1 (registry) | ✅ Fixed |
-| Load-Order Races | 1 (messaging PID scan) | 0 | ✅ Fixed |
-| Lint Warnings | 5+ | 0 | ✅ Fixed |
+Remove rate limits as a bottleneck by routing tasks to appropriate models.
+
+- [ ] 2.1 Route scouts and research tasks to Gemini Flash (100× TPM headroom vs Anthropic Sonnet)
+- [ ] 2.2 Route simple edits and boilerplate to Haiku
+- [ ] 2.3 Keep Sonnet for standard implementation, Opus for hard architecture decisions
+- [ ] 2.4 Single large-context agent (Gemini Pro 1M) for whole-codebase analysis — don't split across parallel scouts
+
+**Why:** All workers on Sonnet concentrates TPM in one rate-limit bucket. Gemini Flash has ~4M TPM vs Sonnet's ~40K.
 
 ---
 
-## Documentation Created During Merge
+## Priority 3: Task Classification Router
 
-- [CODE_REVIEW.md](../CODE_REVIEW.md) — Quality audit with metrics
-- [IMPROVEMENTS.md](../IMPROVEMENTS.md) — 6-phase roadmap (weeks 1-4+)
-- [DOCUMENTATION_REVIEW.md](../DOCUMENTATION_REVIEW.md) — Doc audit + remediation plan
-- [AGENT.md](../AGENT.md) — Google TS style guide rules (50+ rules)
-- [CHANGELOG.md](../CHANGELOG.md) — Version history and milestones
+Prevent the 39–70% degradation Kim et al. measured on incorrectly-parallelised sequential tasks.
 
----
+- [ ] 3.1 Apply the 45% test: if a single Sonnet agent can solve it at >45% accuracy, don't add agents
+- [ ] 3.2 Never use Independent MAS without cross-validation (17.2× error amplification)
+- [ ] 3.3 Sequential tasks (code, debug, config): single agent always
+- [ ] 3.4 Parallelisable tasks (research, analysis, scanning): Centralised MAS with WIP=3
 
-## Next Phase
-
-See **[IMPROVEMENTS.md](../IMPROVEMENTS.md)** for Phase 2+ roadmap:
-
-- **Phase 1 (Complete):** Code fixes, lint warnings, test suite
-- **Phase 2 (In Progress):** Integration tests, documentation
-- **Phase 3:** Legacy file cleanup, registry caching
-- **Phase 4:** New features (aliases, health monitoring)
-- **Phase 5:** Stress tests, polish
-- **Phase 6:** Performance tuning
+**Why:** Adding agents to the wrong task type is actively harmful regardless of rate limits.
 
 ---
 
-## Historical Reference
+## Priority 4: Spawn Depth Enforcement
 
-The original 9-phase plan is preserved below for historical reference. All tasks completed.
+- [ ] 4.1 Check `PI_SUBAGENT_DEPTH >= PI_SUBAGENT_MAX_DEPTH` before spawning — return error if exceeded
+- [ ] 4.2 Currently env vars are set but not enforced in spawner.ts
 
 ---
 
-# [Original Plan Document — Kept for Reference]
+## Priority 5: Backpressure Signal
 
-[The original detailed plan continues below...]
+- [ ] 5.1 Expose `pendingMessages` count via `agent_peek` (already partially done)
+- [ ] 5.2 Orchestrator should check inbox depth before sending — if N > 2, wait for drain
+- [ ] 5.3 Prevents context fragmentation from multiple simultaneous followUp injections
 
-## Goal
-Consolidate `pi-panopticon.ts`, `pi-messaging.ts`, and `pi-subagent.ts` into a single `extensions/pi-agents/` directory extension with separate modules. Eliminate operational coupling: load-order races, concurrent record writes, implicit cleanup hooks, and the assumption that panopticon is loaded for messaging/subagent to work.
+---
 
-## Current State
-- 3 separate extensions in `extensions/` (~1,420 LOC)
-- 5 shared libs in `lib/` (~460 LOC)
-- 4 test files (~1,060 LOC), 91 tests passing
-- Loaded via `settings.json` → `"extensions": ["/Users/jim/git/tools-and-skills/extensions"]`
-- Pi auto-discovers `extensions/*.ts` and `extensions/*/index.ts`
+## Priority 6: Registry Caching (When Needed)
 
-## Target Structure
-```
-extensions/pi-agents/
-├── index.ts              # Single entry point — orchestrates lifecycle
-├── registry.ts           # Agent registration, heartbeat, dead-agent reaping
-├── socket.ts             # Unix socket server (peek protocol)
-├── messaging.ts          # agent_send, agent_broadcast, /send, inbox drain
-├── spawner.ts            # spawn_agent, rpc_send, list_spawned, kill_agent
-├── peek.ts               # agent_peek tool
-├── ui.ts                 # Widget, /agents overlay, /alias, status
-└── types.ts              # Shared interfaces (Registry, SpawnedAgent, etc.)
+- [ ] 6.1 Cache peer records with TTL = heartbeat interval (5s)
+- [ ] 6.2 Only re-scan `~/.pi/agents/` directory on cache miss
+- [ ] 6.3 Not urgent at current scale (<20 agents), needed at 50+
 
-lib/                      # Keep as-is (already clean)
-├── agent-registry.ts     # AgentRecord type, file IO, cleanup hooks
-├── message-transport.ts  # MessageTransport interface
-├── session-log.ts        # Session JSONL reader
-├── tool-result.ts        # ok()/fail() helpers
-└── transports/
-    └── maildir.ts        # MaildirTransport implementation
-```
+---
 
-Pi will discover `extensions/pi-agents/index.ts` as a single extension. The three old files are deleted.
+## Deferred: Beads Topology for PA
 
-## Ownership summary (post-refactor)
-| Concern | Owner | Storage |
-|---------|-------|---------|
-| Agent registry (who's alive) | registry module | `~/.pi/agents/{id}.json` |
-| Activity log (what happened) | pi core | `~/.pi/agent/sessions/…/*.jsonl` |
-| Message delivery | messaging ext | transport-dependent (maildir: `~/.pi/agents/{id}/inbox/`) |
-| Pending message count | messaging ext | writes to AgentRecord, registry reads |
-| Observing peers | peek tool | reads AgentRecord + session JSONL |
-| Child process spawning | spawner module | pi RPC protocol |
+Reserve the Beads (linear pipeline) topology for personal assistant workflows. Do not apply to CoAS research orchestration where Centralised MAS is correct.
 
+- [ ] Each pipeline stage (intent-parser, planner, researcher, synthesiser) as a bead
+- [ ] Inter-bead channels use Maildir queues (same infrastructure)
+- [ ] No central orchestrator — user-interface bead heads the chain
+
+---
+
+## Not Building
+
+- ❌ EventBridge / PubSub broker — overkill for <10 agents, adds daemon dependency
+- ❌ Erlang/OTP actors — wrong problem (our bottleneck is LLM TPM, not message throughput)
+- ❌ MCP for inter-agent messaging — MCP is for external tools, not agent coordination
+- ❌ Full Beads topology for CoAS — Centralised MAS is correct for parallel research tasks
+- ❌ Socket transport re-add — Maildir at turn boundaries is fast enough (30–60s LLM turns)
