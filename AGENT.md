@@ -70,4 +70,5 @@ Follow the Google TypeScript Style Guide. Key rules for this codebase:
 - **Type Coverage** — Minimum 95% type coverage (`type-coverage --strict --at-least 95`).
 - **Lint** — Use Biome with: `noExplicitAny: warn`, `noUnusedVariables: error`, `noUnusedImports: error`, `useConst: error`, `useImportType: error`, `useNodejsImportProtocol: error`.
 - **Pre-commit Hook** — If husky is present, run `lint-staged` + `typecheck` + `type-coverage` before commit.
+- **Architecture Docs:** Always update C4 architecture models in `docs/` using Mermaid before a commit.
 - **No Dependency Bloat** — Prefer native Node APIs over npm packages. Every new dependency must justify its existence.
