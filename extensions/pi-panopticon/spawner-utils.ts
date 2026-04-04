@@ -5,10 +5,10 @@
  * No side effects, no state — used by spawner.ts.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import type { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -24,7 +24,7 @@ function resolvePiBinary(): string {
 	return "pi";
 }
 
-export const PI_BINARY = resolvePiBinary();
+const PI_BINARY = resolvePiBinary();
 
 // ── Utilities ───────────────────────────────────────────────────
 
@@ -114,4 +114,72 @@ export interface SpawnedAgent {
 	done: boolean;
 }
 
-export const MAX_RECENT_EVENTS = 100;
+const MAX_RECENT_EVENTS = 100;
+
+// ── Child process spawning ──────────────────────────────────────
+
+interface SpawnOpts {
+	name: string;
+	cwd: string;
+	args: string[];
+	model?: string;
+	tempDir?: string;
+}
+
+/** Spawn a pi child process, wire stdout/stderr to the agent's event stream. */
+export function spawnChild(opts: SpawnOpts): SpawnedAgent {
+	const { name, cwd: agentCwd, args, model, tempDir } = opts;
+	const proc = spawn(PI_BINARY, args, {
+		cwd: agentCwd,
+		stdio: ["pipe", "pipe", "pipe"],
+		env: {
+			...process.env,
+			PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
+			PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH ?? "3",
+		},
+	});
+
+	const agent: SpawnedAgent = {
+		name, proc, pid: proc.pid ?? 0, cwd: agentCwd,
+		model, startedAt: Date.now(),
+		recentEvents: [], emitter: new EventEmitter(), tempDir, done: !proc.pid,
+	};
+
+	let buf = "";
+	proc.stdout?.on("data", (chunk: Buffer) => {
+		buf += chunk.toString();
+		const lines = buf.split("\n");
+		buf = lines.pop() ?? "";
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			agent.recentEvents.push(line);
+			if (agent.recentEvents.length > MAX_RECENT_EVENTS) agent.recentEvents.shift();
+			agent.emitter.emit("line", line);
+		}
+	});
+
+	proc.stderr?.on("data", (chunk: Buffer) => {
+		agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
+	});
+
+	const cleanTemp = () => {
+		if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+	};
+
+	proc.on("close", (code: number | null) => {
+		agent.done = true;
+		agent.recentEvents.push(`[process exited with code ${code}]`);
+		agent.emitter.emit("line", JSON.stringify({ type: "process_exit", code }));
+		cleanTemp();
+	});
+
+	proc.on("error", (err: Error) => {
+		agent.done = true;
+		agent.recentEvents.push(`[process error: ${err.message}]`);
+		agent.emitter.emit("line", JSON.stringify({ type: "process_error", message: err.message }));
+		cleanTemp();
+	});
+
+	proc.unref();
+	return agent;
+}

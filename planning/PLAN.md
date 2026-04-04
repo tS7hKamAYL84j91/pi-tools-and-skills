@@ -10,9 +10,9 @@
 
 Highest-impact change for agent output quality. Kim et al. showed architecture-task alignment matters more than agent count. The T-056 brief template exists but isn't enforced.
 
-- [ ] 1.1 Make `Task Classification` a mandatory field in BRIEF.md (Sequential / Parallelisable / High-entropy search / Tool-heavy)
-- [ ] 1.2 Enforce classification check before spawning agents — sequential tasks go to SAS (single agent), parallelisable to Centralised MAS
-- [ ] 1.3 Include success criteria and explicit scope boundaries in every brief
+- [x] 1.1 Make `Task Classification` a mandatory field — now enforced via `TaskBriefSchema` TypeBox type in `lib/task-brief.ts`
+- [x] 1.2 Enforce classification check before spawning agents — `routeBrief()` routes topology and warns on mismatches
+- [x] 1.3 Include success criteria and explicit scope boundaries in every brief — `successCriteria` (minItems: 1) and `scope.include` are required fields
 
 **Why:** Incorrectly parallelised sequential tasks degrade performance by 39–70% (Kim et al.). A well-structured brief eliminates the most common source of agent output failure.
 
@@ -22,9 +22,9 @@ Highest-impact change for agent output quality. Kim et al. showed architecture-t
 
 Remove rate limits as a bottleneck by routing tasks to appropriate models.
 
-- [ ] 2.1 Route scouts and research tasks to Gemini Flash (100× TPM headroom vs Anthropic Sonnet)
+- [x] 2.1 Route scouts and research tasks to Gemini Flash — `routeModel("parallelisable")` → `google/gemini-2.5-flash`
 - [ ] 2.2 Route simple edits and boilerplate to Haiku
-- [ ] 2.3 Keep Sonnet for standard implementation, Opus for hard architecture decisions
+- [x] 2.3 Keep Sonnet for standard implementation — `routeModel("sequential"|"tool-heavy")` → `anthropic/claude-sonnet-4-6`
 - [ ] 2.4 Single large-context agent (Gemini Pro 1M) for whole-codebase analysis — don't split across parallel scouts
 
 **Why:** All workers on Sonnet concentrates TPM in one rate-limit bucket. Gemini Flash has ~4M TPM vs Sonnet's ~40K.
@@ -37,8 +37,8 @@ Prevent the 39–70% degradation Kim et al. measured on incorrectly-parallelised
 
 - [ ] 3.1 Apply the 45% test: if a single Sonnet agent can solve it at >45% accuracy, don't add agents
 - [ ] 3.2 Never use Independent MAS without cross-validation (17.2× error amplification)
-- [ ] 3.3 Sequential tasks (code, debug, config): single agent always
-- [ ] 3.4 Parallelisable tasks (research, analysis, scanning): Centralised MAS with WIP=3
+- [x] 3.3 Sequential tasks → single-agent topology enforced via `routeTopology()` + mismatch warnings
+- [x] 3.4 Parallelisable tasks → centralised-mas topology recommended via `routeTopology()`
 
 **Why:** Adding agents to the wrong task type is actively harmful regardless of rate limits.
 
