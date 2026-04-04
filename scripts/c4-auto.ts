@@ -26,9 +26,9 @@ pi.uses(fsSys, "Reads/writes agent records, messages, session logs");
 
 ext.uses(lib, "Imports types, IO, transports");
 ext.uses(fsSys, "Registry files, Maildir queues, sockets");
-pi.uses(ext, "Auto-discovers and loads");
-pi.uses(skills, "Loads skill definitions");
-pi.uses(prompts, "Loads prompt templates");
+// pi.uses(ext, "Auto-discovers and loads"); // Removed parent->child relationship
+// pi.uses(skills, "Loads skill definitions"); // Removed parent->child relationship
+// pi.uses(prompts, "Loads prompt templates"); // Removed parent->child relationship
 tests.uses(ext, "Tests extension modules");
 tests.uses(lib, "Tests library layer");
 
@@ -119,19 +119,25 @@ function generateContainerDiagram(): string {
     return output;
 }
 
-// 6. Inject into docs/C4.md
-const docPath = path.join(__dirname, "../docs/C4.md");
-let docContent = fs.readFileSync(docPath, "utf-8");
+// 6. Inject into docs
+const contextDocPath = path.join(process.cwd(), "docs/C4-Context.md");
+let contextDocContent = fs.readFileSync(contextDocPath, "utf-8");
 
-docContent = docContent.replace(
+contextDocContent = contextDocContent.replace(
     /<!-- c4-auto-start: context -->[\s\S]*?<!-- c4-auto-end: context -->/,
     `<!-- c4-auto-start: context -->\n${generateContextDiagram()}\n<!-- c4-auto-end: context -->`
 );
 
-docContent = docContent.replace(
+fs.writeFileSync(contextDocPath, contextDocContent);
+
+const containerDocPath = path.join(process.cwd(), "docs/C4-Container.md");
+let containerDocContent = fs.readFileSync(containerDocPath, "utf-8");
+
+containerDocContent = containerDocContent.replace(
     /<!-- c4-auto-start: container -->[\s\S]*?<!-- c4-auto-end: container -->/,
     `<!-- c4-auto-start: container -->\n${generateContainerDiagram()}\n<!-- c4-auto-end: container -->`
 );
 
-fs.writeFileSync(docPath, docContent);
-console.log("Successfully generated and injected C4 diagrams into docs/C4.md!");
+fs.writeFileSync(containerDocPath, containerDocContent);
+
+console.log("Successfully generated and injected C4 diagrams into docs/C4-Context.md and docs/C4-Container.md!");
