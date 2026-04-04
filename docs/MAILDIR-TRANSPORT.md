@@ -262,9 +262,9 @@ Individual parse errors are silently skipped.
 The Maildir transport is the default for both point-to-point and broadcast messaging:
 
 ```typescript
-// Default configuration (lib/transports/maildir.ts → extensions/pi-messaging.ts)
+// Default configuration (lib/transports/maildir.ts → extensions/pi-panopticon/messaging.ts)
 const maildir = createMaildirTransport();
-export default createMessagingExtension({ send: maildir, broadcast: maildir });
+export default createMessaging({ send: maildir, broadcast: maildir });
 ```
 
 ### Inbox Draining
@@ -275,16 +275,19 @@ The messaging extension drains the inbox at two points:
 2. **Agent end** — When the agent finishes a task
 
 ```typescript
-// In pi-messaging.ts
-pi.on("session_start", async () => {
-  transport.init(selfId);
-  drainInbox();
+// In pi-panopticon/index.ts
+pi.on("session_start", async (_event, ctx) => {
+  registry.register(ctx);
+  messaging.init();          // transport.init + drainInbox + fs.watch
 });
 
-pi.on("agent_end", async () => drainInbox());
+pi.on("agent_end", async () => {
+  registry.setStatus("waiting");
+  messaging.drainInbox();
+});
 ```
 
-This ensures messages sent while an agent was busy are delivered when it becomes idle.
+An `fs.watch` on `new/` wakes idle agents instantly when a message arrives, complementing the drain-on-idle pattern.
 
 ## Testing
 
@@ -328,13 +331,13 @@ On POSIX systems, `rename()` is atomic within the same filesystem. A reader will
 
 ### Registry Integration
 
-The Maildir transport uses the shared agent registry for IO:
+The Maildir transport uses the shared `REGISTRY_DIR` constant from `agent-registry.ts`:
 
 ```typescript
-import { ensureInbox, inboxReadNew, inboxAcknowledge, inboxPruneCur } from "../agent-registry.js";
+import { REGISTRY_DIR } from "../agent-registry.js";
 ```
 
-This allows both the registry and messaging to use the same base directory (`~/.pi/agents/`).
+All inbox helpers (`ensureInbox`, `inboxReadNew`, `inboxAcknowledge`, `inboxPruneCur`) are private functions within `maildir.ts`. Both registry records and Maildir queues share the same base directory (`~/.pi/agents/`).
 
 ## Limitations
 
@@ -345,6 +348,7 @@ This allows both the registry and messaging to use the same base directory (`~/.
 
 ## See Also
 
-- [PI-MESSAGING-ARCHITECTURE.md](./PI-MESSAGING-ARCHITECTURE.md) — Architecture overview
-- [PI-MESSAGING-GUIDE.md](./PI-MESSAGING-GUIDE.md) — User guide
+- [C4-Component.md](./C4-Component.md) — Component-level architecture
+- [C4-DataFlow.md](./C4-DataFlow.md) — Message send/receive sequence
 - [maildir.ts](../lib/transports/maildir.ts) — Implementation
+- [messaging.ts](../extensions/pi-panopticon/messaging.ts) — Messaging module

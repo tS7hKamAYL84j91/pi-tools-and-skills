@@ -12,7 +12,7 @@ C4Container
         Container(id_6, "lib/", "TypeScript", "Shared interfaces and IO")
         Container(id_7, "skills/", "Markdown + scripts", "5 specialized agent skills: planning, research, red-team, weather, skill-creator")
         Container(id_8, "prompts/", "Markdown", "Prompt templates: refactor, commit-and-push")
-        Container(id_9, "tests/", "Vitest", "108 tests: registry, messaging, spawner, lifecycle, maildir")
+        Container(id_9, "tests/", "Vitest", "135 tests: registry, messaging, spawner, lifecycle, maildir, architecture, task-brief, soak")
     }
 
     System_Ext(id_3, "LLM Provider", "Anthropic, OpenAI, etc.")

@@ -127,6 +127,21 @@ classDiagram
         +refresh(ctx: ExtensionContext) void
     }
 
+    class SpawnerUtils {
+        <<spawner-utils.ts>>
+        +formatEvent(line) string
+        +recentOutputFromEvents(events, lines) string
+        +buildArgList(params) string[]
+        +gracefulKill(agent, writeAbort) Promise~void~
+        +spawnChild(opts) SpawnedAgent
+    }
+
+    class TaskBrief {
+        <<task-brief.ts>>
+        +TaskBriefSchema: TObject
+        +renderBriefAsPrompt(brief) string
+    }
+
     class Orchestrator {
         <<index.ts>>
         -registry: RegistryImpl
@@ -147,6 +162,8 @@ classDiagram
     MessagingModule --> Registry : getRecord, readAllPeers, updatePendingMessages
     MessagingModule --> MessageTransport : send, receive, ack, init, prune, pendingCount, cleanup
     UIModule --> Registry : readAllPeers, getRecord, setName
+    SpawnerModule --> SpawnerUtils : buildArgList, spawnChild, gracefulKill
+    SpawnerModule --> TaskBrief : TaskBriefSchema, renderBriefAsPrompt
 ```
 
 ### Dependency direction
@@ -158,6 +175,7 @@ graph TD
         id_11[registry]
         id_12[messaging]
         id_13[spawner]
+        id_13b[spawner-utils]
         id_14[peek]
         id_15[ui]
         id_16[types]
@@ -169,15 +187,19 @@ graph TD
         id_19[transports/maildir]
         id_20[session-log]
         id_21[tool-result]
+        id_23[task-brief]
     end
 
     id_10 --> id_11
     id_10 --> id_12
     id_10 --> id_13
+    id_10 --> id_14
     id_10 --> id_15
     id_12 --> id_11
     id_12 --> id_18
     id_12 --> id_17
+    id_13 --> id_13b
+    id_13 --> id_23
     id_14 --> id_11
     id_14 --> id_20
     id_15 --> id_11

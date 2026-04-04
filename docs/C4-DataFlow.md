@@ -66,12 +66,15 @@ sequenceDiagram
 sequenceDiagram
     participant A as Parent Agent
     participant SP as spawner.ts
+    participant SU as spawner-utils.ts
     participant Child as pi --mode rpc
     participant Reg as Registry (child's)
 
-    A->>SP: spawn_agent(name: "worker", task: "...")
-    SP->>Child: spawn("pi", ["--mode", "rpc"])
-    SP->>Child: stdin: {type: "prompt", message: "..."}
+    A->>SP: spawn_agent(name: "worker", brief: {...})
+    SP->>SU: buildArgList(params)
+    SP->>SU: spawnChild({name, cwd, args})
+    SU->>Child: spawn("pi", ["--mode", "rpc"])
+    SP->>Child: stdin: {type: "prompt", message: renderBriefAsPrompt(brief)}
     Child->>Reg: register() (loads own pi-panopticon)
     Note over Child,Reg: Child is now visible in agent_peek
 
@@ -81,9 +84,10 @@ sequenceDiagram
     SP-->>A: response + agent output
 
     A->>SP: kill_agent("worker")
-    SP->>Child: stdin: {type: "abort"}
-    SP->>SP: await 2s
-    SP->>Child: SIGTERM (if still alive)
-    SP->>SP: await 2s
-    SP->>Child: SIGKILL (if still alive)
+    SP->>SU: gracefulKill(agent, writeAbort)
+    SU->>Child: stdin: {type: "abort"}
+    SU->>SU: await 2s
+    SU->>Child: SIGTERM (if still alive)
+    SU->>SU: await 2s
+    SU->>Child: SIGKILL (if still alive)
 ```
