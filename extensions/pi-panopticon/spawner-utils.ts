@@ -153,11 +153,6 @@ export function spawnChild(opts: SpawnOpts): SpawnedAgent {
 	const proc = spawn(PI_BINARY, args, {
 		cwd: agentCwd,
 		stdio: ["pipe", "pipe", "pipe"],
-		env: {
-			...process.env,
-			PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
-			PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH ?? "3",
-		},
 	});
 
 	const agent: SpawnedAgent = {

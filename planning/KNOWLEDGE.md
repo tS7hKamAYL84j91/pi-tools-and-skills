@@ -25,13 +25,21 @@ The three-layer design (coordination → registry → transport) is clean. Centr
 - Gemini Flash: ~4M TPM → supports 15–20 concurrent agents
 - WIP=3 is validated as the Sonnet ceiling
 
+### Validated: 10-Agent Telephone Game (2026-04-04)
+- 10 agents chained via Maildir `agent_send`, zero message loss
+- ~50s end-to-end, ~5s per hop (LLM turn dominates)
+- `fs.watch` instant wake confirmed — idle agents process messages immediately
+- Agent naming: `basename(cwd)` drives registry name; unique cwds needed for distinct names
+- Clean spawn, communicate, shutdown cycle across all 10
+
 ### Known Issues
 - **No double-delivery risk** (socket transport removed, Maildir-only now)
 - **Sub-ms ordering undefined** — same-ms messages sort by UUID not insertion order (low severity)
 - **pendingMessages 5s lag** — cosmetic, no delivery impact
 - **Registry scan O(N)** — fine at <20 agents, cache at 50+
 - **No idempotency keys** — duplicate logical sends both delivered (acceptable for conversational, risky for automation)
-- **Spawn depth not enforced** — env vars set but spawner doesn't check
+- **Spawn depth not tracked** — env vars removed (YAGNI). Add depth guard when orchestration layer introduces tree topologies
+- **Soak tests stable** — previously flaky, now pass reliably in full suite (resolved)
 
 ### Transport Decision
 Sockets removed in favour of Maildir-only. Messages delivered at turn boundaries (agent_end). This is correct: any transport faster than LLM turn time (~30-60s) is equivalent. Durability beats latency.
