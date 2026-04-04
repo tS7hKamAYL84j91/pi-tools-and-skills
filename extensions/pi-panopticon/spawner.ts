@@ -8,131 +8,29 @@
  * 4. Two communication channels:
  *    - RPC stdin  (from parent, structured commands)
  *    - Maildir    (from any peer, via agent_send)
- *
- * Exports:
- *   - setupSpawner(pi: ExtensionAPI): SpawnerModule
- *   - Helper functions: formatEvent, recentOutputFromEvents, buildArgList
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
-	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir, homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ok, fail, type ToolResult } from "./types.js";
-
-// ── PI binary ───────────────────────────────────────────────────
-
-function resolvePiBinary(): string {
-	const candidate = join(dirname(process.execPath), "pi");
-	if (existsSync(candidate)) return candidate;
-	try {
-		const resolved = execSync("which pi", { encoding: "utf-8" }).trim();
-		if (resolved && existsSync(resolved)) return resolved;
-	} catch { /* not found */ }
-	return "pi";
-}
-
-const PI_BINARY = resolvePiBinary();
-
-// ── Utilities ───────────────────────────────────────────────────
-
-const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
-
-// ── Event formatting ────────────────────────────────────────────
-
-type Evt = Record<string, unknown>;
-
-const EVENT_FORMATTERS: Record<string, (e: Evt) => string> = {
-	message_update: (e) => {
-		const d = e.assistantMessageEvent as Evt | undefined;
-		return d?.type === "text_delta" ? String(d.delta) : "";
-	},
-	tool_execution_start: (e) =>
-		`\n⚙ ${e.toolName}(${JSON.stringify(e.args ?? {}).slice(0, 80)})`,
-	tool_execution_end: (e) => {
-		const text = (e.result as Evt | undefined)?.content;
-		const first = Array.isArray(text) ? (text[0] as Evt | undefined)?.text : undefined;
-		return `  → ${String(first ?? "(done)").slice(0, 100)}`;
-	},
-	agent_start: () => "\n▶ agent started",
-	agent_end: () => "\n■ agent finished",
-	response: (e) => `  [${e.command}: ${e.success ? "ok" : e.error}]`,
-};
-
-/** Format a single JSONL event line into a compact human-readable string. */
-export function formatEvent(line: string): string {
-	try {
-		const evt = JSON.parse(line) as Evt;
-		const fmt = EVENT_FORMATTERS[String(evt.type ?? "?")];
-		return fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`;
-	} catch {
-		return line.slice(0, 120);
-	}
-}
-
-/** Format the last `lines` events from an array into readable output. */
-export function recentOutputFromEvents(events: string[], lines = 20): string {
-	if (events.length === 0) return "(no events yet)";
-	return events
-		.slice(-lines)
-		.map(formatEvent)
-		.filter(Boolean)
-		.join("");
-}
-
-// ── Spawn arg building ──────────────────────────────────────────
-
-interface ArgParams {
-	model?: string;
-	tools?: string[];
-	sessionDir?: string;
-	name: string;
-}
-
-/** Default session directory for subagents. */
-function defaultSubagentSessionDir(name: string): string {
-	return join(homedir(), ".pi", "agent", "sessions", "subagents", name);
-}
-
-/**
- * Build the CLI arg list for spawning a pi agent (pure — no side effects).
- * System-prompt file creation is handled separately in spawn_agent.
- */
-export function buildArgList(p: ArgParams): string[] {
-	const args = ["--mode", "rpc"];
-	if (p.model) args.push("--models", p.model);
-	if (p.tools?.length) args.push("--tools", p.tools.join(","));
-	// Always use a session dir — subagents need JSONL for agent_peek
-	const sessionDir = p.sessionDir ?? defaultSubagentSessionDir(p.name);
-	args.push("--session-dir", sessionDir);
-	return args;
-}
-
-// ── Types ───────────────────────────────────────────────────────
-
-interface SpawnedAgent {
-	name: string;
-	proc: ChildProcess;
-	pid: number;
-	cwd: string;
-	model?: string;
-	startedAt: number;
-	recentEvents: string[];
-	emitter: EventEmitter;
-	tempDir?: string;
-	done: boolean;
-}
-
-const MAX_RECENT_EVENTS = 100;
+import {
+	PI_BINARY,
+	sleep,
+	recentOutputFromEvents,
+	buildArgList,
+	MAX_RECENT_EVENTS,
+	type SpawnedAgent,
+} from "./spawner-utils.js";
 
 // ── SpawnerModule interface ─────────────────────────────────────
 
@@ -210,6 +108,63 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 		});
 	}
 
+	/** Spawn a child process, wire up stdout/stderr, and register in the agents map. */
+	function spawnChild(name: string, agentCwd: string, args: string[], model: string | undefined, task: string | undefined, tempDir: string | undefined): SpawnedAgent {
+		const proc = spawn(PI_BINARY, args, {
+			cwd: agentCwd,
+			stdio: ["pipe", "pipe", "pipe"],
+			env: {
+				...process.env,
+				PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
+				PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH ?? "3",
+			},
+		});
+
+		const agent: SpawnedAgent = {
+			name, proc, pid: proc.pid ?? 0, cwd: agentCwd,
+			model, startedAt: Date.now(),
+			recentEvents: [], emitter: new EventEmitter(), tempDir, done: !proc.pid,
+		};
+
+		// Wire up stdout → recentEvents + emitter
+		let buf = "";
+		proc.stdout?.on("data", (chunk: Buffer) => {
+			buf += chunk.toString();
+			const lines = buf.split("\n");
+			buf = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				agent.recentEvents.push(line);
+				if (agent.recentEvents.length > MAX_RECENT_EVENTS) agent.recentEvents.shift();
+				agent.emitter.emit("line", line);
+			}
+		});
+
+		proc.stderr?.on("data", (chunk: Buffer) => {
+			agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
+		});
+
+		const onExit = (code: number | null) => {
+			agent.done = true;
+			agent.recentEvents.push(`[process exited with code ${code}]`);
+			agent.emitter.emit("line", JSON.stringify({ type: "process_exit", code }));
+			if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
+		};
+
+		proc.on("close", onExit);
+		proc.on("error", (err) => {
+			agent.done = true;
+			agent.recentEvents.push(`[process error: ${err.message}]`);
+			agent.emitter.emit("line", JSON.stringify({ type: "process_error", message: err.message }));
+			if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
+		});
+
+		proc.unref();
+		if (task) rpcWrite(agent, { type: "prompt", message: task });
+
+		return agent;
+	}
+
 	// ── spawn_agent ─────────────────────────────────────────────
 
 	pi.registerTool({
@@ -257,7 +212,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 					{ error: "already_running", pid: existing.pid },
 				);
 			}
-			agents.delete(params.name); // clean up dead agent if present
+			agents.delete(params.name);
 
 			const agentCwd = params.cwd ?? process.cwd();
 			const args = buildArgList(params);
@@ -272,66 +227,16 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
 
-			const proc = spawn(PI_BINARY, args, {
-				cwd: agentCwd,
-				stdio: ["pipe", "pipe", "pipe"],
-				env: {
-					...process.env,
-					PI_SUBAGENT_DEPTH: String(Number(process.env.PI_SUBAGENT_DEPTH ?? "0") + 1),
-					PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH ?? "3",
-				},
-			});
-
-			if (!proc.pid) {
+			const agent = spawnChild(params.name, agentCwd, args, params.model, params.task, tempDir);
+			if (!agent.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });
 			}
 
-			const agent: SpawnedAgent = {
-				name: params.name, proc, pid: proc.pid, cwd: agentCwd,
-				model: params.model, startedAt: Date.now(),
-				recentEvents: [], emitter: new EventEmitter(), tempDir, done: false,
-			};
 			agents.set(params.name, agent);
 
-			// Wire up stdout → recentEvents + emitter
-			let buf = "";
-			proc.stdout?.on("data", (chunk: Buffer) => {
-				buf += chunk.toString();
-				const lines = buf.split("\n");
-				buf = lines.pop() ?? "";
-				for (const line of lines) {
-					if (!line.trim()) continue;
-					agent.recentEvents.push(line);
-					if (agent.recentEvents.length > MAX_RECENT_EVENTS) agent.recentEvents.shift();
-					agent.emitter.emit("line", line);
-				}
-			});
-
-			proc.stderr?.on("data", (chunk: Buffer) => {
-				agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
-			});
-
-			const onExit = (code: number | null) => {
-				agent.done = true;
-				agent.recentEvents.push(`[process exited with code ${code}]`);
-				agent.emitter.emit("line", JSON.stringify({ type: "process_exit", code }));
-				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
-			};
-
-			proc.on("close", onExit);
-			proc.on("error", (err) => {
-				agent.done = true;
-				agent.recentEvents.push(`[process error: ${err.message}]`);
-				agent.emitter.emit("line", JSON.stringify({ type: "process_error", message: err.message }));
-				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
-			});
-
-			proc.unref();
-			if (params.task) rpcWrite(agent, { type: "prompt", message: params.task });
-
 			return ok(
-				`Spawned "${params.name}" in RPC mode (pid ${proc.pid})\n` +
+				`Spawned "${params.name}" in RPC mode (pid ${agent.pid})\n` +
 				`  cwd: ${agentCwd}\n` +
 				`  model: ${params.model ?? "(default)"}\n` +
 				(params.task
@@ -339,7 +244,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 					: `  (idle — use rpc_send to give it a task)\n`) +
 				`\nAgent will register in panopticon within seconds.\n` +
 				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
-				{ name: params.name, pid: proc.pid, cwd: agentCwd },
+				{ name: params.name, pid: agent.pid, cwd: agentCwd },
 			);
 		},
 	});
