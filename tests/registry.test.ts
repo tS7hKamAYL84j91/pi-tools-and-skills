@@ -71,8 +71,7 @@ describe("buildRecord", () => {
 		expect(result.heartbeat).toBeGreaterThanOrEqual(before);
 	});
 
-	it("promotes waiting→done when REPORT.md exists in a real dir", () => {
-		// When REPORT.md doesn't exist the status stays 'waiting'
+	it("preserves waiting status", () => {
 		const base = makeRecord({ cwd: "/tmp/nonexistent-dir-xyz" });
 		const result = buildRecord(base, "waiting", undefined);
 		expect(result.status).toBe("waiting");

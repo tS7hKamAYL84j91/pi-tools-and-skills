@@ -30,7 +30,6 @@ import {
 } from "./spawner-utils.js";
 import {
 	TaskBriefSchema,
-	routeBrief,
 	renderBriefAsPrompt,
 	type TaskBrief,
 } from "../../lib/task-brief.js";
@@ -126,7 +125,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			"brief.classification: sequential (code, debug), parallelisable (research, scan), high-entropy-search, tool-heavy.",
 			"Sequential tasks: single agent always. Parallelisable: centralised-mas with WIP=3.",
 			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
-			"Or use agent_send once it registers in panopticon (takes 1-2 seconds).",
+			"Or use agent_send once it registers in panopticon (takes 1–2 seconds).",
 			"Use agent_peek to monitor its activity log.",
 		],
 		parameters: Type.Object({
@@ -173,20 +172,11 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			}
 			agents.delete(params.name);
 
-			// Route model and topology from brief, or use explicit params
 			const brief = params.brief as TaskBrief | undefined;
-			let routing: ReturnType<typeof routeBrief> | undefined;
-			let resolvedModel = params.model;
-			let taskPrompt = params.task;
-
-			if (brief) {
-				routing = routeBrief(brief);
-				resolvedModel = params.model ?? routing.model;
-				taskPrompt = renderBriefAsPrompt(brief);
-			}
+			const taskPrompt = brief ? renderBriefAsPrompt(brief) : params.task;
 
 			const agentCwd = params.cwd ?? process.cwd();
-			const args = buildArgList({ ...params, model: resolvedModel });
+			const args = buildArgList(params);
 			let tempDir: string | undefined;
 
 			if (params.systemPrompt) {
@@ -198,7 +188,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
 
-			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: resolvedModel, tempDir });
+			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: params.model, tempDir });
 			if (!agent.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
 				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });
@@ -207,42 +197,17 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			if (taskPrompt) rpcWrite(agent, { type: "prompt", message: taskPrompt });
 			agents.set(params.name, agent);
 
-			// Build response with routing info
-			const lines = [
-				`Spawned "${params.name}" in RPC mode (pid ${agent.pid})`,
-				`  cwd: ${agentCwd}`,
-				`  model: ${resolvedModel ?? "(default)"}`,
-			];
-
-			if (routing) {
-				lines.push(
-					`  classification: ${brief?.classification}`,
-					`  topology: ${routing.recommendedTopology}`,
-				);
-				for (const w of routing.warnings) lines.push(`  ${w}`);
-			}
-
-			if (taskPrompt) {
-				lines.push(`  task: ${taskPrompt.slice(0, 100)}${taskPrompt.length > 100 ? "…" : ""}`);
-			} else {
-				lines.push("  (idle — use rpc_send to give it a task)");
-			}
-
-			lines.push("", "Agent will register in panopticon within seconds.");
-			lines.push("Use rpc_send for direct RPC commands, agent_send from any peer.");
-
-			return ok(lines.join("\n"), {
-				name: params.name,
-				pid: agent.pid,
-				cwd: agentCwd,
-				...(routing && {
-					routing: {
-						model: routing.model,
-						topology: routing.recommendedTopology,
-						warnings: routing.warnings,
-					},
-				}),
-			});
+			return ok(
+				`Spawned "${params.name}" in RPC mode (pid ${agent.pid})\n` +
+				`  cwd: ${agentCwd}\n` +
+				`  model: ${params.model ?? "(default)"}\n` +
+				(taskPrompt
+					? `  task: ${taskPrompt.slice(0, 100)}${taskPrompt.length > 100 ? "…" : ""}\n`
+					: `  (idle — use rpc_send to give it a task)\n`) +
+				`\nAgent will register in panopticon within seconds.\n` +
+				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
+				{ name: params.name, pid: agent.pid, cwd: agentCwd },
+			);
 		},
 	});
 

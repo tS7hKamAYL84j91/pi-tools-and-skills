@@ -17,7 +17,9 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { onAgentCleanup } from "../../lib/agent-registry.js";
+import { watch, type FSWatcher } from "node:fs";
+import { join } from "node:path";
+import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
 import type { MessageTransport } from "../../lib/message-transport.js";
 import { createMaildirTransport } from "../../lib/transports/maildir.js";
 
@@ -230,6 +232,7 @@ export function createMessaging(config: MessagingConfig) {
 		// ── Return MessagingModule ──────────────────────────────
 
 		let disposeCleanupHook: (() => void) | null = null;
+		let inboxWatcher: FSWatcher | null = null;
 
 		const module: MessagingModule = {
 			init() {
@@ -241,9 +244,20 @@ export function createMessaging(config: MessagingConfig) {
 				// Register transport cleanup for dead-agent reaping
 				disposeCleanupHook?.();
 				disposeCleanupHook = onAgentCleanup((agentId) => config.send.cleanup(agentId));
+				// Watch inbox for new messages — wakes idle agents
+				inboxWatcher?.close();
+				try {
+					const newDir = join(REGISTRY_DIR, record.id, "inbox", "new");
+					inboxWatcher = watch(newDir, () => {
+						if (registry.getRecord()?.status === "waiting") drainInbox();
+					});
+					inboxWatcher.unref();
+				} catch { /* best-effort: dir may not exist yet */ }
 			},
 			drainInbox,
 			dispose() {
+				inboxWatcher?.close();
+				inboxWatcher = null;
 				disposeCleanupHook?.();
 				disposeCleanupHook = null;
 			},

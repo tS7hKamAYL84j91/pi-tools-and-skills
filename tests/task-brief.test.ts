@@ -6,9 +6,6 @@ import { describe, it, expect } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 import {
 	TaskBriefSchema,
-	routeModel,
-	routeTopology,
-	routeBrief,
 	renderBriefAsPrompt,
 	type TaskBrief,
 } from "../lib/task-brief.js";
@@ -80,103 +77,6 @@ describe("TaskBriefSchema", () => {
 			const brief = { ...minimalBrief, classification: c };
 			expect(Value.Check(TaskBriefSchema, brief)).toBe(true);
 		}
-	});
-});
-
-// ── Model routing ───────────────────────────────────────────────
-
-describe("routeModel", () => {
-	it("routes sequential to Sonnet", () => {
-		expect(routeModel("sequential")).toBe("anthropic/claude-sonnet-4-6");
-	});
-
-	it("routes parallelisable to Gemini Flash", () => {
-		expect(routeModel("parallelisable")).toBe("google/gemini-2.5-flash");
-	});
-
-	it("routes high-entropy-search to Gemini Flash", () => {
-		expect(routeModel("high-entropy-search")).toBe("google/gemini-2.5-flash");
-	});
-
-	it("routes tool-heavy to Sonnet", () => {
-		expect(routeModel("tool-heavy")).toBe("anthropic/claude-sonnet-4-6");
-	});
-});
-
-// ── Topology routing ────────────────────────────────────────────
-
-describe("routeTopology", () => {
-	it("routes sequential to single-agent", () => {
-		expect(routeTopology("sequential")).toBe("single-agent");
-	});
-
-	it("routes parallelisable to centralised-mas", () => {
-		expect(routeTopology("parallelisable")).toBe("centralised-mas");
-	});
-
-	it("routes high-entropy-search to centralised-mas", () => {
-		expect(routeTopology("high-entropy-search")).toBe("centralised-mas");
-	});
-
-	it("routes tool-heavy to single-agent", () => {
-		expect(routeTopology("tool-heavy")).toBe("single-agent");
-	});
-});
-
-// ── Mismatch detection ──────────────────────────────────────────
-
-describe("routeBrief", () => {
-	it("returns no warnings when topology matches", () => {
-		const result = routeBrief(fullBrief);
-		expect(result.warnings).toHaveLength(0);
-		expect(result.model).toBe("google/gemini-2.5-flash");
-		expect(result.recommendedTopology).toBe("centralised-mas");
-	});
-
-	it("returns no warnings when topology is omitted", () => {
-		const result = routeBrief(minimalBrief);
-		expect(result.warnings).toHaveLength(0);
-	});
-
-	it("warns when sequential task uses centralised-mas", () => {
-		const brief: TaskBrief = { ...minimalBrief, topology: "centralised-mas" };
-		const result = routeBrief(brief);
-		expect(result.warnings).toHaveLength(1);
-		expect(result.warnings[0]).toContain("39–70%");
-		expect(result.warnings[0]).toContain("Kim et al.");
-	});
-
-	it("warns when tool-heavy task uses centralised-mas", () => {
-		const brief: TaskBrief = {
-			...minimalBrief,
-			classification: "tool-heavy",
-			topology: "centralised-mas",
-		};
-		const result = routeBrief(brief);
-		expect(result.warnings).toHaveLength(1);
-		expect(result.warnings[0]).toContain("Tool-heavy");
-	});
-
-	it("informs when parallelisable task uses single-agent", () => {
-		const brief: TaskBrief = {
-			...minimalBrief,
-			classification: "parallelisable",
-			topology: "single-agent",
-		};
-		const result = routeBrief(brief);
-		expect(result.warnings).toHaveLength(1);
-		expect(result.warnings[0]).toContain("+80.8%");
-	});
-
-	it("informs when high-entropy-search uses single-agent", () => {
-		const brief: TaskBrief = {
-			...minimalBrief,
-			classification: "high-entropy-search",
-			topology: "single-agent",
-		};
-		const result = routeBrief(brief);
-		expect(result.warnings).toHaveLength(1);
-		expect(result.warnings[0]).toContain("coverage");
 	});
 });
 

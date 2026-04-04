@@ -23,8 +23,7 @@ import {
 	matchesKey,
 	truncateToWidth,
 } from "@mariozechner/pi-tui";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+
 import { readSessionLog } from "../../lib/session-log.js";
 import type { Registry, AgentRecord, AgentStatus } from "./types.js";
 import { formatAge, nameTaken, sortRecords, STATUS_SYMBOL } from "./registry.js";
@@ -233,7 +232,6 @@ async function showAgentDetail(
 			["PID", String(rec.pid)],
 			["Messages", `pending: ${pending}`],
 			["Uptime", formatAge(rec.startedAt)],
-			["REPORT.md", existsSync(join(rec.cwd, "REPORT.md")) ? "☑ exists" : "-"],
 		];
 		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
 

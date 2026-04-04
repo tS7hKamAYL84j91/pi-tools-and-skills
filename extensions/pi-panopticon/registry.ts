@@ -10,7 +10,6 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
-	existsSync,
 	readFileSync,
 	readdirSync,
 	unlinkSync,
@@ -58,17 +57,14 @@ export function classifyRecord(
 
 /**
  * Build a record with updated heartbeat, status, and task.
- * If status="waiting" and REPORT.md exists, mark as "done".
  * @internal exported for tests
  */
 export function buildRecord(
 	base: AgentRecord,
 	status: AgentStatus,
 	task: string | undefined,
-	reportExists = false,
 ): AgentRecord {
-	const refined = status === "waiting" && reportExists ? "done" : status;
-	return { ...base, heartbeat: Date.now(), status: refined, task };
+	return { ...base, heartbeat: Date.now(), status, task };
 }
 
 /**
@@ -163,19 +159,6 @@ export default class Registry implements RegistryInterface {
 	register(ctx: ExtensionContext): void {
 		const cwd = process.cwd();
 
-		// Try to read initial task from BRIEF.md
-		let task: string | undefined;
-		try {
-			const briefPath = join(cwd, "BRIEF.md");
-			if (existsSync(briefPath)) {
-				const brief = readFileSync(briefPath, "utf-8");
-				const line = brief.split("\n").find((l) => l.trim() && !l.startsWith("#"));
-				if (line) task = line.trim();
-			}
-		} catch {
-			// silently ignore
-		}
-
 		// Read all existing records to pick a unique name
 		const records = this.readAllPeers();
 		const name = pickName(cwd, records, this.selfId);
@@ -190,7 +173,6 @@ export default class Registry implements RegistryInterface {
 			startedAt: Date.now(),
 			heartbeat: Date.now(),
 			status: "waiting" as const,
-			task,
 			sessionDir: ctx.sessionManager.getSessionDir(),
 			sessionFile: ctx.sessionManager.getSessionFile(),
 		};
@@ -324,21 +306,10 @@ export default class Registry implements RegistryInterface {
 	private heartbeat(): void {
 		if (!this.record) return;
 
-		// Check if REPORT.md exists (to mark agent as "done")
-		const hasReport = (() => {
-			try {
-				return existsSync(join(this.record?.cwd ?? "", "REPORT.md"));
-			} catch {
-				return false;
-			}
-		})();
-
-		// Update record using buildRecord
 		this.record = buildRecord(
 			this.record,
 			this.record.status,
 			this.record.task,
-			hasReport,
 		);
 
 		this.flush();
