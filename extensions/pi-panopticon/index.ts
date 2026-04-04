@@ -27,7 +27,7 @@ export default function (pi: ExtensionAPI) {
 	// Set up modules — registers tools/commands, returns module handles
 	const messaging = defaultMessaging(pi, registry);
 	const spawner = setupSpawner(pi);
-	setupPeek(pi, registry, selfId);
+	setupPeek(pi, registry);
 	const ui = setupUI(pi, registry, selfId);
 
 	// ── Lifecycle: start ────────────────────────────────────────

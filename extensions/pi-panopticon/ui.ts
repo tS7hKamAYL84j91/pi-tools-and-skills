@@ -12,7 +12,6 @@
 import type {
 	ExtensionAPI,
 	ExtensionContext,
-	ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
@@ -98,7 +97,7 @@ function renderPowerlineWidget(
 // ── Overlay helpers ────────────────────────────────────────────
 
 async function openAgentOverlay(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	selfId: string,
 	registry: Registry,
 ): Promise<void> {
@@ -190,7 +189,7 @@ async function openAgentOverlay(
 }
 
 async function showAgentDetail(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	selfId: string,
 	agentName: string,
 	registry: Registry,
@@ -354,22 +353,14 @@ export function setupUI(
 					.join(` ${PL_SEP_THIN} `),
 				"info",
 			);
-			await openAgentOverlay(
-				ctx as unknown as ExtensionCommandContext,
-				selfId,
-				registry,
-			);
+			await openAgentOverlay(ctx, selfId, registry);
 		},
 	});
 
 	pi.registerShortcut("ctrl+shift+o", {
 		description: "Open agent panopticon overlay",
 		handler: async (ctx) => {
-			await openAgentOverlay(
-				ctx as unknown as ExtensionCommandContext,
-				selfId,
-				registry,
-			);
+			await openAgentOverlay(ctx, selfId, registry);
 		},
 	});
 

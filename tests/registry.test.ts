@@ -11,7 +11,6 @@ import {
 	nameTaken,
 	pickName,
 	sortRecords,
-	agentCleanupPaths,
 } from "../extensions/pi-panopticon/registry.js";
 import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 
@@ -62,18 +61,18 @@ describe("classifyRecord", () => {
 // ── buildRecord ──────────────────────────────────────────────────
 
 describe("buildRecord", () => {
-	it("returns record with updated heartbeat and status", () => {
+	it("returns record with the supplied heartbeat, status, and task", () => {
 		const base = makeRecord({ status: "running" });
-		const before = Date.now();
-		const result = buildRecord(base, "running", "my task");
+		const now = 1_700_000_000_000;
+		const result = buildRecord(base, "running", "my task", now);
 		expect(result.status).toBe("running");
 		expect(result.task).toBe("my task");
-		expect(result.heartbeat).toBeGreaterThanOrEqual(before);
+		expect(result.heartbeat).toBe(now);
 	});
 
 	it("preserves waiting status", () => {
 		const base = makeRecord({ cwd: "/tmp/nonexistent-dir-xyz" });
-		const result = buildRecord(base, "waiting", undefined);
+		const result = buildRecord(base, "waiting", undefined, Date.now());
 		expect(result.status).toBe("waiting");
 	});
 });
@@ -189,32 +188,6 @@ describe("readSessionLog", () => {
 		expect(events).toEqual([]);
 	});
 });
-
-// ── agentCleanupPaths ───────────────────────────────────────────
-
-describe("agentCleanupPaths", () => {
-	it("returns the .json registry path", () => {
-		const paths = agentCleanupPaths("test-agent-123");
-		expect(paths).toHaveLength(1);
-		expect(paths[0]).toMatch(/test-agent-123\.json$/);
-	});
-
-	it("does NOT include the agent inbox directory path", () => {
-		const paths = agentCleanupPaths("test-agent-123");
-		for (const p of paths) {
-			expect(p).toMatch(/\.json$/);
-		}
-	});
-
-	it("uses the agent id in the returned path", () => {
-		const id = "unique-id-xyz";
-		const paths = agentCleanupPaths(id);
-		for (const p of paths) {
-			expect(p).toContain(id);
-		}
-	});
-});
-
 // ── sortRecords ──────────────────────────────────────────────────
 
 describe("sortRecords", () => {

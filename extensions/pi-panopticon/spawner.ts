@@ -22,10 +22,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, fail, type ToolResult } from "./types.js";
 import {
-	sleep,
 	recentOutputFromEvents,
 	buildArgList,
 	spawnChild,
+	gracefulKill,
 	type SpawnedAgent,
 } from "./spawner-utils.js";
 import {
@@ -392,17 +392,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 				return ok(`Force-killed "${params.name}" (pid ${pid}).`, { name: params.name, pid, method: "SIGKILL" });
 			}
 
-			// Graceful: abort → 2s → SIGTERM → 2s → SIGKILL
-			rpcWrite(agent, { type: "abort" });
-			const closed = new Promise<void>((res) => agent.proc.once("close", res));
-
-			await Promise.race([closed, sleep(2000)]);
-			if (!agent.done) {
-				try { agent.proc.kill("SIGTERM"); } catch { /* */ }
-				await Promise.race([closed, sleep(2000)]);
-				if (!agent.done) try { agent.proc.kill("SIGKILL"); } catch { /* */ }
-			}
-
+			await gracefulKill(agent, (a) => rpcWrite(a, { type: "abort" }));
 			agents.delete(params.name);
 			return ok(
 				`Stopped "${params.name}" (pid ${pid}). Exit code: ${agent.proc.exitCode ?? "killed"}.`,
@@ -415,22 +405,10 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 	return {
 		async shutdownAll(): Promise<void> {
-			const pending: Promise<void>[] = [];
-			for (const agent of agents.values()) {
-				if (agent.done) continue;
-				rpcWrite(agent, { type: "abort" });
-				const p = agent.proc;
-				const closed = new Promise<void>((res) => p.once("close", res));
-				pending.push(
-					Promise.race([closed, sleep(2000)]).then(async () => {
-						if (!agent.done) {
-							try { p.kill("SIGTERM"); } catch { /* */ }
-							await Promise.race([closed, sleep(2000)]);
-							if (!agent.done) try { p.kill("SIGKILL"); } catch { /* */ }
-						}
-					}),
-				);
-			}
+			const writeAbort = (a: SpawnedAgent) => rpcWrite(a, { type: "abort" });
+			const pending = [...agents.values()]
+				.filter((a) => !a.done)
+				.map((a) => gracefulKill(a, writeAbort));
 			await Promise.all(pending);
 		},
 	};

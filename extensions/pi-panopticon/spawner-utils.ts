@@ -28,7 +28,7 @@ const PI_BINARY = resolvePiBinary();
 
 // ── Utilities ───────────────────────────────────────────────────
 
-export const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
 // ── Event formatting ────────────────────────────────────────────
 
@@ -115,6 +115,27 @@ export interface SpawnedAgent {
 }
 
 const MAX_RECENT_EVENTS = 100;
+const GRACEFUL_WAIT_MS = 2_000;
+
+// ── Graceful shutdown ─────────────────────────────────────────────
+
+/**
+ * Graceful shutdown: abort → wait → SIGTERM → wait → SIGKILL.
+ * Shared by kill_agent and shutdownAll.
+ */
+export async function gracefulKill(
+	agent: SpawnedAgent,
+	writeAbort: (a: SpawnedAgent) => void,
+): Promise<void> {
+	writeAbort(agent);
+	const closed = new Promise<void>((res) => agent.proc.once("close", res));
+	await Promise.race([closed, sleep(GRACEFUL_WAIT_MS)]);
+	if (!agent.done) {
+		try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+		await Promise.race([closed, sleep(GRACEFUL_WAIT_MS)]);
+		if (!agent.done) try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+	}
+}
 
 // ── Child process spawning ──────────────────────────────────────
 

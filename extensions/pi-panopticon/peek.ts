@@ -17,7 +17,6 @@ import { formatAge, STATUS_SYMBOL } from "./registry.js";
 export function setupPeek(
 	pi: ExtensionAPI,
 	registry: Registry,
-	_selfId: string,
 ): void {
 	pi.registerTool({
 		name: "agent_peek",
@@ -28,7 +27,6 @@ export function setupPeek(
 			"With a target (agent name): reads the agent's activity log.",
 		promptSnippet:
 			"Discover agents or read a specific agent's activity log",
-		promptGuidelines: [],
 		parameters: Type.Object({
 			target: Type.Optional(
 				Type.String({

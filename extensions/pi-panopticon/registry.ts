@@ -57,14 +57,16 @@ export function classifyRecord(
 
 /**
  * Build a record with updated heartbeat, status, and task.
+ * Pure — caller supplies the timestamp.
  * @internal exported for tests
  */
 export function buildRecord(
 	base: AgentRecord,
 	status: AgentStatus,
 	task: string | undefined,
+	now: number,
 ): AgentRecord {
-	return { ...base, heartbeat: Date.now(), status, task };
+	return { ...base, heartbeat: now, status, task };
 }
 
 /**
@@ -123,17 +125,6 @@ export function sortRecords(
 		if (b.id === selfId) return 1;
 		return a.startedAt - b.startedAt;
 	});
-}
-
-/**
- * Return cleanup paths for a dead agent (registry file).
- * Used by external cleanup logic.
- * @internal exported for tests
- */
-export function agentCleanupPaths(id: string): string[] {
-	return [
-		join(REGISTRY_DIR, `${id}.json`),
-	];
 }
 
 // ── Registry class ──────────────────────────────────────────────
@@ -310,6 +301,7 @@ export default class Registry implements RegistryInterface {
 			this.record,
 			this.record.status,
 			this.record.task,
+			Date.now(),
 		);
 
 		this.flush();
