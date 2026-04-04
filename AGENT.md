@@ -10,6 +10,7 @@
 ## Operating Guidelines
 - **Measure Twice, Cut Once:** Create a \`.md\` spec/plan before writing large code blocks to ensure alignment with minimal token waste.
 - **No Brute Force:** If a solution fails, stop and pivot rather than retrying the same path.
+- **Diagrams:** Use Mermaid for all architecture, sequence, and data-flow diagrams.
 - **Reporting:** Only provide text output for:
   - Critical blockers/errors.
   - High-level status milestones.
