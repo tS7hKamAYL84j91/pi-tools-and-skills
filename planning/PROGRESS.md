@@ -1,11 +1,25 @@
 # Progress Log
 
-## 2026-04-04 17:50 — Telephone game: 10-agent Maildir chain validated
+## 2026-04-04 18:10 — Recursive telephone game: 10-deep spawn chain validated
 
-Spawned 10 agents (player-1 through player-10) playing telephone. Each received a message via Maildir, rephrased it, and forwarded to the next player via `agent_send`.
+Player-1 spawned player-2, who spawned player-3, etc. — full 10-deep recursive tree topology. Then played telephone through the chain.
+
+**Spawn cascade:** ~2min 45s (10 agents, ~16s per recursive spawn)
+**Telephone propagation:** ~50s (10 hops, ~5s per hop)
+**Messages lost:** 0
+**System prompt propagation:** Passed verbatim through 9 recursive spawns
+
+**Original:** *"A wise old octopus taught twelve tiny penguins to knit rainbow scarves while riding backwards on a steam-powered bicycle through a thunderstorm"*
+**Final:** *"A clever old octopus showed a dozen tiny penguins how to knit colorful rainbow scarves while cycling backwards on a steam-powered bicycle during a lightning storm"*
+
+**Key finding:** Recursive spawning works. Agents can autonomously build multi-agent topologies. No depth enforcement needed yet (YAGNI) — removed `PI_SUBAGENT_DEPTH` env vars.
+
+## 2026-04-04 17:50 — Flat telephone game: 10-agent Maildir chain validated
+
+Spawned 10 agents (player-1 through player-10) from the root. Each received a message via Maildir, rephrased it, and forwarded to the next player via `agent_send`.
 
 **Original:** *"The purple elephant danced gracefully on a tiny unicycle while juggling seven flaming pineapples under a full moon"*
-**Final (after 10 hops):** *"A purple elephant elegantly rode a small unicycle while juggling six burning pineapples beneath a glowing full moon"*
+**Final (after 10 hops):** *"A purple elephant elegantly rode a small unicycle while juggling six burning pineapples beneath a shining full moon"*
 
 **Metrics:** ~50s end-to-end, ~5s/hop (dominated by LLM turn time), zero lost messages, `fs.watch` instant wake confirmed.
 

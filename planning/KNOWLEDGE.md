@@ -3,7 +3,7 @@
 ## Panopticon Architecture (as of 2026-04-04)
 
 ### Current Stack
-- **Extension:** `extensions/pi-panopticon/` — 8 modules, ~1,900 LOC
+- **Extension:** `extensions/pi-panopticon/` — 8 modules, ~1,880 LOC
 - **Shared lib:** `lib/` — agent-registry, message-transport, maildir transport, session-log, tool-result
 - **Transport:** Maildir only (atomic tmp/ → new/ rename, at-least-once delivery)
 - **Registry:** `~/.pi/agents/{id}.json` — heartbeat 5s, stale threshold 30s, dead-agent reaping on read
@@ -26,9 +26,11 @@ The three-layer design (coordination → registry → transport) is clean. Centr
 - WIP=3 is validated as the Sonnet ceiling
 
 ### Validated: 10-Agent Telephone Game (2026-04-04)
-- 10 agents chained via Maildir `agent_send`, zero message loss
-- ~50s end-to-end, ~5s per hop (LLM turn dominates)
+- **Flat topology:** 10 agents spawned from root, chained via Maildir, zero message loss
+- **Recursive topology:** 10-deep spawn chain (each agent spawns the next), zero message loss
+- ~50s end-to-end, ~5s per hop (LLM turn dominates), ~16s per recursive spawn
 - `fs.watch` instant wake confirmed — idle agents process messages immediately
+- System prompts propagate faithfully through 9 recursive spawns
 - Agent naming: `basename(cwd)` drives registry name; unique cwds needed for distinct names
 - Clean spawn, communicate, shutdown cycle across all 10
 

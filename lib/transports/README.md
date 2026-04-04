@@ -26,6 +26,8 @@ interface MessageTransport {
   ack(agentId: string, messageId: string): void;
   prune(agentId: string): void;
   init(agentId: string): void;
+  pendingCount(agentId: string): number;
+  cleanup(agentId: string): void;
 }
 ```
 
@@ -39,7 +41,7 @@ interface MessageTransport {
 ```typescript
 import { createRedisTransport } from "./lib/transports/redis.js";
 
-createMessagingExtension({
+createMessaging({
   send: createRedisTransport(redisClient),
   broadcast: createRedisTransport(redisClient),
 });
