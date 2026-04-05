@@ -23,6 +23,16 @@ describe("dependency direction", () => {
 		await expect(rule).toPassAsync();
 	});
 
+	it("lib/ must not import from project-extensions/", async () => {
+		const rule = projectFiles()
+			.inFolder("lib/**")
+			.shouldNot()
+			.dependOnFiles()
+			.inFolder("project-extensions/**");
+
+		await expect(rule).toPassAsync();
+	});
+
 	it("lib/ must not import from tests/", async () => {
 		const rule = projectFiles()
 			.inFolder("lib/**")
@@ -90,19 +100,31 @@ describe("circular dependencies", () => {
 // ── 5. File size limits ─────────────────────────────────────────────
 
 describe("file size", () => {
-	it("no extension file should exceed 500 lines (kanban/index.ts exempt pending split)", async () => {
+	it("no global extension file should exceed 500 lines", async () => {
 		const rule = projectFiles()
 			.inFolder("extensions/**")
 			.should()
 			.adhereTo(
 				(file) => {
-					// kanban/index.ts is a 1100-line monolith pending modularisation — ratchet at 1200
-					const isKanban = file.path.includes("kanban/index.ts");
-					const limit = isKanban ? 1200 : 500;
 					const lines = file.content.split("\n").length;
-					return lines <= limit;
+					return lines <= 500;
 				},
-				"Extension files should not exceed 500 lines (kanban/index.ts ratcheted at 1200 pending split)",
+				"Extension files should not exceed 500 lines (Clean Code: 200 ideal, 500 upper bound)",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+
+	it("kanban/index.ts must not grow beyond 1200 lines (pending split)", async () => {
+		const rule = projectFiles()
+			.inFolder("project-extensions/**")
+			.should()
+			.adhereTo(
+				(file) => {
+					const lines = file.content.split("\n").length;
+					return lines <= 1200;
+				},
+				"project-extensions files ratcheted at 1200 lines pending modularisation",
 			);
 
 		await expect(rule).toPassAsync();

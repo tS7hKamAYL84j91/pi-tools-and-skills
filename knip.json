@@ -2,12 +2,14 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "extensions/*/index.ts",
+    "project-extensions/*/index.ts",
     "lib/*.ts",
     "lib/**/*.ts",
     "scripts/*.ts"
   ],
   "project": [
     "extensions/**/*.ts",
+    "project-extensions/**/*.ts",
     "lib/**/*.ts",
     "scripts/**/*.ts"
   ],
