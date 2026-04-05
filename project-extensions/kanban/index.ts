@@ -19,6 +19,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { ok, type ToolResult } from "../../lib/tool-result.js";
 
 import {
 	WIP_LIMIT,
@@ -44,12 +45,6 @@ import {
 } from "./monitor.js";
 
 // ── Helpers ─────────────────────────────────────────────────────
-
-type ToolResult = { content: { type: "text"; text: string }[]; details: Record<string, unknown> };
-
-function result(text: string, details: Record<string, unknown>): ToolResult {
-	return { content: [{ type: "text", text }], details };
-}
 
 const TASK_ID_SCHEMA = Type.String({ description: "Task ID in T-NNN format" });
 
@@ -79,7 +74,7 @@ export default function (pi: ExtensionAPI) {
 			const existing = await parseBoard();
 			if (existing.tasks.has(task_id)) throw new Error(`Task ID ${task_id} already exists`);
 			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"`);
-			return result(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags });
+			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags });
 		},
 	});
 
@@ -100,7 +95,7 @@ export default function (pi: ExtensionAPI) {
 			const { agent } = params;
 			const board = await parseBoard();
 			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
-			if (wip >= WIP_LIMIT) return result(`WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})`, { agent, result: "WIP_LIMIT_REACHED", claimed: false });
+			if (wip >= WIP_LIMIT) return ok(`WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})`, { agent, result: "WIP_LIMIT_REACHED", claimed: false });
 
 			let bestId = "";
 			let bestPri = 99;
@@ -113,7 +108,7 @@ export default function (pi: ExtensionAPI) {
 					bestId = tid;
 				}
 			}
-			if (!bestId) return result("NO_TASK_AVAILABLE", { agent, result: "NO_TASK_AVAILABLE", claimed: false });
+			if (!bestId) return ok("NO_TASK_AVAILABLE", { agent, result: "NO_TASK_AVAILABLE", claimed: false });
 
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
@@ -125,12 +120,12 @@ export default function (pi: ExtensionAPI) {
 			const verified = verifyBoard.tasks.get(bestId);
 			if (verified && verified.claimAgent !== agent) {
 				await logAppend(`${ts} UNCLAIM ${bestId} ${agent}`);
-				return result(
+				return ok(
 					`CLAIM_CONFLICT: ${bestId} was claimed by ${verified.claimAgent}. Call kanban_pick again.`,
 					{ agent, result: "CLAIM_CONFLICT", claimed: false, conflictWith: verified.claimAgent },
 				);
 			}
-			return result(`Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`, { agent, result: bestId, claimed: true });
+			return ok(`Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`, { agent, result: bestId, claimed: true });
 		},
 	});
 
@@ -153,7 +148,7 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			await logAppend(`${ts} COMPLETE ${task_id} ${agent} duration=${duration}`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=done`);
-			return result(`Completed ${task_id} (agent=${agent}, duration=${duration})`, { task_id, agent, duration });
+			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, { task_id, agent, duration });
 		},
 	});
 
@@ -177,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${reason}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=blocked`);
-			return result(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
+			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});
 
@@ -195,7 +190,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, text } = params;
 			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${text}"`);
-			return result(`Note added to ${task_id}`, { task_id, agent, text });
+			return ok(`Note added to ${task_id}`, { task_id, agent, text });
 		},
 	});
 
@@ -215,7 +210,7 @@ export default function (pi: ExtensionAPI) {
 			const sp = snapshotPath();
 			await writeFile(sp, snapshot, "utf-8");
 			await logAppend(`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`);
-			return result(
+			return ok(
 				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\n\n---\n\n${snapshot}`,
 				{ snapshotPath: sp, totalEvents: board.totalEvents },
 			);
@@ -306,7 +301,7 @@ export default function (pi: ExtensionAPI) {
 				].join("\n"), "utf-8");
 			} catch { /* non-fatal */ }
 
-			return result(report, { timestamp: ts, counts, tasks: results, prod: isProd });
+			return ok(report, { timestamp: ts, counts, tasks: results, prod: isProd });
 		},
 	});
 
@@ -329,7 +324,7 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			await logAppend(`${ts} UNBLOCK ${task_id} ${agent} resolution="${reason}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=blocked to=todo`);
-			return result(`Unblocked ${task_id}, moved to todo`, { task_id, agent, reason });
+			return ok(`Unblocked ${task_id}, moved to todo`, { task_id, agent, reason });
 		},
 	});
 
@@ -352,7 +347,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			const from = task.col;
 			await logAppend(`${nowZ()} MOVE ${task_id} ${agent} from=${from} to=${to}`);
-			return result(`Moved ${task_id} from ${from} to ${to}`, { task_id, agent, from, to });
+			return ok(`Moved ${task_id} from ${from} to ${to}`, { task_id, agent, from, to });
 		},
 	});
 
@@ -382,7 +377,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			const reasonSuffix = reason ? ` reason="${reason}"` : "";
 			await logAppend(`${nowZ()} DELETE ${task_id} ${agent}${reasonSuffix}`);
-			return result(
+			return ok(
 				`Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
 				{ task_id, agent, reason, previousCol: task.col },
 			);
@@ -466,7 +461,7 @@ export default function (pi: ExtensionAPI) {
 			newLines.push(`${ts} COMPACT T-000 compact events_before=${eventsBefore} events_after=${eventsAfter}`);
 			await writeFile(logPath, `${newLines.join("\n")}\n`, "utf-8");
 			const tasksPreserved = [...board.tasks.values()].filter((t) => !t.deleted).length;
-			return result(
+			return ok(
 				`Compacted board.log: ${eventsBefore} → ${eventsAfter} events (${tasksPreserved} tasks preserved)\nBackup: ${backupPath}`,
 				{ eventsBefore, eventsAfter, tasksPreserved, backupPath },
 			);
@@ -498,10 +493,10 @@ export default function (pi: ExtensionAPI) {
 			if (params.title && params.title !== task.title) { changes.push(`title="${params.title}"`); changed.title = params.title; }
 			if (params.priority && params.priority !== task.priority) { changes.push(`priority="${params.priority}"`); changed.priority = params.priority; }
 			if (params.tags && params.tags !== task.tags) { changes.push(`tags="${params.tags}"`); changed.tags = params.tags; }
-			if (changes.length === 0) return result(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
+			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
 
 			await logAppend(`${nowZ()} EDIT ${task_id} ${agent} ${changes.join(" ")}`);
-			return result(`Edited ${task_id}: ${changes.join(", ")}`, { task_id, agent, changed });
+			return ok(`Edited ${task_id}: ${changes.join(", ")}`, { task_id, agent, changed });
 		},
 	});
 
@@ -526,7 +521,7 @@ export default function (pi: ExtensionAPI) {
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			await logAppend(`${ts} UNCLAIM ${task_id} ${oldAgent}`);
 			await logAppend(`${ts} CLAIM ${task_id} ${new_agent} expires=${expires}`);
-			return result(`Reassigned ${task_id}: ${oldAgent} → ${new_agent}`, { task_id, agent, oldAgent, newAgent: new_agent, expires });
+			return ok(`Reassigned ${task_id}: ${oldAgent} → ${new_agent}`, { task_id, agent, oldAgent, newAgent: new_agent, expires });
 		},
 	});
 }

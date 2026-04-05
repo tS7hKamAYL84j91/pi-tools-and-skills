@@ -8,13 +8,15 @@
 
 import { exec } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { REGISTRY_DIR, isPidAlive, type AgentRecord } from "../../lib/agent-registry.js";
+import { createMaildirTransport } from "../../lib/transports/maildir.js";
 import type { BoardState } from "./board.js";
 
 const execAsync = promisify(exec);
+const maildir = createMaildirTransport();
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -55,36 +57,28 @@ export async function checkReportDone(agentName: string): Promise<boolean> {
 
 /** Read registry JSON, check PID liveness and heartbeat age. */
 export function inspectAgent(agentName: string): AgentInspection {
-	const agentsDir = join(homedir(), ".pi", "agents");
 	try {
-		if (!existsSync(agentsDir)) return { status: "MISSING", detail: "agents dir not found" };
-		for (const f of readdirSync(agentsDir).filter((f) => f.endsWith(".json"))) {
+		if (!existsSync(REGISTRY_DIR)) return { status: "MISSING", detail: "agents dir not found" };
+		for (const f of readdirSync(REGISTRY_DIR).filter((f) => f.endsWith(".json"))) {
 			try {
-				const rec = JSON.parse(readFileSync(join(agentsDir, f), "utf-8"));
+				const rec: AgentRecord = JSON.parse(readFileSync(join(REGISTRY_DIR, f), "utf-8"));
 				if (rec.name?.toLowerCase() !== agentName.toLowerCase()) continue;
-				const agentId = rec.id as string | undefined;
-				let pidAlive = false;
-				if (rec.pid) {
-					try { process.kill(rec.pid, 0); pidAlive = true; } catch { /* not running */ }
-				}
-				if (!pidAlive) return { status: "MISSING", detail: `agent PID ${rec.pid ?? "?"} not running`, agentId };
-				if (rec.heartbeat) {
-					const ageMs = Date.now() - new Date(rec.heartbeat).getTime();
-					if (ageMs > 300_000) return { status: "STALLED", detail: `heartbeat ${Math.round(ageMs / 60_000)}m ago`, agentId };
-				}
-				return { status: "ACTIVE", detail: "(running)", agentId };
+				if (!isPidAlive(rec.pid)) return { status: "MISSING", detail: `agent PID ${rec.pid} not running`, agentId: rec.id };
+				const ageMs = Date.now() - rec.heartbeat;
+				if (ageMs > 300_000) return { status: "STALLED", detail: `heartbeat ${Math.round(ageMs / 60_000)}m ago`, agentId: rec.id };
+				return { status: "ACTIVE", detail: "(running)", agentId: rec.id };
 			} catch { /* skip corrupt */ }
 		}
 	} catch { /* ignore */ }
 	return { status: "MISSING", detail: `no registered agent for '${agentName}'` };
 }
 
-/** Deliver a nudge to an agent's Maildir. */
+/** Deliver a nudge to an agent via Maildir transport. */
 export async function deliverNudge(agentId: string, nudge: string): Promise<"sent" | "failed"> {
 	try {
-		const msgFile = join(homedir(), ".pi", "agents", agentId, `${Date.now()}-kanban.json`);
-		await writeFile(msgFile, JSON.stringify({ type: "cast", from: "kanban-monitor", text: nudge }), "utf-8");
-		return "sent";
+		const peer = { id: agentId, name: "", pid: 0, cwd: "", model: "", startedAt: 0, heartbeat: 0, status: "running" as const };
+		const result = await maildir.send(peer, "kanban-monitor", nudge);
+		return result.accepted ? "sent" : "failed";
 	} catch { return "failed"; }
 }
 
