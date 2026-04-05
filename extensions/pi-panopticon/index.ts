@@ -18,6 +18,7 @@ import Registry from "./registry.js";
 import defaultMessaging from "./messaging.js";
 import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
+import { setupHealth } from "./health.js";
 import { setupUI } from "./ui.js";
 
 export default function (pi: ExtensionAPI) {
@@ -28,6 +29,7 @@ export default function (pi: ExtensionAPI) {
 	const messaging = defaultMessaging(pi, registry);
 	const spawner = setupSpawner(pi);
 	setupPeek(pi, registry);
+	setupHealth(pi, registry);
 	const ui = setupUI(pi, registry, selfId);
 
 	// ── Lifecycle: start ────────────────────────────────────────

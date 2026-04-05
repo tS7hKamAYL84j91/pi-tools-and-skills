@@ -283,10 +283,10 @@ describe("pendingCount", () => {
 // ── cleanup ──────────────────────────────────────────────────────
 
 describe("cleanup", () => {
-	it("calls rmSync on the agent's inbox directory", () => {
+	it("calls rmSync on the agent's entire directory", () => {
 		transport.cleanup("my-id");
 		expect(mockRmSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/my-id/inbox",
+			"/fake/.pi/agents/my-id",
 			{ recursive: true, force: true },
 		);
 	});
@@ -303,7 +303,7 @@ describe("cleanup", () => {
 	it("uses correct path under REGISTRY_DIR", () => {
 		transport.cleanup("agent-123");
 		expect(mockRmSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/agent-123/inbox",
+			"/fake/.pi/agents/agent-123",
 			expect.any(Object),
 		);
 	});

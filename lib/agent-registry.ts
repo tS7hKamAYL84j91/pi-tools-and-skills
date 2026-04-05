@@ -12,6 +12,9 @@
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
+	rmSync,
+	unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -66,6 +69,78 @@ export function isPidAlive(pid: number): boolean {
 
 export function ensureRegistryDir(): void {
 	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true });
+}
+
+/**
+ * Reap orphaned mailbox directories and stale files in the agents dir.
+ *
+ * Scans ~/.pi/agents/ for:
+ * - Directories whose PID is no longer alive and have no matching .json registry file
+ * - Stale .sock files whose PID is no longer alive
+ *
+ * This catches leftovers that normal dead-agent reaping misses:
+ * - Directories from old sessions (same PID, different session ID)
+ * - Empty dirs left when only the inbox was cleaned
+ * - .sock files from crashed agents
+ *
+ * Safe to call periodically (e.g. on startup + every 60s).
+ */
+export function reapOrphanedMailboxes(): { removed: number } {
+	try {
+		ensureRegistryDir();
+	} catch {
+		return { removed: 0 };
+	}
+
+	let removed = 0;
+	let entries: string[];
+	try {
+		entries = readdirSync(REGISTRY_DIR);
+	} catch {
+		return { removed: 0 };
+	}
+
+	// Build set of IDs that have a live .json registry file
+	const registeredIds = new Set(
+		entries
+			.filter((f) => f.endsWith(".json"))
+			.map((f) => f.slice(0, -5)),
+	);
+
+	for (const entry of entries) {
+		const fullPath = join(REGISTRY_DIR, entry);
+
+		// Skip .json files — handled by normal readAllPeers reaping
+		if (entry.endsWith(".json")) continue;
+
+		// Extract PID from "{pid}-{sessionId}" or "{pid}-{sessionId}.sock"
+		const baseName = entry.replace(/\.sock$/, "");
+		const dashIdx = baseName.indexOf("-");
+		if (dashIdx < 1) continue; // doesn't match expected format
+
+		const pid = Number.parseInt(baseName.slice(0, dashIdx), 10);
+		if (Number.isNaN(pid)) continue;
+
+		// Skip if PID is alive — could be an active agent
+		if (isPidAlive(pid)) continue;
+
+		// Skip directories that still have a registry .json (will be reaped normally)
+		if (!entry.endsWith(".sock") && registeredIds.has(entry)) continue;
+
+		// Dead PID, no registry file → orphaned, safe to remove
+		try {
+			if (entry.endsWith(".sock")) {
+				unlinkSync(fullPath);
+			} else {
+				rmSync(fullPath, { recursive: true, force: true });
+			}
+			removed++;
+		} catch {
+			/* best-effort */
+		}
+	}
+
+	return { removed };
 }
 
 

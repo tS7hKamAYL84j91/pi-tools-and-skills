@@ -173,7 +173,8 @@ class MaildirTransport implements MessageTransport {
 
 	cleanup(agentId: string): void {
 		try {
-			rmSync(join(REGISTRY_DIR, agentId, "inbox"), {
+			// Remove the entire agent directory (inbox + parent)
+			rmSync(join(REGISTRY_DIR, agentId), {
 				recursive: true,
 				force: true,
 			});

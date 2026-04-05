@@ -23,12 +23,14 @@ import {
 	isPidAlive,
 	ensureRegistryDir,
 	runAgentCleanup,
+	reapOrphanedMailboxes,
 } from "../../lib/agent-registry.js";
 import type { Registry as RegistryInterface } from "./types.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
 const HEARTBEAT_MS = 5_000;
+const ORPHAN_REAP_MS = 60_000;
 
 export const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "🟢",
@@ -137,6 +139,7 @@ export default class Registry implements RegistryInterface {
 	readonly selfId: string;
 	private record: AgentRecord | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(selfId: string) {
 		this.selfId = selfId;
@@ -175,13 +178,23 @@ export default class Registry implements RegistryInterface {
 		this.heartbeatTimer = setInterval(() => {
 			this.heartbeat();
 		}, HEARTBEAT_MS);
+
+		// Reap orphaned mailboxes on startup and periodically
+		reapOrphanedMailboxes();
+		this.orphanReapTimer = setInterval(() => {
+			reapOrphanedMailboxes();
+		}, ORPHAN_REAP_MS);
 	}
 
 	unregister(): void {
-		// Stop heartbeat
+		// Stop timers
 		if (this.heartbeatTimer) {
 			clearInterval(this.heartbeatTimer);
 			this.heartbeatTimer = null;
+		}
+		if (this.orphanReapTimer) {
+			clearInterval(this.orphanReapTimer);
+			this.orphanReapTimer = null;
 		}
 
 		// Delete record file
