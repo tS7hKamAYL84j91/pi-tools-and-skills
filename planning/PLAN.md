@@ -53,11 +53,27 @@ Model routing, topology selection, and task classification belong in an orchestr
 
 ---
 
-## Priority 3: Registry Caching (When Needed)
+## Priority 3: Maildir Sub-millisecond Ordering
 
-- [ ] 4.1 Cache peer records with TTL = heartbeat interval (5s)
-- [ ] 4.2 Only re-scan `~/.pi/agents/` directory on cache miss
-- [ ] 4.3 Not urgent at current scale (<20 agents), needed at 50+
+- [ ] 4.1 Introduce a monotonic sequence counter to Maildir filenames (e.g. `{timestamp}-{sequence}-{uuid}.json`)
+- [ ] 4.2 Guarantees strict chronological sorting for high-throughput message bursts
+- [ ] 4.3 Fixes the current issue where same-millisecond messages sort arbitrarily by UUID
+
+---
+
+## Priority 4: Registry Caching (When Needed)
+
+- [ ] 5.1 Cache peer records with TTL = heartbeat interval (5s)
+- [ ] 5.2 Only re-scan `~/.pi/agents/` directory on cache miss
+- [ ] 5.3 Not urgent at current scale (<20 agents), needed at 50+
+
+---
+
+## Priority 5: Idempotency & Deduplication
+
+- [ ] 6.1 Add deduplication layer in `drainInbox` based on message IDs for automation agents
+- [ ] 6.2 Prevents duplicate logical sends from causing double-execution
+- [ ] 6.3 Acceptable for conversational agents currently, but risky for task-automation
 
 ---
 

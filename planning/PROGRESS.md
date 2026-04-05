@@ -1,5 +1,18 @@
 # Progress Log
 
+## 2026-04-04 18:30 — Research Docs Consolidated into Planning
+
+Spawned two research agents (`researcher-1`, `researcher-2`) to scan and synthesize findings from `~/git/working-notes/research/` (specifically `t-073`, `t-074`, `t-075`, `t-076`, and `multi-agent-coordination`).
+
+**Key Insights Integrated:**
+- Confirmed that Centralised MAS is the optimal topology for parallel tasks (Kim et al. 2025).
+- Identified Maildir sub-millisecond ordering issue: Random UUID sorts arbitrarily for same-ms messages. Added as **Priority 3** in `PLAN.md` (Monotonic sequence counter).
+- Identified idempotency risk: Duplicate logical deliveries. Added as **Priority 5** in `PLAN.md` (Deduplication layer).
+- Sleep-aware stall detection is naturally handled by our `isPidAlive` heartbeat check (alive PID but stale heartbeat = "stalled").
+- Confirmed that Socket transport was correctly removed in favor of a pure Maildir approach to eliminate double-delivery from dual-transport races.
+
+The `planning/` docs (`PLAN.md`, `KNOWLEDGE.md`, `PROGRESS.md`) are now the single source of truth for architecture and roadmap, fully replacing the scattered research reports.
+
 ## 2026-04-04 18:10 — Recursive telephone game: 10-deep spawn chain validated
 
 Player-1 spawned player-2, who spawned player-3, etc. — full 10-deep recursive tree topology. Then played telephone through the chain.
