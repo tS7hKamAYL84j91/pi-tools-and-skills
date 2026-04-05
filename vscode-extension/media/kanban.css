@@ -1,0 +1,183 @@
+/* CoAS Kanban — Webview Styles
+ * Uses VSCode CSS variables for automatic theme compatibility. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-editor-foreground);
+	background: var(--vscode-editor-background);
+	padding: 12px;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
+
+.board-header {
+	display: flex;
+	align-items: baseline;
+	gap: 16px;
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.board-header h1 {
+	font-size: 1.2em;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.board-meta {
+	font-size: 0.85em;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ── Board layout ──────────────────────────────────────────── */
+
+.kanban-board {
+	display: flex;
+	gap: 12px;
+	overflow-x: auto;
+	height: calc(100vh - 72px);
+	align-items: flex-start;
+}
+
+/* ── Columns ───────────────────────────────────────────────── */
+
+.column {
+	flex: 0 0 260px;
+	display: flex;
+	flex-direction: column;
+	max-height: 100%;
+	background: var(--vscode-sideBar-background);
+	border-radius: 6px;
+	border: 1px solid var(--vscode-panel-border);
+}
+
+.column-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 10px;
+	font-weight: 600;
+	font-size: 0.9em;
+	border-bottom: 1px solid var(--vscode-panel-border);
+	color: var(--vscode-foreground);
+}
+
+.column-count {
+	font-weight: normal;
+	font-size: 0.85em;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	padding: 1px 6px;
+	border-radius: 8px;
+}
+
+.column-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────── */
+
+.task-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 8px 10px;
+	margin-bottom: 6px;
+	cursor: default;
+	transition: border-color 0.15s;
+}
+
+.task-card:hover {
+	border-color: var(--vscode-focusBorder);
+}
+
+.card-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.card-id {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--vscode-textLink-foreground);
+}
+
+.card-title {
+	font-size: 0.9em;
+	line-height: 1.3;
+	margin-bottom: 6px;
+}
+
+.card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	font-size: 0.78em;
+}
+
+/* ── Badges ────────────────────────────────────────────────── */
+
+.badge {
+	display: inline-block;
+	padding: 1px 6px;
+	border-radius: 3px;
+	font-size: 0.85em;
+}
+
+.badge-priority {
+	font-weight: 600;
+}
+
+.priority-critical {
+	background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-errorForeground, #f48771);
+}
+.priority-high {
+	background: var(--vscode-inputValidation-warningBackground, #4d3a1a);
+	color: var(--vscode-editorWarning-foreground, #cca700);
+}
+.priority-medium {
+	background: var(--vscode-inputValidation-infoBackground, #1a3a4d);
+	color: var(--vscode-editorInfo-foreground, #75beff);
+}
+.priority-low {
+	color: var(--vscode-descriptionForeground);
+}
+
+.badge-agent {
+	color: var(--vscode-textPreformat-foreground);
+}
+
+.badge-tags {
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+}
+
+.badge-notes {
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ── Column-specific accents ───────────────────────────────── */
+
+.column-in-progress .column-header { color: var(--vscode-charts-blue, #4fc1ff); }
+.column-blocked .column-header { color: var(--vscode-charts-red, #f48771); }
+.column-done .column-header { color: var(--vscode-charts-green, #89d185); }
+
+/* ── Loading / error ───────────────────────────────────────── */
+
+.loading, .error {
+	padding: 32px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+
+.error { color: var(--vscode-errorForeground); }
