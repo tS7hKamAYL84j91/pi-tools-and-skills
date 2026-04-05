@@ -129,6 +129,32 @@ export function sortRecords(
 	});
 }
 
+/**
+ * Parse a single registry JSON file and classify it.
+ * Returns the record if live/stalled, or null if dead/corrupt.
+ * Side effect: deletes files for dead/corrupt records and fires cleanup hooks.
+ */
+function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
+	try {
+		const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
+		if (!record.name) {
+			record.name = basename(record.cwd) || record.id.slice(0, 8);
+		}
+		const cls = classifyRecord(record, now, isPidAlive(record.pid));
+		if (cls === "dead") {
+			try { unlinkSync(fullPath); } catch { /* already gone */ }
+			runAgentCleanup(record.id);
+			return null;
+		}
+		if (cls === "stalled") record.status = "stalled";
+		return record;
+	} catch {
+		/* Corrupt or unreadable — remove it */
+		try { unlinkSync(fullPath); } catch { /* already gone */ }
+		return null;
+	}
+}
+
 // ── Registry class ──────────────────────────────────────────────
 
 /**
@@ -263,43 +289,15 @@ export default class Registry implements RegistryInterface {
 		try {
 			ensureRegistryDir();
 			const now = Date.now();
-			return readdirSync(REGISTRY_DIR)
-				.filter((f) => typeof f === "string" && f.endsWith(".json"))
-				.flatMap((file) => {
-					const fullPath = join(REGISTRY_DIR, file);
-					try {
-						const record: AgentRecord = JSON.parse(
-							readFileSync(fullPath, "utf-8"),
-						);
-						if (!record.name) {
-							record.name = basename(record.cwd) || record.id.slice(0, 8);
-						}
-						const cls = classifyRecord(record, now, isPidAlive(record.pid));
-						if (cls === "dead") {
-							// Reap dead agent
-							try {
-								unlinkSync(fullPath);
-							} catch {
-								// already gone
-							}
-							runAgentCleanup(record.id);
-							return [];
-						}
-						// Mark stalled agents
-						if (cls === "stalled") {
-							record.status = "stalled";
-						}
-						return [record];
-					} catch {
-						// Corrupt or unreadable file; try to delete
-						try {
-							unlinkSync(fullPath);
-						} catch {
-							// already gone
-						}
-						return [];
-					}
-				});
+			const files = readdirSync(REGISTRY_DIR).filter(
+				(f) => typeof f === "string" && f.endsWith(".json"),
+			);
+			const records: AgentRecord[] = [];
+			for (const file of files) {
+				const rec = parseRegistryFile(join(REGISTRY_DIR, file), now);
+				if (rec) records.push(rec);
+			}
+			return records;
 		} catch {
 			return [];
 		}

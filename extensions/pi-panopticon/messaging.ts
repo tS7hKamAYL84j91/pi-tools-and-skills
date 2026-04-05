@@ -23,7 +23,9 @@ import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
 import type { MessageTransport } from "../../lib/message-transport.js";
 import { createMaildirTransport } from "../../lib/transports/maildir.js";
 
-import { ok, type Registry } from "./types.js";
+import type { Registry } from "./types.js";
+import { ok } from "./types.js";
+import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
 
@@ -55,13 +57,6 @@ interface MessagingModule {
 
 export function createMessaging(config: MessagingConfig) {
 	return function setup(pi: ExtensionAPI, registry: Registry): MessagingModule {
-		// ── Registry helpers ────────────────────────────────────
-
-		function getSelfName(): string {
-			const record = registry.getRecord();
-			return record?.name ?? "unknown";
-		}
-
 		/** Update pendingMessages in this agent's record. */
 		function updatePendingCount(): void {
 			const record = registry.getRecord();
@@ -70,29 +65,6 @@ export function createMessaging(config: MessagingConfig) {
 			if (record.pendingMessages !== count) {
 				registry.updatePendingMessages(count);
 			}
-		}
-
-		function resolvePeer(name: string): ReturnType<typeof registry.readAllPeers>[number] | undefined {
-			const lower = name.toLowerCase();
-			const self = registry.getRecord();
-			return registry.readAllPeers().find(
-				(r) => r.name.toLowerCase() === lower && (!self || r.id !== self.id),
-			);
-		}
-
-		function peerNames(): string {
-			const self = registry.getRecord();
-			const names = registry.readAllPeers()
-				.filter((r) => !self || r.id !== self.id)
-				.map((r) => r.name);
-			return names.length ? names.join(", ") : "(none)";
-		}
-
-		function notFound(name: string) {
-			return ok(
-				`No agent named "${name}". Known peers: ${peerNames()}`,
-				{ name, error: "not_found" },
-			);
 		}
 
 		// ── Inbox draining ─────────────────────────────────────
@@ -125,13 +97,13 @@ export function createMessaging(config: MessagingConfig) {
 					return;
 				}
 				const [, peerName, msg] = match;
-				const peer = resolvePeer(peerName);
+				const peer = resolvePeer(registry, peerName);
 				if (!peer) {
-					ctx.ui.notify(`No agent named "${peerName}". Peers: ${peerNames()}`, "warning");
+					ctx.ui.notify(`No agent named "${peerName}". Peers: ${peerNames(registry)}`, "warning");
 					return;
 				}
 				const preview = truncate(msg, 50);
-				const d = await config.send.send(peer, getSelfName(), msg);
+				const d = await config.send.send(peer, getSelfName(registry), msg);
 				if (d.accepted) {
 					ctx.ui.notify(`→ ${peerName}: ${preview}`, "info");
 				} else {
@@ -161,10 +133,10 @@ export function createMessaging(config: MessagingConfig) {
 			}),
 
 			async execute(_id, params, _signal) {
-				const peer = resolvePeer(params.name);
-				if (!peer) return notFound(params.name);
+				const peer = resolvePeer(registry, params.name);
+				if (!peer) return notFound(registry, params.name);
 
-				const from = getSelfName();
+				const from = getSelfName(registry);
 				const preview = truncate(params.message);
 				const d = await config.send.send(peer, from, params.message);
 
@@ -209,7 +181,7 @@ export function createMessaging(config: MessagingConfig) {
 					);
 				}
 
-				const from = getSelfName();
+				const from = getSelfName(registry);
 				const results: { name: string; ok: boolean; error?: string }[] = [];
 
 				for (const target of targets) {

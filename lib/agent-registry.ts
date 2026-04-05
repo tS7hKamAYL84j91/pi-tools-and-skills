@@ -1,10 +1,9 @@
 /**
  * Shared agent registry types and utilities.
  *
- * Both pi-panopticon.ts and pi-messaging.ts use the same registry
- * directory (~/.pi/agents/) and the same record format. This module
- * provides the shared types and low-level IO functions so neither
- * extension duplicates the other.
+ * The panopticon extension modules (registry, messaging, health) and
+ * the Maildir transport all depend on this shared module for the
+ * registry directory path, record types, and cleanup utilities.
  *
  * Does NOT contain: Maildir IO (see transports/maildir.ts).
  */

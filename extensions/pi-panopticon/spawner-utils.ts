@@ -131,9 +131,9 @@ export async function gracefulKill(
 	const closed = new Promise<void>((res) => agent.proc.once("close", res));
 	await Promise.race([closed, sleep(GRACEFUL_WAIT_MS)]);
 	if (!agent.done) {
-		try { agent.proc.kill("SIGTERM"); } catch { /* */ }
+		try { agent.proc.kill("SIGTERM"); } catch { /* already exited */ }
 		await Promise.race([closed, sleep(GRACEFUL_WAIT_MS)]);
-		if (!agent.done) try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+		if (!agent.done) try { agent.proc.kill("SIGKILL"); } catch { /* already exited */ }
 	}
 }
 

@@ -190,7 +190,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: params.model, tempDir });
 			if (!agent.pid) {
-				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* */ }
+				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });
 			}
 
@@ -279,7 +279,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 							const d = evt.assistantMessageEvent as Record<string, unknown> | undefined;
 							if (d?.type === "text_delta") return String(d.delta);
 						}
-					} catch { /* */ }
+					} catch { /* not JSON — skip */ }
 					return "";
 				}).join("")
 				: "";
@@ -387,7 +387,7 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			const { pid } = agent;
 
 			if (params.force) {
-				try { agent.proc.kill("SIGKILL"); } catch { /* */ }
+				try { agent.proc.kill("SIGKILL"); } catch { /* already exited */ }
 				agents.delete(params.name);
 				return ok(`Force-killed "${params.name}" (pid ${pid}).`, { name: params.name, pid, method: "SIGKILL" });
 			}

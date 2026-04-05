@@ -32,7 +32,6 @@ interface InboxMessage {
 	from: string;
 	text: string;
 	ts: number;
-	metadata?: Record<string, unknown>;
 }
 
 // ── Maildir inbox helpers (private) ────────────────────────────
@@ -64,10 +63,12 @@ function inboxReadNew(
 						},
 					];
 				} catch {
+					/* skip unreadable/corrupt message */
 					return [];
 				}
 			});
 	} catch {
+		/* inbox dir may not exist */
 		return [];
 	}
 }
@@ -93,11 +94,11 @@ function inboxPruneCur(agentId: string, keep = 50): void {
 			try {
 				unlinkSync(join(curDir, f));
 			} catch {
-				/* */
+				/* best-effort: file may already be gone */
 			}
 		}
 	} catch {
-		/* */
+		/* best-effort: cur dir may not exist */
 	}
 }
 

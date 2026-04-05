@@ -13,7 +13,7 @@ import { Type, type Static } from "@sinclair/typebox";
 
 // ── Schema ──────────────────────────────────────────────────────
 
-export const TaskClassification = Type.Union(
+const TaskClassification = Type.Union(
 	[
 		Type.Literal("sequential"),
 		Type.Literal("parallelisable"),
@@ -23,7 +23,7 @@ export const TaskClassification = Type.Union(
 	{ description: "Task type — determines model and topology routing" },
 );
 
-export const Topology = Type.Union(
+const Topology = Type.Union(
 	[Type.Literal("single-agent"), Type.Literal("centralised-mas")],
 	{ description: "Agent topology for this task" },
 );
@@ -48,8 +48,7 @@ export const TaskBriefSchema = Type.Object({
 });
 
 export type TaskBrief = Static<typeof TaskBriefSchema>;
-export type TaskClassification = Static<typeof TaskClassification>;
-export type Topology = Static<typeof Topology>;
+
 
 // ── Brief → prompt rendering ────────────────────────────────────
 

@@ -23,10 +23,11 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { REGISTRY_DIR, isPidAlive } from "../../lib/agent-registry.js";
-import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
+import { readSessionLog } from "../../lib/session-log.js";
 import { createMaildirTransport } from "../../lib/transports/maildir.js";
 import type { Registry } from "./types.js";
 import { ok } from "./types.js";
+import { getSelfName, resolvePeer, peerNames } from "./peers.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ import { ok } from "./types.js";
  * Goes beyond the registry's self-reported AgentStatus by assessing
  * liveness, activity patterns, and error state.
  */
+/** @public */
 export type AgentHealthStatus =
 	| "active"      // PID alive, activity is changing
 	| "stalled"     // PID alive, heartbeat stale, activity unchanged ≥ threshold
@@ -51,6 +53,7 @@ export type AgentHealthStatus =
  * Designed so kanban_monitor (and other consumers) can use this
  * directly instead of scanning the registry themselves.
  */
+/** @public */
 export interface AgentHealth {
 	name: string;
 	pid: number;
@@ -97,9 +100,9 @@ export function computeActivityHash(sessionFile: string | undefined): string {
 export function detectApiErrors(sessionFile: string | undefined): boolean {
 	if (!sessionFile) return false;
 	const events = readSessionLog(sessionFile, ERROR_WINDOW);
-	const toolResults = events.filter((e: SessionEvent) => e.event === "tool_result");
+	const toolResults = events.filter((e) => e.event === "tool_result");
 	if (toolResults.length === 0) return false;
-	const errors = toolResults.filter((e: SessionEvent) => e.isError === true);
+	const errors = toolResults.filter((e) => e.isError === true);
 	// Majority of recent tool results are errors
 	return errors.length > 0 && errors.length >= Math.ceil(toolResults.length / 2);
 }
@@ -207,6 +210,7 @@ export function assessHealth(
  * Best-effort, non-blocking with 3s timeout.
  * Returns true if the message was delivered.
  */
+/** @public */
 export async function socketNudge(
 	sockPath: string,
 	from: string,
@@ -270,6 +274,7 @@ function formatHealthTable(healths: AgentHealth[]): string {
 
 // ── Module setup ────────────────────────────────────────────────
 
+/** @public */
 export interface HealthModule {
 	/** Assess health of a single agent by record. */
 	assess(record: AgentRecord, threshold?: number): AgentHealth;
@@ -284,25 +289,7 @@ export function setupHealth(
 	const stallTracker = new Map<string, StallState>();
 	const transport = createMaildirTransport();
 
-	function getSelfName(): string {
-		return registry.getRecord()?.name ?? "unknown";
-	}
 
-	function resolvePeer(name: string): AgentRecord | undefined {
-		const lower = name.toLowerCase();
-		const self = registry.getRecord();
-		return registry.readAllPeers().find(
-			(r) => r.name.toLowerCase() === lower && (!self || r.id !== self.id),
-		);
-	}
-
-	function peerNames(): string {
-		const self = registry.getRecord();
-		return registry.readAllPeers()
-			.filter((r) => !self || r.id !== self.id)
-			.map((r) => r.name)
-			.join(", ") || "(none)";
-	}
 
 	// ── T-135: agent_status tool ───────────────────────────────
 
@@ -336,9 +323,9 @@ export function setupHealth(
 			const threshold = params.stall_threshold ?? DEFAULT_STALL_THRESHOLD;
 
 			if (params.name) {
-				const rec = resolvePeer(params.name);
+				const rec = resolvePeer(registry, params.name);
 				if (!rec) {
-					return ok(`No agent named "${params.name}". Known peers: ${peerNames()}`);
+					return ok(`No agent named "${params.name}". Known peers: ${peerNames(registry)}`);
 				}
 				const h = assessHealth(rec, stallTracker, threshold);
 				return ok(formatHealthTable([h]), { agents: [h] });
@@ -377,12 +364,12 @@ export function setupHealth(
 		}),
 
 		async execute(_id, params, _signal) {
-			const peer = resolvePeer(params.name);
+			const peer = resolvePeer(registry, params.name);
 			if (!peer) {
-				return ok(`No agent named "${params.name}". Known peers: ${peerNames()}`);
+				return ok(`No agent named "${params.name}". Known peers: ${peerNames(registry)}`);
 			}
 
-			const from = getSelfName();
+			const from = getSelfName(registry);
 
 			// Durable delivery via Maildir
 			const mailResult = await transport.send(peer, from, params.message);
