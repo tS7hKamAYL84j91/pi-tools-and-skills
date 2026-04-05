@@ -1,22 +1,19 @@
 /**
  * Kanban monitor — agent health inspection and nudge delivery.
  *
- * Inspects agents via the panopticon registry (PID liveness +
- * heartbeat age) and checks for REPORT.md completion markers.
- * Formats monitor reports and delivers nudges via Maildir.
+ * Uses lib/agent-api for agent lookups and messaging rather than
+ * reaching into registry internals or transport implementations.
  */
 
 import { exec } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { REGISTRY_DIR, isPidAlive, type AgentRecord } from "../../lib/agent-registry.js";
-import { createMaildirTransport } from "../../lib/transports/maildir.js";
+import { findAgentByName, sendAgentMessage } from "../../lib/agent-api.js";
 import type { BoardState } from "./board.js";
 
 const execAsync = promisify(exec);
-const maildir = createMaildirTransport();
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -55,31 +52,21 @@ export async function checkReportDone(agentName: string): Promise<boolean> {
 	} catch { return false; }
 }
 
-/** Read registry JSON, check PID liveness and heartbeat age. */
+/** Inspect an agent's liveness via the agent API. */
 export function inspectAgent(agentName: string): AgentInspection {
-	try {
-		if (!existsSync(REGISTRY_DIR)) return { status: "MISSING", detail: "agents dir not found" };
-		for (const f of readdirSync(REGISTRY_DIR).filter((f) => f.endsWith(".json"))) {
-			try {
-				const rec: AgentRecord = JSON.parse(readFileSync(join(REGISTRY_DIR, f), "utf-8"));
-				if (rec.name?.toLowerCase() !== agentName.toLowerCase()) continue;
-				if (!isPidAlive(rec.pid)) return { status: "MISSING", detail: `agent PID ${rec.pid} not running`, agentId: rec.id };
-				const ageMs = Date.now() - rec.heartbeat;
-				if (ageMs > 300_000) return { status: "STALLED", detail: `heartbeat ${Math.round(ageMs / 60_000)}m ago`, agentId: rec.id };
-				return { status: "ACTIVE", detail: "(running)", agentId: rec.id };
-			} catch { /* skip corrupt */ }
-		}
-	} catch { /* ignore */ }
-	return { status: "MISSING", detail: `no registered agent for '${agentName}'` };
+	const info = findAgentByName(agentName);
+	if (!info) return { status: "MISSING", detail: `no registered agent for '${agentName}'` };
+	if (!info.alive) return { status: "MISSING", detail: `agent PID ${info.pid} not running`, agentId: info.id };
+	if (info.heartbeatAge > 300_000) {
+		return { status: "STALLED", detail: `heartbeat ${Math.round(info.heartbeatAge / 60_000)}m ago`, agentId: info.id };
+	}
+	return { status: "ACTIVE", detail: "(running)", agentId: info.id };
 }
 
-/** Deliver a nudge to an agent via Maildir transport. */
+/** Deliver a nudge to an agent via the agent API. */
 export async function deliverNudge(agentId: string, nudge: string): Promise<"sent" | "failed"> {
-	try {
-		const peer = { id: agentId, name: "", pid: 0, cwd: "", model: "", startedAt: 0, heartbeat: 0, status: "running" as const };
-		const result = await maildir.send(peer, "kanban-monitor", nudge);
-		return result.accepted ? "sent" : "failed";
-	} catch { return "failed"; }
+	const accepted = await sendAgentMessage(agentId, "kanban-monitor", nudge);
+	return accepted ? "sent" : "failed";
 }
 
 /** Format a monitor report from results and counts. */
