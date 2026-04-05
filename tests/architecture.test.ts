@@ -122,9 +122,9 @@ describe("file size", () => {
 			.adhereTo(
 				(file) => {
 					const lines = file.content.split("\n").length;
-					return lines <= 1200;
+					return lines <= 600;
 				},
-				"project-extensions files ratcheted at 1200 lines pending modularisation",
+				"project-extensions files should not exceed 600 lines",
 			);
 
 		await expect(rule).toPassAsync();
