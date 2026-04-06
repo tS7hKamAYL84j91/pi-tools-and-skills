@@ -124,6 +124,12 @@ export class KanbanPanel {
 			case "blockTask":
 				await this.handleBlockAction(String(msg.taskId));
 				break;
+			case "createTask":
+				await this.handleCreate(msg);
+				break;
+			case "editTask":
+				await this.handleEdit(msg);
+				break;
 		}
 	}
 
@@ -176,17 +182,57 @@ export class KanbanPanel {
 			return;
 		}
 
-		// blocked → todo (UNBLOCK + MOVE)
-		if (fromCol === "blocked" && toCol === "todo") {
+		// blocked → in-progress (UNBLOCK + CLAIM + MOVE)
+		if (fromCol === "blocked" && toCol === "in-progress") {
+			const board = await parseBoard();
+			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
+			if (wip >= WIP_LIMIT) {
+				vscode.window.showWarningMessage(`WIP limit reached (${wip}/${WIP_LIMIT}). Complete or block a task first.`);
+				return;
+			}
+			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			await this.appendEvents([
 				`UNBLOCK ${taskId} ${agent} resolution="unblocked via UI"`,
-				`MOVE ${taskId} ${agent} from=blocked to=todo`,
+				`CLAIM ${taskId} ${agent} expires=${expires}`,
+				`MOVE ${taskId} ${agent} from=blocked to=in-progress`,
 			]);
 			return;
 		}
 
 		// Invalid transition — should be blocked client-side, but belt-and-suspenders
 		vscode.window.showWarningMessage(`Invalid move: ${taskId} from ${fromCol} to ${toCol}`);
+	}
+
+	private async handleCreate(msg: Record<string, unknown>): Promise<void> {
+		const board = await parseBoard();
+		// Find next available T-NNN id
+		let maxNum = 0;
+		for (const tid of board.tasks.keys()) {
+			const n = parseInt(tid.slice(2), 10);
+			if (n > maxNum) maxNum = n;
+		}
+		const taskId = `T-${String(maxNum + 1).padStart(3, "0")}`;
+		const title = String(msg.title || "").replace(/"/g, "'");
+		const priority = String(msg.priority || "medium");
+		const tags = String(msg.tags || "").replace(/"/g, "'");
+		if (!title) {
+			vscode.window.showWarningMessage("Task title is required.");
+			return;
+		}
+		await this.appendEvents([
+			`CREATE ${taskId} vscode-kanban title="${title}" priority="${priority}" tags="${tags}"`,
+		]);
+		vscode.window.showInformationMessage(`Created ${taskId}: ${title}`);
+	}
+
+	private async handleEdit(msg: Record<string, unknown>): Promise<void> {
+		const taskId = String(msg.taskId);
+		const changes: string[] = [];
+		if (msg.title) changes.push(`title="${String(msg.title).replace(/"/g, "'")}"`);
+		if (msg.priority) changes.push(`priority="${String(msg.priority)}"`);
+		if (msg.tags !== undefined) changes.push(`tags="${String(msg.tags).replace(/"/g, "'")}"`);
+		if (changes.length === 0) return;
+		await this.appendEvents([`EDIT ${taskId} vscode-kanban ${changes.join(" ")}`]);
 	}
 
 	private async handleBlockAction(taskId: string): Promise<void> {

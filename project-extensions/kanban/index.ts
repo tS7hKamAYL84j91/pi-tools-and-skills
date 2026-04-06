@@ -242,7 +242,6 @@ export default function (pi: ExtensionAPI) {
 			const board = await parseBoard();
 			const kDir = kanbanDir();
 			const monitorLog = resolve(kDir, "monitor.log");
-			const commFile = resolve(kDir, "..", "COMMUNICATION.md");
 			const ts = new Date().toISOString();
 
 			const tasks = getInProgressTasks(board);
@@ -290,15 +289,6 @@ export default function (pi: ExtensionAPI) {
 					`${ts} SUMMARY active=${counts.active} stalled=${counts.stalled} blocked=${counts.blocked} done=${counts.done} missing=${counts.missing}`,
 				];
 				await appendFile(monitorLog, `${logLines.join("\n")}\n`, "utf-8");
-			} catch { /* non-fatal */ }
-
-			if (counts.stalled > 0 || counts.blocked > 0) try {
-				const issues = results.filter((r) => r.status === "STALLED" || r.status === "BLOCKED");
-				await appendFile(commFile, [
-					`[TO: lead] [FROM: kanban-monitor] ${ts} — ${counts.blocked} blocked, ${counts.stalled} stalled`,
-					...issues.map((r) => `  ${r.id} (${r.agent}): ${r.status} — ${r.detail}`),
-					"",
-				].join("\n"), "utf-8");
 			} catch { /* non-fatal */ }
 
 			return ok(report, { timestamp: ts, counts, tasks: results, prod: isProd });

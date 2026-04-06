@@ -108,6 +108,7 @@ function renderHeader(totalActive, wipCount, board, agents, priorities, tags) {
 	return `<div class="board-header">
 		<h1>CoAS Kanban</h1>
 		<span class="board-meta">${totalActive} tasks · WIP ${wipCount}/${board.wipLimit} · ${board.totalEvents} events</span>
+		<button class="btn-create" data-action="toggle-create" title="Create task">➕ New Task</button>
 		<div class="filter-bar">
 			<select data-filter="agent" title="Filter by agent">
 				<option value="">all agents</option>${opts(agents, filterAgent)}
@@ -119,6 +120,18 @@ function renderHeader(totalActive, wipCount, board, agents, priorities, tags) {
 				<option value="">all tags</option>${opts(tags, filterTag)}
 			</select>
 		</div>
+	</div>
+	<div class="create-form" style="display:none">
+		<input data-field="title" type="text" placeholder="Task title" />
+		<select data-field="priority">
+			<option value="medium">medium</option>
+			<option value="critical">critical</option>
+			<option value="high">high</option>
+			<option value="low">low</option>
+		</select>
+		<input data-field="tags" type="text" placeholder="Tags (comma-separated)" />
+		<button data-action="submit-create">✅ Create</button>
+		<button data-action="cancel-create">❌</button>
 	</div>`;
 }
 
@@ -189,7 +202,7 @@ const VALID_DROPS = {
 	"backlog": ["todo"],
 	"todo": ["backlog", "in-progress"],
 	"in-progress": ["blocked", "done"],
-	"blocked": ["todo"],
+	"blocked": ["in-progress"],
 	"done": [],
 };
 
@@ -205,6 +218,31 @@ function attachListeners() {
 			if (f === "priority") filterPriority = sel.value;
 			if (f === "tag") filterTag = sel.value;
 			if (currentBoard) renderBoard(currentBoard);
+		});
+	}
+
+	// Create task form
+	const toggleBtn = root.querySelector('[data-action="toggle-create"]');
+	const createForm = root.querySelector(".create-form");
+	if (toggleBtn && createForm) {
+		toggleBtn.addEventListener("click", () => {
+			createForm.style.display = createForm.style.display === "none" ? "flex" : "none";
+		});
+		const cancelBtn = createForm.querySelector('[data-action="cancel-create"]');
+		if (cancelBtn) cancelBtn.addEventListener("click", () => { createForm.style.display = "none"; });
+		const submitBtn = createForm.querySelector('[data-action="submit-create"]');
+		if (submitBtn) submitBtn.addEventListener("click", () => {
+			const title = createForm.querySelector('[data-field="title"]').value.trim();
+			const priority = createForm.querySelector('[data-field="priority"]').value;
+			const tags = createForm.querySelector('[data-field="tags"]').value.trim();
+			if (!title) return;
+			vscode.postMessage({ type: "createTask", title, priority, tags });
+			createForm.style.display = "none";
+		});
+		// Enter key submits
+		const titleInput = createForm.querySelector('[data-field="title"]');
+		if (titleInput) titleInput.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") submitBtn.click();
 		});
 	}
 
@@ -229,14 +267,13 @@ function attachListeners() {
 	// Column drop targets
 	for (const col of root.querySelectorAll(".column")) {
 		col.addEventListener("dragover", (e) => {
+			if (!dragFromCol) return;
 			const toCol = col.dataset.col;
-			if (!dragFromCol || !(VALID_DROPS[dragFromCol] || []).includes(toCol)) {
-				e.dataTransfer.dropEffect = "none";
-				return;
-			}
+			const valid = (VALID_DROPS[dragFromCol] || []).includes(toCol);
+			// Must always preventDefault to allow drop
 			e.preventDefault();
-			e.dataTransfer.dropEffect = "move";
-			col.classList.add("drag-over");
+			e.dataTransfer.dropEffect = valid ? "move" : "none";
+			if (valid) col.classList.add("drag-over");
 		});
 		col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
 		col.addEventListener("drop", (e) => {
@@ -272,9 +309,10 @@ function showContextMenu(event, taskId, colId) {
 		items.push({ label: "✅ Mark Complete", action: "complete" });
 		items.push({ label: "🚫 Block", action: "block" });
 	}
-	if (colId === "blocked") items.push({ label: "🔓 Unblock → Todo", action: "unblock" });
+	if (colId === "blocked") items.push({ label: "🔓 Unblock → In Progress", action: "unblock" });
 	if (colId === "backlog") items.push({ label: "🔜 Move to Todo", action: "moveTodo" });
 	if (colId === "todo") items.push({ label: "📋 Move to Backlog", action: "moveBacklog" });
+	if (colId === "backlog" || colId === "todo") items.push({ label: "✏️ Edit", action: "edit" });
 	items.push({ label: "📝 View Notes", action: "detail" });
 
 	const menu = document.createElement("div");
@@ -311,7 +349,7 @@ function handleContextAction(action, taskId, colId) {
 			vscode.postMessage({ type: "blockTask", taskId });
 			break;
 		case "unblock":
-			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "todo" });
+			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "in-progress" });
 			break;
 		case "moveBacklog":
 			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "backlog" });
@@ -319,10 +357,68 @@ function handleContextAction(action, taskId, colId) {
 		case "moveTodo":
 			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "todo" });
 			break;
+		case "edit":
+			showEditForm(taskId);
+			break;
 		case "detail":
 			showDetail(taskId);
 			break;
 	}
+}
+
+// ── Edit form ──────────────────────────────────────────
+
+function showEditForm(taskId) {
+	if (!currentBoard) return;
+	const task = currentBoard.tasks[taskId];
+	if (!task) return;
+
+	const overlay = document.createElement("div");
+	overlay.className = "detail-overlay";
+	overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+	const pane = document.createElement("div");
+	pane.className = "detail-pane";
+	pane.innerHTML = `
+		<div class="detail-header">
+			<span class="card-id">${escapeHtml(task.id)} — Edit</span>
+			<span class="detail-close">✕</span>
+		</div>
+		<div class="edit-form">
+			<label>Title</label>
+			<input data-field="title" type="text" value="${escapeHtml(task.title)}" />
+			<label>Priority</label>
+			<select data-field="priority">
+				<option value="critical" ${task.priority === "critical" ? "selected" : ""}>critical</option>
+				<option value="high" ${task.priority === "high" ? "selected" : ""}>high</option>
+				<option value="medium" ${task.priority === "medium" ? "selected" : ""}>medium</option>
+				<option value="low" ${task.priority === "low" ? "selected" : ""}>low</option>
+			</select>
+			<label>Tags</label>
+			<input data-field="tags" type="text" value="${escapeHtml(task.tags)}" />
+			<div class="edit-actions">
+				<button data-action="save-edit">✅ Save</button>
+				<button data-action="cancel-edit">❌ Cancel</button>
+			</div>
+		</div>`;
+
+	pane.querySelector(".detail-close").addEventListener("click", () => overlay.remove());
+	pane.querySelector('[data-action="cancel-edit"]').addEventListener("click", () => overlay.remove());
+	pane.querySelector('[data-action="save-edit"]').addEventListener("click", () => {
+		const title = pane.querySelector('[data-field="title"]').value.trim();
+		const priority = pane.querySelector('[data-field="priority"]').value;
+		const tags = pane.querySelector('[data-field="tags"]').value.trim();
+		const msg = { type: "editTask", taskId };
+		if (title && title !== task.title) msg.title = title;
+		if (priority !== task.priority) msg.priority = priority;
+		if (tags !== task.tags) msg.tags = tags;
+		if (msg.title || msg.priority || msg.tags) vscode.postMessage(msg);
+		overlay.remove();
+	});
+
+	overlay.appendChild(pane);
+	document.body.appendChild(overlay);
+	pane.querySelector('[data-field="title"]').focus();
 }
 
 // ── Detail pane ─────────────────────────────────────────────

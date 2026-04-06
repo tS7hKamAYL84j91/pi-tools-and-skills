@@ -291,7 +291,57 @@ body {
 
 /* ── Filter bar ───────────────────────────────────────── */
 
-.filter-bar { display: flex; gap: 6px; margin-left: auto; }
+.btn-create {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 3px;
+	padding: 3px 10px;
+	font-size: 0.82em;
+	cursor: pointer;
+	margin-left: auto;
+}
+.btn-create:hover { background: var(--vscode-button-hoverBackground); }
+
+.create-form, .edit-form {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	padding: 8px 0;
+}
+
+.create-form input, .create-form select,
+.edit-form input, .edit-form select {
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 3px;
+	padding: 4px 8px;
+	font-size: 0.88em;
+	font-family: var(--vscode-font-family);
+}
+
+.create-form input[data-field="title"],
+.edit-form input[data-field="title"] { flex: 1; min-width: 180px; }
+
+.create-form button, .edit-form button, .edit-actions button {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border: none;
+	border-radius: 3px;
+	padding: 4px 10px;
+	font-size: 0.85em;
+	cursor: pointer;
+}
+.create-form button:hover, .edit-form button:hover, .edit-actions button:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.edit-form { flex-direction: column; align-items: stretch; gap: 8px; }
+.edit-form label { font-size: 0.82em; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+.edit-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+.filter-bar { display: flex; gap: 6px; }
 
 .filter-bar select {
 	background: var(--vscode-input-background);
