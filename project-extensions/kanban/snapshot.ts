@@ -31,9 +31,9 @@ const COLUMN_DEFS: Record<string, ColumnDef> = {
 	todo: { ...PRIO_COL_HDR, heading: "🔜 Todo" },
 	"in-progress": {
 		heading: "🔄 In Progress",
-		headers: ["| ID | Title | Agent | Expires |"],
-		separators: ["|----|-------|-------|---------|"],
-		row: (t) => `| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.expires} |`,
+		headers: ["| ID | Title | Agent | Model | Expires |"],
+		separators: ["|----|-------|-------|-------|---------|"],
+		row: (t) => `| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.model || "—"} | ${t.expires} |`,
 	},
 	blocked: {
 		heading: "🚫 Blocked",

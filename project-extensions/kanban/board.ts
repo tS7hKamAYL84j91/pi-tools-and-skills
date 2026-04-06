@@ -57,6 +57,7 @@ export interface TaskState {
 	agent: string;
 	claimed: boolean;
 	claimAgent: string;
+	model: string;
 	expires: string;
 	reason: string;
 	notes: string[];
@@ -79,7 +80,7 @@ function newTask(id: string, ts: string): TaskState {
 	return {
 		id, col: "backlog", deleted: false, priority: "medium",
 		claimed: false, notes: [], createdAt: ts,
-		title: "", tags: "", agent: "", claimAgent: "", expires: "",
+		title: "", tags: "", agent: "", claimAgent: "", model: "", expires: "",
 		reason: "", completedAt: "", duration: "", doneAgent: "",
 	};
 }
@@ -127,6 +128,7 @@ function applyEvent(task: TaskState, event: string, agent: string, ts: string, k
 				task.claimAgent = agent;
 				task.col = "in-progress";
 				if (kv.expires) task.expires = kv.expires;
+				if (kv.model) task.model = kv.model;
 			}
 			break;
 		case "UNCLAIM":

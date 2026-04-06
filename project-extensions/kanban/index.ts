@@ -92,9 +92,11 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Claim the next kanban task for an agent",
 		parameters: Type.Object({
 			agent: Type.String({ description: 'Agent name claiming the task (lowercase, hyphens only, e.g. "tools-worker")' }),
+			model: Type.Optional(Type.String({ description: 'Model running the agent (e.g. "claude-sonnet-4-6")' })),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { agent } = params;
+			const modelSuffix = params.model ? ` model=${params.model}` : "";
 			const board = await parseBoard();
 			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
 			if (wip >= WIP_LIMIT) return ok(`WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})`, { agent, result: "WIP_LIMIT_REACHED", claimed: false });
@@ -115,7 +117,7 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			const fromCol = board.tasks.get(bestId)?.col ?? "todo";
-			await logAppend(`${ts} CLAIM ${bestId} ${agent} expires=${expires}`);
+			await logAppend(`${ts} CLAIM ${bestId} ${agent} expires=${expires}${modelSuffix}`);
 			await logAppend(`${ts} MOVE ${bestId} ${agent} from=${fromCol} to=in-progress`);
 
 			const verifyBoard = await parseBoard();
@@ -502,9 +504,11 @@ export default function (pi: ExtensionAPI) {
 			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({ description: 'Agent performing the reassignment (e.g. "lead")' }),
 			new_agent: Type.String({ description: "Agent receiving the task (lowercase, hyphens only)" }),
+			model: Type.Optional(Type.String({ description: 'Model running the new agent (e.g. "claude-sonnet-4-6")' })),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, new_agent } = params;
+			const modelSuffix = params.model ? ` model=${params.model}` : "";
 			validateTaskId(task_id);
 			const task = await getTask(task_id);
 			if (task.col !== "in-progress") throw new Error(`Task ${task_id} is in '${task.col}' column. Can only reassign in-progress tasks.`);
@@ -512,7 +516,7 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			await logAppend(`${ts} UNCLAIM ${task_id} ${oldAgent}`);
-			await logAppend(`${ts} CLAIM ${task_id} ${new_agent} expires=${expires}`);
+			await logAppend(`${ts} CLAIM ${task_id} ${new_agent} expires=${expires}${modelSuffix}`);
 			return ok(`Reassigned ${task_id}: ${oldAgent} → ${new_agent}`, { task_id, agent, oldAgent, newAgent: new_agent, expires });
 		},
 	});
