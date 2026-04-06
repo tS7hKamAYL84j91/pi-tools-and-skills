@@ -60,6 +60,7 @@ export interface TaskState {
 	title: string;
 	priority: string;
 	tags: string;
+	description: string;
 	agent: string;
 	claimed: boolean;
 	claimAgent: string;
@@ -86,7 +87,7 @@ function newTask(id: string, ts: string): TaskState {
 	return {
 		id, col: "backlog", deleted: false, priority: "medium",
 		claimed: false, notes: [], createdAt: ts,
-		title: "", tags: "", agent: "", claimAgent: "", model: "", expires: "",
+		title: "", tags: "", description: "", agent: "", claimAgent: "", model: "", expires: "",
 		reason: "", completedAt: "", duration: "", doneAgent: "",
 	};
 }
@@ -122,6 +123,7 @@ function applyEvent(task: TaskState, event: string, agent: string, ts: string, k
 			if (kv.title) task.title = kv.title;
 			if (kv.priority) task.priority = kv.priority;
 			if (kv.tags) task.tags = kv.tags;
+			if (kv.description) task.description = kv.description;
 			task.createdAt = ts;
 			task.agent = agent;
 			break;
@@ -172,6 +174,7 @@ function applyEvent(task: TaskState, event: string, agent: string, ts: string, k
 			if (kv.title) task.title = kv.title;
 			if (kv.priority) task.priority = kv.priority;
 			if (kv.tags) task.tags = kv.tags;
+			if (kv.description) task.description = kv.description;
 			break;
 	}
 }

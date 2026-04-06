@@ -65,8 +65,11 @@ function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): s
 		for (const t of tasks) lines.push(def.row(t));
 	}
 
-	for (const t of tasks.filter((t) => t.notes.length > 0)) {
-		lines.push("", `**Notes for ${t.id}:**`, ...t.notes.map((n) => `- ${n}`));
+	for (const t of tasks.filter((t) => t.description || t.notes.length > 0)) {
+		const noteBullets: string[] = [];
+		if (t.description) noteBullets.push(`- Description: ${t.description}`);
+		noteBullets.push(...t.notes.map((n) => `- ${n}`));
+		lines.push("", `**Notes for ${t.id}:**`, ...noteBullets);
 	}
 	lines.push("");
 	return lines;

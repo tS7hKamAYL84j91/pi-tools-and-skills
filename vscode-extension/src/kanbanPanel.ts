@@ -223,12 +223,14 @@ export class KanbanPanel {
 		const title = String(msg.title || "").replace(/"/g, "'");
 		const priority = String(msg.priority || "medium");
 		const tags = String(msg.tags || "").replace(/"/g, "'");
+		const description = String(msg.description || "").replace(/"/g, "'");
 		if (!title) {
 			vscode.window.showWarningMessage("Task title is required.");
 			return;
 		}
+		const descPart = description ? ` description="${description}"` : "";
 		await this.appendEvents([
-			`CREATE ${taskId} vscode-kanban title="${title}" priority="${priority}" tags="${tags}"`,
+			`CREATE ${taskId} vscode-kanban title="${title}" priority="${priority}" tags="${tags}"${descPart}`,
 		]);
 		vscode.window.showInformationMessage(`Created ${taskId}: ${title}`);
 	}
@@ -239,6 +241,7 @@ export class KanbanPanel {
 		if (msg.title) changes.push(`title="${String(msg.title).replace(/"/g, "'")}"`);
 		if (msg.priority) changes.push(`priority="${String(msg.priority)}"`);
 		if (msg.tags !== undefined) changes.push(`tags="${String(msg.tags).replace(/"/g, "'")}"`);
+		if (msg.description !== undefined) changes.push(`description="${String(msg.description).replace(/"/g, "'")}"`);
 		if (changes.length === 0) return;
 		await this.appendEvents([`EDIT ${taskId} vscode-kanban ${changes.join(" ")}`]);
 	}

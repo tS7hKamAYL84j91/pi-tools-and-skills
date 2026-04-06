@@ -122,16 +122,19 @@ function renderHeader(totalActive, wipCount, board, agents, priorities, tags) {
 		</div>
 	</div>
 	<div class="create-form" style="display:none">
-		<input data-field="title" type="text" placeholder="Task title" />
-		<select data-field="priority">
-			<option value="medium">medium</option>
-			<option value="critical">critical</option>
-			<option value="high">high</option>
-			<option value="low">low</option>
-		</select>
-		<input data-field="tags" type="text" placeholder="Tags (comma-separated)" />
-		<button data-action="submit-create">✅ Create</button>
-		<button data-action="cancel-create">❌</button>
+		<div class="create-form-row">
+			<input data-field="title" type="text" placeholder="Task title" />
+			<select data-field="priority">
+				<option value="medium">medium</option>
+				<option value="critical">critical</option>
+				<option value="high">high</option>
+				<option value="low">low</option>
+			</select>
+			<input data-field="tags" type="text" placeholder="Tags (comma-separated)" />
+			<button data-action="submit-create">✅ Create</button>
+			<button data-action="cancel-create">❌</button>
+		</div>
+		<textarea data-field="description" rows="2" placeholder="Description (optional — what and why)"></textarea>
 	</div>`;
 }
 
@@ -236,7 +239,8 @@ function attachListeners() {
 			const priority = createForm.querySelector('[data-field="priority"]').value;
 			const tags = createForm.querySelector('[data-field="tags"]').value.trim();
 			if (!title) return;
-			vscode.postMessage({ type: "createTask", title, priority, tags });
+			const description = createForm.querySelector('[data-field="description"]').value;
+			vscode.postMessage({ type: "createTask", title, priority, tags, description });
 			createForm.style.display = "none";
 		});
 		// Enter key submits
@@ -453,6 +457,7 @@ function showDetail(taskId) {
 				<span class="detail-close">✕</span>
 			</div>
 			<h2>${escapeHtml(task.title)}</h2>
+			${task.description ? `<div class="detail-description">${escapeHtml(task.description)}</div>` : ''}
 			<div class="detail-meta">
 				<div>Column: <strong>${escapeHtml(task.col)}</strong></div>
 				<div>Priority: <strong>${escapeHtml(task.priority)}</strong></div>
@@ -470,6 +475,7 @@ function showDetail(taskId) {
 		const origTitle = task.title;
 		const origPriority = task.priority;
 		const origTags = task.tags || "";
+		const origDescription = task.description || "";
 
 		pane.innerHTML = `
 			<div class="detail-header">
@@ -488,6 +494,8 @@ function showDetail(taskId) {
 				</select>
 				<label>Tags</label>
 				<input data-field="edit-tags" type="text" value="${escapeHtml(task.tags || "")}" placeholder="comma-separated" />
+				<label>Description</label>
+				<textarea data-field="edit-description" rows="3" placeholder="What and why...">${escapeHtml(task.description || "")}</textarea>
 			</div>
 			<div class="detail-edit-actions" style="display:none">
 				<button data-action="save-inline-edit">✅ Save</button>
@@ -510,28 +518,33 @@ function showDetail(taskId) {
 		const titleInput = pane.querySelector('[data-field="edit-title"]');
 		const prioritySelect = pane.querySelector('[data-field="edit-priority"]');
 		const tagsInput = pane.querySelector('[data-field="edit-tags"]');
+		const descriptionField = pane.querySelector('[data-field="edit-description"]');
 		const editActions = pane.querySelector('.detail-edit-actions');
 
 		const checkChanges = () => {
 			const changed = titleInput.value.trim() !== origTitle
 				|| prioritySelect.value !== origPriority
-				|| tagsInput.value.trim() !== origTags;
+				|| tagsInput.value.trim() !== origTags
+				|| descriptionField.value !== origDescription;
 			editActions.style.display = changed ? "flex" : "none";
 		};
 		titleInput.addEventListener("input", checkChanges);
 		prioritySelect.addEventListener("change", checkChanges);
 		tagsInput.addEventListener("input", checkChanges);
+		descriptionField.addEventListener("input", checkChanges);
 
 		pane.querySelector('[data-action="save-inline-edit"]').addEventListener("click", () => {
 			const title = titleInput.value.trim();
 			if (!title) return; // don't allow empty title
 			const priority = prioritySelect.value;
 			const tags = tagsInput.value.trim();
+			const description = descriptionField.value;
 			let hasChanges = false;
 			const msgData = { type: "editTask", taskId };
 			if (title !== origTitle) { msgData.title = title; hasChanges = true; }
 			if (priority !== origPriority) { msgData.priority = priority; hasChanges = true; }
 			if (tags !== origTags) { msgData.tags = tags; hasChanges = true; }
+			if (description !== origDescription) { msgData.description = description; hasChanges = true; }
 			if (hasChanges) vscode.postMessage(msgData);
 			overlay.remove();
 		});
@@ -540,6 +553,7 @@ function showDetail(taskId) {
 			titleInput.value = origTitle;
 			prioritySelect.value = origPriority;
 			tagsInput.value = origTags;
+			descriptionField.value = origDescription;
 			editActions.style.display = "none";
 		});
 	}

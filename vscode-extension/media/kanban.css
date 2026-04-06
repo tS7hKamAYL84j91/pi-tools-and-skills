@@ -275,7 +275,15 @@ body {
 }
 .detail-close:hover { background: var(--vscode-toolbar-hoverBackground); }
 
-.detail-pane h2 { font-size: 1.1em; margin-bottom: 12px; color: var(--vscode-foreground); }
+.detail-pane h2 { font-size: 1.1em; margin-bottom: 8px; color: var(--vscode-foreground); }
+
+.detail-description {
+	font-size: 0.9em;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
 .detail-pane h3 { font-size: 0.95em; margin-top: 16px; margin-bottom: 6px; color: var(--vscode-foreground); }
 
 .detail-meta {
@@ -310,7 +318,10 @@ body {
 	padding: 8px 0;
 }
 
-.create-form input, .create-form select,
+.create-form { flex-direction: column; align-items: stretch; }
+.create-form-row { display: flex; gap: 6px; align-items: center; }
+
+.create-form input, .create-form select, .create-form textarea,
 .edit-form input, .edit-form select {
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
@@ -338,6 +349,12 @@ body {
 }
 
 .edit-form { flex-direction: column; align-items: stretch; gap: 8px; }
+
+.create-form textarea,
+.detail-edit-fields textarea {
+	resize: vertical;
+	min-height: 52px;
+}
 .edit-form label { font-size: 0.82em; color: var(--vscode-descriptionForeground); margin-top: 4px; }
 .edit-actions { display: flex; gap: 6px; margin-top: 8px; }
 
@@ -369,7 +386,8 @@ body {
 }
 
 .detail-edit-fields input,
-.detail-edit-fields select {
+.detail-edit-fields select,
+.detail-edit-fields textarea {
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
 	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));

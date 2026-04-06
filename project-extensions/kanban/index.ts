@@ -113,7 +113,8 @@ async function runCompaction(
 	for (const tid of board.order) {
 		const task = board.tasks.get(tid);
 		if (!task || task.deleted) continue;
-		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${task.title}" priority="${task.priority}" tags="${task.tags}"`);
+		const descPart = task.description ? ` description="${task.description.replace(/"/g, "'")}"` : "";
+		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${task.title}" priority="${task.priority}" tags="${task.tags}"${descPart}`);
 		const bh = blockHistory.get(tid);
 		if (bh) newLines.push(...bh);
 
@@ -206,15 +207,18 @@ export default function (pi: ExtensionAPI) {
 			title: Type.String({ description: "Human-readable task title" }),
 			priority: Type.String({ description: "Task priority: critical | high | medium | low", enum: ["critical", "high", "medium", "low"] }),
 			tags: Type.Optional(Type.String({ description: 'Optional comma-separated tags (e.g. "tools,research")', default: "" })),
+			description: Type.Optional(Type.String({ description: "Optional longer description — the 'what and why' of the task", default: "" })),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, title, priority } = params;
 			const tags = params.tags ?? "";
+			const description = params.description ?? "";
 			validateTaskId(task_id);
 			const existing = await parseBoard();
 			if (existing.tasks.has(task_id)) throw new Error(`Task ID ${task_id} already exists`);
-			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"`);
-			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags });
+			const descPart = description ? ` description="${description.replace(/"/g, "'")}"` : "";
+			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"${descPart}`);
+			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags, description });
 		},
 	});
 
@@ -561,11 +565,12 @@ export default function (pi: ExtensionAPI) {
 			title: Type.Optional(Type.String({ description: "New task title" })),
 			priority: Type.Optional(Type.String({ description: "New priority: critical | high | medium | low", enum: ["critical", "high", "medium", "low"] })),
 			tags: Type.Optional(Type.String({ description: "New comma-separated tags" })),
+			description: Type.Optional(Type.String({ description: "New description for the task" })),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			validateTaskId(task_id);
-			if (!params.title && !params.priority && !params.tags) throw new Error("At least one of title, priority, or tags must be provided");
+			if (!params.title && !params.priority && !params.tags && !params.description) throw new Error("At least one of title, priority, tags, or description must be provided");
 			const task = await getTask(task_id);
 			if (!["backlog", "todo"].includes(task.col)) throw new Error(`Task ${task_id} is in '${task.col}' column. Can only edit tasks in backlog or todo.`);
 
@@ -574,6 +579,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.title && params.title !== task.title) { changes.push(`title="${params.title}"`); changed.title = params.title; }
 			if (params.priority && params.priority !== task.priority) { changes.push(`priority="${params.priority}"`); changed.priority = params.priority; }
 			if (params.tags && params.tags !== task.tags) { changes.push(`tags="${params.tags}"`); changed.tags = params.tags; }
+			if (params.description && params.description !== task.description) { changes.push(`description="${params.description.replace(/"/g, "'")}"`); changed.description = params.description; }
 			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
 
 			await logAppend(`${nowZ()} EDIT ${task_id} ${agent} ${changes.join(" ")}`);
