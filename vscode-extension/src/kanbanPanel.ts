@@ -63,15 +63,16 @@ export class KanbanPanel {
 
 	static createOrShow(context: vscode.ExtensionContext): void {
 		if (KanbanPanel.currentPanel) {
-			KanbanPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+			KanbanPanel.currentPanel.panel.reveal();
 			return;
 		}
 		const panel = vscode.window.createWebviewPanel(
 			KanbanPanel.viewType,
 			"CoAS Kanban",
-			vscode.ViewColumn.Beside,
+			vscode.ViewColumn.Active,
 			{
 				enableScripts: true,
+				retainContextWhenHidden: true,
 				localResourceRoots: [
 					vscode.Uri.joinPath(context.extensionUri, "media"),
 				],
@@ -111,27 +112,101 @@ export class KanbanPanel {
 			case "ready":
 				this.refresh();
 				break;
-			case "moveTask":
-				await this.appendEvent(
-					`MOVE ${msg.taskId} vscode-kanban from=${msg.fromCol} to=${msg.toCol}`,
-				);
+			case "dropTask":
+				await this.handleDrop(String(msg.taskId), String(msg.fromCol), String(msg.toCol));
 				break;
 			case "completeTask":
-				await this.appendEvent(
+				await this.appendEvents([
 					`COMPLETE ${msg.taskId} vscode-kanban duration=unknown`,
-				);
+					`MOVE ${msg.taskId} vscode-kanban from=in-progress to=done`,
+				]);
 				break;
 			case "blockTask":
-				await this.appendEvent(
-					`BLOCK ${msg.taskId} vscode-kanban reason="${String(msg.reason ?? "blocked via UI").replace(/"/g, "'")}"`,
-				);
+				await this.handleBlockAction(String(msg.taskId));
 				break;
 		}
 	}
 
-	private async appendEvent(event: string): Promise<void> {
+	private async handleDrop(taskId: string, fromCol: string, toCol: string): Promise<void> {
+		const agent = "vscode-kanban";
+
+		// Simple moves (backlog ↔ todo)
+		if ((fromCol === "backlog" && toCol === "todo") || (fromCol === "todo" && toCol === "backlog")) {
+			await this.appendEvents([`MOVE ${taskId} ${agent} from=${fromCol} to=${toCol}`]);
+			return;
+		}
+
+		// todo → in-progress (CLAIM + MOVE, with WIP check)
+		if (fromCol === "todo" && toCol === "in-progress") {
+			const board = await parseBoard();
+			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
+			if (wip >= WIP_LIMIT) {
+				vscode.window.showWarningMessage(`WIP limit reached (${wip}/${WIP_LIMIT}). Complete or block a task first.`);
+				return;
+			}
+			const expires = new Date(Date.now() + 7_200_000).toISOString();
+			await this.appendEvents([
+				`CLAIM ${taskId} ${agent} expires=${expires}`,
+				`MOVE ${taskId} ${agent} from=todo to=in-progress`,
+			]);
+			return;
+		}
+
+		// in-progress → done (COMPLETE + MOVE)
+		if (fromCol === "in-progress" && toCol === "done") {
+			await this.appendEvents([
+				`COMPLETE ${taskId} ${agent} duration=unknown`,
+				`MOVE ${taskId} ${agent} from=in-progress to=done`,
+			]);
+			return;
+		}
+
+		// in-progress → blocked (BLOCK + MOVE, with reason prompt)
+		if (fromCol === "in-progress" && toCol === "blocked") {
+			const reason = await vscode.window.showInputBox({
+				prompt: `Block reason for ${taskId}`,
+				placeHolder: "e.g. waiting for API key",
+			});
+			if (reason === undefined) return; // cancelled
+			const safeReason = (reason || "blocked via UI").replace(/"/g, "'");
+			await this.appendEvents([
+				`BLOCK ${taskId} ${agent} reason="${safeReason}"`,
+				`MOVE ${taskId} ${agent} from=in-progress to=blocked`,
+			]);
+			return;
+		}
+
+		// blocked → todo (UNBLOCK + MOVE)
+		if (fromCol === "blocked" && toCol === "todo") {
+			await this.appendEvents([
+				`UNBLOCK ${taskId} ${agent} resolution="unblocked via UI"`,
+				`MOVE ${taskId} ${agent} from=blocked to=todo`,
+			]);
+			return;
+		}
+
+		// Invalid transition — should be blocked client-side, but belt-and-suspenders
+		vscode.window.showWarningMessage(`Invalid move: ${taskId} from ${fromCol} to ${toCol}`);
+	}
+
+	private async handleBlockAction(taskId: string): Promise<void> {
+		const reason = await vscode.window.showInputBox({
+			prompt: `Block reason for ${taskId}`,
+			placeHolder: "e.g. waiting for dependency",
+		});
+		if (reason === undefined) return;
+		const safeReason = (reason || "blocked via UI").replace(/"/g, "'");
+		await this.appendEvents([
+			`BLOCK ${taskId} vscode-kanban reason="${safeReason}"`,
+			`MOVE ${taskId} vscode-kanban from=in-progress to=blocked`,
+		]);
+	}
+
+	private async appendEvents(events: string[]): Promise<void> {
 		try {
-			await appendFile(boardLogPath(), `${nowZ()} ${event}\n`, "utf-8");
+			const ts = nowZ();
+			const lines = events.map((e) => `${ts} ${e}`).join("\n");
+			await appendFile(boardLogPath(), `${lines}\n`, "utf-8");
 			// File watcher will trigger refresh automatically
 		} catch (err) {
 			vscode.window.showErrorMessage(`Kanban: failed to write board.log: ${err}`);

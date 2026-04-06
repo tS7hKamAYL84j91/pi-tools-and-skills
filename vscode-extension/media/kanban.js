@@ -165,7 +165,6 @@ function renderCard(task, colId) {
 	}
 
 	if (task.tags) meta += ` <span class="badge badge-tags">🏷 ${escapeHtml(task.tags)}</span>`;
-	if (notesCount > 0) meta += ` <span class="badge badge-notes">📝 ${notesCount}</span>`;
 
 	if (colId === "in-progress" && task.expires) {
 		const hoursLeft = Math.round((new Date(task.expires).getTime() - Date.now()) / 3600000 * 10) / 10;
@@ -174,11 +173,24 @@ function renderCard(task, colId) {
 			: ` <span class="badge" style="color:var(--vscode-errorForeground)">⏱ expired</span>`;
 	}
 	if (colId === "blocked" && task.reason) {
-		meta += ` <span class="badge" style="color:var(--vscode-errorForeground)">⛔ ${escapeHtml(task.reason.slice(0, 40))}</span>`;
+		meta += ` <span class="badge" style="color:var(--vscode-errorForeground)">⛔ ${escapeHtml(task.reason)}</span>`;
 	}
 	if (colId === "done" && task.duration) {
 		meta += ` <span class="badge" style="color:var(--vscode-descriptionForeground)">⏱ ${escapeHtml(task.duration)}</span>`;
 	}
+
+	// Notes preview — show last note snippet
+	let notesHtml = "";
+	if (notesCount > 0) {
+		const lastNote = task.notes[task.notes.length - 1] || "";
+		// Strip timestamp + agent prefix: "2026-04-05T... [agent] actual text"
+		const noteText = lastNote.replace(/^\S+\s+\[[^\]]+\]\s*/, "");
+		const preview = noteText.length > 80 ? noteText.slice(0, 80) + "…" : noteText;
+		notesHtml = `<div class="card-notes-preview">📝 ${notesCount} — <em>${escapeHtml(preview)}</em></div>`;
+	}
+
+	// Created date
+	const created = task.createdAt ? task.createdAt.slice(0, 10) : "";
 
 	return `
 		<div class="task-card" data-task-id="${task.id}" data-col="${colId}"
@@ -187,9 +199,11 @@ function renderCard(task, colId) {
 			oncontextmenu="showContextMenu(event, '${task.id}', '${colId}')">
 			<div class="card-top">
 				<span class="card-id">${escapeHtml(task.id)}</span>
+				<span class="card-date">${escapeHtml(created)}</span>
 			</div>
 			<div class="card-title">${escapeHtml(task.title)}</div>
 			<div class="card-meta">${meta}</div>
+			${notesHtml}
 		</div>`;
 }
 
@@ -199,28 +213,46 @@ function renderCard(task, colId) {
 window.handleDragStart = function (event) {
 	const card = event.target.closest(".task-card");
 	if (!card) return;
+	const fromCol = card.dataset.col;
+	// Done cards can't be dragged
+	if (fromCol === "done") { event.preventDefault(); return; }
 	event.dataTransfer.setData("text/plain", card.dataset.taskId);
-	event.dataTransfer.setData("application/x-col", card.dataset.col);
+	event.dataTransfer.setData("application/x-col", fromCol);
 	event.dataTransfer.effectAllowed = "move";
+	_dragFromCol = fromCol;
 	card.classList.add("dragging");
+};
+
+// Valid transitions: from → [allowed targets]
+const VALID_DROPS = {
+	"backlog": ["todo"],
+	"todo": ["backlog", "in-progress"],
+	"in-progress": ["blocked", "done"],
+	"blocked": ["todo"],
+	"done": [],
 };
 
 // biome-ignore lint: global function for webview
 window.handleDragOver = function (event) {
+	const col = event.target.closest(".column");
+	if (!col) return;
+	const toCol = col.dataset.col;
+	const fromCol = event.dataTransfer.types.includes("application/x-col")
+		? _dragFromCol : null;
+	if (!fromCol || !(VALID_DROPS[fromCol] || []).includes(toCol)) {
+		event.dataTransfer.dropEffect = "none";
+		return;
+	}
 	event.preventDefault();
 	event.dataTransfer.dropEffect = "move";
-	const col = event.target.closest(".column");
-	if (col) col.classList.add("drag-over");
+	col.classList.add("drag-over");
 };
+
+let _dragFromCol = null;
 
 document.addEventListener("dragleave", (event) => {
 	const col = event.target.closest && event.target.closest(".column");
 	if (col) col.classList.remove("drag-over");
-});
-
-document.addEventListener("dragend", () => {
-	document.querySelectorAll(".dragging").forEach((el) => el.classList.remove("dragging"));
-	document.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
 });
 
 // biome-ignore lint: global function for webview
@@ -229,9 +261,17 @@ window.handleDrop = function (event, toCol) {
 	document.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
 	const taskId = event.dataTransfer.getData("text/plain");
 	const fromCol = event.dataTransfer.getData("application/x-col");
+	_dragFromCol = null;
 	if (!taskId || fromCol === toCol) return;
-	vscode.postMessage({ type: "moveTask", taskId, fromCol, toCol });
+	if (!(VALID_DROPS[fromCol] || []).includes(toCol)) return;
+	vscode.postMessage({ type: "dropTask", taskId, fromCol, toCol });
 };
+
+document.addEventListener("dragend", () => {
+	_dragFromCol = null;
+	document.querySelectorAll(".dragging").forEach((el) => el.classList.remove("dragging"));
+	document.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+});
 
 // ── Context menu ────────────────────────────────────────────
 
@@ -291,19 +331,17 @@ function handleContextAction(action, taskId, colId) {
 		case "complete":
 			vscode.postMessage({ type: "completeTask", taskId });
 			break;
-		case "block": {
-			const reason = prompt("Block reason:");
-			if (reason !== null) vscode.postMessage({ type: "blockTask", taskId, reason });
+		case "block":
+			vscode.postMessage({ type: "blockTask", taskId });
 			break;
-		}
 		case "unblock":
-			vscode.postMessage({ type: "moveTask", taskId, fromCol: colId, toCol: "todo" });
+			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "todo" });
 			break;
 		case "moveBacklog":
-			vscode.postMessage({ type: "moveTask", taskId, fromCol: colId, toCol: "backlog" });
+			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "backlog" });
 			break;
 		case "moveTodo":
-			vscode.postMessage({ type: "moveTask", taskId, fromCol: colId, toCol: "todo" });
+			vscode.postMessage({ type: "dropTask", taskId, fromCol: colId, toCol: "todo" });
 			break;
 		case "detail":
 			showDetail(taskId);
