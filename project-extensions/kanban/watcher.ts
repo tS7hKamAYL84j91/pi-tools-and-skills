@@ -18,6 +18,7 @@ import { watch, readFileSync, type FSWatcher } from "node:fs";
 import {
 	parseBoard,
 	boardLogPath,
+	selfAppendedLines,
 	type BoardState,
 	WIP_LIMIT,
 } from "./board.js";
@@ -29,8 +30,9 @@ const INJECT_COOLDOWN_MS = 5 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 3;
 
 const INJECT_MESSAGE = [
-	"Autonomous monitoring check (injected by kanban watcher).",
-	"Run kanban_monitor and agent_status.",
+	"Board updated externally (kanban watcher detected new events).",
+	"Run kanban_snapshot to see current state.",
+	"Run kanban_monitor and agent_status to check agent health.",
 	"If any agents are STALLED, nudge them.",
 	"If any tasks show DONE (REPORT.md found), call kanban_complete.",
 	"Do not ask me any questions. Keep your response brief.",
@@ -60,10 +62,15 @@ function detectNewEvents(lastCount: number): string[] {
 	}
 }
 
-function hasActionableEvents(newLines: string[]): boolean {
+function hasExternalEvents(newLines: string[]): boolean {
 	return newLines.some((line) => {
-		const event = line.split(/\s+/)[1] ?? "";
-		return event === "COMPLETE" || event === "BLOCK";
+		const trimmed = line.trim();
+		if (!trimmed) return false;
+		if (selfAppendedLines.has(trimmed)) {
+			selfAppendedLines.delete(trimmed); // clean up
+			return false;
+		}
+		return true;
 	});
 }
 
@@ -143,7 +150,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 			const newLines = detectNewEvents(state.lastEventCount);
 			state.lastEventCount = board.totalEvents;
 
-			if (hasActionableEvents(newLines)) {
+			if (hasExternalEvents(newLines)) {
 				maybeInject();
 			}
 		} catch {

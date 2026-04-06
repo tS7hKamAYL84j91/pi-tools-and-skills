@@ -43,7 +43,13 @@ export function kanbanDir(): string {
 export const boardLogPath = (): string => join(kanbanDir(), "board.log");
 export const snapshotPath = (): string => join(kanbanDir(), "snapshot.md");
 export const nowZ = (): string => new Date().toISOString();
-export const logAppend = (line: string): Promise<void> => appendFile(boardLogPath(), `${line}\n`, "utf-8");
+// Lines appended by this process (for watcher self-detection)
+export const selfAppendedLines = new Set<string>();
+
+export const logAppend = async (line: string): Promise<void> => {
+	selfAppendedLines.add(line);
+	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
+};
 
 // ── Types ───────────────────────────────────────────────────────
 
