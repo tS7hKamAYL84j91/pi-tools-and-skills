@@ -4,8 +4,12 @@
   "description": "Live kanban board panel for CoAS — reads board.log, auto-refreshes on changes",
   "version": "0.1.0",
   "publisher": "coas",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,6 +27,7 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.25.0"
   }
 }
