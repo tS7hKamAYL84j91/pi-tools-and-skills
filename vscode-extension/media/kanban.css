@@ -443,6 +443,34 @@ body {
 	background: var(--vscode-button-hoverBackground);
 }
 
+/* ── Delete button (detail pane) ───────────────────────────── */
+
+.btn-delete-task {
+	background: transparent;
+	color: var(--vscode-errorForeground, #f48771);
+	border: 1px solid var(--vscode-errorForeground, #f48771);
+	border-radius: 3px;
+	padding: 4px 12px;
+	font-size: 0.85em;
+	cursor: pointer;
+	margin-top: 14px;
+	display: block;
+}
+
+.btn-delete-task:hover {
+	background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+}
+
+/* Delete item in context menu gets a red tint */
+.context-menu-item.danger {
+	color: var(--vscode-errorForeground, #f48771);
+}
+
+.context-menu-item.danger:hover {
+	background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-errorForeground, #f48771);
+}
+
 /* ── Loading / error ───────────────────────────────────────── */
 
 .loading, .error {

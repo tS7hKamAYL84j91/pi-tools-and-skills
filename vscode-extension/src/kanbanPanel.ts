@@ -135,6 +135,9 @@ export class KanbanPanel {
 					`NOTE ${msg.taskId} vscode-kanban text="${String(msg.text).replace(/"/g, "'")}"`,
 				]);
 				break;
+			case "deleteTask":
+				await this.handleDelete(String(msg.taskId), String(msg.title || msg.taskId));
+				break;
 		}
 	}
 
@@ -238,6 +241,17 @@ export class KanbanPanel {
 		if (msg.tags !== undefined) changes.push(`tags="${String(msg.tags).replace(/"/g, "'")}"`);
 		if (changes.length === 0) return;
 		await this.appendEvents([`EDIT ${taskId} vscode-kanban ${changes.join(" ")}`]);
+	}
+
+	private async handleDelete(taskId: string, title: string): Promise<void> {
+		const answer = await vscode.window.showWarningMessage(
+			`Delete ${taskId}: "${title}"? This cannot be undone.`,
+			"Yes", "No",
+		);
+		if (answer !== "Yes") return;
+		await this.appendEvents([
+			`DELETE ${taskId} vscode-kanban reason="deleted via UI"`,
+		]);
 	}
 
 	private async handleBlockAction(taskId: string): Promise<void> {

@@ -313,6 +313,7 @@ function showContextMenu(event, taskId, colId) {
 	if (colId === "backlog") items.push({ label: "🔜 Move to Todo", action: "moveTodo" });
 	if (colId === "todo") items.push({ label: "📋 Move to Backlog", action: "moveBacklog" });
 	if (colId === "backlog" || colId === "todo") items.push({ label: "✏️ Edit", action: "edit" });
+	if (colId === "backlog" || colId === "todo") items.push({ label: "🗑 Delete", action: "delete", danger: true });
 	items.push({ label: "📝 View Notes", action: "detail" });
 
 	const menu = document.createElement("div");
@@ -322,7 +323,7 @@ function showContextMenu(event, taskId, colId) {
 
 	for (const item of items) {
 		const el = document.createElement("div");
-		el.className = "context-menu-item";
+		el.className = "context-menu-item" + (item.danger ? " danger" : "");
 		el.textContent = item.label;
 		el.addEventListener("click", () => {
 			closeContextMenu();
@@ -359,6 +360,9 @@ function handleContextAction(action, taskId, colId) {
 			break;
 		case "edit":
 			showEditForm(taskId);
+			break;
+		case "delete":
+			vscode.postMessage({ type: "deleteTask", taskId, title: currentBoard.tasks[taskId]?.title || taskId });
 			break;
 		case "detail":
 			showDetail(taskId);
@@ -494,6 +498,7 @@ function showDetail(taskId) {
 				<div>Agent: <strong>${agentDisplay}</strong></div>
 				${task.reason ? `<div>Blocked: <strong>${escapeHtml(task.reason)}</strong></div>` : ""}
 			</div>
+			${(task.col === "backlog" || task.col === "todo") ? `<button class="btn-delete-task" data-action="delete-task">🗑 Delete Task</button>` : ""}
 			<h3>Notes (${task.notes ? task.notes.length : 0})</h3>
 			<ul class="detail-notes">${notes}</ul>
 			<div class="add-note-form">
@@ -536,6 +541,15 @@ function showDetail(taskId) {
 			prioritySelect.value = origPriority;
 			tagsInput.value = origTags;
 			editActions.style.display = "none";
+		});
+	}
+
+	// Delete button (backlog/todo only)
+	const deleteBtn = pane.querySelector('[data-action="delete-task"]');
+	if (deleteBtn) {
+		deleteBtn.addEventListener("click", () => {
+			vscode.postMessage({ type: "deleteTask", taskId, title: task.title });
+			overlay.remove();
 		});
 	}
 
