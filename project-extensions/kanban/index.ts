@@ -6,7 +6,7 @@
  * are in sibling modules (board.ts, snapshot.ts, monitor.ts).
  *
  * Tools:
- *   kanban_create, kanban_pick, kanban_complete, kanban_block,
+ *   kanban_create, kanban_pick, kanban_claim, kanban_complete, kanban_block,
  *   kanban_note, kanban_snapshot, kanban_monitor, kanban_compact,
  *   kanban_edit, kanban_reassign, kanban_unblock, kanban_move,
  *   kanban_delete
@@ -272,6 +272,56 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 			return ok(`Claimed ${bestId} for agent "${agent}".\nRun kanban_snapshot to see full task details.`, { agent, result: bestId, claimed: true });
+		},
+	});
+
+	// ── kanban_claim ──────────────────────────────────────────────
+	pi.registerTool({
+		name: "kanban_claim",
+		label: "Kanban Claim",
+		description:
+			"Claim a specific task for a specific agent. " +
+			"Task must be in the todo column. Moves it to in-progress. " +
+			"Returns TASK_NOT_FOUND if the ID is unknown, WRONG_COLUMN if not in todo, " +
+			"or WIP_LIMIT_REACHED if the 3-task in-progress cap is hit.",
+		promptSnippet: "Claim a specific kanban task for a specific agent",
+		parameters: Type.Object({
+			task_id: TASK_ID_SCHEMA,
+			agent: Type.String({ description: 'Agent name to claim for (lowercase, hyphens only, e.g. "time-crystals")' }),
+			model: Type.Optional(Type.String({ description: 'Model running the agent (e.g. "google-gemini-cli/gemini-2.5-flash")' })),
+		}),
+		async execute(_id, params, _signal): Promise<ToolResult> {
+			const { task_id, agent } = params;
+			const modelSuffix = params.model ? ` model=${params.model}` : "";
+			validateTaskId(task_id);
+			const board = await parseBoard();
+
+			const task = board.tasks.get(task_id);
+			if (!task || task.deleted) return ok(`TASK_NOT_FOUND: ${task_id}`, { agent, task_id, result: "TASK_NOT_FOUND", claimed: false });
+			if (task.col !== "todo") return ok(`WRONG_COLUMN: ${task_id} is in '${task.col}', expected 'todo'`, { agent, task_id, result: "WRONG_COLUMN", col: task.col, claimed: false });
+
+			const wip = [...board.tasks.values()].filter((t) => t.col === "in-progress").length;
+			if (wip >= WIP_LIMIT) return ok(`WIP_LIMIT_REACHED (${wip}/${WIP_LIMIT})`, { agent, task_id, result: "WIP_LIMIT_REACHED", claimed: false });
+
+			const ts = nowZ();
+			const expires = new Date(Date.now() + 7_200_000).toISOString();
+			await logAppend(`${ts} CLAIM ${task_id} ${agent} expires=${expires}${modelSuffix}`);
+			await logAppend(`${ts} MOVE ${task_id} ${agent} from=todo to=in-progress`);
+
+			const verifyBoard = await parseBoard();
+			const verified = verifyBoard.tasks.get(task_id);
+			if (verified && verified.claimAgent !== agent) {
+				await logAppend(`${ts} UNCLAIM ${task_id} ${agent}`);
+				return ok(
+					`CLAIM_CONFLICT: ${task_id} was claimed by ${verified.claimAgent}. Try again.`,
+					{ agent, task_id, result: "CLAIM_CONFLICT", claimed: false, conflictWith: verified.claimAgent },
+				);
+			}
+
+			return ok(
+				`Claimed ${task_id} ("${task.title}") for agent "${agent}".\nRun kanban_snapshot to see full task details.`,
+				{ agent, task_id, title: task.title, priority: task.priority, tags: task.tags, expires, result: "CLAIMED", claimed: true },
+			);
 		},
 	});
 
