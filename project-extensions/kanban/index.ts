@@ -33,6 +33,7 @@ import {
 	parseBoard,
 	validateTaskId,
 	getTask,
+	type BoardState,
 } from "./board.js";
 import { generateSnapshot } from "./snapshot.js";
 import {
@@ -48,6 +49,143 @@ import {
 // ── Helpers ─────────────────────────────────────────────────────
 
 const TASK_ID_SCHEMA = Type.String({ description: "Task ID in T-NNN format" });
+
+// ── Auto-compaction ─────────────────────────────────────────────
+
+/** Re-entrance guard — prevents concurrent compaction runs. */
+let compacting = false;
+
+/**
+ * Estimate how many log lines a compacted board.log would contain.
+ * Used to compute the dirty ratio without doing a full dry-run.
+ */
+function estimateCompactedLines(board: BoardState): number {
+	let count = 0;
+	for (const task of board.tasks.values()) {
+		if (task.deleted) continue;
+		count += 1; // CREATE
+		if (task.col !== "backlog") count += 1; // MOVE or COMPLETE
+		if (task.col === "in-progress" && task.claimed) count += 1; // CLAIM
+		count += task.notes.length; // NOTE lines
+	}
+	return Math.max(count + 1, 1); // +1 for the COMPACT marker
+}
+
+/**
+ * Core compaction: read board.log, build minimal reconstruction,
+ * back up the old log, and write the new one.
+ *
+ * @param agentLabel  Written as the "agent" field in the COMPACT event
+ *                    ("compact" for manual, "auto-compact" for automatic)
+ * @param triggerParam  Optional trigger reason appended as trigger=<value>
+ */
+async function runCompaction(
+	agentLabel: string,
+	triggerParam?: string,
+): Promise<{ eventsBefore: number; eventsAfter: number; backupPath: string; tasksPreserved: number }> {
+	const logPath = boardLogPath();
+	const raw = await readFile(logPath, "utf-8");
+	const originalLines = raw.split("\n").filter((l) => l.trim());
+	const eventsBefore = originalLines.length;
+	const board = await parseBoard();
+
+	// Backup before touching anything
+	const backupTs = nowZ().replace(/:/g, "-");
+	const backupPath = `${logPath}.bak.${backupTs}`;
+	await writeFile(backupPath, raw, "utf-8");
+
+	// Preserve BLOCK/UNBLOCK diagnostic history per task
+	const blockHistory = new Map<string, string[]>();
+	for (const line of originalLines) {
+		const parts = line.split(/\s+/);
+		const event = parts[1] ?? "";
+		const tid = parts[2] ?? "";
+		if (event === "BLOCK" || event === "UNBLOCK") {
+			if (!blockHistory.has(tid)) blockHistory.set(tid, []);
+			blockHistory.get(tid)?.push(line);
+		}
+	}
+
+	const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+	const newLines: string[] = [];
+	const ts = nowZ();
+
+	for (const tid of board.order) {
+		const task = board.tasks.get(tid);
+		if (!task || task.deleted) continue;
+		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${task.title}" priority="${task.priority}" tags="${task.tags}"`);
+		const bh = blockHistory.get(tid);
+		if (bh) newLines.push(...bh);
+
+		switch (task.col) {
+			case "todo":
+				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=todo`);
+				break;
+			case "in-progress":
+				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=in-progress`);
+				if (task.claimed) {
+					const expires = task.expires || new Date(Date.now() + 7_200_000).toISOString();
+					newLines.push(`${ts} CLAIM ${tid} ${task.claimAgent || "unknown"} expires=${expires}`);
+				}
+				break;
+			case "blocked":
+				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=blocked`);
+				break;
+			case "done":
+				newLines.push(`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}`);
+				break;
+		}
+
+		const keepAllNotes = task.col !== "done";
+		for (const note of task.notes) {
+			const noteMatch = note.match(/^(\S+)\s+\[([^\]]+)\]\s+(.*)$/);
+			if (!noteMatch) continue;
+			const [, noteTs, noteAgent, noteText] = noteMatch;
+			if (keepAllNotes || (noteTs ?? "") >= sevenDaysAgo) {
+				newLines.push(`${noteTs} NOTE ${tid} ${noteAgent} text="${noteText}"`);
+			}
+		}
+	}
+
+	const tasksPreserved = [...board.tasks.values()].filter((t) => !t.deleted).length;
+	const triggerSuffix = triggerParam ? ` trigger=${triggerParam}` : "";
+	const eventsAfter = newLines.length + 1;
+	newLines.push(`${ts} COMPACT T-000 ${agentLabel} events_before=${eventsBefore} events_after=${eventsAfter}${triggerSuffix}`);
+	await writeFile(logPath, `${newLines.join("\n")}\n`, "utf-8");
+
+	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
+}
+
+/**
+ * Check whether compaction is warranted and, if so, run it.
+ *
+ * Triggers if EITHER:
+ *   - totalLines > 500  (absolute size threshold)
+ *   - totalLines / compactedEstimate > 2.0  (dirty-ratio threshold)
+ *
+ * Returns { ran: false } immediately if the guard is already set or
+ * neither threshold is exceeded.
+ */
+async function compactIfNeeded(
+	board: BoardState,
+	totalLines: number,
+	trigger: string,
+): Promise<{ ran: boolean; eventsBefore?: number; eventsAfter?: number; backupPath?: string }> {
+	if (compacting) return { ran: false };
+
+	const compactedEstimate = estimateCompactedLines(board);
+	const dirtyRatio = totalLines / compactedEstimate;
+
+	if (totalLines <= 500 && dirtyRatio <= 2.0) return { ran: false };
+
+	compacting = true;
+	try {
+		const result = await runCompaction("auto-compact", trigger);
+		return { ran: true, ...result };
+	} finally {
+		compacting = false;
+	}
+}
 
 // ── Extension ───────────────────────────────────────────────────
 
@@ -152,6 +290,9 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			await logAppend(`${ts} COMPLETE ${task_id} ${agent} duration=${duration}`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=done`);
+			// Auto-compaction checkpoint: completing a task is a natural housekeeping moment
+			const boardAfter = await parseBoard();
+			await compactIfNeeded(boardAfter, boardAfter.totalEvents, "complete");
 			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, { task_id, agent, duration });
 		},
 	});
@@ -214,9 +355,14 @@ export default function (pi: ExtensionAPI) {
 			const sp = snapshotPath();
 			await writeFile(sp, snapshot, "utf-8");
 			await logAppend(`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`);
+			// Auto-compaction checkpoint: snapshot is the natural housekeeping moment
+			const compactResult = await compactIfNeeded(board, board.totalEvents, "snapshot");
+			const compactNote = compactResult.ran
+				? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
+				: "";
 			return ok(
-				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\n\n---\n\n${snapshot}`,
-				{ snapshotPath: sp, totalEvents: board.totalEvents },
+				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}${compactNote}\n\n---\n\n${snapshot}`,
+				{ snapshotPath: sp, totalEvents: board.totalEvents, autoCompacted: compactResult.ran },
 			);
 		},
 	});
@@ -389,76 +535,17 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Compact the kanban board log to reduce event count",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal): Promise<ToolResult> {
-			const logPath = boardLogPath();
-			const raw = await readFile(logPath, "utf-8");
-			const originalLines = raw.split("\n").filter((l) => l.trim());
-			const eventsBefore = originalLines.length;
-			const board = await parseBoard();
-
-			const backupTs = nowZ().replace(/:/g, "-");
-			const backupPath = `${logPath}.bak.${backupTs}`;
-			await writeFile(backupPath, raw, "utf-8");
-
-			const blockHistory = new Map<string, string[]>();
-			for (const line of originalLines) {
-				const parts = line.split(/\s+/);
-				const event = parts[1] ?? "";
-				const tid = parts[2] ?? "";
-				if (event === "BLOCK" || event === "UNBLOCK") {
-					if (!blockHistory.has(tid)) blockHistory.set(tid, []);
-					blockHistory.get(tid)?.push(line);
-				}
+			if (compacting) throw new Error("Compaction is already in progress — try again shortly");
+			compacting = true;
+			try {
+				const { eventsBefore, eventsAfter, backupPath, tasksPreserved } = await runCompaction("compact");
+				return ok(
+					`Compacted board.log: ${eventsBefore} → ${eventsAfter} events (${tasksPreserved} tasks preserved)\nBackup: ${backupPath}`,
+					{ eventsBefore, eventsAfter, tasksPreserved, backupPath },
+				);
+			} finally {
+				compacting = false;
 			}
-
-			const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-			const newLines: string[] = [];
-			const ts = nowZ();
-
-			for (const tid of board.order) {
-				const task = board.tasks.get(tid);
-				if (!task || task.deleted) continue;
-				newLines.push(`${task.createdAt} CREATE ${tid} compact title="${task.title}" priority="${task.priority}" tags="${task.tags}"`);
-				const bh = blockHistory.get(tid);
-				if (bh) newLines.push(...bh);
-
-				switch (task.col) {
-					case "todo":
-						newLines.push(`${ts} MOVE ${tid} compact from=backlog to=todo`);
-						break;
-					case "in-progress":
-						newLines.push(`${ts} MOVE ${tid} compact from=backlog to=in-progress`);
-						if (task.claimed) {
-							const expires = task.expires || new Date(Date.now() + 7_200_000).toISOString();
-							newLines.push(`${ts} CLAIM ${tid} ${task.claimAgent || "unknown"} expires=${expires}`);
-						}
-						break;
-					case "blocked":
-						newLines.push(`${ts} MOVE ${tid} compact from=backlog to=blocked`);
-						break;
-					case "done":
-						newLines.push(`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}`);
-						break;
-				}
-
-				const keepAllNotes = task.col !== "done";
-				for (const note of task.notes) {
-					const noteMatch = note.match(/^(\S+)\s+\[([^\]]+)\]\s+(.*)$/);
-					if (!noteMatch) continue;
-					const [, noteTs, noteAgent, noteText] = noteMatch;
-					if (keepAllNotes || (noteTs ?? "") >= sevenDaysAgo) {
-						newLines.push(`${noteTs} NOTE ${tid} ${noteAgent} text="${noteText}"`);
-					}
-				}
-			}
-
-			const eventsAfter = newLines.length + 1;
-			newLines.push(`${ts} COMPACT T-000 compact events_before=${eventsBefore} events_after=${eventsAfter}`);
-			await writeFile(logPath, `${newLines.join("\n")}\n`, "utf-8");
-			const tasksPreserved = [...board.tasks.values()].filter((t) => !t.deleted).length;
-			return ok(
-				`Compacted board.log: ${eventsBefore} → ${eventsAfter} events (${tasksPreserved} tasks preserved)\nBackup: ${backupPath}`,
-				{ eventsBefore, eventsAfter, tasksPreserved, backupPath },
-			);
 		},
 	});
 
