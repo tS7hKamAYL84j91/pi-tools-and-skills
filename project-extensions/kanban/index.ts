@@ -19,6 +19,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { setupWatcher } from "./watcher.js";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 
 import {
@@ -51,6 +52,7 @@ const TASK_ID_SCHEMA = Type.String({ description: "Task ID in T-NNN format" });
 // ── Extension ───────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	setupWatcher(pi);
 
 	// ── kanban_create ───────────────────────────────────────────
 	pi.registerTool({
