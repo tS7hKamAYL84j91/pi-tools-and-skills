@@ -353,6 +353,96 @@ body {
 	font-family: var(--vscode-font-family);
 }
 
+/* ── Detail pane inline edit fields ───────────────────────── */
+
+.detail-edit-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 10px;
+}
+
+.detail-edit-fields label {
+	font-size: 0.82em;
+	color: var(--vscode-descriptionForeground);
+	margin-top: 4px;
+}
+
+.detail-edit-fields input,
+.detail-edit-fields select {
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 3px;
+	padding: 4px 8px;
+	font-size: 0.88em;
+	font-family: var(--vscode-font-family);
+}
+
+.detail-edit-actions {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.detail-edit-actions button {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 3px;
+	padding: 4px 12px;
+	font-size: 0.85em;
+	cursor: pointer;
+}
+
+.detail-edit-actions button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.detail-edit-actions button[data-action="cancel-inline-edit"] {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.detail-edit-actions button[data-action="cancel-inline-edit"]:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ── Add note form ─────────────────────────────────────────── */
+
+.add-note-form {
+	display: flex;
+	gap: 6px;
+	margin-top: 10px;
+	align-items: center;
+}
+
+.add-note-form input {
+	flex: 1;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 3px;
+	padding: 4px 8px;
+	font-size: 0.88em;
+	font-family: var(--vscode-font-family);
+}
+
+.add-note-form button {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 3px;
+	padding: 4px 12px;
+	font-size: 0.85em;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.add-note-form button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
 /* ── Loading / error ───────────────────────────────────────── */
 
 .loading, .error {

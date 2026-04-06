@@ -130,6 +130,11 @@ export class KanbanPanel {
 			case "editTask":
 				await this.handleEdit(msg);
 				break;
+			case "addNote":
+				await this.appendEvents([
+					`NOTE ${msg.taskId} vscode-kanban text="${String(msg.text).replace(/"/g, "'")}"`,
+				]);
+				break;
 		}
 	}
 

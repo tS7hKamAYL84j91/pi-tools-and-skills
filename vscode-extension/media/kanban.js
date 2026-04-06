@@ -428,6 +428,8 @@ function showDetail(taskId) {
 	const task = currentBoard.tasks[taskId];
 	if (!task) return;
 
+	const isDone = task.col === "done";
+
 	const overlay = document.createElement("div");
 	overlay.className = "detail-overlay";
 	overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
@@ -435,26 +437,124 @@ function showDetail(taskId) {
 	const notes = (task.notes || []).map((n) => `<li>${escapeHtml(n)}</li>`).join("")
 		|| "<li><em>no notes</em></li>";
 
+	const agentDisplay = escapeHtml(task.doneAgent || task.claimAgent || task.agent || "—");
+
 	const pane = document.createElement("div");
 	pane.className = "detail-pane";
-	pane.innerHTML = `
-		<div class="detail-header">
-			<span class="card-id">${escapeHtml(task.id)}</span>
-			<span class="detail-close">✕</span>
-		</div>
-		<h2>${escapeHtml(task.title)}</h2>
-		<div class="detail-meta">
-			<div>Column: <strong>${escapeHtml(task.col)}</strong></div>
-			<div>Priority: <strong>${escapeHtml(task.priority)}</strong></div>
-			<div>Agent: <strong>${escapeHtml(task.claimAgent || task.agent || "—")}</strong></div>
-			${task.tags ? `<div>Tags: <strong>${escapeHtml(task.tags)}</strong></div>` : ""}
-			${task.reason ? `<div>Blocked: <strong>${escapeHtml(task.reason)}</strong></div>` : ""}
-			${task.duration ? `<div>Duration: <strong>${escapeHtml(task.duration)}</strong></div>` : ""}
-		</div>
-		<h3>Notes (${task.notes ? task.notes.length : 0})</h3>
-		<ul class="detail-notes">${notes}</ul>`;
 
+	if (isDone) {
+		pane.innerHTML = `
+			<div class="detail-header">
+				<span class="card-id">${escapeHtml(task.id)}</span>
+				<span class="detail-close">✕</span>
+			</div>
+			<h2>${escapeHtml(task.title)}</h2>
+			<div class="detail-meta">
+				<div>Column: <strong>${escapeHtml(task.col)}</strong></div>
+				<div>Priority: <strong>${escapeHtml(task.priority)}</strong></div>
+				<div>Agent: <strong>${agentDisplay}</strong></div>
+				${task.tags ? `<div>Tags: <strong>${escapeHtml(task.tags)}</strong></div>` : ""}
+				${task.duration ? `<div>Duration: <strong>${escapeHtml(task.duration)}</strong></div>` : ""}
+			</div>
+			<h3>Notes (${task.notes ? task.notes.length : 0})</h3>
+			<ul class="detail-notes">${notes}</ul>
+			<div class="add-note-form">
+				<input data-field="note-text" type="text" placeholder="Add a note..." />
+				<button data-action="submit-note">📝 Add</button>
+			</div>`;
+	} else {
+		const origTitle = task.title;
+		const origPriority = task.priority;
+		const origTags = task.tags || "";
+
+		pane.innerHTML = `
+			<div class="detail-header">
+				<span class="card-id">${escapeHtml(task.id)}</span>
+				<span class="detail-close">✕</span>
+			</div>
+			<div class="detail-edit-fields">
+				<label>Title</label>
+				<input data-field="edit-title" type="text" value="${escapeHtml(task.title)}" />
+				<label>Priority</label>
+				<select data-field="edit-priority">
+					<option value="critical" ${task.priority === "critical" ? "selected" : ""}>critical</option>
+					<option value="high" ${task.priority === "high" ? "selected" : ""}>high</option>
+					<option value="medium" ${task.priority === "medium" ? "selected" : ""}>medium</option>
+					<option value="low" ${task.priority === "low" ? "selected" : ""}>low</option>
+				</select>
+				<label>Tags</label>
+				<input data-field="edit-tags" type="text" value="${escapeHtml(task.tags || "")}" placeholder="comma-separated" />
+			</div>
+			<div class="detail-edit-actions" style="display:none">
+				<button data-action="save-inline-edit">✅ Save</button>
+				<button data-action="cancel-inline-edit">↩ Revert</button>
+			</div>
+			<div class="detail-meta">
+				<div>Column: <strong>${escapeHtml(task.col)}</strong></div>
+				<div>Agent: <strong>${agentDisplay}</strong></div>
+				${task.reason ? `<div>Blocked: <strong>${escapeHtml(task.reason)}</strong></div>` : ""}
+			</div>
+			<h3>Notes (${task.notes ? task.notes.length : 0})</h3>
+			<ul class="detail-notes">${notes}</ul>
+			<div class="add-note-form">
+				<input data-field="note-text" type="text" placeholder="Add a note..." />
+				<button data-action="submit-note">📝 Add</button>
+			</div>`;
+
+		// Inline edit: show save/revert only when something has changed
+		const titleInput = pane.querySelector('[data-field="edit-title"]');
+		const prioritySelect = pane.querySelector('[data-field="edit-priority"]');
+		const tagsInput = pane.querySelector('[data-field="edit-tags"]');
+		const editActions = pane.querySelector('.detail-edit-actions');
+
+		const checkChanges = () => {
+			const changed = titleInput.value.trim() !== origTitle
+				|| prioritySelect.value !== origPriority
+				|| tagsInput.value.trim() !== origTags;
+			editActions.style.display = changed ? "flex" : "none";
+		};
+		titleInput.addEventListener("input", checkChanges);
+		prioritySelect.addEventListener("change", checkChanges);
+		tagsInput.addEventListener("input", checkChanges);
+
+		pane.querySelector('[data-action="save-inline-edit"]').addEventListener("click", () => {
+			const title = titleInput.value.trim();
+			if (!title) return; // don't allow empty title
+			const priority = prioritySelect.value;
+			const tags = tagsInput.value.trim();
+			let hasChanges = false;
+			const msgData = { type: "editTask", taskId };
+			if (title !== origTitle) { msgData.title = title; hasChanges = true; }
+			if (priority !== origPriority) { msgData.priority = priority; hasChanges = true; }
+			if (tags !== origTags) { msgData.tags = tags; hasChanges = true; }
+			if (hasChanges) vscode.postMessage(msgData);
+			overlay.remove();
+		});
+
+		pane.querySelector('[data-action="cancel-inline-edit"]').addEventListener("click", () => {
+			titleInput.value = origTitle;
+			prioritySelect.value = origPriority;
+			tagsInput.value = origTags;
+			editActions.style.display = "none";
+		});
+	}
+
+	// Close button (both done and non-done)
 	pane.querySelector(".detail-close").addEventListener("click", () => overlay.remove());
+
+	// Add note (both done and non-done)
+	const noteInput = pane.querySelector('[data-field="note-text"]');
+	const noteBtn = pane.querySelector('[data-action="submit-note"]');
+	noteBtn.addEventListener("click", () => {
+		const text = noteInput.value.trim();
+		if (!text) return;
+		vscode.postMessage({ type: "addNote", taskId, text });
+		overlay.remove();
+	});
+	noteInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") noteBtn.click();
+	});
+
 	overlay.appendChild(pane);
 	document.body.appendChild(overlay);
 }
