@@ -1,6 +1,6 @@
 ---
 name: problem-crystalliser
-description: Transform fuzzy or vague requests into actionable problem statements using FEP-inspired two-phase questioning. Use when a user's request is ambiguous, over-broad, emotionally loaded, or jumps straight to a solution. Produces a structured brief (goal + success criteria + scope) ready for agent execution. Trigger phrases: "I don't know where to start", "something feels off", "I need to fix X" (with no detail), "can you help me with…" (open-ended), "we have a problem with…"
+description: "Transform fuzzy or vague requests into actionable problem statements using FEP-inspired two-phase questioning. Use when a user's request is ambiguous, over-broad, emotionally loaded, or jumps straight to a solution. Produces a structured brief (goal + success criteria + scope) ready for agent execution. Trigger phrases: 'I don't know where to start', 'something feels off', 'I need to fix X' (with no detail), 'can you help me with…' (open-ended), 'we have a problem with…'"
 ---
 
 # Problem Crystalliser

@@ -1,6 +1,6 @@
 ---
 name: six-thinking-hats
-description: Apply De Bono's Six Thinking Hats for structured multi-perspective analysis of complex decisions. Each hat is a distinct thinking mode — White (facts & data), Red (emotions & intuition), Black (risks & caution), Yellow (benefits & optimism), Green (creativity & alternatives), Blue (process & facilitation). Blue hat facilitates and opens/closes every session. Use when making complex decisions, evaluating proposals, brainstorming, or when analysis feels one-sided or stuck. Triggers on: "six hats", "thinking hats", "multi-perspective analysis", "de bono", "parallel thinking", "hat analysis".
+description: "Apply De Bono's Six Thinking Hats for structured multi-perspective analysis of complex decisions. Each hat is a distinct thinking mode — White (facts & data), Red (emotions & intuition), Black (risks & caution), Yellow (benefits & optimism), Green (creativity & alternatives), Blue (process & facilitation). Blue hat facilitates and opens/closes every session. Use when making complex decisions, evaluating proposals, brainstorming, or when analysis feels one-sided or stuck. Triggers on: 'six hats', 'thinking hats', 'multi-perspective analysis', 'de bono', 'parallel thinking', 'hat analysis'."
 ---
 
 # Six Thinking Hats

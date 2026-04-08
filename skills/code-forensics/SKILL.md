@@ -1,6 +1,6 @@
 ---
 name: code-forensics
-description: Git archaeology, hotspot analysis, temporal coupling, knowledge maps, and churn from git history. Use when asked to identify high-risk files, find hidden dependencies between files, discover who owns what code, measure code churn, or find stale/dead code. Trigger phrases include: "git archaeology", "hotspot", "temporal coupling", "knowledge map", "who owns", "churn analysis", "stale code", "bus factor", "code forensics", "analyze git history".
+description: "Git archaeology, hotspot analysis, temporal coupling, knowledge maps, and churn from git history. Use when asked to identify high-risk files, find hidden dependencies between files, discover who owns what code, measure code churn, or find stale/dead code. Trigger phrases include: 'git archaeology', 'hotspot', 'temporal coupling', 'knowledge map', 'who owns', 'churn analysis', 'stale code', 'bus factor', 'code forensics', 'analyze git history'."
 ---
 
 # Code Forensics

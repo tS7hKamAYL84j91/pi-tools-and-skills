@@ -1,6 +1,6 @@
 ---
 name: deep-research
-description: Deep iterative research using the RhinoInsight VCM/EAM pattern (arXiv:2511.18743). Use when researching complex topics that require multi-angle search, gap detection, and evidence-bound synthesis. Implements 5-phase Plan→Execute→Gap detect→Synthesise workflow with Verifiable Checklist Module (VCM) and Evidence Audit Module (EAM). Presets: quick (D=1,B=3), standard (D=2,B=5), deep (D=3,B=8). Outperforms Gemini Deep Research on DeepResearch Bench.
+description: "Deep iterative research using the RhinoInsight VCM/EAM pattern (arXiv:2511.18743). Use when researching complex topics that require multi-angle search, gap detection, and evidence-bound synthesis. Implements 5-phase Plan→Execute→Gap detect→Synthesise workflow with Verifiable Checklist Module (VCM) and Evidence Audit Module (EAM). Presets: quick (D=1,B=3), standard (D=2,B=5), deep (D=3,B=8). Outperforms Gemini Deep Research on DeepResearch Bench."
 ---
 
 # Deep Research

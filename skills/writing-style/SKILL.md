@@ -1,6 +1,6 @@
 ---
 name: writing-style
-description: Personal grammar and style assistant that learns the user's voice from a corpus of their writing. Use when asked to review writing, check style, analyse prose, build a style profile, or give feedback that sounds like "you on a better day" rather than generic corrections. Triggers on: "review my writing", "does this sound like me?", "style feedback", "build my style profile", "analyse my voice", "writing sample".
+description: "Personal grammar and style assistant that learns the user's voice from a corpus of their writing. Use when asked to review writing, check style, analyse prose, build a style profile, or give feedback that sounds like 'you on a better day' rather than generic corrections. Triggers on: 'review my writing', 'does this sound like me?', 'style feedback', 'build my style profile', 'analyse my voice', 'writing sample'."
 ---
 
 # Writing Style
