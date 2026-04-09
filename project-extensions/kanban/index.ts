@@ -17,8 +17,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { setupWatcher } from "./watcher.js";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 
@@ -94,7 +94,9 @@ async function runCompaction(
 
 	// Backup before touching anything
 	const backupTs = nowZ().replace(/:/g, "-");
-	const backupPath = `${logPath}.bak.${backupTs}`;
+	const archiveDir = join(dirname(logPath), "archive");
+	await mkdir(archiveDir, { recursive: true });
+	const backupPath = join(archiveDir, `board.log.bak.${backupTs}`);
 	await writeFile(backupPath, raw, "utf-8");
 
 	// Preserve BLOCK/UNBLOCK diagnostic history per task
