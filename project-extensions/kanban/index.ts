@@ -33,6 +33,9 @@ import {
 	parseBoard,
 	validateTaskId,
 	getTask,
+	writeTaskFile,
+	appendTaskNote,
+	rewriteTaskFile,
 	type BoardState,
 } from "./board.js";
 import { generateSnapshot } from "./snapshot.js";
@@ -218,6 +221,8 @@ export default function (pi: ExtensionAPI) {
 			if (existing.tasks.has(task_id)) throw new Error(`Task ID ${task_id} already exists`);
 			const descPart = description ? ` description="${description.replace(/"/g, "'")}"` : "";
 			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"${descPart}`);
+			// Write task markdown file
+			await writeTaskFile(task_id, { title, description, priority, tags, agent });
 			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags, description });
 		},
 	});
@@ -389,6 +394,8 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, text } = params;
 			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${text}"`);
+			// Append note to task markdown file
+			await appendTaskNote(task_id, agent, text);
 			return ok(`Note added to ${task_id}`, { task_id, agent, text });
 		},
 	});
@@ -633,6 +640,15 @@ export default function (pi: ExtensionAPI) {
 			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
 
 			await logAppend(`${nowZ()} EDIT ${task_id} ${agent} ${changes.join(" ")}`);
+			// Update task markdown file with new metadata
+			const updatedTask = await getTask(task_id);
+			await rewriteTaskFile(task_id, {
+				title: updatedTask.title,
+				description: updatedTask.description,
+				priority: updatedTask.priority,
+				tags: updatedTask.tags,
+				agent: updatedTask.agent,
+			});
 			return ok(`Edited ${task_id}: ${changes.join(", ")}`, { task_id, agent, changed });
 		},
 	});

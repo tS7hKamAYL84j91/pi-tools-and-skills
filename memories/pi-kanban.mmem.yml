@@ -1,0 +1,49 @@
+---
+tool: pi-kanban
+version: ">=1.0"
+updated: 2026-04-09
+category: ai-tools
+tags: [kanban, tasks, board, tickets, wip, workflow]
+confidence: high
+---
+
+# pi-kanban — Task board with event-sourced log
+
+> Create, claim, track, and complete tasks on a shared kanban board.
+
+## Common operations
+
+- Create a task (lands in backlog):
+  `kanban_create task_id={{T-NNN}} agent={{name}} title={{title}} priority={{critical|high|medium|low}}`
+
+- Move task from backlog to todo (makes it claimable):
+  `kanban_move task_id={{T-NNN}} agent={{name}} to=todo`
+
+- Claim a specific task (must be in todo):
+  `kanban_claim task_id={{T-NNN}} agent={{name}}`
+
+- Complete a task (must be in-progress):
+  `kanban_complete task_id={{T-NNN}} agent={{name}} duration={{45m|2h}}`
+
+- Add a progress note:
+  `kanban_note task_id={{T-NNN}} agent={{name}} text={{update}}`
+
+- View the board:
+  `kanban_snapshot`
+
+## Patterns
+
+- Full lifecycle: `kanban_create` → `kanban_move to=todo` → `kanban_claim` → `kanban_note` → `kanban_complete`
+- Block and unblock: `kanban_block` (in-progress → blocked) → `kanban_unblock` (blocked → todo)
+- Monitor stalled agents: `kanban_monitor prod=true` (nudges stalled agents)
+
+## Gotchas
+
+- Column flow is strict: backlog → todo → in-progress → done (with blocked as side-channel)
+- `kanban_claim` only works on todo tasks — not backlog, not done, not in-progress
+- `kanban_complete` only works on in-progress tasks — claiming then completing requires the task to be in-progress
+- WIP limit is 3 — cannot have more than 3 tasks in-progress simultaneously
+- Task IDs must match `T-NNN` format exactly (e.g. T-001, T-042, T-208)
+- `kanban_edit` only works on backlog/todo tasks — cannot edit in-progress or done
+- `kanban_delete` cannot delete in-progress or blocked tasks — complete or unblock first
+- Each task now gets a markdown file at `kanban/tasks/T-NNN.md` — notes append there too

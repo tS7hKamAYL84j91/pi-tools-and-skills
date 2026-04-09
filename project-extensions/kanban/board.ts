@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -50,6 +50,99 @@ export const logAppend = async (line: string): Promise<void> => {
 	selfAppendedLines.add(line);
 	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
 };
+
+// ── Task file helpers ────────────────────────────────────────────
+
+export const tasksDir = (): string => join(kanbanDir(), "tasks");
+export const taskFilePath = (taskId: string): string => join(tasksDir(), `${taskId}.md`);
+
+/** Ensure the tasks directory exists. */
+async function ensureTasksDir(): Promise<void> {
+	const dir = tasksDir();
+	if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+}
+
+/** Format tags string as a YAML array. */
+function formatTagsYaml(tags: string): string {
+	if (!tags.trim()) return "[]";
+	const items = tags.split(",").map((t) => t.trim()).filter(Boolean);
+	return `[${items.join(", ")}]`;
+}
+
+/** Write or overwrite a task markdown file with YAML frontmatter. */
+export async function writeTaskFile(
+	taskId: string,
+	meta: { title: string; description: string; priority: string; tags: string; agent: string },
+	notes: string[] = [],
+	created?: string,
+): Promise<void> {
+	await ensureTasksDir();
+	const notesSection = notes.length > 0
+		? ["\n## Notes", "", ...notes.map((n) => `- ${n}`)].join("\n")
+		: "\n## Notes";
+	const lines = [
+		"---",
+		`title: "${meta.title.replace(/"/g, "'")}"`  ,
+		`priority: ${meta.priority}`,
+		`tags: ${formatTagsYaml(meta.tags)}`,
+		`agent: ${meta.agent}`,
+		`created: ${created ?? nowZ()}`,
+		"---",
+		"",
+	];
+	if (meta.description) {
+		lines.push(meta.description, "");
+	}
+	lines.push(notesSection, "");
+	await writeFile(taskFilePath(taskId), lines.join("\n"), "utf-8");
+}
+
+/** Append a timestamped note to an existing task markdown file. Creates a stub file if missing. */
+export async function appendTaskNote(taskId: string, agent: string, text: string): Promise<void> {
+	await ensureTasksDir();
+	const fp = taskFilePath(taskId);
+	const entry = `${nowZ()} [${agent}] ${text}`;
+	if (existsSync(fp)) {
+		const existing = await readFile(fp, "utf-8");
+		await writeFile(fp, existing.trimEnd() + `\n- ${entry}\n`, "utf-8");
+	} else {
+		await writeTaskFile(taskId, { title: taskId, description: "", priority: "medium", tags: "", agent: "" }, [entry]);
+	}
+}
+
+/** Read the notes from an existing task file (everything after ## Notes). */
+export async function readTaskNotes(taskId: string): Promise<string[]> {
+	const fp = taskFilePath(taskId);
+	if (!existsSync(fp)) return [];
+	const content = await readFile(fp, "utf-8");
+	const notesIdx = content.indexOf("## Notes");
+	if (notesIdx === -1) return [];
+	const afterHeading = content.slice(notesIdx + "## Notes".length);
+	return afterHeading
+		.split("\n")
+		.filter((l) => l.startsWith("- "))
+		.map((l) => l.slice(2));
+}
+
+/** Read the created timestamp from an existing task file frontmatter. */
+export async function readTaskCreated(taskId: string): Promise<string | undefined> {
+	const fp = taskFilePath(taskId);
+	if (!existsSync(fp)) return undefined;
+	const content = await readFile(fp, "utf-8");
+	const match = content.match(/^created:\s*(.+)$/m);
+	return match?.[1]?.trim();
+}
+
+/** Rewrite a task file after an edit, preserving existing notes and created timestamp. */
+export async function rewriteTaskFile(
+	taskId: string,
+	meta: { title: string; description: string; priority: string; tags: string; agent: string },
+): Promise<void> {
+	await ensureTasksDir();
+	const notes = await readTaskNotes(taskId);
+	const created = await readTaskCreated(taskId);
+	await writeTaskFile(taskId, meta, notes, created);
+}
 
 // ── Types ───────────────────────────────────────────────────────
 

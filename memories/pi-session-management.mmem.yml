@@ -1,0 +1,47 @@
+---
+tool: pi-session-management
+version: ">=0.60"
+updated: 2026-04-09
+category: ai-tools
+tags: [pi, sessions, compact, reload, fork, tree, persistence]
+confidence: high
+---
+
+# pi-session-management — Session lifecycle and state persistence
+
+> Manage pi sessions, compaction, forking, and extension state.
+
+## Common operations
+
+- Send a follow-up message (waits for agent to finish):
+  `pi.sendUserMessage(text, { deliverAs: "followUp" })`
+
+- Steer mid-stream (delivered after current tool calls):
+  `pi.sendMessage({ customType, content, display: true }, { deliverAs: "steer" })`
+
+- Persist extension state across sessions:
+  `pi.appendEntry("my-state", { data })`
+
+- Restore state on session load:
+  `pi.on("session_start", (event, ctx) => { for (const e of ctx.sessionManager.getEntries()) { ... } })`
+
+- Trigger compaction:
+  `ctx.compact({ customInstructions: "Focus on recent changes" })`
+
+## Patterns
+
+- Extension state via tool result details (supports branching):
+  `return { content: [...], details: { items: [...currentState] } }`
+
+- Session lifecycle: `session_start` → agent turns → `session_shutdown`
+- On `/new` or `/resume`: `session_before_switch` → `session_shutdown` → `session_start`
+- On `/reload`: `session_shutdown` → `session_start { reason: "reload" }` + `resources_discover { reason: "reload" }`
+
+## Gotchas
+
+- `sendUserMessage` without `deliverAs` throws if agent is streaming — always specify mode
+- `appendEntry` does NOT participate in LLM context — it's for extension state only
+- `ctx.reload()` in a command handler: code after it runs from the OLD version — treat as terminal
+- `session_start` reason can be: "startup", "reload", "new", "resume", "fork"
+- `ctx.signal` is undefined when no agent turn is active — guard it
+- `ctx.isIdle()` — use before injecting follow-ups to avoid racing with active turns

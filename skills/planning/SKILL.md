@@ -1,10 +1,11 @@
 ---
 name: planning
-display_name: Manus Planning
 description: Implements Manus-style persistent markdown planning using PLAN.md, PROGRESS.md, and KNOWLEDGE.md. Use this skill to maintain long-term context and structured planning.
-version: 1.0.0
-author: Jules
 license: MIT
+metadata:
+  display_name: Manus Planning
+  version: "1.0.0"
+  author: Jules
 ---
 
 # Manus Planning

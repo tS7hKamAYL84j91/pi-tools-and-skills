@@ -180,13 +180,41 @@ _Generated: ... | Log events: 247 | WIP: 2/3_
 
 Notes and descriptions appear under each task table.
 
+## Task Files
+
+Each new ticket gets a persistent markdown file at `kanban/tasks/T-NNN.md` with YAML frontmatter and a notes section. This supplements board.log (which remains the source of truth) with a per-task document suitable for extended context.
+
+**Created by:** `kanban_create`
+**Updated by:** `kanban_note` (appends note), `kanban_edit` (rewrites frontmatter)
+
+**Format:**
+```markdown
+---
+title: "Task title here"
+priority: high
+tags: [kanban, architecture]
+agent: worker-name
+created: 2026-04-09T15:00:00Z
+---
+
+## Notes
+
+- 2026-04-09T15:05:00Z [agent-name] Progress update here
+```
+
+**Behaviour:**
+- Existing tickets (created before this feature) do not get migrated — only new tickets written via `kanban_create` produce task files.
+- `kanban_note` creates a stub file if one doesn't already exist for the task.
+- `kanban_edit` preserves existing notes and the original `created` timestamp when rewriting frontmatter.
+
 ## File Layout
 
 ```
 project-extensions/kanban/
-  board.ts       Types (TaskState, BoardState), path helpers, parseBoard(), logAppend()
+  board.ts       Types (TaskState, BoardState), path helpers, parseBoard(), logAppend(), task file I/O
   index.ts       14 tools + auto-compaction (runCompaction, compactIfNeeded)
   monitor.ts     getInProgressTasks, inspectAgent, deliverNudge, formatMonitorReport
   snapshot.ts    generateSnapshot() — pure function, no side effects
   watcher.ts     setupWatcher() — TUI widget, status bar, injection gates
+  tasks/         Per-task markdown files (T-NNN.md) — created by kanban_create
 ```

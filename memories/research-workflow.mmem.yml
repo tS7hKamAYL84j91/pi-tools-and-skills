@@ -1,0 +1,53 @@
+---
+tool: research-workflow
+version: any
+updated: 2026-04-09
+category: project
+tags: [research, reports, synthesis, working-notes, workflow]
+confidence: high
+---
+
+# research-workflow — CoAS research output conventions
+
+> Structure and locate research reports, synthesis documents, and research agents.
+
+## Common operations
+
+- Check if a research agent produced a report:
+  `ls ~/git/working-notes/research/{{agent-name}}/REPORT.md`
+
+- List all research topics:
+  `ls ~/git/working-notes/research/`
+
+- Read the cross-cutting synthesis:
+  `cat ~/git/working-notes/research/SYNTHESIS.md`
+
+- Find research by topic keyword:
+  `ls ~/git/working-notes/research/ | grep -i {{keyword}}`
+
+- Check research index:
+  `cat ~/git/working-notes/research/INDEX.md`
+
+## Patterns
+
+- Research agent output structure:
+  `~/git/working-notes/research/{{topic-slug}}/REPORT.md` (main output)
+  `~/git/working-notes/research/{{topic-slug}}/` (supporting files)
+
+- kanban_monitor checks for REPORT.md to detect done agents:
+  `KANBAN_REPORT_BASE=~/git/working-notes/research` (env var, defaults to this)
+
+- Research task lifecycle:
+  `kanban_create` → spawn research agent → agent writes REPORT.md → `kanban_monitor` detects DONE → `kanban_complete`
+
+- Old task-prefixed directories (legacy):
+  `~/git/working-notes/research/t-073-orchestration-research/` (T-NNN prefix)
+
+## Gotchas
+
+- REPORT.md must be at `research/{{agent-name}}/REPORT.md` for kanban_monitor to detect completion
+- The agent name in the path must match the kanban task's claimed agent name
+- SYNTHESIS.md is a manually curated cross-cutting analysis — not auto-generated
+- INDEX.md and THEMES.md are reference docs, not auto-updated
+- Some research dirs use topic slugs, others use `t-NNN-` prefixes (legacy) — both are valid
+- `kanban_monitor` uses `find -path "*{{agent}}*"` as fallback — partial matches work

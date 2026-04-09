@@ -1,0 +1,54 @@
+---
+tool: pi-extension-dev
+version: ">=0.60"
+updated: 2026-04-09
+category: ai-tools
+tags: [pi, extensions, tools, typescript, registerTool, events, tui]
+confidence: high
+---
+
+# pi-extension-dev — Building pi extensions
+
+> Register tools, hook lifecycle events, and add TUI components to pi.
+
+## Common operations
+
+- Register a tool the LLM can call:
+  `pi.registerTool({ name, label, description, parameters: Type.Object({...}), execute })`
+
+- Subscribe to lifecycle events:
+  `pi.on("session_start", async (event, ctx) => { ... })`
+
+- Inject context into system prompt each turn:
+  `pi.on("before_agent_start", async (event) => { return { systemPrompt: event.systemPrompt + extra } })`
+
+- Register a slash command:
+  `pi.registerCommand("name", { description, handler: async (args, ctx) => { ... } })`
+
+- Set TUI widget and status bar:
+  `ctx.ui.setWidget("key", ["line1", "line2"])`
+  `ctx.ui.setStatus("key", "text")`
+
+## Patterns
+
+- Tool result helper (shared lib):
+  `import { ok, type ToolResult } from "../../lib/tool-result.js"`
+  `return ok("message", { key: "value" })`
+
+- Use StringEnum for Google-compatible enums:
+  `import { StringEnum } from "@mariozechner/pi-ai"`
+  `action: StringEnum(["list", "add"] as const)`
+
+- File-mutating tools must use the mutation queue:
+  `import { withFileMutationQueue } from "@mariozechner/pi-coding-agent"`
+  `return withFileMutationQueue(absolutePath, async () => { ... })`
+
+## Gotchas
+
+- Extension locations: `extensions/` dir (from settings.json), NOT `project-extensions/`
+- `project-extensions/` is loaded by OTHER repos via their `.pi/settings.json`
+- Import paths MUST use `.js` extension even for `.ts` files (ESM)
+- Tool execute must THROW to signal errors — returning `isError` does nothing
+- `Type.Union`/`Type.Literal` broken with Google — use `StringEnum` instead
+- `promptSnippet` opts a tool into "Available tools" prompt — omit and it's invisible there
+- `ctx.signal` is undefined outside active turns — check before using

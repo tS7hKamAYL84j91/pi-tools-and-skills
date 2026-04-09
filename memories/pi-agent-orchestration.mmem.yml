@@ -1,0 +1,50 @@
+---
+tool: pi-agent-orchestration
+version: ">=0.60"
+updated: 2026-04-09
+category: ai-tools
+tags: [pi, agents, spawn, orchestration, rpc, multi-agent, panopticon]
+confidence: high
+---
+
+# pi-agent-orchestration — Multi-agent spawning and coordination
+
+> Spawn, monitor, message, and terminate peer agents via pi's agent tools.
+
+## Common operations
+
+- Spawn an agent with a structured brief (preferred over plain task):
+  `spawn_agent name={{name}} brief={classification, goal, successCriteria, scope}`
+
+- Send an RPC prompt and wait for completion:
+  `rpc_send name={{name}} command="prompt" message={{task}} wait=true timeout=300`
+
+- Check health of all peer agents (call repeatedly for stall detection):
+  `agent_status`
+
+- Discover registered agents in panopticon:
+  `agent_peek`
+
+- Send a message to a peer agent:
+  `agent_send name={{name}} message={{text}}`
+
+- Nudge a stalled or blocked agent:
+  `agent_nudge name={{name}} message={{text}}`
+
+## Patterns
+
+- Spawn → wait → task:
+  `spawn_agent` → `sleep 2` → `agent_peek` (confirm registered) → `rpc_send command="prompt"`
+
+- Stall detection (call agent_status repeatedly — counter increments each call, stalled at 3+):
+  `agent_status` → wait 30s → `agent_status` → wait 30s → `agent_status`
+
+## Gotchas
+
+- `spawn_agent` only starts the process — you must `rpc_send command="prompt"` to give it a task
+- Agent registration in panopticon takes 1-2 seconds after spawn — wait before messaging
+- `agent_status` stall detection needs MULTIPLE calls — each call increments the counter, stalled at 3+
+- Use `brief` not `task` for structured dispatch — brief auto-routes model and topology
+- `brief.classification`: sequential (code), parallelisable (research), high-entropy-search, tool-heavy
+- `agent_send` requires the agent to be registered — check with `agent_peek` first
+- `rpc_send wait=true` blocks — set appropriate timeout for long tasks

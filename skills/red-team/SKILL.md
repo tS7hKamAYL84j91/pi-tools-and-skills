@@ -1,11 +1,12 @@
 ---
 name: red-team
-display_name: Red Team Vulnerability Planner
 description: Autonomous security assessment agent capable of identifying system vulnerabilities, simulating agentic threats (MITRE ATLAS), and generating mitigation plans.
-version: 1.0.0
-author: Security-Architecture-Team
 license: MIT
-safety_policy: strict-non-destructive
+metadata:
+  display_name: Red Team Vulnerability Planner
+  version: "1.0.0"
+  author: Security-Architecture-Team
+  safety_policy: strict-non-destructive
 ---
 
 # Red Team Vulnerability Planner Skill
