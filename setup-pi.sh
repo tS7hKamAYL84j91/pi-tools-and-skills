@@ -111,9 +111,13 @@ for line in "${model_lines[@]}"; do
         input='["text", "image"]'
     fi
 
-    # Determine if it's likely a reasoning model
+    # Determine if it's a reasoning/thinking model:
+    # 1. Heuristic: check name patterns
+    # 2. Authoritative: call `ollama show` to check 'Capabilities' field
     reasoning="False"
     if [[ "$model_id" == *think* ]] || [[ "$model_id" == *reason* ]]; then
+        reasoning="True"
+    elif ollama show "$model_id" 2>/dev/null | grep -qi 'thinking'; then
         reasoning="True"
     fi
 
