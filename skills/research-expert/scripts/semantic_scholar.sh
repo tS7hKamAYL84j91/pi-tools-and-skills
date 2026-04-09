@@ -19,7 +19,7 @@ fi
 
 # Retry with backoff on 429
 for attempt in 1 2 3; do
-  RESPONSE=$(curl -s -w "\n%{http_code}" "${HEADERS[@]}" \
+  RESPONSE=$(curl -s -w "\n%{http_code}" ${HEADERS[@]+"${HEADERS[@]}"} \
     "https://api.semanticscholar.org/graph/v1/paper/search?query=${ENCODED}&limit=${MAX}&fields=${FIELDS}")
 
   HTTP_CODE=$(echo "$RESPONSE" | tail -1)
