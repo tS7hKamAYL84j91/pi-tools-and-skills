@@ -101,20 +101,80 @@ See [vscode-extension/README.md](vscode-extension/README.md) for build and insta
 
 Reusable instruction sets that agents load on demand. See [skills/README.md](skills/README.md) for descriptions of all four skills.
 
-## Setup
+## Install
 
-Panopticon is already configured in `~/.pi/agent/settings.json`:
-```json
-{ "extensions": ["/Users/jim/git/tools-and-skills/extensions"] }
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/tS7hKamAYL84j91/tools-and-skills.git
+cd tools-and-skills
+npm install
 ```
 
-To add the kanban extension to a project, add `project-extensions/` to the extensions list in that project's settings:
+### 2. Add panopticon extension (global — all pi sessions)
+
+Edit `~/.pi/agent/settings.json`:
 ```json
-{ "extensions": [
-    "/Users/jim/git/tools-and-skills/extensions",
-    "/Users/jim/git/tools-and-skills/project-extensions"
+{
+  "extensions": [
+    "/path/to/tools-and-skills/extensions"
   ]
 }
+```
+
+This gives every pi session: `agent_send`, `spawn_agent`, `agent_status`, `agent_peek`, `agent_nudge`, and all other multi-agent tools.
+
+### 3. Add kanban extension (per-project)
+
+Create `.pi/settings.json` in your project root:
+```json
+{
+  "extensions": [
+    "/path/to/tools-and-skills/project-extensions/kanban"
+  ]
+}
+```
+
+This gives that project: `kanban_create`, `kanban_pick`, `kanban_claim`, `kanban_complete`, `kanban_snapshot`, `kanban_monitor`, and all other kanban tools. A `kanban/board.log` file will be created in your project root on first use.
+
+### 4. Add skills (optional)
+
+Skills are auto-discovered from `~/.pi/agent/settings.json`:
+```json
+{
+  "extensions": [
+    "/path/to/tools-and-skills/extensions"
+  ],
+  "skills": [
+    "/path/to/tools-and-skills/skills"
+  ]
+}
+```
+
+This makes all 12 skills available: clean-room, code-forensics, deep-research, machine-memory, notebooklm, planning, problem-crystalliser, red-team, six-thinking-hats, skill-creator, writing-style.
+
+### 5. Install VSCode extension (optional)
+
+```bash
+code --install-extension vscode-extension/coas-kanban-0.1.0.vsix
+```
+
+Or build from source:
+```bash
+cd vscode-extension
+npm install
+npm run build
+npx vsce package --no-dependencies
+code --install-extension coas-kanban-*.vsix
+```
+
+### Quick start
+
+```bash
+# In any project directory
+mkdir -p kanban .pi
+echo '{"extensions":["/path/to/tools-and-skills/project-extensions/kanban"]}' > .pi/settings.json
+pi  # start pi — kanban tools are now available
 ```
 
 ## Development
