@@ -39,6 +39,16 @@ confidence: high
 - Stall detection (call agent_status repeatedly — counter increments each call, stalled at 3+):
   `agent_status` → wait 30s → `agent_status` → wait 30s → `agent_status`
 
+- 3-tier model routing (Ollama → Gemini → Anthropic):
+  Tier 1 (free): `gemma4:31b-cloud` (fixes), `qwen3.5:cloud` (coding), `glm-5.1:cloud` (planning), `deepseek-v3.2:cloud` (reasoning)
+  Tier 2 (subscription): Gemini Flash (simple), Gemini Pro (complex, 1M ctx)
+  Tier 3 (fallback): Haiku 4.5 (simple), Sonnet 4.6 (complex), **Opus 4.6** (orchestration/chaotic)
+
+- Orchestration/chaotic tasks start at Opus 4.6:
+  `spawn_agent model="claude-opus-4-6"` — preferred for decomposition, planning, chaotic stabilisation
+
+- Escalation: `gemma4:31b-cloud` → `qwen3.5:cloud` → `deepseek-v3.2:cloud` → Gemini → Haiku/Sonnet/Opus
+
 ## Gotchas
 
 - `spawn_agent` only starts the process — you must `rpc_send command="prompt"` to give it a task
@@ -48,3 +58,6 @@ confidence: high
 - `brief.classification`: sequential (code), parallelisable (research), high-entropy-search, tool-heavy
 - `agent_send` requires the agent to be registered — check with `agent_peek` first
 - `rpc_send wait=true` blocks — set appropriate timeout for long tasks
+- Orchestration and chaotic tasks use Opus 4.6 as Tier 1 — NOT local models
+- Gemini has high empty-response rates (Flash 48%, Pro 26%) — poll agent_status every 60s
+- All Ollama models use :cloud suffix — glm-5.1:cloud not glm-5.1

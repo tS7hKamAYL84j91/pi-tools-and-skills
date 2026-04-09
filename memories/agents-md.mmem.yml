@@ -1,0 +1,49 @@
+---
+tool: agents-md
+version: any
+updated: 2026-04-09
+category: project
+tags: [agents, orchestration, workers, briefing, kanban, protocol]
+confidence: high
+---
+
+# agents-md — Key decisions from AGENTS.md
+
+> Compact reference for the CoAS orchestration protocol. Full spec: ~/git/coas/AGENTS.md (396 lines).
+
+## Common operations
+
+- Orchestrator spawns workers, workers do the work. Never invert.
+- Workers signal via agent_send: `NOTE T-NNN ...`, `DONE T-NNN ...`, `BLOCKED T-NNN ...`
+- Orchestrator owns all kanban state (single-writer protocol)
+- Read STATE.md on startup for current mission and running agents
+
+## Patterns
+
+- Brief quality rules (every missing item = extra tool calls):
+  1. Absolute file paths (never relative)
+  2. Include target code snippets
+  3. Include verify command (npx tsc, npm test, etc.)
+  4. Include "do NOT" constraints
+  5. One deliverable per brief (>5KB = split it)
+
+- Sweet spot: 2-4KB briefs with code snippets → 40-60% smaller sessions
+
+- Worker protocol: Read brief → work → signal milestones → verify ONCE → signal done
+
+- Completion checklist: deliverables done, REPORT.md written (research), clean up BRIEF.md, signal orchestrator
+
+- Cynefin domain → topology:
+  Clear → single agent (gemma4:31b-cloud)
+  Complicated → single agent (qwen3.5:cloud)
+  Complex → orchestrator + workers
+  Chaotic → Opus 4.6 single agent
+
+## Gotchas
+
+- Do NOT over-verify — one write + one verify = done. Re-reading files you just wrote wastes 50% of tool calls (T-211 data)
+- Orchestrators never implement — no reading/editing files outside coas/
+- Debug loop detection: 3 consecutive failed bash commands → steer or kill the agent
+- Gemini needs supervision (48%/26% empty-response rate) — poll every 60s
+- Sequential tasks → single agent always. Splitting degrades 39-70% (Kim et al. 2025)
+- Never pile messages on a working agent — check agent_status first, one message at a time

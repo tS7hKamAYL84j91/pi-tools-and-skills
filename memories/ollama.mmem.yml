@@ -30,6 +30,16 @@ confidence: high
 
 ## Patterns
 
+- Current installed model roster (all :cloud suffix):
+  `glm-5.1:cloud` — Architecting, planning, orchestration fallback
+  `qwen3.5:cloud` — Heavy coding, multi-file refactoring
+  `gemma4:31b-cloud` — Targeted fixes, edits, simple tasks (default worker)
+  `deepseek-v3.2:cloud` — Deep reasoning, logic, chaotic fallback
+  `minimax-m2.7:cloud` — Available, reasoning-capable
+
+- Pi spawn format for Ollama models:
+  `spawn_agent model="gemma4:31b-cloud"` (pi auto-prefixes ollama/)
+
 - Detect if a model supports reasoning/thinking:
   `ollama show {{model}} | grep -i "thinking\|reasoning"` (check Capabilities field)
 
@@ -44,6 +54,10 @@ confidence: high
 
 ## Gotchas
 
+- deepseek-r1:70b is NOT installed — use deepseek-v3.2:cloud instead
+- Model names must match exactly including :cloud suffix
+- gemma4 is 31b not 27b — use gemma4:31b-cloud
+- qwen3.5 has no size suffix — just qwen3.5:cloud
 - Cloud models (`:cloud` suffix) have no local size but are slower and can be unreliable
 - Name heuristics (`*think*`, `*reason*`) miss some reasoning models — use `ollama show` to check Capabilities
 - `ollama list` shows SIZE as `-` for cloud models
