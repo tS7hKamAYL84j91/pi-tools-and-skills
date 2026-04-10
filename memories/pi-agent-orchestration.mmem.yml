@@ -61,3 +61,15 @@ confidence: high
 - Orchestration and chaotic tasks use Opus 4.6 as Tier 1 — NOT local models
 - Gemini has high empty-response rates (Flash 48%, Pro 26%) — poll agent_status every 60s
 - All Ollama models use :cloud suffix — glm-5.1:cloud not glm-5.1
+
+# ── Update 2026-04-09 ──────────────────────────────────────
+# Review and integrate the suggestions below, then delete this block.
+
+## New Gotchas (suggested)
+- Gemini has high empty-response rates (Flash 48%, Pro 26%) — poll agent_status every 60s; if stalled >2 min send rpc_send follow_up "Continue your task"
+
+## New Patterns (suggested)
+- 3-tier fallback chain: Ollama (local/free) → Gemini (subscription/1M ctx) → Anthropic (subscription/fallback)
+- Orchestrator/Chaotic preference: Opus 4.6 (preferred) → Gemini Pro → glm-5.1:cloud
+- Model strings: glm-5.1:cloud, qwen3.5:cloud, gemma4:31b-cloud, deepseek-v3.2:cloud
+- Escalation protocol: gemma4:31b-cloud → qwen3.5:cloud → deepseek-v3.2:cloud → Gemini (Flash simple/Pro complex) → Haiku 4.5 (simple) or Sonnet 4.6 (complex)

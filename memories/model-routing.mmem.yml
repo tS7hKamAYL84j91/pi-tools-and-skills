@@ -38,6 +38,12 @@ confidence: high
   Research (deep): — → Gemini Pro (1M ctx) → **Opus 4.6**
   Review/audit: `deepseek-v3.2:cloud` → Gemini Pro → Sonnet 4.6
 
+- Higher Starting Points:
+  Reading >3 files → start at `qwen3.5:cloud` (not gemma4)
+  Architectural decisions → start at `deepseek-v3.2:cloud`
+  1M context needed → start at Tier 2 (Gemini) — no local model has 1M ctx
+  Ambiguous task → fix the brief first, don't escalate
+
 - Escalation within Tier 1:
   `gemma4:31b-cloud` (2 failures) → `qwen3.5:cloud` → `deepseek-v3.2:cloud` → Tier 2
 
