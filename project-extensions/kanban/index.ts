@@ -43,7 +43,6 @@ import {
 	type MonitorCounts,
 	type TaskResult,
 	getInProgressTasks,
-	checkReportDone,
 	inspectAgent,
 	deliverNudge,
 	formatMonitorReport,
@@ -299,13 +298,14 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Check progress on all in-progress kanban tasks. " +
 			"Parses board.log directly, then inspects each agent via registry PID check and heartbeat age. " +
-			"Detects ACTIVE, STALLED (stale heartbeat), DONE (REPORT.md found), and MISSING states. " +
+			"Reports ACTIVE, STALLED (stale heartbeat), BLOCKED, and MISSING states. " +
+			"Agents signal completion explicitly via kanban_complete — this tool does not watch the filesystem. " +
 			"With prod=true (or --prod flag) delivers a nudge to stalled agents via panopticon Maildir.",
 		promptSnippet: "Check progress on all in-progress kanban tasks",
 		promptGuidelines: [
 			"Run kanban_monitor periodically to surface stalled or blocked agents.",
 			"Use prod=true when an agent is STALLED — sends a nudge via panopticon Maildir.",
-			"When kanban_monitor reports DONE (REPORT.md found), call kanban_complete to close the task.",
+			"Agents signal completion themselves via kanban_complete — nudge them if they go quiet.",
 		],
 		parameters: Type.Object({
 			prod: Type.Optional(Type.Boolean({ description: "Deliver a nudge to stalled agents via panopticon Maildir (default: false, or set via --prod flag)", default: false })),
@@ -319,14 +319,9 @@ export default function (pi: ExtensionAPI) {
 
 			const tasks = getInProgressTasks(board);
 			const results: TaskResult[] = [];
-			const counts: MonitorCounts = { active: 0, stalled: 0, blocked: 0, done: 0, missing: 0 };
+			const counts: MonitorCounts = { active: 0, stalled: 0, blocked: 0, missing: 0 };
 
 			for (const task of tasks) {
-				if (await checkReportDone(task.agent)) {
-					counts.done++;
-					results.push({ ...task, status: "DONE", detail: "REPORT.md found" });
-					continue;
-				}
 				const inspection = inspectAgent(task.agent);
 				let { status, detail } = inspection;
 
@@ -359,7 +354,7 @@ export default function (pi: ExtensionAPI) {
 				const logLines = [
 					`${ts} CHECK start`,
 					...results.map((r) => `${ts} ${r.id} agent=${r.agent} status=${r.status} detail=${r.detail.replace(/\n/g, " ")}`),
-					`${ts} SUMMARY active=${counts.active} stalled=${counts.stalled} blocked=${counts.blocked} done=${counts.done} missing=${counts.missing}`,
+					`${ts} SUMMARY active=${counts.active} stalled=${counts.stalled} blocked=${counts.blocked} missing=${counts.missing}`,
 				];
 				await appendFile(monitorLog, `${logLines.join("\n")}\n`, "utf-8");
 			} catch { /* non-fatal */ }

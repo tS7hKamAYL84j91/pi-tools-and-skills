@@ -271,4 +271,4 @@ See `references/hat-prompts.md#green-hat-extended` for worked examples.
 - Extended hat prompts with worked examples: `references/hat-prompts.md`
 - Single-agent and multi-agent workflow details: `references/workflows.md`
 - Structured output document template: `references/output-template.md`
-- Source research (520 lines): `/Users/jim/git/working-notes/research/de-bono-lateral-thinking/REPORT.md`
+- Source research (520 lines): de Bono lateral thinking research report (topic: de-bono-lateral-thinking)

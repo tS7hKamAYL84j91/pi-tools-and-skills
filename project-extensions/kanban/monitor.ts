@@ -3,24 +3,22 @@
  *
  * Uses lib/agent-api for agent lookups and messaging rather than
  * reaching into registry internals or transport implementations.
+ *
+ * Philosophy: the monitor reports liveness only (ACTIVE/STALLED/BLOCKED/MISSING).
+ * Task completion is signalled explicitly by the agent via kanban_complete —
+ * we do not watch the filesystem for side-effect artefacts.
  */
 
-import { exec } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import { findAgentByName, sendAgentMessage } from "../../lib/agent-api.js";
-import { type BoardState, kanbanDir } from "./board.js";
-
-const execAsync = promisify(exec);
+import type { BoardState } from "./board.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
-export type MonitorStatus = "ACTIVE" | "STALLED" | "BLOCKED" | "DONE" | "MISSING";
+export type MonitorStatus = "ACTIVE" | "STALLED" | "BLOCKED" | "MISSING";
 
 interface TaskRow { id: string; agent: string; title: string }
 export interface TaskResult { id: string; agent: string; status: MonitorStatus; detail: string }
-export interface MonitorCounts { active: number; stalled: number; blocked: number; done: number; missing: number }
+export interface MonitorCounts { active: number; stalled: number; blocked: number; missing: number }
 
 interface AgentInspection { status: MonitorStatus; detail: string; agentId?: string }
 
@@ -36,20 +34,6 @@ export function getInProgressTasks(board: BoardState): TaskRow[] {
 		}
 	}
 	return tasks;
-}
-
-/** Check if REPORT.md exists for a given agent. */
-export async function checkReportDone(agentName: string): Promise<boolean> {
-	// Default sibling-of-kanban layout: <kanbanDir>/../research/<agent>/REPORT.md
-	const researchBase = process.env.KANBAN_REPORT_BASE ?? join(dirname(kanbanDir()), "research");
-	const exactReport = join(researchBase, agentName, "REPORT.md");
-	if (existsSync(exactReport)) return true;
-	try {
-		const { stdout } = await execAsync(
-			`find ${JSON.stringify(researchBase)} -maxdepth 2 -name REPORT.md -path "*${agentName}*" 2>/dev/null | head -1`,
-		);
-		return stdout.trim().length > 0;
-	} catch { return false; }
 }
 
 /** Inspect an agent's liveness via the agent API. */
@@ -82,7 +66,7 @@ export function formatMonitorReport(ts: string, results: TaskResult[], counts: M
 	lines.push("---");
 	lines.push(
 		`  Running: ${counts.active} | Stalled: ${counts.stalled} | ` +
-		`Blocked: ${counts.blocked} | Done: ${counts.done} | Missing: ${counts.missing}`,
+		`Blocked: ${counts.blocked} | Missing: ${counts.missing}`,
 	);
 	return lines.join("\n");
 }

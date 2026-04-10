@@ -56,14 +56,16 @@ bash skills/notebooklm/scripts/nb-add.sh "<notebook-name>" "<path-or-url>"
 ```
 
 ```bash
-# Markdown file
+# Markdown file — supply any path you want
 bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
-  ~/git/working-notes/research/agent-topologies/REPORT.md
+  "$RESEARCH_DIR/agent-topologies/REPORT.md"
 
 # Web URL
 bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
   https://arxiv.org/abs/2512.08296
 ```
+
+> The scripts take any path — there is no hardcoded research directory. Export `RESEARCH_DIR` to match your workspace (e.g. `export RESEARCH_DIR=~/git/coas/research`) or pass absolute paths directly.
 
 ---
 
@@ -147,11 +149,11 @@ bash skills/notebooklm/scripts/nb-bulk-add.sh "<notebook-name>" "<directory>" \
 ```
 
 ```bash
-# Add all REPORT.md files from the research directory
+# Add all REPORT.md files from a research directory
 bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
-  ~/git/working-notes/research/
+  "$RESEARCH_DIR"
 
-# Add all *.md files from a docs directory
+# Add all *.md files from any docs directory
 bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
   ~/docs/ --filename "*.md"
 ```
@@ -168,9 +170,8 @@ bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
 # 1. Create the notebook
 bash skills/notebooklm/scripts/nb-create.sh "CoAS Research"
 
-# 2. Bulk-add all REPORT.md files
-bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
-  ~/git/working-notes/research/
+# 2. Bulk-add all REPORT.md files (point at whichever directory holds them)
+bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" "$RESEARCH_DIR"
 
 # 3. Confirm sources were added
 bash skills/notebooklm/scripts/nb-sources.sh "CoAS Research"
@@ -198,7 +199,7 @@ bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
 
 ```bash
 bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
-  ~/git/working-notes/research/new-topic/REPORT.md
+  "$RESEARCH_DIR/new-topic/REPORT.md"
 ```
 
 ### Headless / CI use

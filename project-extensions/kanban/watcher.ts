@@ -34,7 +34,7 @@ const INJECT_MESSAGE = [
 	"Run kanban_snapshot to see current state.",
 	"Run kanban_monitor and agent_status to check agent health.",
 	"If any agents are STALLED, nudge them.",
-	"If any tasks show DONE (REPORT.md found), call kanban_complete.",
+	"Agents signal completion themselves via kanban_complete — no filesystem watching.",
 	"Do not ask me any questions. Keep your response brief.",
 ].join(" ");
 

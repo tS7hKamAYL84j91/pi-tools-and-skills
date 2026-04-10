@@ -141,14 +141,17 @@ Triggered automatically after `kanban_complete` and `kanban_snapshot` if either 
 
 ## Monitor
 
-`kanban_monitor` inspects each in-progress task's agent:
+`kanban_monitor` inspects each in-progress task's agent and reports its liveness:
 
-1. **Checks REPORT.md** — if `~/git/working-notes/research/<agent>/REPORT.md` exists → `DONE`
-2. **Registry lookup** — finds agent by name in panopticon registry
-3. **PID check** — if process not running → `MISSING`
-4. **Heartbeat age** — if >5 minutes stale → `STALLED`; otherwise → `ACTIVE`
+1. **Registry lookup** — finds agent by name in panopticon registry
+2. **PID check** — if process not running → `MISSING`
+3. **Heartbeat age** — if >5 minutes stale → `STALLED`; otherwise → `ACTIVE`
+
+Tasks in the `blocked` column surface as `BLOCKED`.
 
 With `prod=true` (or `--prod` CLI flag): sends a nudge via panopticon Maildir to stalled agents.
+
+**Philosophy — no filesystem watching.** The monitor does not poll for `REPORT.md` or any other side-effect artefact. Task completion is signalled *explicitly* by the agent calling `kanban_complete`. This avoids the race conditions and ambiguity of inferring state from files on disk.
 
 ## Snapshot Output
 
