@@ -29,6 +29,7 @@ import {
 	snapshotPath,
 	nowZ,
 	logAppend,
+	escapeLogValue,
 	parseBoard,
 	validateTaskId,
 	getTask,
@@ -80,8 +81,8 @@ export default function (pi: ExtensionAPI) {
 			validateTaskId(task_id);
 			const existing = await parseBoard();
 			if (existing.tasks.has(task_id)) throw new Error(`Task ID ${task_id} already exists`);
-			const descPart = description ? ` description="${description.replace(/"/g, "'")}"` : "";
-			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${title}" priority="${priority}" tags="${tags}"${descPart}`);
+			const descPart = description ? ` description="${escapeLogValue(description)}"` : "";
+			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`);
 			// Write task markdown file
 			await writeTaskFile(task_id, { title, description, priority, tags, agent });
 			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags, description });
@@ -235,7 +236,7 @@ export default function (pi: ExtensionAPI) {
 			const task = await getTask(task_id);
 			if (task.col !== "in-progress") throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
 			const ts = nowZ();
-			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${reason}"`);
+			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${escapeLogValue(reason)}"`);
 			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=blocked`);
 			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
@@ -254,7 +255,7 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, text } = params;
-			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${text}"`);
+			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${escapeLogValue(text)}"`);
 			// Append note to task markdown file
 			await appendTaskNote(task_id, agent, text);
 			return ok(`Note added to ${task_id}`, { task_id, agent, text });
@@ -437,7 +438,7 @@ export default function (pi: ExtensionAPI) {
 			if (["in-progress", "blocked"].includes(task.col)) {
 				throw new Error(`Cannot delete task ${task_id}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`);
 			}
-			const reasonSuffix = reason ? ` reason="${reason}"` : "";
+			const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
 			await logAppend(`${nowZ()} DELETE ${task_id} ${agent}${reasonSuffix}`);
 			return ok(
 				`Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
@@ -488,10 +489,10 @@ export default function (pi: ExtensionAPI) {
 
 			const changes: string[] = [];
 			const changed: Record<string, string> = {};
-			if (params.title && params.title !== task.title) { changes.push(`title="${params.title}"`); changed.title = params.title; }
+			if (params.title && params.title !== task.title) { changes.push(`title="${escapeLogValue(params.title)}"`); changed.title = params.title; }
 			if (params.priority && params.priority !== task.priority) { changes.push(`priority="${params.priority}"`); changed.priority = params.priority; }
-			if (params.tags && params.tags !== task.tags) { changes.push(`tags="${params.tags}"`); changed.tags = params.tags; }
-			if (params.description && params.description !== task.description) { changes.push(`description="${params.description.replace(/"/g, "'")}"`); changed.description = params.description; }
+			if (params.tags && params.tags !== task.tags) { changes.push(`tags="${escapeLogValue(params.tags)}"`); changed.tags = params.tags; }
+			if (params.description && params.description !== task.description) { changes.push(`description="${escapeLogValue(params.description)}"`); changed.description = params.description; }
 			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
 
 			await logAppend(`${nowZ()} EDIT ${task_id} ${agent} ${changes.join(" ")}`);

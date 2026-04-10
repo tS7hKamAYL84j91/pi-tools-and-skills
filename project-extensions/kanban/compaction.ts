@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import {
 	type BoardState,
 	boardLogPath,
+	escapeLogValue,
 	nowZ,
 	parseBoard,
 } from "./board.js";
@@ -96,8 +97,8 @@ async function runCompaction(agentLabel: string, triggerParam?: string): Promise
 	for (const tid of board.order) {
 		const task = board.tasks.get(tid);
 		if (!task || task.deleted) continue;
-		const descPart = task.description ? ` description="${task.description.replace(/"/g, "'")}"` : "";
-		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${task.title}" priority="${task.priority}" tags="${task.tags}"${descPart}`);
+		const descPart = task.description ? ` description="${escapeLogValue(task.description)}"` : "";
+		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${escapeLogValue(task.title)}" priority="${task.priority}" tags="${escapeLogValue(task.tags)}"${descPart}`);
 		const bh = blockHistory.get(tid);
 		if (bh) newLines.push(...bh);
 
@@ -126,7 +127,7 @@ async function runCompaction(agentLabel: string, triggerParam?: string): Promise
 			if (!noteMatch) continue;
 			const [, noteTs, noteAgent, noteText] = noteMatch;
 			if (keepAllNotes || (noteTs ?? "") >= sevenDaysAgo) {
-				newLines.push(`${noteTs} NOTE ${tid} ${noteAgent} text="${noteText}"`);
+				newLines.push(`${noteTs} NOTE ${tid} ${noteAgent} text="${escapeLogValue(noteText ?? "")}"`);
 			}
 		}
 	}

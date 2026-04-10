@@ -47,6 +47,14 @@ export const logAppend = async (line: string): Promise<void> => {
 	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
 };
 
+/**
+ * Escape a value for inclusion in a quote-wrapped log field (e.g. `text="..."`).
+ * The board.log parser only understands a single pair of double quotes per
+ * field — it has no escape sequence — so any embedded `"` must be replaced
+ * to keep the line round-trippable through parseBoard.
+ */
+export const escapeLogValue = (s: string): string => s.replace(/"/g, "'");
+
 // ── Task file helpers ────────────────────────────────────────────
 
 const tasksDir = (): string => join(kanbanDir(), "tasks");

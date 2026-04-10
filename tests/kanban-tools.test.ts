@@ -240,6 +240,27 @@ describe("kanban_note + kanban_block", () => {
 		expect(log).toContain('BLOCK T-050 worker-1 reason="waiting on API key"');
 		expect(log).toContain("MOVE T-050 worker-1 from=in-progress to=blocked");
 	});
+
+	it("escapes embedded quotes in notes so the log round-trips through parseBoard", async () => {
+		// The log parser only understands one pair of double quotes per field, so embedded
+		// `"` characters must be replaced. Without escaping, the next snapshot would mis-parse.
+		await callTool(tools, "kanban_note", {
+			task_id: "T-050",
+			agent: "worker-1",
+			text: 'use "quotes" carefully',
+		});
+
+		// Raw log line should not contain a stray internal `"`
+		const log = readFileSync(join(tmpDir, "board.log"), "utf-8");
+		expect(log).toContain("use 'quotes' carefully");
+		expect(log).not.toContain('text="use "quotes"');
+
+		// Snapshot must still render the task without the parser losing fields after the bad quote
+		const snap = await callTool(tools, "kanban_snapshot", {});
+		expect(snap.isError).toBeFalsy();
+		expect(snap.content[0]?.text).toContain("T-050");
+		expect(snap.content[0]?.text).toContain("Notable");
+	});
 });
 
 describe("kanban_snapshot", () => {
