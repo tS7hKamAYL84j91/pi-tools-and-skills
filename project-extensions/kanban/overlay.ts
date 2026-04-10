@@ -1,93 +1,43 @@
 /**
- * Kanban TUI Overlay — /kanban slash command + ctrl+shift+k shortcut.
+ * Kanban TUI Overlay — controller + state machine.
  *
- * Renders a 5-column board view (Backlog / Todo / In Progress / Blocked / Done)
- * with task counts, priority badges, claimed agents and a WIP indicator.
+ * Owns the FSWatcher subscription, the modal state machine
+ * (board / detail / confirm-delete / move-picker), keyboard dispatch,
+ * and routes mutations through the shared board.ts helpers so the log
+ * format and column-rule validation stay in one place.
  *
- * Keyboard:
- *   ← →   switch column
- *   ↑ ↓   select row
- *   enter open detail view for the selected task
- *   esc/q close (from board) or back (from detail)
- *
- * Live-refresh: watches board.log via FSWatcher and calls tui.requestRender()
- * when changes arrive (debounced). Read-only — no task mutations from the
- * overlay; use the kanban_* tools for that.
+ * All rendering lives in overlay-render.ts as pure functions — this
+ * file is the controller, that file is the view.
  */
 
 import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import type { Component, TUI } from "@mariozechner/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { matchesKey } from "@mariozechner/pi-tui";
 import { type FSWatcher, watch } from "node:fs";
 import {
-	WIP_LIMIT,
 	type BoardState,
 	type TaskState,
 	boardLogPath,
+	deleteTask,
+	moveTask,
 	parseBoard,
 } from "./board.js";
-
-// ── Layout constants ────────────────────────────────────────────
-
-const COLUMNS = ["backlog", "todo", "in-progress", "blocked", "done"] as const;
-type Column = (typeof COLUMNS)[number];
-
-const COLUMN_LABELS: Record<Column, string> = {
-	backlog: "BACKLOG",
-	todo: "TODO",
-	"in-progress": "IN PROG",
-	blocked: "BLOCKED",
-	done: "DONE",
-};
+import {
+	COLUMNS,
+	type Column,
+	DONE_LIMIT,
+	renderBoard,
+	renderConfirmDelete,
+	renderDetail,
+	renderMovePicker,
+} from "./overlay-render.js";
 
 const DEBOUNCE_MS = 150;
-const DONE_LIMIT = 10;
-const MIN_COL_WIDTH = 16;
-const MAX_COL_WIDTH = 40;
 
-// ── Helpers ─────────────────────────────────────────────────────
+/** Hardcoded agent label written to board.log when the overlay mutates state. */
+const OVERLAY_AGENT = "lead";
 
-/** Two-character priority badge; fixed width so rows align. */
-function priorityBadge(priority: string, theme: Theme): string {
-	switch (priority) {
-		case "critical": return theme.fg("error", "!!");
-		case "high":     return theme.fg("warning", "! ");
-		case "medium":   return theme.fg("accent", "· ");
-		default:         return theme.fg("dim", "  ");
-	}
-}
-
-/** Pad a styled (ANSI-containing) string to the given visual width. */
-function padVisible(styled: string, target: number): string {
-	const w = visibleWidth(styled);
-	if (w >= target) return styled;
-	return styled + " ".repeat(target - w);
-}
-
-/** Hard-wrap a string at word boundaries to at most `width` visible cols. */
-function wrap(text: string, width: number): string[] {
-	if (width <= 0) return [text];
-	const words = text.split(/\s+/);
-	const out: string[] = [];
-	let line = "";
-	for (const word of words) {
-		if (!word) continue;
-		if (line.length === 0) {
-			line = word;
-			continue;
-		}
-		if (line.length + 1 + word.length <= width) {
-			line += ` ${word}`;
-		} else {
-			out.push(line);
-			line = word;
-		}
-	}
-	if (line) out.push(line);
-	return out.length > 0 ? out : [""];
-}
-
-// ── Overlay component ───────────────────────────────────────────
+type Mode = "board" | "detail" | "confirm-delete" | "move-picker";
 
 class KanbanOverlay implements Component {
 	private board: BoardState;
@@ -100,7 +50,10 @@ class KanbanOverlay implements Component {
 		blocked: 0,
 		done: 0,
 	};
-	private mode: "board" | "detail" = "board";
+	private mode: Mode = "board";
+	private statusMessage = "";
+	private pendingDeleteTask: TaskState | null = null;
+	private pendingMoveTask: TaskState | null = null;
 	private watcher: FSWatcher | null = null;
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -142,6 +95,8 @@ class KanbanOverlay implements Component {
 			this.watcher.close();
 			this.watcher = null;
 		}
+		this.pendingDeleteTask = null;
+		this.pendingMoveTask = null;
 	}
 
 	// ── Data helpers ────────────────────────────────────────────
@@ -162,8 +117,7 @@ class KanbanOverlay implements Component {
 	}
 
 	private selectedTask(): TaskState | undefined {
-		const tasks = this.tasksIn(this.activeColumn());
-		return tasks[this.activeRow];
+		return this.tasksIn(this.activeColumn())[this.activeRow];
 	}
 
 	private clampSelection(): void {
@@ -173,18 +127,83 @@ class KanbanOverlay implements Component {
 		}
 	}
 
+	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
+		const col = this.activeColumn();
+		const tasks = colTasks[this.activeColIdx] ?? [];
+		if (tasks.length === 0) {
+			this.scroll[col] = 0;
+			return;
+		}
+		const offset = this.scroll[col];
+		if (this.activeRow < offset) {
+			this.scroll[col] = this.activeRow;
+		} else if (this.activeRow >= offset + visibleRows) {
+			this.scroll[col] = this.activeRow - visibleRows + 1;
+		}
+	}
+
 	// ── Input handling ──────────────────────────────────────────
 
 	handleInput(data: string): void {
-		if (this.mode === "detail") {
-			if (matchesKey(data, "escape") || matchesKey(data, "q") || matchesKey(data, "left")) {
-				this.mode = "board";
+		switch (this.mode) {
+			case "detail":         this.handleDetailInput(data); return;
+			case "confirm-delete": this.handleConfirmDeleteInput(data); return;
+			case "move-picker":    this.handleMovePickerInput(data); return;
+			default:               this.handleBoardInput(data); return;
+		}
+	}
+
+	private handleDetailInput(data: string): void {
+		if (matchesKey(data, "escape") || matchesKey(data, "q") || matchesKey(data, "left")) {
+			this.mode = "board";
+			this.statusMessage = "";
+		}
+	}
+
+	private handleConfirmDeleteInput(data: string): void {
+		if (matchesKey(data, "escape") || matchesKey(data, "q") || matchesKey(data, "n")) {
+			this.mode = "board";
+			this.pendingDeleteTask = null;
+			this.statusMessage = "";
+			return;
+		}
+		if (matchesKey(data, "y") || matchesKey(data, "enter") || matchesKey(data, "return")) {
+			void this.executeDelete();
+		}
+	}
+
+	private handleMovePickerInput(data: string): void {
+		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
+			this.mode = "board";
+			this.pendingMoveTask = null;
+			this.statusMessage = "";
+			return;
+		}
+		if (matchesKey(data, "1")) void this.executeMove("backlog");
+		else if (matchesKey(data, "2")) void this.executeMove("todo");
+	}
+
+	private handleBoardInput(data: string): void {
+		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
+			this.done(null);
+			return;
+		}
+
+		if (matchesKey(data, "d")) {
+			const task = this.selectedTask();
+			if (task) {
+				this.pendingDeleteTask = task;
+				this.mode = "confirm-delete";
 			}
 			return;
 		}
 
-		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
-			this.done(null);
+		if (matchesKey(data, "m")) {
+			const task = this.selectedTask();
+			if (task) {
+				this.pendingMoveTask = task;
+				this.mode = "move-picker";
+			}
 			return;
 		}
 
@@ -213,177 +232,74 @@ class KanbanOverlay implements Component {
 
 		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
 			if (this.selectedTask()) this.mode = "detail";
-			return;
 		}
 	}
 
-	// ── Rendering ───────────────────────────────────────────────
+	// ── Mutations (delegated to board.ts helpers) ────────────────
+
+	private async executeDelete(): Promise<void> {
+		const task = this.pendingDeleteTask;
+		this.pendingDeleteTask = null;
+		this.mode = "board";
+		if (!task) return;
+
+		try {
+			await deleteTask(task.id, OVERLAY_AGENT);
+			this.statusMessage = "";
+		} catch (err) {
+			this.statusMessage = err instanceof Error ? err.message : String(err);
+		}
+		this.tui.requestRender();
+	}
+
+	private async executeMove(to: "backlog" | "todo"): Promise<void> {
+		const task = this.pendingMoveTask;
+		this.pendingMoveTask = null;
+		this.mode = "board";
+		if (!task) return;
+
+		try {
+			await moveTask(task.id, OVERLAY_AGENT, to);
+			this.statusMessage = "";
+		} catch (err) {
+			this.statusMessage = err instanceof Error ? err.message : String(err);
+		}
+		this.tui.requestRender();
+	}
+
+	// ── Rendering (delegated to overlay-render.ts) ──────────────
 
 	render(width: number): string[] {
-		return this.mode === "detail" ? this.renderDetail(width) : this.renderBoard(width);
+		switch (this.mode) {
+			case "detail":
+				return renderDetail(this.selectedTask(), width, this.theme);
+			case "confirm-delete":
+				return renderConfirmDelete(this.pendingDeleteTask, width, this.theme);
+			case "move-picker":
+				return renderMovePicker(this.pendingMoveTask, width, this.theme);
+			default: {
+				const colTasks = COLUMNS.map((c) => this.tasksIn(c));
+				// Same upper-bound used by renderBoard so the controller's scroll
+				// math stays in sync with what the view will actually display.
+				const maxRows = Math.max(8, ...colTasks.map((t) => t.length));
+				this.clampScroll(colTasks, maxRows);
+				return renderBoard(
+					{
+						colTasks,
+						activeCol: this.activeColumn(),
+						activeRow: this.activeRow,
+						scroll: this.scroll,
+						statusMessage: this.statusMessage,
+					},
+					width,
+					this.theme,
+				);
+			}
+		}
 	}
 
 	/** Component contract — no cached state, nothing to invalidate. */
 	invalidate(): void {}
-
-	// ── Board view ──────────────────────────────────────────────
-
-	private renderBoard(width: number): string[] {
-		const th = this.theme;
-		const lines: string[] = [];
-
-		// Compute column width that fits the available viewport.
-		const usable = Math.max(MIN_COL_WIDTH * COLUMNS.length + COLUMNS.length - 1, width - 4);
-		const colW = Math.max(
-			MIN_COL_WIDTH,
-			Math.min(MAX_COL_WIDTH, Math.floor((usable - (COLUMNS.length - 1)) / COLUMNS.length)),
-		);
-		const totalInner = colW * COLUMNS.length + (COLUMNS.length - 1);
-
-		// Top border + header
-		const title = th.bold(th.fg("accent", "📋 Kanban Board"));
-		const hints = th.fg("dim", "← → column   ↑ ↓ row   enter detail   esc/q close");
-		lines.push(th.fg("border", `  ╭${"─".repeat(totalInner + 2)}╮`));
-		const headerRow = padVisible(`${title}   ${hints}`, totalInner);
-		lines.push(th.fg("border", "  │ ") + truncateToWidth(headerRow, totalInner, "…", true) + th.fg("border", " │"));
-		lines.push(th.fg("border", `  ├${"─".repeat(totalInner + 2)}┤`));
-
-		// Column headers
-		const colTasks = COLUMNS.map((c) => this.tasksIn(c));
-		const activeCol = this.activeColumn();
-		const headerParts: string[] = [];
-		for (let i = 0; i < COLUMNS.length; i++) {
-			const col = COLUMNS[i] ?? "backlog";
-			const count = (colTasks[i] ?? []).length;
-			const wip = col === "in-progress" ? `${count}/${WIP_LIMIT}` : `${count}`;
-			const label = `${COLUMN_LABELS[col]} ${wip}`;
-			const styled = col === activeCol ? th.bold(th.fg("accent", label)) : th.fg("dim", label);
-			headerParts.push(padVisible(` ${styled}`, colW));
-		}
-		lines.push(th.fg("border", "  │ ") + headerParts.join(th.fg("border", "│")) + th.fg("border", " │"));
-		lines.push(th.fg("border", `  ├${"─".repeat(totalInner + 2)}┤`));
-
-		// Body
-		const maxRows = Math.max(8, ...colTasks.map((t) => t.length));
-		this.clampScroll(colTasks, maxRows);
-
-		for (let row = 0; row < maxRows; row++) {
-			const rowParts: string[] = [];
-			for (let i = 0; i < COLUMNS.length; i++) {
-				const col = COLUMNS[i] ?? "backlog";
-				const tasks = colTasks[i] ?? [];
-				const offset = this.scroll[col];
-				const task = tasks[row + offset];
-				if (!task) {
-					rowParts.push(" ".repeat(colW));
-					continue;
-				}
-				const isSelected = col === activeCol && row + offset === this.activeRow;
-				rowParts.push(this.renderCard(task, colW, isSelected));
-			}
-			lines.push(th.fg("border", "  │ ") + rowParts.join(th.fg("border", "│")) + th.fg("border", " │"));
-		}
-
-		lines.push(th.fg("border", `  ╰${"─".repeat(totalInner + 2)}╯`));
-		return lines;
-	}
-
-	private renderCard(task: TaskState, colW: number, isSelected: boolean): string {
-		const th = this.theme;
-		const badge = priorityBadge(task.priority, th);
-		const cursor = isSelected ? th.fg("accent", "▶") : " ";
-		const id = isSelected ? th.bold(th.fg("accent", task.id)) : th.fg("text", task.id);
-		const titleRaw = task.title || task.id;
-		const agentRaw = task.claimAgent || "";
-
-		// Reserve space for " cursor id badge " plus optional " (agent)".
-		const fixed = visibleWidth(`${cursor} ${task.id} !! `);
-		const agentWidth = agentRaw ? visibleWidth(` (${agentRaw})`) : 0;
-		const titleBudget = Math.max(4, colW - fixed - agentWidth - 1);
-		const title = truncateToWidth(titleRaw, titleBudget, "…", false);
-
-		let line = ` ${cursor} ${id} ${badge}${title}`;
-		if (agentRaw) line += th.fg("muted", ` (${agentRaw})`);
-		return padVisible(line, colW);
-	}
-
-	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
-		const col = this.activeColumn();
-		const tasks = colTasks[this.activeColIdx] ?? [];
-		if (tasks.length === 0) {
-			this.scroll[col] = 0;
-			return;
-		}
-		const offset = this.scroll[col];
-		if (this.activeRow < offset) {
-			this.scroll[col] = this.activeRow;
-		} else if (this.activeRow >= offset + visibleRows) {
-			this.scroll[col] = this.activeRow - visibleRows + 1;
-		}
-	}
-
-	// ── Detail view ─────────────────────────────────────────────
-
-	private renderDetail(width: number): string[] {
-		const th = this.theme;
-		const task = this.selectedTask();
-		const lines: string[] = [];
-		const innerW = Math.max(40, width - 4);
-
-		lines.push(th.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
-
-		if (!task) {
-			const msg = th.fg("muted", " No task selected — press esc to return.");
-			lines.push(th.fg("border", "  │ ") + padVisible(msg, innerW) + th.fg("border", " │"));
-			lines.push(th.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
-			return lines;
-		}
-
-		const headerInner = `${th.bold(th.fg("accent", task.id))} ${priorityBadge(task.priority, th)} ${th.bold(task.title || task.id)}`;
-		lines.push(th.fg("border", "  │ ") + truncateToWidth(padVisible(headerInner, innerW), innerW, "…", true) + th.fg("border", " │"));
-		lines.push(th.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
-
-		const meta: [string, string][] = [
-			["Column",    task.col],
-			["Priority",  task.priority],
-			["Agent",     task.claimAgent || task.agent || "unassigned"],
-			["Tags",      task.tags || "(none)"],
-			["Created",   task.createdAt || "-"],
-		];
-		if (task.expires) meta.push(["Expires", task.expires]);
-		if (task.completedAt) meta.push(["Completed", task.completedAt]);
-		if (task.duration) meta.push(["Duration", task.duration]);
-		if (task.reason) meta.push(["Block reason", task.reason]);
-
-		for (const [key, value] of meta) {
-			const row = ` ${th.fg("dim", key.padEnd(13))} ${th.fg("text", value)}`;
-			lines.push(th.fg("border", "  │ ") + truncateToWidth(padVisible(row, innerW), innerW, "…", true) + th.fg("border", " │"));
-		}
-
-		if (task.description) {
-			lines.push(th.fg("border", "  │ ") + padVisible("", innerW) + th.fg("border", " │"));
-			lines.push(th.fg("border", "  │ ") + padVisible(` ${th.fg("dim", "Description")}`, innerW) + th.fg("border", " │"));
-			for (const chunk of wrap(task.description, innerW - 2)) {
-				lines.push(th.fg("border", "  │ ") + padVisible(`  ${th.fg("text", chunk)}`, innerW) + th.fg("border", " │"));
-			}
-		}
-
-		if (task.notes.length > 0) {
-			lines.push(th.fg("border", "  │ ") + padVisible("", innerW) + th.fg("border", " │"));
-			const noteHeader = ` ${th.fg("dim", `Notes (${task.notes.length})`)}`;
-			lines.push(th.fg("border", "  │ ") + padVisible(noteHeader, innerW) + th.fg("border", " │"));
-			for (const note of task.notes.slice(-5)) {
-				for (const chunk of wrap(`- ${note}`, innerW - 4)) {
-					lines.push(th.fg("border", "  │ ") + padVisible(`  ${th.fg("text", chunk)}`, innerW) + th.fg("border", " │"));
-				}
-			}
-		}
-
-		lines.push(th.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
-		lines.push(th.fg("border", "  │ ") + padVisible(th.fg("dim", " esc/← back to board"), innerW) + th.fg("border", " │"));
-		lines.push(th.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
-		return lines;
-	}
 }
 
 // ── Entry point ─────────────────────────────────────────────────

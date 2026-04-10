@@ -36,6 +36,8 @@ import {
 	writeTaskFile,
 	appendTaskNote,
 	rewriteTaskFile,
+	deleteTask,
+	moveTask,
 } from "./board.js";
 import { compactIfNeeded, runManualCompaction } from "./compaction.js";
 import { generateSnapshot } from "./snapshot.js";
@@ -399,13 +401,8 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, to } = params;
-			const task = await getTask(task_id);
-			if (["in-progress", "blocked", "done"].includes(task.col)) {
-				throw new Error(`Cannot move task ${task_id} from '${task.col}' column. Can only move from backlog or todo.`);
-			}
-			const from = task.col;
-			await logAppend(`${nowZ()} MOVE ${task_id} ${agent} from=${from} to=${to}`);
-			return ok(`Moved ${task_id} from ${from} to ${to}`, { task_id, agent, from, to });
+			const { from, to: toCol } = await moveTask(task_id, agent, to as "backlog" | "todo");
+			return ok(`Moved ${task_id} from ${from} to ${toCol}`, { task_id, agent, from, to: toCol });
 		},
 	});
 
@@ -427,17 +424,10 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			const reason = params.reason ?? "";
-			validateTaskId(task_id);
-			const task = await getTask(task_id);
-			if (task.deleted) throw new Error(`Task ${task_id} has already been deleted`);
-			if (["in-progress", "blocked"].includes(task.col)) {
-				throw new Error(`Cannot delete task ${task_id}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`);
-			}
-			const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
-			await logAppend(`${nowZ()} DELETE ${task_id} ${agent}${reasonSuffix}`);
+			const { previousCol } = await deleteTask(task_id, agent, reason);
 			return ok(
-				`Deleted ${task_id} (was in '${task.col}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
-				{ task_id, agent, reason, previousCol: task.col },
+				`Deleted ${task_id} (was in '${previousCol}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
+				{ task_id, agent, reason, previousCol },
 			);
 		},
 	});

@@ -115,7 +115,7 @@ describe("file size", () => {
 		await expect(rule).toPassAsync();
 	});
 
-	it("kanban/index.ts must not grow beyond 1200 lines (pending split)", async () => {
+	it("project-extensions files should not exceed 600 lines", async () => {
 		const rule = projectFiles()
 			.inFolder("project-extensions/**")
 			.should()
