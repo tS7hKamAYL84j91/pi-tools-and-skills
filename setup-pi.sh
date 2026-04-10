@@ -233,6 +233,24 @@ ensure_listed('skills',     skills_dir)
 ensure_listed('extensions', ext_dir)
 ensure_listed('prompts',    prompts_dir)
 
+# Update defaults and provider config
+settings['defaultProvider'] = 'anthropic'
+settings['defaultModel'] = 'claude-opus-4-6'
+
+providers = settings.get('providers', {})
+anthropic = providers.get('anthropic', {})
+params = anthropic.get('params', {})
+
+# Set prompt caching
+params['cache_control'] = { 'type': 'ephemeral' }
+extra_headers = params.get('extraHeaders', {})
+extra_headers['anthropic-beta'] = 'prompt-caching-2024-07-31'
+params['extraHeaders'] = extra_headers
+
+anthropic['params'] = params
+providers['anthropic'] = anthropic
+settings['providers'] = providers
+
 with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
