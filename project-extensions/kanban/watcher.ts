@@ -22,6 +22,7 @@ import {
 	type BoardState,
 	WIP_LIMIT,
 } from "./board.js";
+import { openKanbanOverlay } from "./overlay.js";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -239,6 +240,20 @@ export function setupWatcher(pi: ExtensionAPI): void {
 	});
 
 	// ── Commands ────────────────────────────────────────────
+
+	pi.registerCommand("kanban", {
+		description: "Open full kanban board TUI overlay with live refresh",
+		handler: async (_args, ctx) => {
+			await openKanbanOverlay(ctx);
+		},
+	});
+
+	pi.registerShortcut("ctrl+shift+k", {
+		description: "Toggle kanban board overlay",
+		handler: async (ctx) => {
+			await openKanbanOverlay(ctx);
+		},
+	});
 
 	pi.registerCommand("monitor-reset", {
 		description: "Reset auto-monitor injection counter (resume after pause)",

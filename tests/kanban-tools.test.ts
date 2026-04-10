@@ -29,6 +29,7 @@ function createFakeApi() {
 	const api = {
 		registerTool(def: RegisteredTool) { tools.set(def.name, def); },
 		registerCommand(_name: string, _opts: unknown) { /* no-op */ },
+		registerShortcut(_shortcut: string, _opts: unknown) { /* no-op */ },
 		registerFlag(name: string, opts: { default?: unknown }) {
 			if (opts.default !== undefined) flags.set(`--${name}`, opts.default);
 		},
