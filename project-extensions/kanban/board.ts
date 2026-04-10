@@ -8,7 +8,6 @@
 
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 // ── Constants ───────────────────────────────────────────────────
@@ -27,16 +26,13 @@ export const PRIORITY_ORDER: Record<string, number> = {
 function findKanbanDir(): string | null {
 	const env = process.env.KANBAN_DIR;
 	if (env && existsSync(env)) return env;
-	const fallbacks = [
-		join(homedir(), "git", "coas", "kanban"),
-		join(process.cwd(), "kanban"),
-	];
-	return fallbacks.find(existsSync) ?? null;
+	const cwdFallback = join(process.cwd(), "kanban");
+	return existsSync(cwdFallback) ? cwdFallback : null;
 }
 
 export function kanbanDir(): string {
 	const dir = findKanbanDir();
-	if (!dir) throw new Error("Kanban directory not found. Set KANBAN_DIR or ensure ~/git/coas/kanban exists.");
+	if (!dir) throw new Error("Kanban directory not found. Set KANBAN_DIR or create a 'kanban' directory in the current working directory.");
 	return dir;
 }
 
@@ -53,8 +49,8 @@ export const logAppend = async (line: string): Promise<void> => {
 
 // ── Task file helpers ────────────────────────────────────────────
 
-export const tasksDir = (): string => join(kanbanDir(), "tasks");
-export const taskFilePath = (taskId: string): string => join(tasksDir(), `${taskId}.md`);
+const tasksDir = (): string => join(kanbanDir(), "tasks");
+const taskFilePath = (taskId: string): string => join(tasksDir(), `${taskId}.md`);
 
 /** Ensure the tasks directory exists. */
 async function ensureTasksDir(): Promise<void> {
@@ -104,14 +100,14 @@ export async function appendTaskNote(taskId: string, agent: string, text: string
 	const entry = `${nowZ()} [${agent}] ${text}`;
 	if (existsSync(fp)) {
 		const existing = await readFile(fp, "utf-8");
-		await writeFile(fp, existing.trimEnd() + `\n- ${entry}\n`, "utf-8");
+		await writeFile(fp, `${existing.trimEnd()}\n- ${entry}\n`, "utf-8");
 	} else {
 		await writeTaskFile(taskId, { title: taskId, description: "", priority: "medium", tags: "", agent: "" }, [entry]);
 	}
 }
 
 /** Read the notes from an existing task file (everything after ## Notes). */
-export async function readTaskNotes(taskId: string): Promise<string[]> {
+async function readTaskNotes(taskId: string): Promise<string[]> {
 	const fp = taskFilePath(taskId);
 	if (!existsSync(fp)) return [];
 	const content = await readFile(fp, "utf-8");
@@ -125,7 +121,7 @@ export async function readTaskNotes(taskId: string): Promise<string[]> {
 }
 
 /** Read the created timestamp from an existing task file frontmatter. */
-export async function readTaskCreated(taskId: string): Promise<string | undefined> {
+async function readTaskCreated(taskId: string): Promise<string | undefined> {
 	const fp = taskFilePath(taskId);
 	if (!existsSync(fp)) return undefined;
 	const content = await readFile(fp, "utf-8");

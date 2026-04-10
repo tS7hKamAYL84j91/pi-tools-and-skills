@@ -63,7 +63,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event) => {
 		if (!indexText) return;
-		return { systemPrompt: event.systemPrompt + "\n\n" + indexText };
+		return { systemPrompt: `${event.systemPrompt}\n\n${indexText}` };
 	});
 
 	// ── Commands ────────────────────────────────────────────────
@@ -147,7 +147,7 @@ export default function (pi: ExtensionAPI) {
 			if (loadedMemories.size === 0) {
 				const dirs = getMemoryDirs(cwd);
 				const searched = dirs.map((d) => `  ${d.exists ? "✓" : "✗"} ${d.dir} (${d.source})`).join("\n");
-				return ok("No .mmem.yml files found.\nSearched:\n" + searched + "\n\nCreate one with mmem_create.", { count: 0 });
+				return ok(`No .mmem.yml files found.\nSearched:\n${searched}\n\nCreate one with mmem_create.`, { count: 0 });
 			}
 
 			const files: Record<string, unknown>[] = [];

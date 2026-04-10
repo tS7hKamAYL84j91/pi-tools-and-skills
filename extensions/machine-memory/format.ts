@@ -30,7 +30,7 @@ export function formatForInjection(memories: MemoryFile[]): string {
  * Extract the one-line description from the body (H1 line after "—").
  * e.g. "# git — Distributed version control" → "Distributed version control"
  */
-export function extractDescription(body: string): string {
+function extractDescription(body: string): string {
 	const h1 = body.split("\n").find((l) => l.startsWith("# "));
 	if (!h1) return "";
 	const dashIdx = h1.indexOf("—");

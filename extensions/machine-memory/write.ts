@@ -97,5 +97,5 @@ export async function appendUpdate(
 		for (const c of sections.corrections) lines.push(`- ${c}`);
 	}
 
-	await writeFile(path, existing.trimEnd() + "\n" + lines.join("\n") + "\n", "utf-8");
+	await writeFile(path, `${existing.trimEnd()}\n${lines.join("\n")}\n`, "utf-8");
 }

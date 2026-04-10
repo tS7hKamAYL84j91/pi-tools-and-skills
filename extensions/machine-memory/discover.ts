@@ -65,7 +65,7 @@ export function memoryFilePath(dir: string, name: string): string {
 // ── File-level loading ───────────────────────────────────────────
 
 /** List all .mmem.yml files in a directory. */
-export function listMemoryFiles(dir: string): string[] {
+function listMemoryFiles(dir: string): string[] {
 	if (!existsSync(dir)) return [];
 	try {
 		return readdirSync(dir)
@@ -78,7 +78,7 @@ export function listMemoryFiles(dir: string): string[] {
 }
 
 /** Load a single .mmem.yml file. */
-export async function loadMemoryFile(path: string, source: MemorySource): Promise<MemoryFile | null> {
+async function loadMemoryFile(path: string, source: MemorySource): Promise<MemoryFile | null> {
 	try {
 		const { readFile } = await import("node:fs/promises");
 		const raw = await readFile(path, "utf-8");
@@ -92,7 +92,7 @@ export async function loadMemoryFile(path: string, source: MemorySource): Promis
 }
 
 /** Load all memories from a directory with a given source label. */
-export async function loadDir(dir: string, source: MemorySource, into: Map<string, MemoryFile>): Promise<void> {
+async function loadDir(dir: string, source: MemorySource, into: Map<string, MemoryFile>): Promise<void> {
 	for (const path of listMemoryFiles(dir)) {
 		const mem = await loadMemoryFile(path, source);
 		if (mem) into.set(mem.name, mem);

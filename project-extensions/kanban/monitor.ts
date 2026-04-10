@@ -7,11 +7,10 @@
 
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { findAgentByName, sendAgentMessage } from "../../lib/agent-api.js";
-import type { BoardState } from "./board.js";
+import { type BoardState, kanbanDir } from "./board.js";
 
 const execAsync = promisify(exec);
 
@@ -41,7 +40,8 @@ export function getInProgressTasks(board: BoardState): TaskRow[] {
 
 /** Check if REPORT.md exists for a given agent. */
 export async function checkReportDone(agentName: string): Promise<boolean> {
-	const researchBase = process.env.KANBAN_REPORT_BASE ?? join(homedir(), "git", "working-notes", "research");
+	// Default sibling-of-kanban layout: <kanbanDir>/../research/<agent>/REPORT.md
+	const researchBase = process.env.KANBAN_REPORT_BASE ?? join(dirname(kanbanDir()), "research");
 	const exactReport = join(researchBase, agentName, "REPORT.md");
 	if (existsSync(exactReport)) return true;
 	try {
