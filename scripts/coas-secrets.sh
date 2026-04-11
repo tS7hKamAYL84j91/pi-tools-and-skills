@@ -32,6 +32,11 @@ OS="$(uname -s)"
 # on backend conventions. Override via COAS_SECRETS_NAMESPACE if needed.
 NAMESPACE="${COAS_SECRETS_NAMESPACE:-coas}"
 
+# Known secret keys used by the CoAS stack. Used by the `list` command to
+# probe each one and report whether it's stored. Add new keys here as
+# new secret types are introduced.
+KNOWN_KEYS="tailscale-authkey matrix-token matrix-recovery"
+
 case "${OS}" in
   Darwin)  BACKEND=keychain ;;
   Linux)   BACKEND=pass ;;
@@ -114,13 +119,33 @@ case "${cmd}" in
     ;;
 
   list)
+    # macOS Keychain has no native "list all entries for an account" CLI,
+    # so we probe each known key explicitly. `pass` does support listing.
     case "${BACKEND}" in
       keychain)
-        # Keychain doesn't have a clean "list by service" — fall back to dump+grep.
-        security dump-keychain 2>/dev/null | grep -A1 "\"svce\".*\"${NAMESPACE}\"" | grep "\"${NAMESPACE}\"" || true
+        echo "coas-secrets in namespace '${NAMESPACE}' (macOS Keychain):" >&2
+        found=0
+        for k in ${KNOWN_KEYS}; do
+          if security find-generic-password -a "${NAMESPACE}" -s "${k}" >/dev/null 2>&1; then
+            printf '  ✓ %s\n' "${k}"
+            found=$((found + 1))
+          else
+            printf '  ✗ %s (not stored)\n' "${k}"
+          fi
+        done
+        if [[ ${found} -eq 0 ]]; then
+          echo "" >&2
+          echo "No coas-secrets stored yet in namespace '${NAMESPACE}'." >&2
+          echo "Store one with: echo 'value' | coas-secrets set <key>" >&2
+        fi
         ;;
       pass)
-        pass ls "${NAMESPACE}/" 2>/dev/null || echo "(no entries)"
+        echo "coas-secrets in namespace '${NAMESPACE}' (pass):" >&2
+        if pass ls "${NAMESPACE}/" 2>/dev/null; then
+          :  # pass already printed the tree
+        else
+          echo "  (no entries)" >&2
+        fi
         ;;
     esac
     ;;
