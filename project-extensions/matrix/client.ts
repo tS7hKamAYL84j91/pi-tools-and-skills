@@ -84,11 +84,10 @@ export class MatrixBridgeClient {
 			);
 		}) as {
 			MatrixClient: AnyClient;
-			AutojoinRoomsMixin: AnyClient;
 			SimpleFsStorageProvider: AnyClient;
 			RustSdkCryptoStorageProvider: AnyClient;
 		};
-		const { MatrixClient, AutojoinRoomsMixin, SimpleFsStorageProvider, RustSdkCryptoStorageProvider } = sdk;
+		const { MatrixClient, SimpleFsStorageProvider, RustSdkCryptoStorageProvider } = sdk;
 
 		// Storage providers — sync state and crypto state both go to disk
 		mkdirSync(this.config.cryptoStorePath, { recursive: true });
@@ -113,17 +112,17 @@ export class MatrixBridgeClient {
 			crypto,
 		);
 
-		// Restrict auto-join to ONLY the configured room — never auto-join other invites
-		AutojoinRoomsMixin.setupOnClient({
-			...this.client,
-			joinRoom: async (roomId: string) => {
-				if (roomId !== this.config.roomId) {
-					// Reject invites to any other room
-					try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
-					return;
-				}
-				return this.client.joinRoom(roomId);
-			},
+		// Auto-join ONLY the configured room. We handle room.invite directly
+		// instead of using AutojoinRoomsMixin.setupOnClient because the mixin
+		// calls .on() on whatever object you pass it — and spreading the client
+		// ({...this.client}) kills the EventEmitter prototype chain, causing
+		// "client.on is not a function" at runtime.
+		this.client.on("room.invite", async (roomId: string) => {
+			if (roomId !== this.config.roomId) {
+				try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
+				return;
+			}
+			await this.client.joinRoom(roomId);
 		});
 
 		// Wire the inbound message handler
