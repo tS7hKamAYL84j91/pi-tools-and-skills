@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { ok, fail, type ToolResult } from "../../lib/tool-result.js";
 import { loadMatrixConfig } from "./config.js";
 import { MatrixBridgeClient } from "./client.js";
-import { bridgeInbound } from "./bridge.js";
+import { mxidLocalpart } from "./bridge.js";
 import type { MatrixConfig } from "./types.js";
 
 // ── Extension state (module-level singletons) ───────────────────
@@ -61,38 +61,25 @@ function updateStatus(): void {
 }
 
 // ── Inbound delivery ────────────────────────────────────────────
+//
+// Inject directly into the current pi session via pi.sendUserMessage.
+// This is the same-process fast path — the extension IS inside pi, so
+// there's no need to route through panopticon → Maildir → drainInbox.
+// The message surfaces immediately in the agent's prompt as a followUp.
 
-async function onInbound(msg: { roomId: string; senderMxid: string; body: string; eventId: string; timestampMs: number }): Promise<void> {
-	if (!config) return;
-	const outcome = await bridgeInbound(msg, config.targetAgent);
+let piRef: ExtensionAPI | null = null;
 
-	switch (outcome.kind) {
-		case "delivered":
-			// The Chief of Staff's inbox drain will surface this on its next loop
-			break;
-		case "no-agent":
-			// Reply in-room so the human knows their message was seen but the agent isn't running
-			if (client) {
-				try {
-					await client.send(
-						`⚠️ No "${outcome.targetAgent}" agent is running right now. ` +
-						`Start pi in the coas workspace and the message will land in its inbox on the next attempt.`,
-					);
-				} catch (err) {
-					lastError = `failed to post no-agent reply: ${(err as Error).message}`;
-				}
-			}
-			break;
-		case "failed":
-			lastError = `inbound delivery failed: ${outcome.error}`;
-			ctx?.ui.notify(lastError, "error");
-			break;
-	}
+function onInbound(msg: { roomId: string; senderMxid: string; body: string; eventId: string; timestampMs: number }): void {
+	if (!piRef) return;
+	const from = `matrix:${mxidLocalpart(msg.senderMxid)}`;
+	piRef.sendUserMessage(`[from ${from}]: ${msg.body}`, { deliverAs: "followUp" });
 }
 
 // ── Extension ───────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI): void {
+	piRef = pi;
+
 	// ── Lifecycle ───────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, c) => {
