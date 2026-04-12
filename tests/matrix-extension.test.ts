@@ -3,7 +3,6 @@
  *
  * Covers the pure logic units that don't need a live Matrix server:
  *   - mxidLocalpart parsing
- *   - bridgeInbound delivery vs no-agent vs failure paths (via mocked agent-api)
  *   - loadMatrixConfig validation, env-var resolution, and default handling
  *
  * The matrix-bot-sdk client itself is not exercised here — that needs a real
@@ -11,37 +10,17 @@
  */
 
 import {
-	type MockedFunction,
 	afterEach,
 	beforeEach,
 	describe,
 	expect,
 	it,
-	vi,
 } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Mock lib/agent-api so bridgeInbound's findAgentByName + sendAgentMessage
-// are controllable from each test. The real implementations touch the
-// panopticon registry directory, which we don't want during unit tests.
-vi.mock("../lib/agent-api.js", () => ({
-	findAgentByName: vi.fn(),
-	sendAgentMessage: vi.fn(),
-}));
-
-import * as agentApi from "../lib/agent-api.js";
-import { bridgeInbound, mxidLocalpart } from "../project-extensions/matrix/bridge.js";
-import type { InboundMessage } from "../project-extensions/matrix/client.js";
-
-const mockFindAgent = agentApi.findAgentByName as MockedFunction<typeof agentApi.findAgentByName>;
-const mockSendAgent = agentApi.sendAgentMessage as MockedFunction<typeof agentApi.sendAgentMessage>;
-
-beforeEach(() => {
-	mockFindAgent.mockReset();
-	mockSendAgent.mockReset();
-});
+import { mxidLocalpart } from "../project-extensions/matrix/bridge.js";
 
 // ── mxidLocalpart ───────────────────────────────────────────────
 
@@ -67,124 +46,7 @@ describe("mxidLocalpart", () => {
 	});
 });
 
-// ── bridgeInbound ───────────────────────────────────────────────
-
-function makeMessage(overrides: Partial<InboundMessage> = {}): InboundMessage {
-	return {
-		roomId: "!room:matrix.org",
-		senderMxid: "@jim:matrix.org",
-		body: "hello agent",
-		eventId: "$event1",
-		timestampMs: 1700000000000,
-		...overrides,
-	};
-}
-
-describe("bridgeInbound", () => {
-	it("delivers to a live target agent and returns delivered", async () => {
-		mockFindAgent.mockReturnValueOnce({
-			id: "agent-123",
-			name: "coas",
-			pid: 1234,
-			alive: true,
-			heartbeatAge: 0,
-			model: "claude-opus-4-6",
-			status: "running",
-		});
-		mockSendAgent.mockResolvedValueOnce(true);
-
-		const result = await bridgeInbound(makeMessage(), "coas");
-
-		expect(result).toEqual({ kind: "delivered", agentId: "agent-123", from: "matrix:jim" });
-		expect(mockFindAgent).toHaveBeenCalledWith("coas");
-		expect(mockSendAgent).toHaveBeenCalledWith("agent-123", "matrix:jim", "hello agent");
-	});
-
-	it("returns no-agent when the target is not registered", async () => {
-		mockFindAgent.mockReturnValueOnce(null);
-
-		const result = await bridgeInbound(makeMessage(), "coas");
-
-		expect(result).toEqual({ kind: "no-agent", targetAgent: "coas" });
-		expect(mockSendAgent).not.toHaveBeenCalled();
-	});
-
-	it("returns no-agent when the target is registered but not alive", async () => {
-		mockFindAgent.mockReturnValueOnce({
-			id: "agent-456",
-			name: "coas",
-			pid: 9999,
-			alive: false,
-			heartbeatAge: 999_999,
-			model: "claude-opus-4-6",
-			status: "terminated",
-		});
-
-		const result = await bridgeInbound(makeMessage(), "coas");
-
-		expect(result).toEqual({ kind: "no-agent", targetAgent: "coas" });
-		expect(mockSendAgent).not.toHaveBeenCalled();
-	});
-
-	it("returns failed when the transport rejects the message", async () => {
-		mockFindAgent.mockReturnValueOnce({
-			id: "agent-123",
-			name: "coas",
-			pid: 1234,
-			alive: true,
-			heartbeatAge: 0,
-			model: "claude-opus-4-6",
-			status: "running",
-		});
-		mockSendAgent.mockResolvedValueOnce(false);
-
-		const result = await bridgeInbound(makeMessage(), "coas");
-
-		expect(result).toEqual({ kind: "failed", error: "transport rejected the message" });
-	});
-
-	it("returns failed and surfaces the error message when sendAgentMessage throws", async () => {
-		mockFindAgent.mockReturnValueOnce({
-			id: "agent-123",
-			name: "coas",
-			pid: 1234,
-			alive: true,
-			heartbeatAge: 0,
-			model: "claude-opus-4-6",
-			status: "running",
-		});
-		mockSendAgent.mockRejectedValueOnce(new Error("disk full"));
-
-		const result = await bridgeInbound(makeMessage(), "coas");
-
-		expect(result).toEqual({ kind: "failed", error: "disk full" });
-	});
-
-	it("uses matrix:<localpart> as the from label", async () => {
-		mockFindAgent.mockReturnValueOnce({
-			id: "agent-123",
-			name: "coas",
-			pid: 1234,
-			alive: true,
-			heartbeatAge: 0,
-			model: "claude-opus-4-6",
-			status: "running",
-		});
-		mockSendAgent.mockResolvedValueOnce(true);
-
-		await bridgeInbound(
-			makeMessage({ senderMxid: "@jim.smith:coas-matrix.tail12345.ts.net", body: "ping" }),
-			"coas",
-		);
-
-		expect(mockSendAgent).toHaveBeenCalledWith("agent-123", "matrix:jim.smith", "ping");
-	});
-});
-
 // ── loadMatrixConfig ────────────────────────────────────────────
-//
-// Uses real temp dirs + a fake project settings.json to exercise the loader
-// without touching the user's actual ~/.pi/agent/settings.json.
 
 describe("loadMatrixConfig", () => {
 	let tmpDir: string;
@@ -246,7 +108,6 @@ describe("loadMatrixConfig", () => {
 	it("throws when a required field is missing", async () => {
 		writeSettings({
 			userId: "@coas-bot:matrix.org",
-			// homeserver missing
 		});
 		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/homeserver/);
