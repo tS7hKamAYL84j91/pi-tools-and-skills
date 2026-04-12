@@ -85,8 +85,15 @@ export class MatrixBridgeClient {
 			MatrixClient: AnyClient;
 			SimpleFsStorageProvider: AnyClient;
 			RustSdkCryptoStorageProvider: AnyClient;
+			LogService: AnyClient;
+			LogLevel: AnyClient;
 		};
-		const { MatrixClient, SimpleFsStorageProvider, RustSdkCryptoStorageProvider } = sdk;
+		const { MatrixClient, SimpleFsStorageProvider, RustSdkCryptoStorageProvider, LogService, LogLevel } = sdk;
+
+		// Suppress matrix-bot-sdk's internal logging (it spills "Client stop
+		// requested" and HTTP request/response noise to stdout on every
+		// reload). Only errors surface.
+		LogService.setLevel(LogLevel.ERROR);
 
 		// Storage providers — sync state and crypto state both go to disk
 		mkdirSync(this.config.cryptoStorePath, { recursive: true });
