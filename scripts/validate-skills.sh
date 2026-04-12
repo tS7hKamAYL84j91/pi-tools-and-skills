@@ -22,7 +22,7 @@ get_field() {
     echo "$frontmatter" | grep "^${field}:" | head -1 | sed "s/^${field}[: ]*//;s/^['\"]//;s/['\"]$//" | tr -d '\n'
 }
 
-for skill_dir in /Users/jim/git/tools-and-skills/skills/*/; do
+for skill_dir in /Users/jim/git/pi-tools-and-skills/skills/*/; do
     if [ ! -d "$skill_dir" ]; then
         continue
     fi
