@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+#
+# coas-bootstrap-matrix — one-shot Matrix provisioning for the CoAS stack.
+#
+# Run ONCE after the infra stack is up (continuwuity + tailscale + caddy).
+# Does EVERYTHING — no manual Element X work required:
+#
+#   1. Reads or generates a registration token for Continuwuity
+#   2. Registers the bot account
+#   3. Stores the bot's access token in the host secret store
+#   4. Registers the personal account
+#   5. Creates a private room (with correct power levels for the bot)
+#   6. Invites the bot to the room
+#   7. Updates coas/.pi/settings.json with the room ID
+#   8. Closes registration permanently
+#
+# Usage:
+#   ./scripts/coas-bootstrap-matrix \
+#     --bot-password 'STRONG_BOT_PASSWORD' \
+#     --personal-user jim \
+#     --personal-password 'STRONG_PERSONAL_PASSWORD' \
+#     --room-name 'Chief of Staff'
+#
+# After running, start pi via:
+#   ./scripts/coas-pi
+
+set -euo pipefail
+
+# ── Parse args ────────────────────────────────────────────────────
+
+BOT_USER="coas-bot"
+PERSONAL_USER=""
+BOT_PASSWORD=""
+PERSONAL_PASSWORD=""
+ROOM_NAME="Chief of Staff"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --bot-user)          BOT_USER="$2"; shift 2 ;;
+    --bot-password)      BOT_PASSWORD="$2"; shift 2 ;;
+    --personal-user)     PERSONAL_USER="$2"; shift 2 ;;
+    --personal-password) PERSONAL_PASSWORD="$2"; shift 2 ;;
+    --room-name)         ROOM_NAME="$2"; shift 2 ;;
+    -h|--help)
+      cat <<'USAGE'
+usage: coas-bootstrap-matrix \
+  --bot-password 'STRONG_BOT_PASSWORD' \
+  --personal-user jim \
+  --personal-password 'STRONG_PERSONAL_PASSWORD' \
+  [--room-name 'Chief of Staff'] \
+  [--bot-user coas-bot]
+
+Provisions both Matrix accounts, creates a private room with correct
+power levels, invites the bot, and updates coas/.pi/settings.json.
+Run once after the infra stack is up.
+USAGE
+      exit 0
+      ;;
+    *) echo "unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "${BOT_PASSWORD}" ]]; then echo "error: --bot-password is required" >&2; exit 1; fi
+if [[ -z "${PERSONAL_USER}" ]]; then echo "error: --personal-user is required" >&2; exit 1; fi
+if [[ -z "${PERSONAL_PASSWORD}" ]]; then echo "error: --personal-password is required" >&2; exit 1; fi
+
+# ── Resolve env ───────────────────────────────────────────────────
+
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOLS_DIR="$(cd "${INFRA_DIR}/.." && pwd)"
+COAS_DIR="${COAS_DIR:-${TOOLS_DIR}/../coas}"
+export COAS_QUIET=1
+# shellcheck disable=SC1091
+source "${INFRA_DIR}/scripts/_resolve-env.sh"
+
+SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
+HOMESERVER="https://${TS_FQDN}"
+TOML="${INFRA_DIR}/config/continuwuity.toml"
+SETTINGS="${COAS_DIR}/.pi/settings.json"
+
+echo "" >&2
+echo "╔═══════════════════════════════════════════════════════════╗" >&2
+echo "║  coas-bootstrap-matrix                                   ║" >&2
+echo "║  Provisioning accounts + room on ${TS_FQDN}" >&2
+echo "╚═══════════════════════════════════════════════════════════╝" >&2
+echo "" >&2
+
+# ── Helper: register an account ───────────────────────────────────
+
+register_account() {
+  local username="$1" password="$2" token="$3"
+  local response
+  response="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/register" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"username\": \"${username}\",
+      \"password\": \"${password}\",
+      \"auth\": {
+        \"type\": \"m.login.registration_token\",
+        \"token\": \"${token}\"
+      }
+    }" 2>&1)" || return 1
+  echo "${response}"
+}
+
+# ── Step 1: Enable registration with a fresh token ────────────────
+
+echo "Step 1/8: Enabling registration with a fresh token..." >&2
+
+REG_TOKEN="$(openssl rand -hex 16)"
+# Temporarily enable registration with the token
+sed -i.bak \
+  -e "s|^allow_registration = false|allow_registration = true|" \
+  -e "s|^# registration_token.*|registration_token = \"${REG_TOKEN}\"|" \
+  "${TOML}"
+docker compose restart continuwuity >/dev/null 2>&1
+echo "  Waiting for Continuwuity to restart..." >&2
+sleep 5
+# Verify it's up
+if ! curl -sf "${HOMESERVER}/_matrix/client/versions" >/dev/null 2>&1; then
+  echo "  Waiting longer..." >&2
+  sleep 5
+fi
+echo "  ✓ Registration enabled" >&2
+
+# ── Step 2: Register the bot ─────────────────────────────────────
+
+echo "Step 2/8: Registering @${BOT_USER}:${TS_FQDN}..." >&2
+
+BOT_RESPONSE="$(register_account "${BOT_USER}" "${BOT_PASSWORD}" "${REG_TOKEN}")" || {
+  echo "  error: bot registration failed" >&2
+  echo "  response: ${BOT_RESPONSE}" >&2
+  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
+  exit 1
+}
+
+BOT_ACCESS_TOKEN="$(echo "${BOT_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)" || {
+  echo "  error: no access_token in response: ${BOT_RESPONSE}" >&2
+  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
+  exit 1
+}
+
+echo "  ✓ Bot registered" >&2
+
+# ── Step 3: Store bot token ───────────────────────────────────────
+
+echo "Step 3/8: Storing bot access token..." >&2
+echo "${BOT_ACCESS_TOKEN}" | "${SECRETS}" set matrix-token
+echo "  ✓ Stored as matrix-token" >&2
+
+# ── Step 4: Register personal account ─────────────────────────────
+
+echo "Step 4/8: Registering @${PERSONAL_USER}:${TS_FQDN}..." >&2
+
+PERSONAL_RESPONSE="$(register_account "${PERSONAL_USER}" "${PERSONAL_PASSWORD}" "${REG_TOKEN}")" || {
+  echo "  error: personal account registration failed" >&2
+  echo "  response: ${PERSONAL_RESPONSE}" >&2
+  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
+  exit 1
+}
+
+PERSONAL_TOKEN="$(echo "${PERSONAL_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)"
+echo "  ✓ Personal account registered" >&2
+
+# ── Step 5: Create the room (as the personal user) ───────────────
+
+echo "Step 5/8: Creating room '${ROOM_NAME}'..." >&2
+
+ROOM_RESPONSE="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/createRoom" \
+  -H "Authorization: Bearer ${PERSONAL_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"${ROOM_NAME}\",
+    \"preset\": \"private_chat\",
+    \"visibility\": \"private\",
+    \"invite\": [\"@${BOT_USER}:${TS_FQDN}\"],
+    \"power_level_content_override\": {
+      \"events_default\": 0,
+      \"users_default\": 0,
+      \"users\": {
+        \"@${PERSONAL_USER}:${TS_FQDN}\": 100,
+        \"@${BOT_USER}:${TS_FQDN}\": 50
+      }
+    }
+  }" 2>&1)" || {
+  echo "  error: room creation failed: ${ROOM_RESPONSE}" >&2
+  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
+  exit 1
+}
+
+ROOM_ID="$(echo "${ROOM_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['room_id'])" 2>/dev/null)"
+echo "  ✓ Room created: ${ROOM_ID}" >&2
+
+# ── Step 6: Bot joins the room ────────────────────────────────────
+
+echo "Step 6/8: Bot joining room..." >&2
+
+curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/join/${ROOM_ID}" \
+  -H "Authorization: Bearer ${BOT_ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{}' >/dev/null 2>&1 || {
+  echo "  warning: bot join failed (will retry on pi startup)" >&2
+}
+echo "  ✓ Bot joined" >&2
+
+# ── Step 7: Update settings.json ──────────────────────────────────
+
+echo "Step 7/8: Updating ${SETTINGS}..." >&2
+
+# Use python3 for safe JSON manipulation
+python3 -c "
+import json, sys
+path = sys.argv[1]
+room_id = sys.argv[2]
+ts_fqdn = sys.argv[3]
+bot_user = sys.argv[4]
+
+with open(path) as f:
+    data = json.load(f)
+
+# Ensure matrix extension is in extensions list
+matrix_ext = '/Users/jim/git/tools-and-skills/project-extensions/matrix'
+if 'extensions' not in data:
+    data['extensions'] = []
+if matrix_ext not in data['extensions']:
+    data['extensions'].append(matrix_ext)
+
+# Set the matrix config block
+data['matrix'] = {
+    'homeserver': f'https://{ts_fqdn}',
+    'userId': f'@{bot_user}:{ts_fqdn}',
+    'roomId': room_id,
+    'targetAgent': 'coas',
+    'accessTokenEnv': 'MATRIX_ACCESS_TOKEN',
+    'encryption': False,
+    'deviceDisplayName': 'CoAS Chief of Staff (extension)',
+    'cryptoStorePath': '~/.pi/agent/matrix-crypto'
+}
+
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+" "${SETTINGS}" "${ROOM_ID}" "${TS_FQDN}" "${BOT_USER}"
+
+echo "  ✓ settings.json updated with room ${ROOM_ID}" >&2
+
+# ── Step 8: Close registration ────────────────────────────────────
+
+echo "Step 8/8: Closing registration permanently..." >&2
+
+mv "${TOML}.bak" "${TOML}"
+docker compose restart continuwuity >/dev/null 2>&1
+echo "  ✓ Registration closed" >&2
+
+# ── Done ──────────────────────────────────────────────────────────
+
+echo "" >&2
+echo "╔═══════════════════════════════════════════════════════════╗" >&2
+echo "║  Bootstrap complete!                                     ║" >&2
+echo "╠═══════════════════════════════════════════════════════════╣" >&2
+echo "║                                                          ║" >&2
+echo "║  Bot:      @${BOT_USER}:${TS_FQDN}" >&2
+echo "║  You:      @${PERSONAL_USER}:${TS_FQDN}" >&2
+echo "║  Room:     ${ROOM_ID}" >&2
+echo "║  Room name: ${ROOM_NAME}" >&2
+echo "║  Token:    stored in secret store as 'matrix-token'" >&2
+echo "║  Registration: CLOSED" >&2
+echo "║                                                          ║" >&2
+echo "║  Next steps:                                             ║" >&2
+echo "║    1. Install Element X on your phone                    ║" >&2
+echo "║    2. Sign in as @${PERSONAL_USER}:${TS_FQDN}" >&2
+echo "║       Homeserver: ${HOMESERVER}" >&2
+echo "║       Password: (what you passed as --personal-password) ║" >&2
+echo "║    3. The room '${ROOM_NAME}' is already there" >&2
+echo "║    4. Start pi:  ./scripts/coas-pi                      ║" >&2
+echo "║    5. Test:  matrix_send message=\"hello\"               ║" >&2
+echo "║                                                          ║" >&2
+echo "╚═══════════════════════════════════════════════════════════╝" >&2

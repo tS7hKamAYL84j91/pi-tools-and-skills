@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#
+# coas-logs — tail logs across all CoAS stack services (or a subset).
+# Useful when something isn't connecting and you need to see the cascade.
+#
+# Usage:
+#   ./scripts/coas-logs              # all services
+#   ./scripts/coas-logs continuwuity # just one
+#   ./scripts/coas-logs caddy tailscale
+
+set -euo pipefail
+
+# Resolve env so docker compose can parse the compose file (it validates
+# all interpolations on every subcommand, even `logs`).
+export COAS_QUIET=1
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve-env.sh"
+
+docker compose logs --tail 200 -f "$@"

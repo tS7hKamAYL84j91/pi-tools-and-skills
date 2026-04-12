@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#
+# coas-backup — snapshot the persistent state of the CoAS stack.
+#
+# Backs up:
+#   - continuwuity-data Docker volume (Matrix homeserver state, room history)
+#   - tailscale-state Docker volume (Tailscale node identity)
+#   - ~/.pi (or $PI_STATE_DIR) — pi state, agent registry, kanban, memories,
+#     matrix crypto store
+#
+# The coas/ and tools-and-skills/ repos are NOT backed up here — they're
+# git repositories, push them to your remote.
+#
+# Backups land in $COAS_BACKUP_DIR (default: ~/coas-backups). Last 7 kept,
+# older pruned.
+
+set -euo pipefail
+
+# Resolve env (compose stop/start need it; PI_STATE_DIR is set as a side effect).
+export COAS_QUIET=1
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve-env.sh"
+
+BACKUP_DIR="${COAS_BACKUP_DIR:-${HOME}/coas-backups}"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+DEST="${BACKUP_DIR}/coas-${TIMESTAMP}.tar.gz"
+
+mkdir -p "${BACKUP_DIR}"
+
+echo "coas-backup: snapshotting to ${DEST}" >&2
+
+# Quiesce continuwuity for a clean snapshot of its RocksDB
+echo "coas-backup: stopping continuwuity for consistent snapshot..." >&2
+docker compose stop continuwuity
+
+# Build the tarball — Docker volumes are accessed via a temporary helper container
+# so we don't need to know where the host stores them.
+docker run --rm \
+  -v continuwuity-data:/source/continuwuity:ro \
+  -v tailscale-state:/source/tailscale:ro \
+  -v "${PI_STATE_DIR}:/source/pi-state:ro" \
+  -v "${BACKUP_DIR}:/backup" \
+  alpine:latest \
+  tar czf "/backup/coas-${TIMESTAMP}.tar.gz" -C /source .
+
+echo "coas-backup: restarting continuwuity..." >&2
+docker compose start continuwuity
+
+# Prune old backups, keep last 7. Filenames are coas-YYYYMMDD-HHMMSS.tar.gz
+# which sort lexicographically == chronologically. Use a portable shell
+# loop to avoid xargs -r (GNU-only) and find -printf (GNU-only).
+# shellcheck disable=SC2012  # safe: filenames are deterministic timestamps
+old_backups="$(ls -1 "${BACKUP_DIR}"/coas-*.tar.gz 2>/dev/null | sort -r | tail -n +8)"
+if [[ -n "${old_backups}" ]]; then
+  while IFS= read -r f; do
+    rm -- "${f}"
+  done <<< "${old_backups}"
+fi
+
+echo "coas-backup: done. Backups in ${BACKUP_DIR}:" >&2
+ls -lh "${BACKUP_DIR}"/coas-*.tar.gz 2>/dev/null || echo "  (none)" >&2

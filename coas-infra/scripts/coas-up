@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# coas-up — bring up the CoAS stack with secrets resolved from the host's
+# secret store. Wraps `docker compose up -d` with env-var population.
+#
+# This is the DETACHED entry point — `docker compose up -d` returns
+# immediately. For a foreground supervisor with restart limiting and
+# graceful shutdown on signal, use ./scripts/coas-stack instead.
+#
+# Usage:
+#   ./scripts/coas-up                          # bring up the full stack
+#   ./scripts/coas-up continuwuity tailscale caddy   # bring up a subset
+#   ./scripts/coas-up --build                  # rebuild images first
+
+set -euo pipefail
+
+# Resolve secrets and env vars (sourced lib)
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve-env.sh"
+
+echo "coas-up: starting stack..." >&2
+echo "  TS_HOSTNAME:    ${TS_HOSTNAME}" >&2
+echo "  TS_FQDN:        ${TS_FQDN}" >&2
+echo "  GIT_ROOT:       ${GIT_ROOT}" >&2
+echo "  PI_STATE_DIR:   ${PI_STATE_DIR}" >&2
+echo "" >&2
+
+if [[ "${1:-}" == "--build" ]]; then
+  echo "coas-up: rebuilding coas-agent image..." >&2
+  docker compose build coas-agent
+  shift
+fi
+
+docker compose up -d "$@"
+
+echo "" >&2
+echo "coas-up: stack started. Useful next commands:" >&2
+echo "  ./scripts/coas-logs      # tail logs across all services" >&2
+echo "  ./scripts/coas-attach    # docker exec into coas-agent and start pi" >&2
+echo "  ./scripts/coas-down      # stop the stack" >&2

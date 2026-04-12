@@ -1,0 +1,57 @@
+# Continuwuity homeserver configuration for the CoAS stack.
+#
+# This file is mounted read-only into the container at /etc/continuwuity.toml.
+# It assumes Continuwuity follows the Conduit-derived config schema. Field
+# names may shift between Continuwuity versions — check upstream docs at
+# https://github.com/continuwuity/continuwuity if anything fails to load.
+
+[global]
+
+# ── Identity ─────────────────────────────────────────────────────
+# server_name is what MXIDs are scoped to (@user:server_name). It must
+# match the hostname Element X uses to reach the homeserver — i.e. the
+# Tailscale MagicDNS name (something like coas-matrix.tail12345.ts.net).
+#
+# IMPORTANT: change this before first start. The first user creation
+# bakes server_name into the database; changing it later requires a
+# fresh database.
+server_name = "coas-matrix.TAILNET-ID.ts.net"
+
+# ── Listening ────────────────────────────────────────────────────
+# Bind on all interfaces inside the container. The container's network
+# is private (only continuwuity + tailscale share it), so this is safe.
+# The host never sees this port — Tailscale Serve is the only path in.
+address = "0.0.0.0"
+port = 8008
+
+# ── Storage ──────────────────────────────────────────────────────
+# RocksDB is the only backend Continuwuity supports — there's no
+# database_backend key (Continuwuity 0.5.6 logs an "unknown config
+# parameter" warning if set).
+database_path = "/var/lib/continuwuity"
+
+# ── Limits ───────────────────────────────────────────────────────
+max_request_size = 20_000_000   # 20 MB — headroom for image uploads
+
+# ── Registration ─────────────────────────────────────────────────
+# Closed by default. Use a registration token to create the bot and
+# personal accounts on first run, then remove the token line and restart.
+allow_registration = false
+# registration_token — removed after bootstrap. No new accounts.
+
+# ── Federation ───────────────────────────────────────────────────
+# DISABLED for a single-user setup. The bot and the human are on the
+# same homeserver; there is nothing to federate. Disabling reduces the
+# attack surface and prevents accidental metadata leakage to other
+# homeservers.
+allow_federation = false
+trusted_servers = []
+
+# ── Logging ──────────────────────────────────────────────────────
+log = "warn"
+
+# ── Encryption ───────────────────────────────────────────────────
+# Continuwuity supports E2EE rooms server-side (the server stores
+# encrypted blobs but doesn't have the keys). The matrix extension
+# uses E2EE in the room. No server-side config needed for that —
+# the client (the bot) opts in to encryption when it joins the room.

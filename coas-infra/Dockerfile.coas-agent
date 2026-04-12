@@ -1,0 +1,71 @@
+# CoAS agent container — pi running the coas workspace + matrix extension.
+#
+# Built from the parent of coas/ so we have access to both coas/ and
+# tools-and-skills/ at build time. The actual repos are bind-mounted at
+# runtime via docker-compose; this image just provides Node, pi, the
+# matrix-bot-sdk dependencies, and the coas user environment.
+
+FROM node:22-bookworm-slim
+
+# ── System deps ──────────────────────────────────────────────────
+# - git: pi calls git for some operations + worker cwd setup
+# - ca-certificates: TLS to matrix.org / continuwuity over the docker network
+# - tini: PID 1 reaping for the long-running pi process
+# - curl: healthchecks and bot-account provisioning
+# - python3 + build-essential: needed by some Node native modules during install
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		git \
+		ca-certificates \
+		tini \
+		curl \
+		python3 \
+		build-essential \
+	&& rm -rf /var/lib/apt/lists/*
+
+# ── User ─────────────────────────────────────────────────────────
+# Use uid 1000 so bind-mounted ~/.pi from a Linux host has matching ownership.
+# On macOS Docker Desktop ownership translation handles uid mismatches.
+#
+# The node base image ships with a pre-existing `node` user at uid 1000.
+# We delete it first so the coas user can take that uid. (uid 1000 is the
+# standard first-interactive-user uid on Debian/Ubuntu, so bind-mounted
+# host files owned by uid 1000 line up with the container user.)
+ARG COAS_UID=1000
+ARG COAS_GID=1000
+RUN userdel -r node 2>/dev/null || true \
+	&& groupdel node 2>/dev/null || true \
+	&& groupadd -g ${COAS_GID} coas \
+	&& useradd -u ${COAS_UID} -g ${COAS_GID} -m -s /bin/bash coas
+
+# ── Pi installation ──────────────────────────────────────────────
+# Install pi-coding-agent globally so the `pi` binary is on PATH.
+# Pin to a known-good version; bump deliberately during upgrades.
+ARG PI_VERSION=0.65.0
+RUN npm install -g @mariozechner/pi-coding-agent@${PI_VERSION}
+
+# ── Tools-and-skills runtime deps ────────────────────────────────
+# The matrix extension needs matrix-bot-sdk at runtime. Pi loads extensions
+# via jiti from the bind-mounted tools-and-skills/ at runtime, so the deps
+# need to be installed in tools-and-skills/node_modules. We pre-warm an
+# install at build time to speed up first-run; the bind mount overlays
+# this with the host's node_modules at runtime.
+#
+# The bind mount means the host's node_modules wins. So this image build
+# step is essentially a no-op for the runtime — it exists to document
+# the dep, not to provide it.
+
+# ── Workspace ────────────────────────────────────────────────────
+RUN mkdir -p /workspace /home/coas/.pi \
+	&& chown -R coas:coas /workspace /home/coas
+
+USER coas
+WORKDIR /workspace/coas
+
+ENV PATH=/usr/local/bin:/home/coas/.npm-global/bin:${PATH} \
+	NODE_ENV=production
+
+# Default command: drop into a shell. Pi is started interactively via
+#   docker compose exec coas-agent pi
+# or via the coas-attach helper script.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bash", "-l"]

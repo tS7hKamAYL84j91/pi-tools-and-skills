@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# coas-pi — start pi in the coas workspace with secrets resolved.
+#
+# Exports MATRIX_ACCESS_TOKEN (and optionally MATRIX_RECOVERY_PASSPHRASE)
+# from the host secret store, then exec's pi. Use this instead of bare
+# `pi` when running on the host (not inside the coas-agent container,
+# which gets secrets via docker compose env injection).
+#
+# Usage:
+#   ~/git/tools-and-skills/infra/scripts/coas-pi
+#   COAS_DIR=~/git/other-workspace ~/git/tools-and-skills/infra/scripts/coas-pi
+#
+# Tip: alias it in your ~/.zshrc:
+#   alias coas='~/git/tools-and-skills/infra/scripts/coas-pi'
+
+set -euo pipefail
+
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOLS_DIR="$(cd "${INFRA_DIR}/.." && pwd)"
+COAS_DIR="${COAS_DIR:-${TOOLS_DIR}/../coas}"
+SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
+
+if [[ ! -x "${SECRETS}" ]]; then
+  echo "coas-pi: cannot find coas-secrets.sh at ${SECRETS}" >&2
+  exit 1
+fi
+
+# Resolve matrix token from secret store (soft — pi works without matrix)
+if MATRIX_ACCESS_TOKEN="$("${SECRETS}" get matrix-token 2>/dev/null)"; then
+  export MATRIX_ACCESS_TOKEN
+else
+  echo "coas-pi: warning — matrix-token not in secret store, matrix extension will be disabled" >&2
+fi
+
+# Optional Secure Backup recovery passphrase
+if MATRIX_RECOVERY_PASSPHRASE="$("${SECRETS}" get matrix-recovery 2>/dev/null)"; then
+  export MATRIX_RECOVERY_PASSPHRASE
+fi
+
+cd "${COAS_DIR}"
+exec pi "$@"

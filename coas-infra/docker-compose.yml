@@ -1,0 +1,200 @@
+# CoAS Stack — single-host deployment of Chief of Staff + Matrix homeserver +
+# Tailscale + Caddy reverse proxy.
+#
+# Four services:
+#   tailscale     — netns owner. Joins the docker bridge `coas-net` AND
+#                   provides the tailnet identity. Caddy joins this netns
+#                   to inherit both the tailnet and bridge access.
+#   caddy         — TLS termination + .well-known delegation + reverse
+#                   proxy to continuwuity. Sits in tailscale's netns so
+#                   it's reachable on the tailnet. Uses tailscale's cert
+#                   provider via the shared tailscaled socket.
+#   continuwuity  — Matrix homeserver. Normal coas-net member with stable
+#                   container DNS name. Never directly exposed to the
+#                   tailnet — Caddy is the only public face.
+#   coas-agent    — pi running the coas workspace. Normal coas-net member.
+#                   Talks to continuwuity via docker DNS as `continuwuity:8008`
+#                   (no loopback magic). The matrix extension reaches the
+#                   homeserver internally; the human reaches it via Caddy
+#                   on the tailnet.
+#
+# Network model:
+#
+#   ┌──────────────────────────────────────────────────────────┐
+#   │  coas-net (docker bridge)                                │
+#   │                                                           │
+#   │  ┌─────────────┐  ┌────────────┐  ┌──────────────┐       │
+#   │  │ tailscale   │  │ continuwuity│  │ coas-agent   │       │
+#   │  │ ┌─────────┐ │  │            │  │              │       │
+#   │  │ │ caddy   │ │  │ :8008      │  │ pi + matrix  │       │
+#   │  │ │ :443    │ │  │            │  │ extension    │       │
+#   │  │ └─────────┘ │  └────────────┘  └──────────────┘       │
+#   │  └─────┬───────┘                                          │
+#   └────────┼──────────────────────────────────────────────────┘
+#            │
+#            ▼
+#       Tailnet (private mesh — phone reaches caddy:443)
+#
+# Bind mounts:
+#   - The host's coas/ and tools-and-skills/ repos (read-write so pi can
+#     write to kanban/, research/, etc.)
+#   - The host's ~/.pi/ (registry, kanban, memories, sessions, matrix
+#     crypto store; survives container rebuilds; accessible from host
+#     for backup)
+#
+# Secrets:
+#   Pulled from the host's secret store (macOS Keychain or Linux pass)
+#   by scripts/coas-up, exported as env vars, never written to disk
+#   in plaintext.
+#
+# Usage:
+#   ./scripts/coas-up         # bring up the stack with secrets resolved
+#   ./scripts/coas-attach     # docker exec into coas-agent and start pi
+#   ./scripts/coas-down       # stop the stack
+#   ./scripts/coas-logs       # tail logs
+
+services:
+
+  # ── Tailscale (netns owner) ──────────────────────────────────────
+  # Joins coas-net AND provides the tailnet identity. Caddy attaches
+  # to this netns and inherits both. Persistent state survives restart
+  # via the named volume.
+  tailscale:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    hostname: ${TS_HOSTNAME:-coas-matrix}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?TS_AUTHKEY required — generate via tailscale admin → settings → keys}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: "--advertise-tags=tag:coas"
+      # Force tailscaled to put its socket at /var/run/tailscale/tailscaled.sock
+      # so the shared `tailscale-sock` volume actually contains the real socket
+      # file (not a dangling symlink to /tmp/tailscaled.sock, which is the
+      # tailscale image's default and isn't visible inside caddy's filesystem).
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - tailscale-sock:/var/run/tailscale     # shared with caddy for cert provider
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - coas-net
+
+  # ── Caddy (TLS + .well-known + reverse proxy) ────────────────────
+  # Shares tailscale's network namespace via network_mode: service:tailscale.
+  # This means caddy:
+  #   - Listens on the tailnet (gets the *.ts.net hostname for free)
+  #   - Inherits coas-net access (can reach `continuwuity:8008` via
+  #     docker DNS through tailscale's bridge interface)
+  #   - Cannot have its own `networks:` block (mutually exclusive with
+  #     network_mode: service:foo)
+  #
+  # Required env vars (passed in via .env or coas-up):
+  #   TS_FQDN — full tailnet hostname, e.g. coas-matrix.tail12345.ts.net
+  #             (TS_HOSTNAME + your tailnet's MagicDNS suffix)
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    depends_on:
+      - tailscale
+      - continuwuity
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - tailscale-sock:/var/run/tailscale:ro  # for `tailscale cert` via local socket
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      TS_FQDN: ${TS_FQDN:?TS_FQDN required — e.g. coas-matrix.tail12345.ts.net}
+
+  # ── Continuwuity (Matrix homeserver) ─────────────────────────────
+  # Normal coas-net member. Reachable as `continuwuity:8008` via docker
+  # DNS from anything else on coas-net (caddy through tailscale's netns,
+  # coas-agent directly). Never directly exposed to the tailnet — Caddy
+  # is the only public face.
+  continuwuity:
+    image: ghcr.io/continuwuity/continuwuity:latest
+    restart: unless-stopped
+    expose:
+      - "8008"
+    volumes:
+      - continuwuity-data:/var/lib/continuwuity
+      - ./config/continuwuity.toml:/etc/continuwuity.toml:ro
+    environment:
+      CONTINUWUITY_CONFIG: /etc/continuwuity.toml
+    networks:
+      - coas-net
+    # No healthcheck — the Continuwuity image is built FROM scratch and
+    # has no shell, wget, curl, or nc. Caddy uses service_started below
+    # plus its own retry-on-upstream-failure behaviour, which is plenty
+    # for a homeserver that boots in a couple of seconds.
+
+  # ── CoAS agent (pi) ──────────────────────────────────────────────
+  # Normal coas-net member. Reaches the matrix homeserver via docker
+  # DNS as `continuwuity:8008` — the matrix extension's config points
+  # there. Never on the tailnet itself; the human reaches the homeserver
+  # via Caddy.
+  #
+  # Bind mount layout:
+  #   ~/git/         → /workspace        (all repos: coas, tools-and-skills,
+  #                                        personal-research, working-notes,
+  #                                        anything else under ~/git/)
+  #   ~/.pi/         → /home/coas/.pi    (pi state, registry, kanban,
+  #                                        memories, sessions, matrix
+  #                                        crypto store)
+  #
+  # The container only sees these two host paths. No ~/.ssh, no
+  # ~/.gitconfig, no other system files.
+  coas-agent:
+    build:
+      # Use infra/ as the build context. The Dockerfile doesn't COPY any
+      # files (all repo + state access is via runtime bind mounts), so
+      # the context only needs to be a directory Docker can hand to the
+      # daemon. Keeping it small avoids sending the entire ~/git/ tree
+      # (1.5 GB+) on every build.
+      context: .
+      dockerfile: Dockerfile.coas-agent
+    image: coas-agent:local
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - ${GIT_ROOT:-~/git}:/workspace
+      - ${PI_STATE_DIR:-~/.pi}:/home/coas/.pi
+    working_dir: /workspace/coas
+    environment:
+      # No `:?` guard — the env-resolver lib (_resolve-env.sh) sets a
+      # placeholder if the token isn't in the secret store, so docker
+      # compose can still parse the file for partial subcommands like
+      # `up continuwuity tailscale caddy`. The matrix extension will
+      # fail loudly inside coas-agent if it's actually started with
+      # the placeholder.
+      MATRIX_ACCESS_TOKEN: ${MATRIX_ACCESS_TOKEN:-}
+      MATRIX_RECOVERY_PASSPHRASE: ${MATRIX_RECOVERY_PASSPHRASE:-}
+      KANBAN_DIR: /workspace/coas/kanban
+      KANBAN_WIP_LIMIT: ${KANBAN_WIP_LIMIT:-3}
+    networks:
+      - coas-net
+    depends_on:
+      - continuwuity
+
+# ── Volumes ──────────────────────────────────────────────────────
+volumes:
+  continuwuity-data:
+    driver: local
+  tailscale-state:
+    driver: local
+  tailscale-sock:
+    driver: local                    # shared between tailscale and caddy
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
+# ── Networks ─────────────────────────────────────────────────────
+networks:
+  coas-net:
+    driver: bridge
