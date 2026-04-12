@@ -259,22 +259,27 @@ if grep -qF "$MARKER" "$ZSHRC" 2>/dev/null; then
     dim "  Removed previous tools-and-skills block from .zshrc"
 fi
 
-cat >> "$ZSHRC" << 'ZSHBLOCK'
+# Write the block with $SCRIPT_DIR expanded at setup time (unquoted heredoc)
+# so the paths are correct even if the repo is renamed or moved.
+# All other $ signs are escaped so they stay literal in the zshrc.
+cat >> "$ZSHRC" << ZSHBLOCK
 # >>> pi tools-and-skills env >>>
+# Repo location (written by setup-pi.sh at setup time — re-run after moving)
+export PI_TOOLS_DIR="$SCRIPT_DIR"
 # OpenRouter API key from Keychain (for pi --provider openrouter)
-if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
-    _or_key=$(security find-generic-password -s "openrouter-api-key" -a "$USER" -w 2>/dev/null)
-    if [[ -n "$_or_key" ]]; then export OPENROUTER_API_KEY="$_or_key"; fi
+if [[ -z "\${OPENROUTER_API_KEY:-}" ]]; then
+    _or_key=\$(security find-generic-password -s "openrouter-api-key" -a "\$USER" -w 2>/dev/null)
+    if [[ -n "\$_or_key" ]]; then export OPENROUTER_API_KEY="\$_or_key"; fi
     unset _or_key
 fi
-# Matrix bot token from Keychain (for the matrix extension in pi)
-if [[ -z "${MATRIX_ACCESS_TOKEN:-}" ]]; then
-    _mt=$(~/git/tools-and-skills/scripts/coas-secrets.sh get matrix-token 2>/dev/null)
-    if [[ -n "$_mt" ]]; then export MATRIX_ACCESS_TOKEN="$_mt"; fi
+# Matrix bot token from secret store (for the matrix extension in pi)
+if [[ -z "\${MATRIX_ACCESS_TOKEN:-}" ]]; then
+    _mt=\$("\$PI_TOOLS_DIR/scripts/coas-secrets.sh" get matrix-token 2>/dev/null)
+    if [[ -n "\$_mt" ]]; then export MATRIX_ACCESS_TOKEN="\$_mt"; fi
     unset _mt
 fi
 # coas-pi alias — start pi in the coas workspace with secrets resolved
-alias coas='~/git/tools-and-skills/coas-infra/scripts/coas-pi'
+alias coas='\$PI_TOOLS_DIR/coas-infra/scripts/coas-pi'
 # <<< pi tools-and-skills env <<<
 ZSHBLOCK
 
