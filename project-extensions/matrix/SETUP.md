@@ -212,8 +212,8 @@ Once Steps 1–6 are done, the extension needs the values below. These go into `
 ```jsonc
 {
   "extensions": [
-    "/Users/jim/git/tools-and-skills/project-extensions/kanban",
-    "/Users/jim/git/tools-and-skills/project-extensions/matrix"
+    "/Users/jim/git/pi-tools-and-skills/project-extensions/kanban",
+    "/Users/jim/git/pi-tools-and-skills/project-extensions/matrix"
   ],
   "matrix": {
     "homeserver":        "https://matrix.org",

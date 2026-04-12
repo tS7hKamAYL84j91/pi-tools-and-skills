@@ -63,7 +63,7 @@ In `~/git/coas/.pi/settings.json` (or any pi settings file):
 ```jsonc
 {
   "extensions": [
-    "/Users/jim/git/tools-and-skills/project-extensions/matrix"
+    "/Users/jim/git/pi-tools-and-skills/project-extensions/matrix"
   ],
   "matrix": {
     "homeserver":        "https://matrix.org",

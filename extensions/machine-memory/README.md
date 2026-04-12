@@ -101,7 +101,7 @@ Target: **200–500 tokens per file**. See `skills/machine-memory/references/for
 ## Directory Layout
 
 ```
-~/git/tools-and-skills/
+~/git/pi-tools-and-skills/
   memories/                    ← Shared memories (in settings.json "memories" path)
     pi-kanban.mmem.yml
     ollama.mmem.yml

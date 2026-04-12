@@ -17,16 +17,16 @@ coas                 # start pi in the coas workspace (alias set by setup-pi.sh)
 
 ### Global (loaded in every pi session)
 
-| Extension | What it does |
-|---|---|
-| **pi-panopticon** | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring (`agent_status`), and lifecycle management |
-| **machine-memory** | `.mmem.yml` cheat sheets — gradual-exposure tool/domain knowledge injected into agent context on demand |
+| Extension          | What it does                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| **pi-panopticon**  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring (`agent_status`), and lifecycle management |
+| **machine-memory** | `.mmem.yml` cheat sheets — gradual-exposure tool/domain knowledge injected into agent context on demand                      |
 
 ### Project (add per-workspace in `.pi/settings.json`)
 
-| Extension | What it does |
-|---|---|
-| **kanban** | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, file watcher, snapshot renderer |
+| Extension  | What it does                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| **kanban** | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, file watcher, snapshot renderer     |
 | **matrix** | Phone ↔ agent bridge via a private Matrix room — notification + inbox pattern, `matrix_read` / `matrix_send` tools |
 
 ## Deployment
@@ -59,11 +59,11 @@ project-extensions/
 
 coas-infra/             Docker deployment (Continuwuity + Caddy + Tailscale)
 lib/                    Shared: agent-api, maildir transport, tool-result helpers
-skills/                 10 agent skills (clean-room, research-expert, planning, ...)
-memories/               5 global .mmem.yml files (pi-kanban, pi-extension-dev, ...)
+skills/                 Agent skills (clean-room, research-expert, planning, ...)
+memories/               Global .mmem.yml files (pi-kanban, pi-extension-dev, ...)
 scripts/                coas-secrets, matrix-login, clean-mailboxes, validate-skills
 prompts/                refactor, commit-and-push
-tests/                  232 tests (vitest + archunit fitness functions)
+tests/                  Tests (vitest + archunit fitness functions)
 ```
 
 ## Development

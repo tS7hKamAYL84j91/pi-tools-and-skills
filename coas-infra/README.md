@@ -171,7 +171,7 @@ The deployment expects both repos under `~/git/`. The bind mount maps `~/git →
 
 You also need to install matrix-bot-sdk in tools-and-skills (the matrix extension's runtime dependency):
 ```bash
-cd ~/git/tools-and-skills
+cd ~/git/pi-tools-and-skills
 npm install
 ```
 
@@ -264,7 +264,7 @@ The `security` CLI is pre-installed. The `coas-secrets.sh` wrapper auto-detects 
 
 Test it:
 ```bash
-~/git/tools-and-skills/scripts/coas-secrets.sh --help
+~/git/pi-tools-and-skills/scripts/coas-secrets.sh --help
 ```
 
 Should show the usage. The backend line should say `macOS → login Keychain`.
@@ -290,7 +290,7 @@ pass init <KEY_ID>
 
 Test it:
 ```bash
-~/git/tools-and-skills/scripts/coas-secrets.sh --help
+~/git/pi-tools-and-skills/scripts/coas-secrets.sh --help
 ```
 
 Backend line should say `Linux → pass`.
@@ -299,12 +299,12 @@ Backend line should say `Linux → pass`.
 
 ```bash
 echo 'tskey-auth-PASTE-YOUR-KEY-HERE' | \
-  ~/git/tools-and-skills/scripts/coas-secrets.sh set tailscale-authkey
+  ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set tailscale-authkey
 ```
 
 Verify:
 ```bash
-~/git/tools-and-skills/scripts/coas-secrets.sh get tailscale-authkey
+~/git/pi-tools-and-skills/scripts/coas-secrets.sh get tailscale-authkey
 # Should print: tskey-auth-...
 ```
 
@@ -451,12 +451,12 @@ Successful response (formatted):
 
 ```bash
 echo 'syt_Y29hcy1ib3Q_...' | \
-  ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-token
+  ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-token
 ```
 
 Verify:
 ```bash
-~/git/tools-and-skills/scripts/coas-secrets.sh get matrix-token
+~/git/pi-tools-and-skills/scripts/coas-secrets.sh get matrix-token
 # Should print: syt_...
 ```
 
@@ -725,7 +725,7 @@ If you want to protect against losing the bot's crypto store (e.g. accidental wi
 If you want the bot to also be able to recover from key loss, store the recovery passphrase in `coas-secrets`:
 ```bash
 echo 'your-recovery-passphrase' | \
-  ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-recovery
+  ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-recovery
 ```
 
 And add to `coas/.pi/settings.json`:
@@ -854,7 +854,7 @@ You'll generally use the phone path for quick check-ins ("what's on the kanban",
 ## Adding more secrets later
 
 ```bash
-echo 'value' | ~/git/tools-and-skills/scripts/coas-secrets.sh set <key>
+echo 'value' | ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set <key>
 ```
 
 Available keys: `matrix-token`, `matrix-recovery`, `tailscale-authkey`. Adding new ones requires extending `coas-secrets.sh` and `coas-up`.
@@ -865,19 +865,19 @@ Periodically (every few weeks, or after any suspected leak):
 
 ```bash
 # 1. Invalidate the old token
-TOKEN="$(~/git/tools-and-skills/scripts/coas-secrets.sh get matrix-token)"
+TOKEN="$(~/git/pi-tools-and-skills/scripts/coas-secrets.sh get matrix-token)"
 curl -X POST https://coas-matrix.tail12345.ts.net/_matrix/client/v3/logout \
   -H "Authorization: Bearer ${TOKEN}"
 
 # 2. Get a new token via the matrix-login script
-npx tsx ~/git/tools-and-skills/scripts/matrix-login.ts \
+npx tsx ~/git/pi-tools-and-skills/scripts/matrix-login.ts \
   --homeserver https://coas-matrix.tail12345.ts.net \
   --user @coas-bot:coas-matrix.tail12345.ts.net
 # Prompts for the bot's password, prints the new token
 
 # 3. Update the secret store
 echo 'syt_NEW_TOKEN_HERE' | \
-  ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-token
+  ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-token
 
 # 4. Restart so the coas-agent picks up the new env var
 cd ~/git/coas/infra
@@ -979,7 +979,7 @@ Watch the upstream release pages for security advisories:
 # Troubleshooting
 
 ### `coas-up: matrix-token is empty`
-You haven't stored it yet. Run `echo 'syt_...' | ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-token`.
+You haven't stored it yet. Run `echo 'syt_...' | ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-token`.
 
 ### `coas-up: TS_FQDN not set`
 You haven't set `TS_FQDN` in `.env`. Open `.env` and add e.g. `TS_FQDN=coas-matrix.tail12345.ts.net`.
@@ -1003,9 +1003,9 @@ Continuwuity's config schema may have shifted between versions. Check `docker co
 The pi-coding-agent npm install in the Dockerfile failed at build time. Run `docker compose build coas-agent` and watch the build output for npm errors. The most common cause is matrix-bot-sdk's transitive native binding (`@matrix-org/matrix-sdk-crypto-nodejs`) failing to compile — check the build logs around the crypto package install.
 
 ### Matrix extension can't find matrix-bot-sdk at runtime
-The bind mount overlays the host's `~/git/tools-and-skills/node_modules` into the container. If you forgot to `npm install` on the host before building, the dep is missing. Run:
+The bind mount overlays the host's `~/git/pi-tools-and-skills/node_modules` into the container. If you forgot to `npm install` on the host before building, the dep is missing. Run:
 ```bash
-cd ~/git/tools-and-skills
+cd ~/git/pi-tools-and-skills
 npm install
 ```
 
@@ -1064,14 +1064,14 @@ The stack is portable. To move from your Mac to the DGX (or vice versa):
 3. **Copy three secrets** to the new host's secret store:
    ```bash
    # On the old host:
-   ~/git/tools-and-skills/scripts/coas-secrets.sh get matrix-token
-   ~/git/tools-and-skills/scripts/coas-secrets.sh get tailscale-authkey
-   ~/git/tools-and-skills/scripts/coas-secrets.sh get matrix-recovery   # if used
+   ~/git/pi-tools-and-skills/scripts/coas-secrets.sh get matrix-token
+   ~/git/pi-tools-and-skills/scripts/coas-secrets.sh get tailscale-authkey
+   ~/git/pi-tools-and-skills/scripts/coas-secrets.sh get matrix-recovery   # if used
    
    # On the new host (paste each value):
-   echo 'syt_...' | ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-token
-   echo 'tskey-auth-...' | ~/git/tools-and-skills/scripts/coas-secrets.sh set tailscale-authkey
-   echo '...' | ~/git/tools-and-skills/scripts/coas-secrets.sh set matrix-recovery
+   echo 'syt_...' | ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-token
+   echo 'tskey-auth-...' | ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set tailscale-authkey
+   echo '...' | ~/git/pi-tools-and-skills/scripts/coas-secrets.sh set matrix-recovery
    ```
 4. **Restore persistent state** from the latest `coas-backup` tarball (or start fresh and re-do device verification)
 5. **Copy `infra/.env`** with the same `TS_FQDN`

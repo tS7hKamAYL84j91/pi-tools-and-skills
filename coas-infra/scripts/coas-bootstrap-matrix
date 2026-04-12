@@ -219,7 +219,7 @@ with open(path) as f:
     data = json.load(f)
 
 # Ensure matrix extension is in extensions list
-matrix_ext = '/Users/jim/git/tools-and-skills/project-extensions/matrix'
+matrix_ext = '/Users/jim/git/pi-tools-and-skills/project-extensions/matrix'
 if 'extensions' not in data:
     data['extensions'] = []
 if matrix_ext not in data['extensions']:

@@ -8,11 +8,11 @@
 # which gets secrets via docker compose env injection).
 #
 # Usage:
-#   ~/git/tools-and-skills/infra/scripts/coas-pi
-#   COAS_DIR=~/git/other-workspace ~/git/tools-and-skills/infra/scripts/coas-pi
+#   ~/git/pi-tools-and-skills/infra/scripts/coas-pi
+#   COAS_DIR=~/git/other-workspace ~/git/pi-tools-and-skills/infra/scripts/coas-pi
 #
 # Tip: alias it in your ~/.zshrc:
-#   alias coas='~/git/tools-and-skills/infra/scripts/coas-pi'
+#   alias coas='~/git/pi-tools-and-skills/infra/scripts/coas-pi'
 
 set -euo pipefail
 
