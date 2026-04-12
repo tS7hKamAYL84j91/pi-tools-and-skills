@@ -125,6 +125,12 @@ export class MatrixBridgeClient {
 			await this.client.joinRoom(roomId);
 		});
 
+		// Update lastSyncMs on every sync event so the status bar timer
+		// reflects actual sync activity, not just time since startup.
+		this.client.on("room.event", () => {
+			this.status.lastSyncMs = Date.now();
+		});
+
 		// Wire the inbound message handler
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
 			if (roomId !== this.config.roomId) return;
