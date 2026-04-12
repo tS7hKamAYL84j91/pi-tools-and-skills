@@ -83,24 +83,24 @@ function schedulePoke(): void {
 function updateStatus(): void {
 	if (!ctx) return;
 	if (!config) {
-		ctx.ui.setStatus("matrix", "📡 matrix: not configured");
+		ctx.ui.setStatus("matrix", "📡 ✗");
 		return;
 	}
 	if (!client) {
-		ctx.ui.setStatus("matrix", "📡 matrix: idle");
+		ctx.ui.setStatus("matrix", "📡 …");
 		return;
 	}
 	const s = client.getStatus();
 	if (lastError) {
-		ctx.ui.setStatus("matrix", `📡 matrix: error — ${lastError}`);
+		ctx.ui.setStatus("matrix", "📡 !");
 		return;
 	}
 	if (!s.connected) {
-		ctx.ui.setStatus("matrix", "📡 matrix: disconnected");
+		ctx.ui.setStatus("matrix", "📡 ✗");
 		return;
 	}
-	const unreadTag = unread.length > 0 ? ` 📱 ${unread.length} unread` : "";
-	ctx.ui.setStatus("matrix", `📡 matrix: connected${unreadTag}`);
+	const unreadTag = unread.length > 0 ? ` ${unread.length}✉` : "";
+	ctx.ui.setStatus("matrix", `📡${unreadTag}`);
 }
 
 // ── Inbound handler ─────────────────────────────────────────────
