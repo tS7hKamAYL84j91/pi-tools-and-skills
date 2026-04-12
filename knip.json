@@ -3,7 +3,6 @@
   "entry": [
     "extensions/*/index.ts",
     "project-extensions/*/index.ts",
-    "vscode-extension/src/extension.ts",
     "lib/*.ts",
     "lib/**/*.ts",
     "scripts/*.ts"
@@ -11,14 +10,12 @@
   "project": [
     "extensions/**/*.ts",
     "project-extensions/**/*.ts",
-    "vscode-extension/**/*.ts",
     "lib/**/*.ts",
     "scripts/**/*.ts"
   ],
   "ignoreDependencies": [
     "@mariozechner/pi-tui",
-    "@vitest/coverage-v8",
-    "vscode"
+    "@vitest/coverage-v8"
   ],
   "tags": [
     "-lintignore"
