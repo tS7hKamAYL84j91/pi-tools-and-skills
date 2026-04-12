@@ -27,7 +27,3 @@ export interface MatrixConfig {
 	recoveryPassphrase?: string;
 }
 
-/** Connection state surfaced to the UI widget and the matrix_status tool. */
-export interface MatrixStatus {
-	connected: boolean;
-}

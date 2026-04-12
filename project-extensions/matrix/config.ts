@@ -51,6 +51,7 @@ function readMatrixSettings(path: string): RawMatrixSettings | null {
 		const parsed = JSON.parse(raw) as { matrix?: RawMatrixSettings };
 		return parsed.matrix ?? null;
 	} catch {
+		/* malformed JSON or unreadable file — treat as "not configured" */
 		return null;
 	}
 }

@@ -90,12 +90,12 @@ function updateStatus(): void {
 		ctx.ui.setStatus("matrix", "📡 …");
 		return;
 	}
-	const s = client.getStatus();
+	
 	if (lastError) {
 		ctx.ui.setStatus("matrix", "📡 !");
 		return;
 	}
-	if (!s.connected) {
+	if (!client.isConnected()) {
 		ctx.ui.setStatus("matrix", "📡 ✗");
 		return;
 	}
@@ -252,15 +252,15 @@ export default function (pi: ExtensionAPI): void {
 			if (!config) return ok("Matrix: not configured.", { configured: false });
 			if (!client) return ok(`Matrix: not connected. ${lastError ?? ""}`, { configured: true, connected: false });
 
-			const s = client.getStatus();
+			
 			const lines = [
-				`Matrix: ${s.connected ? "connected" : "disconnected"}`,
+				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}`,
 				`  Unread:  ${unread.length}`,
 				`  Room:    ${config.roomId}`,
 				`  Bot:     ${config.userId}`,
 			];
 			if (lastError) lines.push(`  Error:   ${lastError}`);
-			return ok(lines.join("\n"), { connected: s.connected, unread: unread.length });
+			return ok(lines.join("\n"), { connected: client.isConnected(), unread: unread.length });
 		},
 	});
 
@@ -271,10 +271,10 @@ export default function (pi: ExtensionAPI): void {
 		handler: async (_args, c) => {
 			if (!config) { c.ui.notify("Matrix: not configured", "info"); return; }
 			if (!client) { c.ui.notify(`Matrix: not connected. ${lastError ?? ""}`, "warning"); return; }
-			const s = client.getStatus();
+			
 			c.ui.notify(
-				`Matrix: ${s.connected ? "connected" : "disconnected"}, ${unread.length} unread`,
-				s.connected ? "info" : "warning",
+				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}, ${unread.length} unread`,
+				client.isConnected() ? "info" : "warning",
 			);
 		},
 	});

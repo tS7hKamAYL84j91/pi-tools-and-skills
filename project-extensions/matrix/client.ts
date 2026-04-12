@@ -27,7 +27,7 @@ import { mkdirSync } from "node:fs";
 // biome-ignore lint/suspicious/noExplicitAny: matrix-bot-sdk types resolved at runtime
 type AnyClient = any;
 
-import type { MatrixConfig, MatrixStatus } from "./types.js";
+import type { MatrixConfig } from "./types.js";
 
 // ── Public types ────────────────────────────────────────────────
 
@@ -52,9 +52,7 @@ type InboundHandler = (msg: InboundMessage) => void | Promise<void>;
 
 export class MatrixBridgeClient {
 	private client: AnyClient = null;
-	private status: MatrixStatus = {
-		connected: false,
-	};
+	private connected = false;
 	private onInbound?: InboundHandler;
 
 	constructor(private config: MatrixConfig) {}
@@ -165,7 +163,7 @@ export class MatrixBridgeClient {
 
 		// Start the sync loop. matrix-bot-sdk handles reconnection internally.
 		await this.client.start();
-		this.status.connected = true;
+		this.connected = true;
 	}
 
 	/** Send an encrypted text message to the configured room. */
@@ -180,11 +178,11 @@ export class MatrixBridgeClient {
 		if (!this.client) return;
 		try { await this.client.stop(); } catch { /* non-fatal */ }
 		this.client = null;
-		this.status.connected = false;
+		this.connected = false;
 	}
 
-	/** Snapshot of the connection state for the UI widget and matrix_status tool. */
-	getStatus(): MatrixStatus {
-		return { ...this.status };
+	/** Whether the sync loop is connected and running. */
+	isConnected(): boolean {
+		return this.connected;
 	}
 }
