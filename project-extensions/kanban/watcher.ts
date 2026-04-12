@@ -102,17 +102,11 @@ function buildWidgetLines(board: BoardState): string[] {
 	return lines;
 }
 
-function buildStatusText(board: BoardState): string {
-	let wip = 0;
-	let blocked = 0;
-	for (const t of board.tasks.values()) {
-		if (t.deleted) continue;
-		if (t.col === "in-progress") wip++;
-		if (t.col === "blocked") blocked++;
-	}
-	const parts = [`WIP ${wip}/${WIP_LIMIT}`];
-	if (blocked > 0) parts.push(`${blocked} blocked`);
-	return `📋 ${parts.join(" | ")}`;
+// Status text is intentionally empty — the kanban widget above the
+// prompt already shows the full WIP/todo/blocked/done breakdown.
+// Duplicating it in the powerline just wastes horizontal space.
+function buildStatusText(_board: BoardState): string {
+	return "";
 }
 
 // ── Setup ───────────────────────────────────────────────────
