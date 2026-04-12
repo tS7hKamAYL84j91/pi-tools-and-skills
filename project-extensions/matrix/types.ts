@@ -30,9 +30,4 @@ export interface MatrixConfig {
 /** Connection state surfaced to the UI widget and the matrix_status tool. */
 export interface MatrixStatus {
 	connected: boolean;
-	deviceId?: string;
-	lastSyncMs?: number;
-	roomEncrypted?: boolean;
-	pendingVerifications: number;
-	error?: string;
 }

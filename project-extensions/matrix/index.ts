@@ -99,9 +99,8 @@ function updateStatus(): void {
 		ctx.ui.setStatus("matrix", "📡 matrix: disconnected");
 		return;
 	}
-	const ageSec = s.lastSyncMs ? Math.round((Date.now() - s.lastSyncMs) / 1000) : -1;
-	const unreadTag = unread.length > 0 ? ` (${unread.length} unread)` : "";
-	ctx.ui.setStatus("matrix", `📡 matrix: connected, last sync ${ageSec}s ago${unreadTag}`);
+	const unreadTag = unread.length > 0 ? ` 📱 ${unread.length} unread` : "";
+	ctx.ui.setStatus("matrix", `📡 matrix: connected${unreadTag}`);
 }
 
 // ── Inbound handler ─────────────────────────────────────────────
@@ -254,17 +253,14 @@ export default function (pi: ExtensionAPI): void {
 			if (!client) return ok(`Matrix: not connected. ${lastError ?? ""}`, { configured: true, connected: false });
 
 			const s = client.getStatus();
-			const ageSec = s.lastSyncMs ? Math.round((Date.now() - s.lastSyncMs) / 1000) : -1;
 			const lines = [
-				`Matrix:`,
-				`  Connected:  ${s.connected ? "yes" : "no"}`,
-				`  Last sync:  ${ageSec >= 0 ? `${ageSec}s ago` : "never"}`,
-				`  Unread:     ${unread.length}`,
-				`  Room:       ${config.roomId}`,
-				`  Bot:        ${config.userId}`,
+				`Matrix: ${s.connected ? "connected" : "disconnected"}`,
+				`  Unread:  ${unread.length}`,
+				`  Room:    ${config.roomId}`,
+				`  Bot:     ${config.userId}`,
 			];
-			if (lastError) lines.push(`  Error:      ${lastError}`);
-			return ok(lines.join("\n"), { status: s, unread: unread.length });
+			if (lastError) lines.push(`  Error:   ${lastError}`);
+			return ok(lines.join("\n"), { connected: s.connected, unread: unread.length });
 		},
 	});
 
@@ -276,10 +272,8 @@ export default function (pi: ExtensionAPI): void {
 			if (!config) { c.ui.notify("Matrix: not configured", "info"); return; }
 			if (!client) { c.ui.notify(`Matrix: not connected. ${lastError ?? ""}`, "warning"); return; }
 			const s = client.getStatus();
-			const ageSec = s.lastSyncMs ? Math.round((Date.now() - s.lastSyncMs) / 1000) : -1;
 			c.ui.notify(
-				`Matrix: ${s.connected ? "connected" : "disconnected"}, ` +
-				`sync ${ageSec}s ago, ${unread.length} unread`,
+				`Matrix: ${s.connected ? "connected" : "disconnected"}, ${unread.length} unread`,
 				s.connected ? "info" : "warning",
 			);
 		},

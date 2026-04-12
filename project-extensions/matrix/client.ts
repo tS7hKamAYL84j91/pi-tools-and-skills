@@ -54,7 +54,6 @@ export class MatrixBridgeClient {
 	private client: AnyClient = null;
 	private status: MatrixStatus = {
 		connected: false,
-		pendingVerifications: 0,
 	};
 	private onInbound?: InboundHandler;
 
@@ -125,12 +124,6 @@ export class MatrixBridgeClient {
 			await this.client.joinRoom(roomId);
 		});
 
-		// Update lastSyncMs on every sync event so the status bar timer
-		// reflects actual sync activity, not just time since startup.
-		this.client.on("room.event", () => {
-			this.status.lastSyncMs = Date.now();
-		});
-
 		// Wire the inbound message handler
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
 			if (roomId !== this.config.roomId) return;
@@ -166,9 +159,6 @@ export class MatrixBridgeClient {
 		// Start the sync loop. matrix-bot-sdk handles reconnection internally.
 		await this.client.start();
 		this.status.connected = true;
-		this.status.lastSyncMs = Date.now();
-		this.status.deviceId = this.client.crypto?.clientDeviceId;
-		this.status.roomEncrypted = this.config.encryption;
 	}
 
 	/** Send an encrypted text message to the configured room. */
