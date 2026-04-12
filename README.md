@@ -1,6 +1,6 @@
 # tools-and-skills
 
-Pi agent infrastructure: multi-agent messaging, spawning, monitoring, kanban task tracking, and reusable skills — all as pi extensions.
+Pi agent infrastructure: multi-agent messaging, spawning, monitoring, kanban task tracking, Matrix-to-phone bridge, and reusable skills — all as pi extensions.
 
 ## Structure
 
@@ -17,19 +17,33 @@ extensions/pi-panopticon/    Unified panopticon extension (auto-discovered by pi
   types.ts                   Shared interfaces
   ui.ts                      Powerline widget, /agents overlay, /alias
 
+extensions/machine-memory/   Machine memory extension (.mmem.yml cheat sheets)
+  discover.ts                Memory file discovery from settings + project paths
+  format.ts                  Index rendering + token estimation
+  index.ts                   mmem_create, mmem_list, mmem_inject, mmem_update, mmem_validate
+  overlay.ts                 /mmem TUI overlay
+  parse.ts                   YAML frontmatter parser
+  types.ts                   MemoryFile, MemoryMeta, MemorySource
+  validate.ts                Format spec validation
+  write.ts                   Skeleton generation + append updates
+
 project-extensions/kanban/   Kanban board extension (add per-project in settings.json)
-  board.ts                   Event-sourcing parser + path helpers + types
-  index.ts                   14 kanban tools + auto-compaction logic
+  board.ts                   Event-sourcing parser + path helpers + mutation helpers
+  compaction.ts              Log compaction: rewrite board.log to minimal reconstruction
+  index.ts                   14 kanban tools
   monitor.ts                 Agent health inspection + nudge delivery
+  overlay.ts                 /kanban TUI overlay (controller + state machine)
+  overlay-render.ts          Pure rendering functions for the kanban overlay
   snapshot.ts                Markdown snapshot renderer
   watcher.ts                 board.log watcher: widget + auto-injection
 
-vscode-extension/            CoAS Kanban VSCode panel
-  src/extension.ts           Extension entry point (registers "CoAS: Open Kanban Board")
-  src/kanbanPanel.ts         WebviewPanel host — parses board.log, handles UI messages
-  media/kanban.js            Frontend: drag-and-drop columns, inline edit, create form
-  media/kanban.css           Panel styles
-  coas-kanban-0.1.0.vsix     Pre-built VSIX package
+project-extensions/matrix/   Matrix bridge extension (phone ↔ agent via Matrix room)
+  bridge.ts                  MXID parsing utility
+  client.ts                  matrix-bot-sdk wrapper: connect, sync, send
+  config.ts                  Settings loader + env-var resolution
+  index.ts                   matrix_send, matrix_read, matrix_status tools
+  types.ts                   MatrixConfig type
+  SETUP.md                   One-time setup playbook (matrix.org + E2EE + self-hosted)
 
 lib/                         Shared libraries
   agent-api.ts               Public API: findAgentByName, sendAgentMessage
@@ -40,21 +54,21 @@ lib/                         Shared libraries
   tool-result.ts             ok()/fail() helpers
   transports/maildir.ts      At-least-once delivery via Maildir
 
-skills/                      Specialized agent skills (see skills/README.md)
-  planning/                  Manus-style PLAN.md / PROGRESS.md / KNOWLEDGE.md
-  research-expert/           Academic paper search, web reader, GitHub search
-  red-team/                  Security vulnerability assessment (MITRE ATLAS)
-  skill-creator/             Create and refine new skills
+skills/                      Specialized agent skills (see SKILLS.md)
 
 prompts/                     Prompt templates
   commit-and-push.md         Git commit + push workflow
   refactor.md                Code refactoring guidance
 
-scripts/                     Maintenance utilities
+scripts/                     Utilities
   c4-auto.ts                 C4 diagram generator
   clean-mailboxes.sh         Orphaned Maildir mailbox cleanup
+  matrix-login.ts            Matrix bot account provisioning (password → token)
+  coas-secrets.sh            Platform-agnostic secret store (Keychain / pass)
 
-tests/                       188 tests (vitest + archunit)
+memories/                    Global machine memory files (.mmem.yml)
+
+tests/                       232 tests (vitest + archunit)
 ```
 
 ## Components
@@ -68,42 +82,46 @@ Provides these tools to every pi session:
 - **spawn_agent** / **rpc_send** / **kill_agent** / **list_spawned** — agent lifecycle
 - **agent_peek** / **agent_status** / **agent_nudge** — discovery and health
 
-See [AGENT.md](AGENT.md) for coding standards.
-
 ### Kanban Extension
 
-A full kanban board backed by an append-only `board.log`. Add to projects by pointing `settings.json` at `project-extensions/`.
+A full kanban board backed by an append-only `board.log`. Add to projects by pointing `settings.json` at `project-extensions/kanban`.
 
 **14 tools:** `kanban_create`, `kanban_pick`, `kanban_claim`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_note`, `kanban_move`, `kanban_edit`, `kanban_delete`, `kanban_compact`, `kanban_snapshot`, `kanban_monitor`, `kanban_reassign`
 
 Key features:
 - **Event sourcing** — `board.log` is the source of truth; every action is an appended line
-- **Watcher** — detects external writes to `board.log` and auto-injects `kanban_monitor` prompts
+- **TUI overlay** — `/kanban` command or `ctrl+shift+k` for a full 5-column board view with keyboard navigation and task detail
 - **Auto-compaction** — rewrites `board.log` when >500 lines or dirty ratio >2× (Kafka-style)
-- **Snapshot** — regenerates `snapshot.md` in Markdown for human/LLM consumption
-- **Monitor** — checks agent heartbeats, detects STALLED/DONE/MISSING, delivers nudges
+- **Watcher** — detects external writes to `board.log` and auto-injects prompts when idle
+- **Mutation helpers** — `deleteTask()` / `moveTask()` in board.ts as the single source of truth for log format + validation
 
-See [project-extensions/kanban/README.md](project-extensions/kanban/README.md) for full docs.
+### Matrix Extension
 
-### VSCode Extension
+Bridges a private Matrix room to pi's prompt — type on your phone, the agent reads and replies.
 
-A live kanban board panel for VSCode. Reads `board.log` directly and auto-refreshes on changes.
+**3 tools:** `matrix_send`, `matrix_read`, `matrix_status`
 
-- Open via **Command Palette → CoAS: Open Kanban Board**
-- Drag-and-drop tasks between columns
-- Inline edit title/priority/tags/description
-- Add notes, delete tasks, create new tasks via form
-- Enforces WIP limit (prompts for block reason when dragging to blocked)
+Key features:
+- **Notification + inbox pattern** — sync loop buffers messages, pokes the agent when idle, agent calls `matrix_read` when ready
+- **matrix-bot-sdk** with optional E2EE via Rust crypto
+- **Homeserver-agnostic** — works against matrix.org or a self-hosted Continuwuity
+- **Platform-native secrets** — `coas-secrets.sh` reads tokens from macOS Keychain or Linux `pass`
 
-See [vscode-extension/README.md](vscode-extension/README.md) for build and install instructions.
+See [project-extensions/matrix/README.md](project-extensions/matrix/README.md) for the runtime contract and [project-extensions/matrix/SETUP.md](project-extensions/matrix/SETUP.md) for the setup playbook.
+
+### Machine Memory Extension
+
+Gradual-exposure agent cheat sheets (`.mmem.yml` files). Auto-loaded from `~/.pi/agent/memories/`, project `.pi/memories/`, and settings.json paths.
+
+**5 tools:** `mmem_create`, `mmem_list`, `mmem_inject`, `mmem_update`, `mmem_validate`
 
 ### Skills
 
-Reusable instruction sets that agents load on demand. See [skills/README.md](skills/README.md) for descriptions of all four skills.
+Reusable instruction sets that agents load on demand. See [SKILLS.md](SKILLS.md) for the full catalogue.
 
 ## Install
 
-### 1. Clone the repo
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/tS7hKamAYL84j91/tools-and-skills.git
@@ -122,66 +140,32 @@ Edit `~/.pi/agent/settings.json`:
 }
 ```
 
-This gives every pi session: `agent_send`, `spawn_agent`, `agent_status`, `agent_peek`, `agent_nudge`, and all other multi-agent tools.
-
-### 3. Add kanban extension (per-project)
+### 3. Add project extensions (per-project)
 
 Create `.pi/settings.json` in your project root:
 ```json
 {
   "extensions": [
-    "/path/to/tools-and-skills/project-extensions/kanban"
+    "/path/to/tools-and-skills/project-extensions/kanban",
+    "/path/to/tools-and-skills/project-extensions/matrix"
   ]
 }
 ```
 
-This gives that project: `kanban_create`, `kanban_pick`, `kanban_claim`, `kanban_complete`, `kanban_snapshot`, `kanban_monitor`, and all other kanban tools. A `kanban/board.log` file will be created in your project root on first use.
+### 4. Add skills and memories (optional)
 
-### 4. Add skills (optional)
-
-Skills are auto-discovered from `~/.pi/agent/settings.json`:
 ```json
 {
-  "extensions": [
-    "/path/to/tools-and-skills/extensions"
-  ],
-  "skills": [
-    "/path/to/tools-and-skills/skills"
-  ]
+  "skills": ["/path/to/tools-and-skills/skills"],
+  "memories": ["/path/to/tools-and-skills/memories"]
 }
-```
-
-This makes all 12 skills available: clean-room, code-forensics, deep-research, machine-memory, notebooklm, planning, problem-crystalliser, red-team, six-thinking-hats, skill-creator, writing-style.
-
-### 5. Install VSCode extension (optional)
-
-```bash
-code --install-extension vscode-extension/coas-kanban-0.1.0.vsix
-```
-
-Or build from source:
-```bash
-cd vscode-extension
-npm install
-npm run build
-npx vsce package --no-dependencies
-code --install-extension coas-kanban-*.vsix
-```
-
-### Quick start
-
-```bash
-# In any project directory
-mkdir -p kanban .pi
-echo '{"extensions":["/path/to/tools-and-skills/project-extensions/kanban"]}' > .pi/settings.json
-pi  # start pi — kanban tools are now available
 ```
 
 ## Development
 
 ```bash
 npm run check     # typecheck → lint → knip → type-coverage (≥95%)
-npm test          # 188 tests (vitest + archunit)
+npm test          # 232 tests (vitest + archunit)
 ```
 
 Quality gates (enforced by `npm run check`):
@@ -189,3 +173,6 @@ Quality gates (enforced by `npm run check`):
 - **Biome lint** — `noExplicitAny`, `useImportType`, `useNodejsImportProtocol`
 - **Knip** — zero unused exports, files, or dependencies
 - **Type coverage** — minimum 95%
+- **Architecture tests** — dependency direction, file size limits, isolation rules
+
+See [AGENT.md](AGENT.md) for coding standards and [prompts/refactor.md](prompts/refactor.md) for refactoring guidance.
