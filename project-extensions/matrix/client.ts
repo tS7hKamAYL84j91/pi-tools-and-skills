@@ -146,6 +146,17 @@ export class MatrixBridgeClient {
 			}
 		});
 
+		// Ensure we've joined the configured room. The room.invite handler above
+		// only catches LIVE invites; if the bot was invited before the extension
+		// started, the invite event is in the past and the handler never fires.
+		// joinRoom is idempotent — calling it when already joined is a no-op.
+		try {
+			await this.client.joinRoom(this.config.roomId);
+		} catch {
+			// Non-fatal — the room might not exist yet, or the invite is pending.
+			// The room.invite handler will catch it when the invite arrives live.
+		}
+
 		// Start the sync loop. matrix-bot-sdk handles reconnection internally.
 		await this.client.start();
 		this.status.connected = true;
