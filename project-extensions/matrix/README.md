@@ -97,8 +97,8 @@ The extension only ever reads secrets from environment variables. Recommended se
 
 | Platform | Backend | Wrapper script |
 |---|---|---|
-| macOS | login Keychain via `security` | `tools-and-skills/scripts/coas-secrets.sh` |
-| Linux | `pass` (passwordstore.org) | `tools-and-skills/scripts/coas-secrets.sh` |
+| macOS | login Keychain via `security` | `pi-tools-and-skills/scripts/coas-secrets.sh` |
+| Linux | `pass` (passwordstore.org) | `pi-tools-and-skills/scripts/coas-secrets.sh` |
 
 Add a secret:
 ```bash
