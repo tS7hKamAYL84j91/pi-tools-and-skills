@@ -35,7 +35,7 @@ NAMESPACE="${COAS_SECRETS_NAMESPACE:-coas}"
 # Known secret keys used by the CoAS stack. Used by the `list` command to
 # probe each one and report whether it's stored. Add new keys here as
 # new secret types are introduced.
-KNOWN_KEYS="tailscale-authkey matrix-token matrix-recovery"
+KNOWN_KEYS="tailscale-authkey matrix-token matrix-recovery bot-password"
 
 case "${OS}" in
   Darwin)  BACKEND=keychain ;;
