@@ -351,7 +351,7 @@ Run a Six Hats pass during PLAN.md review when:
 
 Use Black hat to audit the plan, Green hat to generate alternatives to stalled approaches.
 
-### With research-expert skill
+### With deep-research skill
 - White hat surfaces research gaps → feeds the research query
 - Green hat's random entry generates novel search terms across adjacent fields
 - Challenge technique (from Green hat) exposes research framing assumptions
