@@ -15,7 +15,7 @@
 # IMPORTANT: change this before first start. The first user creation
 # bakes server_name into the database; changing it later requires a
 # fresh database.
-server_name = "coas-matrix.TAILNET-ID.ts.net"
+server_name = "coas-matrix.CHANGE-ME.ts.net"
 
 # ── Listening ────────────────────────────────────────────────────
 # Bind on all interfaces inside the container. The container's network
@@ -36,8 +36,8 @@ max_request_size = 20_000_000   # 20 MB — headroom for image uploads
 # ── Registration ─────────────────────────────────────────────────
 # Closed by default. Use a registration token to create the bot and
 # personal accounts on first run, then remove the token line and restart.
-allow_registration = true
-registration_token = "0dd17aebf74c9734aeba200038d6886a"
+allow_registration = false
+# registration_token — set automatically by coas-bootstrap-matrix
 
 # ── Federation ───────────────────────────────────────────────────
 # DISABLED for a single-user setup. The bot and the human are on the

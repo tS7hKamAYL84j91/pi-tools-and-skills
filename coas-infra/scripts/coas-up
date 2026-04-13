@@ -149,6 +149,15 @@ ensure_env_file
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_resolve-env.sh"
 
+# ── Generate continuwuity.toml from template ─────────────────────
+
+TOML="${INFRA_DIR}/config/continuwuity.toml"
+TOML_EXAMPLE="${INFRA_DIR}/config/continuwuity.toml.example"
+if [[ ! -f "${TOML}" ]]; then
+  sed "s/coas-matrix\.CHANGE-ME\.ts\.net/${TS_FQDN}/g" "${TOML_EXAMPLE}" > "${TOML}"
+  echo "coas-up: ✓ generated continuwuity.toml from template" >&2
+fi
+
 echo "coas-up: starting stack..." >&2
 echo "  TS_FQDN:   ${TS_FQDN}" >&2
 echo "" >&2
