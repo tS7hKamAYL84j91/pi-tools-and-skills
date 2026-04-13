@@ -80,7 +80,7 @@ Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ t
 
 ## Security TODO
 
-Findings from a red-team audit (T-251/T-252/T-253). PRs welcome.
+Findings from a red-team audit (T-251/T-252/T-253). The current design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh — these are defense-in-depth hardening items, not active exploits. PRs welcome.
 
 ### Critical
 
