@@ -1,12 +1,12 @@
-# tools-and-skills
+# pi-tools-and-skills
 
 Pi agent infrastructure: multi-agent orchestration, kanban task tracking, phone-to-agent Matrix bridge, machine memories, and reusable skills.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/tS7hKamAYL84j91/tools-and-skills.git
-cd tools-and-skills
+git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
+cd pi-tools-and-skills
 npm install
 ./setup-pi.sh        # registers extensions, skills, memories, secrets, shell hooks
 exec zsh             # reload shell
@@ -40,8 +40,11 @@ The `coas-infra/` directory contains a Docker Compose stack for self-hosted depl
 
 ```bash
 cd coas-infra
-./scripts/coas-stack          # supervised foreground mode
-./scripts/coas-bootstrap-matrix --help   # one-shot account + room provisioning
+./scripts/coas-up \
+  --bot-password 'PASSWORD' \
+  --personal-user jim \
+  --personal-password 'PASSWORD'
+# One command: starts stack, configures TLS, bootstraps Matrix accounts
 ```
 
 See [coas-infra/README.md](coas-infra/README.md) for the full setup walkthrough.
@@ -74,3 +77,23 @@ npm test          # 232 tests
 ```
 
 Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENT.md](AGENT.md) for coding standards.
+
+## Security TODO
+
+Findings from a red-team audit (T-251/T-252/T-253). PRs welcome.
+
+### Critical
+
+- [ ] **Sanitise Matrix message bodies** — message text is injected raw into agent context; wrap in `<external-matrix-messages>` tags and strip from poke notifications (CVSS 9.9)
+- [ ] **Add Matrix sender allowlist** — any room member can inject instructions; add `trustedSenderMxid` config field and validate every inbound message (CVSS 9.9)
+- [ ] **Fix newline injection in kanban log** — `escapeLogValue()` doesn't strip newlines; forged log events can fake task completions (CVSS 9.1)
+- [ ] **Sanitise agent message content** — unescaped `agent_send` payloads go straight into LLM context; escape or deliver in a structured slot (CVSS 9.0)
+
+### High
+
+- [ ] **Validate `agentId` format** — unsanitised `agentId` in path construction enables maildir path traversal (CVSS 8.2)
+- [ ] **Sign agent registry records** — unsigned registry files allow spoofing any agent identity (CVSS 8.8)
+- [ ] **Sanitise agent name in kanban** — `agent` parameter logged without escaping; newline injection forges events (CVSS 8.8)
+- [ ] **Escape mmem update content** — unescaped text in `.mmem.yml` appends can inject SYSTEM directives (CVSS 8.4)
+- [ ] **Strip terminal escapes in TUI** — task titles can inject OSC/DCS sequences to hijack terminal state (CVSS 7.2)
+- [ ] **Validate tool names** — comma in tool name injects additional tools past the restriction list (CVSS 7.6)
