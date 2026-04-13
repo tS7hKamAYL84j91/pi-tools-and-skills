@@ -2,27 +2,19 @@
 #
 # coas-bootstrap-matrix — one-shot Matrix provisioning for the CoAS stack.
 #
-# Run ONCE after the infra stack is up (continuwuity + tailscale + caddy).
-# Does EVERYTHING — no manual Element X work required:
+# Called automatically by coas-up on first run (when matrix-token is not
+# in the secret store). Can also be run manually.
 #
-#   1. Reads or generates a registration token for Continuwuity
-#   2. Registers the bot account
-#   3. Stores the bot's access token in the host secret store
-#   4. Registers the personal account
-#   5. Creates a private room (with correct power levels for the bot)
-#   6. Invites the bot to the room
-#   7. Updates coas/.pi/settings.json with the room ID
-#   8. Closes registration permanently
+# Flow:
+#   1. Extract Continuwuity's auto-generated registration token from logs
+#   2. Register bot as the first user (using that token)
+#   3. Store bot token + password in the host secret store
+#   4. Create personal user via admin room (bot is admin as first user)
+#   5. Create private encrypted room with correct power levels
+#   6. Update coas/.pi/settings.json
 #
-# Usage:
-#   ./scripts/coas-bootstrap-matrix \
-#     --bot-password 'STRONG_BOT_PASSWORD' \
-#     --personal-user jim \
-#     --personal-password 'STRONG_PERSONAL_PASSWORD' \
-#     --room-name 'Chief of Staff'
-#
-# After running, start pi via:
-#   ./scripts/coas-pi
+# No TOML editing, no sed, no config restarts. Continuwuity auto-closes
+# registration after the first user is created.
 
 set -euo pipefail
 
@@ -44,15 +36,14 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       cat <<'USAGE'
 usage: coas-bootstrap-matrix \
-  --bot-password 'STRONG_BOT_PASSWORD' \
+  --bot-password 'PASSWORD' \
   --personal-user jim \
-  --personal-password 'STRONG_PERSONAL_PASSWORD' \
+  --personal-password 'PASSWORD' \
   [--room-name 'Chief of Staff'] \
   [--bot-user coas-bot]
 
-Provisions both Matrix accounts, creates a private room with correct
-power levels, invites the bot, and updates coas/.pi/settings.json.
-Run once after the infra stack is up.
+Provisions both Matrix accounts, creates a private encrypted room,
+and updates coas/.pi/settings.json. Run once after infra is up.
 USAGE
       exit 0
       ;;
@@ -75,8 +66,8 @@ source "${INFRA_DIR}/scripts/_resolve-env.sh"
 
 SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
 HOMESERVER="https://${TS_FQDN}"
-TOML="${INFRA_DIR}/config/continuwuity.toml"
 SETTINGS="${COAS_DIR}/.pi/settings.json"
+CONTAINER="coas-infra-continuwuity-1"
 
 echo "" >&2
 echo "╔═══════════════════════════════════════════════════════════╗" >&2
@@ -85,87 +76,145 @@ echo "║  Provisioning accounts + room on ${TS_FQDN}" >&2
 echo "╚═══════════════════════════════════════════════════════════╝" >&2
 echo "" >&2
 
-# ── Helper: register an account ───────────────────────────────────
+# ── Helper: wait for HTTPS endpoint ──────────────────────────────
 
-register_account() {
-  local username="$1" password="$2" token="$3"
-  local response
-  response="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/register" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"username\": \"${username}\",
-      \"password\": \"${password}\",
-      \"auth\": {
-        \"type\": \"m.login.registration_token\",
-        \"token\": \"${token}\"
-      }
-    }" 2>&1)" || return 1
-  echo "${response}"
+wait_for_https() {
+  local url="$1" max_attempts="${2:-20}"
+  local i=0
+  while ! curl -sf "${url}" >/dev/null 2>&1; do
+    i=$((i + 1))
+    if [[ $i -ge $max_attempts ]]; then
+      echo "  error: ${url} not reachable after ${max_attempts} attempts" >&2
+      return 1
+    fi
+    sleep 2
+  done
 }
 
-# ── Step 1: Enable registration with a fresh token ────────────────
+# ── Helper: send admin command and get response ──────────────────
 
-echo "Step 1/8: Enabling registration with a fresh token..." >&2
+admin_command() {
+  local token="$1" admin_room="$2" command="$3"
+  local txn
+  txn="$(uuidgen)"
 
-REG_TOKEN="$(openssl rand -hex 16)"
-# Temporarily enable registration with the token
-sed -i.bak \
-  -e "s|^allow_registration = false|allow_registration = true|" \
-  -e "s|^# registration_token.*|registration_token = \"${REG_TOKEN}\"|" \
-  "${TOML}"
-docker compose restart continuwuity >/dev/null 2>&1
-echo "  Waiting for Continuwuity to restart..." >&2
-sleep 5
-# Verify it's up
-if ! curl -sf "${HOMESERVER}/_matrix/client/versions" >/dev/null 2>&1; then
-  echo "  Waiting longer..." >&2
-  sleep 5
+  curl -sf -X PUT \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    "${HOMESERVER}/_matrix/client/v3/rooms/${admin_room}/send/m.room.message/${txn}" \
+    -d "{\"msgtype\": \"m.text\", \"body\": \"!admin ${command}\"}" >/dev/null 2>&1
+
+  sleep 2
+
+  # Read the last response from the conduit bot
+  curl -sf -H "Authorization: Bearer ${token}" \
+    "${HOMESERVER}/_matrix/client/v3/rooms/${admin_room}/messages?dir=b&limit=2" 2>/dev/null \
+    | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for event in data.get('chunk', []):
+    if event.get('sender', '').startswith('@conduit'):
+        print(event.get('content', {}).get('body', ''))
+        break
+" 2>/dev/null
+}
+
+# ── Step 1: Extract registration token from logs ──────────────────
+
+echo "Step 1/6: Getting registration token from Continuwuity..." >&2
+
+wait_for_https "${HOMESERVER}/_matrix/client/versions"
+
+# Continuwuity prints its auto-generated token on first boot
+REG_TOKEN="$(docker logs "${CONTAINER}" 2>&1 \
+  | grep -o 'using the registration token [^ ]*' \
+  | tail -1 \
+  | sed 's/.*token //' \
+  | sed 's/\x1b\[[0-9;]*m//g')"
+
+if [[ -z "${REG_TOKEN}" ]]; then
+  echo "  error: could not find registration token in Continuwuity logs" >&2
+  echo "  hint: is this a fresh Continuwuity database?" >&2
+  exit 1
 fi
-echo "  ✓ Registration enabled" >&2
+echo "  ✓ Token extracted" >&2
 
-# ── Step 2: Register the bot ─────────────────────────────────────
+# ── Step 2: Register bot (first user = admin) ────────────────────
 
-echo "Step 2/8: Registering @${BOT_USER}:${TS_FQDN}..." >&2
+echo "Step 2/6: Registering @${BOT_USER}:${TS_FQDN}..." >&2
 
-BOT_RESPONSE="$(register_account "${BOT_USER}" "${BOT_PASSWORD}" "${REG_TOKEN}")" || {
+BOT_RESPONSE="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/register" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"username\": \"${BOT_USER}\",
+    \"password\": \"${BOT_PASSWORD}\",
+    \"auth\": {
+      \"type\": \"m.login.registration_token\",
+      \"token\": \"${REG_TOKEN}\"
+    }
+  }" 2>&1)" || {
   echo "  error: bot registration failed" >&2
   echo "  response: ${BOT_RESPONSE}" >&2
-  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
   exit 1
 }
 
 BOT_ACCESS_TOKEN="$(echo "${BOT_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)" || {
   echo "  error: no access_token in response: ${BOT_RESPONSE}" >&2
-  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
   exit 1
 }
 
-echo "  ✓ Bot registered" >&2
+echo "  ✓ Bot registered (admin)" >&2
 
-# ── Step 3: Store bot token ───────────────────────────────────────
-
-echo "Step 3/8: Storing bot access token..." >&2
+# Store credentials
 echo "${BOT_ACCESS_TOKEN}" | "${SECRETS}" set matrix-token
-echo "  ✓ Stored as matrix-token" >&2
+echo "${BOT_PASSWORD}" | "${SECRETS}" set bot-password
+echo "  ✓ Credentials stored" >&2
 
-# ── Step 4: Register personal account ─────────────────────────────
+# ── Step 3: Create personal user via admin room ───────────────────
 
-echo "Step 4/8: Registering @${PERSONAL_USER}:${TS_FQDN}..." >&2
+echo "Step 3/6: Creating @${PERSONAL_USER}:${TS_FQDN} via admin room..." >&2
 
-PERSONAL_RESPONSE="$(register_account "${PERSONAL_USER}" "${PERSONAL_PASSWORD}" "${REG_TOKEN}")" || {
-  echo "  error: personal account registration failed" >&2
-  echo "  response: ${PERSONAL_RESPONSE}" >&2
-  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
+# Find the admin room (room with @conduit)
+ADMIN_ROOM="$(curl -sf -H "Authorization: Bearer ${BOT_ACCESS_TOKEN}" \
+  "${HOMESERVER}/_matrix/client/v3/joined_rooms" 2>/dev/null \
+  | python3 -c "
+import json, sys
+rooms = json.load(sys.stdin).get('joined_rooms', [])
+for room in rooms:
+    print(room)
+" 2>/dev/null | head -1)"
+
+if [[ -z "${ADMIN_ROOM}" ]]; then
+  echo "  error: could not find admin room" >&2
   exit 1
-}
+fi
 
-PERSONAL_TOKEN="$(echo "${PERSONAL_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)"
-echo "  ✓ Personal account registered" >&2
+ADMIN_RESULT="$(admin_command "${BOT_ACCESS_TOKEN}" "${ADMIN_ROOM}" \
+  "users create-user ${PERSONAL_USER} ${PERSONAL_PASSWORD}")"
 
-# ── Step 5: Create the room (as the personal user) ───────────────
+if echo "${ADMIN_RESULT}" | grep -q "Created user"; then
+  echo "  ✓ Personal account created" >&2
+else
+  echo "  error: ${ADMIN_RESULT}" >&2
+  exit 1
+fi
 
-echo "Step 5/8: Creating room '${ROOM_NAME}'..." >&2
+# Get personal user's access token by logging in
+PERSONAL_TOKEN="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/login" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"type\": \"m.login.password\",
+    \"identifier\": {\"type\": \"m.id.user\", \"user\": \"${PERSONAL_USER}\"},
+    \"password\": \"${PERSONAL_PASSWORD}\"
+  }" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)"
 
+echo "  ✓ Personal account ready" >&2
+
+# ── Step 4: Create private encrypted room ─────────────────────────
+
+echo "Step 4/6: Creating room '${ROOM_NAME}'..." >&2
+
+# Create as personal user (higher power level)
 ROOM_RESPONSE="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/createRoom" \
   -H "Authorization: Bearer ${PERSONAL_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -174,65 +223,74 @@ ROOM_RESPONSE="$(curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/createRoom" \
     \"preset\": \"private_chat\",
     \"visibility\": \"private\",
     \"invite\": [\"@${BOT_USER}:${TS_FQDN}\"],
-    \"power_level_content_override\": {
-      \"events_default\": 0,
-      \"users_default\": 0,
-      \"users\": {
-        \"@${PERSONAL_USER}:${TS_FQDN}\": 100,
-        \"@${BOT_USER}:${TS_FQDN}\": 50
+    \"initial_state\": [
+      {
+        \"type\": \"m.room.encryption\",
+        \"content\": {\"algorithm\": \"m.megolm.v1.aes-sha2\"}
       }
-    }
+    ]
   }" 2>&1)" || {
   echo "  error: room creation failed: ${ROOM_RESPONSE}" >&2
-  mv "${TOML}.bak" "${TOML}"; docker compose restart continuwuity >/dev/null 2>&1
   exit 1
 }
 
 ROOM_ID="$(echo "${ROOM_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['room_id'])" 2>/dev/null)"
 echo "  ✓ Room created: ${ROOM_ID}" >&2
 
-# ── Step 6: Bot joins the room ────────────────────────────────────
+# Set power levels
+curl -sf -X PUT \
+  -H "Authorization: Bearer ${PERSONAL_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "${HOMESERVER}/_matrix/client/v3/rooms/${ROOM_ID}/state/m.room.power_levels/" \
+  -d "{
+    \"users\": {
+      \"@${PERSONAL_USER}:${TS_FQDN}\": 100,
+      \"@${BOT_USER}:${TS_FQDN}\": 50
+    },
+    \"users_default\": 0, \"events_default\": 0,
+    \"state_default\": 50, \"ban\": 50, \"kick\": 50,
+    \"redact\": 50, \"invite\": 50
+  }" >/dev/null 2>&1
 
-echo "Step 6/8: Bot joining room..." >&2
-
+# Bot joins the room
 curl -sf -X POST "${HOMESERVER}/_matrix/client/v3/join/${ROOM_ID}" \
   -H "Authorization: Bearer ${BOT_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{}' >/dev/null 2>&1 || {
-  echo "  warning: bot join failed (will retry on pi startup)" >&2
-}
-echo "  ✓ Bot joined" >&2
+  -d '{}' >/dev/null 2>&1
+echo "  ✓ Bot joined room" >&2
 
-# ── Step 7: Update settings.json ──────────────────────────────────
+# ── Step 5: Update settings.json ──────────────────────────────────
 
-echo "Step 7/8: Updating ${SETTINGS}..." >&2
+echo "Step 5/6: Updating ${SETTINGS}..." >&2
 
-# Use python3 for safe JSON manipulation
+mkdir -p "$(dirname "${SETTINGS}")"
+
 python3 -c "
-import json, sys
+import json, sys, os
 path = sys.argv[1]
 room_id = sys.argv[2]
 ts_fqdn = sys.argv[3]
 bot_user = sys.argv[4]
+tools_dir = sys.argv[5]
 
-with open(path) as f:
-    data = json.load(f)
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
 
-# Ensure matrix extension is in extensions list
-matrix_ext = '/Users/jim/git/pi-tools-and-skills/project-extensions/matrix'
-if 'extensions' not in data:
-    data['extensions'] = []
-if matrix_ext not in data['extensions']:
-    data['extensions'].append(matrix_ext)
+# Extension paths derived from tools dir
+kanban_ext = os.path.join(tools_dir, 'project-extensions', 'kanban')
+matrix_ext = os.path.join(tools_dir, 'project-extensions', 'matrix')
 
-# Set the matrix config block
+data['extensions'] = [kanban_ext, matrix_ext]
 data['matrix'] = {
     'homeserver': f'https://{ts_fqdn}',
     'userId': f'@{bot_user}:{ts_fqdn}',
     'roomId': room_id,
     'targetAgent': 'coas',
     'accessTokenEnv': 'MATRIX_ACCESS_TOKEN',
-    'encryption': False,
+    'botPasswordEnv': 'MATRIX_BOT_PASSWORD',
+    'encryption': True,
     'deviceDisplayName': 'CoAS Chief of Staff (extension)',
     'cryptoStorePath': '~/.pi/agent/matrix-crypto'
 }
@@ -240,39 +298,21 @@ data['matrix'] = {
 with open(path, 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" "${SETTINGS}" "${ROOM_ID}" "${TS_FQDN}" "${BOT_USER}"
+" "${SETTINGS}" "${ROOM_ID}" "${TS_FQDN}" "${BOT_USER}" "${TOOLS_DIR}"
 
-echo "  ✓ settings.json updated with room ${ROOM_ID}" >&2
+echo "  ✓ settings.json updated" >&2
 
-# ── Step 8: Close registration ────────────────────────────────────
-
-echo "Step 8/8: Closing registration permanently..." >&2
-
-mv "${TOML}.bak" "${TOML}"
-docker compose restart continuwuity >/dev/null 2>&1
-echo "  ✓ Registration closed" >&2
-
-# ── Done ──────────────────────────────────────────────────────────
+# ── Step 6: Done ──────────────────────────────────────────────────
 
 echo "" >&2
 echo "╔═══════════════════════════════════════════════════════════╗" >&2
 echo "║  Bootstrap complete!                                     ║" >&2
 echo "╠═══════════════════════════════════════════════════════════╣" >&2
+echo "║  Bot:   @${BOT_USER}:${TS_FQDN}" >&2
+echo "║  You:   @${PERSONAL_USER}:${TS_FQDN}" >&2
+echo "║  Room:  ${ROOM_ID}" >&2
 echo "║                                                          ║" >&2
-echo "║  Bot:      @${BOT_USER}:${TS_FQDN}" >&2
-echo "║  You:      @${PERSONAL_USER}:${TS_FQDN}" >&2
-echo "║  Room:     ${ROOM_ID}" >&2
-echo "║  Room name: ${ROOM_NAME}" >&2
-echo "║  Token:    stored in secret store as 'matrix-token'" >&2
-echo "║  Registration: CLOSED" >&2
-echo "║                                                          ║" >&2
-echo "║  Next steps:                                             ║" >&2
-echo "║    1. Install Element X on your phone                    ║" >&2
-echo "║    2. Sign in as @${PERSONAL_USER}:${TS_FQDN}" >&2
-echo "║       Homeserver: ${HOMESERVER}" >&2
-echo "║       Password: (what you passed as --personal-password) ║" >&2
-echo "║    3. The room '${ROOM_NAME}' is already there" >&2
-echo "║    4. Start pi:  ./scripts/coas-pi                      ║" >&2
-echo "║    5. Test:  matrix_send message=\"hello\"               ║" >&2
-echo "║                                                          ║" >&2
+echo "║  Sign in to Element X:                                   ║" >&2
+echo "║    Homeserver: ${HOMESERVER}" >&2
+echo "║    User: ${PERSONAL_USER}                                ║" >&2
 echo "╚═══════════════════════════════════════════════════════════╝" >&2

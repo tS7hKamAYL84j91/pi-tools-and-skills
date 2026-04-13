@@ -90,6 +90,14 @@ else
   export MATRIX_ACCESS_TOKEN="PLACEHOLDER_NO_TOKEN_STORED"
 fi
 
+# ── Optional: bot-password ───────────────────────────────────────
+# Used for UIA when uploading cross-signing keys on startup.
+if MATRIX_BOT_PASSWORD="$("${SECRETS}" get bot-password 2>/dev/null)"; then
+  export MATRIX_BOT_PASSWORD
+else
+  export MATRIX_BOT_PASSWORD=""
+fi
+
 # ── Optional: matrix-recovery ────────────────────────────────────
 # Used by Element X's Secure Backup feature. Empty if not configured.
 if MATRIX_RECOVERY_PASSPHRASE="$("${SECRETS}" get matrix-recovery 2>/dev/null)"; then

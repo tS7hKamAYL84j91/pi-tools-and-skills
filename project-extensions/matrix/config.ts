@@ -31,6 +31,7 @@ interface RawMatrixSettings {
 	roomId?: unknown;
 	targetAgent?: unknown;
 	accessTokenEnv?: unknown;
+	botPasswordEnv?: unknown;
 	encryption?: unknown;
 	cryptoStorePath?: unknown;
 	deviceDisplayName?: unknown;
@@ -97,6 +98,10 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		);
 	}
 
+	// Optional bot password for cross-signing UIA
+	const botPasswordEnv = optionalString(raw.botPasswordEnv);
+	const botPassword = botPasswordEnv ? process.env[botPasswordEnv] : undefined;
+
 	// Optional Secure Backup passphrase
 	const secureBackupEnv = optionalString(raw.secureBackupEnv);
 	const recoveryPassphrase = secureBackupEnv ? process.env[secureBackupEnv] : undefined;
@@ -115,6 +120,7 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		encryption,
 		cryptoStorePath,
 		deviceDisplayName,
+		botPassword,
 		recoveryPassphrase,
 	};
 }

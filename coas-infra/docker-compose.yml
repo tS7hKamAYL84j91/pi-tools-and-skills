@@ -173,6 +173,7 @@ services:
       # fail loudly inside coas-agent if it's actually started with
       # the placeholder.
       MATRIX_ACCESS_TOKEN: ${MATRIX_ACCESS_TOKEN:-}
+      MATRIX_BOT_PASSWORD: ${MATRIX_BOT_PASSWORD:-}
       MATRIX_RECOVERY_PASSPHRASE: ${MATRIX_RECOVERY_PASSPHRASE:-}
       KANBAN_DIR: /workspace/coas/kanban
       KANBAN_WIP_LIMIT: ${KANBAN_WIP_LIMIT:-3}

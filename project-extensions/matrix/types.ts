@@ -23,6 +23,8 @@ export interface MatrixConfig {
 	cryptoStorePath: string;
 	/** Display name shown to other Matrix devices for the bot's session */
 	deviceDisplayName: string;
+	/** Bot's password for UIA when uploading cross-signing keys, resolved from env */
+	botPassword?: string;
 	/** Optional Secure Backup recovery passphrase, resolved from env */
 	recoveryPassphrase?: string;
 }

@@ -146,7 +146,7 @@ export default function (pi: ExtensionAPI): void {
 
 		client = new MatrixBridgeClient(config);
 		try {
-			await client.start(onInbound);
+			await client.start(onInbound, (msg, level) => c.ui.notify(`matrix: ${msg}`, level));
 		} catch (err) {
 			lastError = (err as Error).message;
 			ctx.ui.notify(`matrix: failed to connect — ${lastError}`, "error");
@@ -271,7 +271,7 @@ export default function (pi: ExtensionAPI): void {
 		handler: async (_args, c) => {
 			if (!config) { c.ui.notify("Matrix: not configured", "info"); return; }
 			if (!client) { c.ui.notify(`Matrix: not connected. ${lastError ?? ""}`, "warning"); return; }
-			
+
 			c.ui.notify(
 				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}, ${unread.length} unread`,
 				client.isConnected() ? "info" : "warning",
