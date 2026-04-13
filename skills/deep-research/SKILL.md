@@ -30,17 +30,6 @@ Phase 4 [WRITE] → Compose report, every claim cited           → REPORT.md
 **D** = recursion depth (lead-following). **B** = breadth (queries per outline node).
 **Budget** = max total search invocations.
 
-## Scripts (from research-expert skill)
-
-```bash
-bash skills/research-expert/scripts/arxiv_search.sh    "<query>" <N>   # academic papers
-bash skills/research-expert/scripts/semantic_scholar.sh "<query>" <N>  # citations + metadata
-bash skills/research-expert/scripts/github_search.sh   "<query>" <N>   # repos + stars
-bash skills/research-expert/scripts/web_read.sh        "<url>"         # any URL → markdown
-```
-
----
-
 ## Phase 0 — VCM: Verifiable Checklist Generation
 
 **Execute BEFORE any search. Error in the plan propagates to every downstream step.**
@@ -271,4 +260,3 @@ Templates: `assets/` — copy to your working directory before starting.
 - Static-DRA: arXiv:2512.03887 | STORM: arXiv:2402.14207 | WebWeaver: arXiv:2509.13312
 - Ablation: VCM+EAM combined = +3.17 score vs baseline; each module ~+1.7 individually
 - See [VCM/EAM Reference](references/vcm-eam-reference.md) for algorithm detail
-- Search scripts: `skills/research-expert/scripts/`
