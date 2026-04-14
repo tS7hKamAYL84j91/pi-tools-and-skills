@@ -160,7 +160,7 @@ Findings from a red-team audit (T-251/T-252/T-253). The current design assumes a
 
 - [x] **Sanitise agent name in kanban** — `sanitiseAgent()` strips invalid characters from agent names in all log events (CVSS 8.8)
 - [x] **Validate tool names** — tool names validated against `/^[a-zA-Z0-9_-]+$/`; invalid names silently dropped (CVSS 7.6)
-- [ ] **Strip terminal escapes in TUI** — task titles can inject OSC/DCS sequences to hijack terminal state (CVSS 7.2)
+- [x] **Strip terminal escapes in TUI** — `stripDangerousEscapes()` removes OSC/DCS/C0 sequences from task titles before rendering (CVSS 7.2)
 - Won't fix (trusted host): agentId path traversal (8.2), registry signing (8.8), mmem content injection (8.4) — all require a malicious process on the host, which can already read/write any user-owned file
 
 ## License
