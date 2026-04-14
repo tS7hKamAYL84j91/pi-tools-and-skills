@@ -53,7 +53,7 @@ down:
 	$(S)/coas-down
 
 attach:
-	$(S)/coas-attach
+	@exec $(S)/coas-attach
 
 logs:
 	$(S)/coas-logs
@@ -62,10 +62,10 @@ backup:
 	$(S)/coas-backup
 
 pi:
-	$(S)/coas-pi
+	@exec $(S)/coas-pi
 
 stack:
-	$(S)/coas-stack
+	@exec $(S)/coas-stack
 
 rotate-token:
 	$(S)/matrix-login --store
