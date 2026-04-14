@@ -2,17 +2,15 @@
 #
 # coas-pi — start pi in the coas workspace with secrets resolved.
 #
-# Exports MATRIX_ACCESS_TOKEN (and optionally MATRIX_RECOVERY_PASSPHRASE)
-# from the host secret store, then exec's pi. Use this instead of bare
-# `pi` when running on the host (not inside the coas-agent container,
-# which gets secrets via docker compose env injection).
+# Resolves MATRIX_ACCESS_TOKEN, MATRIX_BOT_PASSWORD, and
+# MATRIX_RECOVERY_PASSPHRASE from the host secret store, then
+# exec's pi. Use this (or `make pi`) instead of bare `pi` when
+# running on the host with Matrix enabled.
 #
 # Usage:
-#   ~/git/pi-tools-and-skills/infra/scripts/coas-pi
-#   COAS_DIR=~/git/other-workspace ~/git/pi-tools-and-skills/infra/scripts/coas-pi
-#
-# Tip: alias it in your ~/.zshrc:
-#   alias coas='~/git/pi-tools-and-skills/infra/scripts/coas-pi'
+#   make pi
+#   scripts/coas-pi
+#   COAS_DIR=~/git/other-workspace scripts/coas-pi
 
 set -euo pipefail
 
@@ -31,6 +29,11 @@ if MATRIX_ACCESS_TOKEN="$("${SECRETS}" get matrix-token 2>/dev/null)"; then
   export MATRIX_ACCESS_TOKEN
 else
   echo "coas-pi: warning — matrix-token not in secret store, matrix extension will be disabled" >&2
+fi
+
+# Bot password for cross-signing UIA
+if MATRIX_BOT_PASSWORD="$("${SECRETS}" get bot-password 2>/dev/null)"; then
+  export MATRIX_BOT_PASSWORD
 fi
 
 # Optional Secure Backup recovery passphrase
