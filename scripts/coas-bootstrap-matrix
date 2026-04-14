@@ -95,7 +95,7 @@ wait_for_https() {
 
 admin_command() {
   local token="$1" admin_room="$2" command="$3"
-  local txn
+  local txn response attempt
   txn="$(uuidgen)"
 
   curl -sf -X PUT \
@@ -104,19 +104,29 @@ admin_command() {
     "${HOMESERVER}/_matrix/client/v3/rooms/${admin_room}/send/m.room.message/${txn}" \
     -d "{\"msgtype\": \"m.text\", \"body\": \"!admin ${command}\"}" >/dev/null 2>&1
 
-  sleep 2
-
-  # Read the last response from the conduit bot
-  curl -sf -H "Authorization: Bearer ${token}" \
-    "${HOMESERVER}/_matrix/client/v3/rooms/${admin_room}/messages?dir=b&limit=2" 2>/dev/null \
-    | python3 -c "
+  # Poll for the conduit bot's response (up to 10s)
+  for attempt in $(seq 1 10); do
+    sleep 1
+    response="$(curl -sf -H "Authorization: Bearer ${token}" \
+      "${HOMESERVER}/_matrix/client/v3/rooms/${admin_room}/messages?dir=b&limit=3" 2>/dev/null \
+      | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for event in data.get('chunk', []):
-    if event.get('sender', '').startswith('@conduit'):
-        print(event.get('content', {}).get('body', ''))
+    sender = event.get('sender', '')
+    body = event.get('content', {}).get('body', '')
+    # Skip our own command and empty responses
+    if sender.startswith('@conduit') and body:
+        print(body)
         break
-" 2>/dev/null
+" 2>/dev/null)"
+    if [[ -n "${response}" ]]; then
+      echo "${response}"
+      return 0
+    fi
+  done
+  echo "error: no response from admin bot after 10s" >&2
+  return 1
 }
 
 # ── Step 1: Extract registration token from logs ──────────────────
