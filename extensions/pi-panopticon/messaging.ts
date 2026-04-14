@@ -75,7 +75,7 @@ export function createMessaging(config: MessagingConfig) {
 			const pending = config.send.receive(record.id);
 			for (const msg of pending) {
 				try {
-					pi.sendUserMessage(`[from ${msg.from}]: ${msg.text}`, { deliverAs: "followUp" });
+					pi.sendUserMessage(`<agent-message from="${msg.from}">\n${msg.text}\n</agent-message>`, { deliverAs: "followUp" });
 				} catch {
 					continue;
 				}
