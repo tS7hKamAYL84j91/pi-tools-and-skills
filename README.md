@@ -160,7 +160,7 @@ Findings from a red-team audit (T-251/T-252/T-253). The current design assumes a
 
 - [ ] **Validate `agentId` format** — unsanitised `agentId` in path construction enables maildir path traversal (CVSS 8.2)
 - [ ] **Sign agent registry records** — unsigned registry files allow spoofing any agent identity (CVSS 8.8)
-- [ ] **Sanitise agent name in kanban** — `agent` parameter logged without escaping; newline injection forges events (CVSS 8.8)
+- [x] **Sanitise agent name in kanban** — `sanitiseAgent()` strips invalid characters from agent names in all log events (CVSS 8.8)
 - [ ] **Escape mmem update content** — unescaped text in `.mmem.yml` appends can inject SYSTEM directives (CVSS 8.4)
 - [ ] **Strip terminal escapes in TUI** — task titles can inject OSC/DCS sequences to hijack terminal state (CVSS 7.2)
 - [x] **Validate tool names** — tool names validated against `/^[a-zA-Z0-9_-]+$/`; invalid names silently dropped (CVSS 7.6)

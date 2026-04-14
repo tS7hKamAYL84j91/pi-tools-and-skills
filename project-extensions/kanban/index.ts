@@ -30,6 +30,7 @@ import {
 	nowZ,
 	logAppend,
 	escapeLogValue,
+	sanitiseAgent,
 	parseBoard,
 	validateTaskId,
 	getTask,
@@ -83,7 +84,7 @@ export default function (pi: ExtensionAPI) {
 			const existing = await parseBoard();
 			if (existing.tasks.has(task_id)) throw new Error(`Task ID ${task_id} already exists`);
 			const descPart = description ? ` description="${escapeLogValue(description)}"` : "";
-			await logAppend(`${nowZ()} CREATE ${task_id} ${agent} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`);
+			await logAppend(`${nowZ()} CREATE ${task_id} ${sanitiseAgent(agent)} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`);
 			// Write task markdown file
 			await writeTaskFile(task_id, { title, description, priority, tags, agent });
 			return ok(`Created ${task_id}: ${title} (priority=${priority})`, { task_id, title, priority, tags, description });
@@ -127,13 +128,13 @@ export default function (pi: ExtensionAPI) {
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
 			const fromCol = board.tasks.get(bestId)?.col ?? "todo";
-			await logAppend(`${ts} CLAIM ${bestId} ${agent} expires=${expires}${modelSuffix}`);
-			await logAppend(`${ts} MOVE ${bestId} ${agent} from=${fromCol} to=in-progress`);
+			await logAppend(`${ts} CLAIM ${bestId} ${sanitiseAgent(agent)} expires=${expires}${modelSuffix}`);
+			await logAppend(`${ts} MOVE ${bestId} ${sanitiseAgent(agent)} from=${fromCol} to=in-progress`);
 
 			const verifyBoard = await parseBoard();
 			const verified = verifyBoard.tasks.get(bestId);
 			if (verified && verified.claimAgent !== agent) {
-				await logAppend(`${ts} UNCLAIM ${bestId} ${agent}`);
+				await logAppend(`${ts} UNCLAIM ${bestId} ${sanitiseAgent(agent)}`);
 				return ok(
 					`CLAIM_CONFLICT: ${bestId} was claimed by ${verified.claimAgent}. Call kanban_pick again.`,
 					{ agent, result: "CLAIM_CONFLICT", claimed: false, conflictWith: verified.claimAgent },
@@ -173,13 +174,13 @@ export default function (pi: ExtensionAPI) {
 
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
-			await logAppend(`${ts} CLAIM ${task_id} ${agent} expires=${expires}${modelSuffix}`);
-			await logAppend(`${ts} MOVE ${task_id} ${agent} from=todo to=in-progress`);
+			await logAppend(`${ts} CLAIM ${task_id} ${sanitiseAgent(agent)} expires=${expires}${modelSuffix}`);
+			await logAppend(`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=todo to=in-progress`);
 
 			const verifyBoard = await parseBoard();
 			const verified = verifyBoard.tasks.get(task_id);
 			if (verified && verified.claimAgent !== agent) {
-				await logAppend(`${ts} UNCLAIM ${task_id} ${agent}`);
+				await logAppend(`${ts} UNCLAIM ${task_id} ${sanitiseAgent(agent)}`);
 				return ok(
 					`CLAIM_CONFLICT: ${task_id} was claimed by ${verified.claimAgent}. Try again.`,
 					{ agent, task_id, result: "CLAIM_CONFLICT", claimed: false, conflictWith: verified.claimAgent },
@@ -210,8 +211,8 @@ export default function (pi: ExtensionAPI) {
 			const task = await getTask(task_id);
 			if (task.col !== "in-progress") throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
 			const ts = nowZ();
-			await logAppend(`${ts} COMPLETE ${task_id} ${agent} duration=${duration}`);
-			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=done`);
+			await logAppend(`${ts} COMPLETE ${task_id} ${sanitiseAgent(agent)} duration=${duration}`);
+			await logAppend(`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=in-progress to=done`);
 			// Auto-compaction checkpoint: completing a task is a natural housekeeping moment
 			const boardAfter = await parseBoard();
 			await compactIfNeeded(boardAfter, boardAfter.totalEvents, "complete");
@@ -237,8 +238,8 @@ export default function (pi: ExtensionAPI) {
 			const task = await getTask(task_id);
 			if (task.col !== "in-progress") throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
 			const ts = nowZ();
-			await logAppend(`${ts} BLOCK ${task_id} ${agent} reason="${escapeLogValue(reason)}"`);
-			await logAppend(`${ts} MOVE ${task_id} ${agent} from=in-progress to=blocked`);
+			await logAppend(`${ts} BLOCK ${task_id} ${sanitiseAgent(agent)} reason="${escapeLogValue(reason)}"`);
+			await logAppend(`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=in-progress to=blocked`);
 			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});
@@ -256,7 +257,7 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, text } = params;
-			await logAppend(`${nowZ()} NOTE ${task_id} ${agent} text="${escapeLogValue(text)}"`);
+			await logAppend(`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(text)}"`);
 			// Append note to task markdown file
 			await appendTaskNote(task_id, agent, text);
 			return ok(`Note added to ${task_id}`, { task_id, agent, text });
@@ -382,8 +383,8 @@ export default function (pi: ExtensionAPI) {
 			const task = await getTask(task_id);
 			if (task.col !== "blocked") throw new Error(`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`);
 			const ts = nowZ();
-			await logAppend(`${ts} UNBLOCK ${task_id} ${agent} resolution="${reason}"`);
-			await logAppend(`${ts} MOVE ${task_id} ${agent} from=blocked to=todo`);
+			await logAppend(`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${reason}"`);
+			await logAppend(`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`);
 			return ok(`Unblocked ${task_id}, moved to todo`, { task_id, agent, reason });
 		},
 	});
@@ -480,7 +481,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.description && params.description !== task.description) { changes.push(`description="${escapeLogValue(params.description)}"`); changed.description = params.description; }
 			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
 
-			await logAppend(`${nowZ()} EDIT ${task_id} ${agent} ${changes.join(" ")}`);
+			await logAppend(`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`);
 			// Update task markdown file with new metadata
 			const updatedTask = await getTask(task_id);
 			await rewriteTaskFile(task_id, {
@@ -515,8 +516,8 @@ export default function (pi: ExtensionAPI) {
 			const oldAgent = task.claimAgent || "unknown";
 			const ts = nowZ();
 			const expires = new Date(Date.now() + 7_200_000).toISOString();
-			await logAppend(`${ts} UNCLAIM ${task_id} ${oldAgent}`);
-			await logAppend(`${ts} CLAIM ${task_id} ${new_agent} expires=${expires}${modelSuffix}`);
+			await logAppend(`${ts} UNCLAIM ${task_id} ${sanitiseAgent(oldAgent)}`);
+			await logAppend(`${ts} CLAIM ${task_id} ${sanitiseAgent(new_agent)} expires=${expires}${modelSuffix}`);
 			return ok(`Reassigned ${task_id}: ${oldAgent} → ${new_agent}`, { task_id, agent, oldAgent, newAgent: new_agent, expires });
 		},
 	});
