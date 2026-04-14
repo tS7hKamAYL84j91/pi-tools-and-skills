@@ -15,7 +15,7 @@
 # First-time docker deployment:
 #   make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 
-.PHONY: setup check test up down attach logs backup pi stack rotate-token clean-mailboxes clean
+.PHONY: setup check test build up down attach logs backup pi stack rotate-token clean-mailboxes clean
 
 # ── Local development ────────────────────────────────────────────
 
@@ -32,10 +32,10 @@ test:
 
 S = scripts
 
+build:
+	cd coas-infra && docker compose build coas-agent
+
 UP_ARGS =
-ifdef BUILD
-  UP_ARGS += --build
-endif
 ifdef BOT_PASSWORD
   UP_ARGS += --bot-password '$(BOT_PASSWORD)'
 endif
