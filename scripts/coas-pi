@@ -19,10 +19,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COAS_DIR="${COAS_DIR:-${TOOLS_DIR}/../coas}"
-SECRETS="${COAS_SECRETS_WRAPPER:-${SCRIPT_DIR}/coas-secrets.sh}"
+SECRETS="${COAS_SECRETS_WRAPPER:-${SCRIPT_DIR}/coas-secrets}"
 
 if [[ ! -x "${SECRETS}" ]]; then
-  echo "coas-pi: cannot find coas-secrets.sh at ${SECRETS}" >&2
+  echo "coas-pi: cannot find coas-secrets at ${SECRETS}" >&2
   exit 1
 fi
 

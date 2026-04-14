@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────
-# setup-pi.sh — Configure pi with the full tools-and-skills extension stack
+# setup-pi — Configure pi with the full tools-and-skills extension stack
 #
 # What it does:
 #   1. Stores your OpenRouter API key in the macOS Keychain
@@ -265,7 +265,7 @@ fi
 # All other $ signs are escaped so they stay literal in the zshrc.
 cat >> "$ZSHRC" << ZSHBLOCK
 # >>> pi tools-and-skills env >>>
-# Repo location (written by setup-pi.sh at setup time — re-run after moving)
+# Repo location (written by setup-pi at setup time — re-run after moving)
 export PI_TOOLS_DIR="$PI_TOOLS_DIR"
 # OpenRouter API key from Keychain (for pi --provider openrouter)
 if [[ -z "\${OPENROUTER_API_KEY:-}" ]]; then
@@ -275,7 +275,7 @@ if [[ -z "\${OPENROUTER_API_KEY:-}" ]]; then
 fi
 # Matrix bot token from secret store (for the matrix extension in pi)
 if [[ -z "\${MATRIX_ACCESS_TOKEN:-}" ]]; then
-    _mt=\$("\$PI_TOOLS_DIR/scripts/coas-secrets.sh" get matrix-token 2>/dev/null)
+    _mt=\$("\$PI_TOOLS_DIR/scripts/coas-secrets" get matrix-token 2>/dev/null)
     if [[ -n "\$_mt" ]]; then export MATRIX_ACCESS_TOKEN="\$_mt"; fi
     unset _mt
 fi

@@ -38,10 +38,10 @@ fi
 
 TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="${TOOLS_DIR}/coas-infra"
-SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
+SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets}"
 
 if [[ ! -x "${SECRETS}" ]]; then
-  echo "coas: cannot find coas-secrets.sh at ${SECRETS}" >&2
+  echo "coas: cannot find coas-secrets at ${SECRETS}" >&2
   echo "  set COAS_SECRETS_WRAPPER to its absolute path" >&2
   return 1
 fi

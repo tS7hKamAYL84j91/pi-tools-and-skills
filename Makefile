@@ -20,7 +20,7 @@
 # ── Local development ────────────────────────────────────────────
 
 setup:
-	scripts/setup-pi.sh
+	scripts/setup-pi
 
 check:
 	npm run check
@@ -30,7 +30,7 @@ test:
 
 # ── Docker deployment ────────────────────────────────────────────
 
-INFRA = scripts
+S = scripts
 
 UP_ARGS =
 ifdef BOT_PASSWORD
@@ -44,31 +44,31 @@ ifdef PERSONAL_PASSWORD
 endif
 
 up:
-	$(INFRA)/coas-up $(UP_ARGS)
+	$(S)/coas-up $(UP_ARGS)
 
 down:
-	$(INFRA)/coas-down
+	$(S)/coas-down
 
 attach:
-	$(INFRA)/coas-attach
+	$(S)/coas-attach
 
 logs:
-	$(INFRA)/coas-logs
+	$(S)/coas-logs
 
 backup:
-	$(INFRA)/coas-backup
+	$(S)/coas-backup
 
 pi:
-	$(INFRA)/coas-pi
+	$(S)/coas-pi
 
 stack:
-	$(INFRA)/coas-stack
+	$(S)/coas-stack
 
 rotate-token:
-	scripts/matrix-login.sh --store
+	scripts/matrix-login --store
 
 clean-mailboxes:
-	scripts/clean-mailboxes.sh
+	scripts/clean-mailboxes
 
 # ── Cleanup ──────────────────────────────────────────────────────
 
