@@ -93,7 +93,11 @@ function defaultSubagentSessionDir(name: string): string {
 export function buildArgList(p: ArgParams): string[] {
 	const args = ["--mode", "rpc"];
 	if (p.model) args.push("--models", p.model);
-	if (p.tools?.length) args.push("--tools", p.tools.join(","));
+	if (p.tools?.length) {
+		const validToolName = /^[a-zA-Z0-9_-]+$/;
+		const clean = p.tools.filter((t) => validToolName.test(t));
+		if (clean.length > 0) args.push("--tools", clean.join(","));
+	}
 	const sessionDir = p.sessionDir ?? defaultSubagentSessionDir(p.name);
 	args.push("--session-dir", sessionDir);
 	return args;
