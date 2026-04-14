@@ -145,23 +145,24 @@ make setup        # configure pi extensions, skills, shell hooks (first time)
 
 Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENT.md](AGENT.md) for coding standards.
 
-## Security TODO
+## Security
 
-Findings from a red-team audit (T-251/T-252/T-253). The current design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh — these are defense-in-depth hardening items, not active exploits. PRs welcome.
+Red-team audit (T-251/T-252/T-253) identified 10 findings. 7 fixed, 3 accepted (trusted host assumption).
 
-### Critical
+The design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh.
 
-- [x] **Sanitise Matrix message bodies** — message bodies wrapped in `<external-messages>` tags; body stripped from poke notifications (CVSS 9.9)
-- [x] **Add Matrix sender allowlist** — `trustedSenders` config field; messages from unlisted MXIDs are silently dropped (CVSS 9.9)
-- [x] **Fix newline injection in kanban log** — `escapeLogValue()` now strips `\r` and `\n` (CVSS 9.1)
-- [x] **Sanitise agent message content** — agent messages wrapped in `<agent-message>` tags with `from` attribute (CVSS 9.0)
-
-### High
-
-- [x] **Sanitise agent name in kanban** — `sanitiseAgent()` strips invalid characters from agent names in all log events (CVSS 8.8)
-- [x] **Validate tool names** — tool names validated against `/^[a-zA-Z0-9_-]+$/`; invalid names silently dropped (CVSS 7.6)
-- [x] **Strip terminal escapes in TUI** — `stripDangerousEscapes()` removes OSC/DCS/C0 sequences from task titles before rendering (CVSS 7.2)
-- Won't fix (trusted host): agentId path traversal (8.2), registry signing (8.8), mmem content injection (8.4) — all require a malicious process on the host, which can already read/write any user-owned file
+| Finding | CVSS | Status |
+|---------|------|--------|
+| Matrix message body injection | 9.9 | Fixed — wrapped in `<external-messages>` tags |
+| Matrix sender allowlist | 9.9 | Fixed — `trustedSenders` config field |
+| Kanban log newline injection | 9.1 | Fixed — `escapeLogValue()` strips newlines |
+| Agent message injection | 9.0 | Fixed — wrapped in `<agent-message>` tags |
+| Agent name injection in kanban | 8.8 | Fixed — `sanitiseAgent()` validates names |
+| Tool name comma injection | 7.6 | Fixed — validated against `/^[a-zA-Z0-9_-]+$/` |
+| Terminal escape injection in TUI | 7.2 | Fixed — `stripDangerousEscapes()` |
+| Registry signing | 8.8 | Accepted — trusted host |
+| mmem content injection | 8.4 | Accepted — trusted host |
+| agentId path traversal | 8.2 | Accepted — trusted host |
 
 ## License
 
