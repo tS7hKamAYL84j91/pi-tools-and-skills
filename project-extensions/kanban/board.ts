@@ -55,6 +55,12 @@ export const logAppend = async (line: string): Promise<void> => {
  */
 export const escapeLogValue = (s: string): string => s.replace(/[\r\n]/g, " ").replace(/"/g, "'");
 
+/**
+ * Sanitise an agent name for safe inclusion in log lines.
+ * Strips anything that isn't lowercase alphanumeric or hyphen.
+ */
+export const sanitiseAgent = (s: string): string => s.replace(/[^a-z0-9-]/g, "").slice(0, 64) || "unknown";
+
 // ── Task file helpers ────────────────────────────────────────────
 
 const tasksDir = (): string => join(kanbanDir(), "tasks");
@@ -342,7 +348,7 @@ export async function deleteTask(taskId: string, agent: string, reason: string =
 		throw new Error(`Cannot delete task ${taskId}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`);
 	}
 	const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
-	await logAppend(`${nowZ()} DELETE ${taskId} ${agent}${reasonSuffix}`);
+	await logAppend(`${nowZ()} DELETE ${taskId} ${sanitiseAgent(agent)}${reasonSuffix}`);
 	return { task_id: taskId, previousCol: task.col, reason };
 }
 
@@ -363,6 +369,6 @@ export async function moveTask(taskId: string, agent: string, to: "backlog" | "t
 	if (from === to) {
 		throw new Error(`Task ${taskId} is already in ${to}.`);
 	}
-	await logAppend(`${nowZ()} MOVE ${taskId} ${agent} from=${from} to=${to}`);
+	await logAppend(`${nowZ()} MOVE ${taskId} ${sanitiseAgent(agent)} from=${from} to=${to}`);
 	return { task_id: taskId, from, to };
 }
