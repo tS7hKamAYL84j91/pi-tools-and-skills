@@ -33,7 +33,7 @@ test:
 S = scripts
 
 build:
-	$(S)/coas-up --build
+	. $(S)/_resolve-env.sh && cd coas-infra && docker compose build coas-agent
 
 UP_ARGS =
 ifdef BOT_PASSWORD
