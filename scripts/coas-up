@@ -241,6 +241,6 @@ fi
 
 echo "" >&2
 echo "coas-up: ✓ stack ready" >&2
-echo "  ./scripts/coas-attach    # start pi" >&2
-echo "  ./scripts/coas-logs      # tail logs" >&2
-echo "  ./scripts/coas-down      # stop" >&2
+echo "  make attach    # start pi in the container" >&2
+echo "  make logs      # tail logs" >&2
+echo "  make down      # stop the stack" >&2
