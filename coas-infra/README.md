@@ -5,22 +5,16 @@ Private **Matrix homeserver** (Continuwuity) + **Chief of Staff agent** (pi) + *
 ## Quick start
 
 ```bash
-cd ~/git/pi-tools-and-skills/coas-infra
+cd ~/git/pi-tools-and-skills
 
-# One command — prompts for everything on first run:
-./scripts/coas-up
+# First run — prompts for everything:
+make up
 
 # Or non-interactive:
-./scripts/coas-up \
-  --bot-password 'STRONG_PASSWORD' \
-  --personal-user jim \
-  --personal-password 'STRONG_PASSWORD'
-
-# Or JSON (agent-friendly):
-./scripts/coas-up --config '{"ts_authkey":"tskey-auth-...","ts_fqdn":"coas-matrix.TAILNET.ts.net","bot_password":"X","personal_user":"jim","personal_password":"Y"}'
+make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 ```
 
-`coas-up` handles everything:
+`make up` handles everything:
 1. Prompts for missing secrets (Tailscale auth key, TS_FQDN) and stores them
 2. Generates `continuwuity.toml` from template
 3. Starts all four containers
@@ -30,9 +24,9 @@ cd ~/git/pi-tools-and-skills/coas-infra
 
 After startup:
 ```bash
-./scripts/coas-attach     # start pi inside the container
-./scripts/coas-logs       # tail logs
-./scripts/coas-down       # stop the stack
+make attach       # start pi inside the container
+make logs         # tail logs
+make down         # stop the stack
 ```
 
 ### Phone setup
@@ -105,7 +99,6 @@ After startup:
 Enable **HTTPS Certificates** in the [Tailscale admin → DNS](https://login.tailscale.com/admin/dns) settings.
 
 ```bash
-# Clone repos
 mkdir -p ~/git && cd ~/git
 git clone <YOUR_REMOTE>/coas.git
 git clone <YOUR_REMOTE>/pi-tools-and-skills.git
@@ -116,11 +109,15 @@ cd pi-tools-and-skills && npm install
 
 ## Commands
 
+All from the repo root (`~/git/pi-tools-and-skills`):
+
 ```bash
-./scripts/coas-up         # start stack (+ bootstrap on first run)
-./scripts/coas-down       # stop stack (state persists in volumes)
-./scripts/coas-attach     # start pi inside coas-agent
-./scripts/coas-logs       # tail logs across all services
+make up           # start stack (+ bootstrap on first run)
+make down         # stop stack (state persists in volumes)
+make attach       # start pi inside coas-agent
+make logs         # tail logs across all services
+make backup       # snapshot persistent state
+make rotate-token # rotate the bot's access token
 ```
 
 ---
@@ -138,9 +135,9 @@ Stored in the platform secret store (macOS Keychain / Linux `pass`). `coas-up` p
 
 Manage secrets manually:
 ```bash
-echo 'value' | ./scripts/coas-secrets set <key>
-./scripts/coas-secrets get <key>
-./scripts/coas-secrets list
+echo 'value' | scripts/coas-secrets set <key>
+scripts/coas-secrets get <key>
+scripts/coas-secrets list
 ```
 
 ---
@@ -165,7 +162,7 @@ Element X sees the bot as a verified device and shares Megolm session keys. No m
 
 ### Bot can't decrypt messages
 - Wipe the crypto store and restart: `rm -rf ~/.pi/agent/matrix-crypto`
-- Check that `bot-password` is in the secret store: `./scripts/coas-secrets get bot-password`
+- Check that `bot-password` is in the secret store: `scripts/coas-secrets get bot-password`
 
 ### Continuwuity won't start
 - Check logs: `docker logs coas-infra-continuwuity-1`
