@@ -65,10 +65,10 @@ stack:
 	$(S)/coas-stack
 
 rotate-token:
-	scripts/matrix-login --store
+	$(S)/matrix-login --store
 
 clean-mailboxes:
-	scripts/clean-mailboxes
+	$(S)/clean-mailboxes
 
 # ── Cleanup ──────────────────────────────────────────────────────
 
