@@ -10,6 +10,23 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { WIP_LIMIT, type TaskState } from "./board.js";
 
+// ── Sanitisation ────────────────────────────────────────────────
+
+// Strip non-SGR escape sequences (OSC, DCS, CSI device queries, etc.)
+// from untrusted strings. Uses RegExp constructor because regex literals
+// with \x1b trigger Biome's noControlCharactersInRegex, but these control
+// characters are exactly what we need to match.
+// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional — matching terminal escape sequences
+const RE_OSC = new RegExp("\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)", "g");
+// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional
+const RE_DCS = new RegExp("\\x1bP[^\\x1b]*\\x1b\\\\", "g");
+// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional
+const RE_CSI = new RegExp("\\x1b\\[[^A-Za-z]*[^0-9;A-Za-z][A-Za-z]", "g");
+// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional
+const RE_C0 = new RegExp("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1a]", "g");
+const stripDangerousEscapes = (s: string): string =>
+	s.replace(RE_OSC, "").replace(RE_DCS, "").replace(RE_CSI, "").replace(RE_C0, "");
+
 // ── Layout constants ────────────────────────────────────────────
 
 export const COLUMNS = ["backlog", "todo", "in-progress", "blocked", "done"] as const;
@@ -86,8 +103,8 @@ function renderCard(task: TaskState, colW: number, isSelected: boolean, theme: T
 	const badge = priorityBadge(task.priority, theme);
 	const cursor = isSelected ? theme.fg("accent", "▶") : " ";
 	const id = isSelected ? theme.bold(theme.fg("accent", task.id)) : theme.fg("text", task.id);
-	const titleRaw = task.title || task.id;
-	const agentRaw = task.claimAgent || "";
+	const titleRaw = stripDangerousEscapes(task.title || task.id);
+	const agentRaw = stripDangerousEscapes(task.claimAgent || "");
 
 	// Reserve space for " cursor id badge " plus optional " (agent)".
 	const fixed = visibleWidth(`${cursor} ${task.id} !! `);
@@ -179,7 +196,7 @@ export function renderDetail(task: TaskState | undefined, width: number, theme: 
 		return lines;
 	}
 
-	const headerInner = `${theme.bold(theme.fg("accent", task.id))} ${priorityBadge(task.priority, theme)} ${theme.bold(task.title || task.id)}`;
+	const headerInner = `${theme.bold(theme.fg("accent", task.id))} ${priorityBadge(task.priority, theme)} ${theme.bold(stripDangerousEscapes(task.title || task.id))}`;
 	lines.push(theme.fg("border", "  │ ") + truncateToWidth(padVisible(headerInner, innerW), innerW, "…", true) + theme.fg("border", " │"));
 	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
 
@@ -244,7 +261,7 @@ export function renderConfirmDelete(task: TaskState | null, width: number, theme
 	lines.push(theme.fg("border", "  │ ") + padVisible(title, innerW) + theme.fg("border", " │"));
 	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
 
-	const taskInfo = ` ${task.id} ${task.title || task.id}`;
+	const taskInfo = ` ${task.id} ${stripDangerousEscapes(task.title || task.id)}`;
 	lines.push(theme.fg("border", "  │ ") + truncateToWidth(padVisible(theme.fg("text", taskInfo), innerW), innerW, "…", true) + theme.fg("border", " │"));
 	lines.push(theme.fg("border", "  │ ") + padVisible("", innerW) + theme.fg("border", " │"));
 
@@ -274,7 +291,7 @@ export function renderMovePicker(task: TaskState | null, width: number, theme: T
 	lines.push(theme.fg("border", "  │ ") + padVisible(title, innerW) + theme.fg("border", " │"));
 	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
 
-	const taskInfo = ` ${task.id} ${task.title || task.id} (currently: ${task.col})`;
+	const taskInfo = ` ${task.id} ${stripDangerousEscapes(task.title || task.id)} (currently: ${task.col})`;
 	lines.push(theme.fg("border", "  │ ") + truncateToWidth(padVisible(theme.fg("text", taskInfo), innerW), innerW, "…", true) + theme.fg("border", " │"));
 	lines.push(theme.fg("border", "  │ ") + padVisible("", innerW) + theme.fg("border", " │"));
 
