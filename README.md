@@ -8,7 +8,7 @@ Pi agent infrastructure: multi-agent orchestration, kanban task tracking, phone-
 git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
 cd pi-tools-and-skills
 npm install
-./setup-pi.sh        # registers extensions, skills, memories, secrets, shell hooks
+scripts/setup-pi.sh  # registers extensions, skills, memories, secrets, shell hooks
 exec zsh             # reload shell
 coas                 # start pi in the coas workspace (alias set by setup-pi.sh)
 ```
@@ -60,7 +60,7 @@ coas-infra/             Docker deployment (Continuwuity + Caddy + Tailscale)
 lib/                    Shared: agent-api, maildir transport, tool-result helpers
 skills/                 Agent skills (clean-room, deep-research, planning, ...)
 memories/               Global .mmem.yml files (pi-kanban, pi-extension-dev, ...)
-scripts/                coas-secrets, matrix-login, clean-mailboxes utilities
+scripts/                All scripts: setup, coas-up/down/attach, secrets, utilities
 prompts/                refactor, commit-and-push
 tests/                  Tests (vitest + archunit fitness functions)
 ```

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# coas-down — stop the CoAS stack. State persists in named volumes
+# and bind-mounted directories; only the running containers go away.
+
+set -euo pipefail
+
+# Resolve env so docker compose can parse the compose file (it validates
+# all interpolations on every subcommand, even `down`).
+export COAS_QUIET=1
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve-env.sh"
+
+docker compose down "$@"

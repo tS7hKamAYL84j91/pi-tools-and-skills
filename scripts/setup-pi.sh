@@ -17,6 +17,7 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 PI_DIR="$HOME/.pi/agent"
 MODELS_JSON="$PI_DIR/models.json"
@@ -166,10 +167,10 @@ fi
 
 bold "── Step 3: settings.json ──"
 
-SKILLS_DIR="$SCRIPT_DIR/skills"
-EXTENSIONS_DIR="$SCRIPT_DIR/extensions"
-PROMPTS_DIR="$SCRIPT_DIR/prompts"
-MEMORIES_DIR="$SCRIPT_DIR/memories"
+SKILLS_DIR="$PI_TOOLS_DIR/skills"
+EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
+PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
+MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
 python3 -c "
 import json, os, sys
@@ -236,7 +237,7 @@ echo  "    provider:   anthropic (claude-opus-4-6, prompt caching ON)"
 
 bold "── Step 4: AGENT.md ──"
 
-AGENT_MD="$SCRIPT_DIR/AGENT.md"
+AGENT_MD="$PI_TOOLS_DIR/AGENT.md"
 if [[ -f "$AGENT_MD" ]] && grep -qF "pi-setup generated" "$AGENT_MD" 2>/dev/null; then
     green "  Already configured (skipping)"
 else
@@ -259,13 +260,13 @@ if grep -qF "$MARKER" "$ZSHRC" 2>/dev/null; then
     dim "  Removed previous tools-and-skills block from .zshrc"
 fi
 
-# Write the block with $SCRIPT_DIR expanded at setup time (unquoted heredoc)
+# Write the block with $PI_TOOLS_DIR expanded at setup time (unquoted heredoc)
 # so the paths are correct even if the repo is renamed or moved.
 # All other $ signs are escaped so they stay literal in the zshrc.
 cat >> "$ZSHRC" << ZSHBLOCK
 # >>> pi tools-and-skills env >>>
 # Repo location (written by setup-pi.sh at setup time — re-run after moving)
-export PI_TOOLS_DIR="$SCRIPT_DIR"
+export PI_TOOLS_DIR="$PI_TOOLS_DIR"
 # OpenRouter API key from Keychain (for pi --provider openrouter)
 if [[ -z "\${OPENROUTER_API_KEY:-}" ]]; then
     _or_key=\$(security find-generic-password -s "openrouter-api-key" -a "\$USER" -w 2>/dev/null)
