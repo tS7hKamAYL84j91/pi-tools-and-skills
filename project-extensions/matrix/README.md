@@ -2,7 +2,7 @@
 
 End-to-end encrypted bridge between a Matrix room and a pi agent's inbox.
 
-The user types in Element X on their phone → message arrives in the Chief of Staff's panopticon inbox tagged `[from matrix:<localpart>]`. The Chief of Staff calls `matrix_send` to reply → message appears on the phone. All E2E encrypted via the Matrix Olm/Megolm crypto stack.
+The user types in Element X on their phone → message arrives in the Chief of Staff's panopticon inbox tagged `[from matrix:<localpart>]`. The Chief of Staff calls `message_send` to reply → message appears on the phone. All E2E encrypted via the Matrix Olm/Megolm crypto stack.
 
 For one-time setup (account creation, room creation, device verification), see [`SETUP.md`](./SETUP.md).
 
@@ -53,7 +53,7 @@ When configured, the extension:
 2. **At `session_shutdown`**: stops the sync loop, releases resources.
 3. **At `before_agent_start`**: injects a one-line system-prompt hint telling the chief of staff that a Matrix channel exists and how to reply.
 4. **On inbound messages**: filters to the configured room, ignores its own echoes, decrypts, and routes via `bridgeInbound` → `sendAgentMessage` to the target panopticon agent.
-5. **Tools**: `matrix_send`, `matrix_status`.
+5. **Tools**: `message_send`, `message_status`.
 6. **Slash commands**: `/matrix` (status snapshot via UI notify).
 
 ## Configuration
@@ -120,20 +120,20 @@ npx tsx scripts/matrix-login.ts \
 
 ## Tools
 
-### `matrix_send`
+### `message_send`
 
 Send an end-to-end encrypted message to the configured room.
 
 ```jsonc
 {
-  "name": "matrix_send",
+  "name": "message_send",
   "parameters": { "message": "string" }
 }
 ```
 
 The chief of staff uses this to reply to inbound `[from matrix:...]` messages, push status updates, or notify the human.
 
-### `matrix_status`
+### `message_status`
 
 Report bridge connection state, last-sync age, room/agent info. Used by the chief of staff to self-diagnose.
 
@@ -152,7 +152,7 @@ The chief of staff agent treats this exactly like any other peer-agent message �
 
 ## Outbound flow
 
-When the chief of staff calls `matrix_send`:
+When the chief of staff calls `message_send`:
 
 1. **Tool execution** invokes `client.send(text)` on the wrapper
 2. **matrix-bot-sdk** encrypts the message using the room's Megolm session

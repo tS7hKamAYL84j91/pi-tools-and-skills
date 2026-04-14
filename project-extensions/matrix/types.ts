@@ -25,6 +25,8 @@ export interface MatrixConfig {
 	deviceDisplayName: string;
 	/** Bot's password for UIA when uploading cross-signing keys, resolved from env */
 	botPassword?: string;
+	/** Label used in message attribution, e.g. "matrix" → "[from matrix:jim]" */
+	channelLabel: string;
 	/** Optional Secure Backup recovery passphrase, resolved from env */
 	recoveryPassphrase?: string;
 }

@@ -35,6 +35,7 @@ interface RawMatrixSettings {
 	encryption?: unknown;
 	cryptoStorePath?: unknown;
 	deviceDisplayName?: unknown;
+	channelLabel?: unknown;
 	secureBackupEnv?: unknown;
 }
 
@@ -110,6 +111,7 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 	const encryption = raw.encryption !== false; // default true
 	const cryptoStorePath = expandHome(optionalString(raw.cryptoStorePath) ?? DEFAULT_CRYPTO_STORE);
 	const deviceDisplayName = optionalString(raw.deviceDisplayName) ?? DEFAULT_DEVICE_NAME;
+	const channelLabel = optionalString(raw.channelLabel) ?? "matrix";
 
 	return {
 		homeserver,
@@ -120,6 +122,7 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		encryption,
 		cryptoStorePath,
 		deviceDisplayName,
+		channelLabel,
 		botPassword,
 		recoveryPassphrase,
 	};

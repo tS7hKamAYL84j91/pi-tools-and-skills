@@ -27,7 +27,7 @@ coas                 # start pi in the coas workspace (alias set by setup-pi.sh)
 | Extension  | What it does                                                                                                       |
 | ---------- | ------------------------------------------------------------------------------------------------------------------ |
 | **kanban** | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, file watcher, snapshot renderer     |
-| **matrix** | Phone ↔ agent bridge via a private Matrix room — notification + inbox pattern, `matrix_read` / `matrix_send` tools |
+| **matrix** | Phone ↔ agent bridge via a private Matrix room — notification + inbox pattern, `message_read` / `message_send` tools |
 
 ## Deployment
 

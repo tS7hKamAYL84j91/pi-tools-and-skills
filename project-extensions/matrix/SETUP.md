@@ -12,7 +12,7 @@ After `coas-up` completes:
 1. Install **Element X** on your phone
 2. Sign in to `https://coas-matrix.YOUR-TAILNET.ts.net` with your personal credentials
 3. The "Chief of Staff" room is already there
-4. Send a message — the agent receives it via `matrix_read`
+4. Send a message — the agent receives it via `message_read`
 
 ## Manual setup (matrix.org or other homeserver)
 
