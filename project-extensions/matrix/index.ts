@@ -34,6 +34,7 @@ let client: MatrixBridgeClient | null = null;
 let ctx: ExtensionContext | null = null;
 let piRef: ExtensionAPI | null = null;
 let lastError: string | null = null;
+let channelLabel = "matrix";
 
 // ── Unread message buffer ───────────────────────────────────────
 
@@ -106,8 +107,7 @@ function updateStatus(): void {
 // ── Inbound handler ─────────────────────────────────────────────
 
 function onInbound(msg: InboundMessage): void {
-	const label = config?.channelLabel ?? "matrix";
-	const from = `${label}:${mxidLocalpart(msg.senderMxid)}`;
+	const from = `${channelLabel}:${mxidLocalpart(msg.senderMxid)}`;
 	unread.push({
 		from,
 		body: msg.body,
@@ -133,6 +133,7 @@ export default function (pi: ExtensionAPI): void {
 		const projectSettingsPath = join(c.cwd, ".pi", "settings.json");
 		try {
 			config = loadMatrixConfig(projectSettingsPath);
+			channelLabel = config?.channelLabel ?? "matrix";
 		} catch (err) {
 			lastError = (err as Error).message;
 			ctx.ui.notify(`matrix: ${lastError}`, "warning");

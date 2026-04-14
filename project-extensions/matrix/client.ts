@@ -155,10 +155,12 @@ export class MatrixBridgeClient {
 				msgs: AnyClient, otk: AnyClient, fallback: AnyClient,
 				changed: string[], left: string[],
 			) => {
+				// Fast path: skip filter when all entries are valid (common case)
+				const hasInvalid = (arr: string[]) => arr.some((u: unknown) => typeof u !== "string");
 				return origUpdate(
 					msgs, otk, fallback,
-					changed.filter((u: unknown) => typeof u === "string"),
-					left.filter((u: unknown) => typeof u === "string"),
+					hasInvalid(changed) ? changed.filter((u: unknown) => typeof u === "string") : changed,
+					hasInvalid(left) ? left.filter((u: unknown) => typeof u === "string") : left,
 				);
 			};
 		}
