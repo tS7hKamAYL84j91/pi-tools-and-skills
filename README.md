@@ -151,7 +151,7 @@ Findings from a red-team audit (T-251/T-252/T-253). The current design assumes a
 
 ### Critical
 
-- [ ] **Sanitise Matrix message bodies** — message text is injected raw into agent context; wrap in `<external-matrix-messages>` tags and strip from poke notifications (CVSS 9.9)
+- [x] **Sanitise Matrix message bodies** — message bodies wrapped in `<external-messages>` tags; body stripped from poke notifications (CVSS 9.9)
 - [x] **Add Matrix sender allowlist** — `trustedSenders` config field; messages from unlisted MXIDs are silently dropped (CVSS 9.9)
 - [ ] **Fix newline injection in kanban log** — `escapeLogValue()` doesn't strip newlines; forged log events can fake task completions (CVSS 9.1)
 - [ ] **Sanitise agent message content** — unescaped `agent_send` payloads go straight into LLM context; escape or deliver in a structured slot (CVSS 9.0)

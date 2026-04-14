@@ -68,12 +68,9 @@ function schedulePoke(): void {
 		}
 
 		const count = unread.length;
-		const latest = unread[unread.length - 1];
-		const preview = latest
-			? `Latest from ${latest.from}: "${latest.body.length > 60 ? `${latest.body.slice(0, 60)}…` : latest.body}"`
-			: "";
+		// No message body in the poke — prevents prompt injection via preview
 		piRef.sendUserMessage(
-			`📱 ${count} new message${count > 1 ? "s" : ""}. ${preview}\nUse message_read to see ${count > 1 ? "them" : "it"}.`,
+			`📱 ${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
 			{ deliverAs: "followUp" },
 		);
 	}, 2000);
@@ -207,8 +204,9 @@ export default function (pi: ExtensionAPI): void {
 			const lines = messages.map((m) =>
 				`[${new Date(m.timestampMs).toLocaleTimeString()}] ${m.from}: ${m.body}`,
 			);
+			// Wrap in tags to separate untrusted external content from agent context
 			return ok(
-				`${messages.length} message${messages.length > 1 ? "s" : ""}:\n${lines.join("\n")}`,
+				`<external-messages>\n${lines.join("\n")}\n</external-messages>`,
 				{ count: messages.length, messages },
 			);
 		},
