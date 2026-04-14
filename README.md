@@ -19,35 +19,22 @@ cd pi-tools-and-skills
 npm install
 ```
 
-### 2. Register extensions with pi
+### 2. Set up and run
 
 ```bash
-make setup    # or: scripts/setup-pi
-exec zsh      # reload shell to pick up env vars
+make setup        # register extensions, skills, memories with pi
+exec zsh          # reload shell to pick up env vars
+make pi           # start pi in the coas workspace
 ```
 
-This registers all extensions, skills, prompts, and memories with pi's `~/.pi/agent/settings.json`. It also sets up shell hooks for API keys and creates a `coas` alias.
-
-### 3. Run pi
-
-```bash
-coas          # start pi in the coas workspace (alias from setup)
-# or: cd ~/git/coas && pi
-```
-
-Pi now has access to all the tools below — multi-agent messaging, kanban board, machine memories, and skills.
-
-### 4. Phone messaging (optional)
-
-To message the agent from your phone via Matrix, deploy the Docker stack:
+### 3. Phone messaging (optional)
 
 ```bash
 make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
+make attach       # start pi inside the container
 ```
 
-This starts four containers (Continuwuity homeserver, Caddy, Tailscale, coas-agent), bootstraps Matrix accounts, and configures E2EE. Then install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent.
-
-See [coas-infra/README.md](coas-infra/README.md) for details.
+Starts four containers (Continuwuity, Caddy, Tailscale, coas-agent), bootstraps Matrix accounts, and configures E2EE. Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
 
 ---
 
