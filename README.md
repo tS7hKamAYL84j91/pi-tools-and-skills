@@ -19,48 +19,42 @@ cd pi-tools-and-skills
 npm install
 ```
 
-### 2. Register extensions
+### 2. Set up
 
 ```bash
 make setup        # register extensions, skills, memories with pi
 exec zsh          # reload shell to pick up env vars
 ```
 
-### 3. Choose how to run pi
+### 3. Run pi
 
-There are two ways to run the agent, depending on whether you want the full Docker stack or just pi on your host.
-
-#### Option A: Pi on the host (simpler)
-
-Run pi directly on your machine. If the Matrix homeserver is already running (via Docker or elsewhere), pi connects to it over Tailscale.
+After setup, just run pi normally in any workspace:
 
 ```bash
-make pi           # resolves Matrix secrets from keychain, starts pi
+cd ~/git/coas && pi
 ```
 
-This is the day-to-day workflow when the Docker stack is already running on another machine (e.g. a DGX) or you only want pi without containerisation.
+Pi loads all extensions (panopticon, kanban, machine-memory), skills, and memories. No Matrix, no Docker — just the local agent with the full tool suite.
 
-#### Option B: Full Docker stack (self-contained)
+### 4. Add phone messaging via Matrix (optional)
 
-Run everything in containers — homeserver, reverse proxy, Tailscale, and pi. First run bootstraps Matrix accounts automatically.
+To message the agent from your phone, you need the Docker stack (Matrix homeserver + Tailscale). First run bootstraps everything:
 
 ```bash
 make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 ```
 
-Then connect to the containerised pi agent:
+Then run pi with Matrix secrets resolved:
 
 ```bash
-make attach       # interactive: docker exec into coas-agent, starts pi
+make pi           # pi on the host, connects to Matrix over Tailscale
+# or
+make attach       # pi inside the container (docker exec)
 ```
 
-`make attach` gives you a full pi TUI session inside the container. The container's working directory is `/workspace/coas` (bind-mounted from `~/git/coas`), so file edits are visible on the host immediately.
+`make pi` runs pi on your host with `MATRIX_ACCESS_TOKEN` and `MATRIX_BOT_PASSWORD` loaded from the secret store. `make attach` starts pi inside the `coas-agent` container instead. Both connect to the same Matrix homeserver.
 
-To detach without stopping the container: `Ctrl+P, Ctrl+Q` (or just close the terminal — the container keeps running).
-
-#### Phone messaging
-
-Both options support phone messaging via Matrix. Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
+Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
 
 ---
 
