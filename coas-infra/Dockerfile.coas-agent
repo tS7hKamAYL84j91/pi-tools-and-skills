@@ -61,7 +61,12 @@ RUN mkdir -p /workspace /home/coas/.pi \
 USER coas
 WORKDIR /workspace/coas
 
-ENV PATH=/usr/local/bin:/home/coas/.npm-global/bin:${PATH} \
+# npm global installs go to a user-writable directory so pi can install
+# extension packages (like pi-powerline-footer) at runtime without root.
+RUN mkdir -p /home/coas/.npm-global \
+	&& npm config set prefix /home/coas/.npm-global
+
+ENV PATH=/home/coas/.npm-global/bin:/usr/local/bin:${PATH} \
 	NODE_ENV=production
 
 # Default command: drop into a shell. Pi is started interactively via
