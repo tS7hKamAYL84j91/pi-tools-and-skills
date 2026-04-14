@@ -36,8 +36,9 @@ if [[ "${COAS_RESOLVED_ENV:-0}" == "1" ]]; then
   return 0
 fi
 
-INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECRETS="${COAS_SECRETS_WRAPPER:-${INFRA_DIR}/../scripts/coas-secrets.sh}"
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INFRA_DIR="${TOOLS_DIR}/coas-infra"
+SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
 
 if [[ ! -x "${SECRETS}" ]]; then
   echo "coas: cannot find coas-secrets.sh at ${SECRETS}" >&2

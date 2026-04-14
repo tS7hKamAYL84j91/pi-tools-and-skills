@@ -36,7 +36,7 @@ set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────
 
-INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../coas-infra" && pwd)"
 HEALTH_INTERVAL=15            # seconds between health checks
 RESTART_LIMIT=3               # max restarts per service in RESTART_WINDOW
 RESTART_WINDOW=300            # rolling window in seconds (5 min)
@@ -160,7 +160,7 @@ trap cleanup EXIT INT TERM
 log "resolving secrets..."
 
 # shellcheck disable=SC1091
-source "${INFRA_DIR}/scripts/_resolve-env.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve-env.sh"
 
 # ── Bring up the stack ────────────────────────────────────────────
 

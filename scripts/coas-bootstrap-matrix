@@ -57,14 +57,14 @@ if [[ -z "${PERSONAL_PASSWORD}" ]]; then echo "error: --personal-password is req
 
 # ── Resolve env ───────────────────────────────────────────────────
 
-INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TOOLS_DIR="$(cd "${INFRA_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COAS_DIR="${COAS_DIR:-${TOOLS_DIR}/../coas}"
 export COAS_QUIET=1
 # shellcheck disable=SC1091
-source "${INFRA_DIR}/scripts/_resolve-env.sh"
+source "${SCRIPT_DIR}/_resolve-env.sh"
 
-SECRETS="${COAS_SECRETS_WRAPPER:-${TOOLS_DIR}/scripts/coas-secrets.sh}"
+SECRETS="${COAS_SECRETS_WRAPPER:-${SCRIPT_DIR}/coas-secrets.sh}"
 HOMESERVER="https://${TS_FQDN}"
 SETTINGS="${COAS_DIR}/.pi/settings.json"
 CONTAINER="coas-infra-continuwuity-1"

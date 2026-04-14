@@ -20,7 +20,7 @@
 # ── Local development ────────────────────────────────────────────
 
 setup:
-	./setup-pi.sh
+	scripts/setup-pi.sh
 
 check:
 	npm run check
@@ -30,7 +30,7 @@ test:
 
 # ── Docker deployment ────────────────────────────────────────────
 
-INFRA = coas-infra/scripts
+INFRA = scripts
 
 UP_ARGS =
 ifdef BOT_PASSWORD
