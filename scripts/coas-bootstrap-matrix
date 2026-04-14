@@ -293,6 +293,8 @@ kanban_ext = os.path.join(tools_dir, 'project-extensions', 'kanban')
 matrix_ext = os.path.join(tools_dir, 'project-extensions', 'matrix')
 
 data['extensions'] = [kanban_ext, matrix_ext]
+personal_user = sys.argv[6]
+
 data['matrix'] = {
     'homeserver': f'https://{ts_fqdn}',
     'userId': f'@{bot_user}:{ts_fqdn}',
@@ -300,6 +302,7 @@ data['matrix'] = {
     'targetAgent': 'coas',
     'accessTokenEnv': 'MATRIX_ACCESS_TOKEN',
     'botPasswordEnv': 'MATRIX_BOT_PASSWORD',
+    'trustedSenders': [f'@{personal_user}:{ts_fqdn}'],
     'encryption': True,
     'deviceDisplayName': 'CoAS Chief of Staff (extension)',
     'cryptoStorePath': '~/.pi/agent/matrix-crypto'
@@ -308,7 +311,7 @@ data['matrix'] = {
 with open(path, 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" "${SETTINGS}" "${ROOM_ID}" "${TS_FQDN}" "${BOT_USER}" "${TOOLS_DIR}"
+" "${SETTINGS}" "${ROOM_ID}" "${TS_FQDN}" "${BOT_USER}" "${TOOLS_DIR}" "${PERSONAL_USER}"
 
 echo "  ✓ settings.json updated" >&2
 
