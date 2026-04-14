@@ -36,6 +36,7 @@ interface RawMatrixSettings {
 	cryptoStorePath?: unknown;
 	deviceDisplayName?: unknown;
 	channelLabel?: unknown;
+	trustedSenders?: unknown;
 	secureBackupEnv?: unknown;
 }
 
@@ -112,6 +113,9 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 	const cryptoStorePath = expandHome(optionalString(raw.cryptoStorePath) ?? DEFAULT_CRYPTO_STORE);
 	const deviceDisplayName = optionalString(raw.deviceDisplayName) ?? DEFAULT_DEVICE_NAME;
 	const channelLabel = optionalString(raw.channelLabel) ?? "matrix";
+	const trustedSenders = Array.isArray(raw.trustedSenders)
+		? (raw.trustedSenders as unknown[]).filter((s): s is string => typeof s === "string")
+		: [];
 
 	return {
 		homeserver,
@@ -123,6 +127,7 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		cryptoStorePath,
 		deviceDisplayName,
 		channelLabel,
+		trustedSenders,
 		botPassword,
 		recoveryPassphrase,
 	};

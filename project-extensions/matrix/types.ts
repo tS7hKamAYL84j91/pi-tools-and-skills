@@ -27,6 +27,8 @@ export interface MatrixConfig {
 	botPassword?: string;
 	/** Label used in message attribution, e.g. "matrix" → "[from matrix:jim]" */
 	channelLabel: string;
+	/** MXIDs allowed to send messages to the agent. Empty = accept all. */
+	trustedSenders: string[];
 	/** Optional Secure Backup recovery passphrase, resolved from env */
 	recoveryPassphrase?: string;
 }

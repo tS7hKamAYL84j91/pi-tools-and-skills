@@ -182,6 +182,9 @@ export class MatrixBridgeClient {
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
 			if (roomId !== this.config.roomId) return;
 			if (event?.sender === this.config.userId) return; // own echo
+			// Reject messages from untrusted senders (empty list = accept all)
+			const trusted = this.config.trustedSenders;
+			if (trusted.length > 0 && !trusted.includes(event?.sender)) return;
 			const content = event?.content;
 			if (!content || content.msgtype !== "m.text" || typeof content.body !== "string") return;
 
