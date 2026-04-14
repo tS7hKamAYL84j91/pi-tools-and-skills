@@ -173,11 +173,7 @@ Element X sees the bot as a verified device and shares Megolm session keys. No m
 
 ### Token rotation
 ```bash
-npx tsx ~/git/pi-tools-and-skills/scripts/matrix-login.ts \
-  --homeserver https://coas-matrix.YOUR-TAILNET.ts.net \
-  --user @coas-bot:coas-matrix.YOUR-TAILNET.ts.net
-# Prompts for password, prints new token
-echo 'NEW_TOKEN' | ./scripts/coas-secrets.sh set matrix-token
+make rotate-token     # logs in with stored password, updates secret store
 ```
 
 ---

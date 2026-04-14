@@ -5,13 +5,11 @@
     "project-extensions/*/index.ts",
     "lib/*.ts",
     "lib/**/*.ts",
-    "scripts/*.ts"
   ],
   "project": [
     "extensions/**/*.ts",
     "project-extensions/**/*.ts",
-    "lib/**/*.ts",
-    "scripts/**/*.ts"
+    "lib/**/*.ts"
   ],
   "ignoreDependencies": [
     "@mariozechner/pi-tui",

@@ -15,7 +15,7 @@
 # First-time docker deployment:
 #   make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 
-.PHONY: setup check test up down attach logs backup pi stack clean-mailboxes clean
+.PHONY: setup check test up down attach logs backup pi stack rotate-token clean-mailboxes clean
 
 # ── Local development ────────────────────────────────────────────
 
@@ -63,6 +63,9 @@ pi:
 
 stack:
 	$(INFRA)/coas-stack
+
+rotate-token:
+	scripts/matrix-login.sh --store
 
 clean-mailboxes:
 	scripts/clean-mailboxes.sh
