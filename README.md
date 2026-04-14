@@ -39,12 +39,8 @@ The `coas-infra/` directory contains a Docker Compose stack for self-hosted depl
 - **coas-agent** — pi running in a container with bind-mounted repos
 
 ```bash
-cd coas-infra
-./scripts/coas-up \
-  --bot-password 'PASSWORD' \
-  --personal-user jim \
-  --personal-password 'PASSWORD'
-# One command: starts stack, configures TLS, bootstraps Matrix accounts
+make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
+# Or: cd coas-infra && ./scripts/coas-up --bot-password X --personal-user jim --personal-password Y
 ```
 
 See [coas-infra/README.md](coas-infra/README.md) for the full setup walkthrough.
@@ -72,8 +68,9 @@ tests/                  Tests (vitest + archunit fitness functions)
 ## Development
 
 ```bash
-npm run check     # typecheck → biome lint → knip → type-coverage (≥95%)
-npm test          # 232 tests
+make check        # typecheck → biome lint → knip → type-coverage (≥95%)
+make test         # 232 tests
+make setup        # configure pi extensions, skills, shell hooks (first time)
 ```
 
 Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENT.md](AGENT.md) for coding standards.
