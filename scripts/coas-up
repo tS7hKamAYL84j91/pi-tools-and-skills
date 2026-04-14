@@ -33,7 +33,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INFRA_DIR="${TOOLS_DIR}/coas-infra"
-SECRETS="${COAS_SECRETS_WRAPPER:-${SCRIPT_DIR}/coas-secrets.sh}"
+SECRETS="${COAS_SECRETS_WRAPPER:-${SCRIPT_DIR}/coas-secrets}"
 
 # ── Parse args ───────────────────────────────────────────────────
 

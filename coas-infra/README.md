@@ -138,9 +138,9 @@ Stored in the platform secret store (macOS Keychain / Linux `pass`). `coas-up` p
 
 Manage secrets manually:
 ```bash
-echo 'value' | ./scripts/coas-secrets.sh set <key>
-./scripts/coas-secrets.sh get <key>
-./scripts/coas-secrets.sh list
+echo 'value' | ./scripts/coas-secrets set <key>
+./scripts/coas-secrets get <key>
+./scripts/coas-secrets list
 ```
 
 ---
@@ -165,7 +165,7 @@ Element X sees the bot as a verified device and shares Megolm session keys. No m
 
 ### Bot can't decrypt messages
 - Wipe the crypto store and restart: `rm -rf ~/.pi/agent/matrix-crypto`
-- Check that `bot-password` is in the secret store: `./scripts/coas-secrets.sh get bot-password`
+- Check that `bot-password` is in the secret store: `./scripts/coas-secrets get bot-password`
 
 ### Continuwuity won't start
 - Check logs: `docker logs coas-infra-continuwuity-1`

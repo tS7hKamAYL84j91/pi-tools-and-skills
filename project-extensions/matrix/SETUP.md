@@ -33,8 +33,8 @@ Option A: Sign in to [app.element.io](https://app.element.io) as the bot → Set
 
 Option B: Use the login script:
 ```bash
-scripts/matrix-login.sh          # uses TS_FQDN from .env + password from secret store
-scripts/matrix-login.sh --store  # also stores the new token automatically
+scripts/matrix-login          # uses TS_FQDN from .env + password from secret store
+scripts/matrix-login --store  # also stores the new token automatically
 ```
 
 ### 4. Store the token

@@ -4,7 +4,7 @@
 #
 # Single foreground script that:
 #   1. Resolves all secrets from the host secret store (Keychain on macOS,
-#      pass on Linux) via the coas-secrets.sh wrapper
+#      pass on Linux) via the coas-secrets wrapper
 #   2. Validates required env vars (TS_FQDN, GIT_ROOT etc.) and aborts
 #      with a clear error if anything is missing
 #   3. Brings up the four containers via `docker compose up -d`

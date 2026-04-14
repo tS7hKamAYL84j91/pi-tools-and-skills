@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Clean up stale agent mailboxes in ~/.pi/agents/
 # Removes directories, .json, and .sock files whose PID is no longer running.
-# Usage: clean-mailboxes.sh [--dry-run]
+# Usage: clean-mailboxes [--dry-run]
 
 set -euo pipefail
 

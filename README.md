@@ -8,9 +8,9 @@ Pi agent infrastructure: multi-agent orchestration, kanban task tracking, phone-
 git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
 cd pi-tools-and-skills
 npm install
-scripts/setup-pi.sh  # registers extensions, skills, memories, secrets, shell hooks
+scripts/setup-pi  # registers extensions, skills, memories, secrets, shell hooks
 exec zsh             # reload shell
-coas                 # start pi in the coas workspace (alias set by setup-pi.sh)
+coas                 # start pi in the coas workspace (alias set by setup-pi)
 ```
 
 ## Extensions

@@ -97,25 +97,22 @@ The extension only ever reads secrets from environment variables. Recommended se
 
 | Platform | Backend | Wrapper script |
 |---|---|---|
-| macOS | login Keychain via `security` | `pi-tools-and-skills/scripts/coas-secrets.sh` |
-| Linux | `pass` (passwordstore.org) | `pi-tools-and-skills/scripts/coas-secrets.sh` |
+| macOS | login Keychain via `security` | `pi-tools-and-skills/scripts/coas-secrets` |
+| Linux | `pass` (passwordstore.org) | `pi-tools-and-skills/scripts/coas-secrets` |
 
 Add a secret:
 ```bash
-echo 'syt_abc123' | scripts/coas-secrets.sh set matrix-token
+echo 'syt_abc123' | scripts/coas-secrets set matrix-token
 ```
 
 Read it (used by `coas-up` to populate env before docker compose):
 ```bash
-export MATRIX_ACCESS_TOKEN="$(scripts/coas-secrets.sh get matrix-token)"
+export MATRIX_ACCESS_TOKEN="$(scripts/coas-secrets get matrix-token)"
 ```
 
-For first-time bot account provisioning (or token rotation), use:
+For token rotation:
 ```bash
-npx tsx scripts/matrix-login.ts \
-  --homeserver https://matrix.org \
-  --user @coas-bot:matrix.org
-# Prompts for password, prints token. Pipe into coas-secrets to store.
+make rotate-token     # or: scripts/matrix-login --store
 ```
 
 ## Tools
