@@ -253,7 +253,6 @@ export default function (pi: ExtensionAPI): void {
 			if (!config) return ok("Messaging: not configured.", { configured: false });
 			if (!client) return ok(`Messaging: not connected. ${lastError ?? ""}`, { configured: true, connected: false });
 
-			
 			const lines = [
 				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}`,
 				`  Unread:  ${unread.length}`,

@@ -17,8 +17,8 @@
  * for headless bots with native file-backed crypto storage.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createPrivateKey, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { join } from "node:path";
 // Imports from matrix-bot-sdk are kept abstract behind any-typed locals
 // because the package is added as a runtime peer dep — we don't want a
@@ -251,27 +251,10 @@ export class MatrixBridgeClient {
 		return this.connected;
 	}
 
-	/** The underlying MatrixClient, for verification and direct API access. */
-	get rawClient(): AnyClient {
-		return this.client;
-	}
-
-	/** Bot's Matrix device ID. Available after start(). */
-	get matrixDeviceId(): string | undefined {
+	/** Bot's Matrix device ID. */
+	private get deviceId(): string | undefined {
 		// biome-ignore lint/suspicious/noExplicitAny: CryptoClient.clientDeviceId is a public getter
 		return (this.client?.crypto as any)?.clientDeviceId;
-	}
-
-	/** Bot's Ed25519 identity key (base64). Available after start(). */
-	get ed25519Key(): string | undefined {
-		// biome-ignore lint/suspicious/noExplicitAny: CryptoClient.clientDeviceEd25519 is a public getter
-		return (this.client?.crypto as any)?.clientDeviceEd25519;
-	}
-
-	/** Bot's Curve25519 identity key (base64). Available after start(). */
-	get curve25519Key(): string | undefined {
-		// biome-ignore lint/suspicious/noExplicitAny: accessing engine.machine (private) for identity keys
-		return (this.client?.crypto as any)?.engine?.machine?.identityKeys?.curve25519?.toBase64();
 	}
 
 	// ── Cross-signing key management ────────────────────────────
@@ -285,8 +268,9 @@ export class MatrixBridgeClient {
 	 */
 	private async ensureCrossSigningKeys(): Promise<void> {
 		const userId = this.config.userId;
+		const devId = this.deviceId;
 
-		// Check server state
+		// Check server state (single query — reused for signing below)
 		const keysQuery = await this.client.doRequest(
 			"POST", "/_matrix/client/v3/keys/query", null,
 			{ device_keys: { [userId]: [] } },
@@ -296,8 +280,7 @@ export class MatrixBridgeClient {
 
 		// Check if our device is already signed by the self-signing key
 		if (hasMaster && hasSelfSigning) {
-			const deviceId = this.matrixDeviceId;
-			const deviceSigs = keysQuery?.device_keys?.[userId]?.[deviceId ?? ""]?.signatures?.[userId];
+			const deviceSigs = keysQuery?.device_keys?.[userId]?.[devId ?? ""]?.signatures?.[userId];
 			const selfSigningKey = Object.keys(keysQuery.self_signing_keys[userId].keys ?? {})[0];
 			if (deviceSigs && selfSigningKey && deviceSigs[selfSigningKey]) {
 				this.notifyFn?.("cross-signing: already set up", "info");
@@ -307,48 +290,33 @@ export class MatrixBridgeClient {
 
 		this.notifyFn?.("cross-signing: uploading keys...", "info");
 
-		// Generate or load self-signing key (persisted for re-signing after restarts)
-		const selfSigningPemPath = join(this.config.cryptoStorePath, "self-signing.pem");
-		const { masterKey, selfSigningKeyPair, userSigningKey } = this.generateCrossSigningKeys(selfSigningPemPath);
+		const keysDir = join(this.config.cryptoStorePath, "cross-signing");
+		mkdirSync(keysDir, { recursive: true });
+		const { masterKey, selfSigningKeyPair, userSigningKey } = this.generateCrossSigningKeys(keysDir);
 
-		// Upload via UIA
 		await this.uploadCrossSigningKeys(masterKey, selfSigningKeyPair.publicPayload, userSigningKey);
 
-		// Sign the bot's device key with the self-signing key
-		await this.signDeviceKey(selfSigningKeyPair);
+		// Sign the bot's device using the already-fetched device key
+		const deviceKey = keysQuery?.device_keys?.[userId]?.[devId ?? ""];
+		if (deviceKey && devId) {
+			await this.signDeviceKey(selfSigningKeyPair, devId, deviceKey);
+		}
 
 		this.notifyFn?.("cross-signing: keys uploaded and device signed", "info");
 	}
 
-	private generateCrossSigningKeys(selfSigningPemPath: string): {
+	private generateCrossSigningKeys(keysDir: string): {
 		masterKey: CrossSigningKeyPayload;
 		selfSigningKeyPair: CrossSigningKeyPairWithPayload;
 		userSigningKey: CrossSigningKeyPayload;
 	} {
 		const userId = this.config.userId;
 
-		// Master key — always fresh (signs the other two)
-		const master = generateEd25519KeyPair();
+		// Load or generate each key — all persisted so they survive restarts
+		const master = loadOrGenerateKey(join(keysDir, "master.key"));
+		const selfSigning = loadOrGenerateKey(join(keysDir, "self-signing.key"));
+		const userSig = loadOrGenerateKey(join(keysDir, "user-signing.key"));
 		const masterKeyId = `ed25519:${master.pubBase64}`;
-
-		// Self-signing key — load from disk if exists, else generate + save
-		let selfSigning: Ed25519KeyPair;
-		if (existsSync(selfSigningPemPath)) {
-			const pem = readFileSync(selfSigningPemPath, "utf-8");
-			const parts = pem.split("\n");
-			const pubB64 = parts[0] ?? "";
-			const privB64 = parts[1] ?? "";
-			selfSigning = {
-				pubBase64: pubB64,
-				privateKey: Buffer.from(privB64, "base64"),
-			};
-		} else {
-			selfSigning = generateEd25519KeyPair();
-			writeFileSync(selfSigningPemPath, `${selfSigning.pubBase64}\n${selfSigning.privateKey.toString("base64")}`, { mode: 0o600 });
-		}
-
-		// User-signing key — always fresh
-		const userSig = generateEd25519KeyPair();
 
 		// Build payloads
 		const masterPayload: CrossSigningKeyPayload = {
@@ -417,18 +385,12 @@ export class MatrixBridgeClient {
 		);
 	}
 
-	private async signDeviceKey(selfSigningKeyPair: CrossSigningKeyPairWithPayload): Promise<void> {
+	private async signDeviceKey(
+		selfSigningKeyPair: CrossSigningKeyPairWithPayload,
+		devId: string,
+		deviceKey: AnyClient,
+	): Promise<void> {
 		const userId = this.config.userId;
-		const deviceId = this.matrixDeviceId;
-		if (!deviceId) return;
-
-		// Get current device key from server
-		const keysQuery = await this.client.doRequest(
-			"POST", "/_matrix/client/v3/keys/query", null,
-			{ device_keys: { [userId]: [] } },
-		);
-		const deviceKey = keysQuery?.device_keys?.[userId]?.[deviceId];
-		if (!deviceKey) return;
 
 		// Sign the device key with our self-signing key
 		const deviceSig = signJsonObject(deviceKey, selfSigningKeyPair.privateKey);
@@ -438,9 +400,9 @@ export class MatrixBridgeClient {
 			"POST", "/_matrix/client/v3/keys/signatures/upload", null,
 			{
 				[userId]: {
-					[deviceId]: {
+					[devId]: {
 						user_id: userId,
-						device_id: deviceId,
+						device_id: devId,
 						algorithms: deviceKey.algorithms,
 						keys: deviceKey.keys,
 						signatures: {
@@ -489,6 +451,19 @@ function generateEd25519KeyPair(): Ed25519KeyPair {
 	};
 }
 
+/** Load a persisted Ed25519 key or generate + save a new one. */
+function loadOrGenerateKey(path: string): Ed25519KeyPair {
+	try {
+		const pem = readFileSync(path, "utf-8");
+		const parts = pem.split("\n");
+		return { pubBase64: parts[0] ?? "", privateKey: Buffer.from(parts[1] ?? "", "base64") };
+	} catch {
+		const kp = generateEd25519KeyPair();
+		writeFileSync(path, `${kp.pubBase64}\n${kp.privateKey.toString("base64")}`, { mode: 0o600 });
+		return kp;
+	}
+}
+
 function unpadBase64(buf: Buffer): string {
 	return buf.toString("base64").replace(/=+$/, "");
 }
@@ -518,10 +493,9 @@ function signJsonObject(obj: CrossSigningKeyPayload | Record<string, unknown>, p
 	delete copy.unsigned;
 	const canonical = canonicalJson(copy);
 
-	// Import raw Ed25519 private key — build PKCS8 DER wrapper
+	// Import raw Ed25519 private key via PKCS8 DER wrapper
 	const pkcs8Header = Buffer.from("302e020100300506032b657004220420", "hex");
 	const pkcs8Der = Buffer.concat([pkcs8Header, privateKeyRaw]);
-	const { createPrivateKey } = require("node:crypto") as typeof import("node:crypto");
 	const keyObj = createPrivateKey({ key: pkcs8Der, format: "der", type: "pkcs8" });
 
 	const sig = cryptoSign(null, Buffer.from(canonical), keyObj);
