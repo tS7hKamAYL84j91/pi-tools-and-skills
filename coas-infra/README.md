@@ -1,40 +1,8 @@
 # CoAS Stack — Self-hosted Matrix + Chief of Staff (Docker)
 
-Private **Matrix homeserver** (Continuwuity) + **Chief of Staff agent** (pi) + **Caddy** reverse proxy + **Tailscale** mesh networking. Phone (Element X) reaches the agent through an encrypted Matrix room over Tailscale. No public internet exposure.
+Private Matrix homeserver (Continuwuity) + Chief of Staff agent (pi) + Caddy reverse proxy + Tailscale mesh. Phone (Element X) reaches the agent through an encrypted Matrix room. No public internet exposure.
 
-## Quick start
-
-```bash
-cd ~/git/pi-tools-and-skills
-
-# First run — prompts for everything:
-make up
-
-# Or non-interactive:
-make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
-```
-
-`make up` handles everything:
-1. Prompts for missing secrets (Tailscale auth key, TS_FQDN) and stores them
-2. Generates `continuwuity.toml` from template
-3. Starts all four containers
-4. Configures Tailscale Serve (HTTPS:443 → HTTP:80)
-5. Waits for HTTPS health check
-6. Auto-bootstraps Matrix accounts + room on first run
-
-After startup:
-```bash
-make attach       # start pi inside the container
-make logs         # tail logs
-make down         # stop the stack
-```
-
-### Phone setup
-
-1. Install **Tailscale** + **Element X** on your phone
-2. Join your tailnet in the Tailscale app
-3. In Element X: sign in to `https://coas-matrix.YOUR-TAILNET.ts.net` with the personal user/password from bootstrap
-4. The "Chief of Staff" room is already there — send a message
+For getting started and commands, see the [main README](../README.md).
 
 ---
 
@@ -86,59 +54,16 @@ make down         # stop the stack
 
 ---
 
-## Prerequisites
-
-| Tool | Install |
-|------|---------|
-| Docker + docker-compose | Docker Desktop (macOS) or `apt install docker.io docker-compose-plugin` (Linux) |
-| Tailscale account | Free tier at [tailscale.com](https://tailscale.com) |
-| Tailscale on phone | App Store / Play Store |
-| Element X on phone | App Store / Play Store |
-| Secret store (Linux only) | `apt install pass gnupg2` then `gpg --gen-key` |
-
-Enable **HTTPS Certificates** in the [Tailscale admin → DNS](https://login.tailscale.com/admin/dns) settings.
-
-```bash
-mkdir -p ~/git && cd ~/git
-git clone <YOUR_REMOTE>/coas.git
-git clone <YOUR_REMOTE>/pi-tools-and-skills.git
-cd pi-tools-and-skills && npm install
-```
-
----
-
-## Commands
-
-All from the repo root (`~/git/pi-tools-and-skills`):
-
-```bash
-make up           # start stack (+ bootstrap on first run)
-make down         # stop stack (state persists in volumes)
-make attach       # start pi inside coas-agent
-make logs         # tail logs across all services
-make backup       # snapshot persistent state
-make rotate-token # rotate the bot's access token
-```
-
----
-
 ## Secrets
 
-Stored in the platform secret store (macOS Keychain / Linux `pass`). `coas-up` prompts for missing secrets on first run.
+Stored in the platform secret store (macOS Keychain / Linux `pass`). `make up` prompts for missing secrets on first run.
 
 | Key | Purpose | When set |
 |-----|---------|----------|
-| `tailscale-authkey` | Tailscale container auth | First `coas-up` |
+| `tailscale-authkey` | Tailscale container auth | First `make up` |
 | `matrix-token` | Bot's Matrix access token | Auto (bootstrap) |
 | `bot-password` | Bot's password for cross-signing UIA | Auto (bootstrap) |
 | `matrix-recovery` | Optional Secure Backup passphrase | Manual if needed |
-
-Manage secrets manually:
-```bash
-echo 'value' | scripts/coas-secrets set <key>
-scripts/coas-secrets get <key>
-scripts/coas-secrets list
-```
 
 ---
 
@@ -161,17 +86,12 @@ Element X sees the bot as a verified device and shares Megolm session keys. No m
 - Try `curl https://coas-matrix.YOUR-TAILNET.ts.net/_matrix/client/versions` from the host.
 
 ### Bot can't decrypt messages
-- Wipe the crypto store and restart: `rm -rf ~/.pi/agent/matrix-crypto`
+- Wipe the crypto store and restart: `make clean`
 - Check that `bot-password` is in the secret store: `scripts/coas-secrets get bot-password`
 
 ### Continuwuity won't start
 - Check logs: `docker logs coas-infra-continuwuity-1`
 - If `server_name` was changed after first boot, wipe the volume: `docker volume rm infra_continuwuity-data`
-
-### Token rotation
-```bash
-make rotate-token     # logs in with stored password, updates secret store
-```
 
 ---
 
