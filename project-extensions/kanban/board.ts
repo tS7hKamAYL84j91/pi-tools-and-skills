@@ -53,7 +53,7 @@ export const logAppend = async (line: string): Promise<void> => {
  * field — it has no escape sequence — so any embedded `"` must be replaced
  * to keep the line round-trippable through parseBoard.
  */
-export const escapeLogValue = (s: string): string => s.replace(/"/g, "'");
+export const escapeLogValue = (s: string): string => s.replace(/[\r\n]/g, " ").replace(/"/g, "'");
 
 // ── Task file helpers ────────────────────────────────────────────
 
