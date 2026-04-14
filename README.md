@@ -19,22 +19,48 @@ cd pi-tools-and-skills
 npm install
 ```
 
-### 2. Set up and run
+### 2. Register extensions
 
 ```bash
 make setup        # register extensions, skills, memories with pi
 exec zsh          # reload shell to pick up env vars
-make pi           # start pi in the coas workspace
 ```
 
-### 3. Phone messaging (optional)
+### 3. Choose how to run pi
+
+There are two ways to run the agent, depending on whether you want the full Docker stack or just pi on your host.
+
+#### Option A: Pi on the host (simpler)
+
+Run pi directly on your machine. If the Matrix homeserver is already running (via Docker or elsewhere), pi connects to it over Tailscale.
+
+```bash
+make pi           # resolves Matrix secrets from keychain, starts pi
+```
+
+This is the day-to-day workflow when the Docker stack is already running on another machine (e.g. a DGX) or you only want pi without containerisation.
+
+#### Option B: Full Docker stack (self-contained)
+
+Run everything in containers — homeserver, reverse proxy, Tailscale, and pi. First run bootstraps Matrix accounts automatically.
 
 ```bash
 make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
-make attach       # start pi inside the container
 ```
 
-Starts four containers (Continuwuity, Caddy, Tailscale, coas-agent), bootstraps Matrix accounts, and configures E2EE. Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
+Then connect to the containerised pi agent:
+
+```bash
+make attach       # interactive: docker exec into coas-agent, starts pi
+```
+
+`make attach` gives you a full pi TUI session inside the container. The container's working directory is `/workspace/coas` (bind-mounted from `~/git/coas`), so file edits are visible on the host immediately.
+
+To detach without stopping the container: `Ctrl+P, Ctrl+Q` (or just close the terminal — the container keeps running).
+
+#### Phone messaging
+
+Both options support phone messaging via Matrix. Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
 
 ---
 
