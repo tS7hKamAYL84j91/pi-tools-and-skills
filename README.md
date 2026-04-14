@@ -147,22 +147,7 @@ Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ t
 
 ## Security
 
-Red-team audit (T-251/T-252/T-253) identified 10 findings. 7 fixed, 3 accepted (trusted host assumption).
-
-The design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh.
-
-| Finding | CVSS | Status |
-|---------|------|--------|
-| Matrix message body injection | 9.9 | Fixed — wrapped in `<external-messages>` tags |
-| Matrix sender allowlist | 9.9 | Fixed — `trustedSenders` config field |
-| Kanban log newline injection | 9.1 | Fixed — `escapeLogValue()` strips newlines |
-| Agent message injection | 9.0 | Fixed — wrapped in `<agent-message>` tags |
-| Agent name injection in kanban | 8.8 | Fixed — `sanitiseAgent()` validates names |
-| Tool name comma injection | 7.6 | Fixed — validated against `/^[a-zA-Z0-9_-]+$/` |
-| Terminal escape injection in TUI | 7.2 | Fixed — `stripDangerousEscapes()` |
-| Registry signing | 8.8 | Accepted — trusted host |
-| mmem content injection | 8.4 | Accepted — trusted host |
-| agentId path traversal | 8.2 | Accepted — trusted host |
+The design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh. External input (Matrix messages, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Findings that require host-level compromise are accepted risks — at that point the attacker already has full file access.
 
 ## License
 
