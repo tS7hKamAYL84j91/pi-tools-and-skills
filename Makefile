@@ -33,6 +33,9 @@ test:
 S = scripts
 
 UP_ARGS =
+ifdef BUILD
+  UP_ARGS += --build
+endif
 ifdef BOT_PASSWORD
   UP_ARGS += --bot-password '$(BOT_PASSWORD)'
 endif
