@@ -60,7 +60,7 @@ coas-infra/             Docker deployment (Continuwuity + Caddy + Tailscale)
 lib/                    Shared: agent-api, maildir transport, tool-result helpers
 skills/                 Agent skills (clean-room, deep-research, planning, ...)
 memories/               Global .mmem.yml files (pi-kanban, pi-extension-dev, ...)
-scripts/                coas-secrets, matrix-login, clean-mailboxes
+scripts/                coas-secrets, matrix-login, clean-mailboxes utilities
 prompts/                refactor, commit-and-push
 tests/                  Tests (vitest + archunit fitness functions)
 ```
