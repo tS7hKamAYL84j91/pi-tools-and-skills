@@ -44,8 +44,10 @@ vi.mock("../extensions/pi-panopticon/messaging.js", () => ({
 
 const mockShutdownAll = vi.fn(async () => {});
 
+const mockOnMissingDone = vi.fn(() => () => {});
+
 vi.mock("../extensions/pi-panopticon/spawner.js", () => ({
-	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll })),
+	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll, onMissingDone: mockOnMissingDone })),
 }));
 
 vi.mock("../extensions/pi-panopticon/peek.js", () => ({
