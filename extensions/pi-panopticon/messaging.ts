@@ -21,8 +21,6 @@ import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
 import type { MessageTransport } from "../../lib/message-transport.js";
-import { createMaildirTransport } from "../../lib/transports/maildir.js";
-
 import type { Registry } from "./types.js";
 import { ok } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
@@ -40,6 +38,8 @@ interface MessagingConfig {
 	send: MessageTransport;
 	/** Transport for broadcast (agent_broadcast). */
 	broadcast: MessageTransport;
+	/** Called for each inbound message text after delivery (e.g. completion-signal parsing). */
+	onMessage?: (text: string) => void;
 }
 
 // ── Messaging Module ────────────────────────────────────────────
@@ -79,6 +79,7 @@ export function createMessaging(config: MessagingConfig) {
 				} catch {
 					continue;
 				}
+				config.onMessage?.(msg.text);
 				config.send.ack(record.id, msg.id);
 			}
 			if (pending.length > 0) config.send.prune(record.id);
@@ -238,7 +239,3 @@ export function createMessaging(config: MessagingConfig) {
 		return module;
 	};
 }
-
-// Default: maildir for both (at-least-once everywhere)
-const maildir = createMaildirTransport();
-export default createMessaging({ send: maildir, broadcast: maildir });

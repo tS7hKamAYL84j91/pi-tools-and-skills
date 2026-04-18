@@ -15,25 +15,31 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import Registry from "./registry.js";
-import defaultMessaging from "./messaging.js";
+import { createMessaging } from "./messaging.js";
 import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
 import { setupHealth } from "./health.js";
 import { setupUI } from "./ui.js";
 import { OperationalStateStore } from "./state.js";
 import { setupReconciler } from "./reconciler.js";
+import { getMaildirTransport } from "../../lib/transports/maildir.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId);
 
 	// Set up modules — registers tools/commands, returns module handles
-	const messaging = defaultMessaging(pi, registry);
+	const operationalState = new OperationalStateStore(pi);
+	const reconciler = setupReconciler(pi, registry, selfId, operationalState);
+	const maildir = getMaildirTransport();
+	const messaging = createMessaging({
+		send: maildir,
+		broadcast: maildir,
+		onMessage: (text) => reconciler.handleInboundMessage(text),
+	})(pi, registry);
 	const spawner = setupSpawner(pi);
 	setupPeek(pi, registry);
 	setupHealth(pi, registry);
-	const operationalState = new OperationalStateStore(pi);
-	const reconciler = setupReconciler(pi, registry, selfId, operationalState);
 	const ui = setupUI(pi, registry, selfId);
 
 	// ── Lifecycle: start ────────────────────────────────────────

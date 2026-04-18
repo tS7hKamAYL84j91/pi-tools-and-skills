@@ -20,7 +20,7 @@ import {
 	isPidAlive,
 	type AgentRecord,
 } from "./agent-registry.js";
-import { createMaildirTransport } from "./transports/maildir.js";
+import { getMaildirTransport } from "./transports/maildir.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ export function findAgentByName(name: string): AgentInfo | null {
 
 // ── Commands ────────────────────────────────────────────────────
 
-const transport = createMaildirTransport();
+const transport = getMaildirTransport();
 
 /**
  * Send a message to an agent by ID.
