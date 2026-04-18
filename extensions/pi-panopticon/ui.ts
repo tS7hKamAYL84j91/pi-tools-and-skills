@@ -330,8 +330,9 @@ export function setupUI(
 					return;
 				}
 				pi.setSessionName(alias);
+				registry.setName(alias);
 				ctx.ui.notify(
-					`Session alias set to "${alias}" (registry name unchanged: ${registry.getRecord()?.name ?? "(none)"})`,
+					`Alias set to "${alias}"`,
 					"info",
 				);
 			} catch (err) {
@@ -344,16 +345,14 @@ export function setupUI(
 		name: "get_alias",
 		label: "Get Alias",
 		description:
-			"Get the current session alias. This is session-scoped display state, not the panopticon registry or agent identity.",
-		promptSnippet: "Get the current session alias",
+			"Get the current agent alias (session display name and registry name).",
+		promptSnippet: "Get the current agent alias",
 		parameters: Type.Object({}),
 		async execute(): Promise<ToolResult> {
 			const alias = pi.getSessionName();
 			const registryName = registry.getRecord()?.name;
 			return ok(
-				alias
-					? `Current session alias: ${alias}. Registry name remains ${registryName ?? "(none)"}.`
-					: `No session alias is set. Registry name is ${registryName ?? "(none)"}.`,
+				`Alias: ${alias ?? registryName ?? "(none)"}`,
 				{ alias, registryName },
 			);
 		},
@@ -363,8 +362,8 @@ export function setupUI(
 		name: "set_alias",
 		label: "Set Alias",
 		description:
-			"Set the current session alias. Session alias is session-scoped display state and does not change panopticon registry or agent identity.",
-		promptSnippet: "Set the current session alias",
+			"Set the session alias and update the agent's registered name in the panopticon registry.",
+		promptSnippet: "Set the current session alias and registry name",
 		parameters: Type.Object({
 			name: Type.String({ description: "Alias to use for this session" }),
 		}),
@@ -375,14 +374,14 @@ export function setupUI(
 					return fail("Alias cannot be empty.", { reason: "empty_alias" });
 				}
 				pi.setSessionName(alias);
+				registry.setName(alias);
 				return ok(
-					`Set session alias to ${alias}. Registry name remains ${registry.getRecord()?.name ?? "(none)"}.`,
-					{ alias, registryName: registry.getRecord()?.name },
+					`Alias set to ${alias}.`,
+					{ alias },
 				);
 			} catch (err) {
 				return fail((err as Error).message, {
 					reason: "invalid_alias",
-					registryName: registry.getRecord()?.name,
 				});
 			}
 		},

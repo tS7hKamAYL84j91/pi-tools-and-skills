@@ -23,11 +23,13 @@ describe("alias tools", () => {
 	let tools: Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>;
 	let commands: Map<string, { handler: (...args: unknown[]) => Promise<unknown> }>;
 	let sessionAlias: string | undefined;
+	let registry: Registry;
 
 	beforeEach(() => {
 		tools = new Map();
 		commands = new Map();
 		sessionAlias = undefined;
+		registry = makeRegistry();
 		const pi = {
 			registerTool: vi.fn((tool) => tools.set(tool.name, tool)),
 			registerCommand: vi.fn((name, command) => commands.set(name, command)),
@@ -37,32 +39,33 @@ describe("alias tools", () => {
 			}),
 			getSessionName: vi.fn(() => sessionAlias),
 		};
-		setupUI(pi as never, makeRegistry(), "self-id");
+		setupUI(pi as never, registry, "self-id");
 	});
 
-	it("set_alias updates the session alias without touching registry identity", async () => {
+	it("set_alias updates session alias and registry name", async () => {
 		const tool = tools.get("set_alias");
 		if (!tool) throw new Error("set_alias not registered");
 		const result = await tool.execute("id", { name: "chief" });
 		expect(sessionAlias).toBe("chief");
+		expect(registry.setName).toHaveBeenCalledWith("chief");
 		expect((result as { isError?: boolean }).isError).toBeFalsy();
 	});
 
-	it("get_alias reports alias and registry name separately", async () => {
+	it("get_alias reports current alias", async () => {
 		sessionAlias = "chief";
 		const tool = tools.get("get_alias");
 		if (!tool) throw new Error("get_alias not registered");
 		const result = await tool.execute("id", {});
 		const text = (result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
 		expect(text).toContain("chief");
-		expect(text).toContain("registry-name");
 	});
 
-	it("/alias command sets the session alias", async () => {
+	it("/alias command sets session alias and registry name", async () => {
 		const command = commands.get("alias");
 		if (!command) throw new Error("alias command not registered");
 		const ctx = { ui: { notify: vi.fn() } };
 		await command.handler("chief", ctx);
 		expect(sessionAlias).toBe("chief");
+		expect(registry.setName).toHaveBeenCalledWith("chief");
 	});
 });
