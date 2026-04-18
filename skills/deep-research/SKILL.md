@@ -95,7 +95,57 @@ into active context (Markovian window — prevents context rot).**
 
 For each unsatisfied node, generate up to **B** queries:
 - Vary phrasing: synonyms, narrow/broad terms, author names, year ranges
-- Match source type: arXiv/Semantic Scholar for academic, GitHub for code, web_read for URLs
+- Match source type: Semantic Scholar for academic, GitHub for code, Tavily/Jina for web
+
+### Available scripts (in `scripts/` directory)
+
+| Script | Source | CLI | Auth |
+|--------|--------|-----|------|
+| `scholarly_api.py` | Semantic Scholar | `--query X --limit N` | Optional: `S2_API_KEY` |
+| `github_search.py` | GitHub repos/code | `--query X --sort stars --limit N [--readme]` | Optional: `GITHUB_TOKEN` |
+| `web_scraper.py` | Tavily (primary) / Jina (fallback) / DuckDuckGo (free) | `--query X --max-results N [--engine jina|duckduckgo]` or `--url URL` | Required for Tavily: `TAVILY_API_KEY`. Jina: `JINA_API_KEY`. DDG: none |
+
+### Step 1b — Run scripts and normalise
+
+For each unsatisfied node, run the appropriate script(s):
+
+```bash
+# Academic search (Semantic Scholar)
+python3 skills/deep-research/scripts/scholarly_api.py \
+  --query "your academic query" --limit 10 --json
+
+# GitHub search (repositories)
+python3 skills/deep-research/scripts/github_search.py \
+  --query "your code query" --sort stars --limit 10 --readme
+
+# GitHub code search
+python3 skills/deep-research/scripts/github_search.py \
+  --code "pimd multicast config" --limit 5
+
+# Web search (Tavily — requires TAVILY_API_KEY)
+python3 skills/deep-research/scripts/web_scraper.py \
+  --query "your web query" --max-results 10
+
+# Web search (Jina — requires JINA_API_KEY)
+python3 skills/deep-research/scripts/web_scraper.py \
+  --query "your web query" --engine jina --max-results 10
+
+# Web search (DuckDuckGo — free, no key required)
+python3 skills/deep-research/scripts/web_scraper.py \
+  --query "your web query" --engine duckduckgo --max-results 10
+
+# Read a specific URL (Jina Reader — free)
+python3 skills/deep-research/scripts/web_scraper.py \
+  --url "https://example.com/article"
+
+# Semantic Scholar: follow citations from a known paper
+python3 skills/deep-research/scripts/scholarly_api.py \
+  --citations PAPER_ID --limit 5
+
+# Semantic Scholar: get references of a known paper
+python3 skills/deep-research/scripts/scholarly_api.py \
+  --references PAPER_ID --limit 5
+```
 
 ### Step 1b — Run scripts and normalise
 
@@ -249,6 +299,17 @@ Compute **geometric mean**. If < 6.5 → re-research the lowest-scoring dimensio
 | `SOURCES.md`      | 1     | Normalised evidence store (all search results) |
 | `EVIDENCE.md`     | 3     | Ranked, node-bound citations                   |
 | `REPORT.md`       | 4     | Final output                                   |
+
+### Scripts (`scripts/`)
+
+| Script | Purpose | Dependencies |
+|--------|---------|-------------|
+| `scholarly_api.py` | Semantic Scholar search, citations, references | `requests` (optional) |
+| `github_search.py` | GitHub repo/code search, README extraction | `requests` (optional) |
+| `web_scraper.py` | Tavily/Jina web search, Jina URL reader | `tavily-python` (optional for Tavily) |
+| `requirements.txt` | Python dependencies | — |
+
+Install: `pip3 install -r scripts/requirements.txt`
 
 Templates: `assets/` — copy to your working directory before starting.
 
