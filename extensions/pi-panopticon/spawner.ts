@@ -26,6 +26,9 @@ import {
 	buildArgList,
 	spawnChild,
 	gracefulKill,
+	rpcWrite,
+	rpcCall,
+	hasCompletionSignal,
 	type SpawnedAgent,
 } from "./spawner-utils.js";
 import {
@@ -33,7 +36,6 @@ import {
 	renderBriefAsPrompt,
 	type TaskBrief,
 } from "../../lib/task-brief.js";
-import { parseCompletionSignal } from "../../lib/completion-signal.js";
 
 // ── SpawnerModule interface ─────────────────────────────────────
 
@@ -80,111 +82,13 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 	const signalledAgents = new Set<string>();
 	const missingDoneListeners = new Set<MissingDoneCallback>();
 
-	/** Scan agent events for any completion signal (structured or legacy). */
-	function hasCompletionSignal(agent: SpawnedAgent): boolean {
-		if (signalledAgents.has(agent.name)) return true;
-		for (const line of agent.recentEvents) {
-			// Check for agent_send messages that contain completion signals
-			if (line.includes("DONE ") || line.includes("BLOCKED ") || line.includes("FAILED ") || line.includes("<completion-signal>")) {
-				try {
-					const evt = JSON.parse(line) as Record<string, unknown>;
-					// tool_execution_end for agent_send with a completion signal body
-					if (evt.type === "tool_execution_end") {
-						const result = evt.result as Record<string, unknown> | undefined;
-						const content = result?.content as Array<{ text?: string }> | undefined;
-						const text = content?.[0]?.text;
-						if (text && parseCompletionSignal(text)) {
-							signalledAgents.add(agent.name);
-							return true;
-						}
-					}
-					// tool_execution_start for agent_send with message containing signal keywords
-					if (evt.type === "tool_execution_start" && evt.toolName === "agent_send") {
-						const args = evt.args as Record<string, unknown> | undefined;
-						const msg = args?.message as string | undefined;
-						if (msg && parseCompletionSignal(msg)) {
-							signalledAgents.add(agent.name);
-							return true;
-						}
-					}
-				} catch { /* not JSON */ }
-			}
-		}
-		return false;
-	}
-
 	/** Called when a spawned agent's process exits. Checks for missing DONE. */
 	function onAgentExit(agent: SpawnedAgent): void {
-		if (hasCompletionSignal(agent)) return;
+		if (hasCompletionSignal(agent, signalledAgents)) return;
 		const durationMs = Date.now() - agent.startedAt;
 		for (const cb of missingDoneListeners) {
 			try { cb(agent.name, agent.pid, agent.proc.exitCode ?? null, durationMs); } catch { /* best-effort */ }
 		}
-	}
-
-	/** Write a JSON command to an agent's stdin. Returns false on failure. */
-	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
-		if (agent.done || !agent.proc.stdin?.writable) return false;
-		try {
-			agent.proc.stdin.write(`${JSON.stringify(cmd)}\n`, (err) => {
-				if (err) {
-					agent.done = true;
-					agent.recentEvents.push(`[stdin write error: ${err.message}]`);
-				}
-			});
-			return true;
-		} catch (err) {
-			agent.done = true;
-			agent.recentEvents.push(`[stdin write error: ${err}]`);
-			return false;
-		}
-	}
-
-	/**
-	 * Send an RPC command and resolve when a matching "response" event arrives
-	 * (or "agent_end" when waitForAgent=true). Uses the agent's EventEmitter
-	 * rather than polling.
-	 */
-	function rpcCall(
-		agent: SpawnedAgent,
-		cmd: Record<string, unknown>,
-		opts: { waitForAgent?: boolean; timeoutMs?: number } = {},
-	): Promise<{ response: Record<string, unknown> | null; events: string[] }> {
-		const { waitForAgent = false, timeoutMs = 30_000 } = opts;
-		return new Promise((resolve) => {
-			const eventsBefore = agent.recentEvents.length;
-			if (!rpcWrite(agent, cmd)) {
-				resolve({ response: null, events: [] });
-				return;
-			}
-
-			let response: Record<string, unknown> | null = null;
-			let finished = false;
-
-			const finish = () => {
-				if (finished) return;
-				finished = true;
-				clearTimeout(timer);
-				agent.emitter.off("line", onLine);
-				resolve({ response, events: agent.recentEvents.slice(eventsBefore) });
-			};
-
-			const onLine = (line: string) => {
-				if (agent.done) { finish(); return; }
-				try {
-					const evt = JSON.parse(line) as Record<string, unknown>;
-					if (evt.type === "response" && evt.command === cmd.type) {
-						response = evt;
-						if (!waitForAgent) { finish(); return; }
-					}
-					if (waitForAgent && evt.type === "agent_end") { finish(); return; }
-				} catch { /* not JSON */ }
-			};
-
-			const timer = setTimeout(finish, timeoutMs);
-			agent.emitter.on("line", onLine);
-			if (agent.done) finish();
-		});
 	}
 
 	// ── spawn_agent ─────────────────────────────────────────────

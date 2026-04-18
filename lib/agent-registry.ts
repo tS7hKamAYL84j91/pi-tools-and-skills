@@ -131,6 +131,7 @@ export function reapOrphanedMailboxes(): { removed: number } {
 			if (entry.endsWith(".sock")) {
 				unlinkSync(fullPath);
 			} else {
+				runAgentCleanup(entry);
 				rmSync(fullPath, { recursive: true, force: true });
 			}
 			removed++;

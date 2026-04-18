@@ -24,7 +24,7 @@ import { Type } from "@sinclair/typebox";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { REGISTRY_DIR, isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
-import { createMaildirTransport } from "../../lib/transports/maildir.js";
+import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { Registry } from "./types.js";
 import { ok } from "./types.js";
 import { getSelfName, resolvePeer, peerNames } from "./peers.js";
@@ -287,7 +287,7 @@ export function setupHealth(
 	registry: Registry,
 ): HealthModule {
 	const stallTracker = new Map<string, StallState>();
-	const transport = createMaildirTransport();
+	const transport = getMaildirTransport();
 
 
 

@@ -39,7 +39,11 @@ const mockDrainInbox = vi.fn();
 const mockMessagingDispose = vi.fn();
 
 vi.mock("../extensions/pi-panopticon/messaging.js", () => ({
-	default: vi.fn(() => ({ init: mockMessagingInit, drainInbox: mockDrainInbox, dispose: mockMessagingDispose })),
+	createMessaging: vi.fn(() => vi.fn(() => ({ init: mockMessagingInit, drainInbox: mockDrainInbox, dispose: mockMessagingDispose }))),
+}));
+
+vi.mock("../lib/transports/maildir.js", () => ({
+	getMaildirTransport: vi.fn(() => ({})),
 }));
 
 const mockShutdownAll = vi.fn(async () => {});
@@ -59,7 +63,7 @@ const mockReconcilerStop = vi.fn();
 const mockReconcilerOnAgentEnd = vi.fn();
 
 vi.mock("../extensions/pi-panopticon/reconciler.js", () => ({
-	setupReconciler: vi.fn(() => ({ start: mockReconcilerStart, stop: mockReconcilerStop, onAgentEnd: mockReconcilerOnAgentEnd })),
+	setupReconciler: vi.fn(() => ({ start: mockReconcilerStart, stop: mockReconcilerStop, onAgentEnd: mockReconcilerOnAgentEnd, handleInboundMessage: vi.fn() })),
 }));
 
 const mockUIStart = vi.fn();

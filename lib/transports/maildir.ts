@@ -25,30 +25,26 @@ import type {
 	MessageTransport,
 } from "../message-transport.js";
 
-// ── Local InboxMessage type ─────────────────────────────────────
-
-interface InboxMessage {
-	id: string;
-	from: string;
-	text: string;
-	ts: number;
-}
-
 // ── Maildir inbox helpers (private) ────────────────────────────
 
+function inboxPaths(agentId: string) {
+	const base = join(REGISTRY_DIR, agentId, "inbox");
+	return { base, tmp: join(base, "tmp"), new: join(base, "new"), cur: join(base, "cur") };
+}
+
 function ensureInbox(agentId: string): string {
-	const inboxPath = join(REGISTRY_DIR, agentId, "inbox");
-	for (const sub of ["tmp", "new", "cur"]) {
-		mkdirSync(join(inboxPath, sub), { recursive: true });
+	const paths = inboxPaths(agentId);
+	for (const dir of [paths.tmp, paths.new, paths.cur]) {
+		mkdirSync(dir, { recursive: true });
 	}
-	return inboxPath;
+	return paths.base;
 }
 
 function inboxReadNew(
 	agentId: string,
-): { filename: string; message: InboxMessage }[] {
+): { filename: string; message: InboundMessage }[] {
 	try {
-		const newDir = join(REGISTRY_DIR, agentId, "inbox", "new");
+		const { new: newDir } = inboxPaths(agentId);
 		return readdirSync(newDir)
 			.filter((f) => f.endsWith(".json"))
 			.sort()
@@ -59,7 +55,7 @@ function inboxReadNew(
 							filename: f,
 							message: JSON.parse(
 								readFileSync(join(newDir, f), "utf-8"),
-							) as InboxMessage,
+							) as InboundMessage,
 						},
 					];
 				} catch {
@@ -74,10 +70,11 @@ function inboxReadNew(
 }
 
 function inboxAcknowledge(agentId: string, filename: string): void {
+	const paths = inboxPaths(agentId);
 	try {
 		renameSync(
-			join(REGISTRY_DIR, agentId, "inbox", "new", filename),
-			join(REGISTRY_DIR, agentId, "inbox", "cur", filename),
+			join(paths.new, filename),
+			join(paths.cur, filename),
 		);
 	} catch {
 		/* best-effort: message may already be moved */
@@ -86,7 +83,7 @@ function inboxAcknowledge(agentId: string, filename: string): void {
 
 function inboxPruneCur(agentId: string, keep = 50): void {
 	try {
-		const curDir = join(REGISTRY_DIR, agentId, "inbox", "cur");
+		const { cur: curDir } = inboxPaths(agentId);
 		const files = readdirSync(curDir)
 			.filter((f) => f.endsWith(".json"))
 			.sort();
@@ -143,10 +140,8 @@ class MaildirTransport implements MessageTransport {
 
 	receive(agentId: string): InboundMessage[] {
 		return inboxReadNew(agentId).map(({ filename, message }) => ({
+			...message,
 			id: filename,
-			from: message.from,
-			text: message.text,
-			ts: message.ts,
 		}));
 	}
 
@@ -164,7 +159,7 @@ class MaildirTransport implements MessageTransport {
 
 	pendingCount(agentId: string): number {
 		try {
-			return readdirSync(join(REGISTRY_DIR, agentId, "inbox", "new")).filter(
+			return readdirSync(inboxPaths(agentId).new).filter(
 				(f) => f.endsWith(".json"),
 			).length;
 		} catch {
@@ -174,7 +169,6 @@ class MaildirTransport implements MessageTransport {
 
 	cleanup(agentId: string): void {
 		try {
-			// Remove the entire agent directory (inbox + parent)
 			rmSync(join(REGISTRY_DIR, agentId), {
 				recursive: true,
 				force: true,
@@ -185,8 +179,14 @@ class MaildirTransport implements MessageTransport {
 	}
 }
 
-// ── Factory ─────────────────────────────────────────────────────
+// ── Factory + singleton ────────────────────────────────────────
 
-export function createMaildirTransport(): MessageTransport {
-	return new MaildirTransport();
+/** Create a fresh instance — use for tests and separate-process scripts. */
+export function createMaildirTransport(): MessageTransport { return new MaildirTransport(); }
+
+let shared: MessageTransport | undefined;
+/** Shared singleton for in-process use (extensions, agent-api). */
+export function getMaildirTransport(): MessageTransport {
+	if (!shared) shared = new MaildirTransport();
+	return shared;
 }
