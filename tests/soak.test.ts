@@ -171,7 +171,7 @@ function verifyRegistryIntegrity(agents: AgentRecord[]): { valid: boolean; error
 describe("Soak Test: Multi-Agent Messaging", () => {
 	let agents: AgentRecord[] = [];
 	let messages: MessageRecord[] = [];
-	let metrics: SoakMetrics = {
+	const metrics: SoakMetrics = {
 		startTime: 0,
 		endTime: 0,
 		durationMs: 0,
@@ -346,7 +346,7 @@ describe("Soak Test: Multi-Agent Messaging", () => {
  * Standalone function to run the soak test without Vitest.
  * Usage: npx ts-node tests/soak.test.ts
  */
-export async function runSoakTest(): Promise<void> {
+async function runSoakTest(): Promise<void> {
 	console.log("Running standalone soak test...");
 
 	const agents = Array.from({ length: NUM_AGENTS }, (_, i) => createMockAgent(`agent-${i + 1}`));
@@ -379,3 +379,5 @@ export async function runSoakTest(): Promise<void> {
 	console.log(`  Failed: ${failed}`);
 	console.log(`  Duration: ${endTime - startTime}ms`);
 }
+
+void runSoakTest;

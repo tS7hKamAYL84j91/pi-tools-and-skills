@@ -12,6 +12,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import type { ToolResult } from "../lib/tool-result.js";
 import kanbanExtension from "../project-extensions/kanban/index.js";
 import { WIP_LIMIT } from "../project-extensions/kanban/board.js";
@@ -20,17 +22,33 @@ import { WIP_LIMIT } from "../project-extensions/kanban/board.js";
 
 interface RegisteredTool {
 	name: string;
-	execute: (id: string, params: any, signal?: AbortSignal, onUpdate?: any, ctx?: any) => Promise<ToolResult>;
+	execute: (
+		id: string,
+		params: Record<string, unknown>,
+		signal?: AbortSignal,
+		onUpdate?: unknown,
+		ctx?: { cwd?: string },
+	) => Promise<ToolResult>;
 }
 
-function createFakeApi() {
+interface FakeApi {
+	registerTool: (def: RegisteredTool) => void;
+	registerCommand: (name: string, opts: unknown) => void;
+	registerShortcut: (shortcut: string, opts: unknown) => void;
+	registerFlag: (name: string, opts: { default?: string | boolean }) => void;
+	on: (event: string, handler: unknown) => void;
+	getFlag: (name: string) => string | boolean | undefined;
+	sendUserMessage: (msg: string, opts?: unknown) => void;
+}
+
+function createFakeApi(): { api: FakeApi; tools: Map<string, RegisteredTool> } {
 	const tools = new Map<string, RegisteredTool>();
-	const flags = new Map<string, unknown>();
-	const api = {
+	const flags = new Map<string, string | boolean>();
+	const api: FakeApi = {
 		registerTool(def: RegisteredTool) { tools.set(def.name, def); },
 		registerCommand(_name: string, _opts: unknown) { /* no-op */ },
 		registerShortcut(_shortcut: string, _opts: unknown) { /* no-op */ },
-		registerFlag(name: string, opts: { default?: unknown }) {
+		registerFlag(name: string, opts: { default?: string | boolean }) {
 			if (opts.default !== undefined) flags.set(`--${name}`, opts.default);
 		},
 		on(_event: string, _handler: unknown) { /* captured but never fired */ },
@@ -64,7 +82,7 @@ beforeEach(async () => {
 
 	// kanbanDir() reads KANBAN_DIR lazily on every call, so a static import is fine
 	const fake = createFakeApi();
-	kanbanExtension(fake.api as any);
+	kanbanExtension(fake.api as unknown as ExtensionAPI);
 	tools = fake.tools;
 });
 

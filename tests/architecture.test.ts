@@ -157,8 +157,7 @@ describe("render path safety", () => {
 				(file) => {
 					// Find render() function bodies and check for readAllPeers
 					const renderPattern = /render\s*\([^)]*\)\s*(?::\s*\w+(?:\[\])?\s*)?\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
-					let match;
-					while ((match = renderPattern.exec(file.content)) !== null) {
+					for (const match of file.content.matchAll(renderPattern)) {
 						if (match[1]?.includes("readAllPeers")) {
 							return false;
 						}
@@ -192,8 +191,7 @@ describe("documentation", () => {
 
 function countFuncParams(content: string, maxParams: number): boolean {
 	const funcPattern = /function\s+\w+\s*\(([^)]*?)\)/g;
-	let match;
-	while ((match = funcPattern.exec(content)) !== null) {
+	for (const match of content.matchAll(funcPattern)) {
 		// Strip trailing comma and whitespace before counting
 		const params = match[1]?.replace(/,\s*$/, "").trim();
 		if (!params) continue;

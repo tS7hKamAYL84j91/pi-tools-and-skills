@@ -52,6 +52,14 @@ vi.mock("../extensions/pi-panopticon/peek.js", () => ({
 	setupPeek: vi.fn(),
 }));
 
+const mockReconcilerStart = vi.fn();
+const mockReconcilerStop = vi.fn();
+const mockReconcilerOnAgentEnd = vi.fn();
+
+vi.mock("../extensions/pi-panopticon/reconciler.js", () => ({
+	setupReconciler: vi.fn(() => ({ start: mockReconcilerStart, stop: mockReconcilerStop, onAgentEnd: mockReconcilerOnAgentEnd })),
+}));
+
 const mockUIStart = vi.fn();
 const mockUIStop = vi.fn();
 
@@ -78,6 +86,7 @@ function makeMockPI() {
 		registerCommand: vi.fn(),
 		registerShortcut: vi.fn(),
 		sendUserMessage: vi.fn(),
+		appendEntry: vi.fn(),
 	};
 }
 
@@ -88,7 +97,9 @@ function makeMockCtx(hasUI = true) {
 		sessionManager: {
 			getSessionDir: () => "/tmp/sessions",
 			getSessionFile: () => "/tmp/sessions/s.jsonl",
+			getEntries: () => [],
 		},
+		cwd: "/tmp/project",
 		ui: {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
@@ -120,10 +131,11 @@ describe("session_start", () => {
 		const order: string[] = [];
 		mockRegister.mockImplementation(() => order.push("register"));
 		mockMessagingInit.mockImplementation(() => order.push("messaging.init"));
+		mockReconcilerStart.mockImplementation(() => order.push("reconciler.start"));
 
 		await fire(pi, "session_start", {}, makeMockCtx());
 
-		expect(order).toEqual(["register", "messaging.init"]);
+		expect(order).toEqual(["register", "messaging.init", "reconciler.start"]);
 	});
 
 	it("starts UI when ctx.hasUI is true", async () => {
@@ -147,10 +159,11 @@ describe("agent events", () => {
 		const order: string[] = [];
 		mockSetStatus.mockImplementation(() => order.push("setStatus"));
 		mockDrainInbox.mockImplementation(() => order.push("drainInbox"));
+		mockReconcilerOnAgentEnd.mockImplementation(() => order.push("reconciler.onAgentEnd"));
 
 		await fire(pi, "agent_end", {});
 
-		expect(order).toEqual(["setStatus", "drainInbox"]);
+		expect(order).toEqual(["setStatus", "drainInbox", "reconciler.onAgentEnd"]);
 		expect(mockSetStatus).toHaveBeenCalledWith("waiting");
 	});
 
@@ -163,19 +176,19 @@ describe("agent events", () => {
 describe("input", () => {
 	it("sets task from first line of first input", async () => {
 		mockGetRecord.mockReturnValue({ task: undefined, sessionFile: "/tmp/s.jsonl" });
-		await fire(pi, "input", { text: "build a web app\nwith react" });
+		await fire(pi, "input", { text: "build a web app\nwith react" }, makeMockCtx());
 		expect(mockSetTask).toHaveBeenCalledWith("build a web app");
 	});
 
 	it("does not overwrite existing task", async () => {
 		mockGetRecord.mockReturnValue({ task: "already set", sessionFile: "/tmp/s.jsonl" });
-		await fire(pi, "input", { text: "new task" });
+		await fire(pi, "input", { text: "new task" }, makeMockCtx());
 		expect(mockSetTask).not.toHaveBeenCalled();
 	});
 
 	it("returns continue action", async () => {
 		const handlers = pi.handlers.get("input") ?? [];
-		const result = await handlers[0]?.({ text: "hi" });
+		const result = await handlers[0]?.({ text: "hi" }, makeMockCtx());
 		expect(result).toEqual({ action: "continue" });
 	});
 });
@@ -184,6 +197,7 @@ describe("session_shutdown", () => {
 	it("calls shutdownAll → drainInbox → dispose → ui.stop → unregister in order", async () => {
 		const order: string[] = [];
 		mockShutdownAll.mockImplementation(async () => { order.push("shutdownAll"); });
+		mockReconcilerStop.mockImplementation(() => { order.push("reconciler.stop"); });
 		mockDrainInbox.mockImplementation(() => { order.push("drainInbox"); });
 		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
 		mockUIStop.mockImplementation(() => { order.push("ui.stop"); });
@@ -191,6 +205,6 @@ describe("session_shutdown", () => {
 
 		await fire(pi, "session_shutdown", {});
 
-		expect(order).toEqual(["shutdownAll", "drainInbox", "dispose", "ui.stop", "unregister"]);
+		expect(order).toEqual(["shutdownAll", "reconciler.stop", "drainInbox", "dispose", "ui.stop", "unregister"]);
 	});
 });

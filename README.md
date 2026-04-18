@@ -8,7 +8,11 @@ Extensions, skills, and infrastructure for [pi](https://github.com/mariozechner/
 
 - [pi](https://github.com/mariozechner/pi-coding-agent) installed and working
 - Node.js 22+
+- Python 3
 - A git workspace at `~/git/` (configurable)
+- Secret store for your OS:
+  - macOS: Keychain (`security`)
+  - Linux: [`pass`](https://www.passwordstore.org/) + `gpg`, with `pass` initialized
 
 ### 1. Clone and install
 
@@ -22,9 +26,16 @@ npm install
 ### 2. Set up
 
 ```bash
-make setup        # register extensions, skills, memories with pi
-exec zsh          # reload shell to pick up env vars
+make help                     # show all available targets
+make setup                    # register extensions, skills, memories with pi
+# or:
+make setup OPENROUTER=0       # disable OpenRouter setup
+make setup OPENROUTER=1       # force-enable OpenRouter setup
+
+exec "$SHELL"                # reload shell to pick up env vars
 ```
+
+`make setup` now checks OS-specific dependencies before changing anything. On Linux it requires `pass` and `gpg`, and it will fail fast if `pass` is installed but not initialized.
 
 ### 3. Run pi
 
@@ -85,6 +96,9 @@ Reusable prompt templates that agents can follow for specific tasks.
 | **red-team** | Security assessment — vulnerability identification, MITRE ATLAS mapping |
 | **six-thinking-hats** | De Bono's structured multi-perspective analysis |
 | **notebooklm** | NotebookLM integration — create notebooks, upload sources, generate audio |
+| **pi-agent-orchestration** | Spawn, brief, monitor, nudge, and shut down pi worker agents |
+| **pi-extension-dev** | Build or modify pi extensions, tools, commands, hooks, and TUI widgets |
+| **pi-session-management** | Implement session-aware behavior, persistence, compaction, and reload-safe flows |
 | **skill-creator** | Meta-skill for creating and improving skills |
 
 ### Memories
@@ -92,10 +106,12 @@ Reusable prompt templates that agents can follow for specific tasks.
 Global `.mmem.yml` files providing compact reference knowledge:
 
 - `pi-kanban` — kanban extension patterns and tool usage
-- `pi-extension-dev` — how to build pi extensions
-- `pi-agent-orchestration` — multi-agent patterns and briefing templates
-- `pi-session-management` — session lifecycle and compaction
+- `pi-extension-dev` — compact extension API reminders and gotchas
+- `pi-agent-orchestration` — compact agent tool reminders and orchestration gotchas
+- `pi-session-management` — compact lifecycle API reminders and session gotchas
 - `node-esm-gotchas` — common ESM pitfalls
+
+The three `pi-*` memories above now have matching skills for workflow guidance; the memories remain as compact companion reference.
 
 ---
 
@@ -105,9 +121,12 @@ Everything goes through `make`:
 
 | Command | What |
 |---------|------|
+| `make` / `make help` | Show available targets and setup options |
 | `make setup` | Register extensions/skills/memories with pi |
+| `make setup OPENROUTER=0` | Run setup with OpenRouter disabled |
+| `make setup OPENROUTER=1` | Run setup with OpenRouter forced on |
 | `make check` | Typecheck + Biome lint + knip + type-coverage (≥95%) |
-| `make test` | Run 232 tests |
+| `make test` | Run tests |
 | `make up` | Start Docker stack (+ bootstrap on first run) |
 | `make down` | Stop Docker stack |
 | `make attach` | Start pi inside the container |
@@ -138,8 +157,9 @@ tests/                Tests (vitest + archunit fitness functions)
 ## Development
 
 ```bash
+make help         # list all targets
 make check        # typecheck → biome lint → knip → type-coverage (≥95%)
-make test         # 232 tests
+make test         # run tests
 make setup        # configure pi extensions, skills, shell hooks (first time)
 ```
 
