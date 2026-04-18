@@ -1,38 +1,40 @@
 # pi-tools-and-skills — common tasks
-#
-# Local development:
-#   make setup          # configure pi extensions, skills, shell hooks
-#   make check          # typecheck + lint + knip + type-coverage
-#   make test           # run tests
-#
-# Docker deployment (coas-infra):
-#   make up             # start stack (bootstraps on first run)
-#   make down           # stop stack
-#   make attach         # start pi inside the container
-#   make logs           # tail service logs
-#   make backup         # snapshot persistent state
-#
-# First-time docker deployment:
-#   make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 
-.PHONY: setup check test build up down attach logs backup pi stack rotate-token clean-mailboxes clean
+.DEFAULT_GOAL := help
+
+.PHONY: help setup check test build up down attach logs backup pi stack rotate-token clean-mailboxes clean
 
 # ── Local development ────────────────────────────────────────────
 
-setup:
-	scripts/setup-pi
+OPENROUTER ?=
+SETUP_ARGS =
+ifeq ($(OPENROUTER),0)
+  SETUP_ARGS += --no-openrouter
+endif
+ifeq ($(OPENROUTER),1)
+  SETUP_ARGS += --openrouter
+endif
 
-check:
+help: ## Show available make targets
+	@awk 'BEGIN {FS = ":.*## "; printf "Usage:\n  make <target> [VAR=value]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@printf "\nSetup options:\n"
+	@printf "  make setup OPENROUTER=0   # disable OpenRouter during setup\n"
+	@printf "  make setup OPENROUTER=1   # force-enable OpenRouter during setup\n"
+
+setup: ## Configure pi extensions, skills, shell hooks, and OS dependencies
+	scripts/setup-pi $(SETUP_ARGS)
+
+check: ## Run typecheck, lint, knip, and type-coverage
 	npm run check
 
-test:
+test: ## Run tests
 	npm test
 
 # ── Docker deployment ────────────────────────────────────────────
 
 S = scripts
 
-build:
+build: ## Build the coas-agent container
 	. $(S)/_resolve-env.sh && docker compose build coas-agent
 
 UP_ARGS =
@@ -46,35 +48,35 @@ ifdef PERSONAL_PASSWORD
   UP_ARGS += --personal-password '$(PERSONAL_PASSWORD)'
 endif
 
-up:
+up: ## Start the CoAS stack (bootstraps on first run)
 	$(S)/coas-up $(UP_ARGS)
 
-down:
+down: ## Stop the CoAS stack
 	$(S)/coas-down
 
-attach:
+attach: ## Open a shell/pi session inside the container
 	@exec $(S)/coas-attach
 
-logs:
+logs: ## Tail CoAS service logs
 	$(S)/coas-logs
 
-backup:
+backup: ## Snapshot persistent state
 	$(S)/coas-backup
 
-pi:
+pi: ## Start pi in the CoAS workspace
 	@exec $(S)/coas-pi
 
-stack:
+stack: ## Run the supervised foreground stack
 	@exec $(S)/coas-stack
 
-rotate-token:
+rotate-token: ## Refresh and store the Matrix token
 	$(S)/matrix-login --store
 
-clean-mailboxes:
+clean-mailboxes: ## Clean agent mailboxes
 	$(S)/clean-mailboxes
 
 # ── Cleanup ──────────────────────────────────────────────────────
 
-clean:
+clean: ## Remove local Matrix crypto state
 	rm -rf ~/.pi/agent/matrix-crypto
 	@echo "Crypto store wiped. Restart the agent to regenerate."

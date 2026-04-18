@@ -237,7 +237,10 @@ describe("/send command", () => {
 	});
 
 	function runSend(args: string | undefined) {
-		const cmd = api.registeredCommands.get("send")!;
+		const cmd = api.registeredCommands.get("send");
+		if (!cmd) {
+			throw new Error("send command was not registered");
+		}
 		const ui = { notify: vi.fn() };
 		return { promise: cmd.handler(args, { ui }), ui };
 	}

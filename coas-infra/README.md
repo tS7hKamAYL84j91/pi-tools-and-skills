@@ -58,6 +58,13 @@ For getting started and commands, see the [main README](../README.md).
 
 Stored in the platform secret store (macOS Keychain / Linux `pass`). `make up` prompts for missing secrets on first run.
 
+On Linux, make sure both `pass` and `gpg` are installed and that `pass` has been initialized before first use:
+
+```bash
+gpg --full-generate-key
+pass init <your-gpg-key-id>
+```
+
 | Key | Purpose | When set |
 |-----|---------|----------|
 | `tailscale-authkey` | Tailscale container auth | First `make up` |

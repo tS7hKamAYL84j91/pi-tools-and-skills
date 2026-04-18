@@ -105,6 +105,13 @@ Add a secret:
 echo 'syt_abc123' | scripts/coas-secrets set matrix-token
 ```
 
+On Linux, `scripts/coas-secrets` uses `pass`, so ensure `pass` and `gpg` are installed and initialized first:
+
+```bash
+gpg --full-generate-key
+pass init <your-gpg-key-id>
+```
+
 Read it (used by `coas-up` to populate env before docker compose):
 ```bash
 export MATRIX_ACCESS_TOKEN="$(scripts/coas-secrets get matrix-token)"

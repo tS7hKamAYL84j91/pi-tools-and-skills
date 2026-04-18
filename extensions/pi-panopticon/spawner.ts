@@ -33,17 +33,94 @@ import {
 	renderBriefAsPrompt,
 	type TaskBrief,
 } from "../../lib/task-brief.js";
+import { parseCompletionSignal } from "../../lib/completion-signal.js";
 
 // ── SpawnerModule interface ─────────────────────────────────────
 
+/** Callback invoked when a spawned agent exits without sending a completion signal. */
+type MissingDoneCallback = (agentName: string, pid: number, exitCode: number | null, durationMs: number) => void;
+
 interface SpawnerModule {
 	shutdownAll(): Promise<void>;
+	/** Register a listener for missing-DONE detection. Returns dispose function. */
+	onMissingDone(cb: MissingDoneCallback): () => void;
+}
+
+interface ResultEnvelope {
+	tool: string;
+	params: Record<string, unknown>;
+	result: Record<string, unknown>;
+	durationMs: number;
+	success: boolean;
+	error?: string;
+}
+
+function createResultEnvelope(args: {
+	tool: string;
+	params: Record<string, unknown>;
+	result: Record<string, unknown>;
+	startedAt: number;
+	success: boolean;
+	error?: string;
+}): ResultEnvelope {
+	return {
+		tool: args.tool,
+		params: args.params,
+		result: args.result,
+		durationMs: Date.now() - args.startedAt,
+		success: args.success,
+		...(args.error ? { error: args.error } : {}),
+	};
 }
 
 // ── Extension entry ─────────────────────────────────────────────
 
 export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 	const agents = new Map<string, SpawnedAgent>();
+	const signalledAgents = new Set<string>();
+	const missingDoneListeners = new Set<MissingDoneCallback>();
+
+	/** Scan agent events for any completion signal (structured or legacy). */
+	function hasCompletionSignal(agent: SpawnedAgent): boolean {
+		if (signalledAgents.has(agent.name)) return true;
+		for (const line of agent.recentEvents) {
+			// Check for agent_send messages that contain completion signals
+			if (line.includes("DONE ") || line.includes("BLOCKED ") || line.includes("FAILED ") || line.includes("<completion-signal>")) {
+				try {
+					const evt = JSON.parse(line) as Record<string, unknown>;
+					// tool_execution_end for agent_send with a completion signal body
+					if (evt.type === "tool_execution_end") {
+						const result = evt.result as Record<string, unknown> | undefined;
+						const content = result?.content as Array<{ text?: string }> | undefined;
+						const text = content?.[0]?.text;
+						if (text && parseCompletionSignal(text)) {
+							signalledAgents.add(agent.name);
+							return true;
+						}
+					}
+					// tool_execution_start for agent_send with message containing signal keywords
+					if (evt.type === "tool_execution_start" && evt.toolName === "agent_send") {
+						const args = evt.args as Record<string, unknown> | undefined;
+						const msg = args?.message as string | undefined;
+						if (msg && parseCompletionSignal(msg)) {
+							signalledAgents.add(agent.name);
+							return true;
+						}
+					}
+				} catch { /* not JSON */ }
+			}
+		}
+		return false;
+	}
+
+	/** Called when a spawned agent's process exits. Checks for missing DONE. */
+	function onAgentExit(agent: SpawnedAgent): void {
+		if (hasCompletionSignal(agent)) return;
+		const durationMs = Date.now() - agent.startedAt;
+		for (const cb of missingDoneListeners) {
+			try { cb(agent.name, agent.pid, agent.proc.exitCode ?? null, durationMs); } catch { /* best-effort */ }
+		}
+	}
 
 	/** Write a JSON command to an agent's stdin. Returns false on failure. */
 	function rpcWrite(agent: SpawnedAgent, cmd: Record<string, unknown>): boolean {
@@ -156,10 +233,14 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
+			const startedAt = Date.now();
 			if (params.task && params.brief) {
 				return fail(
 					"Cannot specify both 'task' and 'brief'. Use 'brief' for structured dispatch, 'task' for plain text.",
-					{ error: "mutually_exclusive" },
+					{
+						error: "mutually_exclusive",
+						envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { code: "mutually_exclusive" }, startedAt, success: false, error: "mutually_exclusive" }),
+					},
 				);
 			}
 
@@ -167,7 +248,11 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			if (existing && !existing.done) {
 				return ok(
 					`Agent "${params.name}" already running (pid ${existing.pid}). Use rpc_send to send it tasks.`,
-					{ error: "already_running", pid: existing.pid },
+					{
+						error: "already_running",
+						pid: existing.pid,
+						envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { pid: existing.pid, status: "already_running" }, startedAt, success: true }),
+					},
 				);
 			}
 			agents.delete(params.name);
@@ -191,11 +276,24 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: params.model, tempDir });
 			if (!agent.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
-				return fail(`Failed to spawn agent "${params.name}".`, { error: "spawn_failed" });
+				return fail(`Failed to spawn agent "${params.name}".`, {
+					error: "spawn_failed",
+					envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { code: "spawn_failed" }, startedAt, success: false, error: "spawn_failed" }),
+				});
 			}
 
 			if (taskPrompt) rpcWrite(agent, { type: "prompt", message: taskPrompt });
 			agents.set(params.name, agent);
+
+			// Wire missing-DONE detection on exit
+			agent.emitter.on("line", (line: string) => {
+				try {
+					const evt = JSON.parse(line) as Record<string, unknown>;
+					if (evt.type === "process_exit" || evt.type === "process_error") {
+						onAgentExit(agent);
+					}
+				} catch { /* not JSON */ }
+			});
 
 			return ok(
 				`Spawned "${params.name}" in RPC mode (pid ${agent.pid})\n` +
@@ -206,7 +304,12 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 					: `  (idle — use rpc_send to give it a task)\n`) +
 				`\nAgent will register in panopticon within seconds.\n` +
 				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
-				{ name: params.name, pid: agent.pid, cwd: agentCwd },
+				{
+					name: params.name,
+					pid: agent.pid,
+					cwd: agentCwd,
+					envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { name: params.name, pid: agent.pid, cwd: agentCwd }, startedAt, success: true }),
+				},
 			);
 		},
 	});
@@ -240,17 +343,25 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 		}),
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
+			const startedAt = Date.now();
 			const agent = agents.get(params.name);
 			if (!agent) {
 				return fail(
 					`No spawned agent named "${params.name}". Known: ${[...agents.keys()].join(", ") || "(none)"}`,
-					{ error: "not_found" },
+					{
+						error: "not_found",
+						envelope: createResultEnvelope({ tool: "rpc_send", params, result: { code: "not_found" }, startedAt, success: false, error: "not_found" }),
+					},
 				);
 			}
 			if (agent.done) {
 				return fail(
 					`Agent "${params.name}" has exited.\n\nLast output:\n${recentOutputFromEvents(agent.recentEvents, 10)}`,
-					{ error: "exited", exitCode: agent.proc.exitCode },
+					{
+						error: "exited",
+						exitCode: agent.proc.exitCode,
+						envelope: createResultEnvelope({ tool: "rpc_send", params, result: { code: "exited", exitCode: agent.proc.exitCode ?? null }, startedAt, success: false, error: "exited" }),
+					},
 				);
 			}
 
@@ -264,7 +375,10 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			const { response, events } = await rpcCall(agent, cmd, { waitForAgent, timeoutMs });
 
 			if (!response && events.length === 0) {
-				return fail(`Failed to communicate with agent "${params.name}".`, { error: "write_failed" });
+				return fail(`Failed to communicate with agent "${params.name}".`, {
+					error: "write_failed",
+					envelope: createResultEnvelope({ tool: "rpc_send", params, result: { code: "write_failed" }, startedAt, success: false, error: "write_failed" }),
+				});
 			}
 
 			const responseSummary = response
@@ -293,7 +407,17 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 			];
 
 			return ok(parts.join("\n"), {
-				name: params.name, command: params.command, response, eventCount: events.length,
+				name: params.name,
+				command: params.command,
+				response,
+				eventCount: events.length,
+				envelope: createResultEnvelope({
+					tool: "rpc_send",
+					params,
+					result: { response: response ?? {}, eventCount: events.length, waited: waitForAgent },
+					startedAt,
+					success: true,
+				}),
 			});
 		},
 	});
@@ -410,6 +534,11 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 				.filter((a) => !a.done)
 				.map((a) => gracefulKill(a, writeAbort));
 			await Promise.all(pending);
+		},
+
+		onMissingDone(cb: MissingDoneCallback): () => void {
+			missingDoneListeners.add(cb);
+			return () => { missingDoneListeners.delete(cb); };
 		},
 	};
 }

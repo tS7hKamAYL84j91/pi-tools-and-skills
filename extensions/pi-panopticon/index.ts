@@ -20,6 +20,8 @@ import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
 import { setupHealth } from "./health.js";
 import { setupUI } from "./ui.js";
+import { OperationalStateStore } from "./state.js";
+import { setupReconciler } from "./reconciler.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -30,13 +32,28 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi);
 	setupPeek(pi, registry);
 	setupHealth(pi, registry);
+	const operationalState = new OperationalStateStore(pi);
+	const reconciler = setupReconciler(pi, registry, selfId, operationalState);
 	const ui = setupUI(pi, registry, selfId);
 
 	// ── Lifecycle: start ────────────────────────────────────────
 
-	pi.on("session_start", async (_event, ctx) => {
+	// Wire missing-DONE safety net: when a spawned agent exits without
+	// sending a completion signal, inject a followUp to alert the orchestrator.
+	spawner.onMissingDone((agentName, pid, exitCode, durationMs) => {
+		const mins = Math.round(durationMs / 60_000);
+		pi.sendUserMessage(
+			`⚠️ Agent "${agentName}" (pid ${pid}) exited (code ${exitCode ?? "unknown"}) after ${mins}m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
+			`Check its output with list_spawned or agent_peek. If it completed work, update kanban manually.`,
+			{ deliverAs: "followUp" },
+		);
+	});
+
+	pi.on("session_start", async (event, ctx) => {
 		registry.register(ctx);
+		operationalState.restore(ctx, event);
 		messaging.init();
+		reconciler.start(ctx);
 		if (ctx.hasUI) {
 			ui.start(ctx);
 		}
@@ -51,13 +68,15 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_end", async () => {
 		registry.setStatus("waiting");
 		messaging.drainInbox();
+		reconciler.onAgentEnd();
 	});
 
 	pi.on("model_select", async (event) => {
 		registry.updateModel(`${event.model.provider}/${event.model.id}`);
 	});
 
-	pi.on("input", async (event) => {
+	pi.on("input", async (event, ctx) => {
+		operationalState.recordInput(ctx, event);
 		if (event.text) {
 			const firstLine = event.text.split("\n")[0]?.slice(0, 80);
 			if (firstLine && !registry.getRecord()?.task) {
@@ -71,6 +90,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		await spawner.shutdownAll();
+		reconciler.stop();
 		messaging.drainInbox();
 		messaging.dispose();
 		ui.stop();

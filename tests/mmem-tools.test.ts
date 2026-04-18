@@ -11,6 +11,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ToolResult } from "../lib/tool-result.js";
 
 // ── Mock node:os to redirect homedir() to a per-test tmp dir ─────
@@ -32,38 +33,56 @@ import mmemExtension from "../extensions/machine-memory/index.js";
 
 // ── Fake ExtensionAPI ────────────────────────────────────────────
 
+interface TestContext {
+	cwd: string;
+	ui: {
+		setStatus: (key: string, text: string) => void;
+		setWidget: (key: string, lines: string[]) => void;
+		notify: (message: string, level: string) => void;
+		custom: <T>(_render: unknown) => Promise<T | null>;
+	};
+}
+
 interface RegisteredTool {
 	name: string;
-	execute: (id: string, params: any, signal?: AbortSignal, onUpdate?: any, ctx?: any) => Promise<ToolResult>;
+	execute: (
+		id: string,
+		params: Record<string, unknown>,
+		signal?: AbortSignal,
+		onUpdate?: unknown,
+		ctx?: TestContext,
+	) => Promise<ToolResult>;
 }
 
 interface RegisteredCommand {
-	handler: (args: string, ctx: any) => Promise<unknown> | unknown;
+	handler: (args: string, ctx: TestContext) => Promise<unknown> | unknown;
 }
+
+type RegisteredHandler = (event: { type: string; reason?: string }, ctx: TestContext) => Promise<unknown> | unknown;
 
 function createFakeApi() {
 	const tools = new Map<string, RegisteredTool>();
 	const commands = new Map<string, RegisteredCommand>();
-	const handlers = new Map<string, (event: any, ctx: any) => Promise<unknown> | unknown>();
+	const handlers = new Map<string, RegisteredHandler>();
 	const api = {
 		registerTool(def: RegisteredTool) { tools.set(def.name, def); },
 		registerCommand(name: string, opts: RegisteredCommand) { commands.set(name, opts); },
 		registerFlag(_name: string, _opts: unknown) { /* no-op */ },
-		on(event: string, handler: (e: any, c: any) => unknown) { handlers.set(event, handler as any); },
+		on(event: string, handler: RegisteredHandler) { handlers.set(event, handler); },
 		getFlag(_name: string) { return undefined; },
 		sendUserMessage(_msg: string, _opts?: unknown) { /* no-op */ },
 	};
 	return { api, tools, commands, handlers };
 }
 
-function makeCtx(cwd: string) {
+function makeCtx(cwd: string): TestContext {
 	return {
 		cwd,
 		ui: {
 			setStatus: () => { /* no-op */ },
 			setWidget: () => { /* no-op */ },
 			notify: () => { /* no-op */ },
-			custom: async () => null,
+			custom: async <_T>() => null,
 		},
 	};
 }
@@ -79,7 +98,7 @@ async function callTool(tools: Map<string, RegisteredTool>, name: string, params
 let homeDir: string;
 let projectDir: string;
 let tools: Map<string, RegisteredTool>;
-let handlers: Map<string, (event: any, ctx: any) => Promise<unknown> | unknown>;
+let handlers: Map<string, RegisteredHandler>;
 
 beforeEach(async () => {
 	homeDir = mkdtempSync(join(tmpdir(), "mmem-home-"));
@@ -89,7 +108,7 @@ beforeEach(async () => {
 	homeHolder.current = homeDir;
 
 	const fake = createFakeApi();
-	mmemExtension(fake.api as any);
+	mmemExtension(fake.api as unknown as ExtensionAPI);
 	tools = fake.tools;
 	handlers = fake.handlers;
 

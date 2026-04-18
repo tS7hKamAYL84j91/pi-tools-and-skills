@@ -5,13 +5,15 @@ set -euo pipefail
 # setup-pi — Configure pi with the full tools-and-skills extension stack
 #
 # What it does:
-#   1. Stores your OpenRouter API key in the macOS Keychain
-#   2. Detects locally available Ollama models → writes models.json
-#   3. Registers extensions, skills, prompts, and memories in settings.json
-#   4. Configures Anthropic as default provider with prompt caching
-#   5. Ensures AGENT.md has efficiency directives
-#   6. Adds shell hooks for OPENROUTER_API_KEY and MATRIX_ACCESS_TOKEN
-#   7. Sets up the coas-pi alias
+#   1. Optionally stores your OpenRouter API key in the platform secret store
+#      (macOS Keychain or Linux pass)
+#   2. Verifies required setup dependencies for the current OS
+#   3. Detects locally available Ollama models → writes models.json
+#   4. Registers extensions, skills, prompts, and memories in settings.json
+#   5. Configures Anthropic as default provider with prompt caching
+#   6. Ensures AGENT.md has efficiency directives
+#   7. Adds shell hooks (OPENROUTER_API_KEY optional) and MATRIX_ACCESS_TOKEN
+#   8. Sets up the coas-pi alias
 #
 # Idempotent — safe to re-run after pulling new models or extensions.
 # ─────────────────────────────────────────────────────────────────────
@@ -22,51 +24,203 @@ PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PI_DIR="$HOME/.pi/agent"
 MODELS_JSON="$PI_DIR/models.json"
 SETTINGS_JSON="$PI_DIR/settings.json"
-KEYCHAIN_SERVICE="openrouter-api-key"
-KEYCHAIN_ACCOUNT="$USER"
-ZSHRC="$HOME/.zshrc"
+OS="$(uname -s)"
+OPENROUTER_KEYCHAIN_SERVICE="openrouter-api-key"
+OPENROUTER_KEYCHAIN_ACCOUNT="$USER"
+OPENROUTER_PASS_KEY="pi/openrouter-api-key"
+SHELL_NAME="$(basename "${SHELL:-/bin/zsh}")"
+case "$SHELL_NAME" in
+    bash) SHELL_RC="$HOME/.bashrc" ;;
+    *) SHELL_RC="$HOME/.zshrc" ;;
+esac
 MARKER="# >>> pi tools-and-skills env >>>"
 MARKER_END="# <<< pi tools-and-skills env <<<"
+
+case "$OS" in
+    Darwin)
+        OPENROUTER_API_KEY_COMMAND='!security find-generic-password -s openrouter-api-key -a $USER -w'
+        ;;
+    Linux)
+        OPENROUTER_API_KEY_COMMAND='!pass show pi/openrouter-api-key'
+        ;;
+    *)
+        OPENROUTER_API_KEY_COMMAND=''
+        ;;
+esac
+
+ENABLE_OPENROUTER="ask"
+for arg in "$@"; do
+    case "$arg" in
+        --openrouter)
+            ENABLE_OPENROUTER="true"
+            ;;
+        --no-openrouter)
+            ENABLE_OPENROUTER="false"
+            ;;
+        -h|--help)
+            cat << 'HELP'
+Usage: setup-pi [--openrouter | --no-openrouter]
+
+  --openrouter     Force-enable OpenRouter key setup and shell export hook.
+  --no-openrouter  Disable OpenRouter key setup and shell export hook.
+HELP
+            exit 0
+            ;;
+        *)
+            printf '\033[31m%s\033[0m\n' "Error: Unknown argument: $arg"
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "$ENABLE_OPENROUTER" == "ask" ]]; then
+    read -rp "Enable OpenRouter setup (secret store + env hook)? [Y/n] " openrouter_choice
+    if [[ "$openrouter_choice" =~ ^[nN]$ ]]; then
+        ENABLE_OPENROUTER="false"
+    else
+        ENABLE_OPENROUTER="true"
+    fi
+fi
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
+require_cmd() {
+    local cmd="$1"
+    local hint="${2:-Install '${cmd}' and re-run setup.}"
+    if ! command -v "$cmd" &>/dev/null; then
+        red "Error: required command '${cmd}' not found."
+        dim "  ${hint}"
+        exit 1
+    fi
+}
+
+get_openrouter_secret() {
+    case "$OS" in
+        Darwin)
+            security find-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" -w 2>/dev/null
+            ;;
+        Linux)
+            pass show "$OPENROUTER_PASS_KEY" 2>/dev/null
+            ;;
+    esac
+}
+
+set_openrouter_secret() {
+    local value="$1"
+    case "$OS" in
+        Darwin)
+            security delete-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" &>/dev/null || true
+            security add-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" -w "$value"
+            ;;
+        Linux)
+            printf '%s\n' "$value" | pass insert -e -f "$OPENROUTER_PASS_KEY" >/dev/null
+            ;;
+        *)
+            red "Error: unsupported OS '$OS'"
+            exit 1
+            ;;
+    esac
+}
+
+remove_block_if_present() {
+    local path="$1"
+    local start_marker="$2"
+    local end_marker="$3"
+    [[ -f "$path" ]] || return 0
+    if ! grep -qF "$start_marker" "$path" 2>/dev/null; then
+        return 0
+    fi
+    python3 - "$path" "$start_marker" "$end_marker" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+start = sys.argv[2]
+end = sys.argv[3]
+text = path.read_text()
+lines = text.splitlines(keepends=True)
+out = []
+skip = False
+for line in lines:
+    stripped = line.rstrip("\n")
+    if stripped == start:
+        skip = True
+        continue
+    if skip and stripped == end:
+        skip = False
+        continue
+    if not skip:
+        out.append(line)
+path.write_text("".join(out))
+PY
+}
+
 # ── 0. Prerequisites ────────────────────────────────────────────────
 
-if ! command -v pi &>/dev/null; then
-    red "Error: pi is not installed."
-    exit 1
-fi
+bold "── Step 0: Prerequisites ──"
 
+require_cmd pi "Install pi first."
+require_cmd python3 "Install Python 3 first."
+
+case "$OS" in
+    Darwin)
+        require_cmd security "The macOS 'security' CLI is required for Keychain access."
+        ;;
+    Linux)
+        require_cmd pass "Install 'pass' (passwordstore.org); setup-pi uses it as the Linux secret store."
+        require_cmd gpg "Install GnuPG; 'pass' depends on it."
+        if ! pass ls >/dev/null 2>&1; then
+            red "Error: 'pass' is installed but not initialized."
+            dim "  Run: gpg --full-generate-key"
+            dim "  Then: pass init <your-gpg-key-id>"
+            exit 1
+        fi
+        ;;
+    *)
+        red "Error: unsupported OS '$OS'. setup-pi supports macOS and Linux."
+        exit 1
+        ;;
+esac
+
+green "  OS: $OS"
+green "  Shell rc: $SHELL_RC"
 mkdir -p "$PI_DIR"
 
-# ── 1. OpenRouter API Key → macOS Keychain ──────────────────────────
+# ── 1. OpenRouter API Key (optional) ────────────────────────────────
 
-bold "── Step 1: OpenRouter API Key ──"
+bold "── Step 1: OpenRouter API Key (optional) ──"
 
-existing_key=""
-if security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w &>/dev/null; then
-    existing_key=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w)
-    green "  Found existing key in Keychain (ends with ...${existing_key: -6})"
-    read -rp "  Replace it? [y/N] " replace
-    if [[ "$replace" != [yY] ]]; then
-        echo "  Keeping existing key."
-    else
-        existing_key=""
+if [[ "$ENABLE_OPENROUTER" == "false" ]]; then
+    dim "  OpenRouter setup disabled (--no-openrouter)"
+else
+    secret_store_label="Keychain"
+    if [[ "$OS" == "Linux" ]]; then
+        secret_store_label="pass"
     fi
-fi
 
-if [[ -z "$existing_key" ]]; then
-    read -rsp "  Paste your OpenRouter API key: " api_key
-    echo
-    if [[ -z "$api_key" ]]; then
-        red "  No key provided. Skipping OpenRouter setup."
-    else
-        security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" &>/dev/null || true
-        security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$api_key"
-        green "  Stored in Keychain (service: $KEYCHAIN_SERVICE)"
+    existing_key="$(get_openrouter_secret || true)"
+    if [[ -n "$existing_key" ]]; then
+        green "  Found existing key in ${secret_store_label} (ends with ...${existing_key: -6})"
+        read -rp "  Replace it? [y/N] " replace
+        if [[ "$replace" != [yY] ]]; then
+            echo "  Keeping existing key."
+        else
+            existing_key=""
+        fi
+    fi
+
+    if [[ -z "$existing_key" ]]; then
+        read -rsp "  Paste your OpenRouter API key: " api_key
+        echo
+        if [[ -z "$api_key" ]]; then
+            red "  No key provided. Skipping OpenRouter setup."
+        else
+            set_openrouter_secret "$api_key"
+            green "  Stored in ${secret_store_label}"
+        fi
     fi
 fi
 
@@ -82,7 +236,11 @@ else
     # Make sure Ollama is running
     if ! ollama list &>/dev/null; then
         echo "  Starting Ollama..."
-        open -a Ollama 2>/dev/null || ollama serve &>/dev/null &
+        if [[ "$OS" == "Darwin" ]]; then
+            open -a Ollama 2>/dev/null || ollama serve &>/dev/null &
+        else
+            ollama serve &>/dev/null &
+        fi
         sleep 3
     fi
 
@@ -138,27 +296,29 @@ print(json.dumps(models))
     python3 -c "
 import json, sys
 ollama_models = json.loads(sys.argv[1])
-config = {
-    'providers': {
-        'ollama': {
-            'baseUrl': 'http://localhost:11434/v1',
-            'api': 'openai-completions',
-            'apiKey': 'ollama',
-            'compat': {
-                'supportsDeveloperRole': False,
-                'supportsReasoningEffort': False
-            },
-            'models': ollama_models
+enable_openrouter = sys.argv[2] == 'true'
+openrouter_api_key_command = sys.argv[3]
+providers = {
+    'ollama': {
+        'baseUrl': 'http://localhost:11434/v1',
+        'api': 'openai-completions',
+        'apiKey': 'ollama',
+        'compat': {
+            'supportsDeveloperRole': False,
+            'supportsReasoningEffort': False
         },
-        'openrouter': {
-            'baseUrl': 'https://openrouter.ai/api/v1',
-            'apiKey': '!security find-generic-password -s openrouter-api-key -a \$USER -w',
-            'api': 'openai-completions'
-        }
+        'models': ollama_models
     }
 }
+if enable_openrouter:
+    providers['openrouter'] = {
+        'baseUrl': 'https://openrouter.ai/api/v1',
+        'apiKey': openrouter_api_key_command,
+        'api': 'openai-completions'
+    }
+config = {'providers': providers}
 print(json.dumps(config, indent=2))
-" "$ollama_models" > "$MODELS_JSON"
+" "$ollama_models" "$ENABLE_OPENROUTER" "$OPENROUTER_API_KEY_COMMAND" > "$MODELS_JSON"
     chmod 600 "$MODELS_JSON"
     green "  Wrote $MODELS_JSON"
 fi
@@ -251,41 +411,67 @@ bold "── Step 5: Shell environment ──"
 # Remove old block if present (handles both old and new markers)
 OLD_MARKER_1="# >>> pi openrouter key injection >>>"
 OLD_END_1="# <<< pi openrouter key injection <<<"
-if grep -qF "$OLD_MARKER_1" "$ZSHRC" 2>/dev/null; then
-    sed -i '' "/$OLD_MARKER_1/,/$OLD_END_1/d" "$ZSHRC"
-    dim "  Removed old openrouter block from .zshrc"
+touch "$SHELL_RC"
+if grep -qF "$OLD_MARKER_1" "$SHELL_RC" 2>/dev/null; then
+    remove_block_if_present "$SHELL_RC" "$OLD_MARKER_1" "$OLD_END_1"
+    dim "  Removed old openrouter block from $SHELL_RC"
 fi
-if grep -qF "$MARKER" "$ZSHRC" 2>/dev/null; then
-    sed -i '' "/$MARKER/,/$MARKER_END/d" "$ZSHRC"
-    dim "  Removed previous tools-and-skills block from .zshrc"
+if grep -qF "$MARKER" "$SHELL_RC" 2>/dev/null; then
+    remove_block_if_present "$SHELL_RC" "$MARKER" "$MARKER_END"
+    dim "  Removed previous tools-and-skills block from $SHELL_RC"
 fi
 
 # Write the block with $PI_TOOLS_DIR expanded at setup time (unquoted heredoc)
 # so the paths are correct even if the repo is renamed or moved.
-# All other $ signs are escaped so they stay literal in the zshrc.
-cat >> "$ZSHRC" << ZSHBLOCK
+cat >> "$SHELL_RC" << ZSHBLOCK
 # >>> pi tools-and-skills env >>>
 # Repo location (written by setup-pi at setup time — re-run after moving)
 export PI_TOOLS_DIR="$PI_TOOLS_DIR"
-# OpenRouter API key from Keychain (for pi --provider openrouter)
-if [[ -z "\${OPENROUTER_API_KEY:-}" ]]; then
-    _or_key=\$(security find-generic-password -s "openrouter-api-key" -a "\$USER" -w 2>/dev/null)
-    if [[ -n "\$_or_key" ]]; then export OPENROUTER_API_KEY="\$_or_key"; fi
+ZSHBLOCK
+
+if [[ "$ENABLE_OPENROUTER" == "true" ]]; then
+    cat >> "$SHELL_RC" << 'ZSHBLOCK'
+# OpenRouter API key from platform secret store (for pi --provider openrouter)
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+    case "$(uname -s)" in
+        Darwin)
+            _or_key=$(security find-generic-password -s "openrouter-api-key" -a "$USER" -w 2>/dev/null)
+            ;;
+        Linux)
+            _or_key=$(pass show "pi/openrouter-api-key" 2>/dev/null)
+            ;;
+        *)
+            _or_key=""
+            ;;
+    esac
+    if [[ -n "$_or_key" ]]; then export OPENROUTER_API_KEY="$_or_key"; fi
     unset _or_key
 fi
+ZSHBLOCK
+fi
+
+cat >> "$SHELL_RC" << 'ZSHBLOCK'
 # Matrix bot token from secret store (for the matrix extension in pi)
-if [[ -z "\${MATRIX_ACCESS_TOKEN:-}" ]]; then
-    _mt=\$("\$PI_TOOLS_DIR/scripts/coas-secrets" get matrix-token 2>/dev/null)
-    if [[ -n "\$_mt" ]]; then export MATRIX_ACCESS_TOKEN="\$_mt"; fi
+if [[ -z "${MATRIX_ACCESS_TOKEN:-}" ]]; then
+    _mt=$("$PI_TOOLS_DIR/scripts/coas-secrets" get matrix-token 2>/dev/null)
+    if [[ -n "$_mt" ]]; then export MATRIX_ACCESS_TOKEN="$_mt"; fi
     unset _mt
 fi
 # coas-pi alias — start pi in the coas workspace with secrets resolved
-alias coas='\$PI_TOOLS_DIR/coas-infra/scripts/coas-pi'
+alias coas='$PI_TOOLS_DIR/coas-infra/scripts/coas-pi'
 # <<< pi tools-and-skills env <<<
 ZSHBLOCK
 
-green "  Added to $ZSHRC:"
-echo  "    • OPENROUTER_API_KEY from Keychain"
+green "  Added to $SHELL_RC:"
+if [[ "$ENABLE_OPENROUTER" == "true" ]]; then
+    if [[ "$OS" == "Linux" ]]; then
+        echo  "    • OPENROUTER_API_KEY from pass"
+    else
+        echo  "    • OPENROUTER_API_KEY from Keychain"
+    fi
+else
+    echo  "    • OPENROUTER_API_KEY disabled"
+fi
 echo  "    • MATRIX_ACCESS_TOKEN from coas-secrets"
 echo  "    • alias coas → coas-pi wrapper"
 
@@ -311,7 +497,7 @@ echo ""
 echo "  Quick start:"
 echo "    coas              # start pi in ~/git/coas with Matrix + kanban"
 echo "    pi                # start pi in current dir (panopticon + mmem)"
-echo "    exec zsh          # reload shell to pick up new env vars"
+echo "    exec $SHELL_NAME          # reload shell to pick up new env vars"
 echo ""
 echo "  Deployment (Docker + Matrix + Tailscale):"
 echo "    cd ~/git/pi-tools-and-skills/coas-infra"

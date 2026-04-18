@@ -83,14 +83,14 @@ describe("formatAge", () => {
 	it("shows seconds when under 60s", () => {
 		const age = formatAge(Date.now() - 30_000);
 		expect(age).toMatch(/^\d+s$/);
-		expect(parseInt(age)).toBeGreaterThanOrEqual(29);
-		expect(parseInt(age)).toBeLessThanOrEqual(31);
+		expect(parseInt(age, 10)).toBeGreaterThanOrEqual(29);
+		expect(parseInt(age, 10)).toBeLessThanOrEqual(31);
 	});
 
 	it("shows minutes when over 60s", () => {
 		const age = formatAge(Date.now() - 120_000);
 		expect(age).toMatch(/^\d+m$/);
-		expect(parseInt(age)).toBe(2);
+		expect(parseInt(age, 10)).toBe(2);
 	});
 });
 

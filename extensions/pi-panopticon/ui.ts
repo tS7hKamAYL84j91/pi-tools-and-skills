@@ -14,6 +14,7 @@ import type {
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import {
 	Container,
 	Text,
@@ -24,8 +25,9 @@ import {
 } from "@mariozechner/pi-tui";
 
 import { readSessionLog } from "../../lib/session-log.js";
+import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry, AgentRecord, AgentStatus } from "./types.js";
-import { formatAge, nameTaken, sortRecords, STATUS_SYMBOL } from "./registry.js";
+import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
 
 /** Map status → short label shown after the colon in powerline segments. */
 const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -54,6 +56,19 @@ const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
 
 const PL_SEP = "\uE0B0"; // ❯ filled right-pointing triangle
 const PL_SEP_THIN = "\uE0B1"; // ❯ thin right-pointing triangle
+
+function validateAlias(name: string | undefined): string | undefined {
+	const trimmed = name?.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+	if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(trimmed)) {
+		throw new Error(
+			"Alias must start with alphanumeric, then alphanumeric/hyphens/dots/underscores",
+		);
+	}
+	return trimmed;
+}
 
 // ── Pure functions (exported for tests) ────────────────────────
 
@@ -300,36 +315,76 @@ export function setupUI(
 ): UIModule {
 	let widgetTimer: ReturnType<typeof setInterval> | null = null;
 
-	// ── /alias command ──────────────────────────────────────────
+	// ── Alias command + tools ──────────────────────────────────
 
 	pi.registerCommand("alias", {
-		description: "Set your agent name. Usage: /alias <name>",
+		description: "Set the current session alias. Usage: /alias <name>",
 		handler: async (args, ctx) => {
-			const name = args?.trim();
-			if (!name) {
-				const record = registry.getRecord();
+			try {
+				const alias = validateAlias(args);
+				if (!alias) {
+					ctx.ui.notify(
+						`Current session alias: ${pi.getSessionName() ?? "(none)"}\nRegistry name: ${registry.getRecord()?.name ?? "(none)"}`,
+						"info",
+					);
+					return;
+				}
+				pi.setSessionName(alias);
 				ctx.ui.notify(
-					`Current name: ${record?.name ?? "(none)"}`,
+					`Session alias set to "${alias}" (registry name unchanged: ${registry.getRecord()?.name ?? "(none)"})`,
 					"info",
 				);
-				return;
+			} catch (err) {
+				ctx.ui.notify((err as Error).message, "warning");
 			}
-			if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) {
-				ctx.ui.notify(
-					"Name must start with alphanumeric, then alphanumeric/hyphens/dots/underscores",
-					"warning",
+		},
+	});
+
+	pi.registerTool({
+		name: "get_alias",
+		label: "Get Alias",
+		description:
+			"Get the current session alias. This is session-scoped display state, not the panopticon registry or agent identity.",
+		promptSnippet: "Get the current session alias",
+		parameters: Type.Object({}),
+		async execute(): Promise<ToolResult> {
+			const alias = pi.getSessionName();
+			const registryName = registry.getRecord()?.name;
+			return ok(
+				alias
+					? `Current session alias: ${alias}. Registry name remains ${registryName ?? "(none)"}.`
+					: `No session alias is set. Registry name is ${registryName ?? "(none)"}.`,
+				{ alias, registryName },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "set_alias",
+		label: "Set Alias",
+		description:
+			"Set the current session alias. Session alias is session-scoped display state and does not change panopticon registry or agent identity.",
+		promptSnippet: "Set the current session alias",
+		parameters: Type.Object({
+			name: Type.String({ description: "Alias to use for this session" }),
+		}),
+		async execute(_id, params): Promise<ToolResult> {
+			try {
+				const alias = validateAlias(params.name);
+				if (!alias) {
+					return fail("Alias cannot be empty.", { reason: "empty_alias" });
+				}
+				pi.setSessionName(alias);
+				return ok(
+					`Set session alias to ${alias}. Registry name remains ${registry.getRecord()?.name ?? "(none)"}.`,
+					{ alias, registryName: registry.getRecord()?.name },
 				);
-				return;
+			} catch (err) {
+				return fail((err as Error).message, {
+					reason: "invalid_alias",
+					registryName: registry.getRecord()?.name,
+				});
 			}
-			if (nameTaken(name, registry.readAllPeers(), selfId)) {
-				ctx.ui.notify(
-					`Name "${name}" is already taken`,
-					"warning",
-				);
-				return;
-			}
-			registry.setName(name);
-			ctx.ui.notify(`You are now "${name}"`, "info");
 		},
 	});
 
