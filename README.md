@@ -50,7 +50,7 @@ After setup, just run pi normally in any workspace configured to load the projec
 cd ~/git/working-notes && pi
 ```
 
-Pi loads all extensions (panopticon, kanban, machine-memory), skills, and memories. No Matrix, no Docker — just the local agent with the full tool suite.
+Pi loads global extensions (panopticon, machine-memory), skills, and memories. Add kanban/matrix per-project via `.pi/settings.json`. No Docker required — just the local agent.
 
 ### 4. Add phone messaging via Matrix (optional)
 
@@ -139,17 +139,20 @@ Everything goes through `make`:
 ## Structure
 
 ```
-extensions/           Global extensions (panopticon, machine-memory)
-project-extensions/   Project extensions (kanban, matrix)
+extensions/           All extensions:
+  pi-panopticon/        Global — multi-agent messaging, spawning, health
+  machine-memory/       Global — .mmem.yml cheat sheets
+  kanban/               Project — event-sourced task board + TUI overlay
+  matrix/               Project — phone ↔ agent bridge via Matrix
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills (clean-room, deep-research, planning, ...)
 memories/             Global .mmem.yml files
 prompts/              Prompt templates (refactor, commit-and-push)
-scripts/              Setup and utility scripts for the reusable tooling repo
+scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-CoAS deployment/runtime files now live in the sibling `~/git/coas` repo. See `~/git/coas/README.md` for infra commands and layout.
+Global extensions (panopticon, machine-memory) are registered by `make setup` for every pi session. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
