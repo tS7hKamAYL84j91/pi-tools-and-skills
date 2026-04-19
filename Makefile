@@ -2,7 +2,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup check test build up down attach logs backup pi stack rotate-token clean-mailboxes clean
+.PHONY: help setup check test build up down attach logs backup stack rotate-token clean-mailboxes clean
 
 # ── Local development ────────────────────────────────────────────
 
@@ -31,9 +31,6 @@ check: ## Run typecheck, lint, knip, and type-coverage
 
 test: ## Run tests
 	npm test
-
-pi: ## Start pi in the CoAS workspace (foreground)
-	@exec $(S)/coas-pi
 
 # ── Docker deployment ────────────────────────────────────────────
 
