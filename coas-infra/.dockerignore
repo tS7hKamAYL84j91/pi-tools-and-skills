@@ -1,9 +1,0 @@
-# The coas-agent Dockerfile doesn't COPY anything from the build context —
-# all repo and state access is via runtime bind mounts in docker-compose.
-# Exclude everything to keep the build context tiny.
-
-*
-
-# Allow only what we explicitly need (currently nothing, but listed
-# for clarity in case the Dockerfile grows COPY directives later).
-!Dockerfile.coas-agent
