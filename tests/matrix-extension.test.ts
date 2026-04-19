@@ -20,7 +20,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { mxidLocalpart } from "../project-extensions/matrix/bridge.js";
+import { mxidLocalpart } from "../extensions/matrix/bridge.js";
 
 // ── mxidLocalpart ───────────────────────────────────────────────
 
@@ -76,12 +76,12 @@ describe("loadMatrixConfig", () => {
 
 	it("returns null when no matrix block is configured", async () => {
 		writeFileSync(projectSettingsPath, JSON.stringify({}), "utf-8");
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(loadMatrixConfig(projectSettingsPath)).toBeNull();
 	});
 
 	it("returns null when settings.json does not exist", async () => {
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(loadMatrixConfig(join(tmpDir, "nope.json"))).toBeNull();
 	});
 
@@ -93,7 +93,7 @@ describe("loadMatrixConfig", () => {
 			targetAgent: "coas",
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		const config = loadMatrixConfig(projectSettingsPath);
 
 		expect(config).not.toBeNull();
@@ -109,7 +109,7 @@ describe("loadMatrixConfig", () => {
 		writeSettings({
 			userId: "@coas-bot:matrix.org",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/homeserver/);
 	});
 
@@ -121,7 +121,7 @@ describe("loadMatrixConfig", () => {
 			targetAgent: "coas",
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/MXID/);
 	});
 
@@ -133,7 +133,7 @@ describe("loadMatrixConfig", () => {
 			targetAgent: "coas",
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/room ID/);
 	});
 
@@ -145,7 +145,7 @@ describe("loadMatrixConfig", () => {
 			targetAgent: "coas",
 			accessTokenEnv: "MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY/);
 	});
 
@@ -159,7 +159,7 @@ describe("loadMatrixConfig", () => {
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 			secureBackupEnv: "MATRIX_TEST_RECOVERY",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		const config = loadMatrixConfig(projectSettingsPath);
 		expect(config?.recoveryPassphrase).toBe("passphrase-here");
 	});
@@ -173,7 +173,7 @@ describe("loadMatrixConfig", () => {
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 			encryption: false,
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		const config = loadMatrixConfig(projectSettingsPath);
 		expect(config?.encryption).toBe(false);
 	});
@@ -187,7 +187,7 @@ describe("loadMatrixConfig", () => {
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 			cryptoStorePath: "~/test-matrix-store",
 		});
-		const { loadMatrixConfig } = await import("../project-extensions/matrix/config.js");
+		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		const config = loadMatrixConfig(projectSettingsPath);
 		expect(config?.cryptoStorePath.startsWith("/")).toBe(true);
 		expect(config?.cryptoStorePath.endsWith("/test-matrix-store")).toBe(true);

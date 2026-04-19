@@ -1,5 +1,5 @@
 /**
- * Integration tests for kanban tool wrappers (project-extensions/kanban/index.ts).
+ * Integration tests for kanban tool wrappers (extensions/kanban/index.ts).
  *
  * Loads the extension against a fake ExtensionAPI that captures registered
  * tools by name, then exercises each tool's `execute` against a real temp
@@ -15,8 +15,8 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import type { ToolResult } from "../lib/tool-result.js";
-import kanbanExtension from "../project-extensions/kanban/index.js";
-import { WIP_LIMIT } from "../project-extensions/kanban/board.js";
+import kanbanExtension from "../extensions/kanban/index.js";
+import { WIP_LIMIT } from "../extensions/kanban/board.js";
 
 // ── Fake ExtensionAPI ────────────────────────────────────────────
 
