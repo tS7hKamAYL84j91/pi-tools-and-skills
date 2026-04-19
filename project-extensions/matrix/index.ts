@@ -1,131 +1,58 @@
 /**
  * Matrix extension — entry point.
  *
- * Notification + inbox pattern for Matrix messages:
+ * Registers a "matrix" messaging channel via the shared channel registry.
+ * The panopticon messaging module handles notification (poke-then-read)
+ * and provides the unified message_read / message_send tools.
  *
- *   1. Sync loop receives a message from the room
- *   2. Extension buffers it and POKES pi: "you have N new Matrix messages"
- *   3. Pi decides when to read → calls message_read tool
- *   4. Tool returns unread messages, clears the buffer
- *   5. Pi responds via message_send
- *
- * The agent controls its own attention. Multiple rapid messages batch
- * naturally into one read. Historical messages are readable via
- * message_read even if the poke was missed.
- *
- * Tools:    message_send, message_read, message_status
- * Commands: /matrix
+ * This extension handles:
+ * - Matrix client lifecycle (connect, sync, shutdown)
+ * - Inbound message buffering (via MatrixTransport)
+ * - Status bar widget
+ * - System prompt hint about messaging
+ * - /matrix status command
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 import { join } from "node:path";
 
-import { ok, fail, type ToolResult } from "../../lib/tool-result.js";
+import { registerChannel, unregisterChannel } from "../../lib/message-transport.js";
 import { loadMatrixConfig } from "./config.js";
-import { MatrixBridgeClient, type InboundMessage } from "./client.js";
-import { mxidLocalpart } from "./bridge.js";
+import { MatrixBridgeClient } from "./client.js";
+import { MatrixTransport } from "./transport.js";
 import type { MatrixConfig } from "./types.js";
 
 // ── Extension state ─────────────────────────────────────────────
 
 let config: MatrixConfig | null = null;
 let client: MatrixBridgeClient | null = null;
+let transport: MatrixTransport | null = null;
 let ctx: ExtensionContext | null = null;
-let piRef: ExtensionAPI | null = null;
 let lastError: string | null = null;
 let channelLabel = "matrix";
-
-// ── Unread message buffer ───────────────────────────────────────
-
-interface BufferedMessage {
-	from: string;
-	body: string;
-	eventId: string;
-	timestampMs: number;
-}
-
-const unread: BufferedMessage[] = [];
-let pokeTimeout: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * Debounced poke — waits 2s for more messages before alerting pi.
- * Only pokes when pi is idle (ctx.isIdle()) to avoid racing with an
- * active agent turn. If pi is busy, the poke is rescheduled. The
- * agent will see the unread count in the status bar and can call
- * message_read at the end of its current turn.
- */
-function schedulePoke(): void {
-	if (pokeTimeout) return; // already scheduled
-	pokeTimeout = setTimeout(() => {
-		pokeTimeout = null;
-		if (!piRef || !ctx || unread.length === 0) return;
-
-		// Don't inject during an active turn — reschedule
-		if (!ctx.isIdle()) {
-			schedulePoke();
-			return;
-		}
-
-		const count = unread.length;
-		// No message body in the poke — prevents prompt injection via preview
-		piRef.sendUserMessage(
-			`📱 ${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
-			{ deliverAs: "followUp" },
-		);
-	}, 2000);
-}
 
 // ── Status helpers ──────────────────────────────────────────────
 
 function updateStatus(): void {
 	if (!ctx) return;
-	if (!config) {
-		ctx.ui.setStatus("matrix", "📡 ✗");
-		return;
-	}
-	if (!client) {
-		ctx.ui.setStatus("matrix", "📡 …");
-		return;
-	}
-	
-	if (lastError) {
-		ctx.ui.setStatus("matrix", "📡 !");
-		return;
-	}
-	if (!client.isConnected()) {
-		ctx.ui.setStatus("matrix", "📡 ✗");
-		return;
-	}
-	const unreadTag = unread.length > 0 ? ` ${unread.length}✉` : "";
+	if (!config) { ctx.ui.setStatus("matrix", "📡 ✗"); return; }
+	if (!client) { ctx.ui.setStatus("matrix", "📡 …"); return; }
+	if (lastError) { ctx.ui.setStatus("matrix", "📡 !"); return; }
+	if (!client.isConnected()) { ctx.ui.setStatus("matrix", "📡 ✗"); return; }
+	const pending = transport?.pendingCount("") ?? 0;
+	const unreadTag = pending > 0 ? ` ${pending}✉` : "";
 	ctx.ui.setStatus("matrix", `📡${unreadTag}`);
-}
-
-// ── Inbound handler ─────────────────────────────────────────────
-
-function onInbound(msg: InboundMessage): void {
-	const from = `${channelLabel}:${mxidLocalpart(msg.senderMxid)}`;
-	unread.push({
-		from,
-		body: msg.body,
-		eventId: msg.eventId,
-		timestampMs: msg.timestampMs,
-	});
-	updateStatus();
-	schedulePoke();
 }
 
 // ── Extension ───────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI): void {
-	piRef = pi;
 
 	// ── Lifecycle ───────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, c) => {
 		ctx = c;
 		lastError = null;
-		unread.length = 0;
 
 		const projectSettingsPath = join(c.cwd, ".pi", "settings.json");
 		try {
@@ -144,8 +71,19 @@ export default function (pi: ExtensionAPI): void {
 		}
 
 		client = new MatrixBridgeClient(config);
+		transport = new MatrixTransport(client, channelLabel);
+
+		// Register as a messaging channel — panopticon handles notification
+		registerChannel(channelLabel, transport);
+
 		try {
-			await client.start(onInbound, (msg, level) => c.ui.notify(`matrix: ${msg}`, level));
+			await client.start(
+				(msg) => {
+					transport?.pushInbound(msg);
+					updateStatus();
+				},
+				(msg, level) => c.ui.notify(`matrix: ${msg}`, level),
+			);
 		} catch (err) {
 			lastError = (err as Error).message;
 			ctx.ui.notify(`matrix: failed to connect — ${lastError}`, "error");
@@ -155,112 +93,23 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (pokeTimeout) clearTimeout(pokeTimeout);
-		pokeTimeout = null;
+		unregisterChannel(channelLabel);
 		if (client) await client.stop();
 		client = null;
+		transport = null;
 		config = null;
 		ctx = null;
-		unread.length = 0;
 	});
 
 	pi.on("before_agent_start", async (event) => {
 		if (!config || !client) return;
 		const hint =
 			`\n\n<message-channel>\n` +
-			`You have a messaging channel to the human. When new messages arrive, ` +
+			`You have a messaging channel to the human via "${channelLabel}". When new messages arrive, ` +
 			`you'll be notified with a count. Call message_read to fetch them, ` +
 			`then reply via message_send. Keep replies concise — the human reads on a phone.\n` +
 			`</message-channel>`;
 		return { systemPrompt: `${event.systemPrompt}${hint}` };
-	});
-
-	// ── Tool: message_read ─────────────────────────────────────
-
-	pi.registerTool({
-		name: "message_read",
-		label: "Read Messages",
-		description:
-			"Read unread messages from the human. Returns all messages " +
-			"received since the last read, then clears the unread buffer. " +
-			"Call this when you receive a '📱 New message' notification.",
-		promptSnippet: "Read unread messages from the human",
-		promptGuidelines: [
-			"Call message_read when notified of new messages — don't ignore the notification.",
-			"After reading, reply via message_send if the human asked a question or needs a response.",
-		],
-		parameters: Type.Object({}),
-		async execute(_id, _params, _signal): Promise<ToolResult> {
-			if (!client || !config) return fail("Messaging is not configured or not connected");
-
-			if (unread.length === 0) {
-				return ok("No unread messages.", { count: 0, messages: [] });
-			}
-
-			const messages = [...unread];
-			unread.length = 0;
-			updateStatus();
-
-			const lines = messages.map((m) =>
-				`[${new Date(m.timestampMs).toLocaleTimeString()}] ${m.from}: ${m.body}`,
-			);
-			// Wrap in tags to separate untrusted external content from agent context
-			return ok(
-				`<external-messages>\n${lines.join("\n")}\n</external-messages>`,
-				{ count: messages.length, messages },
-			);
-		},
-	});
-
-	// ── Tool: message_send ─────────────────────────────────────
-
-	pi.registerTool({
-		name: "message_send",
-		label: "Send Message",
-		description:
-			"Send a message to the human via the messaging channel. " +
-			"Use after reading messages with message_read to reply.",
-		promptSnippet: "Send a message to the human",
-		promptGuidelines: [
-			"Only use this for the human, not peer agents — use agent_send for those.",
-			"Prefer concise messages — the human reads on a phone.",
-		],
-		parameters: Type.Object({
-			message: Type.String({ description: "Message body. Plain text. Markdown rendered by Element X." }),
-		}),
-		async execute(_id, params, _signal): Promise<ToolResult> {
-			if (!client || !config) return fail("Messaging is not configured or not connected");
-			try {
-				const { eventId } = await client.send(params.message);
-				return ok(`Sent (event ${eventId})`, { eventId });
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return fail(`Send failed: ${msg}`, { error: msg });
-			}
-		},
-	});
-
-	// ── Tool: message_status ───────────────────────────────────
-
-	pi.registerTool({
-		name: "message_status",
-		label: "Message Status",
-		description: "Report the messaging channel connection state, unread count, and configuration.",
-		promptSnippet: "Check messaging channel connection state",
-		parameters: Type.Object({}),
-		async execute(_id, _params, _signal): Promise<ToolResult> {
-			if (!config) return ok("Messaging: not configured.", { configured: false });
-			if (!client) return ok(`Messaging: not connected. ${lastError ?? ""}`, { configured: true, connected: false });
-
-			const lines = [
-				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}`,
-				`  Unread:  ${unread.length}`,
-				`  Room:    ${config.roomId}`,
-				`  Bot:     ${config.userId}`,
-			];
-			if (lastError) lines.push(`  Error:   ${lastError}`);
-			return ok(lines.join("\n"), { connected: client.isConnected(), unread: unread.length });
-		},
 	});
 
 	// ── /matrix command ───────────────────────────────────────
@@ -270,9 +119,9 @@ export default function (pi: ExtensionAPI): void {
 		handler: async (_args, c) => {
 			if (!config) { c.ui.notify("Matrix: not configured", "info"); return; }
 			if (!client) { c.ui.notify(`Matrix: not connected. ${lastError ?? ""}`, "warning"); return; }
-
+			const pending = transport?.pendingCount("") ?? 0;
 			c.ui.notify(
-				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}, ${unread.length} unread`,
+				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}, ${pending} unread`,
 				client.isConnected() ? "info" : "warning",
 			);
 		},

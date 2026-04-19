@@ -62,3 +62,22 @@ export interface MessageTransport {
 	/** Remove all transport storage for a dead agent (inbox dirs, queues, etc.). */
 	cleanup(agentId: string): void;
 }
+
+// ── Channel registry ───────────────────────────────────────────
+
+const channels = new Map<string, MessageTransport>();
+
+/** Register a named messaging channel (e.g. "agent", "matrix"). */
+export function registerChannel(name: string, transport: MessageTransport): void {
+	channels.set(name, transport);
+}
+
+/** Unregister a messaging channel. */
+export function unregisterChannel(name: string): void {
+	channels.delete(name);
+}
+
+/** Get all registered channels. */
+export function getChannels(): ReadonlyMap<string, MessageTransport> {
+	return channels;
+}

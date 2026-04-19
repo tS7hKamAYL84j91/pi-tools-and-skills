@@ -35,15 +35,20 @@ vi.mock("../extensions/pi-panopticon/registry.js", () => {
 });
 
 const mockMessagingInit = vi.fn();
-const mockDrainInbox = vi.fn();
+const mockPokePending = vi.fn();
+const mockDrainAll = vi.fn();
 const mockMessagingDispose = vi.fn();
 
 vi.mock("../extensions/pi-panopticon/messaging.js", () => ({
-	createMessaging: vi.fn(() => vi.fn(() => ({ init: mockMessagingInit, drainInbox: mockDrainInbox, dispose: mockMessagingDispose }))),
+	createMessaging: vi.fn(() => vi.fn(() => ({ init: mockMessagingInit, pokePending: mockPokePending, drainAll: mockDrainAll, dispose: mockMessagingDispose }))),
 }));
 
 vi.mock("../lib/transports/maildir.js", () => ({
 	getMaildirTransport: vi.fn(() => ({})),
+}));
+
+vi.mock("../lib/message-transport.js", () => ({
+	registerChannel: vi.fn(),
 }));
 
 const mockShutdownAll = vi.fn(async () => {});
@@ -161,15 +166,15 @@ describe("agent events", () => {
 		expect(mockSetStatus).toHaveBeenCalledWith("running");
 	});
 
-	it("agent_end sets status to waiting and drains inbox", async () => {
+	it("agent_end sets status to waiting and pokes pending", async () => {
 		const order: string[] = [];
 		mockSetStatus.mockImplementation(() => order.push("setStatus"));
-		mockDrainInbox.mockImplementation(() => order.push("drainInbox"));
+		mockPokePending.mockImplementation(() => order.push("pokePending"));
 		mockReconcilerOnAgentEnd.mockImplementation(() => order.push("reconciler.onAgentEnd"));
 
 		await fire(pi, "agent_end", {});
 
-		expect(order).toEqual(["setStatus", "drainInbox", "reconciler.onAgentEnd"]);
+		expect(order).toEqual(["setStatus", "pokePending", "reconciler.onAgentEnd"]);
 		expect(mockSetStatus).toHaveBeenCalledWith("waiting");
 	});
 
@@ -200,17 +205,17 @@ describe("input", () => {
 });
 
 describe("session_shutdown", () => {
-	it("calls shutdownAll → drainInbox → dispose → ui.stop → unregister in order", async () => {
+	it("calls shutdownAll → drainAll → dispose → ui.stop → unregister in order", async () => {
 		const order: string[] = [];
 		mockShutdownAll.mockImplementation(async () => { order.push("shutdownAll"); });
 		mockReconcilerStop.mockImplementation(() => { order.push("reconciler.stop"); });
-		mockDrainInbox.mockImplementation(() => { order.push("drainInbox"); });
+		mockDrainAll.mockImplementation(() => { order.push("drainAll"); });
 		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
 		mockUIStop.mockImplementation(() => { order.push("ui.stop"); });
 		mockUnregister.mockImplementation(() => { order.push("unregister"); });
 
 		await fire(pi, "session_shutdown", {});
 
-		expect(order).toEqual(["shutdownAll", "reconciler.stop", "drainInbox", "dispose", "ui.stop", "unregister"]);
+		expect(order).toEqual(["shutdownAll", "reconciler.stop", "drainAll", "dispose", "ui.stop", "unregister"]);
 	});
 });

@@ -16,10 +16,20 @@ vi.mock("../lib/transports/maildir.js", () => ({
 	createMaildirTransport: vi.fn(() => ({})),
 }));
 
+vi.mock("../lib/message-transport.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../lib/message-transport.js")>();
+	const channels = new Map<string, unknown>();
+	return {
+		...actual,
+		registerChannel: vi.fn((name: string, transport: unknown) => channels.set(name, transport)),
+		getChannels: vi.fn(() => channels),
+	};
+});
+
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as registry from "../lib/agent-registry.js";
 import { createMessaging } from "../extensions/pi-panopticon/messaging.js";
-import type { MessageTransport, DeliveryResult, InboundMessage } from "../lib/message-transport.js";
+import type { MessageTransport, DeliveryResult } from "../lib/message-transport.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 
 
@@ -107,6 +117,16 @@ function makeMockRegistry(): Registry & { pendingMessages: number } {
 const ACCEPTED: DeliveryResult = { accepted: true, immediate: false, reference: "ref-001" };
 const FAILED: DeliveryResult = { accepted: false, immediate: false, error: "ENOSPC" };
 
+function makeMockCtx() {
+	return {
+		isIdle: vi.fn(() => true),
+		ui: { notify: vi.fn(), setStatus: vi.fn(), theme: { fg: (_c: string, t: string) => t, bold: (t: string) => t } },
+		hasUI: true,
+		cwd: "/tmp",
+		sessionManager: { getSessionDir: () => "/tmp", getSessionFile: () => "/tmp/s.jsonl", getEntries: () => [] },
+	};
+}
+
 // ── Setup ───────────────────────────────────────────────────────
 
 let api: MockAPI;
@@ -115,7 +135,7 @@ let broadcastTransport: ReturnType<typeof makeMockTransport>;
 let mockRegistry: ReturnType<typeof makeMockRegistry>;
 let messagingModule: ReturnType<ReturnType<typeof createMessaging>>;
 
-beforeEach(() => {
+beforeEach(async () => {
 	vi.resetAllMocks();
 
 	sendTransport = makeMockTransport();
@@ -126,6 +146,13 @@ beforeEach(() => {
 
 	api = makeMockAPI();
 	mockRegistry = makeMockRegistry();
+
+	// Register the send transport as the "agent" channel so message_read can find it
+	const { getChannels } = await import("../lib/message-transport.js");
+	const channels = (getChannels as MockedFunction<typeof getChannels>)();
+	(channels as Map<string, unknown>).clear();
+	(channels as Map<string, unknown>).set("agent", sendTransport);
+
 	messagingModule = createMessaging({ send: sendTransport, broadcast: broadcastTransport })(
 		api as unknown as ExtensionAPI,
 		mockRegistry,
@@ -293,7 +320,7 @@ describe("registry integration", () => {
 describe("cleanup hook", () => {
 	it("registers a cleanup hook on init that delegates to transport.cleanup", () => {
 		const mockOnCleanup = registry.onAgentCleanup as MockedFunction<typeof registry.onAgentCleanup>;
-		messagingModule.init();
+		messagingModule.init(makeMockCtx() as never);
 
 		// onAgentCleanup should have been called with a function
 		expect(mockOnCleanup).toHaveBeenCalledTimes(1);
@@ -309,37 +336,43 @@ describe("cleanup hook", () => {
 // ── Inbox draining ──────────────────────────────────────────────
 
 describe("inbox draining", () => {
-	it("inits and drains on init()", () => {
-		const inbound: InboundMessage[] = [
-			{ id: "001.json", from: "alice", text: "ping", ts: 1 },
-		];
-		sendTransport.receive.mockReturnValue(inbound);
-
-		messagingModule.init();
+	it("inits transport and pokes on init() when messages pending", () => {
+		sendTransport.pendingCount.mockReturnValue(1);
+		messagingModule.init(makeMockCtx() as never);
 
 		expect(sendTransport.init).toHaveBeenCalledWith(SELF.id);
+		// Should poke immediately (not dump bodies) since there are pending messages
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("ping"),
+			expect.stringContaining("new message"),
 			expect.anything(),
 		);
-		expect(sendTransport.ack).toHaveBeenCalledWith(SELF.id, "001.json");
-		expect(sendTransport.prune).toHaveBeenCalled();
 	});
 
-	it("drains on drainInbox()", () => {
+	it("message_read drains channel and returns wrapped content", async () => {
 		sendTransport.receive.mockReturnValue([
 			{ id: "002.json", from: "bob", text: "pong", ts: 2 },
 		]);
-		messagingModule.drainInbox();
+		const result = await executeTool("message_read", {});
+		expect(getText(result)).toContain("pong");
+		expect(getText(result)).toContain("<external-messages>");
+		expect(sendTransport.ack).toHaveBeenCalledWith(SELF.id, "002.json");
+		expect(sendTransport.prune).toHaveBeenCalled();
+	});
+
+	it("drainAll dumps messages directly for shutdown", () => {
+		sendTransport.receive.mockReturnValue([
+			{ id: "003.json", from: "charlie", text: "bye", ts: 3 },
+		]);
+		messagingModule.drainAll();
 		expect(api.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("pong"),
+			expect.stringContaining("bye"),
 			expect.anything(),
 		);
 	});
 
 	it("does nothing when no self record", () => {
 		(mockRegistry.getRecord as MockedFunction<typeof mockRegistry.getRecord>).mockReturnValue(undefined);
-		messagingModule.init();
+		messagingModule.init(makeMockCtx() as never);
 		expect(sendTransport.init).not.toHaveBeenCalled();
 	});
 });
