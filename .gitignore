@@ -5,3 +5,4 @@ out/
 *.vsix
 *.tsbuildinfo
 .DS_Store
+.pi/
