@@ -165,17 +165,22 @@ export class MatrixBridgeClient {
 			};
 		}
 
-		// Auto-join ONLY the configured room. We handle room.invite directly
-		// instead of using AutojoinRoomsMixin.setupOnClient because the mixin
-		// calls .on() on whatever object you pass it — and spreading the client
-		// ({...this.client}) kills the EventEmitter prototype chain, causing
-		// "client.on is not a function" at runtime.
-		this.client.on("room.invite", async (roomId: string) => {
-			if (roomId !== this.config.roomId) {
-				try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
+		// Accept invites to the configured room and DMs from trusted senders
+		// (needed for device verification). Reject everything else.
+		this.client.on("room.invite", async (roomId: string, event: AnyClient) => {
+			if (roomId === this.config.roomId) {
+				await this.client.joinRoom(roomId);
 				return;
 			}
-			await this.client.joinRoom(roomId);
+			// Accept DM invites from trusted senders (for verification flows)
+			const sender = event?.sender ?? event?.state_key;
+			const trusted = this.config.trustedSenders;
+			if (sender && (trusted.length === 0 || trusted.includes(sender))) {
+				this.notifyFn?.(`joining DM from ${sender} (room ${roomId})`, "info");
+				await this.client.joinRoom(roomId);
+				return;
+			}
+			try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
 		});
 
 		// Wire the inbound message handler
