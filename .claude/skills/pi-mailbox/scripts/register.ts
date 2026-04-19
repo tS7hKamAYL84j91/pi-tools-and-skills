@@ -8,6 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, watch, writeFileSync, unlinkSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+import { homedir } from "node:os";
 import { REGISTRY_DIR, STALE_MS, ensureRegistryDir, type AgentRecord } from "../../../../lib/agent-registry.js";
 import { createMaildirTransport } from "../../../../lib/transports/maildir.js";
 
@@ -106,6 +107,23 @@ transport.init(agentId);
 const startedAt = Date.now();
 const recordPath = join(REGISTRY_DIR, `${agentId}.json`);
 
+/** Find the Claude Code session JSONL for the parent PID. */
+function findSessionFile(): string | undefined {
+  try {
+    const metaPath = join(homedir(), ".claude", "sessions", `${parentPid}.json`);
+    if (!existsSync(metaPath)) return undefined;
+    const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+    const sessionId = meta.sessionId as string | undefined;
+    if (!sessionId) return undefined;
+    // Project key is the cwd path with slashes replaced by dashes
+    const projectKey = process.cwd().replace(/\//g, "-");
+    const candidate = join(homedir(), ".claude", "projects", projectKey, `${sessionId}.jsonl`);
+    return existsSync(candidate) ? candidate : undefined;
+  } catch { return undefined; }
+}
+
+const sessionFile = findSessionFile();
+
 /** (Re-)write the registry record with current heartbeat. */
 function writeRecord(heartbeatTime?: number): void {
   const rec: AgentRecord = {
@@ -118,6 +136,7 @@ function writeRecord(heartbeatTime?: number): void {
     heartbeat: heartbeatTime ?? Date.now(),
     status: "waiting",
     pendingMessages: 0,
+    sessionFile,
   };
   ensureRegistryDir();
   writeFileSync(recordPath, JSON.stringify(rec, null, 2), "utf-8");
