@@ -1,6 +1,11 @@
 # pi-tools-and-skills
 
-Extensions, skills, and infrastructure for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent. Adds multi-agent orchestration, kanban task tracking, phone-to-agent messaging (Matrix), machine memories, and reusable skills.
+Extensions, skills, memories, and setup tooling for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent. Adds multi-agent orchestration, kanban task tracking, phone-to-agent messaging (Matrix), machine memories, and reusable skills.
+
+In the current CoAS layout:
+- `pi-tools-and-skills` = reusable code
+- `coas` = deployment/runtime infra
+- `working-notes` = operational workspace, state, and research
 
 ## Getting started
 
@@ -39,33 +44,33 @@ exec "$SHELL"                # reload shell to pick up env vars
 
 ### 3. Run pi
 
-After setup, just run pi normally in any workspace:
+After setup, just run pi normally in any workspace configured to load the project extensions. The default CoAS workspace is `~/git/working-notes`:
 
 ```bash
-cd ~/git/coas && pi
+cd ~/git/working-notes && pi
 ```
 
 Pi loads all extensions (panopticon, kanban, machine-memory), skills, and memories. No Matrix, no Docker — just the local agent with the full tool suite.
 
 ### 4. Add phone messaging via Matrix (optional)
 
-To message the agent from your phone, you need the Docker stack (Matrix homeserver + Tailscale). First run bootstraps everything:
+To message the agent from your phone, use the separate `~/git/coas` infra repo (Matrix homeserver + Tailscale). First run bootstraps everything there:
 
 ```bash
+cd ~/git/coas
 make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
 ```
 
-Then run pi with Matrix secrets resolved:
+Then run pi in the operational workspace with Matrix secrets resolved:
 
 ```bash
-make pi           # pi on the host, connects to Matrix over Tailscale
-# or
-make attach       # pi inside the container (docker exec)
+cd ~/git/working-notes
+make pi
 ```
 
-`make pi` runs pi on your host with `MATRIX_ACCESS_TOKEN` and `MATRIX_BOT_PASSWORD` loaded from the secret store. `make attach` starts pi inside the `coas-agent` container instead. Both connect to the same Matrix homeserver.
+`make pi` runs pi with `MATRIX_ACCESS_TOKEN` and `MATRIX_BOT_PASSWORD` loaded from the secret store via `coas/scripts/coas-pi`.
 
-Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See [coas-infra/README.md](coas-infra/README.md) for details.
+Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See `~/git/coas/coas-infra/README.md` for deployment details.
 
 ---
 
@@ -127,16 +132,7 @@ Everything goes through `make`:
 | `make setup OPENROUTER=1` | Run setup with OpenRouter forced on |
 | `make check` | Typecheck + Biome lint + knip + type-coverage (≥95%) |
 | `make test` | Run tests |
-| `make up` | Start Docker stack (+ bootstrap on first run) |
-| `make down` | Stop Docker stack |
-| `make attach` | Start pi inside the container |
-| `make pi` | Run pi on host with secrets resolved |
-| `make logs` | Tail Docker service logs |
-| `make stack` | Supervised foreground mode |
-| `make backup` | Snapshot persistent state |
-| `make rotate-token` | Rotate the bot's Matrix access token |
 | `make clean-mailboxes` | Clean stale agent mailboxes |
-| `make clean` | Wipe the Matrix crypto store |
 
 ---
 
@@ -149,10 +145,11 @@ lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills (clean-room, deep-research, planning, ...)
 memories/             Global .mmem.yml files
 prompts/              Prompt templates (refactor, commit-and-push)
-scripts/              All scripts: setup, coas-up/down/attach, secrets, utilities
-coas-infra/           Docker deployment config (compose, Caddyfile, continuwuity)
+scripts/              Setup and utility scripts for the reusable tooling repo
 tests/                Tests (vitest + archunit fitness functions)
 ```
+
+CoAS deployment/runtime files now live in the sibling `~/git/coas` repo. See `~/git/coas/README.md` for infra commands and layout.
 
 ## Development
 

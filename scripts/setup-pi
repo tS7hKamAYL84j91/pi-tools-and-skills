@@ -451,14 +451,25 @@ ZSHBLOCK
 fi
 
 cat >> "$SHELL_RC" << 'ZSHBLOCK'
+# CoAS helper scripts on PATH (launcher + secret resolver)
+if [[ -d "${HOME}/git/coas/scripts" ]]; then
+    case ":${PATH}:" in
+        *":${HOME}/git/coas/scripts:"*) ;;
+        *) export PATH="${HOME}/git/coas/scripts:${PATH}" ;;
+    esac
+fi
 # Matrix bot token from secret store (for the matrix extension in pi)
 if [[ -z "${MATRIX_ACCESS_TOKEN:-}" ]]; then
-    _mt=$("$PI_TOOLS_DIR/scripts/coas-secrets" get matrix-token 2>/dev/null)
-    if [[ -n "$_mt" ]]; then export MATRIX_ACCESS_TOKEN="$_mt"; fi
-    unset _mt
+    _coas_secrets=$(command -v coas-secrets 2>/dev/null || true)
+    if [[ -n "$_coas_secrets" ]]; then
+        _mt=$("$_coas_secrets" get matrix-token 2>/dev/null)
+        if [[ -n "$_mt" ]]; then export MATRIX_ACCESS_TOKEN="$_mt"; fi
+        unset _mt
+    fi
+    unset _coas_secrets
 fi
-# coas-pi alias — start pi in the coas workspace with secrets resolved
-alias coas='$PI_TOOLS_DIR/coas-infra/scripts/coas-pi'
+# coas-pi alias — start pi in the Gravitas Pending workspace with secrets resolved
+alias coas='coas-pi'
 # <<< pi tools-and-skills env <<<
 ZSHBLOCK
 
@@ -495,12 +506,12 @@ echo "  Memories: $memory_count global .mmem.yml files"
 echo "  Prompts: $prompt_count templates (refactor, commit-and-push)"
 echo ""
 echo "  Quick start:"
-echo "    coas              # start pi in ~/git/coas with Matrix + kanban"
+echo "    coas              # start pi in ~/git/working-notes with Matrix + kanban"
 echo "    pi                # start pi in current dir (panopticon + mmem)"
 echo "    exec $SHELL_NAME          # reload shell to pick up new env vars"
 echo ""
 echo "  Deployment (Docker + Matrix + Tailscale):"
-echo "    cd ~/git/pi-tools-and-skills/coas-infra"
-echo "    ./scripts/coas-stack     # supervised foreground mode"
-echo "    ./scripts/coas-bootstrap-matrix --help"
+echo "    cd ~/git/coas"
+echo "    make help                # infra targets"
+echo "    make up                  # bootstrap/start stack"
 echo ""
