@@ -350,6 +350,8 @@ else:
 
 def ensure_listed(key, value):
     existing = settings.get(key, [])
+    legacy_value = value.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+    existing = [item for item in existing if item != legacy_value]
     if value not in existing:
         existing.append(value)
     settings[key] = existing
