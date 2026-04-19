@@ -29,22 +29,26 @@ export function readSessionLog(sessionFile: string, count: number): SessionEvent
 		for (const line of recent) {
 			try {
 				const entry = JSON.parse(line);
-				if (entry.type === "message" && entry.message) {
+				// Pi session format: {type: "message", message: {role, content}}
+				// Claude Code format: {message: {role, content}} (no type field or type="user")
+				const hasMessage = entry.message && typeof entry.message === "object" && "role" in entry.message;
+				if (hasMessage) {
 					const msg = entry.message as { role?: string; content?: unknown[]; timestamp?: number };
 					const ts = msg.timestamp ?? entry.ts ?? Date.now();
 					const role = msg.role ?? "?";
 					if (Array.isArray(msg.content)) {
 						for (const block of msg.content) {
 							if (!block || typeof block !== "object") continue;
-							const b = block as { type?: string; name?: string; text?: string; input?: unknown; content?: unknown[]; isError?: boolean; id?: string };
+							const b = block as { type?: string; name?: string; text?: string; input?: unknown; content?: unknown[]; isError?: boolean; id?: string; tool_use_id?: string };
 							if (b.type === "text" && b.text) {
 								events.push({ ts, event: "message", role, text: b.text.slice(0, 100) });
-							} else if (b.type === "toolCall") {
+							} else if (b.type === "toolCall" || b.type === "tool_use") {
 								const argsPreview = b.input ? JSON.stringify(b.input).slice(0, 100) : "";
 								events.push({ ts, event: "tool_call", tool: b.name, args: argsPreview, id: b.id });
-							} else if (b.type === "toolResult") {
-								const summary = b.content
-									? b.content.map((c: unknown) => { const obj = c as { type: string; text?: string }; return obj.type === "text" ? obj.text ?? "" : `[${obj.type}]`; }).join(" ").slice(0, 100)
+							} else if (b.type === "toolResult" || b.type === "tool_result") {
+								const inner = b.content as Array<{ type: string; text?: string }> | undefined;
+								const summary = inner
+									? inner.map((c) => c.type === "text" ? c.text ?? "" : `[${c.type}]`).join(" ").slice(0, 100)
 									: "";
 								events.push({ ts, event: "tool_result", tool: b.name, summary, isError: b.isError, id: b.id });
 							}
