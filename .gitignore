@@ -6,4 +6,3 @@ out/
 *.tsbuildinfo
 .DS_Store
 .pi/
-coas-infra/.env
