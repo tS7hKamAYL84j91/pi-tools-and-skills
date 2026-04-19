@@ -2,7 +2,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup check test build up down attach logs backup gravitas-pending gp-attach gp-status gp-stop gp-restart stack rotate-token clean-mailboxes clean
+.PHONY: help setup check test build up down attach logs backup pi stack rotate-token clean-mailboxes clean
 
 # ── Local development ────────────────────────────────────────────
 
@@ -32,60 +32,8 @@ check: ## Run typecheck, lint, knip, and type-coverage
 test: ## Run tests
 	npm test
 
-# ── Gravitas Pending — resident zellij session ───────────────────
-
-GP_SESSION := gravitas-pending
-GP_LAYOUT  := /tmp/gp-layout.kdl
-GP_RUNNING  = zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^$(GP_SESSION) \|^$(GP_SESSION)$$"
-TOOLS_DIR  := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))" && pwd)
-
-gravitas-pending: ## Start CoAS (Gravitas Pending) in a resident zellij session
-	@if $(GP_RUNNING); then \
-		echo "✅ $(GP_SESSION) is already running."; \
-		echo "   Attach:  make gp-attach"; \
-		echo "   Status:  make gp-status"; \
-	else \
-		printf 'layout {\n    tab {\n        pane command="%s/$(S)/coas-pi" {\n            args "Run your startup checklist from AGENTS.md. Do not wait for human input."\n        }\n    }\n}\n' "$(TOOLS_DIR)" > $(GP_LAYOUT); \
-		echo "Starting $(GP_SESSION)…"; \
-		script -q /dev/null sh -c 'zellij -s $(GP_SESSION) --new-session-with-layout $(GP_LAYOUT) & sleep 2 && kill $$!' </dev/null >/dev/null 2>&1; \
-		if $(GP_RUNNING); then \
-			echo "✅ $(GP_SESSION) started (pi running inside zellij)."; \
-			echo "   Attach:  make gp-attach"; \
-		else \
-			echo "❌ Failed to start $(GP_SESSION)."; \
-			exit 1; \
-		fi; \
-	fi
-
-gp-attach: ## Attach to the Gravitas Pending zellij session
-	@if $(GP_RUNNING); then \
-		zellij attach $(GP_SESSION); \
-	else \
-		echo "$(GP_SESSION) is not running. Start with: make gravitas-pending"; \
-		exit 1; \
-	fi
-
-gp-status: ## Show Gravitas Pending session status
-	@if $(GP_RUNNING); then \
-		echo "✅ $(GP_SESSION) is running."; \
-		echo "   Attach:  make gp-attach"; \
-		zellij list-sessions 2>/dev/null | grep "$(GP_SESSION)"; \
-	else \
-		echo "⚪ $(GP_SESSION) is not running."; \
-	fi
-
-gp-stop: ## Stop the Gravitas Pending session
-	@if $(GP_RUNNING); then \
-		echo "Stopping $(GP_SESSION)…"; \
-		zellij kill-session $(GP_SESSION) 2>/dev/null || true; \
-		echo "✅ Stopped."; \
-	else \
-		echo "$(GP_SESSION) is not running."; \
-	fi
-
-gp-restart: gp-stop ## Restart Gravitas Pending
-	@sleep 1
-	@$(MAKE) gravitas-pending
+pi: ## Start pi in the CoAS workspace (foreground)
+	@exec $(S)/coas-pi
 
 # ── Docker deployment ────────────────────────────────────────────
 
