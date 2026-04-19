@@ -64,20 +64,31 @@ export interface MessageTransport {
 }
 
 // ── Channel registry ───────────────────────────────────────────
+// Uses globalThis so the registry is shared across extension module
+// contexts. Pi may load each extension in a separate module scope,
+// which would give each its own module-level Map — breaking the
+// singleton pattern. globalThis is process-wide.
 
-const channels = new Map<string, MessageTransport>();
+const CHANNEL_KEY = "__pi_messaging_channels__";
+
+function getChannelMap(): Map<string, MessageTransport> {
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis registry for cross-module sharing
+	const g = globalThis as any;
+	if (!g[CHANNEL_KEY]) g[CHANNEL_KEY] = new Map<string, MessageTransport>();
+	return g[CHANNEL_KEY] as Map<string, MessageTransport>;
+}
 
 /** Register a named messaging channel (e.g. "agent", "matrix"). */
 export function registerChannel(name: string, transport: MessageTransport): void {
-	channels.set(name, transport);
+	getChannelMap().set(name, transport);
 }
 
 /** Unregister a messaging channel. */
 export function unregisterChannel(name: string): void {
-	channels.delete(name);
+	getChannelMap().delete(name);
 }
 
 /** Get all registered channels. */
 export function getChannels(): ReadonlyMap<string, MessageTransport> {
-	return channels;
+	return getChannelMap();
 }
