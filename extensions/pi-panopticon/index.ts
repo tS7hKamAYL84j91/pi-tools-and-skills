@@ -10,7 +10,7 @@
  *
  * Lifecycle ordering:
  *   start:    registry.register → messaging.init → ui.start
- *   shutdown: spawner.shutdownAll → messaging.drainInbox → ui.stop → registry.unregister
+ *   shutdown: spawner.shutdownAll → messaging.drainAll → ui.stop → registry.unregister
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -23,6 +23,7 @@ import { setupUI } from "./ui.js";
 import { OperationalStateStore } from "./state.js";
 import { setupReconciler } from "./reconciler.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
+import { registerChannel } from "../../lib/message-transport.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -32,6 +33,7 @@ export default function (pi: ExtensionAPI) {
 	const operationalState = new OperationalStateStore(pi);
 	const reconciler = setupReconciler(pi, registry, selfId, operationalState);
 	const maildir = getMaildirTransport();
+	registerChannel("agent", maildir);
 	const messaging = createMessaging({
 		send: maildir,
 		broadcast: maildir,
@@ -58,7 +60,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
 		registry.register(ctx);
 		operationalState.restore(ctx, event);
-		messaging.init();
+		messaging.init(ctx);
 		reconciler.start(ctx);
 		if (ctx.hasUI) {
 			ui.start(ctx);
@@ -73,7 +75,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_end", async () => {
 		registry.setStatus("waiting");
-		messaging.drainInbox();
+		messaging.pokePending();
 		reconciler.onAgentEnd();
 	});
 
@@ -97,7 +99,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		await spawner.shutdownAll();
 		reconciler.stop();
-		messaging.drainInbox();
+		messaging.drainAll();
 		messaging.dispose();
 		ui.stop();
 		registry.unregister();

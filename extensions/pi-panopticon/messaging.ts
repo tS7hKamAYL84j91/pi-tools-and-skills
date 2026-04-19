@@ -1,28 +1,28 @@
 /**
- * Pi Agents Messaging — Registry-based Agent-to-Agent Communication
+ * Pi Agents Messaging — Unified multi-channel messaging with poke-then-read.
  *
- * Provides tools for sending messages between registered agents.
- * Delegates all transport to injected MessageTransport implementations.
+ * All messaging channels (agent Maildir, Matrix, etc.) register via the
+ * channel registry in lib/message-transport.ts. This module provides:
  *
- * Uses a Registry interface for agent record access instead of PID scanning.
- *
- * Tools:
- * - agent_send (send to a single peer)
- * - agent_broadcast (fan out to all/filtered peers)
+ * - Debounced, idle-gated notification ("N new messages — use message_read")
+ * - message_read tool: drains all channels, returns wrapped content
+ * - message_send tool: routes to the correct channel
+ * - agent_send / agent_broadcast: convenience tools for agent-to-agent
  * - /send command
  *
- * The transport determines delivery semantics (at-least-once,
- * at-most-once, etc.) — this extension doesn't know or care.
+ * The notification pattern is extracted from the Matrix extension:
+ * poke with count only (no bodies) → agent calls message_read when ready.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
-import type { MessageTransport } from "../../lib/message-transport.js";
+import type { InboundMessage, MessageTransport } from "../../lib/message-transport.js";
+import { getChannels } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
-import { ok } from "./types.js";
+import { ok, fail } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
@@ -38,18 +38,20 @@ interface MessagingConfig {
 	send: MessageTransport;
 	/** Transport for broadcast (agent_broadcast). */
 	broadcast: MessageTransport;
-	/** Called for each inbound message text after delivery (e.g. completion-signal parsing). */
+	/** Called for each inbound agent-channel message (e.g. completion-signal parsing). */
 	onMessage?: (text: string) => void;
 }
 
 // ── Messaging Module ────────────────────────────────────────────
 
 interface MessagingModule {
-	/** Initialize transport for self, drain inbox, register cleanup hook. */
-	init(): void;
-	/** Read pending messages, deliver via pi.sendUserMessage, ack, prune, update pending count. */
-	drainInbox(): void;
-	/** Remove the cleanup hook registered by init(). Call on shutdown. */
+	/** Initialize transport, drain inbox, register cleanup hook, start watcher. */
+	init(ctx: ExtensionContext): void;
+	/** Poke immediately if messages are pending (bypass debounce). */
+	pokePending(): void;
+	/** Drain all channels directly — for shutdown (no poke, just process). */
+	drainAll(): void;
+	/** Remove cleanup hooks and watchers. */
 	dispose(): void;
 }
 
@@ -57,7 +59,72 @@ interface MessagingModule {
 
 export function createMessaging(config: MessagingConfig) {
 	return function setup(pi: ExtensionAPI, registry: Registry): MessagingModule {
-		/** Update pendingMessages in this agent's record. */
+		let extensionCtx: ExtensionContext | null = null;
+		let pokeTimeout: ReturnType<typeof setTimeout> | null = null;
+		let disposeCleanupHook: (() => void) | null = null;
+		let inboxWatcher: FSWatcher | null = null;
+
+		// ── Poke logic (debounced, idle-gated) ─────────────────
+
+		function totalPending(): number {
+			const record = registry.getRecord();
+			if (!record) return 0;
+			let count = 0;
+			for (const [, transport] of getChannels()) {
+				count += transport.pendingCount(record.id);
+			}
+			return count;
+		}
+
+		function schedulePoke(): void {
+			if (pokeTimeout) return;
+			pokeTimeout = setTimeout(() => {
+				pokeTimeout = null;
+				const count = totalPending();
+				if (count === 0) return;
+				if (!extensionCtx?.isIdle()) {
+					schedulePoke();
+					return;
+				}
+				pi.sendUserMessage(
+					`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
+					{ deliverAs: "followUp" },
+				);
+			}, 2000);
+		}
+
+		function pokeNow(): void {
+			const count = totalPending();
+			if (count === 0) return;
+			if (pokeTimeout) { clearTimeout(pokeTimeout); pokeTimeout = null; }
+			pi.sendUserMessage(
+				`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
+				{ deliverAs: "followUp" },
+			);
+		}
+
+		// ── Drain all channels ─────────────────────────────────
+
+		interface ChannelMessage extends InboundMessage {
+			channel: string;
+		}
+
+		function drainAllChannels(): ChannelMessage[] {
+			const record = registry.getRecord();
+			if (!record) return [];
+			const all: ChannelMessage[] = [];
+			for (const [name, transport] of getChannels()) {
+				const pending = transport.receive(record.id);
+				for (const msg of pending) {
+					all.push({ ...msg, channel: name });
+					if (name === "agent") config.onMessage?.(msg.text);
+					transport.ack(record.id, msg.id);
+				}
+				if (pending.length > 0) transport.prune(record.id);
+			}
+			return all;
+		}
+
 		function updatePendingCount(): void {
 			const record = registry.getRecord();
 			if (!record) return;
@@ -67,25 +134,63 @@ export function createMessaging(config: MessagingConfig) {
 			}
 		}
 
-		// ── Inbox draining ─────────────────────────────────────
+		// ── message_read tool ──────────────────────────────────
 
-		function drainInbox(): void {
-			const record = registry.getRecord();
-			if (!record) return;
-			const pending = config.send.receive(record.id);
-			for (const msg of pending) {
-				try {
-					pi.sendUserMessage(`<agent-message from="${msg.from}">\n${msg.text}\n</agent-message>`, { deliverAs: "followUp" });
-				} catch {
-					continue;
+		pi.registerTool({
+			name: "message_read",
+			label: "Read Messages",
+			description:
+				"Read all unread messages across messaging channels (agents, Matrix, etc.). " +
+				"Returns messages received since the last read. " +
+				"Call this when you receive a new-messages notification.",
+			promptSnippet: "Read unread messages from all channels",
+			promptGuidelines: [
+				"Call message_read when notified of new messages — don't ignore the notification.",
+				"After reading, reply via message_send or agent_send as appropriate.",
+			],
+			parameters: Type.Object({}),
+			async execute() {
+				const messages = drainAllChannels();
+				updatePendingCount();
+				if (messages.length === 0) {
+					return ok("No unread messages.", { count: 0, messages: [] });
 				}
-				config.onMessage?.(msg.text);
-				config.send.ack(record.id, msg.id);
-			}
-			if (pending.length > 0) config.send.prune(record.id);
-			// Update pending count after draining
-			updatePendingCount();
-		}
+				const lines = messages.map((m) => {
+					const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
+					return `[${time}] [${m.channel}:${m.from}] ${m.text}`;
+				});
+				return ok(
+					`<external-messages>\n${lines.join("\n")}\n</external-messages>`,
+					{ count: messages.length, channels: [...new Set(messages.map((m) => m.channel))] },
+				);
+			},
+		});
+
+		// ── message_send tool ──────────────────────────────────
+
+		pi.registerTool({
+			name: "message_send",
+			label: "Send Message",
+			description:
+				"Send a message via a named channel (e.g. 'matrix'). " +
+				"For agent-to-agent messages, use agent_send instead.",
+			promptSnippet: "Send a message via a named channel",
+			parameters: Type.Object({
+				channel: Type.String({ description: 'Channel name (e.g. "matrix")' }),
+				message: Type.String({ description: "Message body" }),
+			}),
+			async execute(_id, params) {
+				const transport = getChannels().get(params.channel);
+				if (!transport) {
+					const available = [...getChannels().keys()].filter((c) => c !== "agent").join(", ");
+					return fail(`Unknown channel "${params.channel}". Available: ${available || "(none)"}`);
+				}
+				const stub = { id: "", name: "", pid: 0, cwd: "", model: "", startedAt: 0, heartbeat: 0, status: "running" as const };
+				const d = await transport.send(stub, getSelfName(registry), params.message);
+				if (!d.accepted) return fail(`Send failed: ${d.error}`);
+				return ok(`Sent via ${params.channel}.`, { channel: params.channel, reference: d.reference });
+			},
+		});
 
 		// ── /send command ──────────────────────────────────────
 
@@ -133,7 +238,7 @@ export function createMessaging(config: MessagingConfig) {
 				message: Type.String({ description: "Message to send" }),
 			}),
 
-			async execute(_id, params, _signal) {
+			async execute(_id, params) {
 				const peer = resolvePeer(registry, params.name);
 				if (!peer) return notFound(registry, params.name);
 
@@ -168,7 +273,7 @@ export function createMessaging(config: MessagingConfig) {
 				),
 			}),
 
-			async execute(_id, params, _signal) {
+			async execute(_id, params) {
 				const self = registry.getRecord();
 				const peers = registry.readAllPeers().filter((r) => !self || r.id !== self.id);
 				const targets = params.filter
@@ -204,31 +309,47 @@ export function createMessaging(config: MessagingConfig) {
 
 		// ── Return MessagingModule ──────────────────────────────
 
-		let disposeCleanupHook: (() => void) | null = null;
-		let inboxWatcher: FSWatcher | null = null;
-
 		const module: MessagingModule = {
-			init() {
+			init(ctx) {
+				extensionCtx = ctx;
 				const record = registry.getRecord();
 				if (!record) return;
 				config.send.init(record.id);
 				updatePendingCount();
-				drainInbox();
+				// Drain any messages already pending at startup
+				if (totalPending() > 0) pokeNow();
 				// Register transport cleanup for dead-agent reaping
 				disposeCleanupHook?.();
 				disposeCleanupHook = onAgentCleanup((agentId) => config.send.cleanup(agentId));
-				// Watch inbox for new messages — wakes idle agents
+				// Watch inbox for new messages — triggers debounced poke
 				inboxWatcher?.close();
 				try {
 					const newDir = join(REGISTRY_DIR, record.id, "inbox", "new");
-					inboxWatcher = watch(newDir, () => {
-						if (registry.getRecord()?.status === "waiting") drainInbox();
-					});
+					inboxWatcher = watch(newDir, () => schedulePoke());
 					inboxWatcher.unref();
 				} catch { /* best-effort: dir may not exist yet */ }
 			},
-			drainInbox,
+			pokePending() {
+				if (totalPending() > 0) pokeNow();
+			},
+			drainAll() {
+				const messages = drainAllChannels();
+				if (messages.length > 0) {
+					const lines = messages.map((m) => {
+						const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
+						return `[${time}] [${m.channel}:${m.from}] ${m.text}`;
+					});
+					try {
+						pi.sendUserMessage(
+							`<external-messages>\n${lines.join("\n")}\n</external-messages>`,
+							{ deliverAs: "followUp" },
+						);
+					} catch { /* shutdown — best-effort */ }
+				}
+				updatePendingCount();
+			},
 			dispose() {
+				if (pokeTimeout) { clearTimeout(pokeTimeout); pokeTimeout = null; }
 				inboxWatcher?.close();
 				inboxWatcher = null;
 				disposeCleanupHook?.();

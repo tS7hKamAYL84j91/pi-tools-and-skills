@@ -70,6 +70,8 @@ const agentId = `${parentPid}-${Date.now().toString(36)}`;
 
 function pickName(): string {
   ensureRegistryDir();
+  const envName = process.env["AGENT_NAME"];
+  if (envName) return envName;
   const repo = basename(process.cwd()) || "agent";
   const base = `cc-${repo}`;
 
