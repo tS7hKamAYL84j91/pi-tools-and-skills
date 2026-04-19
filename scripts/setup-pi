@@ -332,6 +332,10 @@ EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
 MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
+# Core extensions loaded globally (every pi session).
+# Project-specific extensions (kanban, matrix) go in workspace .pi/settings.json.
+CORE_EXTENSIONS="pi-panopticon machine-memory"
+
 python3 -c "
 import json, os, sys
 
@@ -340,6 +344,7 @@ skills_dir    = sys.argv[2]
 ext_dir       = sys.argv[3]
 prompts_dir   = sys.argv[4]
 memories_dir  = sys.argv[5]
+core_exts     = sys.argv[6].split()
 
 # Load existing or start fresh
 if os.path.exists(settings_path):
@@ -357,9 +362,26 @@ def ensure_listed(key, value):
     settings[key] = existing
 
 ensure_listed('skills',     skills_dir)
-ensure_listed('extensions', ext_dir)
 ensure_listed('prompts',    prompts_dir)
 ensure_listed('memories',   memories_dir)
+
+# Extensions: only core (panopticon, machine-memory) go in global settings.
+# Remove legacy whole-directory entry and any stale project-extensions paths.
+existing_exts = settings.get('extensions', [])
+legacy_dir = ext_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+existing_exts = [e for e in existing_exts
+    if e not in {ext_dir, legacy_dir}
+    and '/project-extensions/' not in e]
+core_paths = [os.path.join(ext_dir, name) for name in core_exts]
+for path in core_paths:
+    if path not in existing_exts:
+        existing_exts.append(path)
+# Remove any stale non-core extension paths from global
+project_ext_names = {'kanban', 'matrix'}
+existing_exts = [e for e in existing_exts
+    if not any(e.endswith('/' + name) for name in project_ext_names)
+    or e in core_paths]
+settings['extensions'] = existing_exts
 
 # Default provider + model
 settings['defaultProvider'] = 'anthropic'
@@ -380,7 +402,7 @@ settings['providers'] = providers
 with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
-" "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR"
+" "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$CORE_EXTENSIONS"
 
 # Count what's registered
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
@@ -390,7 +412,7 @@ memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr 
 
 green "  settings.json updated:"
 echo  "    skills:     $skill_count"
-echo  "    extensions: $ext_count (panopticon, machine-memory)"
+echo  "    extensions: 2 global (panopticon, machine-memory), 2 project (kanban, matrix)"
 echo  "    prompts:    $prompt_count"
 echo  "    memories:   $memory_count"
 echo  "    provider:   anthropic (claude-opus-4-6, prompt caching ON)"
