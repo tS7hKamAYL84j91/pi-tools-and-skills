@@ -39,6 +39,18 @@ To clean up manually:
 npx tsx .claude/skills/pi-mailbox/scripts/cleanup.ts
 ```
 
+## Peeking at agents
+
+List all live agents or read a specific agent's activity log:
+
+```bash
+npx tsx .claude/skills/pi-mailbox/scripts/peek.ts            # list all
+npx tsx .claude/skills/pi-mailbox/scripts/peek.ts <name>      # activity log
+npx tsx .claude/skills/pi-mailbox/scripts/peek.ts <name> 100  # last 100 events
+```
+
+Agents with session logs show a 📄 marker in the listing. Agents registered via the mailbox skill (without panopticon) won't have session logs.
+
 ## How others message you
 
 Once registered, other pi agents can reach you via:
