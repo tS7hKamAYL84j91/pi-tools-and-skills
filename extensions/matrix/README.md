@@ -50,20 +50,16 @@ In your workspace's `.pi/settings.json`:
 | `roomId` | yes | — | Primary room for replies |
 | `accessTokenEnv` | yes | — | Env var name holding the access token |
 | `trustedSenders` | no | `[]` (all) | MXIDs allowed to message the bot |
-| `encryption` | no | `false` | Enable E2EE (experimental — see below) |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |
-| `cryptoStorePath` | no | `~/.pi/agent/matrix-crypto` | Crypto store path (only with encryption) |
-| `deviceDisplayName` | no | `"CoAS Chief of Staff (extension)"` | Device display name |
+| `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path |
 
 ## Room scope
 
 The bot listens to messages from **all rooms** on the homeserver, not just `roomId`. On a private homeserver with only trusted users, this simplifies DM handling. The `trustedSenders` filter is the security boundary.
 
-## Encryption
+## Security model
 
-Encryption defaults to **off**. On a private Tailscale mesh, WireGuard encrypts the transport. Matrix E2EE is optional defense-in-depth.
-
-When `encryption: true`, the bot initializes a Rust-backed crypto store. **Limitation:** matrix-bot-sdk does not support interactive device verification (SAS/emoji). Element X may not share Megolm keys with unverified bot devices. This is a known upstream issue with no fix.
+No Matrix E2EE — the homeserver runs on a private Tailscale mesh where WireGuard encrypts all transport. The `trustedSenders` filter is the access control boundary.
 
 ## Deployment
 

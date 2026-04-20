@@ -4,21 +4,17 @@
 
 /** Resolved configuration for the matrix extension. */
 export interface MatrixConfig {
-	/** Homeserver base URL — e.g. "https://coas-matrix.tail5a2ec5.ts.net" */
+	/** Homeserver base URL */
 	homeserver: string;
-	/** Bot's full MXID — e.g. "@coas-bot:coas-matrix.tail5a2ec5.ts.net" */
+	/** Bot's full MXID */
 	userId: string;
-	/** The primary room the bot sends replies to */
+	/** Primary room for replies */
 	roomId: string;
-	/** Bearer access token for the bot account (resolved from env, never stored on disk) */
+	/** Bearer access token (resolved from env at runtime) */
 	accessToken: string;
-	/** Whether to enable end-to-end encryption (requires crypto store + device verification) */
-	encryption: boolean;
-	/** Filesystem path for the persistent crypto store (only used when encryption=true) */
-	cryptoStorePath: string;
-	/** Display name shown to other Matrix devices for the bot's session */
-	deviceDisplayName: string;
-	/** Label used in message attribution, e.g. "matrix" → "[from matrix:jim]" */
+	/** Filesystem path for sync state storage */
+	storagePath: string;
+	/** Label used in message attribution, e.g. "matrix" */
 	channelLabel: string;
 	/** MXIDs allowed to send messages to the agent. Empty = accept all. */
 	trustedSenders: string[];

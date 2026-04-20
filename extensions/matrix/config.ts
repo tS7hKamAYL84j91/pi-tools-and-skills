@@ -2,8 +2,7 @@
  * Matrix extension — config loader.
  *
  * Reads the `matrix` block from a project's .pi/settings.json and resolves
- * env-var-backed secrets at runtime. The literal access token NEVER comes
- * from settings.json — only its env var name does.
+ * env-var-backed secrets at runtime.
  */
 
 import { readFileSync } from "node:fs";
@@ -11,27 +10,18 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { MatrixConfig } from "./types.js";
 
-// ── Defaults ─────────────────────────────────────���──────────────
-
-const DEFAULT_CRYPTO_STORE = join(homedir(), ".pi", "agent", "matrix-crypto");
-const DEFAULT_DEVICE_NAME = "CoAS Chief of Staff (extension)";
+const DEFAULT_STORAGE_PATH = join(homedir(), ".pi", "agent", "matrix-sync");
 const PI_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
-
-// ── Raw config shape from settings.json ──────────────────────���──
 
 interface RawMatrixSettings {
 	homeserver?: unknown;
 	userId?: unknown;
 	roomId?: unknown;
 	accessTokenEnv?: unknown;
-	encryption?: unknown;
-	cryptoStorePath?: unknown;
-	deviceDisplayName?: unknown;
+	storagePath?: unknown;
 	channelLabel?: unknown;
 	trustedSenders?: unknown;
 }
-
-// ── Loading ───────────────────────────────��─────────────────────
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
 	try {
@@ -45,7 +35,7 @@ function readMatrixSettings(path: string): RawMatrixSettings | null {
 
 /**
  * Resolve the matrix config from settings + environment.
- * Returns null if no matrix block is configured (valid "disabled" state).
+ * Returns null if no matrix block is configured.
  * Throws on validation errors.
  */
 export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | null {
@@ -74,9 +64,7 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		);
 	}
 
-	const encryption = raw.encryption === true; // default false
-	const cryptoStorePath = expandHome(optionalString(raw.cryptoStorePath) ?? DEFAULT_CRYPTO_STORE);
-	const deviceDisplayName = optionalString(raw.deviceDisplayName) ?? DEFAULT_DEVICE_NAME;
+	const storagePath = expandHome(optionalString(raw.storagePath) ?? DEFAULT_STORAGE_PATH);
 	const channelLabel = optionalString(raw.channelLabel) ?? "matrix";
 	const trustedSenders = Array.isArray(raw.trustedSenders)
 		? (raw.trustedSenders as unknown[]).filter((s): s is string => typeof s === "string")
@@ -87,15 +75,11 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 		userId,
 		roomId,
 		accessToken,
-		encryption,
-		cryptoStorePath,
-		deviceDisplayName,
+		storagePath,
 		channelLabel,
 		trustedSenders,
 	};
 }
-
-// ── Helpers ──────────────────���────────────────────────��─────────
 
 function requireString(value: unknown, fieldName: string): string {
 	if (typeof value !== "string" || value.length === 0) {

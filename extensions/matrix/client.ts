@@ -2,7 +2,6 @@
  * Matrix extension — matrix-bot-sdk client wrapper.
  *
  * Wraps a MatrixClient instance for headless bot use:
- *   - Optional E2EE via Rust crypto (encryption defaults to off)
  *   - Accepts room invites from trusted senders
  *   - Filters own messages to prevent send/receive loops
  *   - Surfaces m.room.message events to a user-supplied handler
@@ -11,12 +10,6 @@
  */
 
 import { mkdirSync } from "node:fs";
-// Imports from matrix-bot-sdk are kept abstract behind any-typed locals
-// because the package is added as a runtime peer dep — we don't want a
-// hard import that breaks tools-and-skills' typecheck if the package
-// isn't installed yet. The extension only loads when pi resolves it at
-// runtime, by which time the dep is present.
-//
 // biome-ignore lint/suspicious/noExplicitAny: matrix-bot-sdk types resolved at runtime
 type AnyClient = any;
 
@@ -24,24 +17,15 @@ import type { MatrixConfig } from "./types.js";
 
 // ── Public types ────────────────────────────────────────────────
 
-/** Decrypted inbound message handed to the bridge. */
 export interface InboundMessage {
-	/** Room ID this message arrived in (always === config.roomId for our wrapper) */
 	roomId: string;
-	/** Sender MXID — e.g. "@jim:matrix.org" */
 	senderMxid: string;
-	/** Plain-text message body */
 	body: string;
-	/** Matrix event ID, useful for replies / reactions */
 	eventId: string;
-	/** Server timestamp in ms since epoch */
 	timestampMs: number;
 }
 
-/** Callback shape for incoming messages. */
 type InboundHandler = (msg: InboundMessage) => void | Promise<void>;
-
-/** Callback for surfacing log messages to the extension UI. */
 type NotifyFn = (msg: string, level: "info" | "warning" | "error") => void;
 
 // ── Client wrapper ──────────────────────────────────────────────
@@ -62,10 +46,6 @@ export class MatrixBridgeClient {
 		this.onInbound = onInbound;
 		this.notifyFn = notify;
 
-		// Lazy import so the dep is only loaded when the extension actually runs.
-		// matrix-bot-sdk re-exports the Rust crypto storage provider; the
-		// @matrix-org/matrix-sdk-crypto-nodejs binding it uses internally is
-		// pulled in as a transitive dep.
 		const sdk = await import("matrix-bot-sdk").catch((err) => {
 			throw new Error(
 				`matrix-bot-sdk is not installed. Run \`npm install matrix-bot-sdk\` ` +
@@ -74,15 +54,12 @@ export class MatrixBridgeClient {
 		}) as {
 			MatrixClient: AnyClient;
 			SimpleFsStorageProvider: AnyClient;
-			RustSdkCryptoStorageProvider: AnyClient;
 			LogService: AnyClient;
 			LogLevel: AnyClient;
 		};
-		const { MatrixClient, SimpleFsStorageProvider, RustSdkCryptoStorageProvider, LogService, LogLevel } = sdk;
+		const { MatrixClient, SimpleFsStorageProvider, LogService, LogLevel } = sdk;
 
-		// Route matrix-bot-sdk logs through the extension UI instead of
-		// stderr. Without this, console.error() from the default
-		// ConsoleLogger leaks into the TUI input box.
+		// Route matrix-bot-sdk logs through the extension UI
 		const notifyRef = this.notifyFn;
 		const formatArgs = (args: unknown[]): string =>
 			args.map((a) => {
@@ -105,49 +82,16 @@ export class MatrixBridgeClient {
 		});
 		LogService.setLevel(LogLevel.WARN);
 
-		// Storage providers — sync state and crypto state both go to disk
-		mkdirSync(this.config.cryptoStorePath, { recursive: true });
-		const storage = new SimpleFsStorageProvider(`${this.config.cryptoStorePath}/sync.json`);
+		// Sync state storage
+		mkdirSync(this.config.storagePath, { recursive: true });
+		const storage = new SimpleFsStorageProvider(`${this.config.storagePath}/sync.json`);
 
-		let crypto: AnyClient = null;
-		if (this.config.encryption) {
-			if (!RustSdkCryptoStorageProvider) {
-				throw new Error(
-					`Encryption is enabled but RustSdkCryptoStorageProvider is not exported by your matrix-bot-sdk version. ` +
-					`Upgrade to a version that bundles crypto support, or set "encryption": false (NOT recommended).`,
-				);
-			}
-			crypto = new RustSdkCryptoStorageProvider(`${this.config.cryptoStorePath}/crypto`);
-		}
-
-		// Build the client
+		// Build the client (no crypto — unencrypted rooms on private tailnet)
 		this.client = new MatrixClient(
 			this.config.homeserver,
 			this.config.accessToken,
 			storage,
-			crypto,
 		);
-
-		// Patch updateSyncData to filter out undefined entries in device
-		// lists. Continuwuity sometimes sends null/undefined in
-		// device_lists.changed which crashes the Rust SDK's UserId
-		// constructor ("Expect value to be String, but received Undefined").
-		// Without this patch the entire sync handler fails and
-		// to_device.decrypted events are never emitted.
-		if (this.client.crypto) {
-			const origUpdate = this.client.crypto.updateSyncData.bind(this.client.crypto);
-			this.client.crypto.updateSyncData = async (
-				msgs: AnyClient, otk: AnyClient, fallback: AnyClient,
-				changed: string[], left: string[],
-			) => {
-				const hasInvalid = (arr: string[]) => arr.some((u: unknown) => typeof u !== "string");
-				return origUpdate(
-					msgs, otk, fallback,
-					hasInvalid(changed) ? changed.filter((u: unknown) => typeof u === "string") : changed,
-					hasInvalid(left) ? left.filter((u: unknown) => typeof u === "string") : left,
-				);
-			};
-		}
 
 		// Accept invites to the configured room and DMs from trusted senders.
 		this.client.on("room.invite", async (roomId: string, event: AnyClient) => {
@@ -155,7 +99,6 @@ export class MatrixBridgeClient {
 				await this.client.joinRoom(roomId);
 				return;
 			}
-			// Accept DM invites from trusted senders
 			const sender = event?.sender ?? event?.state_key;
 			const trusted = this.config.trustedSenders;
 			if (sender && (trusted.length === 0 || trusted.includes(sender))) {
@@ -166,11 +109,9 @@ export class MatrixBridgeClient {
 			try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
 		});
 
-		// Wire the inbound message handler — listen to ALL rooms on this
-		// private homeserver (no room filter). Trusted sender check still applies.
+		// Listen to ALL rooms on this private homeserver. Trusted sender filter applies.
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
-			if (event?.sender === this.config.userId) return; // own echo
-			// Reject messages from untrusted senders (empty list = accept all)
+			if (event?.sender === this.config.userId) return;
 			const trusted = this.config.trustedSenders;
 			if (trusted.length > 0 && !trusted.includes(event?.sender)) return;
 			const content = event?.content;
@@ -185,31 +126,16 @@ export class MatrixBridgeClient {
 			};
 			try {
 				await this.onInbound?.(msg);
-			} catch {
-				/* handler errors are non-fatal — log via the extension's UI in index.ts */
-			}
+			} catch { /* non-fatal */ }
 		});
 
-		// Surface decryption failures through the extension UI instead of stderr
-		this.client.on("room.failed_decryption", (_roomId: string, _event: AnyClient, err: AnyClient) => {
-			this.notifyFn?.(`decrypt failed: ${(err as Error).message}`, "warning");
-		});
-
-		// Ensure we've joined the configured room. The room.invite handler above
-		// only catches LIVE invites; if the bot was invited before the extension
-		// started, the invite event is in the past and the handler never fires.
-		// joinRoom is idempotent — calling it when already joined is a no-op.
+		// Ensure we've joined the configured room
 		try {
 			await this.client.joinRoom(this.config.roomId);
-		} catch {
-			// Non-fatal — the room might not exist yet, or the invite is pending.
-			// The room.invite handler will catch it when the invite arrives live.
-		}
+		} catch { /* non-fatal — invite may arrive later */ }
 
-		// Start the sync loop. matrix-bot-sdk handles reconnection internally.
 		await this.client.start();
 		this.connected = true;
-
 	}
 
 	/** Send a text message to the configured room. */
@@ -219,7 +145,6 @@ export class MatrixBridgeClient {
 		return { eventId };
 	}
 
-	/** Stop the sync loop and release resources. Called from session_shutdown. */
 	async stop(): Promise<void> {
 		if (!this.client) return;
 		try { await this.client.stop(); } catch { /* non-fatal */ }
@@ -227,10 +152,7 @@ export class MatrixBridgeClient {
 		this.connected = false;
 	}
 
-	/** Whether the sync loop is connected and running. */
 	isConnected(): boolean {
 		return this.connected;
 	}
-
 }
-
