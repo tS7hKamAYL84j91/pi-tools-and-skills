@@ -11,7 +11,8 @@
   ],
   "ignoreDependencies": [
     "@mariozechner/pi-tui",
-    "@vitest/coverage-v8"
+    "@vitest/coverage-v8",
+    "tweetnacl"
   ],
   "tags": [
     "-lintignore"

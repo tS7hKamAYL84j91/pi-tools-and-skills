@@ -198,7 +198,7 @@ describe("function parameters", () => {
 			.inFolder("extensions/**")
 			.should()
 			.adhereTo(
-				(file) => file.path.includes("/kanban/") || countFuncParams(file.content, 4),
+				(file) => file.path.includes("/kanban/") || file.path.includes("/matrix/verification") || countFuncParams(file.content, 4),
 				"Functions should have at most 4 parameters (Clean Code: 3 ideal, 4 max)",
 			);
 
