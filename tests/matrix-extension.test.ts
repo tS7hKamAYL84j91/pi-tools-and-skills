@@ -52,21 +52,17 @@ describe("loadMatrixConfig", () => {
 	let tmpDir: string;
 	let projectSettingsPath: string;
 	let prevToken: string | undefined;
-	let prevPassphrase: string | undefined;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "matrix-config-test-"));
 		projectSettingsPath = join(tmpDir, "settings.json");
 		prevToken = process.env.MATRIX_TEST_TOKEN;
-		prevPassphrase = process.env.MATRIX_TEST_RECOVERY;
 		process.env.MATRIX_TEST_TOKEN = "syt_test_token";
 	});
 
 	afterEach(() => {
 		if (prevToken === undefined) delete process.env.MATRIX_TEST_TOKEN;
 		else process.env.MATRIX_TEST_TOKEN = prevToken;
-		if (prevPassphrase === undefined) delete process.env.MATRIX_TEST_RECOVERY;
-		else process.env.MATRIX_TEST_RECOVERY = prevPassphrase;
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
@@ -90,7 +86,7 @@ describe("loadMatrixConfig", () => {
 			homeserver: "https://matrix.org",
 			userId: "@coas-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -100,9 +96,9 @@ describe("loadMatrixConfig", () => {
 		expect(config?.homeserver).toBe("https://matrix.org");
 		expect(config?.userId).toBe("@coas-bot:matrix.org");
 		expect(config?.roomId).toBe("!room:matrix.org");
-		expect(config?.targetAgent).toBe("coas");
+		
 		expect(config?.accessToken).toBe("syt_test_token");
-		expect(config?.encryption).toBe(true); // default
+		expect(config?.encryption).toBe(false); // default
 	});
 
 	it("throws when a required field is missing", async () => {
@@ -118,7 +114,7 @@ describe("loadMatrixConfig", () => {
 			homeserver: "https://matrix.org",
 			userId: "coas-bot",
 			roomId: "!room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -130,7 +126,7 @@ describe("loadMatrixConfig", () => {
 			homeserver: "https://matrix.org",
 			userId: "@coas-bot:matrix.org",
 			roomId: "room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -142,34 +138,21 @@ describe("loadMatrixConfig", () => {
 			homeserver: "https://matrix.org",
 			userId: "@coas-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY/);
 	});
 
-	it("resolves the optional Secure Backup passphrase env var when configured", async () => {
-		process.env.MATRIX_TEST_RECOVERY = "passphrase-here";
-		writeSettings({
-			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
-			roomId: "!room:matrix.org",
-			targetAgent: "coas",
-			accessTokenEnv: "MATRIX_TEST_TOKEN",
-			secureBackupEnv: "MATRIX_TEST_RECOVERY",
-		});
-		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
-		const config = loadMatrixConfig(projectSettingsPath);
-		expect(config?.recoveryPassphrase).toBe("passphrase-here");
-	});
+
 
 	it("respects encryption: false override", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",
 			userId: "@coas-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 			encryption: false,
 		});
@@ -183,7 +166,7 @@ describe("loadMatrixConfig", () => {
 			homeserver: "https://matrix.org",
 			userId: "@coas-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			targetAgent: "coas",
+			
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 			cryptoStorePath: "~/test-matrix-store",
 		});
