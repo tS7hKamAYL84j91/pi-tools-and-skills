@@ -20,7 +20,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
 import type { InboundMessage, MessageTransport } from "../../lib/message-transport.js";
-import { getChannels } from "../../lib/message-transport.js";
+import { getChannels, onChannelNotify } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
 import { ok, fail } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
@@ -318,10 +318,13 @@ export function createMessaging(config: MessagingConfig) {
 				updatePendingCount();
 				// Drain any messages already pending at startup
 				if (totalPending() > 0) pokeNow();
+				// Register as the channel notification handler — any channel
+				// (Matrix, future channels) calls notifyChannel() to trigger poke
+				onChannelNotify(() => schedulePoke());
 				// Register transport cleanup for dead-agent reaping
 				disposeCleanupHook?.();
 				disposeCleanupHook = onAgentCleanup((agentId) => config.send.cleanup(agentId));
-				// Watch inbox for new messages — triggers debounced poke
+				// Watch Maildir inbox for new messages — triggers debounced poke
 				inboxWatcher?.close();
 				try {
 					const newDir = join(REGISTRY_DIR, record.id, "inbox", "new");

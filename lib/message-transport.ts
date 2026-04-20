@@ -92,3 +92,27 @@ export function unregisterChannel(name: string): void {
 export function getChannels(): ReadonlyMap<string, MessageTransport> {
 	return getChannelMap();
 }
+
+// ── Channel notification ───────────────────────────────────────
+// Channels call notifyChannel() when they have new messages.
+// The messaging module registers a listener via onChannelNotify().
+
+const NOTIFY_KEY = "__pi_channel_notify__";
+
+type ChannelNotifyFn = () => void;
+
+function getNotifyFn(): ChannelNotifyFn | undefined {
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis for cross-module sharing
+	return (globalThis as any)[NOTIFY_KEY] as ChannelNotifyFn | undefined;
+}
+
+/** Called by the messaging module to register its poke trigger. */
+export function onChannelNotify(fn: ChannelNotifyFn): void {
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis for cross-module sharing
+	(globalThis as any)[NOTIFY_KEY] = fn;
+}
+
+/** Called by any channel when new messages are available. Triggers the poke system. */
+export function notifyChannel(): void {
+	getNotifyFn()?.();
+}
