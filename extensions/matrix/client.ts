@@ -156,6 +156,16 @@ export class MatrixBridgeClient {
 				msgs: AnyClient, otk: AnyClient, fallback: AnyClient,
 				changed: string[], left: string[],
 			) => {
+				// Emit verification events directly — the Rust SDK doesn't
+				// surface unencrypted to-device events through receiveSyncChanges.
+				if (Array.isArray(msgs)) {
+					for (const msg of msgs) {
+						const type = msg?.type as string | undefined;
+						if (type?.startsWith("m.key.verification.")) {
+							this.client.emit("to_device.decrypted", msg);
+						}
+					}
+				}
 				// Fast path: skip filter when all entries are valid (common case)
 				const hasInvalid = (arr: string[]) => arr.some((u: unknown) => typeof u !== "string");
 				return origUpdate(
