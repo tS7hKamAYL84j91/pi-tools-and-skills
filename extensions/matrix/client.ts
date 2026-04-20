@@ -184,9 +184,9 @@ export class MatrixBridgeClient {
 			try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
 		});
 
-		// Wire the inbound message handler
+		// Wire the inbound message handler — listen to ALL rooms on this
+		// private homeserver (no room filter). Trusted sender check still applies.
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
-			if (roomId !== this.config.roomId) return;
 			if (event?.sender === this.config.userId) return; // own echo
 			// Reject messages from untrusted senders (empty list = accept all)
 			const trusted = this.config.trustedSenders;
@@ -205,6 +205,15 @@ export class MatrixBridgeClient {
 				await this.onInbound?.(msg);
 			} catch {
 				/* handler errors are non-fatal — log via the extension's UI in index.ts */
+			}
+		});
+
+		// Forward room events that are verification-related to the to_device handler
+		// (Element X may use in-room verification instead of to-device)
+		this.client.on("room.event", async (_roomId: string, event: AnyClient) => {
+			const type = event?.type as string;
+			if (type?.startsWith("m.key.verification.")) {
+				this.client.emit("to_device.decrypted", event);
 			}
 		});
 
