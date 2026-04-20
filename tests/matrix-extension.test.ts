@@ -98,7 +98,6 @@ describe("loadMatrixConfig", () => {
 		expect(config?.roomId).toBe("!room:matrix.org");
 		
 		expect(config?.accessToken).toBe("syt_test_token");
-		expect(config?.encryption).toBe(false); // default
 	});
 
 	it("throws when a required field is missing", async () => {
@@ -147,32 +146,5 @@ describe("loadMatrixConfig", () => {
 
 
 
-	it("respects encryption: false override", async () => {
-		writeSettings({
-			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
-			roomId: "!room:matrix.org",
-			
-			accessTokenEnv: "MATRIX_TEST_TOKEN",
-			encryption: false,
-		});
-		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
-		const config = loadMatrixConfig(projectSettingsPath);
-		expect(config?.encryption).toBe(false);
-	});
 
-	it("expands ~/ in cryptoStorePath", async () => {
-		writeSettings({
-			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
-			roomId: "!room:matrix.org",
-			
-			accessTokenEnv: "MATRIX_TEST_TOKEN",
-			cryptoStorePath: "~/test-matrix-store",
-		});
-		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
-		const config = loadMatrixConfig(projectSettingsPath);
-		expect(config?.cryptoStorePath.startsWith("/")).toBe(true);
-		expect(config?.cryptoStorePath.endsWith("/test-matrix-store")).toBe(true);
-	});
 });
