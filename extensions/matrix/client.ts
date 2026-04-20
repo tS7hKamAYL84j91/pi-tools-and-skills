@@ -30,6 +30,7 @@ import { join } from "node:path";
 type AnyClient = any;
 
 import type { MatrixConfig } from "./types.js";
+import { setupVerificationHandler } from "./verification.js";
 
 // ── Public types ────────────────────────────────────────────────
 
@@ -226,6 +227,20 @@ export class MatrixBridgeClient {
 		// Start the sync loop. matrix-bot-sdk handles reconnection internally.
 		await this.client.start();
 		this.connected = true;
+
+		// Set up SAS verification handler — auto-accepts from trusted senders
+		if (this.config.encryption) {
+			const devId = this.deviceId;
+			if (devId) {
+				setupVerificationHandler(
+					this.client,
+					this.config.userId,
+					devId,
+					this.config.trustedSenders,
+					this.notifyFn,
+				);
+			}
+		}
 
 		// Upload cross-signing keys if encryption is enabled and the bot
 		// has a password for UIA. The Rust SDK's bootstrapCrossSigning
