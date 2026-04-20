@@ -330,7 +330,7 @@ export function createMessaging(config: MessagingConfig) {
 				} catch { /* best-effort: dir may not exist yet */ }
 			},
 			pokePending() {
-				if (totalPending() > 0) pokeNow();
+				pokeNow();
 			},
 			drainAll() {
 				const messages = drainAllChannels();

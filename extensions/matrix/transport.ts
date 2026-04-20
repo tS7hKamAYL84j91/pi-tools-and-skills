@@ -15,6 +15,8 @@ import type {
 import type { MatrixBridgeClient, InboundMessage as MatrixInboundMessage } from "./client.js";
 import { mxidLocalpart } from "./bridge.js";
 
+const MAX_BUFFER = 200;
+
 export class MatrixTransport implements MessageTransport {
 	private buffer: InboundMessage[] = [];
 	private channelLabel: string;
@@ -27,6 +29,7 @@ export class MatrixTransport implements MessageTransport {
 
 	/** Push a Matrix inbound message into the buffer. Called from the sync loop handler. */
 	pushInbound(msg: MatrixInboundMessage): void {
+		if (this.buffer.length >= MAX_BUFFER) this.buffer.shift();
 		this.buffer.push({
 			id: msg.eventId,
 			from: `${this.channelLabel}:${mxidLocalpart(msg.senderMxid)}`,
