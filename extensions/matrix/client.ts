@@ -1,20 +1,13 @@
 /**
- * Matrix extension — matrix-bot-sdk wrapper with end-to-end encryption.
+ * Matrix extension — matrix-bot-sdk client wrapper.
  *
- * Wraps a single MatrixClient instance configured for headless bot use:
- *   - Rust-backed E2EE via @turt2live/matrix-bot-sdk-crypto-nodejs
- *   - File-backed crypto store at config.cryptoStorePath
- *   - Auto-accepts the configured room invite (and only that room)
+ * Wraps a MatrixClient instance for headless bot use:
+ *   - Optional E2EE via Rust crypto (encryption defaults to off)
+ *   - Accepts room invites from trusted senders
  *   - Filters own messages to prevent send/receive loops
- *   - Surfaces decrypted m.room.message events to a user-supplied handler
+ *   - Surfaces m.room.message events to a user-supplied handler
  *
- * Reconnection is handled by matrix-bot-sdk's internal sync loop; we add
- * a small wrapper to track connection state for the UI widget.
- *
- * Why matrix-bot-sdk and not matrix-js-sdk: matrix-js-sdk's persistence
- * layer assumes IndexedDB and requires fake-indexeddb + node-localstorage
- * shims to work in Node. matrix-bot-sdk + crypto-nodejs is purpose-built
- * for headless bots with native file-backed crypto storage.
+ * Reconnection is handled by matrix-bot-sdk's internal sync loop.
  */
 
 import { mkdirSync } from "node:fs";
@@ -37,7 +30,7 @@ export interface InboundMessage {
 	roomId: string;
 	/** Sender MXID — e.g. "@jim:matrix.org" */
 	senderMxid: string;
-	/** Plain-text message body (post-decrypt for E2EE rooms) */
+	/** Plain-text message body */
 	body: string;
 	/** Matrix event ID, useful for replies / reactions */
 	eventId: string;
@@ -63,13 +56,7 @@ export class MatrixBridgeClient {
 
 	/**
 	 * Initialise the matrix-bot-sdk client and start the sync loop.
-	 *
-	 * On first run this creates a new Matrix device for the bot. The phone
-	 * will see an unverified session — the user runs /matrix verify to
-	 * complete the device verification handshake.
-	 *
-	 * Throws if the access token is rejected, the homeserver is unreachable,
-	 * or the crypto store can't be initialised.
+	 * Throws if the access token is rejected or the homeserver is unreachable.
 	 */
 	async start(onInbound: InboundHandler, notify?: NotifyFn): Promise<void> {
 		this.onInbound = onInbound;
@@ -162,14 +149,13 @@ export class MatrixBridgeClient {
 			};
 		}
 
-		// Accept invites to the configured room and DMs from trusted senders
-		// (needed for device verification). Reject everything else.
+		// Accept invites to the configured room and DMs from trusted senders.
 		this.client.on("room.invite", async (roomId: string, event: AnyClient) => {
 			if (roomId === this.config.roomId) {
 				await this.client.joinRoom(roomId);
 				return;
 			}
-			// Accept DM invites from trusted senders (for verification flows)
+			// Accept DM invites from trusted senders
 			const sender = event?.sender ?? event?.state_key;
 			const trusted = this.config.trustedSenders;
 			if (sender && (trusted.length === 0 || trusted.includes(sender))) {
@@ -226,7 +212,7 @@ export class MatrixBridgeClient {
 
 	}
 
-	/** Send an encrypted text message to the configured room. */
+	/** Send a text message to the configured room. */
 	async send(text: string): Promise<{ eventId: string }> {
 		if (!this.client) throw new Error("Matrix client is not started");
 		const eventId = await this.client.sendText(this.config.roomId, text);

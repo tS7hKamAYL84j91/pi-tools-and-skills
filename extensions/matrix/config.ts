@@ -6,7 +6,7 @@
  * from settings.json — only its env var name does.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { MatrixConfig } from "./types.js";
@@ -34,7 +34,6 @@ interface RawMatrixSettings {
 // ── Loading ───────────────────────────────��─────────────────────
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
-	if (!existsSync(path)) return null;
 	try {
 		const raw = readFileSync(path, "utf-8");
 		const parsed = JSON.parse(raw) as { matrix?: RawMatrixSettings };
