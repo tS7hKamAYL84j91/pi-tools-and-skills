@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { join } from "node:path";
 
-import { registerChannel, unregisterChannel } from "../../lib/message-transport.js";
+import { registerChannel, unregisterChannel, notifyChannel } from "../../lib/message-transport.js";
 import { loadMatrixConfig } from "./config.js";
 import { MatrixBridgeClient } from "./client.js";
 import { MatrixTransport } from "./transport.js";
@@ -80,6 +80,7 @@ export default function (pi: ExtensionAPI): void {
 			await client.start(
 				(msg) => {
 					transport?.pushInbound(msg);
+					notifyChannel();
 					updateStatus();
 				},
 				(msg, level) => c.ui.notify(`matrix: ${msg}`, level),
