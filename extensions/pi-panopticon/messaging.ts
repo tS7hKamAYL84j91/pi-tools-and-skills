@@ -128,7 +128,7 @@ export function createMessaging(config: MessagingConfig) {
 		function updatePendingCount(): void {
 			const record = registry.getRecord();
 			if (!record) return;
-			const count = config.send.pendingCount(record.id);
+			const count = totalPending();
 			if (record.pendingMessages !== count) {
 				registry.updatePendingMessages(count);
 			}
