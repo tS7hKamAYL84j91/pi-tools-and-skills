@@ -120,10 +120,12 @@ core_ext_paths = {
     legacy_ext_dir,
     os.path.join(ext_dir, 'pi-panopticon'),
     os.path.join(ext_dir, 'machine-memory'),
+    os.path.join(ext_dir, 'council'),
     os.path.join(ext_dir, 'kanban'),
     os.path.join(ext_dir, 'matrix'),
     os.path.join(legacy_ext_dir, 'pi-panopticon'),
     os.path.join(legacy_ext_dir, 'machine-memory'),
+    os.path.join(legacy_ext_dir, 'council'),
     os.path.join(legacy_ext_dir, 'kanban'),
     os.path.join(legacy_ext_dir, 'matrix'),
 }

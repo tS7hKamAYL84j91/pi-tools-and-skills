@@ -376,6 +376,7 @@ package_entry = {
     'extensions': [
         'extensions/pi-panopticon/**',
         'extensions/machine-memory/**',
+        'extensions/council/**',
     ],
 }
 existing_packages = settings.get('packages', [])
@@ -399,10 +400,12 @@ core_ext_paths = {
     legacy_ext_dir,
     os.path.join(ext_dir, 'pi-panopticon'),
     os.path.join(ext_dir, 'machine-memory'),
+    os.path.join(ext_dir, 'council'),
     os.path.join(ext_dir, 'kanban'),
     os.path.join(ext_dir, 'matrix'),
     os.path.join(legacy_ext_dir, 'pi-panopticon'),
     os.path.join(legacy_ext_dir, 'machine-memory'),
+    os.path.join(legacy_ext_dir, 'council'),
     os.path.join(legacy_ext_dir, 'kanban'),
     os.path.join(legacy_ext_dir, 'matrix'),
 }
@@ -438,7 +441,7 @@ memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
 echo  "    skills:     $skill_count (via package)"
-echo  "    extensions: 2 global via package filter (panopticon, machine-memory), 2 project available (kanban, matrix)"
+echo  "    extensions: 3 global via package filter (panopticon, machine-memory, council), 2 project available (kanban, matrix)"
 echo  "    prompts:    $prompt_count (via package)"
 echo  "    memories:   $memory_count (direct path; pi packages do not expose memories yet)"
 echo  "    provider:   openai (gpt-5.5 default; Anthropic prompt caching ON if used)"
@@ -546,6 +549,7 @@ echo ""
 echo "  Global extensions (all pi sessions):"
 echo "    • pi-panopticon — multi-agent messaging, spawning, monitoring"
 echo "    • machine-memory — .mmem.yml cheat sheets for agents"
+echo "    • council — heterogeneous multi-model debate with optional live-agent members"
 echo ""
 echo "  Project extensions (add per-project in .pi/settings.json):"
 echo "    • kanban        — event-sourced task board (/kanban TUI overlay)"

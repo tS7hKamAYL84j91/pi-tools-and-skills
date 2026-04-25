@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+
+import { critiquePrompt } from "../extensions/council/prompts.js";
+import type { CouncilMember, ModelRun } from "../extensions/council/types.js";
+
+const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
+const memberB: CouncilMember = { label: "Agent B", model: "anthropic/claude-opus-4-6" };
+const memberC: CouncilMember = { label: "Agent C", model: "google/gemini-2.5-pro" };
+
+function makeRun(member: CouncilMember, output: string): ModelRun {
+	return {
+		member,
+		prompt: "Q?",
+		systemPrompt: "sys",
+		output,
+		durationMs: 1,
+		ok: true,
+	};
+}
+
+describe("critiquePrompt self-exclusion", () => {
+	const generation = [
+		makeRun(memberA, "A's distinctive answer signature"),
+		makeRun(memberB, "B's distinctive answer signature"),
+		makeRun(memberC, "C's distinctive answer signature"),
+	];
+	const members = [memberA, memberB, memberC];
+
+	it("omits the viewer's own answer from the critique input", () => {
+		const prompt = critiquePrompt({
+			originalPrompt: "Q?",
+			generation,
+			members,
+			viewer: memberB,
+		});
+		expect(prompt).toContain("A's distinctive answer signature");
+		expect(prompt).toContain("C's distinctive answer signature");
+		expect(prompt).not.toContain("B's distinctive answer signature");
+	});
+
+	it("anonymizes peer model ids in the included answers", () => {
+		const generationWithModelMention = [
+			makeRun(memberA, "openai/gpt-5.5 says ..."),
+			makeRun(memberB, "B's answer"),
+		];
+		const prompt = critiquePrompt({
+			originalPrompt: "Q?",
+			generation: generationWithModelMention,
+			members,
+			viewer: memberB,
+		});
+		expect(prompt).not.toContain("openai/gpt-5.5");
+		expect(prompt).toContain("Agent A says ...");
+	});
+
+	it("notes self-exclusion explicitly so reviewers don't look for their answer", () => {
+		const prompt = critiquePrompt({
+			originalPrompt: "Q?",
+			generation,
+			members,
+			viewer: memberA,
+		});
+		expect(prompt).toMatch(/your own answer is excluded/i);
+	});
+});
