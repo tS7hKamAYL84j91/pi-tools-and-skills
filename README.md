@@ -19,7 +19,9 @@ In the current CoAS layout:
   - macOS: Keychain (`security`)
   - Linux: [`pass`](https://www.passwordstore.org/) + `gpg`, with `pass` initialized
 
-### 1. Clone and install
+### 1. Install
+
+For normal local development, clone the repo:
 
 ```bash
 cd ~/git
@@ -27,6 +29,16 @@ git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
 cd pi-tools-and-skills
 npm install
 ```
+
+For pi package installation, use `pi install`:
+
+```bash
+pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
+# or from a local checkout:
+pi install /absolute/path/to/pi-tools-and-skills
+```
+
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon` and `machine-memory`; it also configures secrets, Ollama model discovery, memories, shell hooks, and default model settings.
 
 ### 2. Set up
 
@@ -127,12 +139,15 @@ Everything goes through `make`:
 | Command | What |
 |---------|------|
 | `make` / `make help` | Show available targets and setup options |
-| `make setup` | Register extensions/skills/memories with pi |
+| `make setup` | Install this checkout as a local pi package and register memories with pi |
 | `make setup OPENROUTER=0` | Run setup with OpenRouter disabled |
 | `make setup OPENROUTER=1` | Run setup with OpenRouter forced on |
 | `make check` | Typecheck + Biome lint + knip + type-coverage (≥95%) |
+| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate |
 | `make test` | Run tests |
+| `make test-watch` | Run tests in watch mode |
 | `make clean-mailboxes` | Clean stale agent mailboxes |
+| `make clean-mailboxes DRY_RUN=1` | Preview stale mailbox cleanup |
 
 ---
 
@@ -152,14 +167,16 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, machine-memory) are registered by `make setup` for every pi session. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, machine-memory) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
 ```bash
 make help         # list all targets
 make check        # typecheck → biome lint → knip → type-coverage (≥95%)
+make lint         # run one quality gate
 make test         # run tests
+make test-watch   # run tests in watch mode
 make setup        # configure pi extensions, skills, shell hooks (first time)
 ```
 

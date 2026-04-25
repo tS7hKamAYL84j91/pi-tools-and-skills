@@ -150,14 +150,16 @@ interface SpawnOpts {
 	args: string[];
 	model?: string;
 	tempDir?: string;
+	env?: NodeJS.ProcessEnv;
 }
 
 /** Spawn a pi child process, wire stdout/stderr to the agent's event stream. */
 export function spawnChild(opts: SpawnOpts): SpawnedAgent {
-	const { name, cwd: agentCwd, args, model, tempDir } = opts;
+	const { name, cwd: agentCwd, args, model, tempDir, env } = opts;
 	const proc = spawn(PI_BINARY, args, {
 		cwd: agentCwd,
 		stdio: ["pipe", "pipe", "pipe"],
+		env: env ?? process.env,
 	});
 
 	const agent: SpawnedAgent = {

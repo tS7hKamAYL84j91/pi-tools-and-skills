@@ -24,6 +24,7 @@ import { getChannels, onChannelNotify } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
 import { ok, fail } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
+import { visibleRecords } from "./visibility.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
 
@@ -275,7 +276,7 @@ export function createMessaging(config: MessagingConfig) {
 
 			async execute(_id, params) {
 				const self = registry.getRecord();
-				const peers = registry.readAllPeers().filter((r) => !self || r.id !== self.id);
+				const peers = visibleRecords(self, registry.readAllPeers()).filter((r) => !self || r.id !== self.id);
 				const targets = params.filter
 					? peers.filter((r) => r.name.toLowerCase().includes(params.filter?.toLowerCase() ?? ""))
 					: peers;

@@ -26,6 +26,7 @@ import {
 	reapOrphanedMailboxes,
 } from "../../lib/agent-registry.js";
 import type { Registry as RegistryInterface } from "./types.js";
+import { PARENT_ID_ENV, VISIBILITY_ENV } from "./visibility.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -183,6 +184,9 @@ export default class Registry implements RegistryInterface {
 		const records = this.readAllPeers();
 		const name = pickName(cwd, records, this.selfId);
 
+		const parentId = process.env[PARENT_ID_ENV];
+		const visibility = process.env[VISIBILITY_ENV] === "scoped" ? "scoped" : "global";
+
 		// Create the record
 		this.record = {
 			id: this.selfId,
@@ -193,6 +197,8 @@ export default class Registry implements RegistryInterface {
 			startedAt: Date.now(),
 			heartbeat: Date.now(),
 			status: "waiting" as const,
+			...(parentId ? { parentId } : {}),
+			visibility,
 			sessionDir: ctx.sessionManager.getSessionDir(),
 			sessionFile: ctx.sessionManager.getSessionFile(),
 		};

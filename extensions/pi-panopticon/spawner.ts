@@ -20,7 +20,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, fail, type ToolResult } from "./types.js";
+import { ok, fail, type ToolResult, type Registry } from "./types.js";
+import { PARENT_ID_ENV, VISIBILITY_ENV } from "./visibility.js";
 import {
 	recentOutputFromEvents,
 	buildArgList,
@@ -77,7 +78,7 @@ function createResultEnvelope(args: {
 
 // ── Extension entry ─────────────────────────────────────────────
 
-export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
+export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModule {
 	const agents = new Map<string, SpawnedAgent>();
 	const signalledAgents = new Set<string>();
 	const missingDoneListeners = new Set<MissingDoneCallback>();
@@ -177,7 +178,18 @@ export function setupSpawner(pi: ExtensionAPI): SpawnerModule {
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
 
-			const agent = spawnChild({ name: params.name, cwd: agentCwd, args, model: params.model, tempDir });
+			const agent = spawnChild({
+				name: params.name,
+				cwd: agentCwd,
+				args,
+				model: params.model,
+				tempDir,
+				env: {
+					...process.env,
+					[PARENT_ID_ENV]: registry.selfId,
+					[VISIBILITY_ENV]: "scoped",
+				},
+			});
 			if (!agent.pid) {
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 				return fail(`Failed to spawn agent "${params.name}".`, {
