@@ -12,6 +12,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import {
 	COUNCIL_MAX,
+	COUNCIL_MIN,
 	chooseChairmanModel,
 	chooseCouncilModels,
 	snapshotAvailableModels,
@@ -160,6 +161,29 @@ function latestDeliberation(
 	return latest;
 }
 
+function councilLines(slots: Iterable<CouncilSlot>): string[] {
+	return [...slots].map(
+		({ definition }) =>
+			`- ${definition.name}: ${definition.members.join(", ")} | chairman=${definition.chairman}${definition.purpose ? ` | ${definition.purpose}` : ""}`,
+	);
+}
+
+function formatDeliberationSummary(record: CouncilDeliberation): string[] {
+	return [
+		`Council ${record.id}`,
+		`Name: ${record.council}`,
+		`Status: ${record.status}`,
+		`Members: ${record.members.map((member) => `${member.label}=${member.model}`).join(", ")}`,
+		`Chairman: ${record.chairman.model}`,
+		`Generation: ${record.generation.filter((run) => run.ok).length}/${record.generation.length}`,
+		`Critique: ${record.critiques.filter((run) => run.ok).length}/${record.critiques.length}`,
+	];
+}
+
+function selectableCouncilNames(councils: Map<string, CouncilSlot>): string[] {
+	return [...councils.keys()].sort();
+}
+
 export default function (pi: ExtensionAPI) {
 	const councils = new Map<string, CouncilSlot>();
 	const stateManager = new CouncilStateManager();
@@ -221,10 +245,7 @@ export default function (pi: ExtensionAPI) {
 		async execute() {
 			if (councils.size === 0)
 				return okText("No councils formed in this session.", { councils: [] });
-			const lines = [...councils.values()].map(
-				({ definition }) =>
-					`- ${definition.name}: ${definition.members.join(", ")} | chairman=${definition.chairman}${definition.purpose ? ` | ${definition.purpose}` : ""}`,
-			);
+			const lines = councilLines(councils.values());
 			return okText(`Councils:\n${lines.join("\n")}`, {
 				councils: [...councils.values()].map((slot) => slot.definition),
 			});
@@ -313,6 +334,182 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("council-form", {
+		description: "Interactively form a session-local model council",
+		handler: async (args, ctx) => {
+			const requestedName = args.trim();
+			const name =
+				requestedName ||
+				(await ctx.ui.input("Council name", "architecture"));
+			if (!name) return;
+
+			const purposeInput = await ctx.ui.input(
+				"Council purpose (optional)",
+				"Design review, safety review, research...",
+			);
+			const purpose = purposeInput?.trim() || undefined;
+			const snapshot = snapshotAvailableModels(ctx);
+			const modelOptions = snapshot.length > 0 ? snapshot : chooseCouncilModels(snapshot);
+			if (modelOptions.length === 0) {
+				ctx.ui.notify("No models available for council formation.", "error");
+				return;
+			}
+
+			const members: string[] = [];
+			while (members.length < COUNCIL_MAX) {
+				const remaining = modelOptions.filter((model) => !members.includes(model));
+				if (remaining.length === 0) {
+					if (members.length < COUNCIL_MIN) {
+						ctx.ui.notify(
+							`Only ${members.length} distinct model(s) available; council needs at least ${COUNCIL_MIN}.`,
+							"warning",
+						);
+						return;
+					}
+					break;
+				}
+				const doneLabel = `Done (${members.length}/${COUNCIL_MAX})`;
+				const choice = await ctx.ui.select(
+					"Add council member",
+					members.length >= COUNCIL_MIN ? [doneLabel, ...remaining] : remaining,
+				);
+				if (!choice) return;
+				if (choice === doneLabel) break;
+				members.push(choice);
+			}
+			if (members.length < COUNCIL_MIN) {
+				ctx.ui.notify(
+					`Council needs at least ${COUNCIL_MIN} members.`,
+					"warning",
+				);
+				return;
+			}
+
+			const chairman = await ctx.ui.select("Chairman model", modelOptions);
+			if (!chairman) return;
+
+			const definition = makeDefinition({
+				name: name.trim(),
+				purpose,
+				members,
+				chairman,
+			});
+			const report = preflight(definition, snapshot);
+			if (!report.ok) {
+				ctx.ui.notify(
+					`Council pre-flight failed:\n${report.reasons.join("\n")}`,
+					"error",
+				);
+				return;
+			}
+
+			councils.set(definition.name, {
+				definition,
+				availableSnapshot: snapshot,
+			});
+			ctx.ui.notify(
+				`Formed council "${definition.name}" with ${definition.members.length} member(s).`,
+				"info",
+			);
+			ctx.ui.setWidget("council", [
+				"Councils",
+				...councilLines(councils.values()),
+			]);
+		},
+	});
+
+	pi.registerCommand("council-list", {
+		description: "Show session-local councils",
+		handler: async (_args, ctx) => {
+			if (councils.size === 0) {
+				ctx.ui.notify("No councils formed in this session.", "warning");
+				return;
+			}
+			ctx.ui.setWidget("council", [
+				"Councils",
+				...councilLines(councils.values()),
+			]);
+		},
+	});
+
+	pi.registerCommand("council-ask", {
+		description: "Interactively ask a council to deliberate",
+		handler: async (args, ctx) => {
+			const names = selectableCouncilNames(councils);
+			if (names.length === 0) {
+				ctx.ui.notify("No councils available.", "warning");
+				return;
+			}
+			const councilName =
+				names.length === 1 ? names[0] : await ctx.ui.select("Council", names);
+			if (!councilName) return;
+			const slot = councils.get(councilName);
+			if (!slot) {
+				ctx.ui.notify(`No council "${councilName}".`, "error");
+				return;
+			}
+			const promptInput = args.trim() || (await ctx.ui.editor("Council prompt", ""));
+			const prompt = promptInput?.trim();
+			if (!prompt) return;
+
+			const report = preflight(slot.definition, slot.availableSnapshot);
+			for (const warning of report.warnings) {
+				ctx.ui.notify(warning, "warning");
+			}
+
+			ctx.ui.notify(`Council "${slot.definition.name}" deliberating...`, "info");
+			try {
+				const record = await deliberate({
+					definition: slot.definition,
+					prompt,
+					ctx,
+					availableSnapshot: slot.availableSnapshot,
+					stateManager,
+					onProgress: (text) => {
+						ctx.ui.setStatus("council", `${slot.definition.name}: ${text}`);
+					},
+				});
+				ctx.ui.setWidget("council", [
+					...formatDeliberationSummary(record),
+					"",
+					record.synthesis?.output ?? "(no synthesis)",
+				]);
+				ctx.ui.notify(`Council "${slot.definition.name}" finished.`, "info");
+			} catch (error) {
+				ctx.ui.notify(
+					error instanceof Error ? error.message : String(error),
+					"error",
+				);
+			} finally {
+				ctx.ui.setStatus("council", undefined);
+			}
+		},
+	});
+
+	pi.registerCommand("council-dissolve", {
+		description: "Interactively dissolve a session-local council",
+		handler: async (_args, ctx) => {
+			const names = selectableCouncilNames(councils);
+			if (names.length === 0) {
+				ctx.ui.notify("No councils available.", "warning");
+				return;
+			}
+			const name = await ctx.ui.select("Dissolve council", names);
+			if (!name) return;
+			const confirmed = await ctx.ui.confirm(
+				"Dissolve council?",
+				`Remove session-local council "${name}"?`,
+			);
+			if (!confirmed) return;
+			councils.delete(name);
+			ctx.ui.notify(`Dissolved "${name}".`, "info");
+			ctx.ui.setWidget("council", [
+				"Councils",
+				...councilLines(councils.values()),
+			]);
+		},
+	});
+
 	pi.registerCommand("council-last", {
 		description: "Show the last ask_council deliberation summary",
 		handler: async (_args, ctx) => {
@@ -324,16 +521,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				return;
 			}
-			const lines = [
-				`Council ${latest.id}`,
-				`Name: ${latest.council}`,
-				`Status: ${latest.status}`,
-				`Members: ${latest.members.map((member) => `${member.label}=${member.model}`).join(", ")}`,
-				`Chairman: ${latest.chairman.model}`,
-				`Generation: ${latest.generation.filter((run) => run.ok).length}/${latest.generation.length}`,
-				`Critique: ${latest.critiques.filter((run) => run.ok).length}/${latest.critiques.length}`,
-			];
-			ctx.ui.setWidget("council", lines);
+			ctx.ui.setWidget("council", formatDeliberationSummary(latest));
 		},
 	});
 }
