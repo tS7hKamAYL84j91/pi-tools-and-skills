@@ -102,17 +102,27 @@ For each unsatisfied node, generate up to **B** queries:
 | Script | Source | CLI | Auth |
 |--------|--------|-----|------|
 | `scholarly_api.py` | Semantic Scholar | `--query X --limit N` | Optional: `S2_API_KEY` |
+| `openalex_search.py` | OpenAlex | `--query X --limit N` | None |
+| `arxiv_search.py` | ArXiv | `--query X --limit N` | None |
 | `github_search.py` | GitHub repos/code | `--query X --sort stars --limit N [--readme]` | Optional: `GITHUB_TOKEN` |
 | `web_scraper.py` | Tavily (primary) / Jina (fallback) / DuckDuckGo (free) | `--query X --max-results N [--engine jina|duckduckgo]` or `--url URL` | Required for Tavily: `TAVILY_API_KEY`. Jina: `JINA_API_KEY`. DDG: none |
 
 ### Step 1b — Run scripts and normalise
 
-For each unsatisfied node, run the appropriate script(s):
+For each unsatisfied node, run the appropriate script(s). Start with the strongest source type for the node, then use fallback sources when results are thin: Semantic Scholar → OpenAlex/ArXiv for academic nodes, GitHub for code nodes, Tavily/Jina/DuckDuckGo for web nodes.
 
 ```bash
 # Academic search (Semantic Scholar)
 python3 skills/deep-research/scripts/scholarly_api.py \
   --query "your academic query" --limit 10 --json
+
+# Academic search (OpenAlex — no API key required)
+python3 skills/deep-research/scripts/openalex_search.py \
+  --query "your academic query" --limit 10
+
+# ArXiv search (no API key required)
+python3 skills/deep-research/scripts/arxiv_search.py \
+  --query "your arxiv query" --limit 10
 
 # GitHub search (repositories)
 python3 skills/deep-research/scripts/github_search.py \
@@ -147,7 +157,38 @@ python3 skills/deep-research/scripts/scholarly_api.py \
   --references PAPER_ID --limit 5
 ```
 
-### Step 1b — Run scripts and normalise
+### Step 1c — DDG + Jina follow-up workflow
+
+Use this when a web query finds promising pages but snippets are too shallow for evidence binding.
+
+1. Run DuckDuckGo when Tavily is unavailable or when you need a free broad web pass.
+2. Copy promising result URLs into `web_scraper.py --url` to fetch readable page text via Jina Reader.
+3. Extract only claims that directly satisfy the current OUTLINE.md node acceptance criterion.
+4. Add the original page URL, not the Jina reader URL, to `SOURCES.md`.
+5. If Jina cannot read the page, keep the search result only as a lead unless the snippet itself contains enough evidence.
+
+```bash
+python3 skills/deep-research/scripts/web_scraper.py \
+  --query "your web query" --engine duckduckgo --max-results 10
+
+python3 skills/deep-research/scripts/web_scraper.py \
+  --url "https://example.com/promising-result"
+```
+
+### Step 1d — Environment variables
+
+The scripts run without credentials where possible, but optional API keys improve quality and rate limits:
+
+| Variable | Used by | Required | Purpose |
+|----------|---------|----------|---------|
+| `S2_API_KEY` | `scholarly_api.py` | No | Higher Semantic Scholar rate limits |
+| `GITHUB_TOKEN` | `github_search.py` | No | Higher GitHub API limits and code search reliability |
+| `TAVILY_API_KEY` | `web_scraper.py` Tavily mode | Yes for Tavily | Primary web search provider |
+| `JINA_API_KEY` | `web_scraper.py` Jina mode / URL reader | No | Higher Jina limits; anonymous use may work but is rate-limited |
+
+Do not paste secrets into research artifacts. Export them in the shell or rely on pi/session secret injection.
+
+### Step 1e — Normalise results into SOURCES.md
 
 For each result, append one row to `SOURCES.md`:
 
@@ -163,14 +204,14 @@ For each result, append one row to `SOURCES.md`:
 - Cross-verified by ≥2 independent sources: +2
 - Blog post / news (no peer review): −1
 
-### Step 1c — Update OUTLINE.md after each batch
+### Step 1f — Update OUTLINE.md after each batch
 
 1. Check if acceptance criterion for the node is met by new evidence.
 2. If **yes** → mark node `[x] satisfied`.
 3. If evidence reveals uncovered sub-aspects → add child nodes.
 4. If node is redundant with a sibling → merge and mark merged node `[x]`.
 
-### Step 1d — Lead-following (depth recursion)
+### Step 1g — Lead-following (depth recursion)
 
 If a source has Confidence ≥ 7 **and** a lead (URL or query) **and** current depth < D:
 - Follow the lead as a new query targeting the same or a child node.
@@ -305,6 +346,8 @@ Compute **geometric mean**. If < 6.5 → re-research the lowest-scoring dimensio
 | Script | Purpose | Dependencies |
 |--------|---------|-------------|
 | `scholarly_api.py` | Semantic Scholar search, citations, references | `requests` (optional) |
+| `openalex_search.py` | OpenAlex academic search (no API key required) | `requests` (optional) |
+| `arxiv_search.py` | ArXiv search (no API key required) | `requests` (optional) |
 | `github_search.py` | GitHub repo/code search, README extraction | `requests` (optional) |
 | `web_scraper.py` | Tavily/Jina web search, Jina URL reader | `tavily-python` (optional for Tavily) |
 | `requirements.txt` | Python dependencies | — |
