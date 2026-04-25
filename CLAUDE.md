@@ -2,14 +2,12 @@
 
 Primary in-session / user-facing identity: **Skaffen** (full name: **Skaffen-Amtiskaw**).
 
-`Mawhrin-Skel` is only the Claude-side / mailbox registration identity for this repo. Do **not** use it as the normal conversational name unless explicitly asked.
-
 ## Startup
 
 On session start, register for pi mailbox by running in background:
 
 ```bash
-AGENT_NAME=Mawhrin CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts &
+AGENT_NAME=Skaffen CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts &
 ```
 
 ## Instructions

@@ -11,6 +11,7 @@ import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 import { ok } from "./types.js";
 import type { Registry } from "./types.js";
 import { formatAge, STATUS_SYMBOL } from "./registry.js";
+import { visibleRecords } from "./visibility.js";
 
 // ── Setup ───────────────────────────────────────────────────────
 
@@ -42,7 +43,8 @@ export function setupPeek(
 		}),
 
 		async execute(_toolCallId, params, _signal) {
-			const records = registry.readAllPeers();
+			const self = registry.getRecord();
+			const records = visibleRecords(self, registry.readAllPeers());
 			const selfId = registry.selfId;
 
 			if (!params.target) {
@@ -71,6 +73,8 @@ export function setupPeek(
 							task: r.task,
 							isSelf: r.id === selfId,
 							pendingMessages: r.pendingMessages,
+							parentId: r.parentId,
+							visibility: r.visibility ?? "global",
 						})),
 					},
 				);

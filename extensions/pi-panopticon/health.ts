@@ -28,6 +28,7 @@ import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { Registry } from "./types.js";
 import { ok } from "./types.js";
 import { getSelfName, resolvePeer, peerNames } from "./peers.js";
+import { visibleRecords } from "./visibility.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -332,7 +333,7 @@ export function setupHealth(
 			}
 
 			const self = registry.getRecord();
-			const peers = registry.readAllPeers().filter((r) => !self || r.id !== self.id);
+			const peers = visibleRecords(self, registry.readAllPeers()).filter((r) => !self || r.id !== self.id);
 
 			if (peers.length === 0) {
 				return ok("No peer agents registered.", { agents: [] });
@@ -406,7 +407,7 @@ export function setupHealth(
 		},
 		assessAll(threshold = DEFAULT_STALL_THRESHOLD) {
 			const self = registry.getRecord();
-			return registry.readAllPeers()
+			return visibleRecords(self, registry.readAllPeers())
 				.filter((r) => !self || r.id !== self.id)
 				.map((r) => assessHealth(r, stallTracker, threshold));
 		},

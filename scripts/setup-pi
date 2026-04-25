@@ -9,8 +9,8 @@ set -euo pipefail
 #      (macOS Keychain or Linux pass)
 #   2. Verifies required setup dependencies for the current OS
 #   3. Detects locally available Ollama models → writes models.json
-#   4. Registers extensions, skills, prompts, and memories in settings.json
-#   5. Configures Anthropic as default provider with prompt caching
+#   4. Installs this repo as a pi package and registers memories in settings.json
+#   5. Configures OpenAI GPT-5.5 as default model and Anthropic prompt caching
 #   6. Ensures AGENT.md has efficiency directives
 #   7. Adds shell hooks (OPENROUTER_API_KEY optional) and MATRIX_ACCESS_TOKEN
 #   8. Sets up the coas-pi alias
@@ -332,10 +332,6 @@ EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
 MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
-# Core extensions loaded globally (every pi session).
-# Project-specific extensions (kanban, matrix) go in workspace .pi/settings.json.
-CORE_EXTENSIONS="pi-panopticon machine-memory"
-
 python3 -c "
 import json, os, sys
 
@@ -344,7 +340,8 @@ skills_dir    = sys.argv[2]
 ext_dir       = sys.argv[3]
 prompts_dir   = sys.argv[4]
 memories_dir  = sys.argv[5]
-core_exts     = sys.argv[6].split()
+package_dir   = sys.argv[6]
+legacy_package_dir = package_dir.replace('/pi-tools-and-skills', '/tools-and-skills')
 
 # Load existing or start fresh
 if os.path.exists(settings_path):
@@ -353,39 +350,67 @@ if os.path.exists(settings_path):
 else:
     settings = {}
 
+def remove_legacy_listed(key, values):
+    existing = settings.get(key, [])
+    if not isinstance(existing, list):
+        existing = []
+    settings[key] = [item for item in existing if item not in values]
+
 def ensure_listed(key, value):
     existing = settings.get(key, [])
+    if not isinstance(existing, list):
+        existing = []
     legacy_value = value.replace('/pi-tools-and-skills/', '/tools-and-skills/')
     existing = [item for item in existing if item != legacy_value]
     if value not in existing:
         existing.append(value)
     settings[key] = existing
 
-ensure_listed('skills',     skills_dir)
-ensure_listed('prompts',    prompts_dir)
-ensure_listed('memories',   memories_dir)
+# Memories are not currently supported by pi packages, so keep registering them directly.
+ensure_listed('memories', memories_dir)
 
-# Extensions: only core (panopticon, machine-memory) go in global settings.
-# Remove legacy whole-directory entry and any stale project-extensions paths.
-existing_exts = settings.get('extensions', [])
-legacy_dir = ext_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')
-existing_exts = [e for e in existing_exts
-    if e not in {ext_dir, legacy_dir}
-    and '/project-extensions/' not in e]
-core_paths = [os.path.join(ext_dir, name) for name in core_exts]
-for path in core_paths:
-    if path not in existing_exts:
-        existing_exts.append(path)
-# Remove any stale non-core extension paths from global
-project_ext_names = {'kanban', 'matrix'}
-existing_exts = [e for e in existing_exts
-    if not any(e.endswith('/' + name) for name in project_ext_names)
-    or e in core_paths]
-settings['extensions'] = existing_exts
+# Install this checkout as a local pi package. Restrict globally loaded extensions
+# to the two core extensions; skills and prompts are loaded from the package manifest.
+package_entry = {
+    'source': package_dir,
+    'extensions': [
+        'extensions/pi-panopticon/**',
+        'extensions/machine-memory/**',
+    ],
+}
+existing_packages = settings.get('packages', [])
+if not isinstance(existing_packages, list):
+    existing_packages = []
+filtered_packages = []
+for entry in existing_packages:
+    source = entry.get('source') if isinstance(entry, dict) else entry
+    if source in {package_dir, legacy_package_dir}:
+        continue
+    filtered_packages.append(entry)
+filtered_packages.append(package_entry)
+settings['packages'] = filtered_packages
+
+# Clean up paths written by older setup-pi versions. Resources now come from the package.
+remove_legacy_listed('skills', {skills_dir, skills_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')})
+remove_legacy_listed('prompts', {prompts_dir, prompts_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')})
+legacy_ext_dir = ext_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+core_ext_paths = {
+    ext_dir,
+    legacy_ext_dir,
+    os.path.join(ext_dir, 'pi-panopticon'),
+    os.path.join(ext_dir, 'machine-memory'),
+    os.path.join(ext_dir, 'kanban'),
+    os.path.join(ext_dir, 'matrix'),
+    os.path.join(legacy_ext_dir, 'pi-panopticon'),
+    os.path.join(legacy_ext_dir, 'machine-memory'),
+    os.path.join(legacy_ext_dir, 'kanban'),
+    os.path.join(legacy_ext_dir, 'matrix'),
+}
+remove_legacy_listed('extensions', core_ext_paths)
 
 # Default provider + model
-settings['defaultProvider'] = 'anthropic'
-settings['defaultModel'] = 'claude-opus-4-6'
+settings['defaultProvider'] = 'openai'
+settings['defaultModel'] = 'gpt-5.5'
 
 # Anthropic prompt caching
 providers = settings.get('providers', {})
@@ -402,7 +427,7 @@ settings['providers'] = providers
 with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
-" "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$CORE_EXTENSIONS"
+" "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$PI_TOOLS_DIR"
 
 # Count what's registered
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
@@ -411,11 +436,12 @@ prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
-echo  "    skills:     $skill_count"
-echo  "    extensions: 2 global (panopticon, machine-memory), 2 project (kanban, matrix)"
-echo  "    prompts:    $prompt_count"
-echo  "    memories:   $memory_count"
-echo  "    provider:   anthropic (claude-opus-4-6, prompt caching ON)"
+echo  "    package:    $PI_TOOLS_DIR"
+echo  "    skills:     $skill_count (via package)"
+echo  "    extensions: 2 global via package filter (panopticon, machine-memory), 2 project available (kanban, matrix)"
+echo  "    prompts:    $prompt_count (via package)"
+echo  "    memories:   $memory_count (direct path; pi packages do not expose memories yet)"
+echo  "    provider:   openai (gpt-5.5 default; Anthropic prompt caching ON if used)"
 
 # ── 4. AGENT.md ─────────────────────────────────────────────────────
 

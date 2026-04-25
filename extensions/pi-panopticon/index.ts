@@ -39,7 +39,7 @@ export default function (pi: ExtensionAPI) {
 		broadcast: maildir,
 		onMessage: (text) => reconciler.handleInboundMessage(text),
 	})(pi, registry);
-	const spawner = setupSpawner(pi);
+	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry);
 	setupHealth(pi, registry);
 	const ui = setupUI(pi, registry, selfId);

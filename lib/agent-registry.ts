@@ -27,6 +27,8 @@ export const STALE_MS = 30_000;
 
 export type AgentStatus = "running" | "waiting" | "done" | "blocked" | "stalled" | "terminated" | "unknown";
 
+export type AgentVisibility = "global" | "scoped";
+
 export interface AgentRecord {
 	id: string;
 	name: string;
@@ -36,6 +38,10 @@ export interface AgentRecord {
 	startedAt: number;
 	heartbeat: number;
 	status: AgentStatus;
+	/** Parent agent id for spawned/scoped agents. Manual agents omit this. */
+	parentId?: string;
+	/** Visibility mode: global agents see all; scoped agents see parent, siblings, and children. */
+	visibility?: AgentVisibility;
 	task?: string;
 	pendingMessages?: number;
 	sessionDir?: string;
