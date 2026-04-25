@@ -7,18 +7,19 @@
  * persistent state under ~/.pi/agent/councils/.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
+import { registerCouncilEditCommand } from "./edit-command.js";
+import { registerCouncilListCommand } from "./list-command.js";
 import {
 	COUNCIL_MAX,
-	COUNCIL_MIN,
 	chooseChairmanModel,
 	chooseCouncilModels,
 	snapshotAvailableModels,
 	unique,
 } from "./members.js";
-import { pickModel } from "./picker.js";
+import { pickCouncilMembers, pickModel } from "./picker.js";
 import { type CouncilSettings, readCouncilSettings } from "./settings.js";
 import { CouncilStateManager } from "./state.js";
 import type { CouncilDefinition, CouncilDeliberation } from "./types.js";
@@ -59,11 +60,25 @@ const AskCouncilSchema = Type.Object({
 	),
 });
 
+const CouncilUpdateSchema = Type.Object({
+	name: Type.String({ description: "Existing council name to update" }),
+	purpose: Type.Optional(
+		Type.String({ description: "Replace the council purpose" }),
+	),
+	members: Type.Optional(
+		Type.Array(Type.String(), { description: "Replacement member model IDs" }),
+	),
+	chairman: Type.Optional(
+		Type.String({ description: "Replacement chairman/synthesis model ID" }),
+	),
+});
+
 const CouncilDissolveSchema = Type.Object({
 	name: Type.String({ description: "Council name to dissolve" }),
 });
 
 type CouncilFormInput = Static<typeof CouncilFormSchema>;
+type CouncilUpdateInput = Static<typeof CouncilUpdateSchema>;
 type AskCouncilInput = Static<typeof AskCouncilSchema>;
 type CouncilDissolveInput = Static<typeof CouncilDissolveSchema>;
 
@@ -185,6 +200,20 @@ function selectableCouncilNames(councils: Map<string, CouncilSlot>): string[] {
 	return [...councils.keys()].sort();
 }
 
+function councilStatusText(councils: Map<string, CouncilSlot>): string | undefined {
+	const names = selectableCouncilNames(councils);
+	if (names.length === 0) return undefined;
+	if (names.length === 1) return `⚖ ${names[0]}`;
+	return `⚖ ${names.length} councils`;
+}
+
+function refreshCouncilStatus(
+	ctx: ExtensionContext,
+	councils: Map<string, CouncilSlot>,
+): void {
+	ctx.ui.setStatus("council", councilStatusText(councils));
+}
+
 export default function (pi: ExtensionAPI) {
 	const councils = new Map<string, CouncilSlot>();
 	const stateManager = new CouncilStateManager();
@@ -198,6 +227,7 @@ export default function (pi: ExtensionAPI) {
 			...configuredSlots(snapshot, settings),
 		];
 		for (const slot of slots) councils.set(slot.definition.name, slot);
+		refreshCouncilStatus(ctx, councils);
 	});
 
 	pi.registerTool({
@@ -230,8 +260,50 @@ export default function (pi: ExtensionAPI) {
 				definition,
 				availableSnapshot: snapshot,
 			});
+			refreshCouncilStatus(ctx, councils);
 			return okText(
 				`Formed council "${definition.name}" with ${definition.members.length} member(s) across ${report.heterogeneity.providers.length} provider(s).`,
+				{ ...definition, preflight: report },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "council_update",
+		label: "Update Council",
+		description:
+			"Update an existing session-local council's members, chairman, or purpose while preserving unspecified fields.",
+		promptSnippet: "Change models or purpose for an existing council",
+		parameters: CouncilUpdateSchema,
+		async execute(_id, params: CouncilUpdateInput, _signal, _onUpdate, ctx) {
+			const slot = councils.get(params.name);
+			if (!slot) throw new Error(`No council "${params.name}".`);
+			if (!params.members && !params.chairman && params.purpose === undefined) {
+				throw new Error("Provide members, chairman, or purpose to update.");
+			}
+			const snapshot = snapshotAvailableModels(ctx);
+			const availableSnapshot = snapshot.length > 0
+				? snapshot
+				: slot.availableSnapshot;
+			const members = params.members
+				? unique(params.members).slice(0, COUNCIL_MAX)
+				: slot.definition.members;
+			const definition: CouncilDefinition = {
+				...slot.definition,
+				purpose: params.purpose ?? slot.definition.purpose,
+				members,
+				chairman: params.chairman ?? slot.definition.chairman,
+			};
+			const report = preflight(definition, availableSnapshot);
+			if (!report.ok) {
+				throw new Error(
+					`Council pre-flight failed:\n  ${report.reasons.join("\n  ")}`,
+				);
+			}
+			councils.set(definition.name, { definition, availableSnapshot });
+			refreshCouncilStatus(ctx, councils);
+			return okText(
+				`Updated council "${definition.name}" with ${definition.members.length} member(s).`,
 				{ ...definition, preflight: report },
 			);
 		},
@@ -260,8 +332,9 @@ export default function (pi: ExtensionAPI) {
 			"Remove a named session-local council. Configured defaults reappear next session/reload.",
 		promptSnippet: "Dissolve a named council for this session",
 		parameters: CouncilDissolveSchema,
-		async execute(_id, params: CouncilDissolveInput) {
+		async execute(_id, params: CouncilDissolveInput, _signal, _onUpdate, ctx) {
 			const removed = councils.delete(params.name);
+			refreshCouncilStatus(ctx, councils);
 			return okText(
 				removed
 					? `Dissolved "${params.name}".`
@@ -330,7 +403,7 @@ export default function (pi: ExtensionAPI) {
 					warnings: report.warnings,
 				});
 			} finally {
-				ctx.ui.setStatus("council", "");
+				refreshCouncilStatus(ctx, councils);
 			}
 		},
 	});
@@ -356,40 +429,8 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const members: string[] = [];
-			while (members.length < COUNCIL_MAX) {
-				const remaining = modelOptions.filter((model) => !members.includes(model));
-				if (remaining.length === 0) {
-					if (members.length < COUNCIL_MIN) {
-						ctx.ui.notify(
-							`Only ${members.length} distinct model(s) available; council needs at least ${COUNCIL_MIN}.`,
-							"warning",
-						);
-						return;
-					}
-					break;
-				}
-				const title = members.length === 0
-					? "Add council member"
-					: `Add member ${members.length + 1}/${COUNCIL_MAX} (Esc to finish)`;
-				const choice = await pickModel(ctx, title, remaining, members);
-				if (!choice) {
-					if (members.length >= COUNCIL_MIN) break;
-					ctx.ui.notify(
-						`Council needs at least ${COUNCIL_MIN} members.`,
-						"warning",
-					);
-					return;
-				}
-				members.push(choice);
-			}
-			if (members.length < COUNCIL_MIN) {
-				ctx.ui.notify(
-					`Council needs at least ${COUNCIL_MIN} members.`,
-					"warning",
-				);
-				return;
-			}
+			const members = await pickCouncilMembers(ctx, modelOptions);
+			if (!members) return;
 
 			const chairman = await pickModel(ctx, "Select chairman model", modelOptions, members);
 			if (!chairman) return;
@@ -413,29 +454,17 @@ export default function (pi: ExtensionAPI) {
 				definition,
 				availableSnapshot: snapshot,
 			});
+			refreshCouncilStatus(ctx, councils);
 			ctx.ui.notify(
 				`Formed council "${definition.name}" with ${definition.members.length} member(s).`,
 				"info",
 			);
-			ctx.ui.setWidget("council", [
-				"Councils",
-				...councilLines(councils.values()),
-			]);
 		},
 	});
 
-	pi.registerCommand("council-list", {
-		description: "Show session-local councils",
-		handler: async (_args, ctx) => {
-			if (councils.size === 0) {
-				ctx.ui.notify("No councils formed in this session.", "warning");
-				return;
-			}
-			ctx.ui.setWidget("council", [
-				"Councils",
-				...councilLines(councils.values()),
-			]);
-		},
+	registerCouncilListCommand(pi, councils);
+	registerCouncilEditCommand(pi, councils, (ctx) => {
+		refreshCouncilStatus(ctx, councils);
 	});
 
 	pi.registerCommand("council-ask", {
@@ -487,7 +516,7 @@ export default function (pi: ExtensionAPI) {
 					"error",
 				);
 			} finally {
-				ctx.ui.setStatus("council", undefined);
+				refreshCouncilStatus(ctx, councils);
 			}
 		},
 	});
@@ -508,11 +537,8 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (!confirmed) return;
 			councils.delete(name);
+			refreshCouncilStatus(ctx, councils);
 			ctx.ui.notify(`Dissolved "${name}".`, "info");
-			ctx.ui.setWidget("council", [
-				"Councils",
-				...councilLines(councils.values()),
-			]);
 		},
 	});
 

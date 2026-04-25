@@ -8,6 +8,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, SelectList, type SelectItem, Text } from "@mariozechner/pi-tui";
+import { COUNCIL_MAX, COUNCIL_MIN } from "./members.js";
 
 /**
  * Open a fuzzy-search model picker overlay.
@@ -88,4 +89,37 @@ export async function pickModel(
 			},
 		};
 	});
+}
+
+/** Pick a valid council member set with fuzzy-search model selection. */
+export async function pickCouncilMembers(
+	ctx: ExtensionContext,
+	modelOptions: string[],
+): Promise<string[] | undefined> {
+	const members: string[] = [];
+	while (members.length < COUNCIL_MAX) {
+		const remaining = modelOptions.filter((model) => !members.includes(model));
+		if (remaining.length === 0) {
+			if (members.length >= COUNCIL_MIN) break;
+			ctx.ui.notify(
+				`Only ${members.length} distinct model(s) available; council needs at least ${COUNCIL_MIN}.`,
+				"warning",
+			);
+			return undefined;
+		}
+		const title = members.length === 0
+			? "Add council member"
+			: `Add member ${members.length + 1}/${COUNCIL_MAX} (Esc to finish)`;
+		const choice = await pickModel(ctx, title, remaining, members);
+		if (!choice) {
+			if (members.length >= COUNCIL_MIN) break;
+			ctx.ui.notify(
+				`Council needs at least ${COUNCIL_MIN} members.`,
+				"warning",
+			);
+			return undefined;
+		}
+		members.push(choice);
+	}
+	return members.length >= COUNCIL_MIN ? members : undefined;
 }
