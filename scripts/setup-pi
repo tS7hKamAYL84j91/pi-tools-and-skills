@@ -415,6 +415,17 @@ remove_legacy_listed('extensions', core_ext_paths)
 settings['defaultProvider'] = 'openai'
 settings['defaultModel'] = 'gpt-5.5'
 
+# Council defaults — only set fields the user hasn't customised
+council = settings.get('council', {})
+council.setdefault('defaultMembers', [
+    'openai-codex/gpt-5.5',
+    'google-gemini-cli/gemini-3.1-pro-preview',
+    'ollama/qwen3.5:cloud',
+    'ollama/glm-5.1:cloud',
+])
+council.setdefault('defaultChairman', 'openai-codex/gpt-5.5')
+settings['council'] = council
+
 # Anthropic prompt caching
 providers = settings.get('providers', {})
 anthropic = providers.get('anthropic', {})

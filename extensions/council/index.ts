@@ -20,7 +20,7 @@ import {
 	unique,
 } from "./members.js";
 import { pickCouncilMembers, pickModel } from "./picker.js";
-import { type CouncilSettings, readCouncilSettings } from "./settings.js";
+import { type CouncilSettings, resolveCouncilSettings } from "./settings.js";
 import { CouncilStateManager } from "./state.js";
 import type { CouncilDefinition, CouncilDeliberation } from "./types.js";
 
@@ -220,7 +220,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		const snapshot = snapshotAvailableModels(ctx);
-		const settings = readCouncilSettings();
+		const settings = resolveCouncilSettings();
 		councils.clear();
 		const slots = [
 			defaultSlot(snapshot),

@@ -10,23 +10,11 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { readCouncilSettings } from "./settings.js";
-
-/** @public */
-export const DEFAULT_MEMBER_CANDIDATES = [
-	"openai/gpt-5.5",
-	"anthropic/claude-opus-4-6",
-	"ollama/qwen3.5:cloud",
-	"ollama/glm-5.1:cloud",
-	"google/gemini-2.5-pro",
-];
-
-/** @public */
-export const DEFAULT_CHAIRMAN_CANDIDATES = [
-	"openai/gpt-5.5",
-	"anthropic/claude-opus-4-6",
-	"google/gemini-2.5-pro",
-];
+import {
+	DEFAULT_CHAIRMAN_CANDIDATES,
+	DEFAULT_MEMBER_CANDIDATES,
+	resolveCouncilSettings,
+} from "./settings.js";
 
 export const COUNCIL_MIN = 3;
 export const COUNCIL_MAX = 5;
@@ -102,21 +90,29 @@ function modelMatches(available: Set<string>, model: string): boolean {
 /**
  * Pick member models in priority order:
  *   1. explicit `requested`
- *   2. settings.json defaultMembers
- *   3. DEFAULT_MEMBER_CANDIDATES filtered against the registry snapshot
+ *   2. settings.json defaultMembers (field-level default if absent)
+ *   3. hard-coded candidates filtered against the registry snapshot
  *   4. fall back to whatever the snapshot offers
+ *
+ * @param settingsPath - Optional path to settings.json for hermetic tests.
  */
 export function chooseCouncilModels(
 	availableSnapshot: string[],
 	requested?: string[],
+	settingsPath?: string,
 ): string[] {
 	if (requested && requested.length > 0) {
 		return unique(requested).slice(0, COUNCIL_MAX);
 	}
 
-	const settings = readCouncilSettings();
-	if (settings.defaultMembers && settings.defaultMembers.length > 0) {
-		return unique(settings.defaultMembers).slice(0, COUNCIL_MAX);
+	const resolved = resolveCouncilSettings(settingsPath);
+	if (resolved.defaultMembers.length > 0) {
+		const available = new Set(availableSnapshot);
+		if (available.size === 0) return resolved.defaultMembers.slice(0, COUNCIL_MIN);
+		const matched = resolved.defaultMembers.filter((m) => modelMatches(available, m));
+		return matched.length >= COUNCIL_MIN
+			? matched.slice(0, COUNCIL_MAX)
+			: padFromSnapshot(matched, available);
 	}
 
 	const available = new Set(availableSnapshot);
@@ -127,25 +123,46 @@ export function chooseCouncilModels(
 	const chosen = DEFAULT_MEMBER_CANDIDATES.filter((m) =>
 		modelMatches(available, m),
 	);
-	if (chosen.length >= COUNCIL_MIN) return chosen.slice(0, COUNCIL_MAX);
-
-	for (const model of available) {
-		if (chosen.length >= COUNCIL_MIN) break;
-		if (!chosen.includes(model)) chosen.push(model);
-	}
-	return chosen.slice(0, COUNCIL_MAX);
+	return chosen.length >= COUNCIL_MIN
+		? chosen.slice(0, COUNCIL_MAX)
+		: padFromSnapshot(chosen, available);
 }
 
-/** Pick the chairman: explicit → settings → first heterogeneous candidate → fallback. */
+/** Pad a short candidate list with extra models from the registry snapshot. */
+function padFromSnapshot(
+	chosen: string[],
+	available: Set<string>,
+): string[] {
+	const result = [...chosen];
+	for (const model of available) {
+		if (result.length >= COUNCIL_MIN) break;
+		if (!result.includes(model)) result.push(model);
+	}
+	return result.slice(0, COUNCIL_MAX);
+}
+
+/**
+ * Pick the chairman: explicit → settings (if available) → candidate list → members[0].
+ *
+ * @param settingsPath - Optional path to settings.json for hermetic tests.
+ */
 export function chooseChairmanModel(
 	availableSnapshot: string[],
 	members: string[],
 	requested?: string,
+	settingsPath?: string,
 ): string {
 	if (requested) return requested;
-	const settings = readCouncilSettings();
-	if (settings.defaultChairman) return settings.defaultChairman;
+	const resolved = resolveCouncilSettings(settingsPath);
 	const available = new Set(availableSnapshot);
+	// Use the resolved chairman only if it's available in the registry
+	// (or the registry is empty, meaning we can't validate).
+	if (
+		resolved.defaultChairman &&
+		(available.size === 0 || modelMatches(available, resolved.defaultChairman))
+	) {
+		return resolved.defaultChairman;
+	}
 	const candidate = DEFAULT_CHAIRMAN_CANDIDATES.find((m) =>
 		modelMatches(available, m),
 	);
@@ -153,6 +170,6 @@ export function chooseChairmanModel(
 		candidate ??
 		members[0] ??
 		DEFAULT_CHAIRMAN_CANDIDATES[0] ??
-		"openai/gpt-5.5"
+		"openai-codex/gpt-5.5"
 	);
 }
