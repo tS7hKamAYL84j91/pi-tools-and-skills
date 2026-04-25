@@ -153,7 +153,7 @@ export function setupReconciler(
 			"🔍 Reconciliation check detected:",
 			...allFindings.map((f) => `  • [${f.heuristic}] ${f.summary}`),
 			"",
-			"Review and take action if needed. Run kanban_snapshot and agent_status for current state.",
+			"Review and take action if needed. Run agent_status for current agent state.",
 			"Do not ask questions. Keep your response brief.",
 		].join("\n");
 
