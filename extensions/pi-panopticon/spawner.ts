@@ -21,17 +21,18 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, fail, type ToolResult, type Registry } from "./types.js";
-import { PARENT_ID_ENV, VISIBILITY_ENV } from "./visibility.js";
 import {
-	recentOutputFromEvents,
+	PANOPTICON_PARENT_ID_ENV,
+	PANOPTICON_VISIBILITY_ENV,
+} from "../../lib/agent-registry.js";
+import {
 	buildArgList,
 	spawnChild,
 	gracefulKill,
-	rpcWrite,
-	rpcCall,
-	hasCompletionSignal,
 	type SpawnedAgent,
-} from "./spawner-utils.js";
+} from "../../lib/spawn-service.js";
+import { rpcWrite, rpcCall } from "../../lib/spawn-rpc.js";
+import { recentOutputFromEvents, hasCompletionSignal } from "../../lib/spawn-events.js";
 import {
 	TaskBriefSchema,
 	renderBriefAsPrompt,
@@ -186,8 +187,8 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 				tempDir,
 				env: {
 					...process.env,
-					[PARENT_ID_ENV]: registry.selfId,
-					[VISIBILITY_ENV]: "scoped",
+					[PANOPTICON_PARENT_ID_ENV]: registry.selfId,
+					[PANOPTICON_VISIBILITY_ENV]: "scoped",
 				},
 			});
 			if (!agent.pid) {

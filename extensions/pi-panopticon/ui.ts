@@ -27,7 +27,9 @@ import {
 import { readSessionLog } from "../../lib/session-log.js";
 import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry, AgentRecord, AgentStatus } from "./types.js";
+import { createAgentListModeStore, type AgentListModeStore } from "./list-mode.js";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
+import { filterAgentList, isAgentListMode, visibleRecords } from "./visibility.js";
 
 /** Map status → short label shown after the colon in powerline segments. */
 const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -115,8 +117,10 @@ async function openAgentOverlay(
 	ctx: ExtensionContext,
 	selfId: string,
 	registry: Registry,
+	listMode: AgentListModeStore,
 ): Promise<void> {
-	const records = registry.readAllPeers();
+	const self = registry.getRecord();
+	const records = filterAgentList(self, registry.readAllPeers(), listMode.get(self));
 	if (records.length === 0) {
 		ctx.ui.notify("No agents registered", "info");
 		return;
@@ -209,7 +213,8 @@ async function showAgentDetail(
 	agentName: string,
 	registry: Registry,
 ): Promise<void> {
-	const records = registry.readAllPeers();
+	const self = registry.getRecord();
+	const records = visibleRecords(self, registry.readAllPeers());
 	const rec = records.find(
 		(r) => r.name.toLowerCase() === agentName.toLowerCase(),
 	);
@@ -312,6 +317,7 @@ export function setupUI(
 	pi: ExtensionAPI,
 	registry: Registry,
 	selfId: string,
+	listMode: AgentListModeStore = createAgentListModeStore(),
 ): UIModule {
 	let widgetTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -387,13 +393,102 @@ export function setupUI(
 		},
 	});
 
+	// ── Agent list mode ─────────────────────────────────────────
+
+	function setAgentListMode(mode: string): ToolResult {
+		if (!isAgentListMode(mode)) {
+			return fail(
+				`Invalid agent list mode "${mode}". Use: all, children, roots, scope`,
+				{ reason: "invalid_mode" },
+			);
+		}
+		listMode.set(mode);
+		const self = registry.getRecord();
+		const visibleCount = filterAgentList(self, registry.readAllPeers(), listMode.get(self)).length;
+		return ok(`Agent list mode set to ${mode}. ${visibleCount} agent${visibleCount === 1 ? "" : "s"} visible.`, { mode, visibleCount });
+	}
+
+	pi.registerTool({
+		name: "set_agent_list_mode",
+		label: "Set Agent List Mode",
+		description: "Set the session-local filter used by /agents, agent_peek, agent_status, and the agent widget.",
+		promptSnippet: "Set which agents appear in passive panopticon lists/widgets",
+		parameters: Type.Object({
+			mode: Type.String({ description: "One of: all, children, roots, scope" }),
+		}),
+		async execute(_id, params): Promise<ToolResult> {
+			return setAgentListMode(params.mode);
+		},
+	});
+
+	const modeItems: SelectItem[] = [
+		{ value: "all", label: "all", description: "Show every agent allowed by visibility rules" },
+		{ value: "children", label: "children", description: "Show roots plus my own children; hide other agents' children" },
+		{ value: "roots", label: "roots", description: "Show root/manual agents plus direct family" },
+		{ value: "scope", label: "scope", description: "Show parent, siblings, and my children" },
+	];
+
+	async function openAgentListModeOverlay(ctx: ExtensionContext): Promise<void> {
+		const current = listMode.get(registry.getRecord());
+		const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+			const container = new Container();
+			const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
+			container.addChild(border());
+			container.addChild(new Text(theme.fg("accent", theme.bold(" Agent List Mode")) + theme.fg("dim", ` - current: ${current}`), 1, 0));
+			container.addChild(new Text(theme.fg("dim", " Type to search • enter select • esc cancel"), 1, 0));
+			const selectList = new SelectList(modeItems, modeItems.length, {
+				selectedPrefix: (t: string) => theme.fg("accent", t),
+				selectedText: (t: string) => theme.fg("accent", t),
+				description: (t: string) => theme.fg("muted", t),
+				scrollInfo: (t: string) => theme.fg("dim", t),
+				noMatch: (t: string) => theme.fg("warning", t),
+			});
+			selectList.onSelect = (item) => done(item.value);
+			selectList.onCancel = () => done(null);
+			container.addChild(selectList);
+			container.addChild(border());
+			return {
+				render: (w: number) => container.render(w),
+				invalidate: () => container.invalidate(),
+				handleInput: (data: string) => {
+					selectList.handleInput(data);
+					tui.requestRender();
+				},
+			};
+		});
+		if (!selected) return;
+		const result = setAgentListMode(selected);
+		ctx.ui.notify(result.content[0]?.text ?? "", result.isError ? "warning" : "info");
+	}
+
+	async function handleAgentListModeCommand(args: string | undefined, ctx: ExtensionContext): Promise<void> {
+		const mode = args?.trim();
+		if (!mode) {
+			await openAgentListModeOverlay(ctx);
+			return;
+		}
+		const result = setAgentListMode(mode);
+		ctx.ui.notify(result.content[0]?.text ?? "", result.isError ? "warning" : "info");
+	}
+
+	pi.registerCommand("agent-list-mode", {
+		description: "Choose agent list/widget mode. Usage: /agent-list-mode [all|children|roots|scope]",
+		handler: handleAgentListModeCommand,
+	});
+
+	pi.registerCommand("agents-mode", {
+		description: "Set agent list/widget mode. Usage: /agents-mode [all|children|roots|scope]",
+		handler: handleAgentListModeCommand,
+	});
+
 	// ── /agents overlay ─────────────────────────────────────────
 
 	pi.registerCommand("agents", {
 		description:
 			"Show compact Powerline status bar for all agents, then open detail overlay",
 		handler: async (_args, ctx) => {
-			const records = registry.readAllPeers();
+			const self = registry.getRecord();
+			const records = filterAgentList(self, registry.readAllPeers(), listMode.get(self));
 			if (records.length === 0) {
 				ctx.ui.notify("No agents registered", "info");
 				return;
@@ -407,14 +502,14 @@ export function setupUI(
 					.join(` ${PL_SEP_THIN} `),
 				"info",
 			);
-			await openAgentOverlay(ctx, selfId, registry);
+			await openAgentOverlay(ctx, selfId, registry, listMode);
 		},
 	});
 
 	pi.registerShortcut("ctrl+shift+o", {
 		description: "Open agent panopticon overlay",
 		handler: async (ctx) => {
-			await openAgentOverlay(ctx, selfId, registry);
+			await openAgentOverlay(ctx, selfId, registry, listMode);
 		},
 	});
 
@@ -422,7 +517,8 @@ export function setupUI(
 
 	function refreshWidget(ctx: ExtensionContext): void {
 		try {
-			const records = registry.readAllPeers();
+			const self = registry.getRecord();
+			const records = filterAgentList(self, registry.readAllPeers(), listMode.get(self));
 			if (records.length === 0) {
 				ctx.ui.setWidget("agent-panopticon", undefined);
 				ctx.ui.setStatus(
