@@ -19,6 +19,7 @@ import { createMessaging } from "./messaging.js";
 import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
 import { setupHealth } from "./health.js";
+import { createAgentListModeStore } from "./list-mode.js";
 import { setupUI } from "./ui.js";
 import { OperationalStateStore } from "./state.js";
 import { setupReconciler } from "./reconciler.js";
@@ -28,6 +29,7 @@ import { registerChannel } from "../../lib/message-transport.js";
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId);
+	const listMode = createAgentListModeStore();
 
 	// Set up modules — registers tools/commands, returns module handles
 	const operationalState = new OperationalStateStore(pi);
@@ -40,9 +42,9 @@ export default function (pi: ExtensionAPI) {
 		onMessage: (text) => reconciler.handleInboundMessage(text),
 	})(pi, registry);
 	const spawner = setupSpawner(pi, registry);
-	setupPeek(pi, registry);
-	setupHealth(pi, registry);
-	const ui = setupUI(pi, registry, selfId);
+	setupPeek(pi, registry, listMode);
+	setupHealth(pi, registry, listMode);
+	const ui = setupUI(pi, registry, selfId, listMode);
 
 	// ── Lifecycle: start ────────────────────────────────────────
 

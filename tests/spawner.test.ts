@@ -5,12 +5,9 @@
  * Only the extracted, exported helpers are tested here;
  * the tool execute paths rely on integration with the ExtensionAPI.
  */
-import { describe, it, expect } from "vitest";
-import {
-	formatEvent,
-	recentOutputFromEvents,
-	buildArgList,
-} from "../extensions/pi-panopticon/spawner-utils.js";
+import { describe, expect, it } from "vitest";
+import { formatEvent, recentOutputFromEvents } from "../lib/spawn-events.js";
+import { buildArgList } from "../lib/spawn-service.js";
 
 // ── formatEvent ────────────────────────────────────────────────
 
@@ -65,12 +62,21 @@ describe("formatEvent", () => {
 	});
 
 	it("formats successful response", () => {
-		const line = JSON.stringify({ type: "response", command: "prompt", success: true });
+		const line = JSON.stringify({
+			type: "response",
+			command: "prompt",
+			success: true,
+		});
 		expect(formatEvent(line)).toBe("  [prompt: ok]");
 	});
 
 	it("formats failed response", () => {
-		const line = JSON.stringify({ type: "response", command: "abort", success: false, error: "oops" });
+		const line = JSON.stringify({
+			type: "response",
+			command: "abort",
+			success: false,
+			error: "oops",
+		});
 		expect(formatEvent(line)).toBe("  [abort: oops]");
 	});
 
@@ -100,7 +106,10 @@ describe("recentOutputFromEvents", () => {
 	it("joins formatted events, filtering empty strings", () => {
 		const events = [
 			JSON.stringify({ type: "agent_start" }),
-			JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hi" } }),
+			JSON.stringify({
+				type: "message_update",
+				assistantMessageEvent: { type: "text_delta", delta: "hi" },
+			}),
 			JSON.stringify({ type: "agent_end" }),
 		];
 		const out = recentOutputFromEvents(events);
@@ -131,7 +140,10 @@ describe("buildArgList", () => {
 	});
 
 	it("includes model flag when provided", () => {
-		const args = buildArgList({ name: "test-agent", model: "anthropic/claude-sonnet" });
+		const args = buildArgList({
+			name: "test-agent",
+			model: "anthropic/claude-sonnet",
+		});
 		expect(args).toContain("--models");
 		expect(args).toContain("anthropic/claude-sonnet");
 	});
@@ -143,7 +155,10 @@ describe("buildArgList", () => {
 	});
 
 	it("uses --session-dir when provided", () => {
-		const args = buildArgList({ name: "test-agent", sessionDir: "/tmp/my-session" });
+		const args = buildArgList({
+			name: "test-agent",
+			sessionDir: "/tmp/my-session",
+		});
 		expect(args).toContain("--session-dir");
 		expect(args).toContain("/tmp/my-session");
 	});
@@ -151,7 +166,9 @@ describe("buildArgList", () => {
 	it("uses default session dir when no sessionDir provided", () => {
 		const args = buildArgList({ name: "my-agent" });
 		expect(args).toContain("--session-dir");
-		expect(args.some(a => a.includes("subagents") && a.includes("my-agent"))).toBe(true);
+		expect(
+			args.some((a) => a.includes("subagents") && a.includes("my-agent")),
+		).toBe(true);
 		expect(args).not.toContain("--no-session");
 	});
 

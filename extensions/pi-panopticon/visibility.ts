@@ -7,10 +7,20 @@
 
 import type { AgentRecord } from "../../lib/agent-registry.js";
 
-/** Environment variable used by spawn_agent to scope child visibility. */
-export const PARENT_ID_ENV = "PI_PANOPTICON_PARENT_ID";
-/** Environment variable used by spawn_agent to mark children as scoped. */
-export const VISIBILITY_ENV = "PI_PANOPTICON_VISIBILITY";
+/** Query-time display mode for passive agent lists/widgets. */
+export type AgentListMode = "all" | "children" | "roots" | "scope";
+
+const AGENT_LIST_MODES: AgentListMode[] = ["all", "children", "roots", "scope"];
+
+/** Return true for supported list modes. */
+export function isAgentListMode(value: string): value is AgentListMode {
+	return AGENT_LIST_MODES.includes(value as AgentListMode);
+}
+
+/** Default list mode preserves legacy global behavior while keeping scoped workers scoped. */
+export function defaultAgentListMode(self: AgentRecord | undefined): AgentListMode {
+	return (self?.visibility ?? "global") === "scoped" ? "scope" : "all";
+}
 
 /** Return true when requester is allowed to discover/contact target. */
 export function canSee(requester: AgentRecord | undefined, target: AgentRecord): boolean {
@@ -35,4 +45,32 @@ export function canSee(requester: AgentRecord | undefined, target: AgentRecord):
 /** Filter records to those visible to the current registry record. */
 export function visibleRecords(self: AgentRecord | undefined, records: AgentRecord[]): AgentRecord[] {
 	return records.filter((record) => canSee(self, record));
+}
+
+function isDirectFamily(self: AgentRecord, target: AgentRecord): boolean {
+	return target.id === self.id || target.id === self.parentId || target.parentId === self.id;
+}
+
+/**
+ * Filter records for passive displays/lists. This is a view preference, not an
+ * access-control rule; direct targeted operations should use visibleRecords().
+ */
+export function filterAgentList(
+	self: AgentRecord | undefined,
+	records: AgentRecord[],
+	mode: AgentListMode = defaultAgentListMode(self),
+): AgentRecord[] {
+	const visible = visibleRecords(self, records);
+	if (!self || mode === "all") return visible;
+	if (mode === "scope") {
+		return visible.filter(
+			(record) => isDirectFamily(self, record) || (self.parentId !== undefined && record.parentId === self.parentId),
+		);
+	}
+	if (mode === "roots") {
+		return visible.filter((record) => isDirectFamily(self, record) || !record.parentId);
+	}
+	return visible.filter(
+		(record) => isDirectFamily(self, record) || !record.parentId || record.parentId === self.id,
+	);
 }

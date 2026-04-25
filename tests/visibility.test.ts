@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { AgentRecord } from "../lib/agent-registry.js";
-import { canSee, visibleRecords } from "../extensions/pi-panopticon/visibility.js";
+import { canSee, filterAgentList, visibleRecords } from "../extensions/pi-panopticon/visibility.js";
 
 function makeRecord(overrides: Partial<AgentRecord>): AgentRecord {
 	return {
@@ -69,5 +69,29 @@ describe("visibleRecords", () => {
 		const visible = visibleRecords(child, [parent, child, sibling, unrelated]).map((r) => r.id);
 
 		expect(visible).toEqual(["parent", "child", "sibling"]);
+	});
+});
+
+describe("filterAgentList", () => {
+	it("lets global agents use children mode to hide other parents' children while keeping roots and own children", () => {
+		const self = makeRecord({ id: "self", name: "self", visibility: "global" });
+		const root = makeRecord({ id: "root", name: "root", visibility: "global" });
+		const ownChild = makeRecord({ id: "own-child", name: "own-child", parentId: "self", visibility: "scoped" });
+		const otherChild = makeRecord({ id: "other-child", name: "other-child", parentId: "root", visibility: "scoped" });
+
+		const visible = filterAgentList(self, [self, root, ownChild, otherChild], "children").map((r) => r.id);
+
+		expect(visible).toEqual(["self", "root", "own-child"]);
+	});
+
+	it("keeps parent-child links visible in roots mode", () => {
+		const parent = makeRecord({ id: "parent", name: "parent", visibility: "global" });
+		const child = makeRecord({ id: "child", name: "child", parentId: "parent", visibility: "scoped" });
+		const grandchild = makeRecord({ id: "grandchild", name: "grandchild", parentId: "child", visibility: "scoped" });
+		const sibling = makeRecord({ id: "sibling", name: "sibling", parentId: "parent", visibility: "scoped" });
+
+		const visible = filterAgentList(child, [parent, child, grandchild, sibling], "roots").map((r) => r.id);
+
+		expect(visible).toEqual(["parent", "child", "grandchild"]);
 	});
 });

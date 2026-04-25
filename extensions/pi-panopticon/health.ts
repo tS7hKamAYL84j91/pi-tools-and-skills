@@ -26,9 +26,10 @@ import { REGISTRY_DIR, isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { Registry } from "./types.js";
+import type { AgentListModeStore } from "./list-mode.js";
 import { ok } from "./types.js";
 import { getSelfName, resolvePeer, peerNames } from "./peers.js";
-import { visibleRecords } from "./visibility.js";
+import { filterAgentList } from "./visibility.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -286,6 +287,7 @@ export interface HealthModule {
 export function setupHealth(
 	pi: ExtensionAPI,
 	registry: Registry,
+	listMode: AgentListModeStore,
 ): HealthModule {
 	const stallTracker = new Map<string, StallState>();
 	const transport = getMaildirTransport();
@@ -333,7 +335,7 @@ export function setupHealth(
 			}
 
 			const self = registry.getRecord();
-			const peers = visibleRecords(self, registry.readAllPeers()).filter((r) => !self || r.id !== self.id);
+			const peers = filterAgentList(self, registry.readAllPeers(), listMode.get(self)).filter((r) => !self || r.id !== self.id);
 
 			if (peers.length === 0) {
 				return ok("No peer agents registered.", { agents: [] });
@@ -407,7 +409,7 @@ export function setupHealth(
 		},
 		assessAll(threshold = DEFAULT_STALL_THRESHOLD) {
 			const self = registry.getRecord();
-			return visibleRecords(self, registry.readAllPeers())
+			return filterAgentList(self, registry.readAllPeers(), listMode.get(self))
 				.filter((r) => !self || r.id !== self.id)
 				.map((r) => assessHealth(r, stallTracker, threshold));
 		},

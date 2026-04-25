@@ -10,14 +10,16 @@ import { Type } from "@sinclair/typebox";
 import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 import { ok } from "./types.js";
 import type { Registry } from "./types.js";
+import type { AgentListModeStore } from "./list-mode.js";
 import { formatAge, STATUS_SYMBOL } from "./registry.js";
-import { visibleRecords } from "./visibility.js";
+import { filterAgentList, visibleRecords } from "./visibility.js";
 
 // ── Setup ───────────────────────────────────────────────────────
 
 export function setupPeek(
 	pi: ExtensionAPI,
 	registry: Registry,
+	listMode: AgentListModeStore,
 ): void {
 	pi.registerTool({
 		name: "agent_peek",
@@ -44,7 +46,8 @@ export function setupPeek(
 
 		async execute(_toolCallId, params, _signal) {
 			const self = registry.getRecord();
-			const records = visibleRecords(self, registry.readAllPeers());
+			const visible = visibleRecords(self, registry.readAllPeers());
+			const records = params.target ? visible : filterAgentList(self, visible, listMode.get(self));
 			const selfId = registry.selfId;
 
 			if (!params.target) {

@@ -23,9 +23,21 @@ import { join } from "node:path";
 export const REGISTRY_DIR = join(homedir(), ".pi", "agents");
 export const STALE_MS = 30_000;
 
+/** Env var read by spawned agents to learn their parent's registry id. */
+export const PANOPTICON_PARENT_ID_ENV = "PI_PANOPTICON_PARENT_ID";
+/** Env var read by spawned agents to mark themselves as scoped (vs global). */
+export const PANOPTICON_VISIBILITY_ENV = "PI_PANOPTICON_VISIBILITY";
+
 // ── Types ───────────────────────────────────────────────────────
 
-export type AgentStatus = "running" | "waiting" | "done" | "blocked" | "stalled" | "terminated" | "unknown";
+export type AgentStatus =
+	| "running"
+	| "waiting"
+	| "done"
+	| "blocked"
+	| "stalled"
+	| "terminated"
+	| "unknown";
 
 export type AgentVisibility = "global" | "scoped";
 
@@ -56,20 +68,31 @@ const cleanupHooks = new Set<CleanupHook>();
 /** Register a callback invoked when a dead agent is reaped. Returns a dispose function. */
 export function onAgentCleanup(hook: CleanupHook): () => void {
 	cleanupHooks.add(hook);
-	return () => { cleanupHooks.delete(hook); };
+	return () => {
+		cleanupHooks.delete(hook);
+	};
 }
 
 /** Run all registered cleanup hooks for a dead agent. */
 export function runAgentCleanup(agentId: string): void {
 	for (const hook of cleanupHooks) {
-		try { hook(agentId); } catch { /* best-effort */ }
+		try {
+			hook(agentId);
+		} catch {
+			/* best-effort */
+		}
 	}
 }
 
 // ── Pure helpers ────────────────────────────────────────────────
 
 export function isPidAlive(pid: number): boolean {
-	try { process.kill(pid, 0); return true; } catch { return false; }
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export function ensureRegistryDir(): void {
@@ -107,9 +130,7 @@ export function reapOrphanedMailboxes(): { removed: number } {
 
 	// Build set of IDs that have a live .json registry file
 	const registeredIds = new Set(
-		entries
-			.filter((f) => f.endsWith(".json"))
-			.map((f) => f.slice(0, -5)),
+		entries.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)),
 	);
 
 	for (const entry of entries) {
@@ -148,5 +169,3 @@ export function reapOrphanedMailboxes(): { removed: number } {
 
 	return { removed };
 }
-
-
