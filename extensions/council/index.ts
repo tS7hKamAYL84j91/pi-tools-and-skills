@@ -18,6 +18,7 @@ import {
 	snapshotAvailableModels,
 	unique,
 } from "./members.js";
+import { pickModel } from "./picker.js";
 import { type CouncilSettings, readCouncilSettings } from "./settings.js";
 import { CouncilStateManager } from "./state.js";
 import type { CouncilDefinition, CouncilDeliberation } from "./types.js";
@@ -368,13 +369,18 @@ export default function (pi: ExtensionAPI) {
 					}
 					break;
 				}
-				const doneLabel = `Done (${members.length}/${COUNCIL_MAX})`;
-				const choice = await ctx.ui.select(
-					"Add council member",
-					members.length >= COUNCIL_MIN ? [doneLabel, ...remaining] : remaining,
-				);
-				if (!choice) return;
-				if (choice === doneLabel) break;
+				const title = members.length === 0
+					? "Add council member"
+					: `Add member ${members.length + 1}/${COUNCIL_MAX} (Esc to finish)`;
+				const choice = await pickModel(ctx, title, remaining, members);
+				if (!choice) {
+					if (members.length >= COUNCIL_MIN) break;
+					ctx.ui.notify(
+						`Council needs at least ${COUNCIL_MIN} members.`,
+						"warning",
+					);
+					return;
+				}
 				members.push(choice);
 			}
 			if (members.length < COUNCIL_MIN) {
@@ -385,7 +391,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const chairman = await ctx.ui.select("Chairman model", modelOptions);
+			const chairman = await pickModel(ctx, "Select chairman model", modelOptions, members);
 			if (!chairman) return;
 
 			const definition = makeDefinition({
