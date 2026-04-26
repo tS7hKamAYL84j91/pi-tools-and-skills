@@ -5,13 +5,12 @@
  * env-var-backed secrets at runtime.
  */
 
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { MatrixConfig } from "./types.js";
 
 const DEFAULT_STORAGE_PATH = join(homedir(), ".pi", "agent", "matrix-sync");
-const PI_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
 interface RawMatrixSettings {
 	homeserver?: unknown;
@@ -24,13 +23,10 @@ interface RawMatrixSettings {
 }
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
-	try {
-		const raw = readFileSync(path, "utf-8");
-		const parsed = JSON.parse(raw) as { matrix?: RawMatrixSettings };
-		return parsed.matrix ?? null;
-	} catch {
-		return null;
-	}
+	const value = readPiSettingsKey("matrix", path);
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as RawMatrixSettings)
+		: null;
 }
 
 /**

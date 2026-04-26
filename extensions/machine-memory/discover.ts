@@ -9,16 +9,13 @@
  * session startup and avoids module-graph side effects.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
+import { readPiSettingsKey } from "../../lib/pi-settings.js";
 import { MMEM_EXT, type MemoryFile, type MemorySource } from "./types.js";
 import { parseMemoryContent } from "./parse.js";
-
-// ── Constants ────────────────────────────────────────────────────
-
-const PI_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
 // ── Path helpers ─────────────────────────────────────────────────
 
@@ -42,19 +39,11 @@ function legacyProjectDir(cwd: string): string {
 	return join(cwd, ".mmem");
 }
 
-/** Read "memories" paths from ~/.pi/agent/settings.json using readFileSync. */
+/** Read "memories" paths from ~/.pi/agent/settings.json. */
 function readSettingsMemoryPaths(): string[] {
-	try {
-		if (!existsSync(PI_SETTINGS_PATH)) return [];
-		const raw = readFileSync(PI_SETTINGS_PATH, "utf-8");
-		const settings = JSON.parse(raw);
-		if (Array.isArray(settings.memories)) {
-			return settings.memories.filter((p: unknown) => typeof p === "string" && existsSync(p as string));
-		}
-	} catch {
-		/* non-fatal */
-	}
-	return [];
+	const value = readPiSettingsKey("memories");
+	if (!Array.isArray(value)) return [];
+	return value.filter((p): p is string => typeof p === "string" && existsSync(p));
 }
 
 /** Build the filename for a memory in a given directory. */

@@ -17,11 +17,9 @@
  * set defaultMembers without providing defaultChairman, etc.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 
-const SETTINGS_JSON = join(homedir(), ".pi", "agent", "settings.json");
+const SETTINGS_JSON = PI_SETTINGS_PATH;
 
 /** @public */
 export interface SettingsCouncilEntry {
@@ -37,9 +35,6 @@ export interface CouncilSettings {
 	councils?: Record<string, SettingsCouncilEntry>;
 }
 
-interface PiSettingsFile {
-	council?: CouncilSettings;
-}
 
 /**
  * Hard-coded defaults — the single source of truth for council model selection.
@@ -68,14 +63,10 @@ const DEFAULT_COUNCIL_SETTINGS: Required<Omit<CouncilSettings, "councils">> & { 
 function readCouncilSettings(
 	path: string = SETTINGS_JSON,
 ): CouncilSettings {
-	try {
-		if (!existsSync(path)) return {};
-		const raw = readFileSync(path, "utf-8");
-		const settings = JSON.parse(raw) as PiSettingsFile;
-		return settings.council ?? {};
-	} catch {
-		return {};
-	}
+	const value = readPiSettingsKey("council", path);
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as CouncilSettings)
+		: {};
 }
 
 /**
