@@ -78,16 +78,22 @@ export function preflight(
 		...(chairResolution.error ? [chairResolution.error] : []),
 	];
 
-	const allModels = [
-		...memberResolution.members.map((m) => m.model),
-		...(chairResolution.chairman ? [chairResolution.chairman.model] : []),
+	const allMembers = [
+		...memberResolution.members,
+		...(chairResolution.chairman ? [chairResolution.chairman] : []),
 	];
-	const heterogeneity = checkHeterogeneity(allModels);
+	const heterogeneity = checkHeterogeneity(allMembers.map((m) => m.model));
+	// Snapshot validation only applies to model members. Live-agent members
+	// run their own model in their own session; the orchestrator's local
+	// snapshot is irrelevant to whether they can answer.
 	const available = new Set(availableSnapshot);
 	const missingFromSnapshot =
 		availableSnapshot.length === 0
 			? []
-			: allModels.filter((m) => !available.has(m));
+			: allMembers
+					.filter((m) => !m.agentName)
+					.map((m) => m.model)
+					.filter((model) => !available.has(model));
 
 	const reasons: string[] = errors.map((e) => `${e.ref}: ${e.reason}`);
 	if (!heterogeneity.ok && heterogeneity.reason)

@@ -10,6 +10,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { type AgentInfo, listLiveAgents } from "../../lib/agent-api.js";
 import {
 	DEFAULT_CHAIRMAN_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
@@ -172,4 +173,35 @@ export function chooseChairmanModel(
 		DEFAULT_CHAIRMAN_CANDIDATES[0] ??
 		"openai-codex/gpt-5.5"
 	);
+}
+
+// ── Picker options (live agents + models) ─────────────────────
+
+/**
+ * Build the picker option list for `/council-form` and `/council-edit`:
+ * live `agent:<name>` entries first, followed by the model snapshot. The
+ * `describe` callback labels each entry with provider info or the agent's
+ * underlying model.
+ *
+ * `excludeAgentName` (case-insensitive) drops the orchestrator's own agent
+ * — an agent including itself in a council would deadlock the deliberation.
+ */
+export function councilPickerOptions(
+	snapshot: string[],
+	excludeAgentName?: string,
+): { options: string[]; describe: (value: string) => string } {
+	const liveAgents = listLiveAgents(excludeAgentName);
+	const agentByName = new Map<string, AgentInfo>(
+		liveAgents.map((a) => [a.name.toLowerCase(), a]),
+	);
+	const agentRefs = liveAgents.map((a) => `agent:${a.name}`);
+	const options = [...agentRefs, ...snapshot];
+	const describe = (value: string): string => {
+		if (value.startsWith("agent:")) {
+			const info = agentByName.get(value.slice("agent:".length).toLowerCase());
+			return info ? `live • ${info.model}` : "live";
+		}
+		return providerOf(value);
+	};
+	return { options, describe };
 }

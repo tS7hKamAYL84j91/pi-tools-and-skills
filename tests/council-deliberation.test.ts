@@ -117,6 +117,33 @@ describe("preflight", () => {
 		expect(report.reasons.some((r) => r.includes("nobody"))).toBe(true);
 	});
 
+	it("does not flag an agent's underlying model as missing from the orchestrator's snapshot", () => {
+		// Bob runs a model the orchestrator can't see locally. Bob will use his
+		// own model in his own session — the snapshot mismatch is irrelevant.
+		mockFind.mockImplementation((name: string) => {
+			if (name === "bob") {
+				return {
+					id: "bob-id",
+					name: "bob",
+					pid: 1,
+					alive: true,
+					heartbeatAge: 1_000,
+					model: "remote/exotic-model-not-in-snapshot",
+					status: "running",
+				};
+			}
+			return null;
+		});
+		const report = preflight(
+			definition({
+				members: ["openai/gpt-5.5", "agent:bob", "google/gemini-2.5-pro"],
+			}),
+			HETEROGENEOUS_SNAPSHOT,
+		);
+		expect(report.ok).toBe(true);
+		expect(report.missingFromSnapshot).toEqual([]);
+	});
+
 	it("warns about stale heartbeats but does not fail", () => {
 		mockFind.mockReturnValue({
 			id: "drowsy-id",

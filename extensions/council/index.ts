@@ -16,10 +16,13 @@ import {
 	COUNCIL_MAX,
 	chooseChairmanModel,
 	chooseCouncilModels,
+	councilPickerOptions,
 	snapshotAvailableModels,
 	unique,
 } from "./members.js";
+import { runPairMode } from "./pair-command.js";
 import { pickCouncilMembers, pickModel } from "./picker.js";
+import { currentPanopticonRecord } from "./runner.js";
 import { type CouncilSettings, resolveCouncilSettings } from "./settings.js";
 import { CouncilStateManager } from "./state.js";
 import type { CouncilDefinition, CouncilDeliberation } from "./types.js";
@@ -40,24 +43,25 @@ const CouncilFormSchema = Type.Object({
 });
 
 const AskCouncilSchema = Type.Object({
-	prompt: Type.String({
-		description: "Complex question or decision to put before the council.",
-	}),
-	council: Type.Optional(
-		Type.String({
-			description: "Named session council. Defaults to 'default'.",
+	prompt: Type.String({ description: "Question for DEBATE; coding task for PAIR." }),
+	mode: Type.Optional(
+		Type.Union([Type.Literal("DEBATE"), Type.Literal("PAIR")], {
+			description: "DEBATE (default) or PAIR (driver/navigator review-then-fix).",
 		}),
 	),
-	members: Type.Optional(
-		Type.Array(Type.String(), {
-			description: "Ad-hoc members; overrides council members.",
-		}),
-	),
-	chairman: Type.Optional(
-		Type.String({
-			description: "Ad-hoc chairman; overrides council chairman.",
-		}),
-	),
+	council: Type.Optional(Type.String({ description: "DEBATE: named session council." })),
+	members: Type.Optional(Type.Array(Type.String(), { description: "DEBATE: override members." })),
+	chairman: Type.Optional(Type.String({ description: "DEBATE: override chairman." })),
+	files: Type.Optional(Type.Array(Type.String(), { description: "PAIR: files to load." })),
+	specPath: Type.Optional(Type.String({ description: "PAIR: spec path; defaults to spec.md or docs/spec.md." })),
+	models: Type.Optional(Type.Object({
+		driver: Type.Optional(Type.String({ description: "PAIR: coding model." })),
+		navigator: Type.Optional(Type.String({ description: "PAIR: reasoning/review model." })),
+	})),
+	limits: Type.Optional(Type.Object({
+		maxFixPasses: Type.Optional(Type.Number({ description: "PAIR: fix passes (default 1)." })),
+		timeoutMs: Type.Optional(Type.Number({ description: "DEBATE: per-stage timeout ms." })),
+	})),
 });
 
 const CouncilUpdateSchema = Type.Object({
@@ -358,6 +362,13 @@ export default function (pi: ExtensionAPI) {
 		],
 		parameters: AskCouncilSchema,
 		async execute(_id, params: AskCouncilInput, _signal, onUpdate, ctx) {
+			if ((params.mode ?? "DEBATE") === "PAIR") {
+				try {
+					return await runPairMode({ params, ctx, onUpdate, councils });
+				} finally {
+					refreshCouncilStatus(ctx, councils);
+				}
+			}
 			const slot =
 				councils.get(params.council ?? "default") ??
 				defaultSlot(snapshotAvailableModels(ctx));
@@ -379,6 +390,7 @@ export default function (pi: ExtensionAPI) {
 					ctx,
 					availableSnapshot: slot.availableSnapshot,
 					stateManager,
+					parallelTimeoutMs: params.limits?.timeoutMs,
 					onProgress: (text) => {
 						ctx.ui.setStatus("council", `${definition.name}: ${text}`);
 						onUpdate?.({ content: [{ type: "text", text }], details: {} });
@@ -423,16 +435,37 @@ export default function (pi: ExtensionAPI) {
 			);
 			const purpose = purposeInput?.trim() || undefined;
 			const snapshot = snapshotAvailableModels(ctx);
-			const modelOptions = snapshot.length > 0 ? snapshot : chooseCouncilModels(snapshot);
-			if (modelOptions.length === 0) {
-				ctx.ui.notify("No models available for council formation.", "error");
+			const baseModels = snapshot.length > 0 ? snapshot : chooseCouncilModels(snapshot);
+			const ourRecord = await currentPanopticonRecord(ctx.cwd);
+			const { options, describe } = councilPickerOptions(baseModels, ourRecord?.name);
+			if (options.length === 0) {
+				ctx.ui.notify("No models or live agents available for council formation.", "error");
 				return;
 			}
 
-			const members = await pickCouncilMembers(ctx, modelOptions);
+			const sizeChoices = ["3", "4", "5", "6"].filter((s) => Number(s) <= options.length);
+			if (sizeChoices.length === 0) {
+				ctx.ui.notify(
+					`Need at least 3 distinct options; only ${options.length} available.`,
+					"error",
+				);
+				return;
+			}
+			const sizeChoice = await ctx.ui.select(
+				"Total participants (members + chairman)",
+				sizeChoices,
+			);
+			if (!sizeChoice) return;
+			const total = Number(sizeChoice);
+			const memberCount = total - 1;
+
+			const members = await pickCouncilMembers(ctx, options, memberCount, describe);
 			if (!members) return;
 
-			const chairman = await pickModel(ctx, "Select chairman model", modelOptions, members);
+			const chairman = await pickModel(ctx, "Select chairman", options, {
+				selected: members,
+				describe,
+			});
 			if (!chairman) return;
 
 			const definition = makeDefinition({
