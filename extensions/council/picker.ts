@@ -1,17 +1,17 @@
 /**
- * Model picker overlay — Input + filtered SelectList for type-to-filter
+ * Model picker overlay — Input + fuzzy-filtered SelectList for type-to-find
  * council member / chairman selection.
  *
- * Filtering is prefix-match on the SelectItem value (pi-tui's SelectList
- * semantics). Typing "openai" narrows to openai models; "agent:" narrows
- * to live agents; "agent:b" narrows further. The Input widget captures
- * printable characters and pipes them into setFilter on each keystroke.
+ * Substring/fuzzy filter via pi-tui's fuzzyFilter (typing "gpt" matches
+ * "openai-codex/gpt-5.5"). The Input captures printable characters and
+ * pushes them into FuzzySelectList.setFilter on each keystroke.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
 	Container,
+	fuzzyFilter,
 	getKeybindings,
 	Input,
 	SelectList,
@@ -19,6 +19,45 @@ import {
 	Text,
 } from "@mariozechner/pi-tui";
 import { COUNCIL_MIN } from "./members.js";
+
+interface MutableSelectListInternals {
+	items: SelectItem[];
+	filteredItems: SelectItem[];
+	selectedIndex: number;
+}
+
+/**
+ * Subclass that swaps the prefix-startsWith default for substring/fuzzy
+ * matching against label + description + value. Required because pi-tui's
+ * SelectList.setFilter is hard-coded to startsWith on value, which makes
+ * model ids like "openai-codex/gpt-5.5" un-findable by typing "gpt".
+ */
+class FuzzySelectList extends SelectList {
+	private readonly allItems: SelectItem[];
+
+	constructor(
+		items: SelectItem[],
+		maxVisible: number,
+		theme: ConstructorParameters<typeof SelectList>[2],
+		layout?: ConstructorParameters<typeof SelectList>[3],
+	) {
+		super(items, maxVisible, theme, layout);
+		this.allItems = items;
+	}
+
+	override setFilter(query: string): void {
+		const internals = this as unknown as MutableSelectListInternals;
+		const trimmed = query.trim();
+		internals.filteredItems = trimmed.length === 0
+			? this.allItems
+			: fuzzyFilter(
+					this.allItems,
+					trimmed,
+					(item) => `${item.label} ${item.description ?? ""} ${item.value}`,
+				);
+		internals.selectedIndex = 0;
+	}
+}
 
 interface PickModelOptions {
 	selected?: string[];
@@ -71,13 +110,24 @@ export async function pickModel(
 		const search = new Input();
 		search.focused = true;
 		container.addChild(search);
-		const selectList = new SelectList(items, Math.min(items.length, 15), {
-			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t),
-			description: (t: string) => theme.fg("muted", t),
-			scrollInfo: (t: string) => theme.fg("dim", t),
-			noMatch: (t: string) => theme.fg("warning", t),
-		});
+		const longestLabel = items.reduce((max, item) => Math.max(max, item.label.length), 0);
+		const selectList = new FuzzySelectList(
+			items,
+			Math.min(items.length, 15),
+			{
+				selectedPrefix: (t: string) => theme.fg("accent", t),
+				selectedText: (t: string) => theme.fg("accent", t),
+				description: (t: string) => theme.fg("muted", t),
+				scrollInfo: (t: string) => theme.fg("dim", t),
+				noMatch: (t: string) => theme.fg("warning", t),
+			},
+			{
+				// Reserve enough width to render the longest model id without truncation.
+				// Cap at 200 so we don't blow up narrow terminals on absurd label lengths.
+				minPrimaryColumnWidth: Math.min(longestLabel + 2, 80),
+				maxPrimaryColumnWidth: 200,
+			},
+		);
 		selectList.onSelect = (item) => done(item.value);
 		selectList.onCancel = () => done(undefined);
 		container.addChild(selectList);
