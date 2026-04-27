@@ -24,20 +24,6 @@ export interface PairDefinition {
 	createdAt: number;
 }
 
-function formatSummary(result: PairResult): string[] {
-	const lines: string[] = [];
-	lines.push(`Pair-coding ${result.ok ? "complete" : "ended with errors"}`);
-	for (const p of result.phases) {
-		if (p.name === "complete") continue;
-		lines.push(`  ${p.name}: ${p.ok ? "ok" : "fail"} (${Math.round(p.durationMs / 1000)}s)`);
-	}
-	for (const w of result.context.warnings) lines.push(`warning: ${w}`);
-	for (const e of result.errors) lines.push(`error: ${e}`);
-	lines.push("");
-	lines.push(result.summary);
-	return lines;
-}
-
 function pairLine(p: PairDefinition): string {
 	const purpose = p.purpose ? ` | ${p.purpose}` : "";
 	return `- ${p.name}: driver=${p.driver}  navigator=${p.navigator}${purpose}`;
@@ -48,6 +34,7 @@ interface PairContextArgs {
 	driver: string;
 	navigator: string;
 	ctx: ExtensionContext;
+	pi: ExtensionAPI;
 	refreshStatus: (ctx: ExtensionContext) => void;
 	storeLast: (result: PairResult) => void;
 }
@@ -68,11 +55,9 @@ async function executePair(args: PairContextArgs): Promise<void> {
 			},
 		});
 		args.storeLast(result);
-		args.ctx.ui.notify(
-			result.ok
-				? "Pair complete — /pair-last for the artifact."
-				: "Pair ended with errors — /pair-last for details.",
-			result.ok ? "info" : "warning",
+		args.pi.sendUserMessage(
+			`[Pair-coding result — driver=${args.driver} navigator=${args.navigator}]\n\n${result.summary}`,
+			{ deliverAs: "followUp" },
 		);
 	} catch (error) {
 		args.ctx.ui.notify(
@@ -195,7 +180,7 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			const prompt = promptInput?.trim();
 			if (!prompt) return;
 
-			await executePair({ prompt, driver, navigator, ctx, refreshStatus, storeLast });
+			await executePair({ prompt, driver, navigator, ctx, pi, refreshStatus, storeLast });
 		},
 	});
 
@@ -218,13 +203,16 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 	});
 
 	pi.registerCommand("pair-last", {
-		description: "Show the last pair-coding result",
+		description: "Inject the last pair-coding result into the chat",
 		handler: async (_rawArgs, ctx) => {
 			if (!lastResult) {
 				ctx.ui.notify("No pair-coding session has run in this session.", "warning");
 				return;
 			}
-			ctx.ui.setWidget("council", formatSummary(lastResult));
+			pi.sendUserMessage(
+				`[Last pair-coding result]\n\n${lastResult.summary}`,
+				{ deliverAs: "followUp" },
+			);
 		},
 	});
 }
