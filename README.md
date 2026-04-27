@@ -1,11 +1,8 @@
 # pi-tools-and-skills
 
-Extensions, skills, memories, and setup tooling for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent. Adds multi-agent orchestration, kanban task tracking, phone-to-agent messaging (Matrix), machine memories, and reusable skills.
+Extensions, skills, memories, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent. Adds multi-agent orchestration, kanban task tracking, phone-to-agent messaging (Matrix), machine memories, and reusable skills.
 
-In the current CoAS layout:
-- `pi-tools-and-skills` = reusable code
-- `coas` = deployment/runtime infra
-- `working-notes` = operational workspace, state, and research
+This repo is intentionally reusable. Model choices, runtime workspaces, Matrix deployment, and CoAS launch helpers belong in workspace/infra config — for this machine, `~/git/coas` — not in `make setup`.
 
 ## Getting started
 
@@ -15,9 +12,6 @@ In the current CoAS layout:
 - Node.js 22+
 - Python 3
 - A git workspace at `~/git/` (configurable)
-- Secret store for your OS:
-  - macOS: Keychain (`security`)
-  - Linux: [`pass`](https://www.passwordstore.org/) + `gpg`, with `pass` initialized
 
 ### 1. Install
 
@@ -38,51 +32,26 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon` and `machine-memory`; it also configures secrets, Ollama model discovery, memories, shell hooks, and default model settings.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon`, `machine-memory`, and `council`; it also registers memories. It does **not** discover models, configure secrets, add shell hooks, set a default provider, set a default model, or hard-code a council model list.
 
 ### 2. Set up
 
 ```bash
 make help                     # show all available targets
-make setup                    # register extensions, skills, memories with pi
-# or:
-make setup OPENROUTER=0       # disable OpenRouter setup
-make setup OPENROUTER=1       # force-enable OpenRouter setup
-
-exec "$SHELL"                # reload shell to pick up env vars
+make setup                    # register extensions, skills, prompts, memories
 ```
 
-`make setup` now checks OS-specific dependencies before changing anything. On Linux it requires `pass` and `gpg`, and it will fail fast if `pass` is installed but not initialized.
+For CoAS runtime setup — model discovery, default providers, shell hooks, Matrix secrets, and launchers — use `~/git/coas`.
 
 ### 3. Run pi
 
-After setup, just run pi normally in any workspace configured to load the project extensions. The default CoAS workspace is `~/git/working-notes`:
+After setup, run pi normally in any workspace:
 
 ```bash
-cd ~/git/working-notes && pi
+pi
 ```
 
-Pi loads global extensions (panopticon, machine-memory), skills, and memories. Add kanban/matrix per-project via `.pi/settings.json`. No Docker required — just the local agent.
-
-### 4. Add phone messaging via Matrix (optional)
-
-To message the agent from your phone, use the separate `~/git/coas` infra repo (Matrix homeserver + Tailscale). First run bootstraps everything there:
-
-```bash
-cd ~/git/coas
-make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
-```
-
-Then run pi in the operational workspace with Matrix secrets resolved:
-
-```bash
-cd ~/git/working-notes
-make pi
-```
-
-`make pi` runs pi with `MATRIX_ACCESS_TOKEN` and `MATRIX_BOT_PASSWORD` loaded from the secret store via `coas/scripts/coas-pi`.
-
-Install [Element X](https://element.io/download) on your phone, sign in to your Tailscale-hosted homeserver, and message the agent. See `~/git/coas/coas-infra/README.md` for deployment details.
+Pi loads global extensions (panopticon, machine-memory, council), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
 
 ---
 
@@ -90,12 +59,13 @@ Install [Element X](https://element.io/download) on your phone, sign in to your 
 
 ### Extensions
 
-Loaded automatically by pi when configured via `make setup`.
+`make setup` globally enables the reusable extensions. Project/runtime extensions stay opt-in per workspace.
 
 | Extension | Type | What it does |
 |-----------|------|-------------|
 | **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **machine-memory** | Global | `.mmem.yml` cheat sheets — tool/domain knowledge injected into agent context on demand |
+| **council** | Global | Heterogeneous multi-model debate using the runtime model registry, not setup-time hard-coding |
 | **kanban** | Project | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
 
@@ -140,8 +110,6 @@ Everything goes through `make`:
 |---------|------|
 | `make` / `make help` | Show available targets and setup options |
 | `make setup` | Install this checkout as a local pi package and register memories with pi |
-| `make setup OPENROUTER=0` | Run setup with OpenRouter disabled |
-| `make setup OPENROUTER=1` | Run setup with OpenRouter forced on |
 | `make check` | Typecheck + Biome lint + knip + type-coverage (≥95%) |
 | `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate |
 | `make test` | Run tests |
@@ -157,6 +125,7 @@ Everything goes through `make`:
 extensions/           All extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
   machine-memory/       Global — .mmem.yml cheat sheets
+  council/              Global — multi-model deliberation from runtime model registry
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
@@ -167,7 +136,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, machine-memory) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, machine-memory, council) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
@@ -177,14 +146,14 @@ make check        # typecheck → biome lint → knip → type-coverage (≥95%)
 make lint         # run one quality gate
 make test         # run tests
 make test-watch   # run tests in watch mode
-make setup        # configure pi extensions, skills, shell hooks (first time)
+make setup        # register pi package and memories
 ```
 
-Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENT.md](AGENT.md) for coding standards.
+Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENTS.md](AGENTS.md) for coding standards.
 
 ## Security
 
-The design assumes a **trusted host** and **trusted self-hosted Matrix homeserver** behind a private Tailscale mesh. External input (Matrix messages, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Findings that require host-level compromise are accepted risks — at that point the attacker already has full file access.
+The design assumes a **trusted host**. External input (Matrix messages, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Matrix deployment assumptions belong in the runtime/infra repo, not here.
 
 ## License
 

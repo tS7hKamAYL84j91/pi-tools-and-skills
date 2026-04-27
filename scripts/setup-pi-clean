@@ -1,121 +1,109 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─────────────────────────────────────────────────────────────────────
-# setup-pi-clean — Reverse setup-pi changes
+# setup-pi-clean — remove this reusable pi package registration.
 #
-# What it does:
-#   1. Removes this repo from pi packages in settings.json
-#   2. Removes memories registration from settings.json
-#   3. Removes models.json (if created by setup-pi)
-#   4. Removes shell environment hooks from .bashrc or .zshrc
-#   5. Optionally removes OpenRouter key from secret store
-#
-# Idempotent — safe to re-run.
-# ─────────────────────────────────────────────────────────────────────
+# Also removes legacy direct registrations written by older setup flows.
+# It intentionally does not remove models.json, shell hooks, provider config,
+# Matrix secrets, or OpenRouter secrets. Those are runtime concerns owned by CoAS.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-PI_DIR="$HOME/.pi/agent"
-MODELS_JSON="$PI_DIR/models.json"
-SETTINGS_JSON="$PI_DIR/settings.json"
-OS="$(uname -s)"
-SHELL_NAME="$(basename "${SHELL:-/bin/zsh}")"
-case "$SHELL_NAME" in
-    bash) SHELL_RC="$HOME/.bashrc" ;;
-    *) SHELL_RC="$HOME/.zshrc" ;;
-esac
-MARKER="# >>> pi tools-and-skills env >>>"
-MARKER_END="# <<< pi tools-and-skills env <<<"
+SETTINGS_JSON="$HOME/.pi/agent/settings.json"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
-# ── 0. Prerequisites ────────────────────────────────────────────────
+usage() {
+	cat <<'HELP'
+Usage: setup-pi-clean
 
-bold "── Step 0: Prerequisites ──"
+Removes pi-tools-and-skills package, memory, and legacy direct registrations.
+Runtime cleanup belongs in ~/git/coas.
+HELP
+}
+
+for arg in "$@"; do
+	case "$arg" in
+		-h|--help)
+			usage
+			exit 0
+			;;
+		*)
+			red "Error: Unknown argument: $arg"
+			usage
+			exit 1
+			;;
+	esac
+done
 
 if ! command -v python3 &>/dev/null; then
-    red "Error: python3 not found."
-    exit 1
+	red "Error: python3 not found."
+	exit 1
 fi
 
-green "  OS: $OS"
-green "  Shell rc: $SHELL_RC"
-
-# ── 1. Remove models.json ───────────────────────────────────────────
-
-bold "── Step 1: models.json ──"
-
-if [[ -f "$MODELS_JSON" ]]; then
-    rm -f "$MODELS_JSON"
-    green "  Removed $MODELS_JSON"
-else
-    dim "  $MODELS_JSON not found (skipping)"
-fi
-
-# ── 2. Clean settings.json ──────────────────────────────────────────
-
-bold "── Step 2: settings.json ──"
+bold "── Remove pi-tools-and-skills package registration ──"
 
 if [[ ! -f "$SETTINGS_JSON" ]]; then
-    dim "  $SETTINGS_JSON not found (skipping)"
-else
-    python3 -c "
-import json, os, sys
+	dim "  $SETTINGS_JSON not found (skipping)"
+	exit 0
+fi
+
+python3 - "$SETTINGS_JSON" "$PI_TOOLS_DIR" "$PI_TOOLS_DIR/skills" "$PI_TOOLS_DIR/extensions" "$PI_TOOLS_DIR/prompts" "$PI_TOOLS_DIR/memories" <<'PY'
+import json
+import os
+import sys
 
 settings_path = sys.argv[1]
-package_dir   = sys.argv[2]
+package_dir = sys.argv[2]
+skills_dir = sys.argv[3]
+ext_dir = sys.argv[4]
+prompts_dir = sys.argv[5]
+memories_dir = sys.argv[6]
 legacy_package_dir = package_dir.replace('/pi-tools-and-skills', '/tools-and-skills')
-skills_dir    = sys.argv[3]
-ext_dir       = sys.argv[4]
-prompts_dir   = sys.argv[5]
-memories_dir  = sys.argv[6]
 
-with open(settings_path, 'r') as f:
-    settings = json.load(f)
+with open(settings_path, 'r') as handle:
+    settings = json.load(handle)
 
-# Remove package entry
+
+def legacy_path(path: str) -> str:
+    return path.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+
+
+def set_or_delete_list(key: str, values: list) -> None:
+    if values:
+        settings[key] = values
+    elif key in settings:
+        del settings[key]
+
+
+def remove_listed(key: str, values: set[str]) -> int:
+    existing = settings.get(key, [])
+    if not isinstance(existing, list):
+        return 0
+    filtered = [item for item in existing if item not in values]
+    set_or_delete_list(key, filtered)
+    return len(existing) - len(filtered)
+
+removed_packages = 0
 existing_packages = settings.get('packages', [])
 if isinstance(existing_packages, list):
     filtered_packages = []
-    removed_count = 0
     for entry in existing_packages:
         source = entry.get('source') if isinstance(entry, dict) else entry
         if source in {package_dir, legacy_package_dir}:
-            removed_count += 1
-        else:
-            filtered_packages.append(entry)
-    settings['packages'] = filtered_packages
-    if removed_count > 0:
-        print(f'  Removed {removed_count} package(s)')
+            removed_packages += 1
+            continue
+        filtered_packages.append(entry)
+    set_or_delete_list('packages', filtered_packages)
 
-# Remove memories registration
-existing_memories = settings.get('memories', [])
-if isinstance(existing_memories, list):
-    filtered_memories = [m for m in existing_memories if m != memories_dir]
-    if len(filtered_memories) < len(existing_memories):
-        settings['memories'] = filtered_memories
-        print('  Removed memories registration')
-
-# Remove legacy skills/prompts/extensions registrations
-existing_skills = settings.get('skills', [])
-if isinstance(existing_skills, list):
-    filtered_skills = [s for s in existing_skills if s not in {skills_dir, skills_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')}]
-    if len(filtered_skills) < len(existing_skills):
-        settings['skills'] = filtered_skills
-
-existing_prompts = settings.get('prompts', [])
-if isinstance(existing_prompts, list):
-    filtered_prompts = [p for p in existing_prompts if p not in {prompts_dir, prompts_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')}]
-    if len(filtered_prompts) < len(existing_prompts):
-        settings['prompts'] = filtered_prompts
-
-legacy_ext_dir = ext_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')
-core_ext_paths = {
+removed_memories = remove_listed('memories', {memories_dir, legacy_path(memories_dir)})
+remove_listed('skills', {skills_dir, legacy_path(skills_dir)})
+remove_listed('prompts', {prompts_dir, legacy_path(prompts_dir)})
+legacy_ext_dir = legacy_path(ext_dir)
+remove_listed('extensions', {
     ext_dir,
     legacy_ext_dir,
     os.path.join(ext_dir, 'pi-panopticon'),
@@ -128,143 +116,15 @@ core_ext_paths = {
     os.path.join(legacy_ext_dir, 'council'),
     os.path.join(legacy_ext_dir, 'kanban'),
     os.path.join(legacy_ext_dir, 'matrix'),
-}
-existing_exts = settings.get('extensions', [])
-if isinstance(existing_exts, list):
-    filtered_exts = [e for e in existing_exts if e not in core_ext_paths]
-    if len(filtered_exts) < len(existing_exts):
-        settings['extensions'] = filtered_exts
+})
 
-# Revert Anthropic prompt caching
-providers = settings.get('providers', {})
-if 'anthropic' in providers:
-    anthropic = providers['anthropic']
-    if 'params' in anthropic:
-        params = anthropic['params']
-        if 'cache_control' in params:
-            del params['cache_control']
-        if 'extraHeaders' in params and 'anthropic-beta' in params['extraHeaders']:
-            del params['extraHeaders']['anthropic-beta']
-            if not params['extraHeaders']:
-                del params['extraHeaders']
-        if not params:
-            del anthropic['params']
-    if not anthropic:
-        del providers['anthropic']
-    print('  Removed Anthropic prompt caching config')
+with open(settings_path, 'w') as handle:
+    json.dump(settings, handle, indent=2)
+    handle.write('\n')
 
-with open(settings_path, 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
-" "$SETTINGS_JSON" "$PI_TOOLS_DIR" "$PI_TOOLS_DIR/skills" "$PI_TOOLS_DIR/extensions" "$PI_TOOLS_DIR/prompts" "$PI_TOOLS_DIR/memories"
-    green "  Cleaned $SETTINGS_JSON"
-fi
-
-# ── 3. Remove shell hooks ───────────────────────────────────────────
-
-bold "── Step 3: Shell environment ──"
-
-remove_block_if_present() {
-    local path="$1"
-    local start_marker="$2"
-    local end_marker="$3"
-    [[ -f "$path" ]] || return 0
-    if ! grep -qF "$start_marker" "$path" 2>/dev/null; then
-        return 0
-    fi
-    python3 - "$path" "$start_marker" "$end_marker" <<'PY'
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-start = sys.argv[2]
-end = sys.argv[3]
-text = path.read_text()
-lines = text.splitlines(keepends=True)
-out = []
-skip = False
-for line in lines:
-    stripped = line.rstrip("\n")
-    if stripped == start:
-        skip = True
-        continue
-    if skip and stripped == end:
-        skip = False
-        continue
-    if not skip:
-        out.append(line)
-path.write_text("".join(out))
+print(f'  Removed packages: {removed_packages}')
+print(f'  Removed memories: {removed_memories}')
 PY
-}
 
-if [[ ! -f "$SHELL_RC" ]]; then
-    dim "  $SHELL_RC not found (skipping)"
-else
-    if grep -qF "$MARKER" "$SHELL_RC" 2>/dev/null; then
-        remove_block_if_present "$SHELL_RC" "$MARKER" "$MARKER_END"
-        green "  Removed tools-and-skills block from $SHELL_RC"
-    else
-        dim "  No tools-and-skills block found in $SHELL_RC (skipping)"
-    fi
-
-    OLD_MARKER_1="# >>> pi openrouter key injection >>>"
-    OLD_END_1="# <<< pi openrouter key injection <<<"
-    if grep -qF "$OLD_MARKER_1" "$SHELL_RC" 2>/dev/null; then
-        remove_block_if_present "$SHELL_RC" "$OLD_MARKER_1" "$OLD_END_1"
-        green "  Removed old openrouter block from $SHELL_RC"
-    fi
-fi
-
-# ── 4. OpenRouter key (optional removal) ────────────────────────────
-
-bold "── Step 4: OpenRouter API Key (optional) ──"
-
-read -rp "  Remove OpenRouter key from secret store? [y/N] " remove_key
-if [[ "$remove_key" =~ ^[yY]$ ]]; then
-    case "$OS" in
-        Darwin)
-            if security delete-generic-password -s "openrouter-api-key" -a "$USER" &>/dev/null; then
-                green "  Removed from Keychain"
-            else
-                dim "  No key found in Keychain"
-            fi
-            ;;
-        Linux)
-            if pass rm -f "pi/openrouter-api-key" &>/dev/null; then
-                green "  Removed from pass"
-            else
-                dim "  No key found in pass"
-            fi
-            ;;
-        *)
-            dim "  Unsupported OS for secret store"
-            ;;
-    esac
-else
-    dim "  Keeping OpenRouter key in secret store"
-fi
-
-# ── 5. Summary ──────────────────────────────────────────────────────
-
-echo ""
-bold "═══════════════════════════════════════════════"
-bold "  Cleanup complete!"
-bold "═══════════════════════════════════════════════"
-echo ""
-echo "  Removed:"
-echo "    • $MODELS_JSON"
-echo "    • Package registration from settings.json"
-echo "    • Memories registration from settings.json"
-echo "    • Shell hooks from $SHELL_RC"
-echo "    • Anthropic prompt caching config"
-echo ""
-if [[ "$remove_key" =~ ^[yY]$ ]]; then
-    echo "    • OpenRouter key from secret store"
-else
-    echo "    • OpenRouter key kept in secret store"
-fi
-echo ""
-echo "  Next steps:"
-echo "    exec $SHELL_NAME          # reload shell to remove env vars"
-echo "    pi                        # verify clean state"
-echo ""
+green "  Cleaned $SETTINGS_JSON"
+dim "  Runtime settings were left untouched."
