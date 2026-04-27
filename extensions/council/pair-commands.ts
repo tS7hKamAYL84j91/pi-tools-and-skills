@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { snapshotAvailableModels } from "./members.js";
-import { navigatorReviewSystemPrompt } from "./pair-prompts.js";
+import { navigatorConsultSystemPrompt } from "./pair-prompts.js";
 import { pickModel } from "./picker.js";
 import { runMember } from "./runner.js";
 
@@ -50,7 +50,7 @@ const PairConsultSchema = Type.Object({
 	}),
 });
 
-function pickPair(
+export function pickPair(
 	pairs: Map<string, PairDefinition>,
 	requested?: string,
 ): PairDefinition | { error: string } {
@@ -63,7 +63,8 @@ function pickPair(
 		return { error: "No pair configured. Run /pair-form to set up a Navigator." };
 	}
 	if (pairs.size === 1) {
-		return [...pairs.values()][0]!;
+		const [only] = pairs.values();
+		if (only) return only;
 	}
 	const names = [...pairs.keys()].sort();
 	return {
@@ -193,7 +194,7 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 					{ label: "Navigator", model: picked.navigator },
 					{
 						prompt: params.message,
-						systemPrompt: navigatorReviewSystemPrompt(),
+						systemPrompt: navigatorConsultSystemPrompt(),
 						cwd: ctx.cwd,
 						signal: ctx.signal,
 					},
