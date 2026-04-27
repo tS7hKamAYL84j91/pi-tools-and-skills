@@ -26,7 +26,7 @@ interface AskAgentArgs {
 	prompt: string;
 	systemPrompt: string;
 	deliberationId: string;
-	stage: "generate" | "critique" | "synthesize";
+	stage: "generate" | "critique" | "synthesize" | "consult";
 	ourAgentId: string;
 	ourAgentName: string;
 	signal?: AbortSignal;

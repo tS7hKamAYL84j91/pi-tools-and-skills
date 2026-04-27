@@ -15,10 +15,12 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { snapshotAvailableModels } from "./members.js";
+import { findAgentByName } from "../../lib/agent-api.js";
+import { askAgent } from "./agent-runner.js";
+import { councilPickerOptions, snapshotAvailableModels } from "./members.js";
 import { navigatorConsultSystemPrompt } from "./pair-prompts.js";
 import { pickModel } from "./picker.js";
-import { runMember } from "./runner.js";
+import { currentPanopticonRecord, runMember } from "./runner.js";
 
 export interface PairDefinition {
 	name: string;
@@ -72,6 +74,84 @@ export function pickPair(
 	};
 }
 
+interface ConsultArgs {
+	navigator: string;
+	pairName: string;
+	message: string;
+	ctx: ExtensionContext;
+}
+
+interface ConsultOutcome {
+	body: string;
+	ok: boolean;
+	durationMs: number;
+}
+
+const CONSULT_TIMEOUT_MS = 5 * 60_000;
+
+/** Resolve the navigator (model or agent ref) and round-trip the message. */
+async function consultNavigator(args: ConsultArgs): Promise<ConsultOutcome> {
+	if (args.navigator.startsWith("agent:")) {
+		return consultAgent(args);
+	}
+	const run = await runMember(
+		{ label: "Navigator", model: args.navigator },
+		{
+			prompt: args.message,
+			systemPrompt: navigatorConsultSystemPrompt(),
+			cwd: args.ctx.cwd,
+			signal: args.ctx.signal,
+		},
+	);
+	return {
+		body: run.ok ? run.output : `Navigator failed: ${run.error ?? "unknown error"}`,
+		ok: run.ok,
+		durationMs: run.durationMs,
+	};
+}
+
+async function consultAgent(args: ConsultArgs): Promise<ConsultOutcome> {
+	const startedAt = Date.now();
+	const agentName = args.navigator.slice("agent:".length);
+	const info = findAgentByName(agentName);
+	if (!info) {
+		return errorOutcome(`Agent "${agentName}" is no longer registered.`, startedAt);
+	}
+	if (!info.alive) {
+		return errorOutcome(`Agent "${agentName}" is not alive (status=${info.status}).`, startedAt);
+	}
+	const ourRecord = await currentPanopticonRecord(args.ctx.cwd);
+	if (!ourRecord) {
+		return errorOutcome(
+			"Pilot is not registered with panopticon — cannot reach live agents. Restart the pi-mailbox daemon.",
+			startedAt,
+		);
+	}
+	const consultId = `pair-${args.pairName}-${Date.now().toString(36)}`;
+	const reply = await askAgent({
+		agentName: info.name,
+		agentId: info.id,
+		memberLabel: "Navigator",
+		prompt: args.message,
+		systemPrompt: navigatorConsultSystemPrompt(),
+		deliberationId: consultId,
+		stage: "consult",
+		ourAgentId: ourRecord.id,
+		ourAgentName: ourRecord.name,
+		signal: args.ctx.signal,
+		timeoutMs: CONSULT_TIMEOUT_MS,
+	});
+	return {
+		body: reply.ok ? reply.output : `Navigator failed: ${reply.error ?? "unknown error"}`,
+		ok: reply.ok,
+		durationMs: reply.durationMs,
+	};
+}
+
+function errorOutcome(body: string, startedAt: number): ConsultOutcome {
+	return { body, ok: false, durationMs: Date.now() - startedAt };
+}
+
 function primerForPair(def: PairDefinition, task: string | undefined): string {
 	const taskLine = task ? `\n\nTask: ${task}` : "";
 	return [
@@ -92,11 +172,15 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			if (!name) return;
 
 			const snapshot = snapshotAvailableModels(ctx);
-			if (snapshot.length === 0) {
-				ctx.ui.notify("No models available for the Navigator.", "error");
+			const ourRecord = await currentPanopticonRecord(ctx.cwd);
+			const { options, describe } = councilPickerOptions(snapshot, ourRecord?.name);
+			if (options.length === 0) {
+				ctx.ui.notify("No models or live agents available for the Navigator.", "error");
 				return;
 			}
-			const navigator = await pickModel(ctx, "Select Navigator (review model)", snapshot);
+			const navigator = await pickModel(ctx, "Select Navigator (model or live agent)", options, {
+				describe,
+			});
 			if (!navigator) return;
 
 			const purposeInput = await ctx.ui.input(
@@ -190,25 +274,19 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			}
 			ctx.ui.setStatus("council", `pair: consulting ${picked.navigator}`);
 			try {
-				const run = await runMember(
-					{ label: "Navigator", model: picked.navigator },
-					{
-						prompt: params.message,
-						systemPrompt: navigatorConsultSystemPrompt(),
-						cwd: ctx.cwd,
-						signal: ctx.signal,
-					},
-				);
-				const body = run.ok
-					? run.output
-					: `Navigator failed: ${run.error ?? "unknown error"}`;
+				const out = await consultNavigator({
+					navigator: picked.navigator,
+					pairName: picked.name,
+					message: params.message,
+					ctx,
+				});
 				return {
-					content: [{ type: "text" as const, text: body }],
+					content: [{ type: "text" as const, text: out.body }],
 					details: {
 						pair: picked.name,
 						navigator: picked.navigator,
-						durationMs: run.durationMs,
-						ok: run.ok,
+						durationMs: out.durationMs,
+						ok: out.ok,
 					},
 				};
 			} finally {
