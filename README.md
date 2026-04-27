@@ -32,7 +32,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon`, `machine-memory`, and `council`; it also registers memories. It does **not** discover models, configure secrets, add shell hooks, set a default provider, set a default model, or hard-code a council model list.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-cheatsheets`, and `council`; it also registers memories. It does **not** discover models, configure secrets, add shell hooks, set a default provider, set a default model, or hard-code a council model list.
 
 ### 2. Set up
 
@@ -51,7 +51,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Pi loads global extensions (panopticon, machine-memory, council), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
+Pi loads global extensions (panopticon, pi-cheatsheets, council), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
 
 ---
 
@@ -64,7 +64,7 @@ Pi loads global extensions (panopticon, machine-memory, council), skills, prompt
 | Extension | Type | What it does |
 |-----------|------|-------------|
 | **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
-| **machine-memory** | Global | `.mmem.yml` cheat sheets — tool/domain knowledge injected into agent context on demand |
+| **pi-cheatsheets** | Global | `.mmem.yml` cheat sheets — tool/domain knowledge injected into agent context on demand |
 | **council** | Global | Heterogeneous multi-model debate using the runtime model registry, not setup-time hard-coding |
 | **kanban** | Project | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
@@ -88,9 +88,9 @@ Reusable prompt templates that agents can follow for specific tasks.
 | **pi-session-management** | Implement session-aware behavior, persistence, compaction, and reload-safe flows |
 | **skill-creator** | Meta-skill for creating and improving skills |
 
-### Memories
+### Pi Cheatsheets
 
-Global `.mmem.yml` files providing compact reference knowledge:
+Global `.mmem.yml` cheatsheets providing compact reference knowledge:
 
 - `pi-kanban` — kanban extension patterns and tool usage
 - `pi-extension-dev` — compact extension API reminders and gotchas
@@ -98,7 +98,7 @@ Global `.mmem.yml` files providing compact reference knowledge:
 - `pi-session-management` — compact lifecycle API reminders and session gotchas
 - `node-esm-gotchas` — common ESM pitfalls
 
-The three `pi-*` memories above now have matching skills for workflow guidance; the memories remain as compact companion reference.
+The three `pi-*` cheatsheets above now have matching skills for workflow guidance; the `.mmem.yml` files remain as compact companion reference.
 
 ---
 
@@ -124,19 +124,19 @@ Everything goes through `make`:
 ```
 extensions/           All extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
-  machine-memory/       Global — .mmem.yml cheat sheets
+  pi-cheatsheets/       Global — .mmem.yml cheat sheets
   council/              Global — multi-model deliberation from runtime model registry
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills (clean-room, deep-research, planning, ...)
-memories/             Global .mmem.yml files
+memories/             Global .mmem.yml cheatsheet files
 prompts/              Prompt templates (refactor, commit-and-push)
 scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, machine-memory, council) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, pi-cheatsheets, council) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 

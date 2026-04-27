@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import councilExtension from "../extensions/council/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
-import machineMemoryExtension from "../extensions/machine-memory/index.js";
+import piCheatsheetsExtension from "../extensions/pi-cheatsheets/index.js";
 import matrixExtension from "../extensions/matrix/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
 
@@ -141,10 +141,10 @@ describe("extension registration smoke tests", () => {
 		]);
 	});
 
-	it("machine-memory registers its tools, commands, and lifecycle hooks", () => {
+	it("pi-cheatsheets registers its tools, commands, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
 
-		machineMemoryExtension(api);
+		piCheatsheetsExtension(api);
 
 		expectRegistered(registrations.tools, [
 			"mmem_create",

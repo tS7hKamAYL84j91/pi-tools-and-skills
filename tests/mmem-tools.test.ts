@@ -1,5 +1,5 @@
 /**
- * Integration tests for machine-memory tool wrappers (extensions/machine-memory/index.ts).
+ * Integration tests for pi-cheatsheets tool wrappers (extensions/pi-cheatsheets/index.ts).
  *
  * Loads the extension against a fake ExtensionAPI that captures registered
  * tools/commands/handlers. Mocks node:os homedir() so memory discovery scans
@@ -29,7 +29,7 @@ vi.mock("node:os", async () => {
 });
 
 // Static import is fine: discover.ts calls homedir() lazily on every call
-import mmemExtension from "../extensions/machine-memory/index.js";
+import mmemExtension from "../extensions/pi-cheatsheets/index.js";
 
 // ── Fake ExtensionAPI ────────────────────────────────────────────
 
@@ -270,7 +270,7 @@ confidence: high
 		expect(injected.sort()).toEqual(["alpha", "beta"]);
 		expect(result.content[0]?.text).toContain("alpha");
 		expect(result.content[0]?.text).toContain("beta");
-		expect(result.content[0]?.text).toContain("<machine-memory>");
+		expect(result.content[0]?.text).toContain("<pi-cheatsheets>");
 	});
 
 	it("reports notFound for unknown tools but still injects known ones", async () => {
@@ -279,9 +279,9 @@ confidence: high
 		expect(result.details.notFound).toEqual(["does-not-exist"]);
 	});
 
-	it("returns 'No memory files found' when nothing matches", async () => {
+	it("returns 'No cheatsheet files found' when nothing matches", async () => {
 		const result = await callTool(tools, "mmem_inject", { tools: "nope1,nope2" }, projectDir);
-		expect(result.content[0]?.text).toContain("No memory files found");
+		expect(result.content[0]?.text).toContain("No cheatsheet files found");
 		// Note: this branch returns { found: [], notFound } instead of { injected, notFound }
 		expect(result.details.found).toEqual([]);
 		expect(result.details.notFound).toEqual(["nope1", "nope2"]);

@@ -65,7 +65,7 @@ Each `extensions/<name>/index.ts` default-exports `(pi: ExtensionAPI) => void`.
 |---|---|---|
 | council | `council_form` `council_update` `council_list` `council_dissolve` `ask_council` | `council-form` `council-list` `council-edit` `council-ask` `council-dissolve` `council-last` |
 | kanban | `kanban_create/pick/claim/complete/block/note/snapshot/monitor/unblock/move/delete/compact/edit/reassign` | — (flag `--prod`) |
-| machine-memory | `mmem_create` `mmem_list` `mmem_inject` `mmem_update` `mmem_validate` | `mmem` `mmem-reload` |
+| pi-cheatsheets | `mmem_create` `mmem_list` `mmem_inject` `mmem_update` `mmem_validate` | `mmem` `mmem-reload` |
 | matrix | — (registers `MatrixTransport` via `registerChannel`) | `matrix` |
 | pi-panopticon | `agent_send` `agent_broadcast` `spawn_agent` `rpc_send` `list_spawned` `kill_agent` `agent_peek` | `/send` `/agents` `/alias` |
 
@@ -77,18 +77,18 @@ Each `extensions/<name>/index.ts` default-exports `(pi: ExtensionAPI) => void`.
 | `clean-mailboxes` | `~/.pi/agents/*` directory tree | (with `--dry-run`: nothing) | — |
 
 ### Content loaders / parsers
-- Settings readers (3): `extensions/machine-memory/discover.ts:46-57` `readSettingsMemoryPaths()`, `extensions/council/settings.ts:68-79` `readCouncilSettings()`, `extensions/matrix/config.ts:26-34` `readMatrixSettings()`.
-- Directory scans: `extensions/council/state.ts:101`, `extensions/kanban/board.ts:71`, `extensions/machine-memory/discover.ts:71`, `extensions/pi-panopticon/registry.ts:301`.
+- Settings readers (3): `extensions/pi-cheatsheets/discover.ts:46-57` `readSettingsMemoryPaths()`, `extensions/council/settings.ts:68-79` `readCouncilSettings()`, `extensions/matrix/config.ts:26-34` `readMatrixSettings()`.
+- Directory scans: `extensions/council/state.ts:101`, `extensions/kanban/board.ts:71`, `extensions/pi-cheatsheets/discover.ts:71`, `extensions/pi-panopticon/registry.ts:301`.
 - Atomic writes: `extensions/council/state.ts:54-59` (tmp/ → rename), `lib/transports/maildir.ts:104-128` `durableWrite` (same pattern).
 
 ### Repo-root / path helpers
-- `homedir()` + `.pi/agent/...` literals appear in `lib/agent-registry.ts:23`, `extensions/council/state.ts:24`, `extensions/council/settings.ts:24`, `extensions/machine-memory/discover.ts:21`, `extensions/matrix/config.ts:13-14`.
+- `homedir()` + `.pi/agent/...` literals appear in `lib/agent-registry.ts:23`, `extensions/council/state.ts:24`, `extensions/council/settings.ts:24`, `extensions/pi-cheatsheets/discover.ts:21`, `extensions/matrix/config.ts:13-14`.
 - `dirname(process.execPath)` for pi binary: `lib/spawn-service.ts:20` (resolved once at module load).
 
 ### Top-level side effects
 - `extensions/kanban/board.ts:15` `parseInt(process.env.KANBAN_WIP_LIMIT ?? "3", 10)` at module load.
 - `lib/spawn-service.ts:31` `const PI_BINARY = resolvePiBinary()` runs `execSync("which pi")` at module load (intentional caching).
-- `extensions/machine-memory/index.ts:26-28` mutable module-level state populated on `session_start`.
+- `extensions/pi-cheatsheets/index.ts:26-28` mutable module-level state populated on `session_start`.
 
 No surprising top-level side effects (no network calls, no file writes at load).
 
@@ -104,19 +104,19 @@ No surprising top-level side effects (no network calls, no file writes at load).
 
 **Updated consumers:**
 - `extensions/council/settings.ts:readCouncilSettings` — now narrows `readPiSettingsKey("council")` instead of inline try/catch.
-- `extensions/machine-memory/discover.ts:readSettingsMemoryPaths` — same.
+- `extensions/pi-cheatsheets/discover.ts:readSettingsMemoryPaths` — same.
 - `extensions/matrix/config.ts:readMatrixSettings` — same.
 
 **Behavior preserved:**
 - Each consumer's return shape unchanged (`{}`, `[]`, or `null` respectively).
-- Each consumer's pre-existing test suite still passes (matrix-extension.test.ts; council/machine-memory tested via integration paths).
+- Each consumer's pre-existing test suite still passes (matrix-extension.test.ts; council/pi-cheatsheets tested via integration paths).
 - Path resolution to `~/.pi/agent/settings.json` unchanged.
 - No new module-load side effects.
 
 **Stop-condition checks (all clear):**
 - Extension registrations unchanged.
 - Script invocation unchanged.
-- Prompt/skill/memory resolution unchanged (machine-memory loader returns same paths for same input).
+- Prompt/skill/memory resolution unchanged (pi-cheatsheets loader returns same paths for same input).
 - TypeScript + runtime ESM both pass.
 - Knip flags no new unused exports.
 - No new circular dependencies.

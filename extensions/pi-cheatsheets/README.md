@@ -1,4 +1,4 @@
-# Machine Memory Extension
+# Pi Cheatsheets Extension
 
 A pi extension that auto-injects compact `.mmem.yml` cheat sheets into agent context. 60–80% token reduction vs raw documentation.
 
@@ -8,7 +8,7 @@ On every session start, the extension:
 
 1. **Discovers** `.mmem.yml` files from settings paths, global, and project locations
 2. **Injects** them into the system prompt via `before_agent_start`
-3. **Shows** a TUI widget and status bar with loaded memories and token usage
+3. **Shows** a TUI widget and status bar with loaded cheatsheets and token usage
 4. **Validates** format on creation to enforce the spec
 
 ## Discovery Order
@@ -25,7 +25,7 @@ Later sources override earlier for the same tool name:
 
 ### Setup
 
-Add your memories directory to `~/.pi/agent/settings.json`:
+Add your cheatsheets directory to `~/.pi/agent/settings.json`:
 
 ```json
 {
@@ -36,7 +36,7 @@ Add your memories directory to `~/.pi/agent/settings.json`:
 }
 ```
 
-This follows the same pattern as skills, extensions, and prompts — memories live in the repo, are committed and versioned, and travel with it.
+This follows the same pattern as skills, extensions, and prompts — cheatsheets live in the repo, are committed and versioned, and travel with it.
 
 For per-user overrides: `~/.pi/agent/memories/`
 For per-project overrides: `.pi/memories/`
@@ -46,8 +46,8 @@ For per-project overrides: `.pi/memories/`
 | Tool | Description |
 |------|-------------|
 | `mmem_create` | Scaffold a new `.mmem.yml` — skeleton or full content |
-| `mmem_list` | List all discovered memories with metadata and validation |
-| `mmem_inject` | Inject specific memories into context on demand |
+| `mmem_list` | List all discovered cheatsheets with metadata and validation |
+| `mmem_inject` | Inject specific cheatsheets into context on demand |
 | `mmem_update` | Append learned gotchas/patterns to an existing memory |
 | `mmem_validate` | Validate a `.mmem.yml` against the format spec |
 
@@ -55,12 +55,12 @@ For per-project overrides: `.pi/memories/`
 
 | Command | Description |
 |---------|-------------|
-| `/mmem-reload` | Re-scan and reload memory files |
-| `/mmem-stats` | Show memory file statistics |
+| `/mmem-reload` | Re-scan and reload cheatsheet files |
+| `/mmem-stats` | Show cheatsheet file statistics |
 
 ## TUI
 
-- **Widget**: Shows loaded memories with source (📦 settings / 🌐 global / 📁 project / ⚠️ deprecated) and confidence (✓/~/?)
+- **Widget**: Shows loaded cheatsheets with source (📦 settings / 🌐 global / 📁 project / ⚠️ deprecated) and confidence (✓/~/?)
 - **Status bar**: `🧠 N memories (~X tokens)`
 
 ## File Format
@@ -96,7 +96,7 @@ confidence: high
 - `--force` overwrites others' work; always prefer `--force-with-lease`
 ```
 
-Target: **200–500 tokens per file**. See `skills/machine-memory/references/format.md` for the full spec.
+Target: **200–500 tokens per file**. See `skills/pi-cheatsheets/references/format.md` for the full spec.
 
 ## Directory Layout
 
@@ -106,7 +106,7 @@ Target: **200–500 tokens per file**. See `skills/machine-memory/references/for
     pi-kanban.mmem.yml
     ollama.mmem.yml
     ...
-  extensions/machine-memory/   ← This extension
+  extensions/pi-cheatsheets/   ← This extension
     index.ts
     memory-store.ts
 
@@ -121,7 +121,7 @@ Target: **200–500 tokens per file**. See `skills/machine-memory/references/for
 ## File Layout
 
 ```
-extensions/machine-memory/
+extensions/pi-cheatsheets/
   types.ts          Shared interfaces and constants
   parse.ts          YAML frontmatter parser
   discover.ts       Path helpers, settings.json reader, file discovery

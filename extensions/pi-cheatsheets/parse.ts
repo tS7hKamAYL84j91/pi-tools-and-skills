@@ -1,5 +1,5 @@
 /**
- * Machine Memory — frontmatter and content parsing.
+ * Pi Cheatsheets — frontmatter and content parsing.
  *
  * Simple YAML frontmatter parser (no library dependency) and
  * .mmem.yml → MemoryFile content parser.

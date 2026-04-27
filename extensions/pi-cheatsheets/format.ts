@@ -1,5 +1,5 @@
 /**
- * Machine Memory — formatting and token estimation.
+ * Pi Cheatsheets — formatting and token estimation.
  *
  * Pure functions for rendering memory content into system-prompt
  * injection text and compact index entries.
@@ -18,11 +18,11 @@ export function formatForInjection(memories: MemoryFile[]): string {
 	});
 
 	return [
-		"<machine-memory>",
-		"The following machine memory files provide compact tool/domain knowledge.",
+		"<pi-cheatsheets>",
+		"The following Pi cheatsheet files provide compact tool/domain knowledge.",
 		"",
 		...sections,
-		"</machine-memory>",
+		"</pi-cheatsheets>",
 	].join("\n");
 }
 
@@ -54,7 +54,7 @@ export function formatIndex(memories: MemoryFile[]): string {
 
 	return [
 		"<available-memories>",
-		"The following machine memory files are available. Use mmem_inject to load full content when needed.",
+		"The following Pi cheatsheet files are available. Use mmem_inject to load full content when needed.",
 		"",
 		...entries,
 		"",

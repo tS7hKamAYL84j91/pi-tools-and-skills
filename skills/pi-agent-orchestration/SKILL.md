@@ -90,4 +90,4 @@ context: Additional constraints, assumptions, or background
 
 ## Companion memory
 
-For command reminders and gotchas, use the `pi-agent-orchestration` machine memory.
+For command reminders and gotchas, use the `pi-agent-orchestration` pi cheatsheet.

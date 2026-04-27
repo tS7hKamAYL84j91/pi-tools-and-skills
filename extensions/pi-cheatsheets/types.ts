@@ -1,5 +1,5 @@
 /**
- * Shared types for the Machine Memory extension.
+ * Shared types for the Pi Cheatsheets extension.
  */
 
 export interface MemoryMeta {

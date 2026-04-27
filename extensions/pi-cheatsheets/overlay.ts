@@ -1,7 +1,7 @@
 /**
- * Machine Memory — TUI overlay for /mmem command.
+ * Pi Cheatsheets — TUI overlay for /mmem command.
  *
- * Renders a bordered table of all loaded memories with token counts
+ * Renders a bordered table of all loaded cheatsheets with token counts
  * and source labels. Accepts indexTokens as a constructor param
  * instead of reading a module global.
  */
@@ -45,14 +45,14 @@ export class MemoryOverlay {
 		const lines: string[] = [];
 
 		// Title
-		const title = ` 🧠 Machine Memory (${this.memories.size} files) `;
+		const title = ` 🧠 Pi Cheatsheets (${this.memories.size} files) `;
 		const titleW = visibleWidth(title);
 		const pad1 = "─".repeat(Math.floor((innerW - titleW) / 2));
 		const pad2 = "─".repeat(Math.max(0, innerW - titleW - pad1.length));
 		lines.push(th.fg("border", `  ╭${pad1}`) + th.fg("accent", title) + th.fg("border", `${pad2}╮`));
 
 		if (this.memories.size === 0) {
-			lines.push(th.fg("border", "  │") + truncateToWidth(th.fg("muted", " No memories loaded"), innerW, "...", true) + th.fg("border", "│"));
+			lines.push(th.fg("border", "  │") + truncateToWidth(th.fg("muted", " No cheatsheets loaded"), innerW, "...", true) + th.fg("border", "│"));
 		} else {
 			// Header
 			const hdr = th.bold(" Name") + th.fg("muted", " │ ") + th.bold("Category") + th.fg("muted", " │ ") + th.bold("Source") + th.fg("muted", " │ ") + th.bold("Tokens");

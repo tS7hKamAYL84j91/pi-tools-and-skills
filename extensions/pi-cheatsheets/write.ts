@@ -1,5 +1,5 @@
 /**
- * Machine Memory — file writing and skeleton generation.
+ * Pi Cheatsheets — file writing and skeleton generation.
  *
  * Handles creating .mmem.yml skeleton files, writing them to disk,
  * and appending update blocks to existing files.
