@@ -1,5 +1,5 @@
 /**
- * Machine Memory Extension — gradual-exposure agent cheat sheets.
+ * Pi Cheatsheets Extension — gradual-exposure agent cheat sheets.
  *
  * Discovers .mmem.yml files from settings.json paths, ~/.pi/agent/memories/,
  * and .pi/memories/. Injects a compact INDEX into the system prompt (just tool
@@ -69,7 +69,7 @@ export default function (pi: ExtensionAPI) {
 	// ── Commands ────────────────────────────────────────────────
 
 	pi.registerCommand("mmem", {
-		description: "Show loaded machine memories (overlay)",
+		description: "Show loaded pi cheatsheets (overlay)",
 		handler: async (_args, c) => {
 			const tokens = estimateTokens(indexText);
 			await c.ui.custom<null>(
@@ -80,11 +80,11 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("mmem-reload", {
-		description: "Re-scan and reload machine memory files",
+		description: "Re-scan and reload pi cheatsheets files",
 		handler: async (_args, c) => {
 			await loadMemories(c.cwd);
 			const count = loadedMemories.size;
-			c.ui.notify(count > 0 ? `Reloaded ${count} memory files` : "No .mmem.yml files found", "info");
+			c.ui.notify(count > 0 ? `Reloaded ${count} cheatsheet file(s)` : "No .mmem.yml files found", "info");
 		},
 	});
 
@@ -92,12 +92,12 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "mmem_create",
-		label: "Machine Memory Create",
+		label: "Pi Cheatsheets Create",
 		description:
-			"Create a new .mmem.yml memory file for a tool or domain. " +
+			"Create a new .mmem.yml cheatsheet file for a tool or domain. " +
 			"Writes a skeleton with YAML frontmatter and placeholder sections. " +
 			"Optionally provide content to write a complete memory file instead of a skeleton.",
-		promptSnippet: "Create a new .mmem.yml machine memory file for a tool or domain",
+		promptSnippet: "Create a new .mmem.yml pi cheatsheets file for a tool or domain",
 		parameters: Type.Object({
 			tool: Type.String({ description: "Tool or domain name (kebab-case, e.g. 'git', 'docker', 'python-debug')" }),
 			target: Type.Optional(Type.String({
@@ -126,7 +126,7 @@ export default function (pi: ExtensionAPI) {
 			const path = await writeMemoryFile(cwd, { tool: params.tool, target }, content);
 			await loadMemories(cwd);
 			return ok(
-				`Created ${path}\n${params.content ? "Wrote complete memory file." : "Wrote skeleton — fill in TODO sections."}`,
+				`Created ${path}\n${params.content ? "Wrote complete cheatsheet file." : "Wrote skeleton — fill in TODO sections."}`,
 				{ tool: params.tool, path, target, skeleton: !params.content },
 			);
 		},
@@ -136,11 +136,11 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "mmem_list",
-		label: "Machine Memory List",
+		label: "Pi Cheatsheets List",
 		description:
-			"List all discovered machine memory files with metadata. " +
+			"List all discovered pi cheatsheets files with metadata. " +
 			"Shows tool name, category, confidence, source (project/global), token count, and validation status.",
-		promptSnippet: "List all machine memory files with their metadata",
+		promptSnippet: "List all pi cheatsheets files with their metadata",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, execCtx): Promise<ToolResult> {
 			const cwd = execCtx?.cwd ?? process.cwd();
@@ -151,7 +151,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const files: Record<string, unknown>[] = [];
-			const lines: string[] = [`Found ${loadedMemories.size} memory file(s):\n`];
+			const lines: string[] = [`Found ${loadedMemories.size} cheatsheet file(s):\n`];
 			for (const mem of loadedMemories.values()) {
 				const tokens = estimateTokens(mem.raw);
 				const v = validateMemory(mem.raw, mem.name);
@@ -166,11 +166,11 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "mmem_inject",
-		label: "Machine Memory Inject",
+		label: "Pi Cheatsheets Inject",
 		description:
-			"Inject specific machine memory files into context on demand. " +
-			"Use when you encounter an unfamiliar tool mid-session and need its cheat sheet. Returns the formatted memory content.",
-		promptSnippet: "Inject specific machine memory files into the current context",
+			"Inject specific pi cheatsheets files into context on demand. " +
+			"Use when you encounter an unfamiliar tool mid-session and need its cheat sheet. Returns the formatted cheatsheet content.",
+		promptSnippet: "Inject specific pi cheatsheets files into the current context",
 		parameters: Type.Object({
 			tools: Type.String({ description: 'Comma-separated tool names to inject (e.g. "git,docker")' }),
 		}),
@@ -183,12 +183,12 @@ export default function (pi: ExtensionAPI) {
 				if (mem) found.push(mem); else notFound.push(name);
 			}
 			if (found.length === 0) {
-				return ok(`No memory files found for: ${requested.join(", ")}.\nAvailable: ${[...loadedMemories.keys()].join(", ") || "(none)"}`, { found: [], notFound: requested });
+				return ok(`No cheatsheet files found for: ${requested.join(", ")}.\nAvailable: ${[...loadedMemories.keys()].join(", ") || "(none)"}`, { found: [], notFound: requested });
 			}
 			const injected = formatForInjection(found);
 			const tokens = estimateTokens(injected);
 			const nfMsg = notFound.length > 0 ? `\nNot found: ${notFound.join(", ")}` : "";
-			return ok(`Injected ${found.length} memory file(s) (~${tokens} tokens):${nfMsg}\n\n${injected}`, { injected: found.map((m) => m.name), notFound, tokens });
+			return ok(`Injected ${found.length} cheatsheet file(s) (~${tokens} tokens):${nfMsg}\n\n${injected}`, { injected: found.map((m) => m.name), notFound, tokens });
 		},
 	});
 
@@ -196,11 +196,11 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "mmem_update",
-		label: "Machine Memory Update",
+		label: "Pi Cheatsheets Update",
 		description:
 			"Append learned gotchas, patterns, or corrections to an existing .mmem.yml file. " +
 			"Use after discovering something new about a tool — capture it so future sessions benefit.",
-		promptSnippet: "Append learned gotchas/patterns to an existing machine memory file",
+		promptSnippet: "Append learned gotchas/patterns to an existing pi cheatsheets file",
 		parameters: Type.Object({
 			tool: Type.String({ description: "Tool name to update (must have an existing .mmem.yml)" }),
 			gotchas: Type.Optional(Type.String({ description: 'New gotchas, pipe-separated (e.g. "gotcha 1|gotcha 2")' })),
@@ -210,7 +210,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, execCtx): Promise<ToolResult> {
 			const cwd = execCtx?.cwd ?? process.cwd();
 			const mem = loadedMemories.get(params.tool);
-			if (!mem) return ok(`No memory file found for '${params.tool}'.\nAvailable: ${[...loadedMemories.keys()].join(", ") || "(none)"}`, { tool: params.tool, updated: false });
+			if (!mem) return ok(`No cheatsheet file found for '${params.tool}'.\nAvailable: ${[...loadedMemories.keys()].join(", ") || "(none)"}`, { tool: params.tool, updated: false });
 
 			const split = (s?: string) => s?.split("|").map((x) => x.trim()).filter(Boolean) ?? [];
 			const gotchas = split(params.gotchas);
@@ -228,11 +228,11 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "mmem_validate",
-		label: "Machine Memory Validate",
+		label: "Pi Cheatsheets Validate",
 		description:
 			"Validate a .mmem.yml file against the format specification. " +
 			"Checks: YAML frontmatter fields, required sections, backtick commands, token budget, date format, confidence values, and staleness.",
-		promptSnippet: "Validate a .mmem.yml file against the machine memory format spec",
+		promptSnippet: "Validate a .mmem.yml file against the pi cheatsheets format spec",
 		parameters: Type.Object({
 			tool: Type.Optional(Type.String({ description: "Tool name to validate (looks up in discovered memories)" })),
 			path: Type.Optional(Type.String({ description: "Direct path to a .mmem.yml file to validate" })),
@@ -248,7 +248,7 @@ export default function (pi: ExtensionAPI) {
 				name = filePath;
 			} else if (params.tool) {
 				const mem = loadedMemories.get(params.tool);
-				if (!mem) throw new Error(`No memory file found for '${params.tool}'`);
+				if (!mem) throw new Error(`No cheatsheet file found for '${params.tool}'`);
 				raw = mem.raw;
 				name = mem.name;
 				filePath = mem.path;

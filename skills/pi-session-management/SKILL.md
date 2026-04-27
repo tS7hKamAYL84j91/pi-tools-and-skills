@@ -63,4 +63,4 @@ Before finishing a session-aware change, verify:
 
 ## Companion memory
 
-For event names, API snippets, and lifecycle gotchas, use the `pi-session-management` machine memory.
+For event names, API snippets, and lifecycle gotchas, use the `pi-session-management` pi cheatsheet.

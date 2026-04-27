@@ -1,5 +1,5 @@
 /**
- * Machine Memory Validation — format spec checks for .mmem.yml files.
+ * Pi Cheatsheets Validation — format spec checks for .mmem.yml files.
  *
  * Validates: YAML frontmatter fields, required sections, backtick commands,
  * token budget, date format, confidence values, and staleness.

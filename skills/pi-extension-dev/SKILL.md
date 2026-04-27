@@ -88,4 +88,4 @@ Use this skill for:
 
 ## Companion memory
 
-For code snippets, API reminders, and known gotchas, use the `pi-extension-dev` machine memory.
+For code snippets, API reminders, and known gotchas, use the `pi-extension-dev` pi cheatsheet.

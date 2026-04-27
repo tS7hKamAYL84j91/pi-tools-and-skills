@@ -15,7 +15,7 @@ The extension codebase is healthy but unevenly factored:
 | `council` | 19 | ~3540 | `index.ts` owns too much session/tool/command wiring |
 | `pi-panopticon` | 13 | ~2973 | `ui.ts`, `spawner.ts`, `health.ts` are broad modules |
 | `kanban` | 8 | ~2170 | `index.ts` contains 14 inline tool definitions |
-| `machine-memory` | 8 | ~869 | Mostly fine |
+| `pi-cheatsheets` | 8 | ~869 | Mostly fine |
 | `matrix` | 6 | ~488 | Mostly fine |
 
 `tests/architecture.test.ts` also still has pi-panopticon-era assumptions:

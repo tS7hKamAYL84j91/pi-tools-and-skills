@@ -1,5 +1,5 @@
 /**
- * Machine Memory Discovery — path helpers, settings reader, file discovery.
+ * Pi Cheatsheets Discovery — path helpers, settings reader, file discovery.
  *
  * Discovers .mmem.yml files from settings.json paths, ~/.pi/agent/memories/,
  * and .pi/memories/. Returns raw parsed MemoryFile objects ready for validation
