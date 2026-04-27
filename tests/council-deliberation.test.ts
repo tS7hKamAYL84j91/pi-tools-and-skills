@@ -43,7 +43,10 @@ describe("preflight", () => {
 		expect(report.reasons).toEqual([]);
 	});
 
-	it("fails when all members share a provider", () => {
+	it("warns but does not fail when all members share a provider prefix", () => {
+		// Provider-prefix matching is a proxy: OpenRouter and similar gateways
+		// expose diverse model lineages under a single prefix. The check
+		// surfaces the concern as a warning rather than blocking deliberation.
 		const report = preflight(
 			definition({
 				members: ["openai/gpt-5", "openai/gpt-5.5"],
@@ -51,9 +54,10 @@ describe("preflight", () => {
 			}),
 			["openai/gpt-5", "openai/gpt-5.5", "openai/gpt-4.5"],
 		);
-		expect(report.ok).toBe(false);
+		expect(report.ok).toBe(true);
 		expect(report.heterogeneity.ok).toBe(false);
-		expect(report.reasons.some((r) => r.includes("distinct providers"))).toBe(
+		expect(report.reasons).toEqual([]);
+		expect(report.warnings.some((w) => w.includes("distinct providers"))).toBe(
 			true,
 		);
 	});

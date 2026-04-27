@@ -96,15 +96,19 @@ export function preflight(
 					.filter((model) => !available.has(model));
 
 	const reasons: string[] = errors.map((e) => `${e.ref}: ${e.reason}`);
-	if (!heterogeneity.ok && heterogeneity.reason)
-		reasons.push(heterogeneity.reason);
 	if (missingFromSnapshot.length > 0) {
 		reasons.push(
 			`Models not in registry snapshot: ${missingFromSnapshot.join(", ")}`,
 		);
 	}
 
+	// Heterogeneity is a warning, not an error: provider-prefix matching is a
+	// proxy for true model-family diversity, but proxies like OpenRouter expose
+	// many distinct families under one prefix. Surface the concern, don't block.
 	const warnings: string[] = [...memberResolution.warnings];
+	if (!heterogeneity.ok && heterogeneity.reason) {
+		warnings.push(heterogeneity.reason);
+	}
 	for (const agent of agents) {
 		if (agent.heartbeatStale) {
 			warnings.push(
@@ -113,8 +117,7 @@ export function preflight(
 		}
 	}
 
-	const ok =
-		heterogeneity.ok && missingFromSnapshot.length === 0 && errors.length === 0;
+	const ok = missingFromSnapshot.length === 0 && errors.length === 0;
 	return {
 		ok,
 		heterogeneity,
