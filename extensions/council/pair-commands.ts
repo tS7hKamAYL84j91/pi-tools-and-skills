@@ -49,6 +49,7 @@ interface PairContextArgs {
 	navigator: string;
 	ctx: ExtensionContext;
 	refreshStatus: (ctx: ExtensionContext) => void;
+	storeLast: (result: PairResult) => void;
 }
 
 async function executePair(args: PairContextArgs): Promise<void> {
@@ -66,9 +67,11 @@ async function executePair(args: PairContextArgs): Promise<void> {
 				args.ctx.ui.setStatus("council", `pair: ${label}`);
 			},
 		});
-		args.ctx.ui.setWidget("council", formatSummary(result));
+		args.storeLast(result);
 		args.ctx.ui.notify(
-			result.ok ? "Pair complete." : "Pair ended with errors — see widget.",
+			result.ok
+				? "Pair complete — /pair-last for the artifact."
+				: "Pair ended with errors — /pair-last for details.",
 			result.ok ? "info" : "warning",
 		);
 	} catch (error) {
@@ -110,6 +113,8 @@ interface PairCommandRegistration {
 
 export function registerPairCommands(args: PairCommandRegistration): void {
 	const { pi, pairs, refreshStatus } = args;
+	let lastResult: PairResult | undefined;
+	const storeLast = (r: PairResult) => { lastResult = r; };
 
 	pi.registerCommand("pair-form", {
 		description: "Form a named Driver/Navigator pair for the session",
@@ -190,7 +195,7 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			const prompt = promptInput?.trim();
 			if (!prompt) return;
 
-			await executePair({ prompt, driver, navigator, ctx, refreshStatus });
+			await executePair({ prompt, driver, navigator, ctx, refreshStatus, storeLast });
 		},
 	});
 
@@ -209,6 +214,17 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			pairs.delete(name);
 			refreshStatus(ctx);
 			ctx.ui.notify(`Dissolved "${name}".`, "info");
+		},
+	});
+
+	pi.registerCommand("pair-last", {
+		description: "Show the last pair-coding result",
+		handler: async (_rawArgs, ctx) => {
+			if (!lastResult) {
+				ctx.ui.notify("No pair-coding session has run in this session.", "warning");
+				return;
+			}
+			ctx.ui.setWidget("council", formatSummary(lastResult));
 		},
 	});
 }
