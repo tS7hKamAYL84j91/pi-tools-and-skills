@@ -4,11 +4,22 @@ Primary in-session / user-facing identity: **Skaffen** (full name: **Skaffen-Amt
 
 ## Startup
 
-On session start, register for pi mailbox by running in background:
+On session start, register for pi mailbox via the **Monitor** tool with
+`persistent: true`. Each stdout line from the daemon (registration banner,
+inbound message deliveries) becomes a chat notification, so you wake on
+message arrival even when idle. A plain `Bash &` background launch buffers
+output to a tmp file you'd never read.
 
-```bash
-AGENT_NAME=Skaffen CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts &
+```text
+Monitor(
+  description: "pi-mailbox: agent registration + inbox notifications",
+  command: "AGENT_NAME=Skaffen CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts",
+  persistent: true,
+  timeout_ms: 60000
+)
 ```
+
+`timeout_ms` is ignored when `persistent: true` but the schema requires it.
 
 ## Instructions
 

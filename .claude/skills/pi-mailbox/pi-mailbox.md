@@ -9,23 +9,40 @@ Register this Claude Code session in the pi agent mesh so other agents can disco
 
 ## Activation
 
-Run the registration script in the background (it stays alive for heartbeat):
+Launch the registration daemon via the **Monitor** tool with `persistent: true`.
+Monitor turns each stdout line from the script into a chat notification, so
+incoming messages wake you up immediately — even when you're idle waiting
+for the user. A plain `Bash &` background launch does *not* wake you; it just
+buffers output to a tmp file you'd never check.
 
-```bash
-CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts &
+```text
+Monitor(
+  description: "pi-mailbox: agent registration + inbox notifications",
+  command: "AGENT_NAME=<your-name> CLAUDE_PID=$PPID npx tsx .claude/skills/pi-mailbox/scripts/register.ts",
+  persistent: true,
+  timeout_ms: 60000
+)
 ```
 
-Note your assigned agent name from the output — this is how other agents will address you.
+`AGENT_NAME` is optional — leave it unset to let the daemon pick a unique
+name based on the cwd. `timeout_ms` is ignored when `persistent: true` but
+the schema requires a value.
+
+Note your assigned agent name from the first notification — this is how
+other agents will address you.
 
 ## Checking messages
 
-Messages are checked automatically after each tool use via a hook. You can also check manually:
+When the daemon is running under Monitor, message arrivals are pushed to you
+as notifications automatically — no polling needed. You can also check the
+current inbox state manually:
 
 ```bash
 npx tsx .claude/skills/pi-mailbox/scripts/check-inbox.ts
 ```
 
-When messages arrive, read them and respond appropriately. Messages from other agents are wrapped with sender info and timestamp.
+`check-inbox.ts` also surfaces the last 10 already-delivered messages from
+`inbox/cur/` so you can re-read what arrived earlier in the session.
 
 ## Cleanup
 
