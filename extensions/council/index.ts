@@ -7,12 +7,13 @@
  * persistent state under ~/.pi/agent/councils/.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import { registerCouncilEditCommand } from "./edit-command.js";
 import { registerCouncilListCommand } from "./list-command.js";
 import { type PairDefinition, registerPairCommands } from "./pair-commands.js";
+import { type CouncilSlot, refreshCouncilStatus } from "./status-bar.js";
 import {
 	COUNCIL_MAX,
 	chooseChairmanModel,
@@ -86,12 +87,6 @@ type CouncilFormInput = Static<typeof CouncilFormSchema>;
 type CouncilUpdateInput = Static<typeof CouncilUpdateSchema>;
 type AskCouncilInput = Static<typeof AskCouncilSchema>;
 type CouncilDissolveInput = Static<typeof CouncilDissolveSchema>;
-
-/** A council's definition paired with the registry snapshot taken at form time. */
-interface CouncilSlot {
-	definition: CouncilDefinition;
-	availableSnapshot: string[];
-}
 
 function makeDefinition(args: {
 	name: string;
@@ -205,22 +200,10 @@ function selectableCouncilNames(councils: Map<string, CouncilSlot>): string[] {
 	return [...councils.keys()].sort();
 }
 
-function councilStatusText(councils: Map<string, CouncilSlot>): string | undefined {
-	const names = selectableCouncilNames(councils);
-	if (names.length === 0) return undefined;
-	if (names.length === 1) return `⚖ ${names[0]}`;
-	return `⚖ ${names.length} councils`;
-}
-
-function refreshCouncilStatus(
-	ctx: ExtensionContext,
-	councils: Map<string, CouncilSlot>,
-): void {
-	ctx.ui.setStatus("council", councilStatusText(councils));
-}
 
 export default function (pi: ExtensionAPI) {
 	const councils = new Map<string, CouncilSlot>();
+	const pairs = new Map<string, PairDefinition>();
 	const stateManager = new CouncilStateManager();
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -232,7 +215,7 @@ export default function (pi: ExtensionAPI) {
 			...configuredSlots(snapshot, settings),
 		];
 		for (const slot of slots) councils.set(slot.definition.name, slot);
-		refreshCouncilStatus(ctx, councils);
+		refreshCouncilStatus(ctx, councils, pairs);
 	});
 
 	pi.registerTool({
@@ -265,7 +248,7 @@ export default function (pi: ExtensionAPI) {
 				definition,
 				availableSnapshot: snapshot,
 			});
-			refreshCouncilStatus(ctx, councils);
+			refreshCouncilStatus(ctx, councils, pairs);
 			return okText(
 				`Formed council "${definition.name}" with ${definition.members.length} member(s) across ${report.heterogeneity.providers.length} provider(s).`,
 				{ ...definition, preflight: report },
@@ -306,7 +289,7 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 			councils.set(definition.name, { definition, availableSnapshot });
-			refreshCouncilStatus(ctx, councils);
+			refreshCouncilStatus(ctx, councils, pairs);
 			return okText(
 				`Updated council "${definition.name}" with ${definition.members.length} member(s).`,
 				{ ...definition, preflight: report },
@@ -339,7 +322,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: CouncilDissolveSchema,
 		async execute(_id, params: CouncilDissolveInput, _signal, _onUpdate, ctx) {
 			const removed = councils.delete(params.name);
-			refreshCouncilStatus(ctx, councils);
+			refreshCouncilStatus(ctx, councils, pairs);
 			return okText(
 				removed
 					? `Dissolved "${params.name}".`
@@ -367,7 +350,7 @@ export default function (pi: ExtensionAPI) {
 				try {
 					return await runPairMode({ params, ctx, councils });
 				} finally {
-					refreshCouncilStatus(ctx, councils);
+					refreshCouncilStatus(ctx, councils, pairs);
 				}
 			}
 			const slot =
@@ -415,7 +398,7 @@ export default function (pi: ExtensionAPI) {
 					warnings: report.warnings,
 				});
 			} finally {
-				refreshCouncilStatus(ctx, councils);
+				refreshCouncilStatus(ctx, councils, pairs);
 			}
 		},
 	});
@@ -487,7 +470,7 @@ export default function (pi: ExtensionAPI) {
 				definition,
 				availableSnapshot: snapshot,
 			});
-			refreshCouncilStatus(ctx, councils);
+			refreshCouncilStatus(ctx, councils, pairs);
 			ctx.ui.notify(
 				`Formed council "${definition.name}" with ${definition.members.length} member(s).`,
 				"info",
@@ -495,15 +478,14 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	const pairs = new Map<string, PairDefinition>();
 	registerCouncilListCommand(pi, councils);
 	registerCouncilEditCommand(pi, councils, (ctx) => {
-		refreshCouncilStatus(ctx, councils);
+		refreshCouncilStatus(ctx, councils, pairs);
 	});
 	registerPairCommands({
 		pi,
 		pairs,
-		refreshStatus: (ctx) => refreshCouncilStatus(ctx, councils),
+		refreshStatus: (ctx) => refreshCouncilStatus(ctx, councils, pairs),
 	});
 
 	pi.registerCommand("council-ask", {
@@ -533,7 +515,7 @@ export default function (pi: ExtensionAPI) {
 
 			ctx.ui.notify(`Council "${slot.definition.name}" deliberating...`, "info");
 			try {
-				const record = await deliberate({
+				await deliberate({
 					definition: slot.definition,
 					prompt,
 					ctx,
@@ -543,19 +525,17 @@ export default function (pi: ExtensionAPI) {
 						ctx.ui.setStatus("council", `${slot.definition.name}: ${text}`);
 					},
 				});
-				ctx.ui.setWidget("council", [
-					...formatDeliberationSummary(record),
-					"",
-					record.synthesis?.output ?? "(no synthesis)",
-				]);
-				ctx.ui.notify(`Council "${slot.definition.name}" finished.`, "info");
+				ctx.ui.notify(
+					`Council "${slot.definition.name}" finished — /council-last for the synthesis.`,
+					"info",
+				);
 			} catch (error) {
 				ctx.ui.notify(
 					error instanceof Error ? error.message : String(error),
 					"error",
 				);
 			} finally {
-				refreshCouncilStatus(ctx, councils);
+				refreshCouncilStatus(ctx, councils, pairs);
 			}
 		},
 	});
@@ -576,7 +556,7 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (!confirmed) return;
 			councils.delete(name);
-			refreshCouncilStatus(ctx, councils);
+			refreshCouncilStatus(ctx, councils, pairs);
 			ctx.ui.notify(`Dissolved "${name}".`, "info");
 		},
 	});
@@ -592,7 +572,11 @@ export default function (pi: ExtensionAPI) {
 				);
 				return;
 			}
-			ctx.ui.setWidget("council", formatDeliberationSummary(latest));
+			ctx.ui.setWidget("council", [
+				...formatDeliberationSummary(latest),
+				"",
+				latest.synthesis?.output ?? "(no synthesis)",
+			]);
 		},
 	});
 }
