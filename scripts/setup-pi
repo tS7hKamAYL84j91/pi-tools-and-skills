@@ -1,376 +1,107 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─────────────────────────────────────────────────────────────────────
-# setup-pi — Configure pi with the full tools-and-skills extension stack
+# setup-pi — register this reusable pi package.
 #
-# What it does:
-#   1. Optionally stores your OpenRouter API key in the platform secret store
-#      (macOS Keychain or Linux pass)
-#   2. Verifies required setup dependencies for the current OS
-#   3. Detects locally available Ollama models → writes models.json
-#   4. Installs this repo as a pi package and registers memories in settings.json
-#   5. Configures OpenAI GPT-5.5 as default model and Anthropic prompt caching
-#   6. Ensures AGENT.md has efficiency directives
-#   7. Adds shell hooks (OPENROUTER_API_KEY optional) and MATRIX_ACCESS_TOKEN
-#   8. Sets up the coas-pi alias
-#
-# Idempotent — safe to re-run after pulling new models or extensions.
-# ─────────────────────────────────────────────────────────────────────
+# This repo owns extensions, shared libs, skills, prompts, and memories.
+# It does not own runtime model choices, provider defaults, shell hooks,
+# Matrix secrets, OpenRouter secrets, or CoAS workspace launchers.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
 PI_DIR="$HOME/.pi/agent"
-MODELS_JSON="$PI_DIR/models.json"
 SETTINGS_JSON="$PI_DIR/settings.json"
-OS="$(uname -s)"
-OPENROUTER_KEYCHAIN_SERVICE="openrouter-api-key"
-OPENROUTER_KEYCHAIN_ACCOUNT="$USER"
-OPENROUTER_PASS_KEY="pi/openrouter-api-key"
-SHELL_NAME="$(basename "${SHELL:-/bin/zsh}")"
-case "$SHELL_NAME" in
-    bash) SHELL_RC="$HOME/.bashrc" ;;
-    *) SHELL_RC="$HOME/.zshrc" ;;
-esac
-MARKER="# >>> pi tools-and-skills env >>>"
-MARKER_END="# <<< pi tools-and-skills env <<<"
-
-case "$OS" in
-    Darwin)
-        OPENROUTER_API_KEY_COMMAND='!security find-generic-password -s openrouter-api-key -a $USER -w'
-        ;;
-    Linux)
-        OPENROUTER_API_KEY_COMMAND='!pass show pi/openrouter-api-key'
-        ;;
-    *)
-        OPENROUTER_API_KEY_COMMAND=''
-        ;;
-esac
-
-ENABLE_OPENROUTER="ask"
-for arg in "$@"; do
-    case "$arg" in
-        --openrouter)
-            ENABLE_OPENROUTER="true"
-            ;;
-        --no-openrouter)
-            ENABLE_OPENROUTER="false"
-            ;;
-        -h|--help)
-            cat << 'HELP'
-Usage: setup-pi [--openrouter | --no-openrouter]
-
-  --openrouter     Force-enable OpenRouter key setup and shell export hook.
-  --no-openrouter  Disable OpenRouter key setup and shell export hook.
-HELP
-            exit 0
-            ;;
-        *)
-            printf '\033[31m%s\033[0m\n' "Error: Unknown argument: $arg"
-            exit 1
-            ;;
-    esac
-done
-
-if [[ "$ENABLE_OPENROUTER" == "ask" ]]; then
-    read -rp "Enable OpenRouter setup (secret store + env hook)? [Y/n] " openrouter_choice
-    if [[ "$openrouter_choice" =~ ^[nN]$ ]]; then
-        ENABLE_OPENROUTER="false"
-    else
-        ENABLE_OPENROUTER="true"
-    fi
-fi
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
-require_cmd() {
-    local cmd="$1"
-    local hint="${2:-Install '${cmd}' and re-run setup.}"
-    if ! command -v "$cmd" &>/dev/null; then
-        red "Error: required command '${cmd}' not found."
-        dim "  ${hint}"
-        exit 1
-    fi
+usage() {
+	cat <<'HELP'
+Usage: setup-pi
+
+Registers this checkout as a pi package and registers memories directly.
+Runtime setup belongs in ~/git/coas.
+HELP
 }
 
-get_openrouter_secret() {
-    case "$OS" in
-        Darwin)
-            security find-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" -w 2>/dev/null
-            ;;
-        Linux)
-            pass show "$OPENROUTER_PASS_KEY" 2>/dev/null
-            ;;
-    esac
-}
+for arg in "$@"; do
+	case "$arg" in
+		-h|--help)
+			usage
+			exit 0
+			;;
+		*)
+			red "Error: Unknown argument: $arg"
+			usage
+			exit 1
+			;;
+	esac
+done
 
-set_openrouter_secret() {
-    local value="$1"
-    case "$OS" in
-        Darwin)
-            security delete-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" &>/dev/null || true
-            security add-generic-password -s "$OPENROUTER_KEYCHAIN_SERVICE" -a "$OPENROUTER_KEYCHAIN_ACCOUNT" -w "$value"
-            ;;
-        Linux)
-            printf '%s\n' "$value" | pass insert -e -f "$OPENROUTER_PASS_KEY" >/dev/null
-            ;;
-        *)
-            red "Error: unsupported OS '$OS'"
-            exit 1
-            ;;
-    esac
-}
+if ! command -v python3 &>/dev/null; then
+	red "Error: python3 not found."
+	exit 1
+fi
 
-remove_block_if_present() {
-    local path="$1"
-    local start_marker="$2"
-    local end_marker="$3"
-    [[ -f "$path" ]] || return 0
-    if ! grep -qF "$start_marker" "$path" 2>/dev/null; then
-        return 0
-    fi
-    python3 - "$path" "$start_marker" "$end_marker" <<'PY'
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-start = sys.argv[2]
-end = sys.argv[3]
-text = path.read_text()
-lines = text.splitlines(keepends=True)
-out = []
-skip = False
-for line in lines:
-    stripped = line.rstrip("\n")
-    if stripped == start:
-        skip = True
-        continue
-    if skip and stripped == end:
-        skip = False
-        continue
-    if not skip:
-        out.append(line)
-path.write_text("".join(out))
-PY
-}
-
-# ── 0. Prerequisites ────────────────────────────────────────────────
-
-bold "── Step 0: Prerequisites ──"
-
-require_cmd pi "Install pi first."
-require_cmd python3 "Install Python 3 first."
-
-case "$OS" in
-    Darwin)
-        require_cmd security "The macOS 'security' CLI is required for Keychain access."
-        ;;
-    Linux)
-        require_cmd pass "Install 'pass' (passwordstore.org); setup-pi uses it as the Linux secret store."
-        require_cmd gpg "Install GnuPG; 'pass' depends on it."
-        if ! pass ls >/dev/null 2>&1; then
-            red "Error: 'pass' is installed but not initialized."
-            dim "  Run: gpg --full-generate-key"
-            dim "  Then: pass init <your-gpg-key-id>"
-            exit 1
-        fi
-        ;;
-    *)
-        red "Error: unsupported OS '$OS'. setup-pi supports macOS and Linux."
-        exit 1
-        ;;
-esac
-
-green "  OS: $OS"
-green "  Shell rc: $SHELL_RC"
 mkdir -p "$PI_DIR"
 
-# ── 1. OpenRouter API Key (optional) ────────────────────────────────
-
-bold "── Step 1: OpenRouter API Key (optional) ──"
-
-if [[ "$ENABLE_OPENROUTER" == "false" ]]; then
-    dim "  OpenRouter setup disabled (--no-openrouter)"
-else
-    secret_store_label="Keychain"
-    if [[ "$OS" == "Linux" ]]; then
-        secret_store_label="pass"
-    fi
-
-    existing_key="$(get_openrouter_secret || true)"
-    if [[ -n "$existing_key" ]]; then
-        green "  Found existing key in ${secret_store_label} (ends with ...${existing_key: -6})"
-        read -rp "  Replace it? [y/N] " replace
-        if [[ "$replace" != [yY] ]]; then
-            echo "  Keeping existing key."
-        else
-            existing_key=""
-        fi
-    fi
-
-    if [[ -z "$existing_key" ]]; then
-        read -rsp "  Paste your OpenRouter API key: " api_key
-        echo
-        if [[ -z "$api_key" ]]; then
-            red "  No key provided. Skipping OpenRouter setup."
-        else
-            set_openrouter_secret "$api_key"
-            green "  Stored in ${secret_store_label}"
-        fi
-    fi
-fi
-
-# ── 2. Discover local Ollama models ─────────────────────────────────
-
-bold "── Step 2: Ollama models ──"
-
-if ! command -v ollama &>/dev/null; then
-    dim "  Ollama not installed — skipping model discovery."
-    dim "  Install from https://ollama.com if you want local models."
-    ollama_models="[]"
-else
-    # Make sure Ollama is running
-    if ! ollama list &>/dev/null; then
-        echo "  Starting Ollama..."
-        if [[ "$OS" == "Darwin" ]]; then
-            open -a Ollama 2>/dev/null || ollama serve &>/dev/null &
-        else
-            ollama serve &>/dev/null &
-        fi
-        sleep 3
-    fi
-
-    model_lines=()
-    while IFS= read -r line; do
-        model_lines+=("$line")
-    done < <(ollama list 2>/dev/null | tail -n +2)
-
-    if [[ ${#model_lines[@]} -eq 0 ]]; then
-        dim "  No models found. Pull some first: ollama pull gemma4:31b-cloud"
-        ollama_models="[]"
-    else
-        ollama_models="[]"
-        for line in "${model_lines[@]}"; do
-            [[ -z "$line" ]] && continue
-            model_id=$(echo "$line" | awk '{print $1}')
-            [[ -z "$model_id" ]] && continue
-
-            input='["text"]'
-            if [[ "$model_id" == *vision* ]] || [[ "$model_id" == *llava* ]]; then
-                input='["text", "image"]'
-            fi
-
-            reasoning="False"
-            if [[ "$model_id" == *think* ]] || [[ "$model_id" == *reason* ]]; then
-                reasoning="True"
-            elif ollama show "$model_id" 2>/dev/null | grep -qi 'thinking'; then
-                reasoning="True"
-            fi
-
-            pretty_name=$(echo "$model_id" | sed 's/:/ (/;s/$/)/' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-            green "  Found: $model_id"
-
-            ollama_models=$(python3 -c "
-import json, sys
-models = json.loads(sys.argv[1])
-models.append({
-    'id': sys.argv[2],
-    'name': sys.argv[3] + ' (Ollama)',
-    'reasoning': $reasoning,
-    'input': $input,
-    'contextWindow': 128000,
-    'maxTokens': 32000,
-    'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}
-})
-print(json.dumps(models))
-" "$ollama_models" "$model_id" "$pretty_name")
-        done
-        green "  ${#model_lines[@]} model(s) found"
-    fi
-
-    # Write models.json
-    python3 -c "
-import json, sys
-ollama_models = json.loads(sys.argv[1])
-enable_openrouter = sys.argv[2] == 'true'
-openrouter_api_key_command = sys.argv[3]
-providers = {
-    'ollama': {
-        'baseUrl': 'http://localhost:11434/v1',
-        'api': 'openai-completions',
-        'apiKey': 'ollama',
-        'compat': {
-            'supportsDeveloperRole': False,
-            'supportsReasoningEffort': False
-        },
-        'models': ollama_models
-    }
-}
-if enable_openrouter:
-    providers['openrouter'] = {
-        'baseUrl': 'https://openrouter.ai/api/v1',
-        'apiKey': openrouter_api_key_command,
-        'api': 'openai-completions'
-    }
-config = {'providers': providers}
-print(json.dumps(config, indent=2))
-" "$ollama_models" "$ENABLE_OPENROUTER" "$OPENROUTER_API_KEY_COMMAND" > "$MODELS_JSON"
-    chmod 600 "$MODELS_JSON"
-    green "  Wrote $MODELS_JSON"
-fi
-
-# ── 3. Register everything in settings.json ─────────────────────────
-
-bold "── Step 3: settings.json ──"
+bold "── Register pi-tools-and-skills package ──"
 
 SKILLS_DIR="$PI_TOOLS_DIR/skills"
 EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
 MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
-python3 -c "
-import json, os, sys
+python3 - "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$PI_TOOLS_DIR" <<'PY'
+import json
+import os
+import sys
 
 settings_path = sys.argv[1]
-skills_dir    = sys.argv[2]
-ext_dir       = sys.argv[3]
-prompts_dir   = sys.argv[4]
-memories_dir  = sys.argv[5]
-package_dir   = sys.argv[6]
+skills_dir = sys.argv[2]
+ext_dir = sys.argv[3]
+prompts_dir = sys.argv[4]
+memories_dir = sys.argv[5]
+package_dir = sys.argv[6]
 legacy_package_dir = package_dir.replace('/pi-tools-and-skills', '/tools-and-skills')
 
-# Load existing or start fresh
 if os.path.exists(settings_path):
-    with open(settings_path, 'r') as f:
-        settings = json.load(f)
+    with open(settings_path, 'r') as handle:
+        settings = json.load(handle)
 else:
     settings = {}
 
-def remove_legacy_listed(key, values):
-    existing = settings.get(key, [])
-    if not isinstance(existing, list):
-        existing = []
-    settings[key] = [item for item in existing if item not in values]
 
-def ensure_listed(key, value):
+def legacy_path(path: str) -> str:
+    return path.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+
+
+def remove_legacy_listed(key: str, values: set[str]) -> None:
+    existing = settings.get(key)
+    if not isinstance(existing, list):
+        return
+    filtered = [item for item in existing if item not in values]
+    if filtered:
+        settings[key] = filtered
+    else:
+        del settings[key]
+
+
+def ensure_listed(key: str, value: str) -> None:
     existing = settings.get(key, [])
     if not isinstance(existing, list):
         existing = []
-    legacy_value = value.replace('/pi-tools-and-skills/', '/tools-and-skills/')
+    legacy_value = legacy_path(value)
     existing = [item for item in existing if item != legacy_value]
     if value not in existing:
         existing.append(value)
     settings[key] = existing
 
-# Memories are not currently supported by pi packages, so keep registering them directly.
+# Memories are not currently exposed via pi packages.
 ensure_listed('memories', memories_dir)
 
-# Install this checkout as a local pi package. Restrict globally loaded extensions
-# to the two core extensions; skills and prompts are loaded from the package manifest.
 package_entry = {
     'source': package_dir,
     'extensions': [
@@ -379,6 +110,7 @@ package_entry = {
         'extensions/council/**',
     ],
 }
+
 existing_packages = settings.get('packages', [])
 if not isinstance(existing_packages, list):
     existing_packages = []
@@ -391,11 +123,11 @@ for entry in existing_packages:
 filtered_packages.append(package_entry)
 settings['packages'] = filtered_packages
 
-# Clean up paths written by older setup-pi versions. Resources now come from the package.
-remove_legacy_listed('skills', {skills_dir, skills_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')})
-remove_legacy_listed('prompts', {prompts_dir, prompts_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')})
-legacy_ext_dir = ext_dir.replace('/pi-tools-and-skills/', '/tools-and-skills/')
-core_ext_paths = {
+# Clean paths written by older setup flows. The package now provides these.
+remove_legacy_listed('skills', {skills_dir, legacy_path(skills_dir)})
+remove_legacy_listed('prompts', {prompts_dir, legacy_path(prompts_dir)})
+legacy_ext_dir = legacy_path(ext_dir)
+owned_ext_paths = {
     ext_dir,
     legacy_ext_dir,
     os.path.join(ext_dir, 'pi-panopticon'),
@@ -409,174 +141,25 @@ core_ext_paths = {
     os.path.join(legacy_ext_dir, 'kanban'),
     os.path.join(legacy_ext_dir, 'matrix'),
 }
-remove_legacy_listed('extensions', core_ext_paths)
+remove_legacy_listed('extensions', owned_ext_paths)
 
-# Default provider + model
-settings['defaultProvider'] = 'openai'
-settings['defaultModel'] = 'gpt-5.5'
+with open(settings_path, 'w') as handle:
+    json.dump(settings, handle, indent=2)
+    handle.write('\n')
+PY
 
-# Council defaults — only set fields the user hasn't customised
-council = settings.get('council', {})
-council.setdefault('defaultMembers', [
-    'openai-codex/gpt-5.5',
-    'google-gemini-cli/gemini-3.1-pro-preview',
-    'ollama/qwen3.5:cloud',
-    'ollama/glm-5.1:cloud',
-])
-council.setdefault('defaultChairman', 'openai-codex/gpt-5.5')
-settings['council'] = council
-
-# Anthropic prompt caching
-providers = settings.get('providers', {})
-anthropic = providers.get('anthropic', {})
-params = anthropic.get('params', {})
-params['cache_control'] = { 'type': 'ephemeral' }
-extra_headers = params.get('extraHeaders', {})
-extra_headers['anthropic-beta'] = 'prompt-caching-2024-07-31'
-params['extraHeaders'] = extra_headers
-anthropic['params'] = params
-providers['anthropic'] = anthropic
-settings['providers'] = providers
-
-with open(settings_path, 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
-" "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$PI_TOOLS_DIR"
-
-# Count what's registered
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
-ext_count=$(find "$EXTENSIONS_DIR" -maxdepth 2 -name "index.ts" 2>/dev/null | wc -l | tr -d ' ')
 prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    skills:     $skill_count (via package)"
-echo  "    extensions: 3 global via package filter (panopticon, machine-memory, council), 2 project available (kanban, matrix)"
-echo  "    prompts:    $prompt_count (via package)"
-echo  "    memories:   $memory_count (direct path; pi packages do not expose memories yet)"
-echo  "    provider:   openai (gpt-5.5 default; Anthropic prompt caching ON if used)"
-
-# ── 4. AGENT.md ─────────────────────────────────────────────────────
-
-bold "── Step 4: AGENT.md ──"
-
-AGENT_MD="$PI_TOOLS_DIR/AGENT.md"
-if [[ -f "$AGENT_MD" ]] && grep -qF "pi-setup generated" "$AGENT_MD" 2>/dev/null; then
-    green "  Already configured (skipping)"
-else
-    green "  AGENT.md exists — no changes needed"
-fi
-
-# ── 5. Shell environment hooks ──────────────────────────────────────
-
-bold "── Step 5: Shell environment ──"
-
-# Remove old block if present (handles both old and new markers)
-OLD_MARKER_1="# >>> pi openrouter key injection >>>"
-OLD_END_1="# <<< pi openrouter key injection <<<"
-touch "$SHELL_RC"
-if grep -qF "$OLD_MARKER_1" "$SHELL_RC" 2>/dev/null; then
-    remove_block_if_present "$SHELL_RC" "$OLD_MARKER_1" "$OLD_END_1"
-    dim "  Removed old openrouter block from $SHELL_RC"
-fi
-if grep -qF "$MARKER" "$SHELL_RC" 2>/dev/null; then
-    remove_block_if_present "$SHELL_RC" "$MARKER" "$MARKER_END"
-    dim "  Removed previous tools-and-skills block from $SHELL_RC"
-fi
-
-# Write the block with $PI_TOOLS_DIR expanded at setup time (unquoted heredoc)
-# so the paths are correct even if the repo is renamed or moved.
-cat >> "$SHELL_RC" << ZSHBLOCK
-# >>> pi tools-and-skills env >>>
-# Repo location (written by setup-pi at setup time — re-run after moving)
-export PI_TOOLS_DIR="$PI_TOOLS_DIR"
-ZSHBLOCK
-
-if [[ "$ENABLE_OPENROUTER" == "true" ]]; then
-    cat >> "$SHELL_RC" << 'ZSHBLOCK'
-# OpenRouter API key from platform secret store (for pi --provider openrouter)
-if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
-    case "$(uname -s)" in
-        Darwin)
-            _or_key=$(security find-generic-password -s "openrouter-api-key" -a "$USER" -w 2>/dev/null)
-            ;;
-        Linux)
-            _or_key=$(pass show "pi/openrouter-api-key" 2>/dev/null)
-            ;;
-        *)
-            _or_key=""
-            ;;
-    esac
-    if [[ -n "$_or_key" ]]; then export OPENROUTER_API_KEY="$_or_key"; fi
-    unset _or_key
-fi
-ZSHBLOCK
-fi
-
-cat >> "$SHELL_RC" << 'ZSHBLOCK'
-# CoAS helper scripts on PATH (launcher + secret resolver)
-if [[ -d "${HOME}/git/coas/scripts" ]]; then
-    case ":${PATH}:" in
-        *":${HOME}/git/coas/scripts:"*) ;;
-        *) export PATH="${HOME}/git/coas/scripts:${PATH}" ;;
-    esac
-fi
-# Matrix bot token from secret store (for the matrix extension in pi)
-if [[ -z "${MATRIX_ACCESS_TOKEN:-}" ]]; then
-    _coas_secrets=$(command -v coas-secrets 2>/dev/null || true)
-    if [[ -n "$_coas_secrets" ]]; then
-        _mt=$("$_coas_secrets" get matrix-token 2>/dev/null)
-        if [[ -n "$_mt" ]]; then export MATRIX_ACCESS_TOKEN="$_mt"; fi
-        unset _mt
-    fi
-    unset _coas_secrets
-fi
-# coas-pi alias — start pi in the Gravitas Pending workspace with secrets resolved
-alias coas='coas-pi'
-# <<< pi tools-and-skills env <<<
-ZSHBLOCK
-
-green "  Added to $SHELL_RC:"
-if [[ "$ENABLE_OPENROUTER" == "true" ]]; then
-    if [[ "$OS" == "Linux" ]]; then
-        echo  "    • OPENROUTER_API_KEY from pass"
-    else
-        echo  "    • OPENROUTER_API_KEY from Keychain"
-    fi
-else
-    echo  "    • OPENROUTER_API_KEY disabled"
-fi
-echo  "    • MATRIX_ACCESS_TOKEN from coas-secrets"
-echo  "    • alias coas → coas-pi wrapper"
-
-# ── 6. Summary ──────────────────────────────────────────────────────
+echo  "    extensions: pi-panopticon, machine-memory, council"
+echo  "    skills:     $skill_count via package"
+echo  "    prompts:    $prompt_count via package"
+echo  "    memories:   $memory_count direct path"
+echo  "    models:     unchanged"
+echo  "    runtime:    unchanged"
 
 echo ""
-bold "═══════════════════════════════════════════════"
-bold "  Setup complete!"
-bold "═══════════════════════════════════════════════"
-echo ""
-echo "  Global extensions (all pi sessions):"
-echo "    • pi-panopticon — multi-agent messaging, spawning, monitoring"
-echo "    • machine-memory — .mmem.yml cheat sheets for agents"
-echo "    • council — heterogeneous multi-model debate with optional live-agent members"
-echo ""
-echo "  Project extensions (add per-project in .pi/settings.json):"
-echo "    • kanban        — event-sourced task board (/kanban TUI overlay)"
-echo "    • matrix        — phone ↔ agent bridge via Matrix room"
-echo ""
-echo "  Skills: $skill_count available (clean-room, deep-research, planning, ...)"
-echo "  Memories: $memory_count global .mmem.yml files"
-echo "  Prompts: $prompt_count templates (refactor, commit-and-push)"
-echo ""
-echo "  Quick start:"
-echo "    coas              # start pi in ~/git/working-notes with Matrix + kanban"
-echo "    pi                # start pi in current dir (panopticon + mmem)"
-echo "    exec $SHELL_NAME          # reload shell to pick up new env vars"
-echo ""
-echo "  Deployment (Docker + Matrix + Tailscale):"
-echo "    cd ~/git/coas"
-echo "    make help                # infra targets"
-echo "    make up                  # bootstrap/start stack"
-echo ""
+dim "CoAS-specific model defaults, shell hooks, Matrix secrets, and launchers live in ~/git/coas."
