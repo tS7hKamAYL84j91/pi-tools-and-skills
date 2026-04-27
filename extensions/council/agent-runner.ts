@@ -49,14 +49,33 @@ interface InboxFileMessage {
 
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
+function envelopeNames(stage: string): { request: string; reply: string } {
+	if (stage === "consult") {
+		return { request: "pair-request", reply: "pair-reply" };
+	}
+	return { request: "council-request", reply: "council-reply" };
+}
+
+function framingFor(stage: string): string {
+	if (stage === "consult") {
+		return [
+			"You're the Navigator in a pair-coding consultation. The Pilot (a separate agent doing the actual coding) is asking you for a focused review or perspective.",
+			"Read the question, answer it directly, and reply via agent_send as instructed below. This is a one-shot consultation — there is no follow-up turn unless the Pilot consults you again.",
+		].join("\n");
+	}
+	return "You are participating as a council member in a multi-agent deliberation.";
+}
+
 function formatTag(args: { deliberationId: string; stage: string; memberLabel: string }): string {
-	return `<council-reply deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`;
+	const { reply } = envelopeNames(args.stage);
+	return `<${reply} deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`;
 }
 
 function formatRequest(args: AskAgentArgs, tag: string): string {
+	const { request } = envelopeNames(args.stage);
 	return [
-		`<council-request deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`,
-		"You are participating as a council member in a multi-agent deliberation.",
+		`<${request} deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`,
+		framingFor(args.stage),
 		`Timeout: ${Math.round(args.timeoutMs / 1000)}s — late replies are discarded.`,
 		"",
 		args.systemPrompt,
@@ -67,7 +86,7 @@ function formatRequest(args: AskAgentArgs, tag: string): string {
 		`When ready, reply via agent_send to "${args.ourAgentName}". Your reply MUST contain the exact line:`,
 		tag,
 		"Everything after that line is treated as your answer.",
-		"</council-request>",
+		`</${request}>`,
 	].join("\n");
 }
 
