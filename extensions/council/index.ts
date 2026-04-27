@@ -362,10 +362,10 @@ export default function (pi: ExtensionAPI) {
 			"Use council_dissolve when a session council is no longer needed.",
 		],
 		parameters: AskCouncilSchema,
-		async execute(_id, params: AskCouncilInput, _signal, onUpdate, ctx) {
+		async execute(_id, params: AskCouncilInput, _signal, _onUpdate, ctx) {
 			if ((params.mode ?? "DEBATE") === "PAIR") {
 				try {
-					return await runPairMode({ params, ctx, onUpdate, councils });
+					return await runPairMode({ params, ctx, councils });
 				} finally {
 					refreshCouncilStatus(ctx, councils);
 				}
@@ -394,7 +394,6 @@ export default function (pi: ExtensionAPI) {
 					parallelTimeoutMs: params.limits?.timeoutMs,
 					onProgress: (text) => {
 						ctx.ui.setStatus("council", `${definition.name}: ${text}`);
-						onUpdate?.({ content: [{ type: "text", text }], details: {} });
 					},
 				});
 				const failures = [...record.generation, ...record.critiques].filter(

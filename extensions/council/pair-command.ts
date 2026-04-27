@@ -32,8 +32,6 @@ export interface PairToolResult {
 	details: Record<string, unknown>;
 }
 
-type ToolUpdate = (result: PairToolResult) => void;
-
 interface ResolvedPair {
 	driver: string;
 	navigator: string;
@@ -102,7 +100,6 @@ function formatPairResult(result: PairResult, modelWarnings: string[]): PairTool
 interface RunPairArgs {
 	params: AskCouncilPairInput;
 	ctx: ExtensionContext;
-	onUpdate: ToolUpdate | undefined;
 	councils: Map<string, CouncilSlotLike>;
 }
 
@@ -124,7 +121,6 @@ export async function runPairMode(args: RunPairArgs): Promise<PairToolResult> {
 		timeoutMs: args.params.limits?.timeoutMs,
 		onProgress: (label) => {
 			args.ctx.ui.setStatus("council", `pair: ${label}`);
-			args.onUpdate?.({ content: [{ type: "text", text: label }], details: {} });
 		},
 	});
 	return formatPairResult(result, picked.warnings);
