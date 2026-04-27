@@ -1,24 +1,27 @@
 /**
- * Slash-command lifecycle for pair-coding sessions.
+ * Slash-command lifecycle for pair-coding sessions, plus the `pair_consult`
+ * tool the main agent (the Pilot) uses to consult its Navigator.
  *
- *   /pair-form     — interactively name + pick driver + navigator + purpose
- *   /pair          — invoke a named pair (or ad-hoc if none formed) on a prompt
+ *   /pair-form     — name + pick navigator + optional purpose
+ *   /pair          — primer message that activates a pair for the conversation
  *   /pair-list     — show session pairs
  *   /pair-dissolve — confirm + remove a named pair
  *
- * Pairs are session-local (no settings.json persistence) and don't share the
- * council slot machinery — a pair is just a driver/navigator tuple, not a
- * heterogeneous member set.
+ * Pilot is *this session's main agent* — the one with full tool access and
+ * conversation context. Navigator is a separate model invoked by the agent
+ * via the `pair_consult` tool whenever it wants outside review. Pairs are
+ * session-local; no settings.json persistence.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { snapshotAvailableModels } from "./members.js";
-import { type PairResult, runPairCoding } from "./pair-coding.js";
+import { navigatorReviewSystemPrompt } from "./pair-prompts.js";
 import { pickModel } from "./picker.js";
+import { runMember } from "./runner.js";
 
 export interface PairDefinition {
 	name: string;
-	driver: string;
 	navigator: string;
 	purpose?: string;
 	createdAt: number;
@@ -26,68 +29,7 @@ export interface PairDefinition {
 
 function pairLine(p: PairDefinition): string {
 	const purpose = p.purpose ? ` | ${p.purpose}` : "";
-	return `- ${p.name}: driver=${p.driver}  navigator=${p.navigator}${purpose}`;
-}
-
-interface PairContextArgs {
-	prompt: string;
-	driver: string;
-	navigator: string;
-	ctx: ExtensionContext;
-	pi: ExtensionAPI;
-	refreshStatus: (ctx: ExtensionContext) => void;
-	storeLast: (result: PairResult) => void;
-}
-
-async function executePair(args: PairContextArgs): Promise<void> {
-	args.ctx.ui.notify(
-		`Pair: driver=${args.driver} navigator=${args.navigator}`,
-		"info",
-	);
-	try {
-		const result = await runPairCoding({
-			ctx: args.ctx,
-			prompt: args.prompt,
-			driver: args.driver,
-			navigator: args.navigator,
-			onProgress: (label) => {
-				args.ctx.ui.setStatus("council", `pair: ${label}`);
-			},
-		});
-		args.storeLast(result);
-		args.pi.sendUserMessage(
-			`[Pair-coding result — driver=${args.driver} navigator=${args.navigator}]\n\n${result.summary}`,
-			{ deliverAs: "followUp" },
-		);
-	} catch (error) {
-		args.ctx.ui.notify(
-			error instanceof Error ? error.message : String(error),
-			"error",
-		);
-	} finally {
-		args.refreshStatus(args.ctx);
-	}
-}
-
-async function pickDriverNavigator(
-	ctx: ExtensionContext,
-): Promise<{ driver: string; navigator: string } | undefined> {
-	const snapshot = snapshotAvailableModels(ctx);
-	if (snapshot.length < 2) {
-		ctx.ui.notify(
-			`Need at least 2 distinct models for pair-coding; have ${snapshot.length}.`,
-			"error",
-		);
-		return undefined;
-	}
-	const driver = await pickModel(ctx, "Select Driver (coding model)", snapshot);
-	if (!driver) return undefined;
-	const remaining = snapshot.filter((m) => m !== driver);
-	const navigator = await pickModel(ctx, "Select Navigator (review model)", remaining, {
-		selected: [driver],
-	});
-	if (!navigator) return undefined;
-	return { driver, navigator };
+	return `- ${p.name}: navigator=${p.navigator}${purpose}`;
 }
 
 interface PairCommandRegistration {
@@ -96,36 +38,75 @@ interface PairCommandRegistration {
 	refreshStatus: (ctx: ExtensionContext) => void;
 }
 
+const PairConsultSchema = Type.Object({
+	pair: Type.Optional(
+		Type.String({
+			description: "Pair name (defaults to the only pair, or fails if multiple).",
+		}),
+	),
+	message: Type.String({
+		description:
+			"Code, design question, test plan, or rough draft to share with the Navigator. Include enough context to make the review concrete.",
+	}),
+});
+
+function pickPair(
+	pairs: Map<string, PairDefinition>,
+	requested?: string,
+): PairDefinition | { error: string } {
+	if (requested) {
+		const def = pairs.get(requested);
+		if (def) return def;
+		return { error: `No pair "${requested}". Run /pair-form to set one up.` };
+	}
+	if (pairs.size === 0) {
+		return { error: "No pair configured. Run /pair-form to set up a Navigator." };
+	}
+	if (pairs.size === 1) {
+		return [...pairs.values()][0]!;
+	}
+	const names = [...pairs.keys()].sort();
+	return {
+		error: `Multiple pairs available (${names.join(", ")}). Pass pair="<name>" explicitly.`,
+	};
+}
+
+function primerForPair(def: PairDefinition, task: string | undefined): string {
+	const taskLine = task ? `\n\nTask: ${task}` : "";
+	return [
+		`[Pair-coding "${def.name}" — Navigator: ${def.navigator}]`,
+		"",
+		`You're the Pilot in a pair-coding session. Use the pair_consult tool with pair="${def.name}" whenever a Navigator review would help — typically before finalizing a non-trivial change. The Navigator runs ${def.navigator} in a fresh session; share the relevant code or design question plus a focused ask.${taskLine}`,
+	].join("\n");
+}
+
 export function registerPairCommands(args: PairCommandRegistration): void {
 	const { pi, pairs, refreshStatus } = args;
-	let lastResult: PairResult | undefined;
-	const storeLast = (r: PairResult) => { lastResult = r; };
 
 	pi.registerCommand("pair-form", {
-		description: "Form a named Driver/Navigator pair for the session",
+		description: "Set up a Navigator for pair-coding (the main agent is the Pilot)",
 		handler: async (rawArgs, ctx) => {
 			const requested = rawArgs.trim();
 			const name = requested || (await ctx.ui.input("Pair name", "review"));
 			if (!name) return;
 
-			const picked = await pickDriverNavigator(ctx);
-			if (!picked) return;
+			const snapshot = snapshotAvailableModels(ctx);
+			if (snapshot.length === 0) {
+				ctx.ui.notify("No models available for the Navigator.", "error");
+				return;
+			}
+			const navigator = await pickModel(ctx, "Select Navigator (review model)", snapshot);
+			if (!navigator) return;
 
 			const purposeInput = await ctx.ui.input(
 				"Purpose (optional)",
-				"e.g. test scaffolding, refactor, review",
+				"e.g. design review, test scaffolding, refactor",
 			);
 			const purpose = purposeInput?.trim() || undefined;
 
-			pairs.set(name, {
-				name,
-				driver: picked.driver,
-				navigator: picked.navigator,
-				purpose,
-				createdAt: Date.now(),
-			});
+			pairs.set(name, { name, navigator, purpose, createdAt: Date.now() });
 			refreshStatus(ctx);
-			ctx.ui.notify(`Formed pair "${name}".`, "info");
+			ctx.ui.notify(`Pair "${name}" ready — navigator=${navigator}.`, "info");
 		},
 	});
 
@@ -141,46 +122,35 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 	});
 
 	pi.registerCommand("pair", {
-		description: "Run a pair-coding session (named or ad-hoc)",
+		description: "Activate a pair for the current conversation",
 		handler: async (rawArgs, ctx) => {
+			if (pairs.size === 0) {
+				ctx.ui.notify("No pairs formed. Run /pair-form first.", "warning");
+				return;
+			}
 			const argsTrim = rawArgs.trim();
 			const names = [...pairs.keys()].sort();
-			const namedPair = argsTrim ? pairs.get(argsTrim) : undefined;
+			const firstWord = argsTrim.split(/\s+/)[0] ?? "";
+			let chosen: string | undefined;
+			let inlineTask: string | undefined;
 
-			let driver: string;
-			let navigator: string;
-			let inlinePrompt: string | undefined;
-
-			if (namedPair) {
-				// `/pair <name>` — selector consumed; ask for prompt
-				driver = namedPair.driver;
-				navigator = namedPair.navigator;
-			} else if (names.length === 0) {
-				// ad-hoc fallback
-				const picked = await pickDriverNavigator(ctx);
-				if (!picked) return;
-				driver = picked.driver;
-				navigator = picked.navigator;
-				inlinePrompt = argsTrim || undefined;
+			if (firstWord && pairs.has(firstWord)) {
+				chosen = firstWord;
+				inlineTask = argsTrim.slice(firstWord.length).trim() || undefined;
+			} else if (names.length === 1) {
+				chosen = names[0];
+				inlineTask = argsTrim || undefined;
 			} else {
-				const chosen =
-					names.length === 1 ? names[0] : await ctx.ui.select("Pair", names);
-				if (!chosen) return;
-				const def = pairs.get(chosen);
-				if (!def) {
-					ctx.ui.notify(`No pair "${chosen}".`, "error");
-					return;
-				}
-				driver = def.driver;
-				navigator = def.navigator;
-				inlinePrompt = argsTrim || undefined;
+				chosen = await ctx.ui.select("Pair", names);
+				inlineTask = argsTrim || undefined;
 			}
-
-			const promptInput = inlinePrompt ?? (await ctx.ui.editor("Coding task", ""));
-			const prompt = promptInput?.trim();
-			if (!prompt) return;
-
-			await executePair({ prompt, driver, navigator, ctx, pi, refreshStatus, storeLast });
+			if (!chosen) return;
+			const def = pairs.get(chosen);
+			if (!def) {
+				ctx.ui.notify(`No pair "${chosen}".`, "error");
+				return;
+			}
+			pi.sendUserMessage(primerForPair(def, inlineTask), { deliverAs: "followUp" });
 		},
 	});
 
@@ -202,18 +172,47 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 		},
 	});
 
-	pi.registerCommand("pair-last", {
-		description: "Inject the last pair-coding result into the chat",
-		handler: async (_rawArgs, ctx) => {
-			if (!lastResult) {
-				ctx.ui.notify("No pair-coding session has run in this session.", "warning");
-				return;
+	pi.registerTool({
+		name: "pair_consult",
+		label: "Consult Navigator",
+		description:
+			"Send the Navigator a code draft, design question, or test plan and get its review back. Use whenever you'd benefit from an outside perspective before finalizing a non-trivial change.",
+		promptSnippet: "Get review feedback from the paired Navigator model",
+		parameters: PairConsultSchema,
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const picked = pickPair(pairs, params.pair);
+			if ("error" in picked) {
+				return {
+					content: [{ type: "text" as const, text: picked.error }],
+					details: { error: picked.error },
+				};
 			}
-			pi.sendUserMessage(
-				`[Last pair-coding result]\n\n${lastResult.summary}`,
-				{ deliverAs: "followUp" },
-			);
+			ctx.ui.setStatus("council", `pair: consulting ${picked.navigator}`);
+			try {
+				const run = await runMember(
+					{ label: "Navigator", model: picked.navigator },
+					{
+						prompt: params.message,
+						systemPrompt: navigatorReviewSystemPrompt(),
+						cwd: ctx.cwd,
+						signal: ctx.signal,
+					},
+				);
+				const body = run.ok
+					? run.output
+					: `Navigator failed: ${run.error ?? "unknown error"}`;
+				return {
+					content: [{ type: "text" as const, text: body }],
+					details: {
+						pair: picked.name,
+						navigator: picked.navigator,
+						durationMs: run.durationMs,
+						ok: run.ok,
+					},
+				};
+			} finally {
+				refreshStatus(ctx);
+			}
 		},
 	});
 }
-
