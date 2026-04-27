@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { createAgentListModeStore } from "../extensions/pi-panopticon/list-mode.js";
 import { setupUI } from "../extensions/pi-panopticon/ui.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 
@@ -39,7 +40,7 @@ describe("alias tools", () => {
 			}),
 			getSessionName: vi.fn(() => sessionAlias),
 		};
-		setupUI(pi as never, registry, "self-id");
+		setupUI(pi as never, registry, "self-id", createAgentListModeStore());
 	});
 
 	it("set_alias updates session alias and registry name", async () => {
