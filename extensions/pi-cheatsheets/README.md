@@ -20,7 +20,7 @@ Later sources override earlier for the same tool name:
 | 1 (lowest) | `~/.mmem/` | `deprecated-global` | Legacy global (backward compat) |
 | 2 | `.mmem/` | `deprecated-project` | Legacy project-local (backward compat) |
 | 3 | settings.json `"memories"` paths | `settings` | Shared, committed, from a repo |
-| 4 | `~/.pi/agent/memories/` | `global` | User-global pi memories |
+| 4 | `~/.pi/agent/memories/` | `global` | User-global pi cheatsheets |
 | 5 (highest) | `.pi/memories/` | `project` | Project-local override |
 
 ### Setup
@@ -48,7 +48,7 @@ For per-project overrides: `.pi/memories/`
 | `mmem_create` | Scaffold a new `.mmem.yml` — skeleton or full content |
 | `mmem_list` | List all discovered cheatsheets with metadata and validation |
 | `mmem_inject` | Inject specific cheatsheets into context on demand |
-| `mmem_update` | Append learned gotchas/patterns to an existing memory |
+| `mmem_update` | Append learned gotchas/patterns to an existing cheatsheet |
 | `mmem_validate` | Validate a `.mmem.yml` against the format spec |
 
 ## Commands
@@ -61,7 +61,7 @@ For per-project overrides: `.pi/memories/`
 ## TUI
 
 - **Widget**: Shows loaded cheatsheets with source (📦 settings / 🌐 global / 📁 project / ⚠️ deprecated) and confidence (✓/~/?)
-- **Status bar**: `🧠 N memories (~X tokens)`
+- **Status bar**: `🧠 N cheatsheets (~X tokens)`
 
 ## File Format
 
@@ -102,7 +102,7 @@ Target: **200–500 tokens per file**. See `skills/pi-cheatsheets/references/for
 
 ```
 ~/git/pi-tools-and-skills/
-  memories/                    ← Shared memories (in settings.json "memories" path)
+  memories/                    ← Shared cheatsheets (in settings.json "memories" path)
     pi-kanban.mmem.yml
     ollama.mmem.yml
     ...
@@ -111,11 +111,11 @@ Target: **200–500 tokens per file**. See `skills/pi-cheatsheets/references/for
     memory-store.ts
 
 ~/.pi/agent/
-  memories/                    ← User-global overrides
+  memories/                    ← User-global cheatsheet overrides
   settings.json                ← "memories": ["/path/to/memories"]
 
 <any-project>/.pi/
-  memories/                    ← Project-local overrides (highest priority)
+  memories/                    ← Project-local cheatsheet overrides (highest priority)
 ```
 
 ## File Layout
