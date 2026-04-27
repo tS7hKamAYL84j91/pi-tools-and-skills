@@ -184,18 +184,6 @@ function councilLines(slots: Iterable<CouncilSlot>): string[] {
 	);
 }
 
-function formatDeliberationSummary(record: CouncilDeliberation): string[] {
-	return [
-		`Council ${record.id}`,
-		`Name: ${record.council}`,
-		`Status: ${record.status}`,
-		`Members: ${record.members.map((member) => `${member.label}=${member.model}`).join(", ")}`,
-		`Chairman: ${record.chairman.model}`,
-		`Generation: ${record.generation.filter((run) => run.ok).length}/${record.generation.length}`,
-		`Critique: ${record.critiques.filter((run) => run.ok).length}/${record.critiques.length}`,
-	];
-}
-
 function selectableCouncilNames(councils: Map<string, CouncilSlot>): string[] {
 	return [...councils.keys()].sort();
 }
@@ -515,7 +503,7 @@ export default function (pi: ExtensionAPI) {
 
 			ctx.ui.notify(`Council "${slot.definition.name}" deliberating...`, "info");
 			try {
-				await deliberate({
+				const record = await deliberate({
 					definition: slot.definition,
 					prompt,
 					ctx,
@@ -525,9 +513,10 @@ export default function (pi: ExtensionAPI) {
 						ctx.ui.setStatus("council", `${slot.definition.name}: ${text}`);
 					},
 				});
-				ctx.ui.notify(
-					`Council "${slot.definition.name}" finished — /council-last for the synthesis.`,
-					"info",
+				const synthesis = record.synthesis?.output ?? "(no synthesis)";
+				pi.sendUserMessage(
+					`[Council "${slot.definition.name}" synthesis]\n\n${synthesis}`,
+					{ deliverAs: "followUp" },
 				);
 			} catch (error) {
 				ctx.ui.notify(
@@ -562,7 +551,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("council-last", {
-		description: "Show the last ask_council deliberation summary",
+		description: "Inject the last council synthesis into the chat",
 		handler: async (_args, ctx) => {
 			const latest = latestDeliberation(stateManager);
 			if (!latest) {
@@ -572,11 +561,11 @@ export default function (pi: ExtensionAPI) {
 				);
 				return;
 			}
-			ctx.ui.setWidget("council", [
-				...formatDeliberationSummary(latest),
-				"",
-				latest.synthesis?.output ?? "(no synthesis)",
-			]);
+			const synthesis = latest.synthesis?.output ?? "(no synthesis)";
+			pi.sendUserMessage(
+				`[Last council synthesis — "${latest.council}"]\n\n${synthesis}`,
+				{ deliverAs: "followUp" },
+			);
 		},
 	});
 }
