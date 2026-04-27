@@ -12,7 +12,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import { registerCouncilEditCommand } from "./edit-command.js";
 import { registerCouncilListCommand } from "./list-command.js";
-import { registerPairCommand } from "./pair-form-command.js";
+import { type PairDefinition, registerPairCommands } from "./pair-commands.js";
 import {
 	COUNCIL_MAX,
 	chooseChairmanModel,
@@ -496,11 +496,16 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	const pairs = new Map<string, PairDefinition>();
 	registerCouncilListCommand(pi, councils);
 	registerCouncilEditCommand(pi, councils, (ctx) => {
 		refreshCouncilStatus(ctx, councils);
 	});
-	registerPairCommand(pi, (ctx) => refreshCouncilStatus(ctx, councils));
+	registerPairCommands({
+		pi,
+		pairs,
+		refreshStatus: (ctx) => refreshCouncilStatus(ctx, councils),
+	});
 
 	pi.registerCommand("council-ask", {
 		description: "Interactively ask a council to deliberate",
