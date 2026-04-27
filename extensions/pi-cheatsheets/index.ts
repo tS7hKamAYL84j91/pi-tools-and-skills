@@ -31,9 +31,9 @@ function updateStatus(): void {
 	if (!ctx) return;
 	const count = loadedMemories.size;
 	if (count === 0) {
-		ctx.ui.setStatus("mmem", "🧠 0 memories");
+		ctx.ui.setStatus("mmem", "🧠 0 cheatsheets");
 	} else {
-		ctx.ui.setStatus("mmem", `🧠 ${count} memories (~${estimateTokens(indexText)} tok index)`);
+		ctx.ui.setStatus("mmem", `🧠 ${count} cheatsheets (~${estimateTokens(indexText)} tok index)`);
 	}
 	ctx.ui.setWidget("mmem", undefined);
 }
