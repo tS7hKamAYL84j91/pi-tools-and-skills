@@ -54,103 +54,13 @@ EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
 MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
-python3 - "$SETTINGS_JSON" "$SKILLS_DIR" "$EXTENSIONS_DIR" "$PROMPTS_DIR" "$MEMORIES_DIR" "$PI_TOOLS_DIR" <<'PY'
-import json
-import os
-import sys
-
-settings_path = sys.argv[1]
-skills_dir = sys.argv[2]
-ext_dir = sys.argv[3]
-prompts_dir = sys.argv[4]
-memories_dir = sys.argv[5]
-package_dir = sys.argv[6]
-legacy_package_dir = package_dir.replace('/pi-tools-and-skills', '/tools-and-skills')
-
-if os.path.exists(settings_path):
-    with open(settings_path, 'r') as handle:
-        settings = json.load(handle)
-else:
-    settings = {}
-
-
-def legacy_path(path: str) -> str:
-    return path.replace('/pi-tools-and-skills/', '/tools-and-skills/')
-
-
-def remove_legacy_listed(key: str, values: set[str]) -> None:
-    existing = settings.get(key)
-    if not isinstance(existing, list):
-        return
-    filtered = [item for item in existing if item not in values]
-    if filtered:
-        settings[key] = filtered
-    else:
-        del settings[key]
-
-
-def ensure_listed(key: str, value: str) -> None:
-    existing = settings.get(key, [])
-    if not isinstance(existing, list):
-        existing = []
-    legacy_value = legacy_path(value)
-    existing = [item for item in existing if item != legacy_value]
-    if value not in existing:
-        existing.append(value)
-    settings[key] = existing
-
-# Memories are not currently exposed via pi packages.
-ensure_listed('memories', memories_dir)
-
-package_entry = {
-    'source': package_dir,
-    'extensions': [
-        'extensions/pi-panopticon/**',
-        'extensions/pi-cheatsheets/**',
-        'extensions/pi-llm-council/**',
-    ],
-}
-
-existing_packages = settings.get('packages', [])
-if not isinstance(existing_packages, list):
-    existing_packages = []
-filtered_packages = []
-for entry in existing_packages:
-    source = entry.get('source') if isinstance(entry, dict) else entry
-    if source in {package_dir, legacy_package_dir}:
-        continue
-    filtered_packages.append(entry)
-filtered_packages.append(package_entry)
-settings['packages'] = filtered_packages
-
-# Clean paths written by older setup flows. The package now provides these.
-remove_legacy_listed('skills', {skills_dir, legacy_path(skills_dir)})
-remove_legacy_listed('prompts', {prompts_dir, legacy_path(prompts_dir)})
-legacy_ext_dir = legacy_path(ext_dir)
-owned_ext_paths = {
-    ext_dir,
-    legacy_ext_dir,
-    os.path.join(ext_dir, 'pi-panopticon'),
-    os.path.join(ext_dir, 'pi-cheatsheets'),
-    os.path.join(ext_dir, 'machine-memory'),
-    os.path.join(ext_dir, 'pi-llm-council'),
-    os.path.join(ext_dir, 'council'),
-    os.path.join(ext_dir, 'kanban'),
-    os.path.join(ext_dir, 'matrix'),
-    os.path.join(legacy_ext_dir, 'pi-panopticon'),
-    os.path.join(legacy_ext_dir, 'pi-cheatsheets'),
-    os.path.join(legacy_ext_dir, 'machine-memory'),
-    os.path.join(legacy_ext_dir, 'pi-llm-council'),
-    os.path.join(legacy_ext_dir, 'council'),
-    os.path.join(legacy_ext_dir, 'kanban'),
-    os.path.join(legacy_ext_dir, 'matrix'),
-}
-remove_legacy_listed('extensions', owned_ext_paths)
-
-with open(settings_path, 'w') as handle:
-    json.dump(settings, handle, indent=2)
-    handle.write('\n')
-PY
+python3 "$SCRIPT_DIR/pi-package-settings.py" register \
+	"$SETTINGS_JSON" \
+	"$PI_TOOLS_DIR" \
+	"$SKILLS_DIR" \
+	"$EXTENSIONS_DIR" \
+	"$PROMPTS_DIR" \
+	"$MEMORIES_DIR"
 
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
 prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
