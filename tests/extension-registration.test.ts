@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import councilExtension from "../extensions/council/index.js";
+import councilExtension from "../extensions/pi-llm-council/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
 import piCheatsheetsExtension from "../extensions/pi-cheatsheets/index.js";
 import matrixExtension from "../extensions/matrix/index.js";

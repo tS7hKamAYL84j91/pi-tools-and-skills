@@ -107,7 +107,7 @@ package_entry = {
     'extensions': [
         'extensions/pi-panopticon/**',
         'extensions/pi-cheatsheets/**',
-        'extensions/council/**',
+        'extensions/pi-llm-council/**',
     ],
 }
 
@@ -133,12 +133,14 @@ owned_ext_paths = {
     os.path.join(ext_dir, 'pi-panopticon'),
     os.path.join(ext_dir, 'pi-cheatsheets'),
     os.path.join(ext_dir, 'machine-memory'),
+    os.path.join(ext_dir, 'pi-llm-council'),
     os.path.join(ext_dir, 'council'),
     os.path.join(ext_dir, 'kanban'),
     os.path.join(ext_dir, 'matrix'),
     os.path.join(legacy_ext_dir, 'pi-panopticon'),
     os.path.join(legacy_ext_dir, 'pi-cheatsheets'),
     os.path.join(legacy_ext_dir, 'machine-memory'),
+    os.path.join(legacy_ext_dir, 'pi-llm-council'),
     os.path.join(legacy_ext_dir, 'council'),
     os.path.join(legacy_ext_dir, 'kanban'),
     os.path.join(legacy_ext_dir, 'matrix'),
@@ -156,7 +158,7 @@ memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr 
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-cheatsheets, council"
+echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council"
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
 echo  "    memories:   $memory_count direct path"

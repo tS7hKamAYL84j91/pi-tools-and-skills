@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type PairDefinition,
 	pickPair,
-} from "../extensions/council/pair-commands.js";
+} from "../extensions/pi-llm-council/pair-commands.js";
 
 function makeDef(name: string, navigator: string): PairDefinition {
 	return { name, navigator, createdAt: 0 };

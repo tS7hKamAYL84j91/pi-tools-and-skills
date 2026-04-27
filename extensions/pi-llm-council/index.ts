@@ -1,5 +1,5 @@
 /**
- * Council extension — multi-model debate and consensus.
+ * Pi LLM Council extension — multi-model debate and consensus.
  *
  * Provides session-scoped councils of heterogeneous models. Members debate
  * in 3 stages (generate → anonymized critique → chairman synthesis) with

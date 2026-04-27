@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { loadPairContext } from "../extensions/council/context-loader.js";
+import { loadPairContext } from "../extensions/pi-llm-council/context-loader.js";
 
 let root: string;
 let cwd: string;

@@ -63,7 +63,7 @@ Each `extensions/<name>/index.ts` default-exports `(pi: ExtensionAPI) => void`.
 
 | Extension | Tools | Commands |
 |---|---|---|
-| council | `council_form` `council_update` `council_list` `council_dissolve` `ask_council` | `council-form` `council-list` `council-edit` `council-ask` `council-dissolve` `council-last` |
+| pi-llm-council | `council_form` `council_update` `council_list` `council_dissolve` `ask_council` | `council-form` `council-list` `council-edit` `council-ask` `council-dissolve` `council-last` |
 | kanban | `kanban_create/pick/claim/complete/block/note/snapshot/monitor/unblock/move/delete/compact/edit/reassign` | — (flag `--prod`) |
 | pi-cheatsheets | `mmem_create` `mmem_list` `mmem_inject` `mmem_update` `mmem_validate` | `mmem` `mmem-reload` |
 | matrix | — (registers `MatrixTransport` via `registerChannel`) | `matrix` |
@@ -77,12 +77,12 @@ Each `extensions/<name>/index.ts` default-exports `(pi: ExtensionAPI) => void`.
 | `clean-mailboxes` | `~/.pi/agents/*` directory tree | (with `--dry-run`: nothing) | — |
 
 ### Content loaders / parsers
-- Settings readers (3): `extensions/pi-cheatsheets/discover.ts:46-57` `readSettingsMemoryPaths()`, `extensions/council/settings.ts:68-79` `readCouncilSettings()`, `extensions/matrix/config.ts:26-34` `readMatrixSettings()`.
-- Directory scans: `extensions/council/state.ts:101`, `extensions/kanban/board.ts:71`, `extensions/pi-cheatsheets/discover.ts:71`, `extensions/pi-panopticon/registry.ts:301`.
-- Atomic writes: `extensions/council/state.ts:54-59` (tmp/ → rename), `lib/transports/maildir.ts:104-128` `durableWrite` (same pattern).
+- Settings readers (3): `extensions/pi-cheatsheets/discover.ts:46-57` `readSettingsMemoryPaths()`, `extensions/pi-llm-council/settings.ts:68-79` `readCouncilSettings()`, `extensions/matrix/config.ts:26-34` `readMatrixSettings()`.
+- Directory scans: `extensions/pi-llm-council/state.ts:101`, `extensions/kanban/board.ts:71`, `extensions/pi-cheatsheets/discover.ts:71`, `extensions/pi-panopticon/registry.ts:301`.
+- Atomic writes: `extensions/pi-llm-council/state.ts:54-59` (tmp/ → rename), `lib/transports/maildir.ts:104-128` `durableWrite` (same pattern).
 
 ### Repo-root / path helpers
-- `homedir()` + `.pi/agent/...` literals appear in `lib/agent-registry.ts:23`, `extensions/council/state.ts:24`, `extensions/council/settings.ts:24`, `extensions/pi-cheatsheets/discover.ts:21`, `extensions/matrix/config.ts:13-14`.
+- `homedir()` + `.pi/agent/...` literals appear in `lib/agent-registry.ts:23`, `extensions/pi-llm-council/state.ts:24`, `extensions/pi-llm-council/settings.ts:24`, `extensions/pi-cheatsheets/discover.ts:21`, `extensions/matrix/config.ts:13-14`.
 - `dirname(process.execPath)` for pi binary: `lib/spawn-service.ts:20` (resolved once at module load).
 
 ### Top-level side effects
@@ -103,7 +103,7 @@ No surprising top-level side effects (no network calls, no file writes at load).
 **New:** `lib/pi-settings.ts` exports `readPiSettingsKey(key, path?)` and `PI_SETTINGS_PATH`. Returns the raw `unknown` value at the top-level key; caller narrows. Returns `undefined` for missing file, malformed JSON, or absent key. New tests at `tests/pi-settings.test.ts` (6 cases).
 
 **Updated consumers:**
-- `extensions/council/settings.ts:readCouncilSettings` — now narrows `readPiSettingsKey("council")` instead of inline try/catch.
+- `extensions/pi-llm-council/settings.ts:readCouncilSettings` — now narrows `readPiSettingsKey("council")` instead of inline try/catch.
 - `extensions/pi-cheatsheets/discover.ts:readSettingsMemoryPaths` — same.
 - `extensions/matrix/config.ts:readMatrixSettings` — same.
 
@@ -123,7 +123,7 @@ No surprising top-level side effects (no network calls, no file writes at load).
 - All 307 pre-existing tests pass alongside 6 new lib tests (313 total).
 
 **What was NOT extracted (deliberately):**
-- Atomic file write (`tmp/` → `rename`) — present in `extensions/council/state.ts` and `lib/transports/maildir.ts`. Single-call-site after the maildir version which has its own constraints (filename pattern, return shape). Not worth the churn for one consumer.
+- Atomic file write (`tmp/` → `rename`) — present in `extensions/pi-llm-council/state.ts` and `lib/transports/maildir.ts`. Single-call-site after the maildir version which has its own constraints (filename pattern, return shape). Not worth the churn for one consumer.
 - Directory scanners — different shapes per scanner (`.md` vs `.mmem.yml` vs JSON registry records). Not duplication.
 - Path constants (`homedir() + ".pi/agent/..."`) — each is a legitimate, distinct concern (councils dir, registry dir, matrix sync dir). Not duplication.
 
