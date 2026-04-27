@@ -2,8 +2,13 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { preflight } from "./deliberation.js";
-import { chooseCouncilModels, snapshotAvailableModels } from "./members.js";
+import {
+	chooseCouncilModels,
+	councilPickerOptions,
+	snapshotAvailableModels,
+} from "./members.js";
 import { pickCouncilMembers, pickModel } from "./picker.js";
+import { currentPanopticonRecord } from "./runner.js";
 import type { CouncilDefinition } from "./types.js";
 
 interface CouncilSlotLike {
@@ -48,23 +53,30 @@ export function registerCouncilEditCommand(
 			const availableSnapshot = snapshot.length > 0
 				? snapshot
 				: slot.availableSnapshot;
-			const modelOptions = availableSnapshot.length > 0
+			const baseModels = availableSnapshot.length > 0
 				? availableSnapshot
 				: chooseCouncilModels(availableSnapshot);
+			const ourRecord = await currentPanopticonRecord(ctx.cwd);
+			const { options, describe } = councilPickerOptions(baseModels, ourRecord?.name);
 			let members = slot.definition.members;
 			let chairman = slot.definition.chairman;
 			let purpose = slot.definition.purpose;
 
 			if (action === "Replace members") {
-				const picked = await pickCouncilMembers(ctx, modelOptions);
+				const picked = await pickCouncilMembers(
+					ctx,
+					options,
+					slot.definition.members.length,
+					describe,
+				);
 				if (!picked) return;
 				members = picked;
 			} else if (action === "Change chairman") {
 				const picked = await pickModel(
 					ctx,
 					"Select chairman model",
-					modelOptions,
-					members,
+					options,
+					{ selected: members, describe },
 				);
 				if (!picked) return;
 				chairman = picked;
