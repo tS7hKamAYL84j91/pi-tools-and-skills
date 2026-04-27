@@ -8,7 +8,7 @@ import { findAgentByName } from "../lib/agent-api.js";
 import {
 	resolveChairman,
 	resolveMembers,
-} from "../extensions/council/agent-ref.js";
+} from "../extensions/pi-llm-council/agent-ref.js";
 
 const mockFind = findAgentByName as ReturnType<typeof vi.fn>;
 

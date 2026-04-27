@@ -5,7 +5,7 @@ vi.mock("../lib/agent-api.js", () => ({
 }));
 
 import { listLiveAgents } from "../lib/agent-api.js";
-import { councilPickerOptions } from "../extensions/council/members.js";
+import { councilPickerOptions } from "../extensions/pi-llm-council/members.js";
 
 const mockListLiveAgents = listLiveAgents as ReturnType<typeof vi.fn>;
 

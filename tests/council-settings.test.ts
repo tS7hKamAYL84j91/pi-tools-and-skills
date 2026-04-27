@@ -8,7 +8,7 @@ import {
 	DEFAULT_CHAIRMAN_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
 	resolveCouncilSettings,
-} from "../extensions/council/settings.js";
+} from "../extensions/pi-llm-council/settings.js";
 
 function withTempSettings(settings: object, fn: (path: string) => void) {
 	const dir = join(tmpdir(), `council-test-${Date.now()}`);

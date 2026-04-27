@@ -12,7 +12,7 @@ The extension codebase is healthy but unevenly factored:
 
 | Extension | Files | Lines | Main pressure |
 | --- | ---: | ---: | --- |
-| `council` | 19 | ~3540 | `index.ts` owns too much session/tool/command wiring |
+| `pi-llm-council` | 19 | ~3540 | `index.ts` owns too much session/tool/command wiring |
 | `pi-panopticon` | 13 | ~2973 | `ui.ts`, `spawner.ts`, `health.ts` are broad modules |
 | `kanban` | 8 | ~2170 | `index.ts` contains 14 inline tool definitions |
 | `pi-cheatsheets` | 8 | ~869 | Mostly fine |
@@ -65,7 +65,7 @@ Non-scope:
 
 - No extension module splits.
 - No helper abstractions.
-- No pair/council renames.
+- No pair/council command or persistence-key renames.
 
 ### PR 2 — Kanban mechanical split
 
@@ -103,7 +103,7 @@ Likely splits:
 
 Critical invariant: keep the render-path safety rule with whichever files render UI; no `readAllPeers()` in paint/render closures.
 
-### PR 4 — Council registration split
+### PR 4 — Pi LLM Council registration split
 
 Highest risk. Do after the mechanical patterns are proven.
 

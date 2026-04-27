@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { critiquePrompt } from "../extensions/council/prompts.js";
-import type { CouncilMember, ModelRun } from "../extensions/council/types.js";
+import { critiquePrompt } from "../extensions/pi-llm-council/prompts.js";
+import type { CouncilMember, ModelRun } from "../extensions/pi-llm-council/types.js";
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
 const memberB: CouncilMember = { label: "Agent B", model: "anthropic/claude-opus-4-6" };

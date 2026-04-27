@@ -11,7 +11,7 @@ import {
 	chooseChairmanModel,
 	chooseCouncilModels,
 	providerOf,
-} from "../extensions/council/members.js";
+} from "../extensions/pi-llm-council/members.js";
 
 /** Path to a nonexistent file — resolves to hard-coded defaults. */
 function withSettings<T>(council: object, fn: (settingsPath: string) => T): T {

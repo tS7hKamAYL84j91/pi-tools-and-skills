@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CouncilStateManager } from "../extensions/council/state.js";
-import type { CouncilMember } from "../extensions/council/types.js";
+import { CouncilStateManager } from "../extensions/pi-llm-council/state.js";
+import type { CouncilMember } from "../extensions/pi-llm-council/types.js";
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
 const memberB: CouncilMember = {
