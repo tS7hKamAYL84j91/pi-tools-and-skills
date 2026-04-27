@@ -258,10 +258,32 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 	});
 
 	pi.registerTool({
+		name: "pair_list",
+		label: "List Pairs",
+		description:
+			"List the pair-coding sessions available for pair_consult. Returns each pair's name, navigator (model id or live agent ref), and optional purpose. Call this first if you don't know which pair to consult, or to discover whether any pair is configured at all.",
+		promptSnippet: "List configured pair-coding sessions",
+		parameters: Type.Object({}),
+		async execute() {
+			if (pairs.size === 0) {
+				return {
+					content: [{ type: "text" as const, text: "No pair-coding sessions configured. Run /pair-form to set one up." }],
+					details: { pairs: [] },
+				};
+			}
+			const lines = [...pairs.values()].map(pairLine);
+			return {
+				content: [{ type: "text" as const, text: `Pairs:\n${lines.join("\n")}` }],
+				details: { pairs: [...pairs.values()] },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: "pair_consult",
 		label: "Consult Navigator",
 		description:
-			"Send the Navigator a code draft, design question, or test plan and get its review back. Use whenever you'd benefit from an outside perspective before finalizing a non-trivial change.",
+			"Send the Navigator a code draft, design question, or test plan and get its review back. Use whenever you'd benefit from an outside perspective before finalizing a non-trivial change. If you don't know which pair to use, call pair_list first.",
 		promptSnippet: "Get review feedback from the paired Navigator model",
 		parameters: PairConsultSchema,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
