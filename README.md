@@ -32,7 +32,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-cheatsheets`, and `pi-llm-council`; it also registers memories. It does **not** discover models, configure secrets, add shell hooks, set a default provider, set a default model, or hard-code a council model list.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` installs this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-cheatsheets`, `pi-llm-council`, and `pi-coas`; it also registers memories. It does **not** discover models, configure secrets, add shell hooks, set a default provider, set a default model, or hard-code a council model list.
 
 ### 2. Set up
 
@@ -51,7 +51,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
+Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council, pi-coas), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
 
 ---
 
@@ -66,6 +66,7 @@ Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council), skills,
 | **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **pi-cheatsheets** | Global | `.mmem.yml` cheat sheets — tool/domain knowledge injected into agent context on demand |
 | **pi-llm-council** | Global | Heterogeneous multi-model debate using the runtime model registry, not setup-time hard-coding |
+| **pi-coas** | Global | Typed pi control surface over `~/git/coas` runtime scripts, workspaces, diagnostics, and schedules |
 | **kanban** | Project | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
 
@@ -126,6 +127,7 @@ extensions/           All extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
   pi-cheatsheets/       Global — .mmem.yml cheat sheets
   pi-llm-council/       Global — multi-model deliberation from runtime model registry
+  pi-coas/              Global — typed CoAS runtime/workspace/schedule control surface
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
@@ -136,7 +138,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, pi-cheatsheets, pi-llm-council) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, pi-cheatsheets, pi-llm-council, pi-coas) are installed by `make setup` through this repo’s local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 

@@ -68,7 +68,7 @@ memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr 
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council"
+echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council, pi-coas"
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
 echo  "    memories:   $memory_count direct path"
