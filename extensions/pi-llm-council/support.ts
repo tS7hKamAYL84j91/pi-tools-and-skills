@@ -9,7 +9,7 @@ import {
 	unique,
 } from "./members.js";
 import type { CouncilSlot } from "./status-bar.js";
-import type { CouncilSettings } from "./settings.js";
+import { resolveCouncilSettings, type ResolvedCouncilSettings } from "./settings.js";
 import type { CouncilDefinition, CouncilDeliberation } from "./types.js";
 
 export const CouncilFormSchema = Type.Object({
@@ -86,12 +86,15 @@ export function makeDefinition(args: {
 	};
 }
 
-export function defaultSlot(snapshot: string[]): CouncilSlot {
+export function defaultSlot(
+	snapshot: string[],
+	settings: ResolvedCouncilSettings = resolveCouncilSettings(),
+): CouncilSlot {
 	const members = chooseCouncilModels(snapshot);
 	return {
 		definition: makeDefinition({
-			name: "default",
-			purpose: "General high-stakes reasoning and architecture review",
+			name: settings.defaultCouncil.name,
+			purpose: settings.defaultCouncil.purpose,
 			members,
 			chairman: chooseChairmanModel(snapshot, members),
 		}),
@@ -101,7 +104,7 @@ export function defaultSlot(snapshot: string[]): CouncilSlot {
 
 export function configuredSlots(
 	snapshot: string[],
-	settings: CouncilSettings,
+	settings: ResolvedCouncilSettings,
 ): CouncilSlot[] {
 	return Object.entries(settings.councils ?? {}).map(([name, config]) => {
 		const members = unique(

@@ -12,16 +12,28 @@ import {
 	type CouncilExtensionState,
 } from "./extension-state.js";
 import { snapshotAvailableModels } from "./members.js";
-import { resolveCouncilSettings } from "./settings.js";
+import { resolveCouncilSettings, type ResolvedCouncilSettings } from "./settings.js";
 import { refreshCouncilStatus } from "./status-bar.js";
 import { configuredSlots, defaultSlot } from "./support.js";
 import { registerCouncilTools } from "./tools.js";
 
-function initialiseCouncils(state: CouncilExtensionState, snapshot: string[]): void {
-	const settings = resolveCouncilSettings();
+function initialiseCouncils(state: CouncilExtensionState, snapshot: string[], settings: ResolvedCouncilSettings): void {
 	state.councils.clear();
-	for (const slot of [defaultSlot(snapshot), ...configuredSlots(snapshot, settings)]) {
+	for (const slot of [defaultSlot(snapshot, settings), ...configuredSlots(snapshot, settings)]) {
 		state.councils.set(slot.definition.name, slot);
+	}
+}
+
+function initialisePairs(state: CouncilExtensionState, settings: ResolvedCouncilSettings): void {
+	state.pairs.clear();
+	for (const [name, pair] of Object.entries(settings.pairs)) {
+		if (!pair.navigator) continue;
+		state.pairs.set(name, {
+			name,
+			navigator: pair.navigator,
+			...(pair.purpose ? { purpose: pair.purpose } : {}),
+			createdAt: Date.now(),
+		});
 	}
 }
 
@@ -29,7 +41,9 @@ export default function (pi: ExtensionAPI) {
 	const state = createCouncilExtensionState();
 
 	pi.on("session_start", async (_event, ctx) => {
-		initialiseCouncils(state, snapshotAvailableModels(ctx));
+		const settings = resolveCouncilSettings();
+		initialiseCouncils(state, snapshotAvailableModels(ctx), settings);
+		initialisePairs(state, settings);
 		refreshCouncilStatus(ctx, state.councils, state.pairs);
 	});
 

@@ -10,7 +10,8 @@
  * Pilot is *this session's main agent* — the one with full tool access and
  * conversation context. Navigator is a separate model invoked by the agent
  * via the `pair_consult` tool whenever it wants outside review. Pairs are
- * session-local; no settings.json persistence.
+ * session-local, seeded at session start from the visible extension config and
+ * optional user settings.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";

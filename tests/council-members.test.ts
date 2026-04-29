@@ -13,7 +13,6 @@ import {
 	providerOf,
 } from "../extensions/pi-llm-council/members.js";
 
-/** Path to a nonexistent file — resolves to hard-coded defaults. */
 function withSettings<T>(council: object, fn: (settingsPath: string) => T): T {
 	const dir = join(tmpdir(), `council-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(dir, { recursive: true });
@@ -26,7 +25,6 @@ function withSettings<T>(council: object, fn: (settingsPath: string) => T): T {
 	}
 }
 
-/** Path to a nonexistent file — resolves to hard-coded defaults. */
 const NO_SETTINGS = "/nonexistent/path/settings.json";
 
 // ── providerOf ──────────────────────────────────────────────────
@@ -104,7 +102,7 @@ describe("chooseCouncilModels", () => {
 		expect(chosen).toEqual(["a/m1", "b/m2"]);
 	});
 
-	it("uses hard-coded defaults filtered by snapshot when no settings file exists", () => {
+	it("uses visible extension defaults filtered by snapshot when no settings file exists", () => {
 		const chosen = chooseCouncilModels(snapshot, undefined, NO_SETTINGS);
 		expect(chosen.length).toBeGreaterThanOrEqual(COUNCIL_MIN);
 		expect(chosen.length).toBeLessThanOrEqual(COUNCIL_MAX);
@@ -215,7 +213,7 @@ describe("chooseChairmanModel", () => {
 			undefined,
 			NO_SETTINGS,
 		);
-		// No settings default in registry, no DEFAULT_CHAIRMAN_CANDIDATES match
+		// No settings/config default in registry, no chairman candidates match
 		expect(chairman).toBe("only/member");
 	});
 });

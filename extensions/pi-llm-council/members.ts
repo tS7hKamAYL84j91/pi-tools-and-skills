@@ -91,8 +91,8 @@ function modelMatches(available: Set<string>, model: string): boolean {
 /**
  * Pick member models in priority order:
  *   1. explicit `requested`
- *   2. settings.json defaultMembers (field-level default if absent)
- *   3. hard-coded candidates filtered against the registry snapshot
+ *   2. user settings or visible extension config defaultMembers
+ *   3. visible extension config candidates filtered against the registry snapshot
  *   4. fall back to whatever the snapshot offers
  *
  * @param settingsPath - Optional path to settings.json for hermetic tests.
@@ -143,7 +143,7 @@ function padFromSnapshot(
 }
 
 /**
- * Pick the chairman: explicit → settings (if available) → candidate list → members[0].
+ * Pick the chairman: explicit → user/config default (if available) → candidate list → members[0].
  *
  * @param settingsPath - Optional path to settings.json for hermetic tests.
  */
