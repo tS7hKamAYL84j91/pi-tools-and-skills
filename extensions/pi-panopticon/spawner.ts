@@ -59,6 +59,17 @@ interface ResultEnvelope {
 	error?: string;
 }
 
+interface SpawnAgentParams {
+	name: string;
+	task?: string;
+	brief?: TaskBrief;
+	cwd?: string;
+	model?: string;
+	tools?: string[];
+	systemPrompt?: string;
+	sessionDir?: string;
+}
+
 function createResultEnvelope(args: {
 	tool: string;
 	params: Record<string, unknown>;
@@ -75,6 +86,21 @@ function createResultEnvelope(args: {
 		success: args.success,
 		...(args.error ? { error: args.error } : {}),
 	};
+}
+
+/** Normalize legacy/model-emitted spawn_agent args before TypeBox validation. */
+function prepareSpawnAgentArguments(args: unknown): SpawnAgentParams {
+	if (args == null || typeof args !== "object" || Array.isArray(args)) {
+		// Preserve invalid shapes for the schema validator to reject.
+		return args as SpawnAgentParams;
+	}
+	// Tool arguments arrive as unknown JSON; object guard makes record access safe.
+	const input = args as Record<string, unknown>;
+	if (input.tools !== null) {
+		// Preserve any other validation errors for the schema validator.
+		return input as unknown as SpawnAgentParams;
+	}
+	return { ...input, tools: [] } as unknown as SpawnAgentParams;
 }
 
 // ── Extension entry ─────────────────────────────────────────────
@@ -128,7 +154,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 				Type.String({ description: 'Model override. If brief is provided, model is auto-routed from classification unless this is set.' }),
 			),
 			tools: Type.Optional(
-				Type.Array(Type.String(), { description: 'Restrict tools (e.g. ["read", "bash"]). Default: all.' }),
+				Type.Array(Type.String(), { description: 'Restrict tools (e.g. ["read", "bash"]). Default: all. Null is normalized to omitted before validation.' }),
 			),
 			systemPrompt: Type.Optional(
 				Type.String({ description: "Additional system prompt to append" }),
@@ -137,6 +163,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 				Type.String({ description: "Session directory for persistence" }),
 			),
 		}),
+		prepareArguments: prepareSpawnAgentArguments,
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const startedAt = Date.now();

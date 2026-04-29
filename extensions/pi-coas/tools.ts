@@ -7,9 +7,11 @@ import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary } from "./format.js";
-import { runCoasScript, runDoctor, runSchedule, runStatus } from "./scripts.js";
+import { addSchedule, formatScheduleList, listSchedules, removeSchedule, runSchedule } from "./schedules.js";
+import { coasDoctor, coasStatus } from "./status.js";
 import {
 	appendWorkspaceContext,
+	createWorkspace,
 	formatWorkspaceList,
 	listWorkspaces,
 	readWorkspaceContext,
@@ -23,11 +25,11 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_status",
 		label: "CoAS Status",
-		description: "Show fast CoAS operational status by running coas-status.",
+		description: "Show fast CoAS operational status from the TypeScript CoAS runtime state.",
 		promptSnippet: "Show fast CoAS operational status",
 		parameters: Type.Object({}),
-		async execute(_id, _params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await runStatus(pi, configFor(ctx), signal);
+		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const result = await coasStatus(configFor(ctx));
 			return ok(commandSummary("coas-status", result), { code: result.code });
 		},
 	});
@@ -35,11 +37,11 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_doctor",
 		label: "CoAS Doctor",
-		description: "Run CoAS diagnostics. Non-zero doctor exit codes are returned as diagnostic details, not tool failures.",
+		description: "Run CoAS TypeScript runtime diagnostics. Non-zero exit codes are returned as diagnostic details, not tool failures.",
 		promptSnippet: "Run CoAS health diagnostics",
 		parameters: Type.Object({}),
-		async execute(_id, _params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await runDoctor(pi, configFor(ctx), signal);
+		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const result = await coasDoctor(configFor(ctx));
 			return ok(commandSummary("coas-doctor", result), { code: result.code });
 		},
 	});
@@ -59,7 +61,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_workspace_read",
 		label: "CoAS Workspace Read",
-		description: "Read a CoAS workspace CONTEXT.md. Defaults to the current workspace when cwd contains CONTEXT.md.",
+		description: "Read a CoAS workspace CONTEXT.md. Defaults to the current CoAS workspace when cwd is a real workspace.",
 		promptSnippet: "Read durable CoAS workspace context",
 		parameters: Type.Object({
 			workspace: Type.Optional(Type.String({ description: "Workspace id or path. Defaults to current workspace." })),
@@ -89,7 +91,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_workspace_create",
 		label: "CoAS Workspace Create",
-		description: "Create a CoAS workspace by delegating to coas-new-room --workspace-only. Does not create a Matrix room.",
+		description: "Create a CoAS workspace in TypeScript. Does not create a Matrix room.",
 		promptSnippet: "Create a CoAS workspace without creating a Matrix room",
 		parameters: Type.Object({
 			room: Type.String({ description: "Room id, alias, or descriptive room reference." }),
@@ -98,26 +100,21 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			isolated: Type.Optional(Type.Boolean({ description: "Mark workspace as isolated." })),
 			dryRun: Type.Optional(Type.Boolean({ description: "Preview only. Defaults to false." })),
 		}),
-		async execute(_id, params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const args = ["--workspace-only", "--room", params.room, "--workspace", params.workspace];
-			if (params.purpose) args.push("--purpose", params.purpose);
-			if (params.isolated) args.push("--isolated");
-			if (params.dryRun) args.push("--dry-run");
-			const result = await runCoasScript(pi, configFor(ctx), "coas-new-room", { args, signal });
-			if (result.code !== 0) throw new Error(commandSummary("coas-new-room", result));
-			return ok(commandSummary("coas-new-room", result), { code: result.code });
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const result = await createWorkspace(configFor(ctx), params);
+			return ok(`coas workspace: ${result.dryRun ? "would create" : "ready"} ${result.workspaceId} at ${result.path}`, result);
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_schedule_list",
 		label: "CoAS Schedule List",
-		description: "List CoAS scheduled automations via coas-schedule list.",
+		description: "List CoAS scheduled automations from COAS_HOME.",
 		promptSnippet: "List CoAS scheduled automations",
 		parameters: Type.Object({}),
-		async execute(_id, _params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await runSchedule(pi, configFor(ctx), ["list"], signal);
-			return ok(commandSummary("coas-schedule list", result), { code: result.code });
+		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const schedules = await listSchedules(configFor(ctx));
+			return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules });
 		},
 	});
 
@@ -134,46 +131,38 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			workspace: Type.Optional(Type.String({ description: "Workspace id/name." })),
 			disabled: Type.Optional(Type.Boolean({ description: "Create disabled schedule." })),
 		}),
-		async execute(_id, params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const args = ["add", "--room", params.room, "--name", params.name, "--cron", params.cron, "--prompt", params.prompt];
-			if (params.workspace) args.push("--workspace", params.workspace);
-			if (params.disabled) args.push("--disabled");
-			const result = await runSchedule(pi, configFor(ctx), args, signal);
-			if (result.code !== 0) throw new Error(commandSummary("coas-schedule add", result));
-			return ok(commandSummary("coas-schedule add", result), { code: result.code });
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const schedule = await addSchedule(configFor(ctx), params);
+			return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule });
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_schedule_run",
 		label: "CoAS Schedule Run",
-		description: "Run or dry-run a CoAS scheduled task. Defaults to dry-run for safety.",
-		promptSnippet: "Dry-run or execute a CoAS scheduled task",
+		description: "Dry-run a CoAS scheduled task. Non-dry-run execution is disabled until a standalone TypeScript runner exists.",
+		promptSnippet: "Dry-run a CoAS scheduled task",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id." }),
 			dryRun: Type.Optional(Type.Boolean({ description: "Dry-run only. Defaults to true." })),
 		}),
-		async execute(_id, params, signal, _onUpdate, ctx): Promise<ToolResult> {
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			const dryRun = params.dryRun ?? true;
-			const args = ["run", params.taskId];
-			if (dryRun) args.push("--dry-run");
-			const result = await runSchedule(pi, configFor(ctx), args, signal);
-			if (result.code !== 0 && !dryRun) throw new Error(commandSummary("coas-schedule run", result));
-			return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun });
+			const result = await runSchedule(configFor(ctx), params.taskId, dryRun);
+			return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun, unsupported: !dryRun });
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_schedule_remove",
 		label: "CoAS Schedule Remove",
-		description: "Remove a CoAS schedule by task id. Does not edit user crontab; run the command to reinstall cron if needed.",
+		description: "Remove a CoAS schedule by task id. Does not edit user crontab.",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id to remove." }),
 		}),
-		async execute(_id, params, signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await runSchedule(pi, configFor(ctx), ["remove", params.taskId], signal);
-			if (result.code !== 0) throw new Error(commandSummary("coas-schedule remove", result));
-			return ok(commandSummary("coas-schedule remove", result), { code: result.code });
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			const message = await removeSchedule(configFor(ctx), params.taskId);
+			return ok(message, { code: 0, taskId: params.taskId });
 		},
 	});
 }

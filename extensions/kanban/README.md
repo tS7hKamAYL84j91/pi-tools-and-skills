@@ -1,6 +1,6 @@
 # Kanban Extension
 
-A pi extension that turns an append-only `board.log` into a full kanban board with 14 tools, an auto-refreshing TUI widget, autonomous monitoring, and log compaction.
+A pi extension that turns an append-only `board.log` into a kanban board with 14 tools, an auto-refreshing TUI widget, autonomous monitoring, log compaction, and gradual-disclosure snapshots.
 
 ## Board Model
 
@@ -76,7 +76,7 @@ Files written:
 
 | Tool               | Parameters         | Notes                                                                |
 |--------------------|--------------------|----------------------------------------------------------------------|
-| `kanban_snapshot`  | _(none)_           | Regenerates `snapshot.md`; triggers auto-compaction check            |
+| `kanban_snapshot`  | `detail?`, `task_id?` | Regenerates full `snapshot.md`; returns compact summary by default, `detail="full"` for full board, or `task_id="T-NNN"` for one card |
 | `kanban_compact`   | _(none)_           | Manual log compaction; creates timestamped backup                    |
 | `kanban_monitor`   | `prod?`            | Checks all in-progress tasks; nudges stalled agents when `prod=true` |
 
@@ -102,8 +102,9 @@ Also updates the status bar: `📋 WIP 2/3 | 1 blocked`
 Injects a `followUp` message to the LLM orchestrator:
 ```
 Board updated externally (kanban watcher detected new events).
-Run kanban_snapshot to see current state.
+Run kanban_snapshot for a compact board summary.
 Run kanban_monitor and agent_status to check agent health.
+Use task_id="T-NNN" or detail="full" only when explicit details are needed.
 ...
 ```
 
@@ -155,7 +156,28 @@ With `prod=true` (or `--prod` CLI flag): sends a nudge via panopticon Maildir to
 
 ## Snapshot Output
 
-`kanban_snapshot` writes `snapshot.md` with five columns:
+`kanban_snapshot` always writes full `snapshot.md` with five columns, but the tool result returned to the model is compact by default:
+
+```markdown
+# CoAS Kanban — Compact Summary
+_Generated: ... | Log events: 247 | WIP: 2/3_
+_Gradual disclosure: task descriptions/notes are not included here..._
+
+## 📋 Backlog (N)
+- T-101: Short title
+
+## 🔄 In Progress (N/3)
+- T-042: Implement OAuth — tools-worker
+```
+
+Full detail remains available on demand:
+
+- `kanban_snapshot({ "detail": "full" })` — returns the full board, including descriptions and notes.
+- `kanban_snapshot({ "task_id": "T-NNN" })` — returns full detail for one card.
+- `/kanban` — opens the full live TUI overlay.
+- `kanban/tasks/T-NNN.md` — per-task markdown file for direct reads.
+
+`kanban/snapshot.md` retains the full five-column Markdown board:
 
 ```markdown
 # CoAS Kanban — Snapshot
@@ -165,23 +187,12 @@ _Generated: ... | Log events: 247 | WIP: 2/3_
 | ID | Title | Priority | Tags |
 ...
 
-## 🔜 Todo (N)
-...
-
 ## 🔄 In Progress (N/3)
 | ID | Title | Agent | Model | Expires |
 ...
-
-## 🚫 Blocked (N)
-| ID | Title | Reason |
-...
-
-## ✅ Done (last 10 of N)
-| ID | Title | Agent | Completed | Duration |
-...
 ```
 
-Notes and descriptions appear under each task table.
+Notes and descriptions appear only in explicit detail views or the written snapshot file.
 
 ## Task Files
 
@@ -217,7 +228,7 @@ project-extensions/kanban/
   board.ts       Types (TaskState, BoardState), path helpers, parseBoard(), logAppend(), task file I/O
   index.ts       14 tools + auto-compaction (runCompaction, compactIfNeeded)
   monitor.ts     getInProgressTasks, inspectAgent, deliverNudge, formatMonitorReport
-  snapshot.ts    generateSnapshot() — pure function, no side effects
+  snapshot.ts    generateSnapshotSummary(), generateTaskDetail(), generateSnapshot() — pure functions, no side effects
   watcher.ts     setupWatcher() — TUI widget, status bar, injection gates
   tasks/         Per-task markdown files (T-NNN.md) — created by kanban_create
 ```

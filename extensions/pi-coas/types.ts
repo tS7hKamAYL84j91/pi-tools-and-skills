@@ -3,12 +3,10 @@
  */
 
 export interface CoasConfig {
-	coasDir: string;
 	coasHome: string;
 }
 
 export interface RawCoasSettings {
-	coasDir?: unknown;
 	coasHome?: unknown;
 }
 
@@ -33,4 +31,39 @@ export interface WorkspaceSummary {
 	isolated?: string;
 	updatedAt?: string;
 	hasContext: boolean;
+}
+
+export interface CreateWorkspaceInput {
+	workspace: string;
+	room: string;
+	purpose?: string;
+	isolated?: boolean;
+	dryRun?: boolean;
+}
+
+export interface ScheduleEntry {
+	taskId: string;
+	taskName: string;
+	roomId: string;
+	workspaceId: string;
+	cronExpr: string;
+	enabled: boolean;
+	promptFile: string;
+	createdAt?: string;
+	updatedAt?: string;
+	prompt?: string;
+}
+
+export interface ScheduleAddInput {
+	room: string;
+	name: string;
+	cron: string;
+	prompt: string;
+	workspace?: string;
+	disabled?: boolean;
+}
+
+export interface DoctorCheck {
+	level: "ok" | "warn" | "critical";
+	message: string;
 }

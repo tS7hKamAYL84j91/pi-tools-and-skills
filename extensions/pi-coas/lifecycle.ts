@@ -5,22 +5,25 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { hasCoasScripts, resolveCoasConfig } from "./config.js";
+import { resolveCoasConfig } from "./config.js";
+import { pathInside, workspaceRoot } from "./store.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
 function updateStatus(ctx: ExtensionContext): void {
 	const config = resolveCoasConfig(ctx.cwd);
-	if (!hasCoasScripts(config)) {
+	const workspace = currentWorkspaceLabel(ctx.cwd);
+	if (!workspace && !existsSync(config.coasHome)) {
 		ctx.ui.setStatus("coas", undefined);
 		return;
 	}
-	const workspace = currentWorkspaceLabel(ctx.cwd);
 	ctx.ui.setStatus("coas", workspace ? `CoAS ${workspace}` : "CoAS ✓");
 }
 
 function contextInstruction(ctx: ExtensionContext): string | undefined {
 	const workspace = currentWorkspaceLabel(ctx.cwd);
-	if (!workspace && !existsSync(join(ctx.cwd, "CONTEXT.md"))) return undefined;
+	const config = resolveCoasConfig(ctx.cwd);
+	const inWorkspaceRoot = pathInside(workspaceRoot(config), ctx.cwd);
+	if (!workspace && !inWorkspaceRoot && !existsSync(join(ctx.cwd, ".coas", "workspace.env"))) return undefined;
 	return [
 		"CoAS workspace context is available for this session.",
 		"Use coas_workspace_read before workspace-sensitive work when relevant.",

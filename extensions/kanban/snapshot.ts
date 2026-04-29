@@ -1,8 +1,9 @@
 /**
  * Kanban snapshot renderer.
  *
- * Generates a Markdown snapshot from BoardState — pure functions
- * with no side effects. The snapshot tool writes the result to disk.
+ * Generates Markdown views from BoardState — pure functions with no side
+ * effects. The snapshot tool writes the full result to disk but returns the
+ * compact summary to preserve gradual disclosure in model context.
  */
 
 import type { BoardState, TaskState } from "./board.js";
@@ -49,9 +50,72 @@ const COLUMN_DEFS: Record<string, ColumnDef> = {
 	},
 };
 
-// ── Rendering ───────────────────────────────────────────────────
+const SUMMARY_LIMITS: Record<string, number> = {
+	backlog: 5,
+	todo: 5,
+	"in-progress": 10,
+	blocked: 10,
+	done: 5,
+};
 
-/** Render a single column section: heading, table, and notes. */
+function bucketTasks(board: BoardState): Record<string, TaskState[]> {
+	const buckets: Record<string, TaskState[]> = {
+		backlog: [], todo: [], "in-progress": [], blocked: [], done: [],
+	};
+	for (const tid of board.order) {
+		const t = board.tasks.get(tid);
+		if (!t || t.deleted) continue;
+		buckets[t.col]?.push(t);
+	}
+	return buckets;
+}
+
+function renderSummaryColumn(tasks: TaskState[], colKey: string, countLabel?: string): string[] {
+	const def = COLUMN_DEFS[colKey];
+	if (!def) return [];
+	const limit = SUMMARY_LIMITS[colKey] ?? 5;
+	const visible = tasks.slice(0, limit);
+	const omitted = Math.max(0, tasks.length - visible.length);
+	const label = countLabel ?? String(tasks.length);
+	const lines = [`## ${def.heading} (${label})`];
+	if (visible.length === 0) {
+		lines.push("_empty_");
+	} else {
+		for (const task of visible) {
+			const owner = task.claimAgent || task.doneAgent || task.agent;
+			const suffix = owner ? ` — ${owner}` : "";
+			lines.push(`- ${task.id}: ${task.title}${suffix}`);
+		}
+		if (omitted > 0) {
+			lines.push(`- … ${omitted} more. Use kanban_snapshot with task_id="T-NNN" or detail="full" for details.`);
+		}
+	}
+	lines.push("");
+	return lines;
+}
+
+/** Render full detail for one task. */
+function taskDetailLines(task: TaskState): string[] {
+	const lines = [
+		`# Kanban Task ${task.id}`,
+		"",
+		`- Title: ${task.title}`,
+		`- Column: ${task.col}`,
+		`- Priority: ${task.priority}`,
+		`- Tags: ${task.tags || "—"}`,
+		`- Agent: ${task.claimAgent || task.doneAgent || task.agent || "—"}`,
+		`- Model: ${task.model || "—"}`,
+		`- Created: ${task.createdAt || "—"}`,
+		`- Completed: ${task.completedAt || "—"}`,
+		`- Duration: ${task.duration || "—"}`,
+		`- Blocked reason: ${task.reason || "—"}`,
+		"",
+	];
+	if (task.description) lines.push("## Description", "", task.description, "");
+	if (task.notes.length > 0) lines.push("## Notes", "", ...task.notes.map((note) => `- ${note}`), "");
+	return lines;
+}
+
 function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): string[] {
 	const def = COLUMN_DEFS[colKey];
 	if (!def) return [];
@@ -75,20 +139,41 @@ function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): s
 	return lines;
 }
 
+/** Generate detail for one task on explicit request. */
+export function generateTaskDetail(board: BoardState, taskId: string): string {
+	const task = board.tasks.get(taskId);
+	if (!task || task.deleted) throw new Error(`No active kanban task: ${taskId}`);
+	return taskDetailLines(task).join("\n");
+}
+
+/** Generate a compact Markdown summary suitable for model context. */
+export function generateSnapshotSummary(board: BoardState): string {
+	const { totalEvents } = board;
+	const now = nowZ();
+	const buckets = bucketTasks(board);
+	const wip = buckets["in-progress"]?.length ?? 0;
+	const doneAll = buckets.done ?? [];
+	const doneLast = doneAll.slice(-(SUMMARY_LIMITS.done ?? 5));
+	return [
+		"# CoAS Kanban — Compact Summary",
+		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
+		"_Gradual disclosure: task descriptions/notes are not included here. Use kanban_snapshot with task_id=\"T-NNN\" for one card or detail=\"full\" for the whole board._",
+		"",
+		...renderSummaryColumn(buckets.backlog ?? [], "backlog"),
+		...renderSummaryColumn(buckets.todo ?? [], "todo"),
+		...renderSummaryColumn(buckets["in-progress"] ?? [], "in-progress"),
+		...renderSummaryColumn(buckets.blocked ?? [], "blocked"),
+		...renderSummaryColumn(doneLast, "done", `last ${doneLast.length} of ${doneAll.length}`),
+		"---",
+		"_Full snapshot was written to kanban/snapshot.md but intentionally not returned to model context._",
+	].join("\n");
+}
+
 /** Generate a full Markdown snapshot from parsed board state. */
 export function generateSnapshot(board: BoardState): string {
-	const { tasks, order, totalEvents } = board;
+	const { totalEvents } = board;
 	const now = nowZ();
-
-	const buckets: Record<string, TaskState[]> = {
-		backlog: [], todo: [], "in-progress": [], blocked: [], done: [],
-	};
-	for (const tid of order) {
-		const t = tasks.get(tid);
-		if (!t || t.deleted) continue;
-		buckets[t.col]?.push(t);
-	}
-
+	const buckets = bucketTasks(board);
 	const wip = buckets["in-progress"]?.length ?? 0;
 	const doneAll = buckets.done ?? [];
 	const doneLast10 = doneAll.slice(-10);

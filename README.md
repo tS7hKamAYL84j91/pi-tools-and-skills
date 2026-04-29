@@ -2,7 +2,7 @@
 
 Extensions, skills, memories, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent. Adds multi-agent orchestration, kanban task tracking, phone-to-agent messaging (Matrix), machine memories, and reusable skills.
 
-This repo is intentionally reusable. Model choices, runtime workspaces, Matrix deployment, and CoAS launch helpers belong in workspace/infra config — for this machine, `~/git/coas` — not in `make setup`.
+This repo is intentionally reusable. Model choices, Matrix deployment, and host launch helpers belong in workspace/infra config, not in `make setup`. The bundled `pi-coas` extension manages local CoAS state directly under `${COAS_HOME:-~/.coas}`.
 
 ## Getting started
 
@@ -41,7 +41,7 @@ make help                     # show all available targets
 make setup                    # register extensions, skills, prompts, memories
 ```
 
-For CoAS runtime setup — model discovery, default providers, shell hooks, Matrix secrets, and launchers — use `~/git/coas`.
+For host-level CoAS setup — model discovery, default providers, shell hooks, Matrix secrets, and launchers — use the CoAS infra checkout. The `pi-coas` extension itself does not depend on that checkout.
 
 ### 3. Run pi
 
@@ -51,7 +51,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council, pi-coas), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers, Matrix secrets, and workspace defaults live in `~/git/coas`.
+Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council, pi-coas), skills, prompts, and memories. Add kanban/matrix per-project via `.pi/settings.json`. CoAS-specific launchers and Matrix secrets live in host infra config; `pi-coas` uses `${COAS_HOME:-~/.coas}` for local state.
 
 ---
 
@@ -66,7 +66,7 @@ Pi loads global extensions (panopticon, pi-cheatsheets, pi-llm-council, pi-coas)
 | **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **pi-cheatsheets** | Global | `.mmem.yml` cheat sheets — tool/domain knowledge injected into agent context on demand |
 | **pi-llm-council** | Global | Heterogeneous multi-model debate using the runtime model registry, not setup-time hard-coding |
-| **pi-coas** | Global | Typed pi control surface over `~/git/coas` runtime scripts, workspaces, diagnostics, and schedules |
+| **pi-coas** | Global | TypeScript-native CoAS workspaces, diagnostics, and file-backed schedules under `${COAS_HOME:-~/.coas}` |
 | **kanban** | Project | Event-sourced task board — 14 tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
 

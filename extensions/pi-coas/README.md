@@ -1,23 +1,25 @@
 # Pi CoAS Extension
 
-Typed pi control surface for the CoAS runtime repo (`~/git/coas`).
+TypeScript-native pi control surface for CoAS workspace, schedule, status, and
+health state under `${COAS_HOME:-~/.coas}`.
 
-This extension does **not** replace CoAS host scripts. It wraps them so the
-agent and operator can use narrow tools/commands instead of raw shell.
+This extension does **not** depend on a sibling `~/git/coas` checkout and does
+not shell out to CoAS scripts. Matrix room bootstrap and arbitrary scheduled
+execution remain out of scope until they have a standalone reviewed runner.
 
 ## Tools
 
 | Tool | Purpose |
 |---|---|
-| `coas_status` | Run `coas-status` |
-| `coas_doctor` | Run `coas-doctor` diagnostics |
+| `coas_status` | Summarize the local CoAS data root |
+| `coas_doctor` | Run TypeScript runtime diagnostics |
 | `coas_workspace_list` | List `${COAS_HOME:-~/.coas}/workspaces` |
-| `coas_workspace_read` | Read a workspace `CONTEXT.md` |
+| `coas_workspace_read` | Read a real workspace `CONTEXT.md` |
 | `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md` |
-| `coas_workspace_create` | Create a workspace via `coas-new-room --workspace-only` |
-| `coas_schedule_list` | Run `coas-schedule list` |
+| `coas_workspace_create` | Create a workspace record without Matrix room creation |
+| `coas_schedule_list` | List file-backed schedules |
 | `coas_schedule_add` | Add a file-backed schedule, without installing cron |
-| `coas_schedule_run` | Dry-run by default, or execute a schedule task |
+| `coas_schedule_run` | Dry-run by default; non-dry-run execution is disabled for safety |
 | `coas_schedule_remove` | Remove a schedule file pair |
 
 ## Commands
@@ -26,14 +28,13 @@ agent and operator can use narrow tools/commands instead of raw shell.
 - `/coas-doctor`
 - `/coas-workspaces`
 - `/coas-schedules`
-- `/coas-cron-install` — requires UI confirmation
-- `/coas-cron-uninstall` — requires UI confirmation
+- `/coas-cron-install` — command exists but reports disabled until a standalone runner exists
+- `/coas-cron-uninstall` — command exists but reports disabled until a standalone runner exists
 
 ## Configuration
 
 Defaults:
 
-- `COAS_DIR=${HOME}/git/coas`
 - `COAS_HOME=${HOME}/.coas`
 
 Optional `.pi/settings.json` override:
@@ -41,18 +42,18 @@ Optional `.pi/settings.json` override:
 ```json
 {
   "coas": {
-    "coasDir": "~/git/coas",
     "coasHome": "~/.coas"
   }
 }
 ```
 
-Environment variables win over settings.
+`COAS_HOME` wins over settings.
 
 ## Safety
 
-- No cron install/uninstall is exposed as a model-callable tool.
-- Cron commands require UI confirmation.
-- Workspace context updates use pi's file mutation queue.
-- `coas_schedule_run` defaults to dry-run.
+- No model-callable tool can install cron or execute arbitrary schedule payloads.
+- Cron commands are human-triggered and currently disabled rather than pretending to be safe.
+- Workspace reads/writes are confined to `${COAS_HOME}/workspaces` unless the target already has `.coas/workspace.env` metadata.
+- Workspace context updates use pi's file mutation queue and reject symlinked `CONTEXT.md` files.
+- Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.
 - Tool output is truncated before entering model context.
