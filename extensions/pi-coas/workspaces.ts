@@ -3,38 +3,24 @@
  */
 
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { appendFile, chmod, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
-import type { CoasConfig, WorkspaceSummary } from "./types.js";
-
-const SAFE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
-
-function unquoteShellValue(value: string): string {
-	const trimmed = value.trim();
-	if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-		return trimmed.slice(1, -1).replace(/'"'"'/g, "'");
-	}
-	if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-		return trimmed.slice(1, -1).replace(/\\"/g, '"');
-	}
-	return trimmed;
-}
-
-function parseEnv(content: string): Record<string, string> {
-	const values: Record<string, string> = {};
-	for (const line of content.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-		const index = trimmed.indexOf("=");
-		if (index <= 0) continue;
-		const key = trimmed.slice(0, index);
-		if (!/^[A-Z0-9_]+$/.test(key)) continue;
-		values[key] = unquoteShellValue(trimmed.slice(index + 1));
-	}
-	return values;
-}
+import {
+	assertInside,
+	assertNoSymlinkComponents,
+	assertSafeId,
+	ensurePrivateDir,
+	formatEnv,
+	isoUtc,
+	parseEnv,
+	pathInside,
+	workspaceRoot,
+	slugify,
+	writePrivateFileAtomic,
+} from "./store.js";
+import type { CoasConfig, CreateWorkspaceInput, WorkspaceSummary } from "./types.js";
 
 function expandHome(path: string): string {
 	if (path === "~") return homedir();
@@ -42,24 +28,9 @@ function expandHome(path: string): string {
 	return path;
 }
 
-function assertSafeWorkspaceId(workspaceId: string): void {
-	if (!SAFE_ID_PATTERN.test(workspaceId) || workspaceId.includes("..")) {
-		throw new Error(`Invalid workspace id: ${workspaceId}`);
-	}
-}
-
-function workspaceRoot(config: CoasConfig): string {
-	return join(config.coasHome, "workspaces");
-}
-
 function workspacePath(config: CoasConfig, workspaceId: string): string {
-	assertSafeWorkspaceId(workspaceId);
+	assertSafeId("workspace id", workspaceId);
 	return join(workspaceRoot(config), workspaceId);
-}
-
-function isUnderWorkspaceRoot(config: CoasConfig, dir: string): boolean {
-	const pathFromRoot = relative(resolve(workspaceRoot(config)), resolve(dir));
-	return pathFromRoot.length > 0 && !pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot);
 }
 
 function hasWorkspaceMetadata(dir: string): boolean {
@@ -67,16 +38,27 @@ function hasWorkspaceMetadata(dir: string): boolean {
 }
 
 function assertAllowedWorkspacePath(config: CoasConfig, dir: string): void {
-	if (isUnderWorkspaceRoot(config, dir) || hasWorkspaceMetadata(dir)) return;
-	throw new Error(`Workspace path must be under ${workspaceRoot(config)} or contain .coas/workspace.env: ${dir}`);
+	const root = workspaceRoot(config);
+	try {
+		assertInside(root, dir);
+		if (resolve(dir) !== resolve(root)) return;
+	} catch {
+		// Fall through to metadata check for explicitly selected external-but-real
+		// workspaces. This preserves compatibility without allowing arbitrary paths.
+	}
+	if (hasWorkspaceMetadata(dir)) return;
+	throw new Error(`Workspace path must be under ${root} or contain .coas/workspace.env: ${dir}`);
 }
 
 function resolveWorkspacePath(config: CoasConfig, selector: string | undefined, cwd: string): string {
 	if (!selector || selector.trim().length === 0) {
-		if (existsSync(join(cwd, "CONTEXT.md"))) return cwd;
+		if (existsSync(join(cwd, "CONTEXT.md"))) {
+			assertAllowedWorkspacePath(config, cwd);
+			return cwd;
+		}
 		const envId = process.env.COAS_WORKSPACE_ID;
 		if (envId) return workspacePath(config, envId);
-		throw new Error("No workspace selected and cwd has no CONTEXT.md");
+		throw new Error("No workspace selected and cwd is not a CoAS workspace");
 	}
 	if (selector.startsWith("/") || selector.startsWith("~/") || selector.startsWith(".")) {
 		const expanded = expandHome(selector);
@@ -87,9 +69,28 @@ function resolveWorkspacePath(config: CoasConfig, selector: string | undefined, 
 	return workspacePath(config, selector);
 }
 
+async function assertNotSymlink(path: string): Promise<void> {
+	try {
+		const info = await lstat(path);
+		if (info.isSymbolicLink()) throw new Error(`Refusing CoAS workspace symlink: ${path}`);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw error;
+	}
+}
+
+async function assertSafeWorkspaceDir(config: CoasConfig, dir: string): Promise<void> {
+	if (pathInside(workspaceRoot(config), dir)) {
+		await assertNoSymlinkComponents(workspaceRoot(config), dir);
+		return;
+	}
+	await assertNotSymlink(dir);
+}
+
 async function readWorkspaceEnv(dir: string): Promise<Record<string, string>> {
 	const envPath = join(dir, ".coas", "workspace.env");
 	if (!existsSync(envPath)) return {};
+	await assertNotSymlink(envPath);
 	return parseEnv(await readFile(envPath, "utf8"));
 }
 
@@ -118,6 +119,8 @@ export async function listWorkspaces(config: CoasConfig): Promise<WorkspaceSumma
 export async function readWorkspaceContext(config: CoasConfig, selector: string | undefined, cwd: string): Promise<{ path: string; text: string }> {
 	const dir = resolveWorkspacePath(config, selector, cwd);
 	const path = join(dir, "CONTEXT.md");
+	await assertSafeWorkspaceDir(config, dir);
+	await assertNotSymlink(path);
 	return { path, text: await readFile(path, "utf8") };
 }
 
@@ -130,13 +133,77 @@ export async function appendWorkspaceContext(
 	if (text.trim().length === 0) throw new Error("Context update text must not be empty");
 	const dir = resolveWorkspacePath(config, selector, cwd);
 	const path = join(dir, "CONTEXT.md");
-	await mkdir(dir, { recursive: true });
+	await assertSafeWorkspaceDir(config, dir);
+	await mkdir(dir, { recursive: true, mode: 0o700 });
+	await assertNotSymlink(path);
 	await withFileMutationQueue(path, async () => {
-		const stamp = new Date().toISOString();
+		const stamp = isoUtc();
 		await appendFile(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`, { encoding: "utf8", mode: 0o600 });
+		await chmod(path, 0o600).catch(() => undefined);
 	});
 	const info = await stat(path);
 	return { path, bytes: info.size };
+}
+
+export async function createWorkspace(config: CoasConfig, input: CreateWorkspaceInput): Promise<{ path: string; workspaceId: string; dryRun: boolean }> {
+	const workspaceId = slugify(input.workspace);
+	assertSafeId("workspace id", workspaceId);
+	const dir = workspacePath(config, workspaceId);
+	const envPath = join(dir, ".coas", "workspace.env");
+	const contextPath = join(dir, "CONTEXT.md");
+	if (input.dryRun) return { path: dir, workspaceId, dryRun: true };
+
+	await assertSafeWorkspaceDir(config, dir);
+	await ensurePrivateDir(dir);
+	await ensurePrivateDir(join(dir, ".coas"));
+	await ensurePrivateDir(join(dir, "logs"));
+	await ensurePrivateDir(join(dir, "tmp"));
+
+	const now = isoUtc();
+	let createdAt = now;
+	if (existsSync(envPath)) {
+		const existing = parseEnv(await readFile(envPath, "utf8"));
+		createdAt = existing.CREATED_AT ?? now;
+	}
+	await assertNotSymlink(contextPath);
+	if (!existsSync(contextPath)) {
+		await appendFile(contextPath, [
+			`# CoAS Workspace: ${workspaceId}`,
+			"",
+			`- Room/reference: ${input.room || "unknown"}`,
+			`- Purpose: ${input.purpose || "Unspecified"}`,
+			`- Isolation requested: ${input.isolated ? 1 : 0}`,
+			`- Created: ${now}`,
+			"",
+			"## Operating Notes",
+			"",
+			"Use this file as durable room/workspace context. Read it before work when relevant.",
+			"Update it only with stable, useful facts. Do not write secrets here.",
+			"",
+			"## Durable Memory",
+			"",
+			"- (empty)",
+			"",
+		].join("\n"), { encoding: "utf8", mode: 0o600 });
+		await chmod(contextPath, 0o600).catch(() => undefined);
+	}
+	await writeWorkspaceEnv(envPath, {
+		WORKSPACE_ID: workspaceId,
+		ROOM_REF: input.room,
+		PURPOSE: input.purpose ?? "",
+		ISOLATED: input.isolated ? "1" : "0",
+		WORKSPACE_DIR: dir,
+		CONTEXT_FILE: contextPath,
+		CREATED_AT: createdAt,
+		UPDATED_AT: now,
+	});
+	return { path: dir, workspaceId, dryRun: false };
+}
+
+async function writeWorkspaceEnv(path: string, values: Record<string, string>): Promise<void> {
+	await withFileMutationQueue(path, async () => {
+		await writePrivateFileAtomic(path, formatEnv(values));
+	});
 }
 
 export function formatWorkspaceList(workspaces: WorkspaceSummary[]): string {

@@ -2,7 +2,6 @@
  * CoAS extension configuration discovery.
  */
 
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { readPiSettingsKey } from "../../lib/pi-settings.js";
@@ -30,26 +29,11 @@ export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
 	const projectSettings = readCoasSettings(join(cwd, ".pi", "settings.json"));
 	const globalSettings = readCoasSettings();
 	const settings = projectSettings ?? globalSettings;
-	const coasDir =
-		process.env.COAS_DIR ??
-		optionalString(settings?.coasDir) ??
-		join(homedir(), "git", "coas");
 	const coasHome =
 		process.env.COAS_HOME ??
 		optionalString(settings?.coasHome) ??
 		join(homedir(), ".coas");
 	return {
-		coasDir: resolve(expandHome(coasDir)),
 		coasHome: resolve(expandHome(coasHome)),
 	};
-}
-
-export function hasCoasScripts(config: CoasConfig): boolean {
-	return existsSync(join(config.coasDir, "scripts", "coas-status")) &&
-		existsSync(join(config.coasDir, "scripts", "coas-doctor")) &&
-		existsSync(join(config.coasDir, "scripts", "coas-schedule"));
-}
-
-export function coasScript(config: CoasConfig, name: string): string {
-	return join(config.coasDir, "scripts", name);
 }

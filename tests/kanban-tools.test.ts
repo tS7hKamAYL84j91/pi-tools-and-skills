@@ -274,7 +274,7 @@ describe("kanban_note + kanban_block", () => {
 		expect(log).toContain("use 'quotes' carefully");
 		expect(log).not.toContain('text="use "quotes"');
 
-		// Snapshot must still render the task without the parser losing fields after the bad quote
+		// Snapshot summary must still render the task without the parser losing fields after the bad quote.
 		const snap = await callTool(tools, "kanban_snapshot", {});
 		expect(snap.isError).toBeFalsy();
 		expect(snap.content[0]?.text).toContain("T-050");
@@ -283,16 +283,74 @@ describe("kanban_note + kanban_block", () => {
 });
 
 describe("kanban_snapshot", () => {
-	it("writes snapshot.md and returns rendered board", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-060", agent: "lead", title: "Snap me", priority: "high" });
+	it("writes full snapshot.md but returns compact summary", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-060",
+			agent: "lead",
+			title: "Snap me",
+			priority: "high",
+			description: "Detailed implementation notes stay out of model context",
+		});
+		await callTool(tools, "kanban_note", { task_id: "T-060", agent: "lead", text: "private-ish detail" });
 		const result = await callTool(tools, "kanban_snapshot", {});
 
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("T-060");
+		expect(result.content[0]?.text).toContain("Compact Summary");
+		expect(result.content[0]?.text).toContain("Returned view: compact");
+		expect(result.content[0]?.text).not.toContain("private-ish detail");
 		expect(existsSync(join(tmpDir, "snapshot.md"))).toBe(true);
 
 		const snap = readFileSync(join(tmpDir, "snapshot.md"), "utf-8");
 		expect(snap).toContain("T-060");
 		expect(snap).toContain("Snap me");
+		expect(snap).toContain("private-ish detail");
+	});
+
+	it("returns full board details when explicitly requested", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-061",
+			agent: "lead",
+			title: "Full detail",
+			priority: "medium",
+			description: "Only include this in explicit full output",
+		});
+		await callTool(tools, "kanban_note", { task_id: "T-061", agent: "lead", text: "full board note" });
+
+		const result = await callTool(tools, "kanban_snapshot", { detail: "full" });
+
+		expect(result.isError).toBeFalsy();
+		expect(result.content[0]?.text).toContain("Returned view: full");
+		expect(result.content[0]?.text).toContain("Notes for T-061");
+		expect(result.content[0]?.text).toContain("Only include this in explicit full output");
+		expect(result.content[0]?.text).toContain("full board note");
+	});
+
+	it("returns one card's details when task_id is requested", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-062",
+			agent: "lead",
+			title: "Focused detail",
+			priority: "critical",
+			description: "Specific card context",
+		});
+		await callTool(tools, "kanban_note", { task_id: "T-062", agent: "lead", text: "specific note" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-063",
+			agent: "lead",
+			title: "Other card",
+			priority: "low",
+			description: "Should stay out of task-specific output",
+		});
+
+		const result = await callTool(tools, "kanban_snapshot", { task_id: "T-062" });
+
+		expect(result.isError).toBeFalsy();
+		expect(result.content[0]?.text).toContain("Returned view: task");
+		expect(result.content[0]?.text).toContain("# Kanban Task T-062");
+		expect(result.content[0]?.text).toContain("Specific card context");
+		expect(result.content[0]?.text).toContain("specific note");
+		expect(result.content[0]?.text).not.toContain("T-063");
+		expect(result.content[0]?.text).not.toContain("Should stay out of task-specific output");
 	});
 });

@@ -1,8 +1,8 @@
 /**
  * CoAS Extension — pi control surface for the CoAS runtime repo.
  *
- * Wraps ~/git/coas operator scripts as typed tools and commands, and adds
- * lightweight workspace context guidance inside pi sessions.
+ * Provides TypeScript-native CoAS workspace, schedule, status, and doctor
+ * tools without depending on a sibling CoAS checkout.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";

@@ -32,8 +32,9 @@ const MAX_CONSECUTIVE_INJECTS = 3;
 
 const INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
-	"Run kanban_snapshot to see current state.",
-	"Run kanban_monitor and agent_status to check agent health.",
+	"Use gradual disclosure: do not dump the full board into context.",
+	"Run kanban_monitor and agent_status to check active work.",
+	"Run kanban_snapshot for a compact board summary; use task_id=\"T-NNN\" for one card or detail=\"full\" only when full board details are explicitly needed.",
 	"If any agents are STALLED, nudge them.",
 	"Agents signal completion themselves via kanban_complete — no filesystem watching.",
 	"Do not ask me any questions. Keep your response brief.",

@@ -36,7 +36,7 @@ const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
 export interface ArgParams {
 	model?: string;
-	tools?: string[];
+	tools?: string[] | null;
 	sessionDir?: string;
 	name: string;
 }
@@ -52,9 +52,10 @@ function defaultSubagentSessionDir(name: string): string {
 export function buildArgList(p: ArgParams): string[] {
 	const args = ["--mode", "rpc"];
 	if (p.model) args.push("--models", p.model);
-	if (p.tools?.length) {
+	const tools = Array.isArray(p.tools) ? p.tools : [];
+	if (tools.length > 0) {
 		const validToolName = /^[a-zA-Z0-9_-]+$/;
-		const clean = p.tools.filter((t) => validToolName.test(t));
+		const clean = tools.filter((t) => validToolName.test(t));
 		if (clean.length > 0) args.push("--tools", clean.join(","));
 	}
 	const sessionDir = p.sessionDir ?? defaultSubagentSessionDir(p.name);

@@ -2,34 +2,29 @@
 
 ## Purpose
 
-`extensions/pi-coas` is the in-pi control surface for the CoAS runtime repo. It
-wraps `~/git/coas/scripts/*` with typed tools and confirmed slash commands so
-agents do not need to improvise raw shell for diagnostics, workspace memory, or
-file-backed schedules.
+`extensions/pi-coas` is the in-pi TypeScript control surface for local CoAS
+state. It manages diagnostics, workspaces, and file-backed schedules under
+`${COAS_HOME:-~/.coas}` without depending on a sibling `~/git/coas` checkout or
+shell scripts.
 
 ## C4 container view
 
 ```mermaid
 C4Container
-  title pi-coas extension in the CoAS runtime ecosystem
+  title pi-coas extension TypeScript runtime
 
-  Person(operator, "Operator", "Uses pi interactively or through CoAS")
+  Person(operator, "Operator", "Uses pi interactively")
   System_Boundary(pi, "pi-tools-and-skills") {
     Container(piRuntime, "pi runtime", "@mariozechner/pi-coding-agent", "Loads extension package")
     Container(piCoas, "pi-coas extension", "TypeScript", "Tools, commands, lifecycle prompt/context hooks")
+    Container(coasRuntime, "CoAS TS service layer", "Node stdlib", "Status, doctor, workspaces, schedules, confinement")
   }
-  System_Boundary(coas, "CoAS runtime repo") {
-    Container(scripts, "CoAS scripts", "Bash", "coas-status, coas-doctor, coas-schedule, coas-new-room")
-    ContainerDb(coasHome, "COAS_HOME", "Filesystem", "Workspaces, schedules, logs, cron backups")
-  }
-  System_Ext(cron, "User cron", "Runs coas-schedule after explicit install")
+  ContainerDb(coasHome, "COAS_HOME", "Filesystem", "Workspaces, schedules, logs")
 
   Rel(operator, piRuntime, "Prompts / slash commands")
   Rel(piRuntime, piCoas, "Loads package extension")
-  Rel(piCoas, scripts, "Executes narrow script wrappers via pi.exec")
-  Rel(piCoas, coasHome, "Reads/lists workspaces; appends CONTEXT.md via mutation queue")
-  Rel(scripts, coasHome, "Owns durable runtime state")
-  Rel(cron, scripts, "Invokes scheduled tasks")
+  Rel(piCoas, coasRuntime, "Calls typed service functions")
+  Rel(coasRuntime, coasHome, "Confined read/write operations")
 ```
 
 ## Tool/command split
@@ -50,15 +45,31 @@ flowchart TD
   Commands --> ScheduleCmd[/coas-schedules]
   Commands --> CronCmd[/coas-cron-install + /coas-cron-uninstall]
 
-  CronCmd --> Confirm{UI confirm}
-  Confirm -->|yes| Script[coas-schedule install/uninstall-cron]
-  Confirm -->|no| Cancel[No mutation]
+  CronCmd --> Disabled[Disabled until standalone runner is reviewed]
 ```
+
+## Storage contract
+
+```mermaid
+flowchart TD
+  Home[COAS_HOME] --> Workspaces[workspaces/id]
+  Workspaces --> Context[CONTEXT.md]
+  Workspaces --> Metadata[.coas/workspace.env]
+  Home --> Schedules[schedules]
+  Schedules --> Env[task.env]
+  Schedules --> Prompt[task.prompt]
+  Home --> Logs[logs/schedules]
+  Home --> Locks[locks/schedules]
+```
+
+The extension preserves the existing workspace and schedule file shapes so data
+created by the earlier CoAS scripts remains readable.
 
 ## Safety notes
 
-- Cron install/uninstall is deliberately command-only and requires UI confirmation.
-- `coas_schedule_run` defaults to dry-run.
-- `coas_workspace_update` uses pi's file mutation queue and appends only.
-- Script output is truncated before it enters model context.
-- If `~/git/coas` is absent, the extension hides its status indicator and tools fail with explicit script-not-found errors.
+- There is no `COAS_DIR` and no default `~/git/coas` dependency.
+- Non-cron behavior uses Node stdlib filesystem APIs, not shell scripts.
+- Cron install/uninstall commands currently report disabled because there is no standalone TypeScript runner for cron to invoke safely.
+- `coas_schedule_run` defaults to dry-run and refuses non-dry-run execution.
+- `coas_workspace_update` uses pi's file mutation queue, rejects symlinked context files, and confines path selectors.
+- Matrix room bootstrap is intentionally deferred.

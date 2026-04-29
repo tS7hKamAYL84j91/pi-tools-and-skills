@@ -2,12 +2,52 @@
  * Characterisation tests for pi-subagent pure helpers.
  *
  * These lock in observable behaviour before the refactor.
- * Only the extracted, exported helpers are tested here;
+ * Only the extracted helpers and lightweight registration wiring are tested here;
  * the tool execute paths rely on integration with the ExtensionAPI.
  */
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { setupSpawner } from "../extensions/pi-panopticon/spawner.js";
 import { formatEvent, recentOutputFromEvents } from "../lib/spawn-events.js";
 import { buildArgList } from "../lib/spawn-service.js";
+
+interface RegisteredTool {
+	name: string;
+	prepareArguments?: (args: unknown) => unknown;
+}
+
+function getSpawnAgentPrepareArguments(): (args: unknown) => unknown {
+	const tools = new Map<string, RegisteredTool>();
+	// setupSpawner only calls registerTool while wiring tools in this test.
+	const api = {
+		registerTool(tool: RegisteredTool) {
+			tools.set(tool.name, tool);
+		},
+	} as unknown as ExtensionAPI;
+	const registry = {
+		selfId: "test-self",
+		getRecord() {
+			return undefined;
+		},
+		register() {},
+		unregister() {},
+		setStatus() {},
+		updateModel() {},
+		setTask() {},
+		setName() {},
+		updatePendingMessages() {},
+		readAllPeers() {
+			return [];
+		},
+		flush() {},
+	} satisfies Parameters<typeof setupSpawner>[1];
+	setupSpawner(api, registry);
+	const tool = tools.get("spawn_agent");
+	if (!tool?.prepareArguments) {
+		throw new Error("spawn_agent prepareArguments was not registered");
+	}
+	return tool.prepareArguments;
+}
 
 // ── formatEvent ────────────────────────────────────────────────
 
@@ -130,6 +170,26 @@ describe("recentOutputFromEvents", () => {
 	});
 });
 
+// ── spawn_agent registration ──────────────────────────────────
+
+describe("spawn_agent registration", () => {
+	it("normalizes null tools to an empty array before schema validation", () => {
+		const prepareArguments = getSpawnAgentPrepareArguments();
+		expect(prepareArguments({ name: "navigator", tools: null })).toEqual({
+			name: "navigator",
+			tools: [],
+		});
+	});
+
+	it("leaves explicit tool restrictions unchanged", () => {
+		const prepareArguments = getSpawnAgentPrepareArguments();
+		expect(prepareArguments({ name: "navigator", tools: ["read"] })).toEqual({
+			name: "navigator",
+			tools: ["read"],
+		});
+	});
+});
+
 // ── buildArgList ───────────────────────────────────────────────
 
 describe("buildArgList", () => {
@@ -152,6 +212,16 @@ describe("buildArgList", () => {
 		const args = buildArgList({ name: "test-agent", tools: ["read", "bash"] });
 		expect(args).toContain("--tools");
 		expect(args).toContain("read,bash");
+	});
+
+	it("omits tools flag for an empty tool restriction array", () => {
+		const args = buildArgList({ name: "test-agent", tools: [] });
+		expect(args).not.toContain("--tools");
+	});
+
+	it("omits tools flag when tools is null", () => {
+		const args = buildArgList({ name: "test-agent", tools: null });
+		expect(args).not.toContain("--tools");
 	});
 
 	it("uses --session-dir when provided", () => {

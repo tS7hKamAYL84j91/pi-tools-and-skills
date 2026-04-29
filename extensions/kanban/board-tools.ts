@@ -7,7 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { writeFile } from "node:fs/promises";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { compactIfNeeded } from "./compaction.js";
-import { generateSnapshot } from "./snapshot.js";
+import { generateSnapshot, generateSnapshotSummary, generateTaskDetail } from "./snapshot.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 import {
 	deleteTask,
@@ -26,14 +26,29 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 		name: "kanban_snapshot",
 		label: "Kanban Snapshot",
 		description:
-			"Regenerate snapshot.md from board.log and return the full board view. " +
-			"Shows all columns: Backlog, Todo, In Progress, Blocked, and Done (last 10). " +
-			"Always run this before presenting board status to a human.",
-		promptSnippet: "Regenerate and read the kanban board snapshot",
-		parameters: Type.Object({}),
-		async execute(_id, _params, _signal): Promise<ToolResult> {
+			"Regenerate full snapshot.md from board.log and return a compact board summary by default. " +
+			"Uses gradual disclosure: pass detail=\"full\" for the full board or task_id for one card's details.",
+		promptSnippet: "Regenerate the kanban board snapshot and return a compact summary",
+		parameters: Type.Object({
+			detail: Type.Optional(Type.String({
+				description: 'Return view: "compact" (default) or "full"',
+				enum: ["compact", "full"],
+				default: "compact",
+			})),
+			task_id: Type.Optional(TASK_ID_SCHEMA),
+		}),
+		async execute(_id, params, _signal): Promise<ToolResult> {
 			const board = await parseBoard();
 			const snapshot = generateSnapshot(board);
+			const view = params.task_id ? "task" : params.detail ?? "compact";
+			let returnedView: string;
+			if (params.task_id) {
+				returnedView = generateTaskDetail(board, params.task_id);
+			} else if (view === "full") {
+				returnedView = snapshot;
+			} else {
+				returnedView = generateSnapshotSummary(board);
+			}
 			const sp = snapshotPath();
 			await writeFile(sp, snapshot, "utf-8");
 			await logAppend(`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`);
@@ -43,8 +58,8 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 				? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
 				: "";
 			return ok(
-				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}${compactNote}\n\n---\n\n${snapshot}`,
-				{ snapshotPath: sp, totalEvents: board.totalEvents, autoCompacted: compactResult.ran },
+				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nReturned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
+				{ snapshotPath: sp, totalEvents: board.totalEvents, autoCompacted: compactResult.ran, view },
 			);
 		},
 	});
