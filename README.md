@@ -84,6 +84,7 @@ Reusable prompt templates that agents can follow for specific tasks.
 | **red-team** | Security assessment — vulnerability identification, MITRE ATLAS mapping |
 | **six-thinking-hats** | De Bono's structured multi-perspective analysis |
 | **notebooklm** | NotebookLM integration — create notebooks, upload sources, generate audio |
+| **jules-delegation** | Delegate scoped coding tasks to Google Jules and monitor sessions/PRs |
 | **pi-agent-orchestration** | Spawn, brief, monitor, nudge, and shut down pi worker agents |
 | **pi-extension-dev** | Build or modify pi extensions, tools, commands, hooks, and TUI widgets |
 | **pi-session-management** | Implement session-aware behavior, persistence, compaction, and reload-safe flows |
