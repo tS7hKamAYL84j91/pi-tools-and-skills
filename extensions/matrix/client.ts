@@ -46,12 +46,12 @@ export class MatrixBridgeClient {
 		this.onInbound = onInbound;
 		this.notifyFn = notify;
 
-		const sdk = await import("matrix-bot-sdk").catch((err) => {
+		const sdk = (await import("matrix-bot-sdk").catch((err) => {
 			throw new Error(
-				`matrix-bot-sdk is not installed. Run \`npm install matrix-bot-sdk\` ` +
-				`in tools-and-skills/. Original error: ${(err as Error).message}`,
+				`matrix-bot-sdk is not installed. Run \`npm install matrix-bot-sdk\`. ` +
+					`Original error: ${(err as Error).message}`,
 			);
-		}) as {
+		})) as {
 			MatrixClient: AnyClient;
 			SimpleFsStorageProvider: AnyClient;
 			LogService: AnyClient;
@@ -62,13 +62,19 @@ export class MatrixBridgeClient {
 		// Route matrix-bot-sdk logs through the extension UI
 		const notifyRef = this.notifyFn;
 		const formatArgs = (args: unknown[]): string =>
-			args.map((a) => {
-				if (a instanceof Error) return a.message;
-				if (typeof a === "object" && a !== null) {
-					try { return JSON.stringify(a); } catch { return String(a); }
-				}
-				return String(a);
-			}).join(" ");
+			args
+				.map((a) => {
+					if (a instanceof Error) return a.message;
+					if (typeof a === "object" && a !== null) {
+						try {
+							return JSON.stringify(a);
+						} catch {
+							return String(a);
+						}
+					}
+					return String(a);
+				})
+				.join(" ");
 		LogService.setLogger({
 			info: () => {},
 			debug: () => {},
@@ -84,7 +90,9 @@ export class MatrixBridgeClient {
 
 		// Sync state storage
 		mkdirSync(this.config.storagePath, { recursive: true });
-		const storage = new SimpleFsStorageProvider(`${this.config.storagePath}/sync.json`);
+		const storage = new SimpleFsStorageProvider(
+			`${this.config.storagePath}/sync.json`,
+		);
 
 		// Build the client (no crypto — unencrypted rooms on private tailnet)
 		this.client = new MatrixClient(
@@ -106,7 +114,11 @@ export class MatrixBridgeClient {
 				await this.client.joinRoom(roomId);
 				return;
 			}
-			try { await this.client.leaveRoom(roomId); } catch { /* non-fatal */ }
+			try {
+				await this.client.leaveRoom(roomId);
+			} catch {
+				/* non-fatal */
+			}
 		});
 
 		// Listen to ALL rooms on this private homeserver. Trusted sender filter applies.
@@ -115,24 +127,36 @@ export class MatrixBridgeClient {
 			const trusted = this.config.trustedSenders;
 			if (trusted.length > 0 && !trusted.includes(event?.sender)) return;
 			const content = event?.content;
-			if (!content || content.msgtype !== "m.text" || typeof content.body !== "string") return;
+			if (
+				!content ||
+				content.msgtype !== "m.text" ||
+				typeof content.body !== "string"
+			)
+				return;
 
 			const msg: InboundMessage = {
 				roomId,
 				senderMxid: event.sender,
 				body: content.body,
 				eventId: event.event_id,
-				timestampMs: typeof event.origin_server_ts === "number" ? event.origin_server_ts : Date.now(),
+				timestampMs:
+					typeof event.origin_server_ts === "number"
+						? event.origin_server_ts
+						: Date.now(),
 			};
 			try {
 				await this.onInbound?.(msg);
-			} catch { /* non-fatal */ }
+			} catch {
+				/* non-fatal */
+			}
 		});
 
 		// Ensure we've joined the configured room
 		try {
 			await this.client.joinRoom(this.config.roomId);
-		} catch { /* non-fatal — invite may arrive later */ }
+		} catch {
+			/* non-fatal — invite may arrive later */
+		}
 
 		await this.client.start();
 		this.connected = true;
@@ -147,7 +171,11 @@ export class MatrixBridgeClient {
 
 	async stop(): Promise<void> {
 		if (!this.client) return;
-		try { await this.client.stop(); } catch { /* non-fatal */ }
+		try {
+			await this.client.stop();
+		} catch {
+			/* non-fatal */
+		}
 		this.client = null;
 		this.connected = false;
 	}

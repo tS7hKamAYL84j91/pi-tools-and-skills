@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Also removes legacy direct registrations written by older setup flows.
 # It intentionally does not remove models.json, shell hooks, provider config,
-# Matrix secrets, or OpenRouter secrets. Those are runtime concerns owned by CoAS.
+# or secrets. Those are runtime/workspace concerns.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -21,7 +21,7 @@ usage() {
 Usage: setup-pi-clean
 
 Removes pi-tools-and-skills package, memory, and legacy direct registrations.
-Runtime cleanup belongs in ~/git/coas.
+Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
 

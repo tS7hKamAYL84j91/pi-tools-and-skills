@@ -1,17 +1,17 @@
 # Matrix Extension
 
-Phone ↔ agent messaging via a private Matrix homeserver on Tailscale.
+Phone ↔ agent messaging via Matrix.
 
-The user types in Element X → message arrives via `MatrixTransport` → panopticon pokes "N new messages" → agent calls `message_read` → replies via `message_send`.
+The user types in a Matrix client → message arrives via `MatrixTransport` → panopticon pokes "N new messages" → agent calls `message_read` → replies via `message_send`.
 
 ## Architecture
 
-```
-Phone (Element X) → Tailscale → Caddy → Continuwuity → Bot (matrix-bot-sdk)
-                                                         ↓
-                                              MatrixTransport.pushInbound()
-                                                         ↓
-                                              Channel registry → message_read
+```text
+Matrix client → Homeserver → Bot (matrix-bot-sdk)
+                              ↓
+                   MatrixTransport.pushInbound()
+                              ↓
+                   Channel registry → message_read
 ```
 
 ## Files
@@ -21,7 +21,7 @@ Phone (Element X) → Tailscale → Caddy → Continuwuity → Bot (matrix-bot-s
 | `index.ts` | Extension entry — lifecycle, channel registration, status bar, `/matrix` command |
 | `client.ts` | matrix-bot-sdk wrapper — sync loop, message filtering, reconnection |
 | `transport.ts` | `MessageTransport` implementation — buffers inbound, wraps send |
-| `config.ts` | Config loader — reads `.pi/settings.json`, resolves env secrets |
+| `config.ts` | Config loader — reads `.pi/settings.json`, reads the configured token env var |
 | `types.ts` | `MatrixConfig` interface |
 | `bridge.ts` | MXID utility — `mxidLocalpart("@jim:server")` → `"jim"` |
 
@@ -33,11 +33,11 @@ In your workspace's `.pi/settings.json`:
 {
   "extensions": [".../extensions/matrix"],
   "matrix": {
-    "homeserver": "https://coas-matrix.example.ts.net",
-    "userId": "@coas-bot:coas-matrix.example.ts.net",
-    "roomId": "!abc:coas-matrix.example.ts.net",
-    "accessTokenEnv": "MATRIX_ACCESS_TOKEN",
-    "trustedSenders": ["@jim:coas-matrix.example.ts.net"],
+    "homeserver": "https://matrix.example.net",
+    "userId": "@agent-bot:matrix.example.net",
+    "roomId": "!abc:matrix.example.net",
+    "accessTokenEnv": "MATRIX_BOT_TOKEN",
+    "trustedSenders": ["@user:matrix.example.net"],
     "channelLabel": "matrix"
   }
 }
@@ -48,19 +48,15 @@ In your workspace's `.pi/settings.json`:
 | `homeserver` | yes | — | Homeserver base URL |
 | `userId` | yes | — | Bot's full MXID |
 | `roomId` | yes | — | Primary room for replies |
-| `accessTokenEnv` | yes | — | Env var name holding the access token |
+| `accessTokenEnv` | yes | — | Name of an environment variable already populated by your runtime/secret manager |
 | `trustedSenders` | no | `[]` (all) | MXIDs allowed to message the bot |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |
 | `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path |
 
 ## Room scope
 
-The bot listens to messages from **all rooms** on the homeserver, not just `roomId`. On a private homeserver with only trusted users, this simplifies DM handling. The `trustedSenders` filter is the security boundary.
+The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary.
 
 ## Security model
 
-No Matrix E2EE — the homeserver runs on a private Tailscale mesh where WireGuard encrypts all transport. The `trustedSenders` filter is the access control boundary.
-
-## Deployment
-
-See `~/git/coas/coas-infra/README.md` for the full Docker stack setup (Continuwuity + Caddy + Tailscale).
+Matrix messages are external input. This extension filters senders, wraps inbound messages before putting them in model context, and leaves homeserver deployment, TLS, E2EE, and token storage to the workspace/infrastructure that uses it. This package does not create accounts, mint tokens, write secrets, or install shell environment hooks.

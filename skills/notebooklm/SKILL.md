@@ -41,8 +41,8 @@ bash skills/notebooklm/scripts/nb-create.sh "<notebook-name>"
 Prints the new notebook's ID to stdout.
 
 ```bash
-bash skills/notebooklm/scripts/nb-create.sh "CoAS Research"
-# → Created notebook: CoAS Research (id: abc123)
+bash skills/notebooklm/scripts/nb-create.sh "Research Notebook"
+# → Created notebook: Research Notebook (id: abc123)
 ```
 
 ---
@@ -57,15 +57,15 @@ bash skills/notebooklm/scripts/nb-add.sh "<notebook-name>" "<path-or-url>"
 
 ```bash
 # Markdown file — supply any path you want
-bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-add.sh "Research Notebook" \
   "$RESEARCH_DIR/agent-topologies/REPORT.md"
 
 # Web URL
-bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-add.sh "Research Notebook" \
   https://arxiv.org/abs/2512.08296
 ```
 
-> The scripts take any path — there is no hardcoded research directory. Export `RESEARCH_DIR` to match your workspace (e.g. `export RESEARCH_DIR=~/git/coas/research`) or pass absolute paths directly.
+> The scripts take any path — there is no hardcoded research directory. Export `RESEARCH_DIR` to match your workspace or pass absolute paths directly.
 
 ---
 
@@ -90,7 +90,7 @@ bash skills/notebooklm/scripts/nb-sources.sh "<notebook-name>" --json
 ```
 
 ```bash
-bash skills/notebooklm/scripts/nb-sources.sh "CoAS Research"
+bash skills/notebooklm/scripts/nb-sources.sh "Research Notebook"
 # → 12 source(s):
 #     agent-topologies/REPORT.md  (text/markdown, 48 KB)
 #     notebooklm-integration/REPORT.md  (text/markdown, 22 KB)
@@ -109,12 +109,12 @@ bash skills/notebooklm/scripts/nb-audio.sh "<notebook-name>" [instructions] [out
 
 ```bash
 # Basic — default instructions, saves to audio-overview.mp3
-bash skills/notebooklm/scripts/nb-audio.sh "CoAS Research"
+bash skills/notebooklm/scripts/nb-audio.sh "Research Notebook"
 
 # Custom focus and output path
-bash skills/notebooklm/scripts/nb-audio.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-audio.sh "Research Notebook" \
   "Focus on cross-cutting patterns and common failure modes" \
-  ~/research/podcasts/coas-2026-04.mp3
+  ~/research/podcasts/research-2026-04.mp3
 ```
 
 The script polls `notebooklm audio status` every 10 seconds and exits once the status is `complete`/`ready`/`done`.
@@ -130,10 +130,10 @@ bash skills/notebooklm/scripts/nb-query.sh "<notebook-name>" "<question>"
 ```
 
 ```bash
-bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-query.sh "Research Notebook" \
   "What are the key themes across all reports?"
 
-bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-query.sh "Research Notebook" \
   "Which research areas have the most open questions?"
 ```
 
@@ -150,15 +150,15 @@ bash skills/notebooklm/scripts/nb-bulk-add.sh "<notebook-name>" "<directory>" \
 
 ```bash
 # Add all REPORT.md files from a research directory
-bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" \
   "$RESEARCH_DIR"
 
 # Add all *.md files from any docs directory
-bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" \
   ~/docs/ --filename "*.md"
 ```
 
-> ⚠️ NotebookLM has a **100-source-per-notebook limit**. For large corpora, split into domain notebooks (e.g. "CoAS — Networking", "CoAS — AI Agents", "CoAS — Security").
+> ⚠️ NotebookLM has a **100-source-per-notebook limit**. For large corpora, split into domain notebooks (e.g. "Research — Networking", "Research — AI Agents", "Research — Security").
 
 ---
 
@@ -168,37 +168,37 @@ bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" \
 
 ```bash
 # 1. Create the notebook
-bash skills/notebooklm/scripts/nb-create.sh "CoAS Research"
+bash skills/notebooklm/scripts/nb-create.sh "Research Notebook"
 
 # 2. Bulk-add all REPORT.md files (point at whichever directory holds them)
-bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" "$RESEARCH_DIR"
+bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" "$RESEARCH_DIR"
 
 # 3. Confirm sources were added
-bash skills/notebooklm/scripts/nb-sources.sh "CoAS Research"
+bash skills/notebooklm/scripts/nb-sources.sh "Research Notebook"
 ```
 
 ### Generate a podcast from a corpus
 
 ```bash
-bash skills/notebooklm/scripts/nb-audio.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-audio.sh "Research Notebook" \
   "Highlight key insights and common failure modes across all reports" \
-  ~/research/podcasts/coas-$(date +%Y-%m).mp3
+  ~/research/podcasts/research-$(date +%Y-%m).mp3
 ```
 
 ### Cross-report Q&A
 
 ```bash
-bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-query.sh "Research Notebook" \
   "What are the most common recommendations across all networking reports?"
 
-bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-query.sh "Research Notebook" \
   "Which topics appear in multiple reports but have no clear resolution?"
 ```
 
 ### Add a single new report
 
 ```bash
-bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
+bash skills/notebooklm/scripts/nb-add.sh "Research Notebook" \
   "$RESEARCH_DIR/new-topic/REPORT.md"
 ```
 
@@ -209,7 +209,7 @@ bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" \
 export NOTEBOOKLM_AUTH_JSON="$(cat ~/.notebooklm/storage_state.json)"
 
 # All scripts work headlessly once NOTEBOOKLM_AUTH_JSON is set
-bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" ./research/
+bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" ./research/
 ```
 
 ---

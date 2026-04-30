@@ -101,7 +101,7 @@ Target: **200–500 tokens per file**. See `skills/pi-cheatsheets/references/for
 ## Directory Layout
 
 ```
-~/git/pi-tools-and-skills/
+/path/to/pi-tools-and-skills/
   memories/                    ← Shared cheatsheets (in settings.json "memories" path)
     pi-kanban.mmem.yml
     ollama.mmem.yml

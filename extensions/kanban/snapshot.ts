@@ -18,7 +18,8 @@ interface ColumnDef {
 	row: (t: TaskState) => string;
 }
 
-const PRIO_COL_ROW = (t: TaskState) => `| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`;
+const PRIO_COL_ROW = (t: TaskState) =>
+	`| ${t.id} | ${t.title} | ${t.priority} | ${t.tags} |`;
 
 const PRIO_COL_HDR: ColumnDef = {
 	heading: "",
@@ -34,7 +35,8 @@ const COLUMN_DEFS: Record<string, ColumnDef> = {
 		heading: "🔄 In Progress",
 		headers: ["| ID | Title | Agent | Model | Expires |"],
 		separators: ["|----|-------|-------|-------|---------|"],
-		row: (t) => `| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.model || "—"} | ${t.expires} |`,
+		row: (t) =>
+			`| ${t.id} | ${t.title} | ${t.claimAgent} | ${t.model || "—"} | ${t.expires} |`,
 	},
 	blocked: {
 		heading: "🚫 Blocked",
@@ -46,7 +48,8 @@ const COLUMN_DEFS: Record<string, ColumnDef> = {
 		heading: "✅ Done",
 		headers: ["| ID | Title | Agent | Completed | Duration |"],
 		separators: ["|----|-------|-------|-----------|----------|"],
-		row: (t) => `| ${t.id} | ${t.title} | ${t.doneAgent || "—"} | ${t.completedAt || "—"} | ${t.duration || "—"} |`,
+		row: (t) =>
+			`| ${t.id} | ${t.title} | ${t.doneAgent || "—"} | ${t.completedAt || "—"} | ${t.duration || "—"} |`,
 	},
 };
 
@@ -60,7 +63,11 @@ const SUMMARY_LIMITS: Record<string, number> = {
 
 function bucketTasks(board: BoardState): Record<string, TaskState[]> {
 	const buckets: Record<string, TaskState[]> = {
-		backlog: [], todo: [], "in-progress": [], blocked: [], done: [],
+		backlog: [],
+		todo: [],
+		"in-progress": [],
+		blocked: [],
+		done: [],
 	};
 	for (const tid of board.order) {
 		const t = board.tasks.get(tid);
@@ -70,7 +77,11 @@ function bucketTasks(board: BoardState): Record<string, TaskState[]> {
 	return buckets;
 }
 
-function renderSummaryColumn(tasks: TaskState[], colKey: string, countLabel?: string): string[] {
+function renderSummaryColumn(
+	tasks: TaskState[],
+	colKey: string,
+	countLabel?: string,
+): string[] {
 	const def = COLUMN_DEFS[colKey];
 	if (!def) return [];
 	const limit = SUMMARY_LIMITS[colKey] ?? 5;
@@ -87,7 +98,9 @@ function renderSummaryColumn(tasks: TaskState[], colKey: string, countLabel?: st
 			lines.push(`- ${task.id}: ${task.title}${suffix}`);
 		}
 		if (omitted > 0) {
-			lines.push(`- … ${omitted} more. Use kanban_snapshot with task_id="T-NNN" or detail="full" for details.`);
+			lines.push(
+				`- … ${omitted} more. Use kanban_snapshot with task_id="T-NNN" or detail="full" for details.`,
+			);
 		}
 	}
 	lines.push("");
@@ -112,11 +125,16 @@ function taskDetailLines(task: TaskState): string[] {
 		"",
 	];
 	if (task.description) lines.push("## Description", "", task.description, "");
-	if (task.notes.length > 0) lines.push("## Notes", "", ...task.notes.map((note) => `- ${note}`), "");
+	if (task.notes.length > 0)
+		lines.push("## Notes", "", ...task.notes.map((note) => `- ${note}`), "");
 	return lines;
 }
 
-function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): string[] {
+function renderColumn(
+	tasks: TaskState[],
+	colKey: string,
+	countLabel: string,
+): string[] {
 	const def = COLUMN_DEFS[colKey];
 	if (!def) return [];
 	const lines: string[] = [];
@@ -142,7 +160,8 @@ function renderColumn(tasks: TaskState[], colKey: string, countLabel: string): s
 /** Generate detail for one task on explicit request. */
 export function generateTaskDetail(board: BoardState, taskId: string): string {
 	const task = board.tasks.get(taskId);
-	if (!task || task.deleted) throw new Error(`No active kanban task: ${taskId}`);
+	if (!task || task.deleted)
+		throw new Error(`No active kanban task: ${taskId}`);
 	return taskDetailLines(task).join("\n");
 }
 
@@ -155,15 +174,19 @@ export function generateSnapshotSummary(board: BoardState): string {
 	const doneAll = buckets.done ?? [];
 	const doneLast = doneAll.slice(-(SUMMARY_LIMITS.done ?? 5));
 	return [
-		"# CoAS Kanban — Compact Summary",
+		"# Kanban — Compact Summary",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
-		"_Gradual disclosure: task descriptions/notes are not included here. Use kanban_snapshot with task_id=\"T-NNN\" for one card or detail=\"full\" for the whole board._",
+		'_Gradual disclosure: task descriptions/notes are not included here. Use kanban_snapshot with task_id="T-NNN" for one card or detail="full" for the whole board._',
 		"",
 		...renderSummaryColumn(buckets.backlog ?? [], "backlog"),
 		...renderSummaryColumn(buckets.todo ?? [], "todo"),
 		...renderSummaryColumn(buckets["in-progress"] ?? [], "in-progress"),
 		...renderSummaryColumn(buckets.blocked ?? [], "blocked"),
-		...renderSummaryColumn(doneLast, "done", `last ${doneLast.length} of ${doneAll.length}`),
+		...renderSummaryColumn(
+			doneLast,
+			"done",
+			`last ${doneLast.length} of ${doneAll.length}`,
+		),
 		"---",
 		"_Full snapshot was written to kanban/snapshot.md but intentionally not returned to model context._",
 	].join("\n");
@@ -179,13 +202,29 @@ export function generateSnapshot(board: BoardState): string {
 	const doneLast10 = doneAll.slice(-10);
 
 	return [
-		"# CoAS Kanban — Snapshot",
+		"# Kanban — Snapshot",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
 		"",
-		...renderColumn(buckets.backlog ?? [], "backlog", String(buckets.backlog?.length ?? 0)),
-		...renderColumn(buckets.todo ?? [], "todo", String(buckets.todo?.length ?? 0)),
-		...renderColumn(buckets["in-progress"] ?? [], "in-progress", `${wip}/${WIP_LIMIT}`),
-		...renderColumn(buckets.blocked ?? [], "blocked", String(buckets.blocked?.length ?? 0)),
+		...renderColumn(
+			buckets.backlog ?? [],
+			"backlog",
+			String(buckets.backlog?.length ?? 0),
+		),
+		...renderColumn(
+			buckets.todo ?? [],
+			"todo",
+			String(buckets.todo?.length ?? 0),
+		),
+		...renderColumn(
+			buckets["in-progress"] ?? [],
+			"in-progress",
+			`${wip}/${WIP_LIMIT}`,
+		),
+		...renderColumn(
+			buckets.blocked ?? [],
+			"blocked",
+			String(buckets.blocked?.length ?? 0),
+		),
 		...renderColumn(doneLast10, "done", `last 10 of ${doneAll.length}`),
 		"---",
 		"_Source: kanban/board.log | Read-only: do not edit this file_",

@@ -1,8 +1,8 @@
 /**
  * Matrix extension — config loader.
  *
- * Reads the `matrix` block from a project's .pi/settings.json and resolves
- * env-var-backed secrets at runtime.
+ * Reads the `matrix` block from a project's .pi/settings.json and reads the
+ * configured token environment variable. This package never writes secrets.
  */
 
 import { homedir } from "node:os";
@@ -34,8 +34,12 @@ function readMatrixSettings(path: string): RawMatrixSettings | null {
  * Returns null if no matrix block is configured.
  * Throws on validation errors.
  */
-export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | null {
-	const projectSettings = projectSettingsPath ? readMatrixSettings(projectSettingsPath) : null;
+export function loadMatrixConfig(
+	projectSettingsPath?: string,
+): MatrixConfig | null {
+	const projectSettings = projectSettingsPath
+		? readMatrixSettings(projectSettingsPath)
+		: null;
 	const globalSettings = readMatrixSettings(PI_SETTINGS_PATH);
 	const raw = projectSettings ?? globalSettings;
 	if (!raw) return null;
@@ -43,27 +47,38 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 	const homeserver = requireString(raw.homeserver, "matrix.homeserver");
 	const userId = requireString(raw.userId, "matrix.userId");
 	const roomId = requireString(raw.roomId, "matrix.roomId");
-	const accessTokenEnv = requireString(raw.accessTokenEnv, "matrix.accessTokenEnv");
+	const accessTokenEnv = requireString(
+		raw.accessTokenEnv,
+		"matrix.accessTokenEnv",
+	);
 
 	if (!userId.startsWith("@") || !userId.includes(":")) {
-		throw new Error(`matrix.userId must be a Matrix MXID (e.g. "@coas-bot:matrix.org"); got "${userId}"`);
+		throw new Error(
+			`matrix.userId must be a Matrix MXID (e.g. "@agent-bot:matrix.org"); got "${userId}"`,
+		);
 	}
 	if (!roomId.startsWith("!") || !roomId.includes(":")) {
-		throw new Error(`matrix.roomId must be a Matrix room ID (e.g. "!abc:matrix.org"); got "${roomId}"`);
+		throw new Error(
+			`matrix.roomId must be a Matrix room ID (e.g. "!abc:matrix.org"); got "${roomId}"`,
+		);
 	}
 
 	const accessToken = process.env[accessTokenEnv];
 	if (!accessToken) {
 		throw new Error(
 			`matrix: env var "${accessTokenEnv}" is not set. ` +
-			`Add it to your shell rc or secrets manager.`,
+				`Provide it from your workspace runtime or secret manager before starting pi.`,
 		);
 	}
 
-	const storagePath = expandHome(optionalString(raw.storagePath) ?? DEFAULT_STORAGE_PATH);
+	const storagePath = expandHome(
+		optionalString(raw.storagePath) ?? DEFAULT_STORAGE_PATH,
+	);
 	const channelLabel = optionalString(raw.channelLabel) ?? "matrix";
 	const trustedSenders = Array.isArray(raw.trustedSenders)
-		? (raw.trustedSenders as unknown[]).filter((s): s is string => typeof s === "string")
+		? (raw.trustedSenders as unknown[]).filter(
+				(s): s is string => typeof s === "string",
+			)
 		: [];
 
 	return {
@@ -79,7 +94,9 @@ export function loadMatrixConfig(projectSettingsPath?: string): MatrixConfig | n
 
 function requireString(value: unknown, fieldName: string): string {
 	if (typeof value !== "string" || value.length === 0) {
-		throw new Error(`matrix config: ${fieldName} is required and must be a non-empty string`);
+		throw new Error(
+			`matrix config: ${fieldName} is required and must be a non-empty string`,
+		);
 	}
 	return value;
 }

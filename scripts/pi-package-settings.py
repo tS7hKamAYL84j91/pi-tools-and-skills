@@ -12,15 +12,12 @@ PACKAGE_EXTENSIONS = [
     "extensions/pi-panopticon/**",
     "extensions/pi-cheatsheets/**",
     "extensions/pi-llm-council/**",
-    "extensions/pi-coas/**",
 ]
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
     "pi-cheatsheets",
-    "machine-memory",
     "pi-llm-council",
-    "pi-coas",
     "council",
     "kanban",
     "matrix",

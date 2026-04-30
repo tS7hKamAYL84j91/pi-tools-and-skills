@@ -3,7 +3,7 @@
 # Answers are grounded in uploaded sources with citations.
 #
 # Usage: nb-query.sh "<notebook-name>" "<question>"
-# Example: bash skills/notebooklm/scripts/nb-query.sh "CoAS Research" \
+# Example: bash skills/notebooklm/scripts/nb-query.sh "Research Notebook" \
 #            "What are the key themes across all reports?"
 
 set -euo pipefail

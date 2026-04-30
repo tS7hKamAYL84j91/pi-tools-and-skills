@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create a new NotebookLM notebook and print its ID.
 # Usage: nb-create.sh "<notebook-name>"
-# Example: bash skills/notebooklm/scripts/nb-create.sh "CoAS Research"
+# Example: bash skills/notebooklm/scripts/nb-create.sh "Research Notebook"
 
 set -euo pipefail
 

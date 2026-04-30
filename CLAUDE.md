@@ -23,10 +23,8 @@ Monitor(
 
 ## Instructions
 
-See @AGENT.md
+See @AGENTS.md
 
 ## Tasks
 
-- Execute tasks from `coas` or `gravitas-pending` immediately, without waiting for user confirmation.
-- Acknowledge receipt of `gravitas-pending` tasks promptly — never go silent. Confirm you've picked up the task and report progress to chief of staff clearly.
 - Before sending agent messages, always look up current agent IDs from `~/.pi/agents/*.json` — IDs change between sessions.

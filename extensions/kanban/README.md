@@ -45,8 +45,7 @@ WIP limit: **3** in-progress tasks (configurable via `KANBAN_WIP_LIMIT` env var)
 
 The extension locates the kanban directory by checking, in order:
 1. `KANBAN_DIR` environment variable
-2. `~/git/coas/kanban/`
-3. `<cwd>/kanban/`
+2. `<cwd>/kanban/`
 
 Files written:
 - `board.log` — event log (source of truth)
@@ -159,7 +158,7 @@ With `prod=true` (or `--prod` CLI flag): sends a nudge via panopticon Maildir to
 `kanban_snapshot` always writes full `snapshot.md` with five columns, but the tool result returned to the model is compact by default:
 
 ```markdown
-# CoAS Kanban — Compact Summary
+# Kanban — Compact Summary
 _Generated: ... | Log events: 247 | WIP: 2/3_
 _Gradual disclosure: task descriptions/notes are not included here..._
 
@@ -180,7 +179,7 @@ Full detail remains available on demand:
 `kanban/snapshot.md` retains the full five-column Markdown board:
 
 ```markdown
-# CoAS Kanban — Snapshot
+# Kanban — Snapshot
 _Generated: ... | Log events: 247 | WIP: 2/3_
 
 ## 📋 Backlog (N)

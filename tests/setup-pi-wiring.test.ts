@@ -19,12 +19,15 @@ interface PiSettings {
 	memories?: string[];
 }
 
-const SETTINGS_SCRIPT = join(process.cwd(), "scripts", "pi-package-settings.py");
+const SETTINGS_SCRIPT = join(
+	process.cwd(),
+	"scripts",
+	"pi-package-settings.py",
+);
 const GLOBAL_EXTENSION_ALLOWLIST = [
 	"extensions/pi-panopticon/**",
 	"extensions/pi-cheatsheets/**",
 	"extensions/pi-llm-council/**",
-	"extensions/pi-coas/**",
 ];
 
 let tmpDir: string;
@@ -41,18 +44,24 @@ function hasPython3(): boolean {
 }
 
 function runSettingsHelper(action: "register" | "clean"): void {
-	const result = spawnSync("python3", [
-		SETTINGS_SCRIPT,
-		action,
-		settingsPath,
-		packageDir,
-		skillsDir,
-		extensionsDir,
-		promptsDir,
-		memoriesDir,
-	], { encoding: "utf8" });
+	const result = spawnSync(
+		"python3",
+		[
+			SETTINGS_SCRIPT,
+			action,
+			settingsPath,
+			packageDir,
+			skillsDir,
+			extensionsDir,
+			promptsDir,
+			memoriesDir,
+		],
+		{ encoding: "utf8" },
+	);
 	if (result.status !== 0) {
-		throw new Error(`pi-package-settings.py ${action} failed: ${result.stderr}`);
+		throw new Error(
+			`pi-package-settings.py ${action} failed: ${result.stderr}`,
+		);
 	}
 }
 
@@ -90,17 +99,25 @@ describeIfPython("setup-pi package wiring", () => {
 		});
 	});
 
-	it("cleans legacy direct registrations for owned extensions including pi-coas", () => {
-		writeFileSync(settingsPath, JSON.stringify({
-			extensions: [
-				join(extensionsDir, "pi-panopticon"),
-				join(extensionsDir, "pi-coas"),
-				join(extensionsDir, "kanban"),
-				"/external/extension",
-			],
-			memories: [memoriesDir],
-			packages: [{ source: packageDir, extensions: GLOBAL_EXTENSION_ALLOWLIST }],
-		}, null, 2));
+	it("cleans legacy direct registrations for owned extensions", () => {
+		writeFileSync(
+			settingsPath,
+			JSON.stringify(
+				{
+					extensions: [
+						join(extensionsDir, "pi-panopticon"),
+						join(extensionsDir, "kanban"),
+						"/external/extension",
+					],
+					memories: [memoriesDir],
+					packages: [
+						{ source: packageDir, extensions: GLOBAL_EXTENSION_ALLOWLIST },
+					],
+				},
+				null,
+				2,
+			),
+		);
 
 		runSettingsHelper("clean");
 

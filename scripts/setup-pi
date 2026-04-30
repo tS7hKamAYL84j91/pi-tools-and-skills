@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # This repo owns extensions, shared libs, skills, prompts, and memories.
 # It does not own runtime model choices, provider defaults, shell hooks,
-# Matrix secrets, OpenRouter secrets, or CoAS workspace launchers.
+# Matrix deployments, or project-specific launchers.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -22,7 +22,7 @@ usage() {
 Usage: setup-pi
 
 Registers this checkout as a pi package and registers memories directly.
-Runtime setup belongs in ~/git/coas.
+Runtime setup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
 
@@ -68,7 +68,7 @@ memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr 
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council, pi-coas"
+echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council"
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
 echo  "    memories:   $memory_count direct path"
@@ -76,4 +76,4 @@ echo  "    models:     unchanged"
 echo  "    runtime:    unchanged"
 
 echo ""
-dim "CoAS-specific model defaults, shell hooks, Matrix secrets, and launchers live in ~/git/coas."
+dim "Project-specific model defaults, shell hooks, secrets, and launchers stay outside this reusable package."
