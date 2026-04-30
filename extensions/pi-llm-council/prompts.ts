@@ -1,8 +1,8 @@
 /**
  * Council prompt renderers for the 3-stage protocol.
  *
- * Prompt bodies live in `config.json`; this module only anonymizes dynamic
- * model output and fills configured templates.
+ * Prompt bodies live as Markdown files with front matter under `prompts/`;
+ * this module only anonymizes dynamic model output and fills configured templates.
  */
 
 import type { ResolvedCouncilSettings } from "./settings.js";

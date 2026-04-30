@@ -1,21 +1,45 @@
 /**
  * Council settings — visible defaults from extension config plus user overrides.
  *
- * Defaults live in `extensions/pi-llm-council/config.json` so the default
- * council, chairman candidates, pair, and prompt templates are reviewable
- * without spelunking TypeScript. User `~/.pi/agent/settings.json` may still
- * override fields via the `council` key.
+ * Defaults live in `extensions/pi-llm-council/config/config.json`; prompt bodies
+ * live as Markdown files with front matter under `extensions/pi-llm-council/config/prompts/`.
+ * User `~/.pi/agent/settings.json` may still override fields via the `council`
+ * key.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 
 const SETTINGS_JSON = PI_SETTINGS_PATH;
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config.json");
+const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
 const FALLBACK_DEFAULT_COUNCIL_NAME = "default";
+const DEFAULT_PROMPT_DIRECTORY = "prompts";
+
+const PROMPT_KEYS = [
+	"councilGenerationSystem",
+	"councilCritiqueSystem",
+	"councilChairmanSystem",
+	"councilCritiqueTemplate",
+	"councilSynthesisTemplate",
+	"pairNavigatorBriefSystem",
+	"pairDriverImplementationSystem",
+	"pairNavigatorConsultSystem",
+	"pairNavigatorReviewSystem",
+	"pairDriverFixSystem",
+	"pairNavigatorBriefTemplate",
+	"pairDriverImplementationTemplate",
+	"pairNavigatorReviewTemplate",
+	"pairDriverFixTemplate",
+	"pairPrimer",
+	"agentCouncilFraming",
+	"agentPairConsultFraming",
+	"agentRequestTemplate",
+] as const;
+
+type PromptKey = (typeof PROMPT_KEYS)[number];
 
 /** @public */
 export interface SettingsCouncilEntry {
@@ -64,6 +88,7 @@ export interface SettingsPromptsEntry {
 
 interface CouncilSettings {
 	prompts?: SettingsPromptsEntry;
+	promptDirectory?: string;
 	defaultMembers?: string[];
 	defaultChairman?: string;
 	defaultCouncil?: SettingsDefaultCouncilEntry;
@@ -179,32 +204,70 @@ function entryRecord<T>(
 
 function promptsEntry(value: unknown): SettingsPromptsEntry | undefined {
 	if (!isRecord(value)) return undefined;
-	const keys: (keyof SettingsPromptsEntry)[] = [
-		"councilGenerationSystem",
-		"councilCritiqueSystem",
-		"councilChairmanSystem",
-		"councilCritiqueTemplate",
-		"councilSynthesisTemplate",
-		"pairNavigatorBriefSystem",
-		"pairDriverImplementationSystem",
-		"pairNavigatorConsultSystem",
-		"pairNavigatorReviewSystem",
-		"pairDriverFixSystem",
-		"pairNavigatorBriefTemplate",
-		"pairDriverImplementationTemplate",
-		"pairNavigatorReviewTemplate",
-		"pairDriverFixTemplate",
-		"pairPrimer",
-		"agentCouncilFraming",
-		"agentPairConsultFraming",
-		"agentRequestTemplate",
-	];
 	const result: SettingsPromptsEntry = {};
-	for (const key of keys) {
+	for (const key of PROMPT_KEYS) {
 		const arr = promptStringArray(value[key]);
 		if (arr) result[key] = arr;
 	}
 	return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function isPromptKey(value: string): value is PromptKey {
+	return PROMPT_KEYS.some((key) => key === value);
+}
+
+function unquoteFrontMatterValue(value: string): string {
+	const trimmed = value.trim();
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	) {
+		return trimmed.slice(1, -1);
+	}
+	return trimmed;
+}
+
+function frontMatterId(frontMatter: string): string | undefined {
+	for (const line of frontMatter.split("\n")) {
+		const match = /^id:\s*(.+)$/.exec(line);
+		if (match?.[1]) return unquoteFrontMatterValue(match[1]);
+	}
+	return undefined;
+}
+
+function parseMarkdownPrompt(
+	raw: string,
+): { id: PromptKey; lines: string[] } | undefined {
+	const normalized = raw.replace(/\r\n/g, "\n");
+	if (!normalized.startsWith("---\n")) return undefined;
+	const end = normalized.indexOf("\n---\n", 4);
+	if (end < 0) return undefined;
+	const id = frontMatterId(normalized.slice(4, end));
+	if (!id || !isPromptKey(id)) return undefined;
+	const body = normalized.slice(end + "\n---\n".length).replace(/\n$/, "");
+	const lines = body.split("\n");
+	return lines.length > 0 ? { id, lines } : undefined;
+}
+
+function readMarkdownPrompts(promptDir: string): SettingsPromptsEntry {
+	const result: SettingsPromptsEntry = {};
+	let files: string[];
+	try {
+		files = readdirSync(promptDir).filter((file) => file.endsWith(".md"));
+	} catch {
+		return result;
+	}
+	for (const file of files) {
+		try {
+			const parsed = parseMarkdownPrompt(
+				readFileSync(join(promptDir, file), "utf8"),
+			);
+			if (parsed) result[parsed.id] = parsed.lines;
+		} catch {
+			// Ignore unreadable prompt files; tests cover the shipped defaults.
+		}
+	}
+	return result;
 }
 
 function normaliseCouncilSettings(value: unknown): CouncilSettings {
@@ -234,6 +297,9 @@ function normaliseCouncilSettings(value: unknown): CouncilSettings {
 		...(promptsEntry(value.prompts)
 			? { prompts: promptsEntry(value.prompts) }
 			: {}),
+		...(optionalString(value.promptDirectory)
+			? { promptDirectory: optionalString(value.promptDirectory) }
+			: {}),
 	};
 }
 
@@ -241,9 +307,20 @@ function readExtensionDefaults(
 	path: string = DEFAULT_CONFIG_JSON,
 ): CouncilSettings {
 	try {
-		return normaliseCouncilSettings(
+		const settings = normaliseCouncilSettings(
 			JSON.parse(readFileSync(path, "utf8")) as unknown,
 		);
+		const promptDir = join(
+			dirname(path),
+			settings.promptDirectory ?? DEFAULT_PROMPT_DIRECTORY,
+		);
+		return {
+			...settings,
+			prompts: {
+				...readMarkdownPrompts(promptDir),
+				...(settings.prompts ?? {}),
+			},
+		};
 	} catch {
 		return {};
 	}
@@ -415,10 +492,10 @@ const EXTENSION_DEFAULT_SETTINGS = resolveCouncilSettings(
 	"/nonexistent/pi-settings.json",
 );
 
-/** The visible default member list from extensions/pi-llm-council/config.json. */
+/** The visible default member list from extensions/pi-llm-council/config/config.json. */
 export const DEFAULT_MEMBER_CANDIDATES =
 	EXTENSION_DEFAULT_SETTINGS.defaultMembers;
 
-/** Chairman fallback candidates from extensions/pi-llm-council/config.json. */
+/** Chairman fallback candidates from extensions/pi-llm-council/config/config.json. */
 export const DEFAULT_CHAIRMAN_CANDIDATES =
 	EXTENSION_DEFAULT_SETTINGS.chairmanCandidates;

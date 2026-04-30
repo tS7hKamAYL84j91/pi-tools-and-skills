@@ -1,0 +1,26 @@
+{
+	"defaultCouncil": {
+		"name": "default",
+		"purpose": "General high-stakes reasoning and architecture review",
+		"members": [
+			"openai-codex/gpt-5.5",
+			"google-gemini-cli/gemini-3.1-pro-preview",
+			"ollama/qwen3.5:cloud",
+			"ollama/glm-5.1:cloud"
+		],
+		"chairman": "openai-codex/gpt-5.5"
+	},
+	"chairmanCandidates": [
+		"openai-codex/gpt-5.5",
+		"google-gemini-cli/gemini-3.1-pro-preview",
+		"ollama/glm-5.1:cloud"
+	],
+	"defaultPair": {
+		"name": "review",
+		"navigator": "ollama/glm-5.1:cloud",
+		"purpose": "Default Navigator for pair-coding review"
+	},
+	"councils": {},
+	"pairs": {},
+	"promptDirectory": "prompts"
+}

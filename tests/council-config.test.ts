@@ -27,7 +27,8 @@ interface VisibleConfig {
 		navigator: string;
 		purpose: string;
 	};
-	prompts: Record<string, string[]>;
+	promptDirectory: string;
+	prompts?: unknown;
 }
 
 interface RegisteredTool {
@@ -46,16 +47,26 @@ type RegisteredHandler = (
 	ctx: ExtensionContext,
 ) => Promise<unknown> | unknown;
 
-const CONFIG_PATH = join(
-	process.cwd(),
-	"extensions",
-	"pi-llm-council",
-	"config.json",
-);
+const EXTENSION_DIR = join(process.cwd(), "extensions", "pi-llm-council");
+const CONFIG_DIR = join(EXTENSION_DIR, "config");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+const PROMPTS_DIR = join(CONFIG_DIR, "prompts");
 const NO_SETTINGS = "/nonexistent/path/settings.json";
 
 function readVisibleConfig(): VisibleConfig {
 	return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as VisibleConfig;
+}
+
+function readPromptFile(fileName: string): { id: string; lines: string[] } {
+	const raw = readFileSync(join(PROMPTS_DIR, fileName), "utf8").replace(
+		/\r\n/g,
+		"\n",
+	);
+	const end = raw.indexOf("\n---\n", 4);
+	const frontMatter = raw.slice(4, end);
+	const id = /^id:\s*(.+)$/m.exec(frontMatter)?.[1]?.trim() ?? "";
+	const body = raw.slice(end + "\n---\n".length).replace(/\n$/, "");
+	return { id, lines: body.split("\n") };
 }
 
 function withTempSettings(settings: object, fn: (path: string) => void): void {
@@ -130,8 +141,12 @@ function contextFor(models: string[]): ExtensionContext {
 }
 
 describe("visible council config", () => {
-	it("loads default council, chairman, pair, and prompts from extension config.json", () => {
+	it("loads default council, chairman, pair, and markdown prompts from visible config", () => {
 		const visible = readVisibleConfig();
+		const generationPrompt = readPromptFile("council-generation-system.md");
+		const navigatorBriefPrompt = readPromptFile(
+			"pair-navigator-brief-system.md",
+		);
 		const resolved = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 
 		expect(resolved.defaultCouncil).toMatchObject(visible.defaultCouncil);
@@ -144,18 +159,22 @@ describe("visible council config", () => {
 			purpose: visible.defaultPair.purpose,
 		});
 
+		expect(visible.prompts).toBeUndefined();
+		expect(visible.promptDirectory).toBe("prompts");
+		expect(generationPrompt.id).toBe("councilGenerationSystem");
+		expect(navigatorBriefPrompt.id).toBe("pairNavigatorBriefSystem");
 		expect(resolved.prompts.councilGenerationSystem).toEqual(
-			visible.prompts.councilGenerationSystem,
+			generationPrompt.lines,
 		);
 		expect(resolved.prompts.pairNavigatorBriefSystem).toEqual(
-			visible.prompts.pairNavigatorBriefSystem,
+			navigatorBriefPrompt.lines,
 		);
 		expect(resolved.prompts.pairNavigatorBriefTemplate).toContain("");
 		expect(resolved.prompts.agentRequestTemplate).toContain("{{replyTag}}");
 	});
 
 	it("merges user prompt overrides field-by-field", () => {
-		const visible = readVisibleConfig();
+		const critiqueSystemPrompt = readPromptFile("council-critique-system.md");
 		withTempSettings(
 			{
 				council: {
@@ -174,7 +193,7 @@ describe("visible council config", () => {
 					"Pair {{pairName}} uses {{navigator}}.{{taskLine}}",
 				]);
 				expect(resolved.prompts.councilCritiqueSystem).toEqual(
-					visible.prompts.councilCritiqueSystem,
+					critiqueSystemPrompt.lines,
 				);
 			},
 		);

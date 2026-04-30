@@ -1,8 +1,8 @@
 /**
  * Driver / Navigator prompts for PAIR-CODING (PAIR mode).
  *
- * Prompt bodies live in `config.json`; this module only renders configured
- * templates with runtime context.
+ * Prompt bodies live as Markdown files with front matter under `prompts/`;
+ * this module only renders configured templates with runtime context.
  */
 
 import type { LoadedFile, PairContext } from "./context-loader.js";

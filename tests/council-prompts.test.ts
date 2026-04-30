@@ -13,6 +13,7 @@ const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
 	"pi-llm-council",
+	"config",
 	"config.json",
 );
 const NO_SETTINGS = "/nonexistent/path/settings.json";
