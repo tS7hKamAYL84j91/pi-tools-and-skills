@@ -17,6 +17,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadPairContext, type PairContext } from "./context-loader.js";
+import { resolveCouncilSettings } from "./settings.js";
 import {
 	driverFixPrompt,
 	driverFixSystemPrompt,
@@ -49,7 +50,12 @@ export interface PairResult {
 	ok: boolean;
 	summary: string;
 	context: { projectRoot: string; loaded: string[]; warnings: string[] };
-	phases: Array<{ name: PairPhase; durationMs: number; ok: boolean; error?: string }>;
+	phases: Array<{
+		name: PairPhase;
+		durationMs: number;
+		ok: boolean;
+		error?: string;
+	}>;
 	navigatorBrief?: ModelRun;
 	driverImplementation?: ModelRun;
 	reviews: ModelRun[];
@@ -71,12 +77,17 @@ interface PairArgs {
 
 /** Run the bounded PAIR-CODING workflow. */
 export async function runPairCoding(args: PairArgs): Promise<PairResult> {
+	const settings = resolveCouncilSettings();
+	const promptsConfig = settings.prompts;
 	const phases: PairResult["phases"] = [];
 	const errors: string[] = [];
 	const reviews: ModelRun[] = [];
 	const fixes: ModelRun[] = [];
 	const driver: CouncilMember = { label: DRIVER_LABEL, model: args.driver };
-	const navigator: CouncilMember = { label: NAVIGATOR_LABEL, model: args.navigator };
+	const navigator: CouncilMember = {
+		label: NAVIGATOR_LABEL,
+		model: args.navigator,
+	};
 	const fixPasses = Math.max(0, args.maxFixPasses ?? 1);
 	const timeoutMs = args.timeoutMs ?? DEFAULT_PAIR_PHASE_TIMEOUT_MS;
 
@@ -87,7 +98,11 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 		specPath: args.specPath,
 		files: args.files,
 	});
-	phases.push({ name: "preparing context", durationMs: Date.now() - t0, ok: true });
+	phases.push({
+		name: "preparing context",
+		durationMs: Date.now() - t0,
+		ok: true,
+	});
 	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
 
 	const phaseCtx: PhaseCtx = { args, parentId, phases, errors, timeoutMs };
@@ -97,23 +112,37 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 		member: navigator,
 		label: "navigator brief",
 		build: () => ({
-			prompt: navigatorBriefPrompt(args.prompt, context),
-			systemPrompt: navigatorBriefSystemPrompt(),
+			prompt: navigatorBriefPrompt(args.prompt, context, promptsConfig),
+			systemPrompt: navigatorBriefSystemPrompt(promptsConfig),
 		}),
 	});
-	if (!navigatorBrief.ok) return done({ context, phases, errors, navigatorBrief, reviews, fixes });
+	if (!navigatorBrief.ok)
+		return done({ context, phases, errors, navigatorBrief, reviews, fixes });
 
 	const driverImplementation = await runPhase(phaseCtx, {
 		name: "driver implementation",
 		member: driver,
 		label: "driver implementation",
 		build: () => ({
-			prompt: driverImplementationPrompt(args.prompt, context, navigatorBrief.output),
-			systemPrompt: driverImplementationSystemPrompt(),
+			prompt: driverImplementationPrompt(
+				args.prompt,
+				context,
+				navigatorBrief.output,
+				promptsConfig,
+			),
+			systemPrompt: driverImplementationSystemPrompt(promptsConfig),
 		}),
 	});
 	if (!driverImplementation.ok) {
-		return done({ context, phases, errors, navigatorBrief, driverImplementation, reviews, fixes });
+		return done({
+			context,
+			phases,
+			errors,
+			navigatorBrief,
+			driverImplementation,
+			reviews,
+			fixes,
+		});
 	}
 
 	let currentArtifact = driverImplementation.output;
@@ -123,8 +152,13 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 			member: navigator,
 			label: `navigator review (pass ${pass}/${fixPasses})`,
 			build: () => ({
-				prompt: navigatorReviewPrompt(args.prompt, context, currentArtifact),
-				systemPrompt: navigatorReviewSystemPrompt(),
+				prompt: navigatorReviewPrompt(
+					args.prompt,
+					context,
+					currentArtifact,
+					promptsConfig,
+				),
+				systemPrompt: navigatorReviewSystemPrompt(promptsConfig),
 			}),
 		});
 		reviews.push(review);
@@ -135,8 +169,13 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 			member: driver,
 			label: `driver fix pass (${pass}/${fixPasses})`,
 			build: () => ({
-				prompt: driverFixPrompt(args.prompt, currentArtifact, review.output),
-				systemPrompt: driverFixSystemPrompt(),
+				prompt: driverFixPrompt(
+					args.prompt,
+					currentArtifact,
+					review.output,
+					promptsConfig,
+				),
+				systemPrompt: driverFixSystemPrompt(promptsConfig),
 			}),
 		});
 		fixes.push(fix);
@@ -166,7 +205,10 @@ interface PhaseCtx {
 	timeoutMs: number;
 }
 
-interface PhaseInputs { prompt: string; systemPrompt: string }
+interface PhaseInputs {
+	prompt: string;
+	systemPrompt: string;
+}
 
 interface PhaseDescriptor {
 	name: PairPhase;
@@ -175,7 +217,10 @@ interface PhaseDescriptor {
 	build: () => PhaseInputs;
 }
 
-async function runPhase(ctx: PhaseCtx, phase: PhaseDescriptor): Promise<ModelRun> {
+async function runPhase(
+	ctx: PhaseCtx,
+	phase: PhaseDescriptor,
+): Promise<ModelRun> {
 	ctx.args.onProgress?.(phase.label);
 	const inputs = phase.build();
 	const t = Date.now();
@@ -220,13 +265,18 @@ interface FinalisingArgs {
 }
 
 function done(args: FinalisingArgs): PairResult {
-	args.phases.push({ name: "complete", durationMs: 0, ok: args.errors.length === 0 });
+	args.phases.push({
+		name: "complete",
+		durationMs: 0,
+		ok: args.errors.length === 0,
+	});
 	const lastFix = args.fixes[args.fixes.length - 1];
-	const summary = args.finalArtifact
-		?? lastFix?.output
-		?? args.driverImplementation?.output
-		?? args.navigatorBrief?.output
-		?? "(no output)";
+	const summary =
+		args.finalArtifact ??
+		lastFix?.output ??
+		args.driverImplementation?.output ??
+		args.navigatorBrief?.output ??
+		"(no output)";
 	return {
 		mode: "PAIR",
 		ok: args.errors.length === 0,
@@ -238,7 +288,9 @@ function done(args: FinalisingArgs): PairResult {
 		},
 		phases: args.phases,
 		...(args.navigatorBrief ? { navigatorBrief: args.navigatorBrief } : {}),
-		...(args.driverImplementation ? { driverImplementation: args.driverImplementation } : {}),
+		...(args.driverImplementation
+			? { driverImplementation: args.driverImplementation }
+			: {}),
 		reviews: args.reviews,
 		fixes: args.fixes,
 		errors: args.errors,

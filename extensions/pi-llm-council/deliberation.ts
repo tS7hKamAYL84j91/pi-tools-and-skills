@@ -19,6 +19,7 @@ import {
 	resolveChairman,
 	resolveMembers,
 } from "./agent-ref.js";
+import { resolveCouncilSettings } from "./settings.js";
 import { checkHeterogeneity, type HeterogeneityCheck } from "./members.js";
 import {
 	chairmanSystemPrompt,
@@ -198,7 +199,8 @@ async function dispatchMember(args: DispatchArgs): Promise<ModelRun> {
 				output: "",
 				durationMs: 0,
 				ok: false,
-				error: "council orchestrator is not registered with panopticon — cannot reach live agents",
+				error:
+					"council orchestrator is not registered with panopticon — cannot reach live agents",
 			};
 		}
 		const result = await askAgent({
@@ -233,6 +235,8 @@ async function dispatchMember(args: DispatchArgs): Promise<ModelRun> {
 export async function deliberate(
 	args: DeliberateArgs,
 ): Promise<CouncilDeliberation> {
+	const settings = resolveCouncilSettings();
+	const promptsConfig = settings.prompts;
 	const timeoutMs = args.parallelTimeoutMs ?? DEFAULT_PARALLEL_TIMEOUT_MS;
 
 	const report = preflight(args.definition, args.availableSnapshot);
@@ -295,9 +299,13 @@ export async function deliberate(
 	args.onProgress?.(`stage 1/3 generating (${members.length} members)`);
 	const generationInputs: StageInputs = {
 		prompt: args.prompt,
-		systemPrompt: generationSystemPrompt(),
+		systemPrompt: generationSystemPrompt(promptsConfig),
 	};
-	const generation = await runStage(members, "generate", () => generationInputs);
+	const generation = await runStage(
+		members,
+		"generate",
+		() => generationInputs,
+	);
 	record = args.stateManager.update(record, { generation });
 	const successfulGen = generation.filter((r) => r.ok && r.output.length > 0);
 	if (successfulGen.length < MIN_GENERATION_FOR_CRITIQUE) {
@@ -320,8 +328,9 @@ export async function deliberate(
 			generation: successfulGen,
 			members,
 			viewer,
+			promptsConfig,
 		}),
-		systemPrompt: critiqueSystemPrompt(),
+		systemPrompt: critiqueSystemPrompt(promptsConfig),
 	}));
 	const critiques: CritiqueRun[] = critiqueRuns.map((r) => ({
 		...r,
@@ -334,10 +343,14 @@ export async function deliberate(
 	record = args.stateManager.update(record, { status: "synthesizing" });
 	args.onProgress?.(`stage 3/3 chairman synthesis (${chairman.model})`);
 	const synthesisInputs: StageInputs = {
-		prompt: synthesisPrompt(record),
-		systemPrompt: chairmanSystemPrompt(),
+		prompt: synthesisPrompt(record, promptsConfig),
+		systemPrompt: chairmanSystemPrompt(promptsConfig),
 	};
-	const [synthesis] = await runStage([chairman], "synthesize", () => synthesisInputs);
+	const [synthesis] = await runStage(
+		[chairman],
+		"synthesize",
+		() => synthesisInputs,
+	);
 	const completedAt = Date.now();
 	if (!synthesis?.ok) {
 		const err = `Chairman synthesis failed: ${synthesis?.error ?? "no response within timeout"}`;

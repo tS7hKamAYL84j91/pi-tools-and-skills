@@ -1,61 +1,68 @@
 /**
- * Driver / Navigator system prompts for PAIR-CODING (PAIR mode).
+ * Driver / Navigator prompts for PAIR-CODING (PAIR mode).
  *
- * Driver writes code from a Navigator-aligned brief. Navigator reviews the
- * Driver's artifact for bugs, missing requirements, and test gaps. Each role
- * sees only what the orchestrator hands it — no shared session state.
+ * Prompt bodies live in `config.json`; this module only renders configured
+ * templates with runtime context.
  */
 
 import type { LoadedFile, PairContext } from "./context-loader.js";
+import type { ResolvedCouncilSettings } from "./settings.js";
 
-export function navigatorBriefSystemPrompt(): string {
-	return [
-		"You are the Navigator in a Driver/Navigator pair-coding session.",
-		"Your job in this phase: turn the user's prompt into a sharp, actionable brief for the Driver.",
-		"If the prompt is ambiguous, return a focused clarification request (one paragraph) instead of guessing.",
-		"If the prompt is workable, restate it tightly and list the explicit success criteria the Driver should meet.",
-		"Do not write code. Do not propose a full solution. Stay at the level of intent and constraints.",
-	].join("\n");
+type PromptConfig = ResolvedCouncilSettings["prompts"];
+
+interface PairPrimerArgs {
+	pairName: string;
+	navigator: string;
+	task?: string;
+	promptsConfig: PromptConfig;
 }
 
-export function driverImplementationSystemPrompt(): string {
-	return [
-		"You are the Driver in a Driver/Navigator pair-coding session.",
-		"Implement the Navigator's brief faithfully. Produce a code patch or a clearly delimited file body — not prose.",
-		"Honor the constraints in the loaded project instructions and spec.",
-		"If you must guess, name the assumption explicitly in a short trailing comment.",
-		"Do not refactor unrelated code. Stay inside the requested scope.",
-	].join("\n");
+interface TemplateValues {
+	[key: string]: string;
 }
 
-export function navigatorConsultSystemPrompt(): string {
-	return [
-		"You are the Navigator in a pair-coding session. The Pilot (the main agent with full tool access) is consulting you on a specific question.",
-		"Answer the focused ask directly. Don't ramble; don't restate the question.",
-		"If the Pilot shared code or a draft, cite specific lines or sections — bugs, missing requirements, boundary violations, test gaps. If it looks correct, say so plainly and list what you actually verified.",
-		"If the Pilot asked a design or strategy question (\"is this approach sound?\", \"Map or Record?\", \"what's the risk?\"), give your honest read and name the assumptions you're checking.",
-		"Do not rewrite code unless explicitly asked. The Pilot decides what to do with your input.",
-		"Challenge assumptions — that's your role.",
-	].join("\n");
+function renderTemplate(lines: string[], values: TemplateValues): string {
+	let rendered = lines.join("\n");
+	for (const [key, value] of Object.entries(values)) {
+		rendered = rendered.replaceAll(`{{${key}}}`, value);
+	}
+	return rendered;
 }
 
-export function navigatorReviewSystemPrompt(): string {
-	return [
-		"You are the Navigator reviewing the Driver's first artifact.",
-		"Identify concrete defects: bugs, missing requirements, boundary violations, test gaps.",
-		"Be specific — cite the line, function, or section. Generic praise is not useful.",
-		"If the artifact is correct, say so plainly and list what you actually verified.",
-		"Do not rewrite the code. The Driver gets one fix pass after this.",
-	].join("\n");
+export function navigatorBriefSystemPrompt(
+	promptsConfig: PromptConfig,
+): string {
+	return promptsConfig.pairNavigatorBriefSystem.join("\n");
 }
 
-export function driverFixSystemPrompt(): string {
-	return [
-		"You are the Driver applying the Navigator's review.",
-		"Address each concrete issue raised. If you disagree with a point, say why and proceed.",
-		"Output the final artifact in the same shape as your initial implementation (full patch or file body).",
-		"This is your only fix pass — do not request another round.",
-	].join("\n");
+export function driverImplementationSystemPrompt(
+	promptsConfig: PromptConfig,
+): string {
+	return promptsConfig.pairDriverImplementationSystem.join("\n");
+}
+
+export function navigatorConsultSystemPrompt(
+	promptsConfig: PromptConfig,
+): string {
+	return promptsConfig.pairNavigatorConsultSystem.join("\n");
+}
+
+export function navigatorReviewSystemPrompt(
+	promptsConfig: PromptConfig,
+): string {
+	return promptsConfig.pairNavigatorReviewSystem.join("\n");
+}
+
+export function driverFixSystemPrompt(promptsConfig: PromptConfig): string {
+	return promptsConfig.pairDriverFixSystem.join("\n");
+}
+
+export function pairPrimerPrompt(args: PairPrimerArgs): string {
+	return renderTemplate(args.promptsConfig.pairPrimer, {
+		pairName: args.pairName,
+		navigator: args.navigator,
+		taskLine: args.task ? `\n\nTask: ${args.task}` : "",
+	});
 }
 
 // ── Prompt builders ──────────────────────────────────────────────
@@ -82,71 +89,52 @@ function formatFile(file: LoadedFile): string {
 	return `### ${file.path}\n\n\`\`\`\n${file.content}\n\`\`\``;
 }
 
-export function navigatorBriefPrompt(prompt: string, ctx: PairContext): string {
-	return [
-		"Loaded context:",
-		formatContext(ctx),
-		"",
-		"User prompt:",
+export function navigatorBriefPrompt(
+	prompt: string,
+	ctx: PairContext,
+	promptsConfig: PromptConfig,
+): string {
+	return renderTemplate(promptsConfig.pairNavigatorBriefTemplate, {
+		context: formatContext(ctx),
 		prompt,
-		"",
-		"Produce the brief or the clarification request now.",
-	].join("\n");
+	});
 }
 
 export function driverImplementationPrompt(
 	prompt: string,
 	ctx: PairContext,
 	navigatorBrief: string,
+	promptsConfig: PromptConfig,
 ): string {
-	return [
-		"Loaded context:",
-		formatContext(ctx),
-		"",
-		"Original user prompt:",
+	return renderTemplate(promptsConfig.pairDriverImplementationTemplate, {
+		context: formatContext(ctx),
 		prompt,
-		"",
-		"Navigator brief:",
 		navigatorBrief,
-		"",
-		"Produce your implementation now.",
-	].join("\n");
+	});
 }
 
 export function navigatorReviewPrompt(
 	prompt: string,
 	ctx: PairContext,
 	driverArtifact: string,
+	promptsConfig: PromptConfig,
 ): string {
-	return [
-		"Loaded context:",
-		formatContext(ctx),
-		"",
-		"Original user prompt:",
+	return renderTemplate(promptsConfig.pairNavigatorReviewTemplate, {
+		context: formatContext(ctx),
 		prompt,
-		"",
-		"Driver's first artifact:",
 		driverArtifact,
-		"",
-		"Review the artifact now.",
-	].join("\n");
+	});
 }
 
 export function driverFixPrompt(
 	prompt: string,
 	driverArtifact: string,
 	navigatorReview: string,
+	promptsConfig: PromptConfig,
 ): string {
-	return [
-		"Original user prompt:",
+	return renderTemplate(promptsConfig.pairDriverFixTemplate, {
 		prompt,
-		"",
-		"Your previous artifact:",
 		driverArtifact,
-		"",
-		"Navigator review:",
 		navigatorReview,
-		"",
-		"Apply the review and emit the final artifact now.",
-	].join("\n");
+	});
 }

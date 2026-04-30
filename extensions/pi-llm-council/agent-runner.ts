@@ -16,8 +16,14 @@ import { readdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { sendAgentMessage } from "../../lib/agent-api.js";
 import { REGISTRY_DIR } from "../../lib/agent-registry.js";
+import {
+	resolveCouncilSettings,
+	type ResolvedCouncilSettings,
+} from "./settings.js";
 
 const POLL_INTERVAL_MS = 500;
+
+type PromptConfig = ResolvedCouncilSettings["prompts"];
 
 interface AskAgentArgs {
 	agentName: string;
@@ -47,7 +53,19 @@ interface InboxFileMessage {
 	ts?: number;
 }
 
+interface TemplateValues {
+	[key: string]: string;
+}
+
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+
+function renderTemplate(lines: string[], values: TemplateValues): string {
+	let rendered = lines.join("\n");
+	for (const [key, value] of Object.entries(values)) {
+		rendered = rendered.replaceAll(`{{${key}}}`, value);
+	}
+	return rendered;
+}
 
 function envelopeNames(stage: string): { request: string; reply: string } {
 	if (stage === "consult") {
@@ -56,38 +74,41 @@ function envelopeNames(stage: string): { request: string; reply: string } {
 	return { request: "council-request", reply: "council-reply" };
 }
 
-function framingFor(stage: string): string {
-	if (stage === "consult") {
-		return [
-			"You're the Navigator in a pair-coding consultation. The Pilot (a separate agent doing the actual coding) is asking you for a focused review or perspective.",
-			"Read the question, answer it directly, and reply via agent_send as instructed below. This is a one-shot consultation — there is no follow-up turn unless the Pilot consults you again.",
-		].join("\n");
-	}
-	return "You are participating as a council member in a multi-agent deliberation.";
+function framingFor(stage: string, promptsConfig: PromptConfig): string {
+	const lines =
+		stage === "consult"
+			? promptsConfig.agentPairConsultFraming
+			: promptsConfig.agentCouncilFraming;
+	return lines.join("\n");
 }
 
-function formatTag(args: { deliberationId: string; stage: string; memberLabel: string }): string {
+function formatTag(args: {
+	deliberationId: string;
+	stage: string;
+	memberLabel: string;
+}): string {
 	const { reply } = envelopeNames(args.stage);
 	return `<${reply} deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`;
 }
 
-function formatRequest(args: AskAgentArgs, tag: string): string {
+function formatRequest(
+	args: AskAgentArgs,
+	tag: string,
+	promptsConfig: PromptConfig,
+): string {
 	const { request } = envelopeNames(args.stage);
-	return [
-		`<${request} deliberation_id="${args.deliberationId}" stage="${args.stage}" member="${args.memberLabel}">`,
-		framingFor(args.stage),
-		`Timeout: ${Math.round(args.timeoutMs / 1000)}s — late replies are discarded.`,
-		"",
-		args.systemPrompt,
-		"",
-		"Question:",
-		args.prompt,
-		"",
-		`When ready, reply via agent_send to "${args.ourAgentName}". Your reply MUST contain the exact line:`,
-		tag,
-		"Everything after that line is treated as your answer.",
-		`</${request}>`,
-	].join("\n");
+	return renderTemplate(promptsConfig.agentRequestTemplate, {
+		requestTag: request,
+		deliberationId: args.deliberationId,
+		stage: args.stage,
+		memberLabel: args.memberLabel,
+		framing: framingFor(args.stage, promptsConfig),
+		timeoutSeconds: Math.round(args.timeoutMs / 1000).toString(),
+		systemPrompt: args.systemPrompt,
+		prompt: args.prompt,
+		ourAgentName: args.ourAgentName,
+		replyTag: tag,
+	});
 }
 
 /** Body is everything after the tag — no closing-tag dependency, so an answer that mentions XML cannot truncate itself. */
@@ -114,7 +135,11 @@ interface DirMatch {
 	path: string;
 }
 
-function scanDir(dir: string, fromAgentLower: string, tag: string): DirMatch | null {
+function scanDir(
+	dir: string,
+	fromAgentLower: string,
+	tag: string,
+): DirMatch | null {
 	let files: string[];
 	try {
 		files = readdirSync(dir).filter((f) => f.endsWith(".json"));
@@ -126,10 +151,16 @@ function scanDir(dir: string, fromAgentLower: string, tag: string): DirMatch | n
 		try {
 			const raw = readFileSync(filePath, "utf-8");
 			const msg = JSON.parse(raw) as InboxFileMessage;
-			if (msg.from?.toLowerCase() === fromAgentLower && typeof msg.text === "string" && msg.text.includes(tag)) {
+			if (
+				msg.from?.toLowerCase() === fromAgentLower &&
+				typeof msg.text === "string" &&
+				msg.text.includes(tag)
+			) {
 				return { text: msg.text, path: filePath };
 			}
-		} catch { /* skip unreadable */ }
+		} catch {
+			/* skip unreadable */
+		}
 	}
 	return null;
 }
@@ -141,7 +172,9 @@ function scanDir(dir: string, fromAgentLower: string, tag: string): DirMatch | n
 function ackInNew(match: DirMatch, curDir: string): void {
 	try {
 		renameSync(match.path, join(curDir, match.path.split("/").pop() ?? ""));
-	} catch { /* already moved or removed */ }
+	} catch {
+		/* already moved or removed */
+	}
 }
 
 async function findReply(args: FindReplyArgs): Promise<FoundReply | null> {
@@ -165,6 +198,7 @@ async function findReply(args: FindReplyArgs): Promise<FoundReply | null> {
 /** Send a council prompt to a live agent and await its tagged reply. */
 export async function askAgent(args: AskAgentArgs): Promise<AskAgentResult> {
 	const startedAt = Date.now();
+	const promptsConfig = resolveCouncilSettings().prompts;
 	const tag = formatTag({
 		deliberationId: args.deliberationId,
 		stage: args.stage,
@@ -174,7 +208,7 @@ export async function askAgent(args: AskAgentArgs): Promise<AskAgentResult> {
 	const accepted = await sendAgentMessage(
 		args.agentId,
 		args.ourAgentName,
-		formatRequest(args, tag),
+		formatRequest(args, tag, promptsConfig),
 	);
 	if (!accepted) {
 		return {
