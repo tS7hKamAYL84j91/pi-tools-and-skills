@@ -2,9 +2,9 @@
  * Council settings — visible defaults from extension config plus user overrides.
  *
  * Defaults live in `extensions/pi-llm-council/config.json` so the default
- * council, chairman candidates, and pair are reviewable without spelunking
- * TypeScript. User `~/.pi/agent/settings.json` may still override fields via
- * the `council` key.
+ * council, chairman candidates, pair, and prompt templates are reviewable
+ * without spelunking TypeScript. User `~/.pi/agent/settings.json` may still
+ * override fields via the `council` key.
  */
 
 import { readFileSync } from "node:fs";
@@ -41,7 +41,29 @@ export interface SettingsDefaultPairEntry extends SettingsPairEntry {
 }
 
 /** @public */
-export interface CouncilSettings {
+export interface SettingsPromptsEntry {
+	councilGenerationSystem?: string[];
+	councilCritiqueSystem?: string[];
+	councilChairmanSystem?: string[];
+	councilCritiqueTemplate?: string[];
+	councilSynthesisTemplate?: string[];
+	pairNavigatorBriefSystem?: string[];
+	pairDriverImplementationSystem?: string[];
+	pairNavigatorConsultSystem?: string[];
+	pairNavigatorReviewSystem?: string[];
+	pairDriverFixSystem?: string[];
+	pairNavigatorBriefTemplate?: string[];
+	pairDriverImplementationTemplate?: string[];
+	pairNavigatorReviewTemplate?: string[];
+	pairDriverFixTemplate?: string[];
+	pairPrimer?: string[];
+	agentCouncilFraming?: string[];
+	agentPairConsultFraming?: string[];
+	agentRequestTemplate?: string[];
+}
+
+interface CouncilSettings {
+	prompts?: SettingsPromptsEntry;
 	defaultMembers?: string[];
 	defaultChairman?: string;
 	defaultCouncil?: SettingsDefaultCouncilEntry;
@@ -53,11 +75,16 @@ export interface CouncilSettings {
 
 /** @public */
 export interface ResolvedCouncilSettings {
+	prompts: Required<SettingsPromptsEntry>;
 	defaultMembers: string[];
 	defaultChairman: string;
-	defaultCouncil: Required<Pick<SettingsDefaultCouncilEntry, "name" | "members" | "chairman">> & { purpose?: string };
+	defaultCouncil: Required<
+		Pick<SettingsDefaultCouncilEntry, "name" | "members" | "chairman">
+	> & { purpose?: string };
 	chairmanCandidates: string[];
-	defaultPair?: Required<Pick<SettingsDefaultPairEntry, "name" | "navigator">> & { purpose?: string };
+	defaultPair?: Required<
+		Pick<SettingsDefaultPairEntry, "name" | "navigator">
+	> & { purpose?: string };
 	councils: Record<string, SettingsCouncilEntry>;
 	pairs: Record<string, SettingsPairEntry>;
 }
@@ -67,25 +94,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
 }
 
 function stringArray(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
-	const values = value.map(optionalString).filter((item): item is string => item !== undefined);
+	const values = value
+		.map(optionalString)
+		.filter((item): item is string => item !== undefined);
+	return values.length > 0 ? values : undefined;
+}
+
+function promptStringArray(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const values = value.filter(
+		(item): item is string => typeof item === "string",
+	);
 	return values.length > 0 ? values : undefined;
 }
 
 function councilEntry(value: unknown): SettingsCouncilEntry | undefined {
 	if (!isRecord(value)) return undefined;
 	return {
-		...(stringArray(value.members) ? { members: stringArray(value.members) } : {}),
-		...(optionalString(value.chairman) ? { chairman: optionalString(value.chairman) } : {}),
-		...(optionalString(value.purpose) ? { purpose: optionalString(value.purpose) } : {}),
+		...(stringArray(value.members)
+			? { members: stringArray(value.members) }
+			: {}),
+		...(optionalString(value.chairman)
+			? { chairman: optionalString(value.chairman) }
+			: {}),
+		...(optionalString(value.purpose)
+			? { purpose: optionalString(value.purpose) }
+			: {}),
 	};
 }
 
-function defaultCouncilEntry(value: unknown): SettingsDefaultCouncilEntry | undefined {
+function defaultCouncilEntry(
+	value: unknown,
+): SettingsDefaultCouncilEntry | undefined {
 	const entry = councilEntry(value);
 	if (!isRecord(value) || !entry) return entry;
 	return {
@@ -97,12 +144,18 @@ function defaultCouncilEntry(value: unknown): SettingsDefaultCouncilEntry | unde
 function pairEntry(value: unknown): SettingsPairEntry | undefined {
 	if (!isRecord(value)) return undefined;
 	return {
-		...(optionalString(value.navigator) ? { navigator: optionalString(value.navigator) } : {}),
-		...(optionalString(value.purpose) ? { purpose: optionalString(value.purpose) } : {}),
+		...(optionalString(value.navigator)
+			? { navigator: optionalString(value.navigator) }
+			: {}),
+		...(optionalString(value.purpose)
+			? { purpose: optionalString(value.purpose) }
+			: {}),
 	};
 }
 
-function defaultPairEntry(value: unknown): SettingsDefaultPairEntry | undefined {
+function defaultPairEntry(
+	value: unknown,
+): SettingsDefaultPairEntry | undefined {
 	const entry = pairEntry(value);
 	if (!isRecord(value) || !entry) return entry;
 	return {
@@ -111,7 +164,10 @@ function defaultPairEntry(value: unknown): SettingsDefaultPairEntry | undefined 
 	};
 }
 
-function entryRecord<T>(value: unknown, parse: (entry: unknown) => T | undefined): Record<string, T> | undefined {
+function entryRecord<T>(
+	value: unknown,
+	parse: (entry: unknown) => T | undefined,
+): Record<string, T> | undefined {
 	if (!isRecord(value)) return undefined;
 	const result: Record<string, T> = {};
 	for (const [name, entryValue] of Object.entries(value)) {
@@ -121,22 +177,73 @@ function entryRecord<T>(value: unknown, parse: (entry: unknown) => T | undefined
 	return result;
 }
 
+function promptsEntry(value: unknown): SettingsPromptsEntry | undefined {
+	if (!isRecord(value)) return undefined;
+	const keys: (keyof SettingsPromptsEntry)[] = [
+		"councilGenerationSystem",
+		"councilCritiqueSystem",
+		"councilChairmanSystem",
+		"councilCritiqueTemplate",
+		"councilSynthesisTemplate",
+		"pairNavigatorBriefSystem",
+		"pairDriverImplementationSystem",
+		"pairNavigatorConsultSystem",
+		"pairNavigatorReviewSystem",
+		"pairDriverFixSystem",
+		"pairNavigatorBriefTemplate",
+		"pairDriverImplementationTemplate",
+		"pairNavigatorReviewTemplate",
+		"pairDriverFixTemplate",
+		"pairPrimer",
+		"agentCouncilFraming",
+		"agentPairConsultFraming",
+		"agentRequestTemplate",
+	];
+	const result: SettingsPromptsEntry = {};
+	for (const key of keys) {
+		const arr = promptStringArray(value[key]);
+		if (arr) result[key] = arr;
+	}
+	return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function normaliseCouncilSettings(value: unknown): CouncilSettings {
 	if (!isRecord(value)) return {};
 	return {
-		...(stringArray(value.defaultMembers) ? { defaultMembers: stringArray(value.defaultMembers) } : {}),
-		...(optionalString(value.defaultChairman) ? { defaultChairman: optionalString(value.defaultChairman) } : {}),
-		...(defaultCouncilEntry(value.defaultCouncil) ? { defaultCouncil: defaultCouncilEntry(value.defaultCouncil) } : {}),
-		...(stringArray(value.chairmanCandidates) ? { chairmanCandidates: stringArray(value.chairmanCandidates) } : {}),
-		...(defaultPairEntry(value.defaultPair) ? { defaultPair: defaultPairEntry(value.defaultPair) } : {}),
-		...(entryRecord(value.councils, councilEntry) ? { councils: entryRecord(value.councils, councilEntry) } : {}),
-		...(entryRecord(value.pairs, pairEntry) ? { pairs: entryRecord(value.pairs, pairEntry) } : {}),
+		...(stringArray(value.defaultMembers)
+			? { defaultMembers: stringArray(value.defaultMembers) }
+			: {}),
+		...(optionalString(value.defaultChairman)
+			? { defaultChairman: optionalString(value.defaultChairman) }
+			: {}),
+		...(defaultCouncilEntry(value.defaultCouncil)
+			? { defaultCouncil: defaultCouncilEntry(value.defaultCouncil) }
+			: {}),
+		...(stringArray(value.chairmanCandidates)
+			? { chairmanCandidates: stringArray(value.chairmanCandidates) }
+			: {}),
+		...(defaultPairEntry(value.defaultPair)
+			? { defaultPair: defaultPairEntry(value.defaultPair) }
+			: {}),
+		...(entryRecord(value.councils, councilEntry)
+			? { councils: entryRecord(value.councils, councilEntry) }
+			: {}),
+		...(entryRecord(value.pairs, pairEntry)
+			? { pairs: entryRecord(value.pairs, pairEntry) }
+			: {}),
+		...(promptsEntry(value.prompts)
+			? { prompts: promptsEntry(value.prompts) }
+			: {}),
 	};
 }
 
-function readExtensionDefaults(path: string = DEFAULT_CONFIG_JSON): CouncilSettings {
+function readExtensionDefaults(
+	path: string = DEFAULT_CONFIG_JSON,
+): CouncilSettings {
 	try {
-		return normaliseCouncilSettings(JSON.parse(readFileSync(path, "utf8")) as unknown);
+		return normaliseCouncilSettings(
+			JSON.parse(readFileSync(path, "utf8")) as unknown,
+		);
 	} catch {
 		return {};
 	}
@@ -147,7 +254,10 @@ function readCouncilSettings(path: string = SETTINGS_JSON): CouncilSettings {
 	return normaliseCouncilSettings(readPiSettingsKey("council", path));
 }
 
-function resolveDefaultCouncil(extensionDefaults: CouncilSettings, user: CouncilSettings): ResolvedCouncilSettings["defaultCouncil"] {
+function resolveDefaultCouncil(
+	extensionDefaults: CouncilSettings,
+	user: CouncilSettings,
+): ResolvedCouncilSettings["defaultCouncil"] {
 	const config = {
 		...extensionDefaults.defaultCouncil,
 		...user.defaultCouncil,
@@ -171,7 +281,10 @@ function resolveDefaultCouncil(extensionDefaults: CouncilSettings, user: Council
 	};
 }
 
-function resolveDefaultPair(extensionDefaults: CouncilSettings, user: CouncilSettings): ResolvedCouncilSettings["defaultPair"] {
+function resolveDefaultPair(
+	extensionDefaults: CouncilSettings,
+	user: CouncilSettings,
+): ResolvedCouncilSettings["defaultPair"] {
 	const config = {
 		...extensionDefaults.defaultPair,
 		...user.defaultPair,
@@ -190,6 +303,85 @@ function resolveDefaultPair(extensionDefaults: CouncilSettings, user: CouncilSet
  * User settings override visible extension defaults per field, so partial
  * config still gets sane defaults for unspecified values.
  */
+function resolvePrompts(
+	extensionDefaults: CouncilSettings,
+	user: CouncilSettings,
+): Required<SettingsPromptsEntry> {
+	const userPrompts = user.prompts ?? {};
+	const defaultPrompts = extensionDefaults.prompts ?? {};
+	return {
+		councilGenerationSystem:
+			userPrompts.councilGenerationSystem ??
+			defaultPrompts.councilGenerationSystem ??
+			[],
+		councilCritiqueSystem:
+			userPrompts.councilCritiqueSystem ??
+			defaultPrompts.councilCritiqueSystem ??
+			[],
+		councilChairmanSystem:
+			userPrompts.councilChairmanSystem ??
+			defaultPrompts.councilChairmanSystem ??
+			[],
+		councilCritiqueTemplate:
+			userPrompts.councilCritiqueTemplate ??
+			defaultPrompts.councilCritiqueTemplate ??
+			[],
+		councilSynthesisTemplate:
+			userPrompts.councilSynthesisTemplate ??
+			defaultPrompts.councilSynthesisTemplate ??
+			[],
+		pairNavigatorBriefSystem:
+			userPrompts.pairNavigatorBriefSystem ??
+			defaultPrompts.pairNavigatorBriefSystem ??
+			[],
+		pairDriverImplementationSystem:
+			userPrompts.pairDriverImplementationSystem ??
+			defaultPrompts.pairDriverImplementationSystem ??
+			[],
+		pairNavigatorConsultSystem:
+			userPrompts.pairNavigatorConsultSystem ??
+			defaultPrompts.pairNavigatorConsultSystem ??
+			[],
+		pairNavigatorReviewSystem:
+			userPrompts.pairNavigatorReviewSystem ??
+			defaultPrompts.pairNavigatorReviewSystem ??
+			[],
+		pairDriverFixSystem:
+			userPrompts.pairDriverFixSystem ??
+			defaultPrompts.pairDriverFixSystem ??
+			[],
+		pairNavigatorBriefTemplate:
+			userPrompts.pairNavigatorBriefTemplate ??
+			defaultPrompts.pairNavigatorBriefTemplate ??
+			[],
+		pairDriverImplementationTemplate:
+			userPrompts.pairDriverImplementationTemplate ??
+			defaultPrompts.pairDriverImplementationTemplate ??
+			[],
+		pairNavigatorReviewTemplate:
+			userPrompts.pairNavigatorReviewTemplate ??
+			defaultPrompts.pairNavigatorReviewTemplate ??
+			[],
+		pairDriverFixTemplate:
+			userPrompts.pairDriverFixTemplate ??
+			defaultPrompts.pairDriverFixTemplate ??
+			[],
+		pairPrimer: userPrompts.pairPrimer ?? defaultPrompts.pairPrimer ?? [],
+		agentCouncilFraming:
+			userPrompts.agentCouncilFraming ??
+			defaultPrompts.agentCouncilFraming ??
+			[],
+		agentPairConsultFraming:
+			userPrompts.agentPairConsultFraming ??
+			defaultPrompts.agentPairConsultFraming ??
+			[],
+		agentRequestTemplate:
+			userPrompts.agentRequestTemplate ??
+			defaultPrompts.agentRequestTemplate ??
+			[],
+	};
+}
+
 export function resolveCouncilSettings(
 	settingsPath: string = SETTINGS_JSON,
 	extensionConfigPath: string = DEFAULT_CONFIG_JSON,
@@ -207,20 +399,26 @@ export function resolveCouncilSettings(
 		defaultMembers: defaultCouncil.members,
 		defaultChairman: defaultCouncil.chairman,
 		defaultCouncil,
-		chairmanCandidates: user.chairmanCandidates ?? extensionDefaults.chairmanCandidates ?? [],
+		chairmanCandidates:
+			user.chairmanCandidates ?? extensionDefaults.chairmanCandidates ?? [],
 		...(defaultPair ? { defaultPair } : {}),
 		councils: {
 			...(extensionDefaults.councils ?? {}),
 			...(user.councils ?? {}),
 		},
 		pairs,
+		prompts: resolvePrompts(extensionDefaults, user),
 	};
 }
 
-const EXTENSION_DEFAULT_SETTINGS = resolveCouncilSettings("/nonexistent/pi-settings.json");
+const EXTENSION_DEFAULT_SETTINGS = resolveCouncilSettings(
+	"/nonexistent/pi-settings.json",
+);
 
 /** The visible default member list from extensions/pi-llm-council/config.json. */
-export const DEFAULT_MEMBER_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.defaultMembers;
+export const DEFAULT_MEMBER_CANDIDATES =
+	EXTENSION_DEFAULT_SETTINGS.defaultMembers;
 
 /** Chairman fallback candidates from extensions/pi-llm-council/config.json. */
-export const DEFAULT_CHAIRMAN_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.chairmanCandidates;
+export const DEFAULT_CHAIRMAN_CANDIDATES =
+	EXTENSION_DEFAULT_SETTINGS.chairmanCandidates;
