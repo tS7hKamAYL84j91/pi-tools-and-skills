@@ -10,7 +10,6 @@
     "lib/**/*.ts"
   ],
   "ignoreDependencies": [
-    "@mariozechner/pi-tui",
     "@vitest/coverage-v8"
   ],
   "tags": [
