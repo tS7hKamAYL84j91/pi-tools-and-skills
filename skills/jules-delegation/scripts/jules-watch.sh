@@ -52,7 +52,9 @@ command -v jules >/dev/null 2>&1 || { echo "jules CLI not found" >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || echo "warning: gh CLI not found; PR watch disabled" >&2
 
 show_once() {
-  clear 2>/dev/null || true
+  if [[ -t 1 ]]; then
+    clear 2>/dev/null || true
+  fi
   date
   echo
   echo "== Jules sessions =="
