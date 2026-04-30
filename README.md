@@ -67,19 +67,10 @@ Add project extensions such as `kanban` or `matrix` per workspace via that works
 
 ### Skills
 
-Reusable prompt templates that agents can follow for specific tasks.
+Reusable prompt templates for pi-platform tooling. Operator and methodology skills (clean-room, code-forensics, deep-research, planning, problem-crystalliser, red-team, six-thinking-hats, notebooklm, jules-delegation) have moved to [CoAS](https://github.com/tS7hKamAYL84j91/coas).
 
 | Skill | Purpose |
 |-------|---------|
-| **clean-room** | IBM Cleanroom methodology — spec, independent implementation, statistical verification |
-| **code-forensics** | Git archaeology — hotspots, temporal coupling, knowledge maps, churn analysis |
-| **deep-research** | RhinoInsight VCM/EAM pattern — iterative search, gap detection, evidence-bound synthesis |
-| **planning** | Persistent markdown planning with PLAN.md, PROGRESS.md, KNOWLEDGE.md |
-| **problem-crystalliser** | Turn vague requests into actionable problem statements |
-| **red-team** | Security assessment — vulnerability identification, MITRE ATLAS mapping |
-| **six-thinking-hats** | De Bono's structured multi-perspective analysis |
-| **notebooklm** | NotebookLM integration — create notebooks, upload sources, generate audio |
-| **jules-delegation** | Delegate scoped coding tasks to Google Jules and monitor sessions/PRs |
 | **pi-agent-orchestration** | Spawn, brief, monitor, nudge, and shut down pi worker agents |
 | **pi-extension-dev** | Build or modify pi extensions, tools, commands, hooks, and TUI widgets |
 | **pi-session-management** | Implement session-aware behavior, persistence, compaction, and reload-safe flows |
@@ -126,7 +117,7 @@ extensions/           Extensions:
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
-skills/               Agent skills (clean-room, deep-research, planning, ...)
+skills/               Agent skills (pi-agent-orchestration, pi-extension-dev, ...)
 memories/             Global .mmem.yml cheatsheet files
 prompts/              Prompt templates (refactor, commit-and-push)
 scripts/              Setup and utility scripts
