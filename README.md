@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/banner.svg" alt="pi-tools-and-skills — extensions, skills, memories for the π coding agent" width="960">
+</div>
+
 # pi-tools-and-skills
 
 Reusable extensions, skills, memories, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent.
