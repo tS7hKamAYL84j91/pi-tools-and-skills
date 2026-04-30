@@ -3,8 +3,8 @@
 # Optionally customise the instructions and wait for completion.
 #
 # Usage: nb-audio.sh "<notebook-name>" [instructions] [output-file]
-# Example (basic):   bash skills/notebooklm/scripts/nb-audio.sh "CoAS Research"
-# Example (custom):  bash skills/notebooklm/scripts/nb-audio.sh "CoAS Research" \
+# Example (basic):   bash skills/notebooklm/scripts/nb-audio.sh "Research Notebook"
+# Example (custom):  bash skills/notebooklm/scripts/nb-audio.sh "Research Notebook" \
 #                      "Focus on cross-cutting patterns" podcast.mp3
 
 set -euo pipefail

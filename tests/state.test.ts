@@ -8,7 +8,9 @@ import {
 	type OperationalWorkspaceState,
 } from "../extensions/pi-panopticon/state.js";
 
-function makeState(overrides: Partial<OperationalWorkspaceState> = {}): OperationalWorkspaceState {
+function makeState(
+	overrides: Partial<OperationalWorkspaceState> = {},
+): OperationalWorkspaceState {
 	return {
 		version: 1,
 		workspaceId: "matrix:jim",
@@ -42,10 +44,12 @@ describe("inferWorkspaceIdentity", () => {
 	});
 
 	it("maps matrix agent messages to matrix workspace", () => {
-		expect(inferWorkspaceIdentity({
-			source: "extension",
-			text: '<agent-message from="matrix:jim">\nhello\n</agent-message>',
-		})).toEqual({
+		expect(
+			inferWorkspaceIdentity({
+				source: "extension",
+				text: '<agent-message from="matrix:jim">\nhello\n</agent-message>',
+			}),
+		).toEqual({
 			workspaceId: "matrix:jim",
 			sourceChannel: "matrix",
 			humanIdentity: "jim",
@@ -53,22 +57,34 @@ describe("inferWorkspaceIdentity", () => {
 	});
 
 	it("maps peer agent messages to agent workspace", () => {
-		expect(inferWorkspaceIdentity({
-			source: "extension",
-			text: '<agent-message from="coas">\nhi\n</agent-message>',
-		})).toEqual({
-			workspaceId: "agent:coas",
+		expect(
+			inferWorkspaceIdentity({
+				source: "extension",
+				text: '<agent-message from="reviewer">\nhi\n</agent-message>',
+			}),
+		).toEqual({
+			workspaceId: "agent:reviewer",
 			sourceChannel: "agent",
-			humanIdentity: "coas",
+			humanIdentity: "reviewer",
 		});
 	});
 });
 
 describe("restoreLatestWorkspaceState", () => {
 	it("restores the latest matching custom state entry", () => {
-		const older = { type: "custom", customType: STATE_ENTRY_TYPE, data: makeState({ lastActiveAt: 10 }) };
-		const newer = { type: "custom", customType: STATE_ENTRY_TYPE, data: makeState({ lastActiveAt: 20 }) };
-		expect(restoreLatestWorkspaceState([older, newer] as never[])).toEqual(newer.data);
+		const older = {
+			type: "custom",
+			customType: STATE_ENTRY_TYPE,
+			data: makeState({ lastActiveAt: 10 }),
+		};
+		const newer = {
+			type: "custom",
+			customType: STATE_ENTRY_TYPE,
+			data: makeState({ lastActiveAt: 20 }),
+		};
+		expect(restoreLatestWorkspaceState([older, newer] as never[])).toEqual(
+			newer.data,
+		);
 	});
 });
 
@@ -77,10 +93,18 @@ describe("OperationalStateStore", () => {
 		const appendEntry = vi.fn();
 		const store = new OperationalStateStore({ appendEntry } as never);
 		const existing = makeState();
-		const ctx = makeCtx([{ type: "custom", customType: STATE_ENTRY_TYPE, data: existing }]);
+		const ctx = makeCtx([
+			{ type: "custom", customType: STATE_ENTRY_TYPE, data: existing },
+		]);
 
-		store.restore(ctx as never, { reason: "resume", previousSessionFile: "/tmp/prev.jsonl" });
-		store.recordInput(ctx as never, { source: "extension", text: '<agent-message from="matrix:jim">\nhello\n</agent-message>' });
+		store.restore(ctx as never, {
+			reason: "resume",
+			previousSessionFile: "/tmp/prev.jsonl",
+		});
+		store.recordInput(ctx as never, {
+			source: "extension",
+			text: '<agent-message from="matrix:jim">\nhello\n</agent-message>',
+		});
 
 		expect(store.getState()?.workspaceId).toBe("matrix:jim");
 		expect(appendEntry).toHaveBeenCalled();

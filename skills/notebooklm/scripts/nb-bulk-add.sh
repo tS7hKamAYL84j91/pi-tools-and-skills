@@ -7,8 +7,8 @@
 # Default pattern: REPORT.md
 #
 # Example:
-#   bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" "$RESEARCH_DIR"
-#   bash skills/notebooklm/scripts/nb-bulk-add.sh "CoAS Research" ~/docs/ --filename "*.md"
+#   bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" "$RESEARCH_DIR"
+#   bash skills/notebooklm/scripts/nb-bulk-add.sh "Research Notebook" ~/docs/ --filename "*.md"
 
 set -euo pipefail
 

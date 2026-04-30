@@ -1,60 +1,45 @@
 # Matrix Extension — Setup
 
-Setup guide for the pi Matrix extension that bridges your phone to the agent.
+This extension only consumes Matrix connection settings. It does **not** provision a homeserver, create Matrix accounts, mint access tokens, write secrets, or install shell environment hooks.
 
-## Self-hosted (recommended)
+## 1. Prepare Matrix outside this package
 
-The full Docker stack (Continuwuity + Caddy + Tailscale) lives in `~/git/coas/coas-infra/`.
+In the workspace or infrastructure repo that uses this package, provide:
 
-```bash
-cd ~/git/coas
-make up BOT_PASSWORD=X PERSONAL_USER=jim PERSONAL_PASSWORD=Y
-```
+1. A Matrix homeserver.
+2. A bot account.
+3. A room the bot can read and send in.
+4. A runtime/secret-manager mechanism that exposes the bot token as an environment variable before pi starts.
 
-This bootstraps:
-1. Tailscale mesh identity
-2. Continuwuity homeserver
-3. Bot + personal Matrix accounts
-4. Private room (unencrypted by default)
-5. Updates `working-notes/.pi/settings.json` with room ID + config
+## 2. Configure the workspace
 
-## After bootstrap
-
-Start the agent in the working-notes workspace:
-
-```bash
-cd ~/git/working-notes
-make start    # resident zellij session
-```
-
-Install Element X on your phone, sign in to your Tailscale-hosted homeserver, and message the bot in the configured room.
-
-## Configuration
-
-The bootstrap script writes `working-notes/.pi/settings.json` with:
+Add the extension and Matrix settings to that workspace's `.pi/settings.json`:
 
 ```json
 {
+  "extensions": ["/absolute/path/to/pi-tools-and-skills/extensions/matrix"],
   "matrix": {
-    "homeserver": "https://coas-matrix.<tailnet>.ts.net",
-    "userId": "@coas-bot:coas-matrix.<tailnet>.ts.net",
-    "roomId": "!...:coas-matrix.<tailnet>.ts.net",
-    "accessTokenEnv": "MATRIX_ACCESS_TOKEN",
-    "trustedSenders": ["@jim:coas-matrix.<tailnet>.ts.net"],
+    "homeserver": "https://matrix.example.net",
+    "userId": "@agent-bot:matrix.example.net",
+    "roomId": "!roomid:matrix.example.net",
+    "accessTokenEnv": "MATRIX_BOT_TOKEN",
+    "trustedSenders": ["@user:matrix.example.net"],
     "encryption": false,
     "channelLabel": "matrix"
   }
 }
 ```
 
-The access token is resolved from the secret store at runtime via `coas-pi`.
+## 3. Start pi from your runtime launcher
+
+Start pi using whatever workspace/runtime wrapper provides the configured token environment variable. This package intentionally does not prescribe that mechanism.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `matrix: env var "MATRIX_ACCESS_TOKEN" is not set` | Run `coas-pi` (resolves from secret store) or `export MATRIX_ACCESS_TOKEN=$(coas-secrets get matrix-token)` |
-| Status bar shows `📡 ✗` | Homeserver unreachable — check `make logs` in coas, verify Tailscale is up |
-| Status bar shows `📡 !` | Client error — check pi logs for `matrix:` prefixed errors |
-| Messages not arriving | Verify `trustedSenders` includes your MXID, check room membership |
-| Decryption errors | If `encryption: true`, wipe crypto store: `rm -rf ~/.pi/agent/matrix-crypto` and restart |
+| `matrix: env var "NAME" is not set` | Ensure your workspace/runtime launcher or secret manager sets the env var named by `matrix.accessTokenEnv`. |
+| Status bar shows `📡 ✗` | Homeserver unreachable — verify URL, network, TLS, and bot credentials. |
+| Status bar shows `📡 !` | Client error — check pi logs for `matrix:` prefixed errors. |
+| Messages not arriving | Verify `trustedSenders` includes your MXID and that the bot is in the room. |
+| Decryption errors | If `encryption: true`, wipe crypto store: `rm -rf ~/.pi/agent/matrix-crypto` and restart. |

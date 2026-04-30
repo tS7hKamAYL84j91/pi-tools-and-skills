@@ -9,13 +9,7 @@
  * homeserver. Integration testing happens manually via SETUP.md Phase 2.
  */
 
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,8 +27,8 @@ describe("mxidLocalpart", () => {
 		expect(mxidLocalpart("@jim.smith:matrix.org")).toBe("jim.smith");
 	});
 
-	it("handles tailnet hostnames", () => {
-		expect(mxidLocalpart("@jim:coas-matrix.tail12345.ts.net")).toBe("jim");
+	it("handles private hostnames", () => {
+		expect(mxidLocalpart("@jim:matrix.tail12345.ts.net")).toBe("jim");
 	});
 
 	it("returns the input unchanged when no colon is present", () => {
@@ -84,9 +78,9 @@ describe("loadMatrixConfig", () => {
 	it("loads a complete config with all required fields and resolves the token from env", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
+			userId: "@agent-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			
+
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -94,15 +88,15 @@ describe("loadMatrixConfig", () => {
 
 		expect(config).not.toBeNull();
 		expect(config?.homeserver).toBe("https://matrix.org");
-		expect(config?.userId).toBe("@coas-bot:matrix.org");
+		expect(config?.userId).toBe("@agent-bot:matrix.org");
 		expect(config?.roomId).toBe("!room:matrix.org");
-		
+
 		expect(config?.accessToken).toBe("syt_test_token");
 	});
 
 	it("throws when a required field is missing", async () => {
 		writeSettings({
-			userId: "@coas-bot:matrix.org",
+			userId: "@agent-bot:matrix.org",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
 		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/homeserver/);
@@ -111,9 +105,9 @@ describe("loadMatrixConfig", () => {
 	it("throws when userId is not a Matrix MXID", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",
-			userId: "coas-bot",
+			userId: "agent-bot",
 			roomId: "!room:matrix.org",
-			
+
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -123,9 +117,9 @@ describe("loadMatrixConfig", () => {
 	it("throws when roomId is not a Matrix room ID", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
+			userId: "@agent-bot:matrix.org",
 			roomId: "room:matrix.org",
-			
+
 			accessTokenEnv: "MATRIX_TEST_TOKEN",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
@@ -135,16 +129,14 @@ describe("loadMatrixConfig", () => {
 	it("throws when the access token env var is not set", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",
-			userId: "@coas-bot:matrix.org",
+			userId: "@agent-bot:matrix.org",
 			roomId: "!room:matrix.org",
-			
+
 			accessTokenEnv: "MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY",
 		});
 		const { loadMatrixConfig } = await import("../extensions/matrix/config.js");
-		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY/);
+		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(
+			/MATRIX_THIS_VAR_IS_NOT_SET_DELIBERATELY/,
+		);
 	});
-
-
-
-
 });

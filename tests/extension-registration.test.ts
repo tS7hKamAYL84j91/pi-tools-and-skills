@@ -12,7 +12,6 @@ import councilExtension from "../extensions/pi-llm-council/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
 import piCheatsheetsExtension from "../extensions/pi-cheatsheets/index.js";
 import matrixExtension from "../extensions/matrix/index.js";
-import piCoasExtension from "../extensions/pi-coas/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
 
 interface NamedRegistration {
@@ -37,7 +36,10 @@ interface FakeExtensionApi {
 	sendUserMessage: (message: string, options?: unknown) => void;
 }
 
-function createFakeApi(): { api: ExtensionAPI; registrations: CapturedRegistrations } {
+function createFakeApi(): {
+	api: ExtensionAPI;
+	registrations: CapturedRegistrations;
+} {
 	const registrations: CapturedRegistrations = {
 		tools: new Set<string>(),
 		commands: new Set<string>(),
@@ -169,38 +171,6 @@ describe("extension registration smoke tests", () => {
 
 		expectRegistered(registrations.tools, []);
 		expectRegistered(registrations.commands, ["matrix"]);
-		expectRegistered(registrations.events, [
-			"before_agent_start",
-			"session_shutdown",
-			"session_start",
-		]);
-	});
-
-	it("pi-coas registers its tools, commands, and lifecycle hooks", () => {
-		const { api, registrations } = createFakeApi();
-
-		piCoasExtension(api);
-
-		expectRegistered(registrations.tools, [
-			"coas_doctor",
-			"coas_schedule_add",
-			"coas_schedule_list",
-			"coas_schedule_remove",
-			"coas_schedule_run",
-			"coas_status",
-			"coas_workspace_create",
-			"coas_workspace_list",
-			"coas_workspace_read",
-			"coas_workspace_update",
-		]);
-		expectRegistered(registrations.commands, [
-			"coas-cron-install",
-			"coas-cron-uninstall",
-			"coas-doctor",
-			"coas-schedules",
-			"coas-status",
-			"coas-workspaces",
-		]);
 		expectRegistered(registrations.events, [
 			"before_agent_start",
 			"session_shutdown",

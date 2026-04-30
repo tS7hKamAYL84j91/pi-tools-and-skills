@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # List all sources in a NotebookLM notebook.
 # Usage: nb-sources.sh "<notebook-name>" [--json]
-# Example: bash skills/notebooklm/scripts/nb-sources.sh "CoAS Research"
+# Example: bash skills/notebooklm/scripts/nb-sources.sh "Research Notebook"
 
 set -euo pipefail
 

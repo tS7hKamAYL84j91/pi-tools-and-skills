@@ -3,8 +3,8 @@
 # Selects the notebook by name before adding the source.
 #
 # Usage: nb-add.sh "<notebook-name>" "<path-or-url>"
-# Example (file):  bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" /path/to/REPORT.md
-# Example (URL):   bash skills/notebooklm/scripts/nb-add.sh "CoAS Research" https://example.com/article
+# Example (file):  bash skills/notebooklm/scripts/nb-add.sh "Research Notebook" /path/to/REPORT.md
+# Example (URL):   bash skills/notebooklm/scripts/nb-add.sh "Research Notebook" https://example.com/article
 
 set -euo pipefail
 
