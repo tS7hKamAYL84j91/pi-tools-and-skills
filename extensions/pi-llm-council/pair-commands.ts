@@ -14,12 +14,22 @@
  * optional user settings.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { findAgentByName } from "../../lib/agent-api.js";
 import { askAgent } from "./agent-runner.js";
 import { councilPickerOptions, snapshotAvailableModels } from "./members.js";
-import { navigatorConsultSystemPrompt } from "./pair-prompts.js";
+import {
+	navigatorConsultSystemPrompt,
+	pairPrimerPrompt,
+} from "./pair-prompts.js";
+import {
+	resolveCouncilSettings,
+	type ResolvedCouncilSettings,
+} from "./settings.js";
 import { pickModel } from "./picker.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
 
@@ -29,6 +39,8 @@ export interface PairDefinition {
 	purpose?: string;
 	createdAt: number;
 }
+
+type PromptConfig = ResolvedCouncilSettings["prompts"];
 
 function pairLine(p: PairDefinition): string {
 	const purpose = p.purpose ? ` | ${p.purpose}` : "";
@@ -44,7 +56,8 @@ interface PairCommandRegistration {
 const PairConsultSchema = Type.Object({
 	pair: Type.Optional(
 		Type.String({
-			description: "Pair name (defaults to the only pair, or fails if multiple).",
+			description:
+				"Pair name (defaults to the only pair, or fails if multiple).",
 		}),
 	),
 	message: Type.String({
@@ -63,7 +76,9 @@ export function pickPair(
 		return { error: `No pair "${requested}". Run /pair-form to set one up.` };
 	}
 	if (pairs.size === 0) {
-		return { error: "No pair configured. Run /pair-form to set up a Navigator." };
+		return {
+			error: "No pair configured. Run /pair-form to set up a Navigator.",
+		};
 	}
 	if (pairs.size === 1) {
 		const [only] = pairs.values();
@@ -92,34 +107,47 @@ const CONSULT_TIMEOUT_MS = 5 * 60_000;
 
 /** Resolve the navigator (model or agent ref) and round-trip the message. */
 async function consultNavigator(args: ConsultArgs): Promise<ConsultOutcome> {
+	const promptsConfig = resolveCouncilSettings().prompts;
 	if (args.navigator.startsWith("agent:")) {
-		return consultAgent(args);
+		return consultAgent({ ...args, promptsConfig });
 	}
 	const run = await runMember(
 		{ label: "Navigator", model: args.navigator },
 		{
 			prompt: args.message,
-			systemPrompt: navigatorConsultSystemPrompt(),
+			systemPrompt: navigatorConsultSystemPrompt(promptsConfig),
 			cwd: args.ctx.cwd,
 			signal: args.ctx.signal,
 		},
 	);
 	return {
-		body: run.ok ? run.output : `Navigator failed: ${run.error ?? "unknown error"}`,
+		body: run.ok
+			? run.output
+			: `Navigator failed: ${run.error ?? "unknown error"}`,
 		ok: run.ok,
 		durationMs: run.durationMs,
 	};
 }
 
-async function consultAgent(args: ConsultArgs): Promise<ConsultOutcome> {
+interface AgentConsultArgs extends ConsultArgs {
+	promptsConfig: PromptConfig;
+}
+
+async function consultAgent(args: AgentConsultArgs): Promise<ConsultOutcome> {
 	const startedAt = Date.now();
 	const agentName = args.navigator.slice("agent:".length);
 	const info = findAgentByName(agentName);
 	if (!info) {
-		return errorOutcome(`Agent "${agentName}" is no longer registered.`, startedAt);
+		return errorOutcome(
+			`Agent "${agentName}" is no longer registered.`,
+			startedAt,
+		);
 	}
 	if (!info.alive) {
-		return errorOutcome(`Agent "${agentName}" is not alive (status=${info.status}).`, startedAt);
+		return errorOutcome(
+			`Agent "${agentName}" is not alive (status=${info.status}).`,
+			startedAt,
+		);
 	}
 	const ourRecord = await currentPanopticonRecord(args.ctx.cwd);
 	if (!ourRecord) {
@@ -134,7 +162,7 @@ async function consultAgent(args: ConsultArgs): Promise<ConsultOutcome> {
 		agentId: info.id,
 		memberLabel: "Navigator",
 		prompt: args.message,
-		systemPrompt: navigatorConsultSystemPrompt(),
+		systemPrompt: navigatorConsultSystemPrompt(args.promptsConfig),
 		deliberationId: consultId,
 		stage: "consult",
 		ourAgentId: ourRecord.id,
@@ -143,7 +171,9 @@ async function consultAgent(args: ConsultArgs): Promise<ConsultOutcome> {
 		timeoutMs: CONSULT_TIMEOUT_MS,
 	});
 	return {
-		body: reply.ok ? reply.output : `Navigator failed: ${reply.error ?? "unknown error"}`,
+		body: reply.ok
+			? reply.output
+			: `Navigator failed: ${reply.error ?? "unknown error"}`,
 		ok: reply.ok,
 		durationMs: reply.durationMs,
 	};
@@ -153,20 +183,25 @@ function errorOutcome(body: string, startedAt: number): ConsultOutcome {
 	return { body, ok: false, durationMs: Date.now() - startedAt };
 }
 
-function primerForPair(def: PairDefinition, task: string | undefined): string {
-	const taskLine = task ? `\n\nTask: ${task}` : "";
-	return [
-		`[Pair-coding "${def.name}" — Navigator: ${def.navigator}]`,
-		"",
-		`You're the Pilot in a pair-coding session. Use the pair_consult tool with pair="${def.name}" whenever a Navigator review would help — typically before finalizing a non-trivial change. The Navigator runs ${def.navigator} in a fresh session; share the relevant code or design question plus a focused ask.${taskLine}`,
-	].join("\n");
+function primerForPair(
+	def: PairDefinition,
+	task: string | undefined,
+	promptsConfig: PromptConfig,
+): string {
+	return pairPrimerPrompt({
+		pairName: def.name,
+		navigator: def.navigator,
+		...(task ? { task } : {}),
+		promptsConfig,
+	});
 }
 
 export function registerPairCommands(args: PairCommandRegistration): void {
 	const { pi, pairs, refreshStatus } = args;
 
 	pi.registerCommand("pair-form", {
-		description: "Set up a Navigator for pair-coding (the main agent is the Pilot)",
+		description:
+			"Set up a Navigator for pair-coding (the main agent is the Pilot)",
 		handler: async (rawArgs, ctx) => {
 			const requested = rawArgs.trim();
 			const name = requested || (await ctx.ui.input("Pair name", "review"));
@@ -174,14 +209,25 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 
 			const snapshot = snapshotAvailableModels(ctx);
 			const ourRecord = await currentPanopticonRecord(ctx.cwd);
-			const { options, describe } = councilPickerOptions(snapshot, ourRecord?.name);
+			const { options, describe } = councilPickerOptions(
+				snapshot,
+				ourRecord?.name,
+			);
 			if (options.length === 0) {
-				ctx.ui.notify("No models or live agents available for the Navigator.", "error");
+				ctx.ui.notify(
+					"No models or live agents available for the Navigator.",
+					"error",
+				);
 				return;
 			}
-			const navigator = await pickModel(ctx, "Select Navigator (model or live agent)", options, {
-				describe,
-			});
+			const navigator = await pickModel(
+				ctx,
+				"Select Navigator (model or live agent)",
+				options,
+				{
+					describe,
+				},
+			);
 			if (!navigator) return;
 
 			const purposeInput = await ctx.ui.input(
@@ -203,7 +249,10 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 				ctx.ui.notify("No pairs formed in this session.", "warning");
 				return;
 			}
-			ctx.ui.setWidget("council", ["Pairs", ...[...pairs.values()].map(pairLine)]);
+			ctx.ui.setWidget("council", [
+				"Pairs",
+				...[...pairs.values()].map(pairLine),
+			]);
 		},
 	});
 
@@ -236,7 +285,10 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 				ctx.ui.notify(`No pair "${chosen}".`, "error");
 				return;
 			}
-			pi.sendUserMessage(primerForPair(def, inlineTask), { deliverAs: "followUp" });
+			const promptsConfig = resolveCouncilSettings().prompts;
+			pi.sendUserMessage(primerForPair(def, inlineTask, promptsConfig), {
+				deliverAs: "followUp",
+			});
 		},
 	});
 
@@ -250,7 +302,10 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 			}
 			const name = await ctx.ui.select("Dissolve pair", names);
 			if (!name) return;
-			const confirmed = await ctx.ui.confirm("Dissolve pair?", `Remove pair "${name}"?`);
+			const confirmed = await ctx.ui.confirm(
+				"Dissolve pair?",
+				`Remove pair "${name}"?`,
+			);
 			if (!confirmed) return;
 			pairs.delete(name);
 			refreshStatus(ctx);
@@ -268,13 +323,20 @@ export function registerPairCommands(args: PairCommandRegistration): void {
 		async execute() {
 			if (pairs.size === 0) {
 				return {
-					content: [{ type: "text" as const, text: "No pair-coding sessions configured. Run /pair-form to set one up." }],
+					content: [
+						{
+							type: "text" as const,
+							text: "No pair-coding sessions configured. Run /pair-form to set one up.",
+						},
+					],
 					details: { pairs: [] },
 				};
 			}
 			const lines = [...pairs.values()].map(pairLine);
 			return {
-				content: [{ type: "text" as const, text: `Pairs:\n${lines.join("\n")}` }],
+				content: [
+					{ type: "text" as const, text: `Pairs:\n${lines.join("\n")}` },
+				],
 				details: { pairs: [...pairs.values()] },
 			};
 		},

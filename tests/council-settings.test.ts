@@ -23,7 +23,7 @@ function withTempSettings(settings: object, fn: (path: string) => void) {
 }
 
 describe("DEFAULT_MEMBER_CANDIDATES", () => {
-	it("is the canonical hard-coded list", () => {
+	it("is the canonical visible-config list", () => {
 		expect(DEFAULT_MEMBER_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
@@ -34,7 +34,7 @@ describe("DEFAULT_MEMBER_CANDIDATES", () => {
 });
 
 describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
-	it("is the canonical hard-coded list", () => {
+	it("is the canonical visible-config list", () => {
 		expect(DEFAULT_CHAIRMAN_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
@@ -44,7 +44,7 @@ describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
 });
 
 describe("resolveCouncilSettings", () => {
-	it("returns hard-coded defaults when no settings file exists", () => {
+	it("returns visible config defaults when no settings file exists", () => {
 		const resolved = resolveCouncilSettings("/nonexistent/path/settings.json");
 		expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
 		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
@@ -70,7 +70,7 @@ describe("resolveCouncilSettings", () => {
 		);
 	});
 
-	it("fills in missing fields with hard-coded defaults (field-level merge)", () => {
+	it("fills in missing fields with visible config defaults (field-level merge)", () => {
 		// User only set defaultMembers, not defaultChairman
 		withTempSettings(
 			{
@@ -108,7 +108,7 @@ describe("resolveCouncilSettings", () => {
 						purpose: "Architecture review",
 					},
 				});
-				// Defaults still come from hard-coded values
+				// Defaults still come from visible extension config.
 				expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
 				expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
 			},

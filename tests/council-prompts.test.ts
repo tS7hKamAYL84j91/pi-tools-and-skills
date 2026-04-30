@@ -1,11 +1,32 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { pairPrimerPrompt } from "../extensions/pi-llm-council/pair-prompts.js";
 import { critiquePrompt } from "../extensions/pi-llm-council/prompts.js";
-import type { CouncilMember, ModelRun } from "../extensions/pi-llm-council/types.js";
+import { resolveCouncilSettings } from "../extensions/pi-llm-council/settings.js";
+import type {
+	CouncilMember,
+	ModelRun,
+} from "../extensions/pi-llm-council/types.js";
+
+const CONFIG_PATH = join(
+	process.cwd(),
+	"extensions",
+	"pi-llm-council",
+	"config.json",
+);
+const NO_SETTINGS = "/nonexistent/path/settings.json";
+const PROMPTS_CONFIG = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH).prompts;
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
-const memberB: CouncilMember = { label: "Agent B", model: "anthropic/claude-opus-4-6" };
-const memberC: CouncilMember = { label: "Agent C", model: "google/gemini-2.5-pro" };
+const memberB: CouncilMember = {
+	label: "Agent B",
+	model: "anthropic/claude-opus-4-6",
+};
+const memberC: CouncilMember = {
+	label: "Agent C",
+	model: "google/gemini-2.5-pro",
+};
 
 function makeRun(member: CouncilMember, output: string): ModelRun {
 	return {
@@ -32,6 +53,7 @@ describe("critiquePrompt self-exclusion", () => {
 			generation,
 			members,
 			viewer: memberB,
+			promptsConfig: PROMPTS_CONFIG,
 		});
 		expect(prompt).toContain("A's distinctive answer signature");
 		expect(prompt).toContain("C's distinctive answer signature");
@@ -48,6 +70,7 @@ describe("critiquePrompt self-exclusion", () => {
 			generation: generationWithModelMention,
 			members,
 			viewer: memberB,
+			promptsConfig: PROMPTS_CONFIG,
 		});
 		expect(prompt).not.toContain("openai/gpt-5.5");
 		expect(prompt).toContain("Agent A says ...");
@@ -59,7 +82,24 @@ describe("critiquePrompt self-exclusion", () => {
 			generation,
 			members,
 			viewer: memberA,
+			promptsConfig: PROMPTS_CONFIG,
 		});
 		expect(prompt).toMatch(/your own answer is excluded/i);
+	});
+});
+
+describe("pairPrimerPrompt", () => {
+	it("renders the configured /pair primer template", () => {
+		const prompt = pairPrimerPrompt({
+			pairName: "review",
+			navigator: "ollama/glm-5.1:cloud",
+			task: "tighten the tests",
+			promptsConfig: PROMPTS_CONFIG,
+		});
+
+		expect(prompt).toContain('[Pair-coding "review"');
+		expect(prompt).toContain("Navigator: ollama/glm-5.1:cloud");
+		expect(prompt).toContain('pair="review"');
+		expect(prompt).toContain("Task: tighten the tests");
 	});
 });
