@@ -55,7 +55,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Add project extensions such as `kanban` or `matrix` per workspace via that workspace's `.pi/settings.json`.
+Add project extensions such as `kanban`, `matrix`, or `pi-coas` per workspace via that workspace's `.pi/settings.json`.
 
 ---
 
@@ -71,6 +71,7 @@ Add project extensions such as `kanban` or `matrix` per workspace via that works
 | **pi-llm-council** | Global | Heterogeneous multi-model debate using the runtime model registry and visible config |
 | **kanban** | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
+| **pi-coas** | Project | CoAS status, doctor, workspace, and schedule control surface |
 
 ### Skills
 
@@ -113,6 +114,7 @@ extensions/           Extensions:
   pi-llm-council/       Global — multi-model deliberation from runtime model registry
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
+  pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)
@@ -120,7 +122,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, pi-llm-council) are installed by `make setup` through this repo's local pi package entry. Project extensions (kanban, matrix) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, pi-llm-council) are installed by `make setup` through this repo's local pi package entry. Project extensions (kanban, matrix, pi-coas) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
