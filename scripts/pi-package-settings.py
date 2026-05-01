@@ -10,13 +10,11 @@ from typing import Any
 
 PACKAGE_EXTENSIONS = [
     "extensions/pi-panopticon/**",
-    "extensions/pi-cheatsheets/**",
     "extensions/pi-llm-council/**",
 ]
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
-    "pi-cheatsheets",
     "pi-llm-council",
     "council",
     "kanban",
@@ -104,10 +102,9 @@ def owned_extension_paths(ext_dir: str) -> set[str]:
 
 
 def register(args: list[str]) -> None:
-    settings_path, package_dir, skills_dir, ext_dir, prompts_dir, memories_dir = args
+    settings_path, package_dir, skills_dir, ext_dir, prompts_dir = args
     settings = load_settings(settings_path)
 
-    ensure_listed(settings, "memories", memories_dir)
     remove_owned_package_entries(settings, package_dir)
     settings.setdefault("packages", [])
     if not isinstance(settings["packages"], list):
@@ -121,23 +118,21 @@ def register(args: list[str]) -> None:
 
 
 def clean(args: list[str]) -> None:
-    settings_path, package_dir, skills_dir, ext_dir, prompts_dir, memories_dir = args
+    settings_path, package_dir, skills_dir, ext_dir, prompts_dir = args
     settings = load_settings(settings_path)
 
     removed_packages = remove_owned_package_entries(settings, package_dir)
-    removed_memories = remove_listed(settings, "memories", {memories_dir, legacy_path(memories_dir)})
     remove_listed(settings, "skills", {skills_dir, legacy_path(skills_dir)})
     remove_listed(settings, "prompts", {prompts_dir, legacy_path(prompts_dir)})
     remove_listed(settings, "extensions", owned_extension_paths(ext_dir))
     save_settings(settings_path, settings)
     print(f"  Removed packages: {removed_packages}")
-    print(f"  Removed memories: {removed_memories}")
 
 
 def main() -> int:
-    if len(sys.argv) != 8 or sys.argv[1] not in {"register", "clean"}:
+    if len(sys.argv) != 7 or sys.argv[1] not in {"register", "clean"}:
         print(
-            "Usage: pi-package-settings.py register|clean SETTINGS PACKAGE SKILLS EXTENSIONS PROMPTS MEMORIES",
+            "Usage: pi-package-settings.py register|clean SETTINGS PACKAGE SKILLS EXTENSIONS PROMPTS",
             file=sys.stderr,
         )
         return 2

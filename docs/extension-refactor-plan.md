@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned only. No runtime code changes yet.
+Historical refactor snapshot from 2026-04. Some inventory is now stale; notably `pi-cheatsheets` has since been removed in favor of native pi skills/reference docs.
 
 Reviewed with Alice and Mawhrin-Skel on 2026-04-25. Both recommended narrowing the first PR to guardrails only.
 

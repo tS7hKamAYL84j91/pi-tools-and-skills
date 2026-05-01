@@ -1,11 +1,3 @@
----
-tool: pi-tui
-version: ">=0.66"
-updated: 2026-04-18
-category: ai-tools
-tags: [pi, tui, components, overlay, ui, theme, keys]
-confidence: high
----
 
 # pi-tui — TUI component library for pi extensions
 

@@ -87,7 +87,3 @@ context: Additional constraints, assumptions, or background
 - Use `agent_status` periodically; stall detection depends on repeated checks.
 - Nudge before killing unless the task is clearly unrecoverable.
 - Keep success criteria concrete so completion is easy to verify.
-
-## Companion memory
-
-For command reminders and gotchas, use the `pi-agent-orchestration` pi cheatsheet.

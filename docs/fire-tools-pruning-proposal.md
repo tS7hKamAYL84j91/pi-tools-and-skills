@@ -1,7 +1,7 @@
 # FIRE Tool-Surface Pruning Proposal
 
-Status: proposal + delegation plan; implementation delegated where approved  
-Date: 2026-05-01  
+Status: historical decision record — implemented follow-up removed the listed Kanban, Panopticon, and cheatsheet surfaces. Tool names below are retained as decision history, not active API.
+Date: 2026-05-01
 Scope: `pi-tools-and-skills` reusable extensions, tools, commands, and remaining skills
 
 ## FIRE Lens

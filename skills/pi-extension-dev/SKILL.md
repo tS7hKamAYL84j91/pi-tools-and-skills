@@ -85,7 +85,3 @@ Use this skill for:
 - Use `ctx.ui.setWidget(...)` for multi-line display
 - Use `ctx.ui.setStatus(...)` for concise status
 - Remove or refresh stale UI state deliberately
-
-## Companion memory
-
-For code snippets, API reminders, and known gotchas, use the `pi-extension-dev` pi cheatsheet.
