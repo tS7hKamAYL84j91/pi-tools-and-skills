@@ -12,6 +12,7 @@ import {
 	type CouncilExtensionState,
 } from "./extension-state.js";
 import { snapshotAvailableModels } from "./members.js";
+import { omitEmptyTools } from "./provider-payload.js";
 import { resolveCouncilSettings, type ResolvedCouncilSettings } from "./settings.js";
 import { refreshCouncilStatus } from "./status-bar.js";
 import { configuredSlots, defaultSlot } from "./support.js";
@@ -46,6 +47,8 @@ export default function (pi: ExtensionAPI) {
 		initialisePairs(state, settings);
 		refreshCouncilStatus(ctx, state.councils, state.pairs);
 	});
+
+	pi.on("before_provider_request", (event) => omitEmptyTools(event.payload));
 
 	registerCouncilTools(pi, state);
 	registerCouncilCommands(pi, state);
