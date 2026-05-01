@@ -53,7 +53,7 @@ Do not use this skill for simple single-agent tasks.
      - `stalled`: heartbeat alive but no progress across repeated checks
 
 6. **Intervene when needed**
-   - Use `agent_nudge` for stalled or blocked agents.
+   - Use `agent_send` with "URGENT:" prefix for stalled or blocked agents.
    - Use `rpc_send command="steer"` to redirect current work.
    - Use `rpc_send command="follow_up"` after current work completes.
 

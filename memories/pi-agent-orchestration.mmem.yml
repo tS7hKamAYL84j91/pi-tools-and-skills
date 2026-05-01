@@ -29,7 +29,7 @@ confidence: high
   `agent_send name={{name}} message={{text}}`
 
 - Nudge a stalled or blocked agent:
-  `agent_nudge name={{name}} message={{text}}`
+  `agent_send name={{name}} message="URGENT: {{text}}"`
 
 ## Patterns
 
