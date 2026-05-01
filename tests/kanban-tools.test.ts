@@ -159,6 +159,21 @@ describe("kanban_claim", () => {
 		expect(result.details.claimed).toBe(false);
 	});
 
+	it("reassigns an in-progress task to a new agent", async () => {
+		await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-1" });
+
+		const result = await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-2" });
+
+		expect(result.isError).toBeFalsy();
+		expect(result.details.task_id).toBe("T-010");
+		expect(result.details.oldAgent).toBe("worker-1");
+		expect(result.details.newAgent).toBe("worker-2");
+
+		const log = readFileSync(join(tmpDir, "board.log"), "utf-8");
+		expect(log).toContain("UNCLAIM T-010 worker-1");
+		expect(log).toContain("CLAIM T-010 worker-2");
+	});
+
 	it("returns WRONG_COLUMN if task not in todo", async () => {
 		await callTool(tools, "kanban_create", { task_id: "T-011", agent: "lead", title: "Backlog item", priority: "low" });
 		// Still in backlog
@@ -213,7 +228,7 @@ describe("kanban_complete", () => {
 	});
 });
 
-describe("kanban_pick", () => {
+describe("kanban_claim without task_id", () => {
 	it("picks the highest-priority todo task", async () => {
 		await callTool(tools, "kanban_create", { task_id: "T-040", agent: "lead", title: "low", priority: "low" });
 		await callTool(tools, "kanban_create", { task_id: "T-041", agent: "lead", title: "critical", priority: "critical" });
@@ -222,18 +237,32 @@ describe("kanban_pick", () => {
 			await callTool(tools, "kanban_move", { task_id: id, agent: "lead", to: "todo" });
 		}
 
-		const result = await callTool(tools, "kanban_pick", { agent: "worker-1" });
-		expect(result.details.result).toBe("T-041");
+		const result = await callTool(tools, "kanban_claim", { agent: "worker-1" });
+		expect(result.details.result).toBe("CLAIMED");
+		expect(result.details.task_id).toBe("T-041");
 		expect(result.details.claimed).toBe(true);
 	});
 
+	it("uses the lowest task ID as the priority tie-breaker", async () => {
+		await callTool(tools, "kanban_create", { task_id: "T-045", agent: "lead", title: "later", priority: "high" });
+		await callTool(tools, "kanban_create", { task_id: "T-044", agent: "lead", title: "earlier", priority: "high" });
+		for (const id of ["T-045", "T-044"]) {
+			await callTool(tools, "kanban_move", { task_id: id, agent: "lead", to: "todo" });
+		}
+
+		const result = await callTool(tools, "kanban_claim", { agent: "worker-1" });
+
+		expect(result.details.result).toBe("CLAIMED");
+		expect(result.details.task_id).toBe("T-044");
+	});
+
 	it("returns NO_TASK_AVAILABLE when nothing in todo", async () => {
-		const result = await callTool(tools, "kanban_pick", { agent: "worker-1" });
+		const result = await callTool(tools, "kanban_claim", { agent: "worker-1" });
 		expect(result.details.result).toBe("NO_TASK_AVAILABLE");
 	});
 });
 
-describe("kanban_note + kanban_block", () => {
+describe("kanban_edit note + kanban_block", () => {
 	beforeEach(async () => {
 		await callTool(tools, "kanban_create", { task_id: "T-050", agent: "lead", title: "Notable", priority: "medium" });
 		await callTool(tools, "kanban_move", { task_id: "T-050", agent: "lead", to: "todo" });
@@ -241,8 +270,9 @@ describe("kanban_note + kanban_block", () => {
 	});
 
 	it("appends a note to the log and the task file", async () => {
-		const result = await callTool(tools, "kanban_note", { task_id: "T-050", agent: "worker-1", text: "halfway done" });
+		const result = await callTool(tools, "kanban_edit", { task_id: "T-050", agent: "worker-1", note: "halfway done" });
 		expect(result.isError).toBeFalsy();
+		expect(result.details.changed).toEqual({ note: "halfway done" });
 
 		const log = readFileSync(join(tmpDir, "board.log"), "utf-8");
 		expect(log).toContain('NOTE T-050 worker-1 text="halfway done"');
@@ -263,10 +293,10 @@ describe("kanban_note + kanban_block", () => {
 	it("escapes embedded quotes in notes so the log round-trips through parseBoard", async () => {
 		// The log parser only understands one pair of double quotes per field, so embedded
 		// `"` characters must be replaced. Without escaping, the next snapshot would mis-parse.
-		await callTool(tools, "kanban_note", {
+		await callTool(tools, "kanban_edit", {
 			task_id: "T-050",
 			agent: "worker-1",
-			text: 'use "quotes" carefully',
+			note: 'use "quotes" carefully',
 		});
 
 		// Raw log line should not contain a stray internal `"`
@@ -291,7 +321,7 @@ describe("kanban_snapshot", () => {
 			priority: "high",
 			description: "Detailed implementation notes stay out of model context",
 		});
-		await callTool(tools, "kanban_note", { task_id: "T-060", agent: "lead", text: "private-ish detail" });
+		await callTool(tools, "kanban_edit", { task_id: "T-060", agent: "lead", note: "private-ish detail" });
 		const result = await callTool(tools, "kanban_snapshot", {});
 
 		expect(result.isError).toBeFalsy();
@@ -315,7 +345,7 @@ describe("kanban_snapshot", () => {
 			priority: "medium",
 			description: "Only include this in explicit full output",
 		});
-		await callTool(tools, "kanban_note", { task_id: "T-061", agent: "lead", text: "full board note" });
+		await callTool(tools, "kanban_edit", { task_id: "T-061", agent: "lead", note: "full board note" });
 
 		const result = await callTool(tools, "kanban_snapshot", { detail: "full" });
 
@@ -334,7 +364,7 @@ describe("kanban_snapshot", () => {
 			priority: "critical",
 			description: "Specific card context",
 		});
-		await callTool(tools, "kanban_note", { task_id: "T-062", agent: "lead", text: "specific note" });
+		await callTool(tools, "kanban_edit", { task_id: "T-062", agent: "lead", note: "specific note" });
 		await callTool(tools, "kanban_create", {
 			task_id: "T-063",
 			agent: "lead",

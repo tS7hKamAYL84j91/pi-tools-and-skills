@@ -1,6 +1,6 @@
 # Kanban Extension
 
-A pi extension that turns an append-only `board.log` into a kanban board with 14 tools, an auto-refreshing TUI widget, autonomous monitoring, log compaction, and gradual-disclosure snapshots.
+A pi extension that turns an append-only `board.log` into a kanban board with 10 model-visible tools, an auto-refreshing TUI widget, log compaction, and gradual-disclosure snapshots.
 
 ## Board Model
 
@@ -19,13 +19,13 @@ A pi extension that turns an append-only `board.log` into a kanban board with 14
 |------------|---------------------|-----------------------------------------------|
 | `CREATE`   | `kanban_create`     | Adds task to backlog                          |
 | `MOVE`     | many tools          | Changes column                                |
-| `CLAIM`    | `kanban_pick/claim` | Marks task claimed by agent (in-progress)     |
+| `CLAIM`    | `kanban_claim`      | Marks task claimed by agent (in-progress)     |
 | `UNCLAIM`  | internal / reassign | Removes claim                                 |
 | `EXPIRE`   | internal            | Clears expired claim                          |
 | `COMPLETE` | `kanban_complete`   | Moves task to done, records duration          |
 | `BLOCK`    | `kanban_block`      | Moves in-progress task to blocked             |
 | `UNBLOCK`  | `kanban_unblock`    | Moves blocked task back to todo               |
-| `NOTE`     | `kanban_note`       | Appends timestamped note to task              |
+| `NOTE`     | `kanban_edit`       | Appends timestamped note to task              |
 | `EDIT`     | `kanban_edit`       | Updates title/priority/tags/description       |
 | `DELETE`   | `kanban_delete`     | Soft-deletes task (excluded from snapshot)    |
 | `COMPACT`  | `kanban_compact`    | Marks log rewrite checkpoint                  |
@@ -50,7 +50,6 @@ The extension locates the kanban directory by checking, in order:
 Files written:
 - `board.log` — event log (source of truth)
 - `snapshot.md` — regenerated on `kanban_snapshot`
-- `monitor.log` — appended by `kanban_monitor`
 - `board.log.bak.<timestamp>` — created before compaction
 
 ## Tools Reference
@@ -60,16 +59,13 @@ Files written:
 | Tool              | Parameters                                      | Notes                                          |
 |-------------------|-------------------------------------------------|------------------------------------------------|
 | `kanban_create`   | `task_id`, `agent`, `title`, `priority`, `tags?`, `description?` | Creates in backlog. task_id must be unique T-NNN |
-| `kanban_pick`     | `agent`, `model?`                               | Claims highest-priority todo task; returns `NO_TASK_AVAILABLE` or `WIP_LIMIT_REACHED` |
-| `kanban_claim`    | `task_id`, `agent`, `model?`                    | Claims a specific task from todo               |
+| `kanban_claim`    | `task_id?`, `agent`, `model?`                   | Claims specific task, reassigns in-progress, or automatically picks highest-priority todo if task_id is omitted |
 | `kanban_complete` | `task_id`, `agent`, `duration?`                 | Marks in-progress task done                    |
 | `kanban_block`    | `task_id`, `agent`, `reason`                    | Moves in-progress task to blocked, frees WIP   |
 | `kanban_unblock`  | `task_id`, `agent`, `reason?`                   | Moves blocked task back to todo                |
-| `kanban_note`     | `task_id`, `agent`, `text`                      | Appends timestamped note                       |
 | `kanban_move`     | `task_id`, `agent`, `to`                        | Moves between backlog and todo only            |
-| `kanban_edit`     | `task_id`, `agent`, `title?`, `priority?`, `tags?`, `description?` | Edits backlog/todo tasks only |
+| `kanban_edit`     | `task_id`, `agent`, `title?`, `priority?`, `tags?`, `description?`, `note?` | Edits backlog/todo task metadata, or appends a progress note to any task |
 | `kanban_delete`   | `task_id`, `agent`, `reason?`                   | Soft-deletes backlog/todo/done tasks           |
-| `kanban_reassign` | `task_id`, `agent`, `new_agent`, `model?`       | Transfers in-progress task to new agent        |
 
 ### Board Operations
 
@@ -77,11 +73,10 @@ Files written:
 |--------------------|--------------------|----------------------------------------------------------------------|
 | `kanban_snapshot`  | `detail?`, `task_id?` | Regenerates full `snapshot.md`; returns compact summary by default, `detail="full"` for full board, or `task_id="T-NNN"` for one card |
 | `kanban_compact`   | _(none)_           | Manual log compaction; creates timestamped backup                    |
-| `kanban_monitor`   | `prod?`            | Checks all in-progress tasks; nudges stalled agents when `prod=true` |
 
 ### Priority Order
 
-`kanban_pick` selects by: `critical → high → medium → low`, then by lowest T-NNN number within the same priority.
+`kanban_claim` without `task_id` selects by: `critical → high → medium → low`, then by lowest T-NNN number within the same priority.
 
 ## Watcher
 
@@ -95,14 +90,13 @@ Updates the TUI widget immediately — no LLM involved:
   T-051 Write tests (test-runner)
 ```
 
-Also updates the status bar: `📋 WIP 2/3 | 1 blocked`
+The status bar is intentionally left empty because the widget already shows the WIP/todo/blocked/done breakdown.
 
-### Slow Path (COMPLETE/BLOCKED detected + idle + cooldown)
+### Slow Path (external board change + idle + cooldown)
 Injects a `followUp` message to the LLM orchestrator:
 ```
 Board updated externally (kanban watcher detected new events).
 Run kanban_snapshot for a compact board summary.
-Run kanban_monitor and agent_status to check agent health.
 Use task_id="T-NNN" or detail="full" only when explicit details are needed.
 ...
 ```
@@ -113,10 +107,6 @@ Use task_id="T-NNN" or detail="full" only when explicit details are needed.
 - **Max 3 consecutive** auto-injections without human input
 - Counter resets on `agent_end` (human or LLM finishes a turn)
 - Self-writes (tools writing to board.log) are excluded via `selfAppendedLines` set
-
-**Commands:**
-- `/monitor-reset` — reset injection counter (resume after pause)
-- `/monitor-pause` — pause injections (widget updates continue)
 
 ## Auto-Compaction
 
@@ -138,20 +128,6 @@ Triggered automatically after `kanban_complete` and `kanban_snapshot` if either 
 - Notes >7 days old for completed tasks
 
 **Output:** A backup `board.log.bak.<timestamp>` plus a rewritten `board.log` ending with a `COMPACT` marker recording `events_before` and `events_after`.
-
-## Monitor
-
-`kanban_monitor` inspects each in-progress task's agent and reports its liveness:
-
-1. **Registry lookup** — finds agent by name in panopticon registry
-2. **PID check** — if process not running → `MISSING`
-3. **Heartbeat age** — if >5 minutes stale → `STALLED`; otherwise → `ACTIVE`
-
-Tasks in the `blocked` column surface as `BLOCKED`.
-
-With `prod=true` (or `--prod` CLI flag): sends a nudge via panopticon Maildir to stalled agents.
-
-**Philosophy — no filesystem watching.** The monitor does not poll for `REPORT.md` or any other side-effect artefact. Task completion is signalled *explicitly* by the agent calling `kanban_complete`. This avoids the race conditions and ambiguity of inferring state from files on disk.
 
 ## Snapshot Output
 
@@ -198,7 +174,7 @@ Notes and descriptions appear only in explicit detail views or the written snaps
 Each new ticket gets a persistent markdown file at `kanban/tasks/T-NNN.md` with YAML frontmatter and a notes section. This supplements board.log (which remains the source of truth) with a per-task document suitable for extended context.
 
 **Created by:** `kanban_create`
-**Updated by:** `kanban_note` (appends note), `kanban_edit` (rewrites frontmatter)
+**Updated by:** `kanban_edit` (appends notes or rewrites frontmatter)
 
 **Format:**
 ```markdown
@@ -217,7 +193,7 @@ created: 2026-04-09T15:00:00Z
 
 **Behaviour:**
 - Existing tickets (created before this feature) do not get migrated — only new tickets written via `kanban_create` produce task files.
-- `kanban_note` creates a stub file if one doesn't already exist for the task.
+- `kanban_edit` creates a stub file if one doesn't already exist when adding a note.
 - `kanban_edit` preserves existing notes and the original `created` timestamp when rewriting frontmatter.
 
 ## File Layout
@@ -225,8 +201,7 @@ created: 2026-04-09T15:00:00Z
 ```
 project-extensions/kanban/
   board.ts       Types (TaskState, BoardState), path helpers, parseBoard(), logAppend(), task file I/O
-  index.ts       14 tools + auto-compaction (runCompaction, compactIfNeeded)
-  monitor.ts     getInProgressTasks, inspectAgent, deliverNudge, formatMonitorReport
+  index.ts       Tools + auto-compaction (runCompaction, compactIfNeeded)
   snapshot.ts    generateSnapshotSummary(), generateTaskDetail(), generateSnapshot() — pure functions, no side effects
   watcher.ts     setupWatcher() — TUI widget, status bar, injection gates
   tasks/         Per-task markdown files (T-NNN.md) — created by kanban_create

@@ -3,8 +3,8 @@
  *
  * Watches board.log for changes and:
  * 1. Fast path (every change): updates TUI widget with WIP/status summary
- * 2. Slow path (COMPLETE/BLOCKED + idle + cooldown): injects a followUp
- *    message to trigger the orchestrator to run kanban_monitor
+ * 2. Slow path (external update + idle + cooldown): injects a followUp
+ *    message to trigger the orchestrator
  *
  * Safeguards against injection loops:
  * - Only inject when ctx.isIdle()
@@ -33,9 +33,7 @@ const MAX_CONSECUTIVE_INJECTS = 3;
 const INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
 	"Use gradual disclosure: do not dump the full board into context.",
-	"Run kanban_monitor and agent_status to check active work.",
 	"Run kanban_snapshot for a compact board summary; use task_id=\"T-NNN\" for one card or detail=\"full\" only when full board details are explicitly needed.",
-	"If any agents are STALLED, nudge them.",
 	"Agents signal completion themselves via kanban_complete — no filesystem watching.",
 	"Do not ask me any questions. Keep your response brief.",
 ].join(" ");
@@ -168,7 +166,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 
 		// Gate: max consecutive without human input
 		if (state.consecutiveAutoInjects >= MAX_CONSECUTIVE_INJECTS) {
-			ctx.ui.setStatus("kanban", "⏸ Auto-monitor paused — type anything to resume");
+			ctx.ui.setStatus("kanban", "⏸ Auto-follow-up paused — type anything to resume");
 			return;
 		}
 
@@ -250,20 +248,4 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("monitor-reset", {
-		description: "Reset auto-monitor injection counter (resume after pause)",
-		handler: async (_args, c) => {
-			state.consecutiveAutoInjects = 0;
-			state.lastAutoInjectTime = 0;
-			c.ui.notify("Auto-monitor reset — will inject on next actionable event", "info");
-		},
-	});
-
-	pi.registerCommand("monitor-pause", {
-		description: "Pause autonomous monitoring injections (widget updates continue)",
-		handler: async (_args, c) => {
-			state.consecutiveAutoInjects = MAX_CONSECUTIVE_INJECTS;
-			c.ui.notify("Auto-monitor paused. Use /monitor-reset to resume.", "info");
-		},
-	});
 }

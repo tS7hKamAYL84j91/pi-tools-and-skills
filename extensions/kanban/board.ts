@@ -30,7 +30,7 @@ function findKanbanDir(): string | null {
 	return existsSync(cwdFallback) ? cwdFallback : null;
 }
 
-export function kanbanDir(): string {
+function kanbanDir(): string {
 	const dir = findKanbanDir();
 	if (!dir) throw new Error("Kanban directory not found. Set KANBAN_DIR or create a 'kanban' directory in the current working directory.");
 	return dir;
@@ -92,7 +92,7 @@ export async function writeTaskFile(
 		: "\n## Notes";
 	const lines = [
 		"---",
-		`title: "${meta.title.replace(/"/g, "'")}"`  ,
+		`title: "${meta.title.replace(/"/g, "'")}"`,
 		`priority: ${meta.priority}`,
 		`tags: ${formatTagsYaml(meta.tags)}`,
 		`agent: ${meta.agent}`,

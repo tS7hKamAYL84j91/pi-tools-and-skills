@@ -122,20 +122,14 @@ describe("extension registration smoke tests", () => {
 			"kanban_create",
 			"kanban_delete",
 			"kanban_edit",
-			"kanban_monitor",
 			"kanban_move",
-			"kanban_note",
-			"kanban_pick",
-			"kanban_reassign",
 			"kanban_snapshot",
 			"kanban_unblock",
 		]);
 		expectRegistered(registrations.commands, [
 			"kanban",
-			"monitor-pause",
-			"monitor-reset",
 		]);
-		expectRegistered(registrations.flags, ["prod"]);
+		expectRegistered(registrations.flags, []);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+k"]);
 		expectRegistered(registrations.events, [
 			"agent_end",

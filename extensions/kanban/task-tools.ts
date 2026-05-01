@@ -102,66 +102,96 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		},
 	});
 
-	// ── kanban_note ─────────────────────────────────────────────
-	pi.registerTool({
-		name: "kanban_note",
-		label: "Kanban Note",
-		description: "Append a timestamped progress note to a task. Use for milestones, status updates, and observations. Notes appear in the snapshot under the task.",
-		promptSnippet: "Add a progress note to a kanban task",
-		parameters: Type.Object({
-			task_id: TASK_ID_SCHEMA,
-			agent: Type.String({ description: "Agent name adding the note" }),
-			text: Type.String({ description: 'Note text (e.g. "core logic done, writing tests")' }),
-		}),
-		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent, text } = params;
-			await logAppend(`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(text)}"`);
-			// Append note to task markdown file
-			await appendTaskNote(task_id, agent, text);
-			return ok(`Note added to ${task_id}`, { task_id, agent, text });
-		},
-	});
+	// ── Unified Update Logic ────────────────────────────────────
 
-	// ── kanban_edit ─────────────────────────────────────────────
+	async function performEdit(
+		task_id: string,
+		agent: string,
+		options: { title?: string; priority?: string; tags?: string; description?: string; note?: string },
+	): Promise<ToolResult> {
+		validateTaskId(task_id);
+		const { title, priority, tags, description, note } = options;
+		if (!title && !priority && !tags && !description && !note) {
+			throw new Error("At least one of title, priority, tags, description, or note must be provided");
+		}
+
+		const task = await getTask(task_id);
+		const hasMetadataEdits = title || priority || tags || description;
+
+		if (hasMetadataEdits && !["backlog", "todo"].includes(task.col)) {
+			throw new Error(`Task ${task_id} is in '${task.col}' column. Can only edit metadata (title/priority/tags/description) for tasks in backlog or todo. Notes can be added at any time.`);
+		}
+
+		const changes: string[] = [];
+		const changed: Record<string, string> = {};
+
+		// 1. Handle Metadata Edits
+		if (hasMetadataEdits) {
+			if (title && title !== task.title) {
+				changes.push(`title="${escapeLogValue(title)}"`);
+				changed.title = title;
+			}
+			if (priority && priority !== task.priority) {
+				changes.push(`priority="${priority}"`);
+				changed.priority = priority;
+			}
+			if (tags && tags !== task.tags) {
+				changes.push(`tags="${escapeLogValue(tags)}"`);
+				changed.tags = tags;
+			}
+			if (description && description !== task.description) {
+				changes.push(`description="${escapeLogValue(description)}"`);
+				changed.description = description;
+			}
+
+			if (changes.length > 0) {
+				await logAppend(`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`);
+				const updatedTask = await getTask(task_id);
+				await rewriteTaskFile(task_id, {
+					title: updatedTask.title,
+					description: updatedTask.description,
+					priority: updatedTask.priority,
+					tags: updatedTask.tags,
+					agent: updatedTask.agent,
+				});
+			}
+		}
+
+		// 2. Handle Note
+		if (note) {
+			await logAppend(`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(note)}"`);
+			await appendTaskNote(task_id, agent, note);
+			changed.note = note;
+		}
+
+		if (changes.length === 0 && !note) {
+			return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
+		}
+
+		const msgParts = [];
+		if (changes.length > 0) msgParts.push(`Edited ${changes.join(", ")}`);
+		if (note) msgParts.push("Added note");
+
+		return ok(`${msgParts.join(" and ")} for ${task_id}`, { task_id, agent, changed });
+	}
+
+	// ── kanban_edit (Unified) ───────────────────────────────────
 	pi.registerTool({
 		name: "kanban_edit",
 		label: "Kanban Edit",
-		description: "Update title, priority, or tags on an existing task. Task must be in backlog or todo (not in-progress, blocked, or done). At least one field must be provided.",
-		promptSnippet: "Edit a kanban task's title, priority, or tags",
+		description: "Update title, priority, tags, description, or add a progress note to an existing task. Notes can be added to any task. Metadata (title/etc) can only be edited on backlog or todo tasks.",
+		promptSnippet: "Edit a kanban task's metadata or add a note",
 		parameters: Type.Object({
 			task_id: TASK_ID_SCHEMA,
-			agent: Type.String({ description: "Agent name performing the edit (lowercase, hyphens only)" }),
+			agent: Type.String({ description: "Agent name performing the update (lowercase, hyphens only)" }),
 			title: Type.Optional(Type.String({ description: "New task title" })),
 			priority: Type.Optional(Type.String({ description: "New priority: critical | high | medium | low", enum: ["critical", "high", "medium", "low"] })),
 			tags: Type.Optional(Type.String({ description: "New comma-separated tags" })),
 			description: Type.Optional(Type.String({ description: "New description for the task" })),
+			note: Type.Optional(Type.String({ description: "Progress note to append to the task (e.g. status updates, observations)" })),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent } = params;
-			validateTaskId(task_id);
-			if (!params.title && !params.priority && !params.tags && !params.description) throw new Error("At least one of title, priority, tags, or description must be provided");
-			const task = await getTask(task_id);
-			if (!["backlog", "todo"].includes(task.col)) throw new Error(`Task ${task_id} is in '${task.col}' column. Can only edit tasks in backlog or todo.`);
-
-			const changes: string[] = [];
-			const changed: Record<string, string> = {};
-			if (params.title && params.title !== task.title) { changes.push(`title="${escapeLogValue(params.title)}"`); changed.title = params.title; }
-			if (params.priority && params.priority !== task.priority) { changes.push(`priority="${params.priority}"`); changed.priority = params.priority; }
-			if (params.tags && params.tags !== task.tags) { changes.push(`tags="${escapeLogValue(params.tags)}"`); changed.tags = params.tags; }
-			if (params.description && params.description !== task.description) { changes.push(`description="${escapeLogValue(params.description)}"`); changed.description = params.description; }
-			if (changes.length === 0) return ok(`No changes needed for ${task_id} (values already match)`, { task_id, agent, changed: {} });
-
-			await logAppend(`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`);
-			// Update task markdown file with new metadata
-			const updatedTask = await getTask(task_id);
-			await rewriteTaskFile(task_id, {
-				title: updatedTask.title,
-				description: updatedTask.description,
-				priority: updatedTask.priority,
-				tags: updatedTask.tags,
-				agent: updatedTask.agent,
-			});
-			return ok(`Edited ${task_id}: ${changes.join(", ")}`, { task_id, agent, changed });
+			return performEdit(params.task_id, params.agent, params);
 		},
 	});
 }
