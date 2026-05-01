@@ -105,7 +105,10 @@ describe("extension registration smoke tests", () => {
 			"pair-form",
 			"pair-list",
 		]);
-		expectRegistered(registrations.events, ["session_start"]);
+		expectRegistered(registrations.events, [
+			"before_provider_request",
+			"session_start",
+		]);
 	});
 
 	it("kanban registers its tools, commands, flags, shortcuts, and lifecycle hooks", () => {
