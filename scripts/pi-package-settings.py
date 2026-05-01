@@ -19,6 +19,7 @@ OWNED_EXTENSION_DIRS = [
     "council",
     "kanban",
     "matrix",
+    "pi-coas",
 ]
 
 

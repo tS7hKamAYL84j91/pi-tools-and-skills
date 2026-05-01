@@ -101,6 +101,7 @@ describeIfPython("setup-pi package wiring", () => {
 					extensions: [
 						join(extensionsDir, "pi-panopticon"),
 						join(extensionsDir, "kanban"),
+						join(extensionsDir, "pi-coas"),
 						"/external/extension",
 					],
 					packages: [
