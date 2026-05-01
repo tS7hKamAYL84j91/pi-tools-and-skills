@@ -29,6 +29,7 @@ import type { Registry as RegistryInterface } from "./types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_VISIBILITY_ENV,
+	PANOPTICON_SPAWN_NAME_ENV,
 } from "../../lib/agent-registry.js";
 
 // ── Constants ───────────────────────────────────────────────────
@@ -108,8 +109,9 @@ export function pickName(
 	cwd: string,
 	records: AgentRecord[],
 	selfId: string,
+	requestedName?: string,
 ): string {
-	const base = basename(cwd) || "agent";
+	const base = requestedName || basename(cwd) || "agent";
 	if (!nameTaken(base, records, selfId)) return base;
 	for (let i = 2; i < 100; i++) {
 		const candidate = `${base}-${i}`;
@@ -185,7 +187,8 @@ export default class Registry implements RegistryInterface {
 
 		// Read all existing records to pick a unique name
 		const records = this.readAllPeers();
-		const name = pickName(cwd, records, this.selfId);
+		const requestedName = process.env[PANOPTICON_SPAWN_NAME_ENV];
+		const name = pickName(cwd, records, this.selfId, requestedName);
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
 		const visibility = process.env[PANOPTICON_VISIBILITY_ENV] === "scoped" ? "scoped" : "global";

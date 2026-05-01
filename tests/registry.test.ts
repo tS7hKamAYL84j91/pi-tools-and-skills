@@ -131,6 +131,15 @@ describe("pickName", () => {
 		];
 		expect(pickName("/x/proj", records, "self")).toBe("proj-3");
 	});
+
+	it("uses requested name when provided", () => {
+		expect(pickName("/home/user/myproject", [], "self", "custom-agent")).toBe("custom-agent");
+	});
+
+	it("appends -2 when requested name is taken", () => {
+		const records = [makeRecord({ id: "other", name: "custom-agent" })];
+		expect(pickName("/home/user/myproject", records, "self", "custom-agent")).toBe("custom-agent-2");
+	});
 });
 
 // ── formatSessionLog ─────────────────────────────────────────────

@@ -27,6 +27,8 @@ export const STALE_MS = 30_000;
 export const PANOPTICON_PARENT_ID_ENV = "PI_PANOPTICON_PARENT_ID";
 /** Env var read by spawned agents to mark themselves as scoped (vs global). */
 export const PANOPTICON_VISIBILITY_ENV = "PI_PANOPTICON_VISIBILITY";
+/** Env var read by spawned agents to use their requested spawn name in the registry. */
+export const PANOPTICON_SPAWN_NAME_ENV = "PI_PANOPTICON_SPAWN_NAME";
 
 // ── Types ───────────────────────────────────────────────────────
 
