@@ -53,7 +53,9 @@ vi.mock("../lib/message-transport.js", () => ({
 
 const mockShutdownAll = vi.fn(async () => {});
 
-const mockOnMissingDone = vi.fn(() => () => {});
+type MissingDoneHandler = (agentName: string, pid: number, exitCode: number | null, durationMs: number) => void;
+
+const mockOnMissingDone = vi.fn<(handler: MissingDoneHandler) => () => void>(() => () => {});
 
 vi.mock("../extensions/pi-panopticon/spawner.js", () => ({
 	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll, onMissingDone: mockOnMissingDone })),
@@ -135,6 +137,27 @@ beforeEach(() => {
 	mockGetRecord.mockReturnValue({ task: undefined, sessionFile: "/tmp/s.jsonl" });
 	pi = makeMockPI();
 	piAgents(pi as unknown as Parameters<typeof piAgents>[0]);
+});
+
+describe("missing completion warning", () => {
+	it("sends a generic follow-up without tracker-specific guidance", () => {
+		const handler = mockOnMissingDone.mock.calls[0]?.[0];
+		if (!handler) {
+			throw new Error("missing-DONE handler was not registered");
+		}
+
+		handler("worker", 1234, 0, 125_000);
+
+		expect(pi.sendUserMessage).toHaveBeenCalledWith(
+			`⚠️ Agent "worker" (pid 1234) exited (code 0) after 2m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
+			`Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.`,
+			{ deliverAs: "followUp" },
+		);
+		expect(pi.sendUserMessage).not.toHaveBeenCalledWith(
+			expect.stringContaining("kanban"),
+			expect.anything(),
+		);
+	});
 });
 
 describe("session_start", () => {

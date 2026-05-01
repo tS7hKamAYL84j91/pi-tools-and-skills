@@ -23,6 +23,8 @@ export interface OperationalWorkspaceState {
 		cwd: string;
 		sessionFile?: string;
 		journalDir?: string;
+		// Optional state-link metadata only; panopticon does not require or
+		// instruct Kanban workflows.
 		kanbanSnapshot?: string;
 	};
 	pendingFollowUps: string[];
@@ -58,6 +60,7 @@ function getLinkedPaths(ctx: ExtensionContext): OperationalWorkspaceState["linke
 	if (existsSync(journalDir)) {
 		linkedPaths.journalDir = journalDir;
 	}
+	// Optional tracker snapshot link for state metadata only, not operational guidance.
 	const kanbanSnapshot = join(cwd, "kanban", "snapshot.md");
 	if (existsSync(kanbanSnapshot)) {
 		linkedPaths.kanbanSnapshot = kanbanSnapshot;

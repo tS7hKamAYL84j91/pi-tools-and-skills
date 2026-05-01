@@ -4,7 +4,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 import { Container, SelectList, Text, type SelectItem } from "@mariozechner/pi-tui";
 import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry } from "./types.js";
@@ -80,19 +79,6 @@ export function registerAgentListModeControls(
 	registry: Registry,
 	listMode: AgentListModeStore,
 ): void {
-	pi.registerTool({
-		name: "set_agent_list_mode",
-		label: "Set Agent List Mode",
-		description: "Set the session-local filter used by /agents, agent_peek, agent_status, and the agent widget.",
-		promptSnippet: "Set which agents appear in passive panopticon lists/widgets",
-		parameters: Type.Object({
-			mode: Type.String({ description: "One of: all, children, roots, scope" }),
-		}),
-		async execute(_id, params): Promise<ToolResult> {
-			return setAgentListMode(params.mode, registry, listMode);
-		},
-	});
-
 	async function handleCommand(args: string | undefined, ctx: ExtensionContext): Promise<void> {
 		const mode = args?.trim();
 		if (!mode) {

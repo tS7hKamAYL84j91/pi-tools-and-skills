@@ -2,33 +2,30 @@
  * Agent Health Assessment Module
  *
  * Provides structured agent health monitoring with sleep-aware stall
- * detection, extended status taxonomy, and nudge delivery.
+ * detection and extended status taxonomy.
  *
  * Implements:
  * - T-135: agent_status tool (structured health API)
  * - T-136: Sleep-aware stall detection
  * - T-137: Extended status taxonomy (active/stalled/sleeping/terminated/api_error/blocked/waiting)
- * - T-138: agent_nudge tool (socket + maildir delivery)
+ * - T-138: urgent nudge tool removed; use agent_send
  *
  * The health assessment is stateful — stall tracking uses an in-memory
  * Map that accumulates across calls. Call agent_status periodically
- * (e.g. from kanban_monitor) for stall detection to work.
+ * for stall detection to work.
  */
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import * as net from "node:net";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { REGISTRY_DIR, isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
-import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { Registry } from "./types.js";
 import type { AgentListModeStore } from "./list-mode.js";
 import { ok } from "./types.js";
-import { getSelfName, resolvePeer, peerNames } from "./peers.js";
+import { resolvePeer, peerNames } from "./peers.js";
 import { filterAgentList } from "./visibility.js";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -52,8 +49,8 @@ export type AgentHealthStatus =
 
 /**
  * Structured agent health — the return type of agent_status.
- * Designed so kanban_monitor (and other consumers) can use this
- * directly instead of scanning the registry themselves.
+ * Designed so consumers can use this directly instead of scanning
+ * the registry themselves.
  */
 /** @public */
 export interface AgentHealth {
@@ -65,7 +62,7 @@ export interface AgentHealth {
 	stallCycles: number;        // consecutive unchanged activity hashes
 	model: string;
 	pendingMessages: number;
-	socket: string;             // path for nudging
+	socket: string;             // peer socket path for diagnostics
 }
 
 // ── Constants ───────────────────────────────────────────────────
@@ -207,37 +204,6 @@ export function assessHealth(
 	return health;
 }
 
-/**
- * Send an immediate nudge via Unix socket.
- * Best-effort, non-blocking with 3s timeout.
- * Returns true if the message was delivered.
- */
-/** @public */
-export async function socketNudge(
-	sockPath: string,
-	from: string,
-	text: string,
-): Promise<boolean> {
-	try {
-		if (!existsSync(sockPath)) return false;
-		await new Promise<void>((resolve, reject) => {
-			const client = net.createConnection({ path: sockPath }, () => {
-				client.end(`${JSON.stringify({ type: "cast", from, text })}\n`);
-			});
-			client.on("end", () => resolve());
-			client.on("error", (e: Error) => reject(e));
-			client.setTimeout(3_000);
-			client.on("timeout", () => {
-				client.destroy();
-				reject(new Error("timeout"));
-			});
-		});
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 // ── Formatting ──────────────────────────────────────────────────
 
 const STATUS_ICON: Record<AgentHealthStatus, string> = {
@@ -290,7 +256,6 @@ export function setupHealth(
 	listMode: AgentListModeStore,
 ): HealthModule {
 	const stallTracker = new Map<string, StallState>();
-	const transport = getMaildirTransport();
 
 
 
@@ -306,9 +271,9 @@ export function setupHealth(
 			"Call periodically for stall detection to accumulate cycles.",
 		promptSnippet: "Check agent health with structured status assessment",
 		promptGuidelines: [
-			"Call agent_status periodically (like kanban_monitor does) for stall detection to work — each call updates the stall cycle counter.",
+			"Call agent_status periodically for stall detection to work — each call updates the stall cycle counter.",
 			"Status meanings: active (working), stalled (PID alive but stuck), sleeping (PID alive, heartbeat fresh, no activity — likely system sleep), terminated (PID dead), api_error (recent errors), blocked (self-reported), waiting (idle).",
-			"Use agent_nudge to poke stalled or blocked agents.",
+			"Use agent_send to poke stalled or blocked agents. Prefix message with 'URGENT:' if it is a blocker.",
 		],
 		parameters: Type.Object({
 			name: Type.Optional(
@@ -343,61 +308,6 @@ export function setupHealth(
 
 			const healths = peers.map((r) => assessHealth(r, stallTracker, threshold));
 			return ok(formatHealthTable(healths), { agents: healths });
-		},
-	});
-
-	// ── T-138: agent_nudge tool ────────────────────────────────
-
-	pi.registerTool({
-		name: "agent_nudge",
-		label: "Agent Nudge",
-		description:
-			"Send an urgent nudge to a named agent. " +
-			"Delivers via durable Maildir AND tries immediate socket notification. " +
-			"Use for stalled or blocked agents that need a poke.",
-		promptSnippet: "Send an urgent nudge to a stalled or blocked agent",
-		promptGuidelines: [
-			"Use agent_nudge when agent_status reports stalled or blocked agents.",
-			"Prefer agent_send for normal communication — agent_nudge is for urgent pokes.",
-			"The nudge is delivered via Maildir (durable) plus socket (immediate) if available.",
-		],
-		parameters: Type.Object({
-			name: Type.String({ description: "Agent name to nudge" }),
-			message: Type.String({ description: "Nudge message text" }),
-		}),
-
-		async execute(_id, params, _signal) {
-			const peer = resolvePeer(registry, params.name);
-			if (!peer) {
-				return ok(`No agent named "${params.name}". Known peers: ${peerNames(registry)}`);
-			}
-
-			const from = getSelfName(registry);
-
-			// Durable delivery via Maildir
-			const mailResult = await transport.send(peer, from, params.message);
-
-			// Immediate socket poke (best-effort)
-			const sock = agentSocketPath(peer.id);
-			const socketOk = await socketNudge(sock, from, params.message);
-
-			const details = {
-				name: peer.name,
-				maildir: mailResult.accepted,
-				socket: socketOk,
-				maildirRef: mailResult.reference,
-			};
-
-			if (mailResult.accepted && socketOk) {
-				return ok(`Nudged ${peer.name}: delivered via maildir + socket`, details);
-			}
-			if (mailResult.accepted) {
-				return ok(`Nudged ${peer.name}: delivered via maildir (no socket)`, details);
-			}
-			if (socketOk) {
-				return ok(`Nudged ${peer.name}: delivered via socket only (maildir failed: ${mailResult.error})`, details);
-			}
-			return ok(`Failed to nudge ${peer.name}: maildir=${mailResult.error}, socket=unavailable`, details);
 		},
 	});
 

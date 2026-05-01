@@ -185,7 +185,6 @@ describe("extension registration smoke tests", () => {
 
 		expectRegistered(registrations.tools, [
 			"agent_broadcast",
-			"agent_nudge",
 			"agent_peek",
 			"agent_send",
 			"agent_status",
@@ -195,7 +194,6 @@ describe("extension registration smoke tests", () => {
 			"message_read",
 			"message_send",
 			"rpc_send",
-			"set_agent_list_mode",
 			"set_alias",
 			"spawn_agent",
 		]);
