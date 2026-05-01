@@ -24,6 +24,7 @@ import { ok, fail, type ToolResult, type Registry } from "./types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_VISIBILITY_ENV,
+	PANOPTICON_SPAWN_NAME_ENV,
 } from "../../lib/agent-registry.js";
 import {
 	buildArgList,
@@ -216,6 +217,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 					...process.env,
 					[PANOPTICON_PARENT_ID_ENV]: registry.selfId,
 					[PANOPTICON_VISIBILITY_ENV]: "scoped",
+					[PANOPTICON_SPAWN_NAME_ENV]: params.name,
 				},
 			});
 			if (!agent.pid) {
