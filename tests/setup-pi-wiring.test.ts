@@ -16,7 +16,6 @@ interface PackageEntry {
 interface PiSettings {
 	packages?: PackageEntry[];
 	extensions?: string[];
-	memories?: string[];
 }
 
 const SETTINGS_SCRIPT = join(
@@ -26,7 +25,6 @@ const SETTINGS_SCRIPT = join(
 );
 const GLOBAL_EXTENSION_ALLOWLIST = [
 	"extensions/pi-panopticon/**",
-	"extensions/pi-cheatsheets/**",
 	"extensions/pi-llm-council/**",
 ];
 
@@ -36,7 +34,6 @@ let packageDir: string;
 let skillsDir: string;
 let extensionsDir: string;
 let promptsDir: string;
-let memoriesDir: string;
 
 function hasPython3(): boolean {
 	const result = spawnSync("python3", ["--version"], { encoding: "utf8" });
@@ -54,7 +51,6 @@ function runSettingsHelper(action: "register" | "clean"): void {
 			skillsDir,
 			extensionsDir,
 			promptsDir,
-			memoriesDir,
 		],
 		{ encoding: "utf8" },
 	);
@@ -76,7 +72,6 @@ beforeEach(() => {
 	skillsDir = join(packageDir, "skills");
 	extensionsDir = join(packageDir, "extensions");
 	promptsDir = join(packageDir, "prompts");
-	memoriesDir = join(packageDir, "memories");
 });
 
 afterEach(() => {
@@ -90,7 +85,6 @@ describeIfPython("setup-pi package wiring", () => {
 		runSettingsHelper("register");
 
 		const settings = readSettings();
-		expect(settings.memories).toEqual([memoriesDir]);
 		expect(settings.extensions).toBeUndefined();
 		expect(settings.packages).toHaveLength(1);
 		expect(settings.packages?.[0]).toEqual({
@@ -109,7 +103,6 @@ describeIfPython("setup-pi package wiring", () => {
 						join(extensionsDir, "kanban"),
 						"/external/extension",
 					],
-					memories: [memoriesDir],
 					packages: [
 						{ source: packageDir, extensions: GLOBAL_EXTENSION_ALLOWLIST },
 					],
@@ -123,7 +116,6 @@ describeIfPython("setup-pi package wiring", () => {
 
 		const settings = readSettings();
 		expect(settings.extensions).toEqual(["/external/extension"]);
-		expect(settings.memories).toBeUndefined();
 		expect(settings.packages).toBeUndefined();
 	});
 });

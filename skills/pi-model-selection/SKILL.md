@@ -1,11 +1,8 @@
 ---
-tool: pi-model-selection
-version: ">=0.66"
-updated: 2026-04-18
-category: ai-tools
-tags: [pi, models, providers, anthropic, openrouter, selection, routing]
-confidence: high
+name: pi-model-selection
+description: Verify pi-visible models first and route requests efficiently; do not assume provider aliases are interchangeable.
 ---
+
 
 # pi-model-selection — Choosing the right pi model/provider route
 

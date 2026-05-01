@@ -1,11 +1,8 @@
 ---
-tool: node-esm-gotchas
-version: ">=20.0"
-updated: 2026-04-09
-category: language
-tags: [node, esm, typescript, imports, modules, tsx, jiti]
-confidence: high
+name: node-esm-gotchas
+description: Avoid common ESM import errors in Node.js TypeScript projects, such as missing .js extensions and using callbacks over promises.
 ---
+
 
 # node-esm-gotchas — Node.js ESM and TypeScript module resolution
 

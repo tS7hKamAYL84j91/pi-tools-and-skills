@@ -1,11 +1,3 @@
----
-tool: pi-session-management
-version: ">=0.60"
-updated: 2026-04-09
-category: ai-tools
-tags: [pi, sessions, compact, reload, fork, tree, persistence]
-confidence: high
----
 
 # pi-session-management — Session lifecycle and state persistence
 

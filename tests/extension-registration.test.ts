@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import councilExtension from "../extensions/pi-llm-council/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
-import piCheatsheetsExtension from "../extensions/pi-cheatsheets/index.js";
 import matrixExtension from "../extensions/matrix/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
 
@@ -133,26 +132,6 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+k"]);
 		expectRegistered(registrations.events, [
 			"agent_end",
-			"session_shutdown",
-			"session_start",
-		]);
-	});
-
-	it("pi-cheatsheets registers its tools, commands, and lifecycle hooks", () => {
-		const { api, registrations } = createFakeApi();
-
-		piCheatsheetsExtension(api);
-
-		expectRegistered(registrations.tools, [
-			"mmem_create",
-			"mmem_inject",
-			"mmem_list",
-			"mmem_update",
-			"mmem_validate",
-		]);
-		expectRegistered(registrations.commands, ["mmem", "mmem-reload"]);
-		expectRegistered(registrations.events, [
-			"before_agent_start",
 			"session_shutdown",
 			"session_start",
 		]);

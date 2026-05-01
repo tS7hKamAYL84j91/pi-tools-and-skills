@@ -3,7 +3,7 @@ set -euo pipefail
 
 # setup-pi — register this reusable pi package.
 #
-# This repo owns extensions, shared libs, skills, prompts, and memories.
+# This repo owns extensions, shared libs, skills, and prompts.
 # It does not own runtime model choices, provider defaults, shell hooks,
 # Matrix deployments, or project-specific launchers.
 
@@ -21,7 +21,7 @@ usage() {
 	cat <<'HELP'
 Usage: setup-pi
 
-Registers this checkout as a pi package and registers memories directly.
+Registers this checkout as a pi package.
 Runtime setup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
@@ -52,26 +52,22 @@ bold "── Register pi-tools-and-skills package ──"
 SKILLS_DIR="$PI_TOOLS_DIR/skills"
 EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
-MEMORIES_DIR="$PI_TOOLS_DIR/memories"
 
 python3 "$SCRIPT_DIR/pi-package-settings.py" register \
 	"$SETTINGS_JSON" \
 	"$PI_TOOLS_DIR" \
 	"$SKILLS_DIR" \
 	"$EXTENSIONS_DIR" \
-	"$PROMPTS_DIR" \
-	"$MEMORIES_DIR"
+	"$PROMPTS_DIR"
 
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
 prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
-memory_count=$(find "$MEMORIES_DIR" -name "*.mmem.yml" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-cheatsheets, pi-llm-council"
+echo  "    extensions: pi-panopticon, pi-llm-council"
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
-echo  "    memories:   $memory_count direct path"
 echo  "    models:     unchanged"
 echo  "    runtime:    unchanged"
 

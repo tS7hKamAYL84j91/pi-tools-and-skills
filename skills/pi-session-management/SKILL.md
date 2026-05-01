@@ -60,7 +60,3 @@ Before finishing a session-aware change, verify:
 - follow-up/steer delivery is correct
 - persisted state restores correctly
 - no code depends on `ctx.signal` being always present
-
-## Companion memory
-
-For event names, API snippets, and lifecycle gotchas, use the `pi-session-management` pi cheatsheet.

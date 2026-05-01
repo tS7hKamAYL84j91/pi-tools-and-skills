@@ -20,7 +20,7 @@ usage() {
 	cat <<'HELP'
 Usage: setup-pi-clean
 
-Removes pi-tools-and-skills package, memory, and legacy direct registrations.
+Removes pi-tools-and-skills package and legacy direct registrations.
 Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
@@ -56,8 +56,7 @@ python3 "$SCRIPT_DIR/pi-package-settings.py" clean \
 	"$PI_TOOLS_DIR" \
 	"$PI_TOOLS_DIR/skills" \
 	"$PI_TOOLS_DIR/extensions" \
-	"$PI_TOOLS_DIR/prompts" \
-	"$PI_TOOLS_DIR/memories"
+	"$PI_TOOLS_DIR/prompts"
 
 green "  Cleaned $SETTINGS_JSON"
 dim "  Runtime settings were left untouched."

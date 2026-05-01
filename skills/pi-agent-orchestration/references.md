@@ -1,11 +1,3 @@
----
-tool: pi-agent-orchestration
-version: ">=0.60"
-updated: 2026-04-10
-category: ai-tools
-tags: [pi, agents, spawn, orchestration, rpc, multi-agent, panopticon]
-confidence: high
----
 
 # pi-agent-orchestration — Multi-agent spawning and coordination
 

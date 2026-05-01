@@ -1,11 +1,3 @@
----
-tool: pi-coding-agent-api
-version: ">=0.66"
-updated: 2026-04-18
-category: ai-tools
-tags: [pi, extensions, api, tools, commands, lifecycle, session, theme]
-confidence: high
----
 
 # pi-coding-agent-api — Extension API surface for @mariozechner/pi-coding-agent
 

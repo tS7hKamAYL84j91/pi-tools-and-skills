@@ -41,8 +41,8 @@ describe("readPiSettingsKey", () => {
 	});
 
 	it("returns array values when the key holds an array", () => {
-		writeFileSync(path, JSON.stringify({ memories: ["/a", "/b"] }));
-		expect(readPiSettingsKey("memories", path)).toEqual(["/a", "/b"]);
+		writeFileSync(path, JSON.stringify({ skills: ["/a", "/b"] }));
+		expect(readPiSettingsKey("skills", path)).toEqual(["/a", "/b"]);
 	});
 
 	it("returns null when the key is explicitly null in JSON", () => {

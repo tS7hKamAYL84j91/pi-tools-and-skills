@@ -1,11 +1,3 @@
----
-tool: pi-extension-dev
-version: ">=0.60"
-updated: 2026-04-09
-category: ai-tools
-tags: [pi, extensions, tools, typescript, registerTool, events, tui]
-confidence: high
----
 
 # pi-extension-dev — Building pi extensions
 
