@@ -1,11 +1,11 @@
 # Kanban Extension Architecture
 
-C4-style component model for the kanban extension and its gradual-disclosure context path.
+C4-style component model for the kanban extension, reduced model-visible tool surface, and gradual-disclosure context path.
 
 ```mermaid
 flowchart TD
   User[Human / orchestrator] --> Pi[pi agent session]
-  Pi --> Tools[Kanban tool adapters]
+  Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
   Pi --> Watcher[board.log watcher]
   Pi --> Overlay[/kanban TUI overlay]
 
@@ -30,6 +30,7 @@ flowchart TD
 
 ## Context policy
 
+- The LLM-visible surface is unified around `kanban_claim` for pick/claim/reassign and `kanban_edit` for metadata/note updates.
 - Watcher reconciliation injects guidance only; it does not inject board contents.
 - `kanban_snapshot` defaults to compact output: counts, card IDs, short titles/owners, no descriptions or notes.
 - Full board and single-card details are explicit on-demand views.
