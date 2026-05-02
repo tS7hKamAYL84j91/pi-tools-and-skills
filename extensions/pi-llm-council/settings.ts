@@ -1,8 +1,9 @@
 /**
  * Council settings — visible defaults from extension config plus user overrides.
  *
- * Defaults live in `extensions/pi-llm-council/config/config.json`; prompt bodies
- * live as Markdown files with front matter under `extensions/pi-llm-council/config/prompts/`.
+ * Defaults live in `extensions/pi-llm-council/config/config.json`; template prompt
+ * bodies live under `config/prompts/`, while system prompt bodies live in
+ * subagent descriptors under `config/subagents/`.
  * User `~/.pi/agent/settings.json` may still override fields via the `council`
  * key.
  */
@@ -17,6 +18,7 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
 const FALLBACK_DEFAULT_COUNCIL_NAME = "default";
 const DEFAULT_PROMPT_DIRECTORY = "prompts";
+const DEFAULT_SUBAGENT_DIRECTORY = "subagents";
 
 const PROMPT_KEYS = [
 	"councilGenerationSystem",
@@ -89,6 +91,7 @@ export interface SettingsPromptsEntry {
 interface CouncilSettings {
 	prompts?: SettingsPromptsEntry;
 	promptDirectory?: string;
+	subagentDirectory?: string;
 	defaultMembers?: string[];
 	defaultChairman?: string;
 	defaultCouncil?: SettingsDefaultCouncilEntry;
@@ -227,10 +230,14 @@ function unquoteFrontMatterValue(value: string): string {
 	return trimmed;
 }
 
-function frontMatterId(frontMatter: string): string | undefined {
-	for (const line of frontMatter.split("\n")) {
-		const match = /^id:\s*(.+)$/.exec(line);
-		if (match?.[1]) return unquoteFrontMatterValue(match[1]);
+function frontMatterPromptId(frontMatter: string): string | undefined {
+	// Subagent descriptors use promptId so role identity can have a separate name/id.
+	// Legacy prompt files keep using id. Preserve this precedence for compatibility.
+	for (const key of ["promptId", "id"]) {
+		for (const line of frontMatter.split("\n")) {
+			const match = new RegExp(`^${key}:\\s*(.+)$`).exec(line);
+			if (match?.[1]) return unquoteFrontMatterValue(match[1]);
+		}
 	}
 	return undefined;
 }
@@ -242,7 +249,7 @@ function parseMarkdownPrompt(
 	if (!normalized.startsWith("---\n")) return undefined;
 	const end = normalized.indexOf("\n---\n", 4);
 	if (end < 0) return undefined;
-	const id = frontMatterId(normalized.slice(4, end));
+	const id = frontMatterPromptId(normalized.slice(4, end));
 	if (!id || !isPromptKey(id)) return undefined;
 	const body = normalized.slice(end + "\n---\n".length).replace(/\n$/, "");
 	const lines = body.split("\n");
@@ -300,6 +307,9 @@ function normaliseCouncilSettings(value: unknown): CouncilSettings {
 		...(optionalString(value.promptDirectory)
 			? { promptDirectory: optionalString(value.promptDirectory) }
 			: {}),
+		...(optionalString(value.subagentDirectory)
+			? { subagentDirectory: optionalString(value.subagentDirectory) }
+			: {}),
 	};
 }
 
@@ -310,14 +320,22 @@ function readExtensionDefaults(
 		const settings = normaliseCouncilSettings(
 			JSON.parse(readFileSync(path, "utf8")) as unknown,
 		);
+		const configDir = dirname(path);
 		const promptDir = join(
-			dirname(path),
+			configDir,
 			settings.promptDirectory ?? DEFAULT_PROMPT_DIRECTORY,
+		);
+		const subagentDir = join(
+			configDir,
+			settings.subagentDirectory ?? DEFAULT_SUBAGENT_DIRECTORY,
 		);
 		return {
 			...settings,
 			prompts: {
+				// Templates/framing load first; subagent descriptors become the default
+				// source for system prompts while preserving the same prompt keys.
 				...readMarkdownPrompts(promptDir),
+				...readMarkdownPrompts(subagentDir),
 				...(settings.prompts ?? {}),
 			},
 		};

@@ -105,7 +105,7 @@ interface LoadArgs {
 	files?: string[];
 }
 
-/** Build a PairContext for a /ask_council PAIR invocation. */
+/** Build a PairContext for a pair-coding team invocation. */
 export function loadPairContext(args: LoadArgs): PairContext {
 	const projectRoot = findProjectRoot(args.cwd);
 	const warnings: string[] = [];

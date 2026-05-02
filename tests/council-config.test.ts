@@ -28,6 +28,7 @@ interface VisibleConfig {
 		purpose: string;
 	};
 	promptDirectory: string;
+	subagentDirectory: string;
 	prompts?: unknown;
 }
 
@@ -50,23 +51,26 @@ type RegisteredHandler = (
 const EXTENSION_DIR = join(process.cwd(), "extensions", "pi-llm-council");
 const CONFIG_DIR = join(EXTENSION_DIR, "config");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-const PROMPTS_DIR = join(CONFIG_DIR, "prompts");
+const SUBAGENTS_DIR = join(CONFIG_DIR, "subagents");
 const NO_SETTINGS = "/nonexistent/path/settings.json";
 
 function readVisibleConfig(): VisibleConfig {
 	return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as VisibleConfig;
 }
 
-function readPromptFile(fileName: string): { id: string; lines: string[] } {
-	const raw = readFileSync(join(PROMPTS_DIR, fileName), "utf8").replace(
-		/\r\n/g,
-		"\n",
-	);
+function readMarkdownPrompt(
+	dir: string,
+	fileName: string,
+): { id: string; lines: string[] } {
+	const raw = readFileSync(join(dir, fileName), "utf8").replace(/\r\n/g, "\n");
 	const end = raw.indexOf("\n---\n", 4);
 	const frontMatter = raw.slice(4, end);
-	const id = /^id:\s*(.+)$/m.exec(frontMatter)?.[1]?.trim() ?? "";
+	const id =
+		/^promptId:\s*(.+)$/m.exec(frontMatter)?.[1]?.trim() ??
+		/^id:\s*(.+)$/m.exec(frontMatter)?.[1]?.trim() ??
+		"";
 	const body = raw.slice(end + "\n---\n".length).replace(/\n$/, "");
-	return { id, lines: body.split("\n") };
+	return { id: id.replace(/^['"]|['"]$/g, ""), lines: body.split("\n") };
 }
 
 function withTempSettings(settings: object, fn: (path: string) => void): void {
@@ -143,9 +147,13 @@ function contextFor(models: string[]): ExtensionContext {
 describe("visible council config", () => {
 	it("loads default council, chairman, pair, and markdown prompts from visible config", () => {
 		const visible = readVisibleConfig();
-		const generationPrompt = readPromptFile("council-generation-system.md");
-		const navigatorBriefPrompt = readPromptFile(
-			"pair-navigator-brief-system.md",
+		const generationPrompt = readMarkdownPrompt(
+			SUBAGENTS_DIR,
+			"council-generation-member.md",
+		);
+		const navigatorBriefPrompt = readMarkdownPrompt(
+			SUBAGENTS_DIR,
+			"pair-navigator-brief.md",
 		);
 		const resolved = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 
@@ -161,6 +169,7 @@ describe("visible council config", () => {
 
 		expect(visible.prompts).toBeUndefined();
 		expect(visible.promptDirectory).toBe("prompts");
+		expect(visible.subagentDirectory).toBe("subagents");
 		expect(generationPrompt.id).toBe("councilGenerationSystem");
 		expect(navigatorBriefPrompt.id).toBe("pairNavigatorBriefSystem");
 		expect(resolved.prompts.councilGenerationSystem).toEqual(
@@ -174,7 +183,10 @@ describe("visible council config", () => {
 	});
 
 	it("merges user prompt overrides field-by-field", () => {
-		const critiqueSystemPrompt = readPromptFile("council-critique-system.md");
+		const critiqueSystemPrompt = readMarkdownPrompt(
+			SUBAGENTS_DIR,
+			"council-critic.md",
+		);
 		withTempSettings(
 			{
 				council: {
@@ -199,25 +211,21 @@ describe("visible council config", () => {
 		);
 	});
 
-	it("forms the configured default pair on session_start", async () => {
-		const visible = readVisibleConfig();
+	it("exposes configured workflows as teams without session bootstrap", async () => {
 		const fake = createFakeApi();
 		councilExtension(fake.api);
-		const handler = fake.handlers.get("session_start");
-		if (!handler) throw new Error("session_start not registered");
-
-		await handler({}, contextFor(visible.defaultCouncil.members));
-		const pairList = fake.tools.get("pair_list");
-		if (!pairList) throw new Error("pair_list not registered");
-		const result = await pairList.execute(
+		const teamList = fake.tools.get("team_list");
+		if (!teamList) throw new Error("team_list not registered");
+		const result = await teamList.execute(
 			"test",
 			{},
 			undefined,
 			undefined,
-			contextFor(visible.defaultCouncil.members),
+			contextFor(readVisibleConfig().defaultCouncil.members),
 		);
 
-		expect(result.content[0]?.text).toContain(visible.defaultPair.name);
-		expect(result.content[0]?.text).toContain(visible.defaultPair.navigator);
+		expect(result.content[0]?.text).toContain("default-council");
+		expect(result.content[0]?.text).toContain("pair-consult");
+		expect(result.content[0]?.text).toContain("pair-coding");
 	});
 });
