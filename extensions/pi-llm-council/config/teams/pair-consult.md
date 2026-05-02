@@ -7,6 +7,7 @@ topology: "pair"
 protocol: "consult"
 agents:
   - "pair_navigator_consult"
+navigatorModel: "ollama/qwen3.5:cloud"
 ---
 
 Built-in team for lightweight Navigator consultation.
