@@ -90,7 +90,7 @@ describe("critiquePrompt self-exclusion", () => {
 });
 
 describe("pairPrimerPrompt", () => {
-	it("renders the configured /pair primer template", () => {
+	it("renders the configured pair primer template", () => {
 		const prompt = pairPrimerPrompt({
 			pairName: "review",
 			navigator: "ollama/glm-5.1:cloud",
@@ -100,7 +100,7 @@ describe("pairPrimerPrompt", () => {
 
 		expect(prompt).toContain('[Pair-coding "review"');
 		expect(prompt).toContain("Navigator: ollama/glm-5.1:cloud");
-		expect(prompt).toContain('pair="review"');
+		expect(prompt).toContain('id="pair-consult"');
 		expect(prompt).toContain("Task: tighten the tests");
 	});
 });

@@ -10,16 +10,39 @@ import {
 	resolveCouncilSettings,
 } from "../extensions/pi-llm-council/settings.js";
 
-function withTempSettings(settings: object, fn: (path: string) => void) {
-	const dir = join(tmpdir(), `council-test-${Date.now()}`);
+function withTempDir(fn: (dir: string) => void) {
+	const dir = join(
+		tmpdir(),
+		`council-test-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+	);
 	mkdirSync(dir, { recursive: true });
-	const file = join(dir, "settings.json");
 	try {
-		writeFileSync(file, JSON.stringify(settings));
-		fn(file);
+		fn(dir);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+}
+
+function withTempSettings(settings: object, fn: (path: string) => void) {
+	withTempDir((dir) => {
+		const file = join(dir, "settings.json");
+		writeFileSync(file, JSON.stringify(settings));
+		fn(file);
+	});
+}
+
+function writeTempExtensionConfig(dir: string): string {
+	mkdirSync(join(dir, "prompts"));
+	mkdirSync(join(dir, "subagents"));
+	const configPath = join(dir, "config.json");
+	writeFileSync(
+		configPath,
+		JSON.stringify({
+			promptDirectory: "prompts",
+			subagentDirectory: "subagents",
+		}),
+	);
+	return configPath;
 }
 
 describe("DEFAULT_MEMBER_CANDIDATES", () => {
@@ -84,6 +107,65 @@ describe("resolveCouncilSettings", () => {
 				expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
 			},
 		);
+	});
+
+	it("loads default system prompts from subagent descriptors", () => {
+		withTempDir((dir) => {
+			const configPath = writeTempExtensionConfig(dir);
+			writeFileSync(
+				join(dir, "subagents", "navigator.md"),
+				[
+					"---",
+					'name: "pair_navigator_consult"',
+					'promptId: "pairNavigatorConsultSystem"',
+					"---",
+					"# IDENTITY",
+					"",
+					"Subagent navigator body.",
+				].join("\n"),
+			);
+
+			const resolved = resolveCouncilSettings(
+				"/nonexistent/path/settings.json",
+				configPath,
+			);
+			expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
+				"# IDENTITY",
+				"",
+				"Subagent navigator body.",
+			]);
+		});
+	});
+
+	it("keeps user prompt overrides ahead of subagent defaults", () => {
+		withTempDir((dir) => {
+			const configPath = writeTempExtensionConfig(dir);
+			writeFileSync(
+				join(dir, "subagents", "navigator.md"),
+				[
+					"---",
+					'name: "pair_navigator_consult"',
+					'promptId: "pairNavigatorConsultSystem"',
+					"---",
+					"Subagent default body.",
+				].join("\n"),
+			);
+			withTempSettings(
+				{
+					council: {
+						prompts: {
+							pairNavigatorConsultSystem: ["User override body."],
+						},
+					},
+				},
+				(settingsPath) => {
+					const resolved = resolveCouncilSettings(settingsPath, configPath);
+					expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
+						"User override body.",
+					]);
+				},
+			);
+		});
 	});
 
 	it("preserves named councils from user settings", () => {

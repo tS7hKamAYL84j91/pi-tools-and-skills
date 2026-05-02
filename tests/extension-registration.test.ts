@@ -86,29 +86,13 @@ describe("extension registration smoke tests", () => {
 		councilExtension(api);
 
 		expectRegistered(registrations.tools, [
-			"ask_council",
-			"council_dissolve",
-			"council_form",
-			"council_list",
-			"council_update",
-			"pair_consult",
-			"pair_list",
+			"team_describe",
+			"team_list",
+			"team_run",
 		]);
-		expectRegistered(registrations.commands, [
-			"council-ask",
-			"council-dissolve",
-			"council-edit",
-			"council-form",
-			"council-last",
-			"council-list",
-			"pair",
-			"pair-dissolve",
-			"pair-form",
-			"pair-list",
-		]);
+		expectRegistered(registrations.commands, []);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
-			"session_start",
 		]);
 	});
 
