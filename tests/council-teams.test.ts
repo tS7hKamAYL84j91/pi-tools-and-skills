@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CouncilStateManager } from "../extensions/pi-llm-council/state.js";
 import { registerTeamRunTool } from "../extensions/pi-llm-council/team-runtime.js";
+import { resolveCouncilSettings } from "../extensions/pi-llm-council/settings.js";
 import {
 	ensureUserTeamDefaults,
 	loadTeamRegistry,
@@ -18,7 +19,6 @@ import {
 	teamToPairDefinition,
 	type TeamSpec,
 } from "../extensions/pi-llm-council/teams.js";
-import { resolveCouncilSettings } from "../extensions/pi-llm-council/settings.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
 const CONFIG_PATH = join(
@@ -119,11 +119,14 @@ describe("loadTeamRegistry", () => {
 			"pair-consult",
 		]);
 		expect(registry.warnings).toEqual([]);
-		expect(requireTeam(registry, "default-council")).toMatchObject({
+		const defaultCouncil = requireTeam(registry, "default-council");
+		expect(defaultCouncil).toMatchObject({
 			topology: "council",
 			protocol: "debate",
 			chair: "council_chairman",
 		});
+		expect(defaultCouncil.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
+		expect(defaultCouncil.agentBindings.filter((binding) => binding.subagent === "council_generation_member")).toHaveLength(4);
 		expect(requireTeam(registry, "pair-consult").agents).toEqual([
 			"pair_navigator_consult",
 		]);
@@ -178,6 +181,75 @@ describe("loadTeamRegistry", () => {
 				topology: "chain",
 				protocol: "telephone",
 			});
+		});
+	});
+
+	it("derives role model bindings from object agent entries", () => {
+		withTempConfig((configPath, root) => {
+			writeSubagent(root, "shared_member");
+			writeSubagent(root, "chair_agent");
+			writeFileSync(
+				join(root, "teams", "object-council.md"),
+				[
+					"---",
+					"schemaVersion: 1",
+					'id: "object-council"',
+					'name: "Object Council"',
+					'topology: "council"',
+					'protocol: "debate"',
+					"agents:",
+					'  - role: "member"',
+					'    subagent: "shared_member"',
+					'    model: "model/a"',
+					'  - role: "member"',
+					'    subagent: "shared_member"',
+					'    model: "model/b"',
+					'  - role: "chairman"',
+					'    subagent: "chair_agent"',
+					'    model: "model/chair"',
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "object-council");
+
+			expect(team.agents).toEqual(["shared_member", "chair_agent"]);
+			expect(team.models).toEqual({
+				members: ["model/a", "model/b"],
+				chairman: "model/chair",
+			});
+			expect(team.chair).toBe("chair_agent");
+		});
+	});
+
+	it("rejects mixed object and string agent lists", () => {
+		withTempConfig((configPath, root) => {
+			writeSubagent(root, "known_agent");
+			writeFileSync(
+				join(root, "teams", "mixed-agents.md"),
+				[
+					"---",
+					"schemaVersion: 1",
+					'id: "mixed-agents"',
+					'name: "Mixed Agents"',
+					'topology: "pair"',
+					'protocol: "consult"',
+					"agents:",
+					'  - role: "navigator"',
+					'    subagent: "known_agent"',
+					'  - "known_agent"',
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const registry = loadTeamRegistry(configPath, { userRoot: NO_SETTINGS });
+
+			expect(registry.teams.has("mixed-agents")).toBe(false);
+			expect(registry.warnings).toContain("mixed-agents: agents list must not mix object and string entries");
 		});
 	});
 

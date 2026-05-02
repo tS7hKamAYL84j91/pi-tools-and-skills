@@ -2,8 +2,9 @@
  * Markdown front-matter loading for declarative council descriptors.
  *
  * The parser intentionally supports only the small YAML subset used by built-in
- * subagent and team descriptors: scalar key/value pairs plus indented string
- * lists. Keeping it local and deterministic avoids adding a YAML dependency.
+ * subagent and team descriptors: scalar key/value pairs, indented string
+ * lists, and shallow indented object lists. Keeping it local and deterministic
+ * avoids adding a YAML dependency.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -34,15 +35,31 @@ function parseScalar(value: string): string | number {
 function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
 	let currentListKey: string | undefined;
+	let currentListObject: Record<string, unknown> | undefined;
 	for (const rawLine of frontMatter.split("\n")) {
 		const line = rawLine.trimEnd();
 		if (line.trim().length === 0) continue;
+		const objectListMatch = /^\s*-\s*([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
+		if (objectListMatch?.[1] && currentListKey) {
+			const existing = result[currentListKey];
+			const values = Array.isArray(existing) ? existing : [];
+			currentListObject = { [objectListMatch[1]]: parseScalar(objectListMatch[2] ?? "") };
+			values.push(currentListObject);
+			result[currentListKey] = values;
+			continue;
+		}
+		const objectPropertyMatch = /^\s+([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
+		if (objectPropertyMatch?.[1] && currentListObject) {
+			currentListObject[objectPropertyMatch[1]] = parseScalar(objectPropertyMatch[2] ?? "");
+			continue;
+		}
 		const listMatch = /^\s*-\s*(.+)$/.exec(line);
 		if (listMatch?.[1] && currentListKey) {
 			const existing = result[currentListKey];
 			const values = Array.isArray(existing) ? existing : [];
 			values.push(unquote(listMatch[1]));
 			result[currentListKey] = values;
+			currentListObject = undefined;
 			continue;
 		}
 		const keyMatch = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/.exec(line);
@@ -52,10 +69,12 @@ function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 		if (value.trim().length === 0) {
 			result[key] = [];
 			currentListKey = key;
+			currentListObject = undefined;
 			continue;
 		}
 		result[key] = parseScalar(value);
 		currentListKey = undefined;
+		currentListObject = undefined;
 	}
 	return result;
 }

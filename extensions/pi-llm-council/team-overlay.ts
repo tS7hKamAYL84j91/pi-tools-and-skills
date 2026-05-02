@@ -6,7 +6,8 @@ import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-ag
 import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
 import { deleteTeamFiles } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
-import { loadTeamRegistry, type TeamSpec } from "./teams.js";
+import { loadTeamRegistry } from "./team-registry.js";
+import type { TeamSpec } from "./team-types.js";
 
 export function teamDescriptionLines(cwd: string, id: string): string[] {
 	const registry = loadTeamRegistry(undefined, { cwd });
@@ -16,6 +17,10 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 			`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`,
 		);
 	}
+	const bindingLines = team.agentBindings.map((binding) => {
+		const model = binding.model ? ` model=${binding.model}` : "";
+		return `  - ${binding.role}: ${binding.subagent}${model}`;
+	});
 	return [
 		`${team.name} (${team.id})`,
 		`Source: ${team.source}`,
@@ -23,6 +28,7 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 		`Protocol: ${team.protocol}`,
 		...(team.description ? [`Description: ${team.description}`] : []),
 		`Agents: ${team.agents.join(", ") || "(none)"}`,
+		...(bindingLines.length > 0 ? ["Agent bindings:", ...bindingLines] : []),
 		...(team.chair ? [`Chair: ${team.chair}`] : []),
 		...(team.models.members?.length ? [`Member models: ${team.models.members.join(", ")}`] : []),
 		...(team.models.chairman ? [`Chairman model: ${team.models.chairman}`] : []),

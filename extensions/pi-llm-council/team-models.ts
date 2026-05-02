@@ -13,7 +13,9 @@ import {
 } from "@mariozechner/pi-tui";
 import { providerOf, snapshotAvailableModels } from "./members.js";
 import { type TeamFormModels, updateTeamModels } from "./team-form.js";
-import { loadTeamRegistry, type TeamSpec } from "./teams.js";
+import { modelSlotsForTeam, type TeamModelSlot } from "./team-handlers.js";
+import { loadTeamRegistry } from "./team-registry.js";
+import type { TeamSpec } from "./team-types.js";
 
 interface MutableSelectListInternals {
 	items: SelectItem[];
@@ -50,14 +52,6 @@ class FuzzySelectList extends SelectList {
 
 interface PickerOptions {
 	selected?: string[];
-}
-
-interface ModelBindingSlot {
-	id: string;
-	label: string;
-	current?: string;
-	kind: "member" | "chairman" | "driver" | "navigator";
-	index?: number;
 }
 
 async function pickOption(
@@ -177,64 +171,6 @@ function copyModels(models: TeamFormModels): TeamFormModels {
 	};
 }
 
-function modelSlots(team: TeamSpec, models: TeamFormModels): ModelBindingSlot[] {
-	if (team.topology === "council") {
-		const memberCount = Math.max(models.members?.length ?? 0, 1);
-		return [
-			...Array.from({ length: memberCount }, (_value, index) => ({
-				id: `member:${index}`,
-				label: `Member model ${index + 1}`,
-				current: models.members?.[index],
-				kind: "member" as const,
-				index,
-			})),
-			{
-				id: "chairman",
-				label: "Chairman model",
-				current: models.chairman,
-				kind: "chairman",
-			},
-		];
-	}
-	if (team.protocol === "pair-coding") {
-		return [
-			{
-				id: "driver",
-				label: "Driver model",
-				current: models.driver,
-				kind: "driver",
-			},
-			{
-				id: "navigator",
-				label: "Navigator model",
-				current: models.navigator,
-				kind: "navigator",
-			},
-		];
-	}
-	if (team.protocol === "consult") {
-		return [
-			{
-				id: "navigator",
-				label: "Navigator model",
-				current: models.navigator,
-				kind: "navigator",
-			},
-		];
-	}
-	if (team.protocol === "telephone") {
-		const memberCount = Math.max(models.members?.length ?? 0, team.agents.length, 1);
-		return Array.from({ length: memberCount }, (_value, index) => ({
-			id: `member:${index}`,
-			label: `Relay model ${index + 1}`,
-			current: models.members?.[index],
-			kind: "member" as const,
-			index,
-		}));
-	}
-	return [];
-}
-
 async function pickTeamForModels(ctx: ExtensionContext, requested?: string): Promise<string | undefined> {
 	if (requested) return requested;
 	const teams = [...loadTeamRegistry(undefined, { cwd: ctx.cwd }).teams.values()]
@@ -251,8 +187,8 @@ async function pickModelSlot(
 	ctx: ExtensionContext,
 	team: TeamSpec,
 	models: TeamFormModels,
-): Promise<ModelBindingSlot | undefined> {
-	const slots = modelSlots(team, models);
+): Promise<TeamModelSlot | undefined> {
+	const slots = modelSlotsForTeam(team, models);
 	const picked = await pickOption(
 		ctx,
 		`Select model binding for ${team.id}`,
@@ -267,7 +203,7 @@ async function pickModelSlot(
 
 function applyModelSlot(
 	models: TeamFormModels,
-	slot: ModelBindingSlot,
+	slot: TeamModelSlot,
 	model: string,
 ): TeamFormModels {
 	const next = copyModels(models);
