@@ -1,7 +1,7 @@
 # Teams Migration Plan
 
 Date: 2026-05-02
-Status: completed migration to team tools
+Status: completed migration to team tools; refactored team module boundaries
 
 ## Goal
 
@@ -21,6 +21,35 @@ flowchart TD
   Runtime --> Telephone[Telephone chain]
   Prompts[config/prompts/*.md templates] --> Runtime
 ```
+
+## Current module boundaries
+
+```mermaid
+flowchart TD
+  Types[team-types.ts] --> Registry[team-registry.ts]
+  Paths[team-paths.ts] --> Registry
+  Paths --> Form[team-form.ts]
+  Defaults[team-defaults.ts] --> Paths
+  Tools[team-tools.ts] --> Registry
+  Runtime[team-runtime.ts] --> Handlers[team-handlers.ts]
+  Runtime --> Form
+  Runtime --> Registry
+  Commands[team-commands.ts] --> Runtime
+  Commands --> Form
+  Commands --> Overlay
+  Models[team-models.ts] --> Handlers
+  Overlay[team-overlay.ts] --> Registry
+  Handlers --> Engines[debate / pair-coding / consult / telephone engines]
+```
+
+- `team-types.ts` owns core team/subagent/registry type definitions.
+- `team-paths.ts` owns package, user, and project path resolution.
+- `team-registry.ts` owns descriptor loading, validation, and registry construction.
+- `team-defaults.ts` seeds user defaults from built-in descriptors.
+- `team-handlers.ts` dispatches supported protocols and exposes model slot metadata.
+- `team-tools.ts` contains read-only `team_list` and `team_describe` registration.
+- `team-runtime.ts` contains mutating team tools and run dispatch.
+- `team-commands.ts` contains the `/teams` command flow.
 
 ## Implemented phases
 
@@ -99,7 +128,7 @@ Teams and subagents are loaded in this order, with later sources overriding earl
 
 Team file changes are discovered by subsequent team commands/tools. Built-in default ids are protected from unscoped deletion. To remove a user/project default/override whose id matches a package default, use scoped deletion (`scope: "user"` or `scope: "project"`). Extension code or tool schema changes still require a pi session reload before the live API reflects them.
 
-Team files may bind default models directly in frontmatter:
+Team files bind subagent manifests and default models together. A subagent descriptor owns reusable behavior/prompting; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same subagent with different models.
 
 ```md
 ---
@@ -109,12 +138,28 @@ name: "My Review"
 topology: "pair"
 protocol: "consult"
 agents:
-  - "my_reviewer"
-navigatorModel: "ollama/glm-5.1:cloud"
+  - role: "navigator"
+    subagent: "my_reviewer"
+    model: "ollama/glm-5.1:cloud"
 ---
 ```
 
-Supported model fields:
+Council example with repeated member behavior:
+
+```md
+agents:
+  - role: "member"
+    subagent: "council_generation_member"
+    model: "openai-codex/gpt-5.5"
+  - role: "member"
+    subagent: "council_generation_member"
+    model: "ollama/qwen3.5:cloud"
+  - role: "chairman"
+    subagent: "council_chairman"
+    model: "openai-codex/gpt-5.5"
+```
+
+Legacy model fields are still read for compatibility:
 
 - `memberModels` — council/debate member model list or chain/telephone relay model list.
 - `chairmanModel` — council/debate synthesis model.

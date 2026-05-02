@@ -6,12 +6,18 @@ description: "Bounded Driver/Navigator implementation, review, and fix workflow.
 topology: "pair"
 protocol: "pair-coding"
 agents:
-  - "pair_navigator_brief"
-  - "pair_driver_implementation"
-  - "pair_navigator_review"
-  - "pair_driver_fix"
-driverModel: "openai-codex/gpt-5.5"
-navigatorModel: "ollama/glm-5.1:cloud"
+  - role: "navigator_brief"
+    subagent: "pair_navigator_brief"
+    model: "ollama/glm-5.1:cloud"
+  - role: "driver_implementation"
+    subagent: "pair_driver_implementation"
+    model: "openai-codex/gpt-5.5"
+  - role: "navigator_review"
+    subagent: "pair_navigator_review"
+    model: "ollama/glm-5.1:cloud"
+  - role: "driver_fix"
+    subagent: "pair_driver_fix"
+    model: "openai-codex/gpt-5.5"
 maxFixPasses: 1
 ---
 
