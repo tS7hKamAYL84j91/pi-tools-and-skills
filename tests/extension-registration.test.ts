@@ -86,11 +86,14 @@ describe("extension registration smoke tests", () => {
 		councilExtension(api);
 
 		expectRegistered(registrations.tools, [
+			"team_delete",
 			"team_describe",
+			"team_form",
 			"team_list",
+			"team_models",
 			"team_run",
 		]);
-		expectRegistered(registrations.commands, []);
+		expectRegistered(registrations.commands, ["teams"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
 		]);

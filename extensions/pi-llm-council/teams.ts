@@ -5,9 +5,10 @@
  * by team-runtime.ts through the standard team_run tool.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
@@ -20,16 +21,25 @@ const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
 const DEFAULT_SUBAGENT_DIRECTORY = "subagents";
 const DEFAULT_TEAM_DIRECTORY = "teams";
 
-export type TeamTopology = "council" | "pair";
-export type TeamProtocol = "debate" | "consult" | "pair-coding";
-export type TeamSource = "builtin";
+export type TeamTopology = "chain" | "council" | "pair";
+export type TeamProtocol = "debate" | "consult" | "pair-coding" | "telephone";
+export type TeamSource = "builtin" | "user" | "project";
 
 interface SubagentSpec {
 	id: string;
 	name: string;
 	description?: string;
 	promptId?: string;
+	model?: string;
+	source: TeamSource;
 	path: string;
+}
+
+export interface TeamModels {
+	members?: string[];
+	chairman?: string;
+	driver?: string;
+	navigator?: string;
 }
 
 export interface TeamLimits {
@@ -46,6 +56,7 @@ export interface TeamSpec {
 	protocol: TeamProtocol;
 	agents: string[];
 	chair?: string;
+	models: TeamModels;
 	limits: TeamLimits;
 	source: TeamSource;
 	path: string;
@@ -60,6 +71,12 @@ interface TeamRegistry {
 interface TeamDirectories {
 	subagents: string;
 	teams: string;
+	source: TeamSource;
+}
+
+interface TeamRegistryOptions {
+	cwd?: string;
+	userRoot?: string;
 }
 
 interface PairDefinition {
@@ -94,12 +111,13 @@ function optionalNumber(value: unknown): number | undefined {
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function readTeamDirectories(configPath: string): TeamDirectories {
+function readBuiltinTeamDirectories(configPath: string): TeamDirectories {
 	try {
 		const raw = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
 		const config = isRecord(raw) ? raw : {};
 		const configDir = dirname(configPath);
 		return {
+			source: "builtin",
 			subagents: join(
 				configDir,
 				optionalString(config.subagentDirectory) ?? DEFAULT_SUBAGENT_DIRECTORY,
@@ -111,10 +129,63 @@ function readTeamDirectories(configPath: string): TeamDirectories {
 		};
 	} catch {
 		return {
+			source: "builtin",
 			subagents: join(dirname(configPath), DEFAULT_SUBAGENT_DIRECTORY),
 			teams: join(dirname(configPath), DEFAULT_TEAM_DIRECTORY),
 		};
 	}
+}
+
+function findProjectRoot(start: string): string {
+	let dir = start;
+	let parent = dirname(dir);
+	while (dir !== parent) {
+		if (existsSync(join(dir, "package.json"))) return dir;
+		if (existsSync(join(dir, ".git"))) return dir;
+		dir = parent;
+		parent = dirname(dir);
+	}
+	return start;
+}
+
+function copyMissingMarkdownFiles(sourceDir: string, targetDir: string): void {
+	if (!existsSync(sourceDir)) return;
+	mkdirSync(targetDir, { recursive: true });
+	for (const descriptor of readMarkdownDescriptors(sourceDir)) {
+		const target = join(targetDir, basename(descriptor.path));
+		if (!existsSync(target)) copyFileSync(descriptor.path, target);
+	}
+}
+
+export function ensureUserTeamDefaults(
+	userRoot: string = join(homedir(), ".pi", "agent"),
+	configPath: string = DEFAULT_CONFIG_JSON,
+): void {
+	const builtin = readBuiltinTeamDirectories(configPath);
+	copyMissingMarkdownFiles(builtin.teams, join(userRoot, DEFAULT_TEAM_DIRECTORY));
+	copyMissingMarkdownFiles(builtin.subagents, join(userRoot, DEFAULT_SUBAGENT_DIRECTORY));
+}
+
+function teamDirectories(
+	configPath: string,
+	options: TeamRegistryOptions = {},
+): TeamDirectories[] {
+	const dirs = [readBuiltinTeamDirectories(configPath)];
+	const userRoot = options.userRoot ?? join(homedir(), ".pi", "agent");
+	dirs.push({
+		source: "user",
+		subagents: join(userRoot, DEFAULT_SUBAGENT_DIRECTORY),
+		teams: join(userRoot, DEFAULT_TEAM_DIRECTORY),
+	});
+	if (options.cwd) {
+		const projectRoot = findProjectRoot(options.cwd);
+		dirs.push({
+			source: "project",
+			subagents: join(projectRoot, ".pi", DEFAULT_SUBAGENT_DIRECTORY),
+			teams: join(projectRoot, ".pi", DEFAULT_TEAM_DIRECTORY),
+		});
+	}
+	return dirs;
 }
 
 function descriptorIdFromPath(path: string): string {
@@ -125,31 +196,38 @@ function isSubagentId(value: string): boolean {
 	return /^[a-z][a-z0-9_]*$/.test(value);
 }
 
-function toSubagentSpec(descriptor: RawMarkdownDescriptor): SubagentSpec {
+function toSubagentSpec(
+	descriptor: RawMarkdownDescriptor,
+	source: TeamSource,
+): SubagentSpec {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.name) ?? descriptorIdFromPath(descriptor.path);
 	const description = optionalString(frontMatter.description);
 	const promptId = optionalString(frontMatter.promptId);
+	const model = optionalString(frontMatter.model);
 	return {
 		id,
 		name: id,
 		...(description ? { description } : {}),
 		...(promptId ? { promptId } : {}),
+		...(model ? { model } : {}),
+		source,
 		path: descriptor.path,
 	};
 }
 
 function isTeamTopology(value: string): value is TeamTopology {
-	return value === "council" || value === "pair";
+	return value === "chain" || value === "council" || value === "pair";
 }
 
 function isTeamProtocol(value: string): value is TeamProtocol {
-	return value === "debate" || value === "consult" || value === "pair-coding";
+	return value === "debate" || value === "consult" || value === "pair-coding" || value === "telephone";
 }
 
 function toTeamSpec(
 	descriptor: RawMarkdownDescriptor,
 	warnings: string[],
+	source: TeamSource,
 ): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
@@ -173,6 +251,10 @@ function toTeamSpec(
 	const name = optionalString(frontMatter.name) ?? id;
 	const description = optionalString(frontMatter.description);
 	const chair = optionalString(frontMatter.chair);
+	const memberModels = stringArray(frontMatter.memberModels);
+	const chairmanModel = optionalString(frontMatter.chairmanModel);
+	const driverModel = optionalString(frontMatter.driverModel);
+	const navigatorModel = optionalString(frontMatter.navigatorModel);
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	return {
@@ -184,11 +266,17 @@ function toTeamSpec(
 		protocol: protocolValue,
 		agents,
 		...(chair ? { chair } : {}),
+		models: {
+			...(memberModels ? { members: memberModels } : {}),
+			...(chairmanModel ? { chairman: chairmanModel } : {}),
+			...(driverModel ? { driver: driverModel } : {}),
+			...(navigatorModel ? { navigator: navigatorModel } : {}),
+		},
 		limits: {
 			...(timeoutMs ? { timeoutMs } : {}),
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),
 		},
-		source: "builtin",
+		source,
 		path: descriptor.path,
 	};
 }
@@ -214,33 +302,40 @@ function validateTeam(
 	if (team.topology === "council" && team.protocol !== "debate") {
 		warnings.push(`${team.id}: council topology requires debate protocol`);
 	}
-	if (team.topology === "pair" && team.protocol === "debate") {
-		warnings.push(`${team.id}: pair topology cannot use debate protocol`);
+	if (team.topology === "pair" && team.protocol !== "consult" && team.protocol !== "pair-coding") {
+		warnings.push(`${team.id}: pair topology requires consult or pair-coding protocol`);
+	}
+	if (team.topology === "chain" && team.protocol !== "telephone") {
+		warnings.push(`${team.id}: chain topology requires telephone protocol`);
 	}
 	return warnings;
 }
 
 export function loadTeamRegistry(
 	configPath: string = DEFAULT_CONFIG_JSON,
+	options: TeamRegistryOptions = {},
 ): TeamRegistry {
-	const dirs = readTeamDirectories(configPath);
 	const warnings: string[] = [];
 	const subagents = new Map<string, SubagentSpec>();
-	for (const descriptor of readMarkdownDescriptors(dirs.subagents)) {
-		const spec = toSubagentSpec(descriptor);
-		if (!isSubagentId(spec.id)) warnings.push(`invalid subagent id ${spec.id}`);
-		if (subagents.has(spec.id)) warnings.push(`duplicate subagent id ${spec.id}`);
-		subagents.set(spec.id, spec);
-	}
 	const teams = new Map<string, TeamSpec>();
-	for (const descriptor of readMarkdownDescriptors(dirs.teams)) {
-		const team = toTeamSpec(descriptor, warnings);
-		if (!team) continue;
-		if (teams.has(team.id)) warnings.push(`duplicate team id ${team.id}`);
-		teams.set(team.id, team);
+	for (const dirs of teamDirectories(configPath, options)) {
+		for (const descriptor of readMarkdownDescriptors(dirs.subagents)) {
+			const spec = toSubagentSpec(descriptor, dirs.source);
+			if (!isSubagentId(spec.id)) warnings.push(`invalid subagent id ${spec.id}`);
+			subagents.set(spec.id, spec);
+		}
+		for (const descriptor of readMarkdownDescriptors(dirs.teams)) {
+			const team = toTeamSpec(descriptor, warnings, dirs.source);
+			if (!team) continue;
+			teams.set(team.id, team);
+		}
 	}
 	for (const team of teams.values()) warnings.push(...validateTeam(team, subagents));
 	return { teams, subagents, warnings };
+}
+
+export function loadBuiltinTeamIds(configPath: string = DEFAULT_CONFIG_JSON): Set<string> {
+	return new Set(loadTeamRegistry(configPath, { userRoot: "/nonexistent/pi-team-user-root" }).teams.keys());
 }
 
 export function requireBuiltinTeam(
@@ -276,12 +371,12 @@ export function teamToCouncilDefinition(args: {
 	}
 	const snapshot = args.snapshot ?? [];
 	const settings = args.settings ?? resolveCouncilSettings();
-	const members = chooseCouncilModels(snapshot);
+	const members = args.team.models.members ?? chooseCouncilModels(snapshot);
 	return {
 		name: settings.defaultCouncil.name,
 		purpose: settings.defaultCouncil.purpose,
 		members,
-		chairman: chooseChairmanModel(snapshot, members),
+		chairman: args.team.models.chairman ?? chooseChairmanModel(snapshot, members),
 		createdAt: Date.now(),
 	};
 }
@@ -317,6 +412,7 @@ function teamSummary(team: TeamSpec): Record<string, unknown> {
 		topology: team.topology,
 		protocol: team.protocol,
 		source: team.source,
+		models: team.models,
 	};
 }
 
@@ -324,11 +420,11 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "team_list",
 		label: "List Teams",
-		description: "List built-in declarative teams available in the council extension.",
-		promptSnippet: "List built-in teams available for council and pair workflows",
+		description: "List declarative teams available from built-in, user, and project configuration.",
+		promptSnippet: "List teams available for council and pair workflows",
 		parameters: Type.Object({}),
-		async execute() {
-			const registry = loadTeamRegistry();
+		async execute(_id, _params, _signal, _onUpdate, ctx: ExtensionContext) {
+			const registry = loadTeamRegistry(DEFAULT_CONFIG_JSON, { cwd: ctx.cwd });
 			const teams = [...registry.teams.values()];
 			const lines = teams.map(
 				(team) =>
@@ -347,13 +443,13 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "team_describe",
 		label: "Describe Team",
-		description: "Describe one built-in declarative team and its subagent references.",
-		promptSnippet: "Describe a built-in council or pair team",
+		description: "Describe one declarative team and its subagent references.",
+		promptSnippet: "Describe a council or pair team",
 		parameters: Type.Object({
 			id: Type.String({ description: "Team id to describe" }),
 		}),
-		async execute(_id, params: { id: string }) {
-			const registry = loadTeamRegistry();
+		async execute(_id, params: { id: string }, _signal, _onUpdate, ctx: ExtensionContext) {
+			const registry = loadTeamRegistry(DEFAULT_CONFIG_JSON, { cwd: ctx.cwd });
 			const team = registry.teams.get(params.id);
 			if (!team) {
 				throw new Error(
@@ -368,6 +464,10 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 				...(team.description ? [`Description: ${team.description}`] : []),
 				`Agents: ${team.agents.join(", ") || "(none)"}`,
 				...(team.chair ? [`Chair: ${team.chair}`] : []),
+				...(team.models.members?.length ? [`Member models: ${team.models.members.join(", ")}`] : []),
+				...(team.models.chairman ? [`Chairman model: ${team.models.chairman}`] : []),
+				...(team.models.driver ? [`Driver model: ${team.models.driver}`] : []),
+				...(team.models.navigator ? [`Navigator model: ${team.models.navigator}`] : []),
 			];
 			return teamOkText(lines.join("\n"), {
 				team: teamSummary(team),

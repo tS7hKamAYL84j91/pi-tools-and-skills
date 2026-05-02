@@ -10,6 +10,8 @@ agents:
   - "pair_driver_implementation"
   - "pair_navigator_review"
   - "pair_driver_fix"
+driverModel: "openai-codex/gpt-5.5"
+navigatorModel: "ollama/glm-5.1:cloud"
 maxFixPasses: 1
 ---
 

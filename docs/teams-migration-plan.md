@@ -18,6 +18,7 @@ flowchart TD
   Runtime --> Debate[Debate engine]
   Runtime --> PairCoding[Pair-coding engine]
   Runtime --> PairConsult[Navigator consult]
+  Runtime --> Telephone[Telephone chain]
   Prompts[config/prompts/*.md templates] --> Runtime
 ```
 
@@ -55,11 +56,70 @@ flowchart TD
   - prompt rendering
   - state persistence
 
-## Current tools
+## Current tools and commands
 
-- `team_list` — list built-in teams.
+Tools:
+
+- `team_list` — list teams.
 - `team_describe` — inspect a team and its subagent references.
-- `team_run` — execute a built-in team by id.
+- `team_form` — create or replace a user/project team and missing subagent stubs.
+- `team_models` — update model bindings for an existing team.
+- `team_delete` — delete/dissolve a user/project team; built-in default ids are protected unless scoped.
+- `team_run` — execute a team by id.
+
+TUI commands:
+
+- `/teams` — browse teams in an overlay; use ↑/↓ and enter to open details; press `d` to delete user/project teams.
+- `/teams list` — browse teams in an overlay; use ↑/↓ and enter to open details; press `d` to delete user/project teams.
+- `/teams describe [id]` — inspect a team in an overlay; selects when id is omitted.
+- `/teams form [id]` — interactively create or replace a user-level team.
+- `/teams models [id]` — interactively select/update model bindings for a team; selects when id is omitted.
+- `/teams delete [id]` — delete/dissolve a team; selects when id is omitted.
+- `/teams dissolve [id]` — alias for delete.
+- `/teams run [id] [prompt]` — run a team; selects and/or prompts when omitted.
+- `/teams <id> <prompt>` — shorthand for running a team.
+
+## Team discovery
+
+Built-in package team and subagent files are templates. At startup, missing defaults are instantiated into `~/.pi/agent/teams/` and `~/.pi/agent/subagents/` without overwriting edits. The active team set is therefore user teams plus project overrides.
+
+Teams and subagents are loaded in this order, with later sources overriding earlier sources by id:
+
+1. Built-in package defaults:
+   - `extensions/pi-llm-council/config/teams/*.md`
+   - `extensions/pi-llm-council/config/subagents/*.md`
+2. User defaults:
+   - `~/.pi/agent/teams/*.md`
+   - `~/.pi/agent/subagents/*.md`
+3. Project overrides:
+   - `<project-root>/.pi/teams/*.md`
+   - `<project-root>/.pi/subagents/*.md`
+
+`<project-root>` is found by walking up from the current working directory until a `package.json` or `.git` directory is found.
+
+Team file changes are discovered by subsequent team commands/tools. Built-in default ids are protected from unscoped deletion. To remove a user/project default/override whose id matches a package default, use scoped deletion (`scope: "user"` or `scope: "project"`). Extension code or tool schema changes still require a pi session reload before the live API reflects them.
+
+Team files may bind default models directly in frontmatter:
+
+```md
+---
+schemaVersion: 1
+id: "my-review"
+name: "My Review"
+topology: "pair"
+protocol: "consult"
+agents:
+  - "my_reviewer"
+navigatorModel: "ollama/glm-5.1:cloud"
+---
+```
+
+Supported model fields:
+
+- `memberModels` — council/debate member model list or chain/telephone relay model list.
+- `chairmanModel` — council/debate synthesis model.
+- `driverModel` — pair-coding Driver model.
+- `navigatorModel` — pair-consult or pair-coding Navigator model.
 
 Built-in teams:
 
@@ -67,8 +127,11 @@ Built-in teams:
 - `pair-consult` — lightweight Navigator consult.
 - `pair-coding` — bounded Driver/Navigator implementation loop.
 
+Additional user/project runtime shape:
+
+- `chain/telephone` — sequential relay where each member receives the current message, rewrites it, passes it to the next member, and returns the final relay output.
+
 ## Deferred
 
-- User/project team discovery.
 - Dynamic runtime teams.
 - LangGraph or another graph runtime.

@@ -3,13 +3,14 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CouncilStateManager } from "../extensions/pi-llm-council/state.js";
 import { registerTeamRunTool } from "../extensions/pi-llm-council/team-runtime.js";
 import {
+	ensureUserTeamDefaults,
 	loadTeamRegistry,
 	registerTeamTools,
 	requireBuiltinTeam,
@@ -33,7 +34,7 @@ interface RegisteredTool {
 	name: string;
 	execute: (
 		id: string,
-		params: { id?: string; prompt?: string },
+		params: { id?: string; prompt?: string; scope?: "user" | "project" },
 		signal?: AbortSignal,
 		onUpdate?: unknown,
 		ctx?: unknown,
@@ -110,7 +111,7 @@ function requireTeam(registry: ReturnType<typeof loadTeamRegistry>, id: string):
 
 describe("loadTeamRegistry", () => {
 	it("loads built-in teams and validates subagent references", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH);
+		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"default-council",
@@ -127,6 +128,10 @@ describe("loadTeamRegistry", () => {
 			"pair_navigator_consult",
 		]);
 		expect(requireTeam(registry, "pair-coding").limits.maxFixPasses).toBe(1);
+		expect(requireTeam(registry, "pair-coding").models).toMatchObject({
+			driver: "openai-codex/gpt-5.5",
+			navigator: "ollama/glm-5.1:cloud",
+		});
 	});
 
 	it("requires built-in teams by topology and protocol", () => {
@@ -144,6 +149,38 @@ describe("loadTeamRegistry", () => {
 		).toThrow(/must be pair\/consult/);
 	});
 
+	it("accepts telephone chain teams", () => {
+		withTempConfig((configPath, root) => {
+			writeSubagent(root, "telephone_relay_1");
+			writeSubagent(root, "telephone_relay_2");
+			writeFileSync(
+				join(root, "teams", "telephone-game.md"),
+				[
+					"---",
+					"schemaVersion: 1",
+					'id: "telephone-game"',
+					'name: "Telephone Game"',
+					'topology: "chain"',
+					'protocol: "telephone"',
+					"agents:",
+					'  - "telephone_relay_1"',
+					'  - "telephone_relay_2"',
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const registry = loadTeamRegistry(configPath, { userRoot: NO_SETTINGS });
+
+			expect(registry.warnings).toEqual([]);
+			expect(registry.teams.get("telephone-game")).toMatchObject({
+				topology: "chain",
+				protocol: "telephone",
+			});
+		});
+	});
+
 	it("reports unknown subagent references", () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "known_agent");
@@ -155,11 +192,52 @@ describe("loadTeamRegistry", () => {
 			expect(registry.warnings).toContain("broken: unknown agent missing_agent");
 		});
 	});
+
+	it("loads user and project teams after built-ins", () => {
+		withTempConfig((configPath, root) => {
+			const userRoot = join(root, "user");
+			const project = join(root, "project");
+			mkdirSync(join(userRoot, "subagents"), { recursive: true });
+			mkdirSync(join(userRoot, "teams"), { recursive: true });
+			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			writeSubagent(userRoot, "user_agent");
+			writeTeam(userRoot, "user-team", "user_agent");
+			writeSubagent(join(project, ".pi"), "project_agent");
+			writeTeam(join(project, ".pi"), "pair-consult", "project_agent");
+
+			const registry = loadTeamRegistry(configPath, { userRoot, cwd: project });
+
+			expect(registry.teams.get("user-team")?.source).toBe("user");
+			expect(registry.teams.get("pair-consult")?.source).toBe("project");
+			expect(registry.teams.get("pair-consult")?.agents).toEqual([
+				"project_agent",
+			]);
+		});
+	});
+
+	it("instantiates built-in teams into the user directory without overwriting edits", () => {
+		withTempConfig((configPath, root) => {
+			const userRoot = join(root, "user");
+			writeSubagent(root, "builtin_agent");
+			writeTeam(root, "builtin-team", "builtin_agent");
+
+			ensureUserTeamDefaults(userRoot, configPath);
+			const teamPath = join(userRoot, "teams", "builtin-team.md");
+			writeFileSync(teamPath, "custom", "utf8");
+			ensureUserTeamDefaults(userRoot, configPath);
+
+			expect(existsSync(teamPath)).toBe(true);
+			expect(existsSync(join(userRoot, "subagents", "builtin_agent.md"))).toBe(true);
+			expect(readFileSync(teamPath, "utf8")).toBe("custom");
+		});
+	});
 });
 
 describe("team adapters", () => {
 	it("projects default council team to the current default council definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH);
+		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
 		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "default-council");
 		const definition = teamToCouncilDefinition({
@@ -177,7 +255,7 @@ describe("team adapters", () => {
 	});
 
 	it("projects pair teams to the current default pair definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH);
+		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
 		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "pair-consult");
 		const definition = teamToPairDefinition({ team, settings });
@@ -198,7 +276,13 @@ describe("team tools", () => {
 		expect([...tools.keys()].sort()).toEqual(["team_describe", "team_list"]);
 		const list = tools.get("team_list");
 		if (!list) throw new Error("team_list missing");
-		const result = await list.execute("test", {});
+		const result = await list.execute(
+			"test",
+			{},
+			undefined,
+			undefined,
+			{ cwd: process.cwd() },
+		);
 
 		expect(result.content[0]?.text).toContain("default-council");
 		expect(result.details.teams).toEqual(
@@ -206,6 +290,116 @@ describe("team tools", () => {
 				expect.objectContaining({ id: "pair-consult", topology: "pair" }),
 			]),
 		);
+	});
+
+	it("team_describe includes model bindings", async () => {
+		const { api, tools } = createFakeApi();
+		registerTeamTools(api);
+		const describeTeam = tools.get("team_describe");
+		if (!describeTeam) throw new Error("team_describe missing");
+
+		const result = await describeTeam.execute(
+			"test",
+			{ id: "pair-consult" },
+			undefined,
+			undefined,
+			{ cwd: process.cwd() },
+		);
+
+		expect(result.content[0]?.text).toContain("Navigator model:");
+	});
+
+	it("team_delete removes project teams", async () => {
+		const root = mkdtempSync(join(tmpdir(), "team-delete-"));
+		try {
+			const project = join(root, "project");
+			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			writeSubagent(join(project, ".pi"), "delete_agent");
+			writeTeam(join(project, ".pi"), "delete-me", "delete_agent");
+			const teamPath = join(project, ".pi", "teams", "delete-me.md");
+			const { api, tools } = createFakeApi();
+			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+			const remove = tools.get("team_delete");
+			if (!remove) throw new Error("team_delete missing");
+
+			const result = await remove.execute(
+				"test",
+				{ id: "delete-me" },
+				undefined,
+				undefined,
+				{ cwd: project },
+			);
+
+			expect(result.content[0]?.text).toContain("deleted");
+			expect(existsSync(teamPath)).toBe(false);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("team_delete protects built-in ids unless scoped", async () => {
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+		const remove = tools.get("team_delete");
+		if (!remove) throw new Error("team_delete missing");
+
+		await expect(
+			remove.execute(
+				"test",
+				{ id: "default-council" },
+				undefined,
+				undefined,
+				{ cwd: process.cwd() },
+			),
+		).rejects.toThrow(/built-in default id/);
+	});
+
+	it("team_delete removes project overrides and reveals built-ins", async () => {
+		const root = mkdtempSync(join(tmpdir(), "team-delete-override-"));
+		try {
+			const project = join(root, "project");
+			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			writeSubagent(join(project, ".pi"), "project_agent");
+			writeTeam(join(project, ".pi"), "pair-consult", "project_agent");
+			const { api, tools } = createFakeApi();
+			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+			const remove = tools.get("team_delete");
+			if (!remove) throw new Error("team_delete missing");
+
+			await remove.execute(
+				"test",
+				{ id: "pair-consult", scope: "project" },
+				undefined,
+				undefined,
+				{ cwd: project },
+			);
+
+			const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS, cwd: project });
+			expect(registry.teams.get("pair-consult")?.source).toBe("builtin");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("team_delete rejects unknown team ids", async () => {
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+		const remove = tools.get("team_delete");
+		if (!remove) throw new Error("team_delete missing");
+
+		await expect(
+			remove.execute(
+				"test",
+				{ id: "missing-team" },
+				undefined,
+				undefined,
+				{ cwd: process.cwd() },
+			),
+		).rejects.toThrow(/No team "missing-team"/);
 	});
 
 	it("team_run rejects unknown team ids with a clear list", async () => {
@@ -220,7 +414,7 @@ describe("team tools", () => {
 				{ id: "missing", prompt: "hello" },
 				undefined,
 				undefined,
-				{ ui: { setStatus: () => undefined } },
+				{ cwd: process.cwd(), ui: { setStatus: () => undefined } },
 			),
 		).rejects.toThrow(/No team "missing".*default-council.*pair-coding.*pair-consult/s);
 	});
