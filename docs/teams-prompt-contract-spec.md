@@ -106,11 +106,10 @@ For debate-like workflows, a `critic` binding can still be meaningful: it suppli
 
 ```yaml
 ---
-schemaVersion: 1
+schemaVersion: 2
 id: "default-council"
 name: "Default Council"
 description: "General high-stakes reasoning and architecture review."
-topology: "council"
 protocol: "debate"
 
 prompts:
@@ -158,7 +157,7 @@ Effective chain examples:
 - `extensions/pi-teams/team-registry.ts`
   - Parse shallow `prompts` objects from team front matter.
   - Parse binding `promptId`, `templateId`, `systemPrompt`.
-  - Preserve compatibility when `prompts` is absent.
+  - Preserve default inheritance when `prompts` is absent.
   - Avoid losing provenance by blindly merging subagent `systemPrompt` into bindings.
 - `extensions/pi-teams/prompts.ts`
   - Move debate prompt selection behind resolver calls.

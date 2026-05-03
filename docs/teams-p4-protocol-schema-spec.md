@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make `protocol` / `engine` the sole execution selector for `pi-teams`; deprecate `topology` as an authored/primary concept while preserving old copied built-ins and existing user/project team files.
+Make `protocol` / `engine` the sole execution selector for `pi-teams`; deprecate `topology` as an authored/primary concept and keep authored team manifests strict v2-only.
 
 P4 must follow the P2 prompt contract: prompt/system/template resolution remains **protocol-slot based**, not topology based.
 
@@ -21,10 +21,10 @@ P4 must follow the P2 prompt contract: prompt/system/template resolution remains
    - Keep a normalized/deprecated `topology` value only where needed for backward-compatible details/UI output.
    - Do not infer `protocol` from `topology`.
 
-3. **v1 teams continue to load**
-   - Existing copied built-ins with `schemaVersion: 1`, `topology`, and `protocol` still load.
-   - Matching v1 `topology` + `protocol` produces a non-blocking deprecation notice.
-   - Mismatched v1 `topology` + `protocol` remains invalid with a clear diagnostic.
+3. **v1 authored teams do not load**
+   - Existing copied built-ins with `schemaVersion: 1`, missing schema, legacy string agents, or topology-only selection are rejected.
+   - Runtime legacy state fallback is separate from authored team manifest parsing.
+   - Users migrate team files by writing `schemaVersion: 2`, `protocol`, and object role bindings.
 
 4. **`engine` is an alias for `protocol`**
    - `protocol` remains canonical in memory.
@@ -137,33 +137,26 @@ Use this registry for display metadata and validation, not for inferring protoco
 
 ## Backward compatibility and migrations
 
-### Read-time migration
+### Read-time validation
 
-`team-registry.ts` should normalize all accepted files into `TeamSpec`:
+`team-registry.ts` normalizes accepted files into `TeamSpec`:
 
 1. Accept:
-   - v1 with `protocol`
-   - v1 with `engine`
-   - v1 with matching `topology` + `protocol`
    - v2 with `protocol`
    - v2 with `engine`
 2. Reject:
+   - missing `schemaVersion: 2`
    - missing `protocol` and `engine`
-   - unsupported schema version
-   - invalid protocol/engine
+   - unsupported protocol/engine
    - both `protocol` and `engine` present but different
-   - explicit `topology` that conflicts with protocol display topology for v1/v2 non-graph protocols
-3. Preserve existing legacy fields:
-   - string-form `agents`
+   - legacy string-form or mixed `agents`
+   - object bindings without `role` and `subagent`
+3. Preserve current v2 fields:
    - object-form `agents`
-   - binding aliases: `agent`, `manifest`
-   - legacy model fields: `memberModels`, `chairmanModel`, `driverModel`, `navigatorModel`
+   - `memberModels`, `chairmanModel`, `driverModel`, `navigatorModel` model slots
    - `chair`
-   - P2 prompt ids/templates and aliases
-4. Emit deprecation notices separately from invalid warnings:
-   - Do **not** put non-blocking deprecations in `registry.warnings` if `team_run` treats team warnings as fatal.
-   - Add `registry.deprecations: string[]` or structured diagnostics.
-   - Include deprecations in `team_list` / `team_describe` details.
+   - P2 prompt ids/templates
+4. Put invalid manifest diagnostics in `registry.warnings`; do not add a deprecation path for old schemas.
 
 ### Write-time migration
 
@@ -176,7 +169,7 @@ Mutating tools should write v2:
 
 ### Existing copied built-ins
 
-Old copied files like this must still run:
+Old copied files like this do not load:
 
 ```yaml
 schemaVersion: 1
@@ -184,10 +177,14 @@ topology: "pair"
 protocol: "consult"
 ```
 
-They should load with a non-fatal deprecation notice:
+They must be migrated to v2:
 
-```text
-pair-consult: schemaVersion 1/topology is deprecated; use schemaVersion 2 with protocol only.
+```yaml
+schemaVersion: 2
+protocol: "consult"
+agents:
+  - role: "navigator"
+    subagent: "pair_navigator_consult"
 ```
 
 ---
@@ -290,18 +287,16 @@ These are outside the narrow file list but likely required to satisfy acceptance
 3. **`protocol` + `engine` mismatch rejects**
    - `protocol: "consult"`, `engine: "debate"` produces clear diagnostic.
 
-4. **v1 copied built-in compatibility**
-   - Old `schemaVersion: 1`, `topology`, `protocol` file loads.
-   - Deprecation is non-fatal.
-   - `team_run` / `requireTeam` does not reject solely because of deprecation.
+4. **v1 copied built-ins are rejected**
+   - Old `schemaVersion: 1`, `topology`, `protocol` file does not load.
+   - Diagnostic tells users `schemaVersion: 2` is required.
 
-5. **v1 mismatched topology/protocol rejects**
-   - Example: `topology: "chain"`, `protocol: "consult"`.
-   - Diagnostic includes both values and the expected protocol-first interpretation.
+5. **Missing schema is rejected**
+   - Team files without `schemaVersion: 2` do not load.
 
 6. **No topology fallback**
    - File with `topology: "pair"` but no `protocol`/`engine` is invalid.
-   - Error says protocol/engine is required.
+   - Error says protocol/engine is required after schema is fixed.
 
 7. **Graph does not get forced into deprecated fallback**
    - v2 graph team with edges loads and dispatches as graph.
@@ -357,14 +352,14 @@ These are outside the narrow file list but likely required to satisfy acceptance
 
 ## Acceptance criteria
 
-- v1 and v2 teams both load.
+- Authored v2 teams load; v1/missing-schema teams are rejected.
 - Built-ins are v2 and omit `topology`.
-- Existing copied built-ins remain runnable.
+- Existing copied built-ins require migration to v2.
 - `topology` is not used for dispatch, validation, prompt fallback, or handler selection.
 - Missing protocol/engine is invalid even if topology is present.
 - `team_form` no longer exposes topology as a normal authoring choice.
 - `team_describe` and Team Detail are protocol-primary.
-- Tests cover v1 compatibility, v2 authoring, engine aliasing, mismatch rejection, and no-topology fallback.
+- Tests cover v2 authoring, engine aliasing, mismatch rejection, v1 rejection, and no-topology fallback.
 - Validate with:
 
 ```bash

@@ -21,8 +21,14 @@ flowchart TD
   Runtime --> PairConsult[Navigator consult]
   Runtime --> Telephone[Telephone chain]
   Runtime --> Graph[DAG graph executor]
+  Runtime --> StateWriter[TeamStateManager run/phase/node writer]
+  Debate --> StateWriter
+  PairCoding --> StateWriter
+  PairConsult --> StateWriter
+  Telephone --> StateWriter
+  Graph --> StateWriter
   Prompts[config/prompts/*.md templates] --> Runtime
-  State[pi.appendEntry custom session entries] --> Runtime
+  StateWriter --> State[pi.appendEntry custom session entries]
 ```
 
 ## Current module boundaries
@@ -35,6 +41,7 @@ flowchart TD
   Defaults[team-defaults.ts] --> Paths
   Tools[team-tools.ts] --> Registry
   Runtime[team-runtime.ts] --> Handlers[team-handlers.ts]
+  Runtime --> State[state.ts]
   Runtime --> Form
   Runtime --> Registry
   Commands[team-commands.ts] --> Runtime
@@ -43,6 +50,7 @@ flowchart TD
   Models[team-models.ts] --> Handlers
   Overlay[team-overlay.ts] --> Registry
   Handlers --> Engines[debate / pair-coding / consult / telephone / graph engines]
+  Handlers --> State
 ```
 
 - `team-types.ts` owns core team/agent/registry type definitions.
@@ -154,11 +162,11 @@ A project can opt in with `.pi/settings.json`:
 
 Team file changes are discovered by subsequent team commands/tools. Built-in default ids are protected from unscoped deletion. To remove a user/project default/override whose id matches a package default, use scoped deletion (`scope: "user"` or `scope: "project"`). Extension code or tool schema changes still require a pi session reload before the live API reflects them.
 
-Team files bind agent manifests and default models together. An agent descriptor owns reusable behavior/prompting, tool allowlists, and provider parameters; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same agent with different models. `topology` is deprecated and inferred from `protocol`/`engine` plus role bindings when omitted.
+Team files bind agent manifests and default models together. An agent descriptor owns reusable behavior/prompting, tool allowlists, and provider parameters; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same agent with different models. Authored team files are strict `schemaVersion: 2`; `topology` is derived display metadata, not an authoring field.
 
 ```md
 ---
-schemaVersion: 1
+schemaVersion: 2
 id: "my-review"
 name: "My Review"
 protocol: "consult"
@@ -199,7 +207,7 @@ Graph example:
 
 ```md
 ---
-schemaVersion: 1
+schemaVersion: 2
 id: "review-fix-qa"
 name: "Review Fix QA"
 protocol: "graph"

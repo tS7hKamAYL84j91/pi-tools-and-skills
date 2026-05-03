@@ -16,7 +16,7 @@ import type { TeamStateManager } from "./state.js";
 import { runTeamGraph } from "./team-graph.js";
 import { teamToDebateDefinition } from "./team-registry.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
-import type { TeamRunDefinition, GenerationConfig } from "./types.js";
+import type { GenerationConfig, ModelRun, TeamRunDefinition } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 const CONSULT_TIMEOUT_MS = 5 * 60_000;
@@ -66,6 +66,7 @@ interface TeamHandlerRunArgs {
 	params: TeamRunInput;
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
+	runId?: string;
 }
 
 interface TeamHandler {
@@ -114,6 +115,24 @@ function generationConfigForRole(team: TeamSpec, roles: string[]): GenerationCon
 		...(binding.tools !== undefined ? { tools: binding.tools } : {}),
 		...(binding.parameters !== undefined ? { parameters: binding.parameters } : {}),
 	};
+}
+
+function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId): void {
+	if (args.runId) args.stateManager.recordPhaseStarted(args.runId, phaseId, label);
+}
+
+function recordModelRun(args: TeamHandlerRunArgs, phaseId: string, nodeId: string, run: ModelRun): void {
+	if (!args.runId) return;
+	args.stateManager.recordNodeCompleted(args.runId, {
+		phaseId,
+		nodeId,
+		role: run.member.label,
+		model: run.member.model,
+		ok: run.ok,
+		durationMs: run.durationMs,
+		output: run.output,
+		...(run.error ? { error: run.error } : {}),
+	});
 }
 
 function formatWorkflowResult(result: WorkflowResult): TeamHandlerResult {
@@ -245,6 +264,21 @@ const graphHandler: TeamHandler = {
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 			onProgress: (text) => args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`),
 		});
+		recordPhase(args, "graph");
+		if (args.runId) {
+			for (const node of result.nodes) {
+				args.stateManager.recordNodeCompleted(args.runId, {
+					phaseId: "graph",
+					nodeId: node.role,
+					role: node.binding.role,
+					model: node.model ?? "",
+					ok: node.ok,
+					durationMs: node.durationMs ?? 0,
+					output: node.output,
+					...(node.error ? { error: node.error } : {}),
+				});
+			}
+		}
 		return okText(result.output, {
 			team: args.team.id,
 			ok: result.ok,
@@ -384,6 +418,11 @@ const pairCodingHandler: TeamHandler = {
 				args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${label}`);
 			},
 		});
+		recordPhase(args, "pair-coding");
+		if (result.navigatorBrief) recordModelRun(args, "pair-coding", "navigator-brief", result.navigatorBrief);
+		if (result.driverImplementation) recordModelRun(args, "pair-coding", "driver-implementation", result.driverImplementation);
+		for (const [index, review] of result.reviews.entries()) recordModelRun(args, "pair-coding", `navigator-review:${index + 1}`, review);
+		for (const [index, fix] of result.fixes.entries()) recordModelRun(args, "pair-coding", `driver-fix:${index + 1}`, fix);
 		return formatWorkflowResult(result);
 	},
 };
@@ -419,6 +458,19 @@ const pairConsultHandler: TeamHandler = {
 				systemPrompt,
 				config: generationConfigForRole(args.team, ["navigator"]),
 			});
+		recordPhase(args, "consult");
+		if (args.runId) {
+			args.stateManager.recordNodeCompleted(args.runId, {
+				phaseId: "consult",
+				nodeId: "navigator",
+				role: "navigator",
+				model: navigator,
+				ok: outcome.ok,
+				durationMs: outcome.durationMs,
+				output: outcome.body,
+				...(outcome.ok ? {} : { error: outcome.body }),
+			});
+		}
 		return okText(outcome.body, {
 			team: args.team.id,
 			navigator,
@@ -451,6 +503,7 @@ const telephoneHandler: TeamHandler = {
 		if (!fallbackModel) throw new Error("telephone teams need at least one member model.");
 		let message = args.params.prompt;
 		const hops: Array<{ agent: string; model: string; ok: boolean; output: string; durationMs: number }> = [];
+		recordPhase(args, "telephone");
 		for (const [index, agent] of args.team.agents.entries()) {
 			const model = models[index] ?? fallbackModel;
 			args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: relay ${index + 1}/${args.team.agents.length}`);
@@ -472,6 +525,7 @@ const telephoneHandler: TeamHandler = {
 			);
 			const output = run.ok ? run.output.trim() : message;
 			hops.push({ agent, model, ok: run.ok, output, durationMs: run.durationMs });
+			recordModelRun(args, "telephone", `relay:${index + 1}`, run);
 			message = output;
 		}
 		return okText(message, {

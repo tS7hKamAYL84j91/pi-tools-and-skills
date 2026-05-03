@@ -65,6 +65,31 @@ describe("TeamStateManager", () => {
 		expect(loaded).toEqual(record);
 	});
 
+	it("appends protocol-abstract session events for non-debate runs", () => {
+		const entries: Array<{ customType: string; data?: unknown }> = [];
+		const sessionBacked = new TeamStateManager(dir, {
+			appendEntry: (customType, data) => entries.push({ customType, data }),
+		});
+
+		const runId = sessionBacked.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
+		sessionBacked.recordPhaseStarted(runId, "graph");
+		sessionBacked.recordNodeCompleted(runId, {
+			phaseId: "graph",
+			nodeId: "qa",
+			role: "qa",
+			model: "test/qa",
+			ok: true,
+			durationMs: 12,
+			output: "Looks good",
+		});
+		sessionBacked.recordRunCompleted(runId, 20, "Looks good");
+
+		expect(entries.map((entry) => entry.customType)).toEqual(["pi-teams:run", "pi-teams:run", "pi-teams:run", "pi-teams:run"]);
+		expect(entries.map((entry) => (entry.data as { kind: string }).kind)).toEqual(["run_started", "phase_started", "node_completed", "run_completed"]);
+		expect(entries[0]?.data).toMatchObject({ protocol: "graph", teamId: "graph-team" });
+		expect(entries[2]?.data).toMatchObject({ nodeId: "qa", role: "qa", outputSha256: expect.any(String) });
+	});
+
 	it("update() merges patches and re-persists", () => {
 		const initial = store.create(createArgs());
 		const generating = store.update(initial, { status: "generating" });

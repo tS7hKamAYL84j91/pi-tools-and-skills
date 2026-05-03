@@ -96,12 +96,26 @@ export async function runTeam(args: {
 	if (!handler) {
 		throw new Error(`Team "${team.id}" has unsupported protocol ${team.protocol}.`);
 	}
-	return handler.run({
-		team,
-		params: args.params,
-		ctx: args.ctx,
-		stateManager: args.stateManager,
-	});
+	if (team.protocol === "debate") {
+		return handler.run({ team, params: args.params, ctx: args.ctx, stateManager: args.stateManager });
+	}
+	const startedAt = Date.now();
+	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
+	try {
+		const result = await handler.run({
+			team,
+			params: args.params,
+			ctx: args.ctx,
+			stateManager: args.stateManager,
+			runId,
+		});
+		const text = result.content[0]?.text;
+		args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
+		return result;
+	} catch (error) {
+		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
+		throw error;
+	}
 }
 
 function registerTeamFormTool(pi: ExtensionAPI): void {
