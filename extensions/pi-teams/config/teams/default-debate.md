@@ -1,7 +1,7 @@
 ---
 schemaVersion: 2
 id: "default-debate"
-name: "Default Council"
+name: "Default Debate"
 description: "General high-stakes reasoning and architecture review."
 protocol: "debate"
 prompts:
@@ -29,7 +29,7 @@ agents:
     label: "Member 4"
   - role: "critic"
     subagent: "debate_critic"
-  - role: "chairman"
+  - role: "synthesis"
     subagent: "debate_synthesis"
     model: "openai-codex/gpt-5.5"
 ---

@@ -1,6 +1,6 @@
 ---
 id: debate/synthesis/template
-title: "Council synthesis prompt template"
+title: "Debate synthesis prompt template"
 scope: debate
 stage: synthesis
 kind: template

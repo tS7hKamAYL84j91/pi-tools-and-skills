@@ -3,7 +3,7 @@ name: "consult_navigator"
 version: "1.0.0"
 description: "Navigator consulted by the main Pilot for focused consult review or design feedback."
 promptId: "consult/navigator/system"
-scope: "pair-coding"
+scope: "consult"
 stage: "navigator-consult"
 tools: []
 ---

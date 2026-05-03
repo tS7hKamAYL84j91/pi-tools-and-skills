@@ -1,0 +1,208 @@
+import { createHash } from "node:crypto";
+import { describe, expect, it } from "vitest";
+
+import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../extensions/pi-teams/state.js";
+
+interface CustomEntry {
+	type: "custom";
+	customType: string;
+	data?: unknown;
+}
+
+function appendTo(entries: CustomEntry[]) {
+	return (customType: string, data?: unknown) => entries.push({ type: "custom", customType, data });
+}
+
+function runIdOf(entry: CustomEntry): string {
+	const data = entry.data as { runId?: string };
+	if (!data.runId) throw new Error("entry has no run id");
+	return data.runId;
+}
+
+describe("TeamStateManager", () => {
+	it("appends protocol-neutral session events", () => {
+		const entries: CustomEntry[] = [];
+		const store = new TeamStateManager({ appendEntry: appendTo(entries) });
+
+		const runId = store.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
+		store.recordPhaseStarted(runId, "graph");
+		store.recordNodeCompleted(runId, {
+			phaseId: "graph",
+			nodeId: "qa",
+			role: "qa",
+			model: "test/model",
+			ok: true,
+			durationMs: 12,
+			output: "Looks good",
+		});
+		store.recordRunCompleted(runId, 20, "Looks good");
+
+		expect(entries.map((entry) => entry.customType)).toEqual([
+			TEAM_RUN_CUSTOM_TYPE,
+			TEAM_RUN_CUSTOM_TYPE,
+			TEAM_RUN_CUSTOM_TYPE,
+			TEAM_RUN_CUSTOM_TYPE,
+		]);
+		expect(entries.map((entry) => (entry.data as { kind: string }).kind)).toEqual([
+			"run_started",
+			"phase_started",
+			"node_completed",
+			"run_completed",
+		]);
+	});
+
+	it("rehydrates only the current session branch", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runA = writer.startRun({ teamId: "team-a", protocol: "graph", prompt: "A?" });
+		writer.recordRunCompleted(runA, 1, "A done");
+		const runB = writer.startRun({ teamId: "team-b", protocol: "graph", prompt: "B?" });
+		writer.recordRunCompleted(runB, 1, "B done");
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries.slice(0, 2) });
+
+		expect(reader.list().map((record) => record.team)).toEqual(["team-a"]);
+		expect(reader.get(runB)).toBeUndefined();
+	});
+
+	it("records bounded node output with integrity metadata", () => {
+		const entries: CustomEntry[] = [];
+		const store = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = store.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
+		const output = "x".repeat(70_000);
+
+		store.recordNodeCompleted(runId, {
+			phaseId: "graph",
+			nodeId: "huge",
+			role: "huge",
+			model: "test/model",
+			ok: true,
+			durationMs: 1,
+			output,
+		});
+
+		const nodeEvent = entries.find((entry) => (entry.data as { kind?: string }).kind === "node_completed")?.data as {
+			output: string;
+			outputChars: number;
+			outputSha256: string;
+			outputTruncated: boolean;
+		};
+		expect(nodeEvent.output).toHaveLength(64_000);
+		expect(nodeEvent.outputChars).toBe(70_000);
+		expect(nodeEvent.outputSha256).toBe(createHash("sha256").update(output).digest("hex"));
+		expect(nodeEvent.outputTruncated).toBe(true);
+	});
+
+	it("reduces generic phases and nodes into records", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "telephone", prompt: "hello" });
+		writer.recordPhaseStarted(runId, "telephone");
+		writer.recordNodeCompleted(runId, {
+			phaseId: "telephone",
+			nodeId: "relay_1",
+			role: "relay_1",
+			model: "test/model",
+			ok: true,
+			durationMs: 3,
+			output: "hi",
+		});
+		writer.recordRunCompleted(runId, 4, "hi");
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.get(runId)).toMatchObject({
+			id: runId,
+			team: "team",
+			protocol: "telephone",
+			status: "completed",
+			phases: ["telephone"],
+			nodes: [expect.objectContaining({ phaseId: "telephone", nodeId: "relay_1", output: "hi" })],
+			summary: "hi",
+		});
+	});
+
+	it("tombstones records on the active branch", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "graph", prompt: "x" });
+		writer.remove(runId);
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.get(runId)).toBeUndefined();
+		expect(reader.list()).toEqual([]);
+	});
+
+	it("findOrphans returns non-terminal records whose orchestrator is dead", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const orphan = writer.startRun({ teamId: "orphan", protocol: "graph", prompt: "x" });
+		const completed = writer.startRun({ teamId: "done", protocol: "graph", prompt: "x" });
+		writer.recordRunCompleted(completed, 1, "done");
+		for (const entry of entries) {
+			const data = entry.data as { runId?: string; orchestratorPid?: number };
+			if (data.runId === orphan) data.orchestratorPid = 999_999_999;
+		}
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.findOrphans().map((record) => record.id)).toEqual([orphan]);
+	});
+
+	it("continues sequence numbers after rehydrate", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "graph", prompt: "x" });
+		writer.recordPhaseStarted(runId, "one");
+
+		const reader = new TeamStateManager({ appendEntry: appendTo(entries) });
+		reader.rehydrateFromSession({ getBranch: () => entries });
+		reader.recordPhaseStarted(runId, "two");
+
+		expect(entries.map((entry) => (entry.data as { seq: number }).seq)).toEqual([1, 2, 3]);
+	});
+
+	it("generates unique run ids", () => {
+		const store = new TeamStateManager();
+		const ids = new Set<string>();
+		for (let i = 0; i < 10; i++) ids.add(store.startRun({ teamId: "team", protocol: "graph", prompt: "x" }));
+		expect(ids.size).toBe(10);
+	});
+
+	it("ignores malformed session entries", () => {
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({
+			getBranch: () => [
+				{ type: "custom", customType: TEAM_RUN_CUSTOM_TYPE, data: { kind: "run_started" } },
+				{ type: "custom", customType: "other", data: {} },
+			],
+		});
+		expect(reader.list()).toEqual([]);
+	});
+
+	it("uses getEntries when getBranch is unavailable", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "graph", prompt: "x" });
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getEntries: () => entries });
+
+		expect(reader.get(runId)?.team).toBe("team");
+	});
+
+	it("markFailed appends a failure event for an active record", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "graph", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.markFailed(runId, "orchestrator died");
+
+		expect(runIdOf(entries.at(-1) as CustomEntry)).toBe(runId);
+		expect(entries.at(-1)?.data).toMatchObject({ kind: "run_failed", error: "orchestrator died" });
+	});
+});

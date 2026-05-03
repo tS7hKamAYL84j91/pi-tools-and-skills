@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { loadPairContext } from "./context-loader.js";
+import { loadTeamContext } from "./context-loader.js";
 import { formatProtocolContext, renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { renderTemplate } from "./prompt-renderer.js";
@@ -11,12 +11,12 @@ import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { type GraphNodePromptBuilder, type GraphRunResult, runTeamGraph } from "./team-graph.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
-import type { ModelRun, TeamParticipant, TeamRunRecord } from "./types.js";
+import type { ModelRun, TeamParticipant } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 export interface TeamRunModels {
 	members?: string[];
-	chairman?: string;
+	synthesis?: string;
 	driver?: string;
 	navigator?: string;
 }
@@ -39,7 +39,7 @@ export interface TeamModelSlot {
 	id: string;
 	label: string;
 	current?: string;
-	kind: "member" | "chairman" | "driver" | "navigator";
+	kind: "member" | "synthesis" | "driver" | "navigator";
 	index?: number;
 }
 
@@ -137,12 +137,12 @@ function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
 	const chains = promptChainsForTeam(args.team);
 	const memberModels = args.params.models?.members ?? args.team.models.members ?? args.settings.defaultMembers;
 	if (memberModels.length === 0) throw new Error("debate teams need at least one member model.");
-	const chairmanModel = args.params.models?.chairman ?? args.team.models.chairman ?? args.settings.defaultChairman ?? memberModels[0];
-	if (!chairmanModel) throw new Error("debate teams need a synthesis model.");
+	const synthesisModel = args.params.models?.synthesis ?? args.team.models.synthesis ?? args.settings.defaultSynthesis ?? memberModels[0];
+	if (!synthesisModel) throw new Error("debate teams need a synthesis model.");
 	const sourceMembers = roleBindings(args.team, ["member"]);
 	const memberSource = sourceMembers[0] ?? firstBinding(args.team, ["member"]);
 	const criticSource = bindingForRole(args.team, ["critic"]) ?? memberSource;
-	const synthesisSource = bindingForRole(args.team, ["chairman", "chair", "synthesis"]) ?? firstBinding(args.team, ["chairman", "chair", "synthesis"]);
+	const synthesisSource = bindingForRole(args.team, ["synthesis"]) ?? firstBinding(args.team, ["synthesis"]);
 	const generationBindings = memberModels.map((model, index) => {
 		const source = sourceMembers[index] ?? memberSource;
 		return { ...source, role: `generation_${index + 1}`, label: source.label ?? `Member ${index + 1}`, model, systemPrompt: requirePromptChain(chains, "generation.system").text };
@@ -159,7 +159,7 @@ function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
 		...synthesisSource,
 		role: "synthesis",
 		label: synthesisSource.label ?? "Synthesis",
-		model: chairmanModel,
+		model: synthesisModel,
 		systemPrompt: requirePromptChain(chains, "synthesis.system").text,
 		dependencyPolicy: "allow-failed" as const,
 	};
@@ -171,7 +171,7 @@ function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
 			agents: [...new Set([...generationBindings, ...critiqueBindings, synthesisBinding].map((binding) => binding.subagent))],
 			agentBindings: [...generationBindings, ...critiqueBindings, synthesisBinding],
 			graph: { edges: [...generationEdges, ...synthesisEdges], outputs: [synthesisBinding.role] },
-			models: { members: memberModels, chairman: chairmanModel },
+			models: { members: memberModels, synthesis: synthesisModel },
 		},
 		phaseId: "debate",
 		outputRole: synthesisBinding.role,
@@ -186,7 +186,7 @@ function cloneBinding(source: TeamAgentBinding, role: string, model: string, sys
 function graphPlanForPairCoding(args: GraphPlanArgs): LoweredGraphPlan {
 	const chains = promptChainsForTeam(args.team);
 	const driver = args.params.models?.driver ?? args.team.models.driver ?? args.settings.defaultMembers[0];
-	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultChairman;
+	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultSynthesis;
 	if (!driver || !navigator) throw new Error("pair-coding needs driver and navigator models.");
 	const driverError = rejectAgentRef("driver", driver);
 	if (driverError) throw new Error(driverError);
@@ -197,7 +197,7 @@ function graphPlanForPairCoding(args: GraphPlanArgs): LoweredGraphPlan {
 	const reviewSource = bindingForRole(args.team, ["navigator_review", "navigator"]) ?? navBriefSource;
 	const fixSource = bindingForRole(args.team, ["driver_fix", "driver"]) ?? driverSource;
 	const maxFixPasses = Math.max(0, args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses ?? 1);
-	const context = loadPairContext({ cwd: args.cwd ?? process.cwd(), specPath: args.params.specPath, files: args.params.files });
+	const context = loadTeamContext({ cwd: args.cwd ?? process.cwd(), specPath: args.params.specPath, files: args.params.files });
 	const nodes: TeamAgentBinding[] = [
 		cloneBinding(navBriefSource, "navigator_brief", navigator, requirePromptChain(chains, "navigatorBrief.system").text),
 		cloneBinding(driverSource, "driver_implementation", driver, requirePromptChain(chains, "driverImplementation.system").text),
@@ -317,21 +317,14 @@ function debatePromptBuilder(
 			};
 		}
 		const critiques = args.completed.filter((node) => critiqueRoles.has(node.role) && node.ok).map(modelRunFromNode);
-		const record: TeamRunRecord = {
-			version: 1,
-			id: "debate-graph",
-			team: team.id,
-			prompt: args.originalPrompt,
-			members,
-			chairman: { label: args.binding.label ?? args.binding.role, model: args.model },
-			status: "synthesizing",
-			startedAt: Date.now(),
-			orchestratorPid: process.pid,
-			generation,
-			critiques: critiques.map((run) => ({ ...run, rankings: "" })),
-		};
 		return {
-			prompt: renderJoinedSynthesisPrompt(record, requirePromptChain(chains, "synthesis.template").text.split("\n")),
+			prompt: renderJoinedSynthesisPrompt({
+				originalPrompt: args.originalPrompt,
+				generation,
+				critiques,
+				members,
+				template: requirePromptChain(chains, "synthesis.template").text.split("\n"),
+			}),
 			systemPrompt: args.binding.systemPrompt ?? "",
 		};
 	};
@@ -492,7 +485,7 @@ const loweredGraphHandler: TeamHandler = {
 					label: (index) => `Member model ${index + 1}`,
 					models,
 				}),
-				{ id: "chairman", label: "Synthesis model", current: models.chairman, kind: "chairman" },
+				{ id: "synthesis", label: "Synthesis model", current: models.synthesis, kind: "synthesis" },
 			];
 		}
 		return memberModelSlots({

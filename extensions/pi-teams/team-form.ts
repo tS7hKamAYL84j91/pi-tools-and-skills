@@ -99,9 +99,9 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 				label: `Member ${index + 1}`,
 			})),
 			{
-				role: "chairman",
-				subagent: subagentIdFromTeam(args.id, "chairman"),
-				...(models.chairman ? { model: models.chairman } : {}),
+				role: "synthesis",
+				subagent: subagentIdFromTeam(args.id, "synthesis"),
+				...(models.synthesis ? { model: models.synthesis } : {}),
 			},
 			...criticSubagents.map((subagent) => ({ role: "critic", subagent })),
 		];
@@ -134,8 +134,8 @@ function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormMod
 			memberIndex++;
 			return { ...binding, ...(model ? { model } : {}) };
 		}
-		if (roleMatches(binding.role, "chairman") || roleMatches(binding.role, "chair")) {
-			return { ...binding, ...(models.chairman ? { model: models.chairman } : {}) };
+		if (roleMatches(binding.role, "synthesis")) {
+			return { ...binding, ...(models.synthesis ? { model: models.synthesis } : {}) };
 		}
 		if (roleMatches(binding.role, "driver")) {
 			return { ...binding, ...(models.driver ? { model: models.driver } : {}) };
@@ -310,7 +310,7 @@ export async function formTeam(
 	const agents = parseList(agentInput).length > 0 ? parseList(agentInput) : defaultAgents;
 
 	const memberModels = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;
-	const chairmanModel = protocol === "debate" ? await ctx.ui.input("Chairman model (optional)", "") : undefined;
+	const synthesisModel = protocol === "debate" ? await ctx.ui.input("Synthesis model (optional)", "") : undefined;
 	const driverModel = protocol === "pair-coding" ? await ctx.ui.input("Driver model (optional)", "") : undefined;
 	const navigatorModel = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model or agent:<name> (optional)", "") : undefined;
 	const maxFixPassesInput = protocol === "pair-coding" ? await ctx.ui.input("Max fix passes", "1") : undefined;
@@ -324,7 +324,7 @@ export async function formTeam(
 		agents,
 		models: {
 			...(memberModels && memberModels.length > 0 ? { members: memberModels } : {}),
-			...(chairmanModel?.trim() ? { chairman: chairmanModel.trim() } : {}),
+			...(synthesisModel?.trim() ? { synthesis: synthesisModel.trim() } : {}),
 			...(driverModel?.trim() ? { driver: driverModel.trim() } : {}),
 			...(navigatorModel?.trim() ? { navigator: navigatorModel.trim() } : {}),
 		},

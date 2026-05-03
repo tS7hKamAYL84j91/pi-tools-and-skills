@@ -165,7 +165,7 @@ async function pickModel(
 function copyModels(models: TeamFormModels): TeamFormModels {
 	return {
 		...(models.members ? { members: [...models.members] } : {}),
-		...(models.chairman ? { chairman: models.chairman } : {}),
+		...(models.synthesis ? { synthesis: models.synthesis } : {}),
 		...(models.driver ? { driver: models.driver } : {}),
 		...(models.navigator ? { navigator: models.navigator } : {}),
 	};
@@ -211,8 +211,8 @@ function applyModelSlot(
 		const members = [...(next.members ?? [])];
 		members[slot.index ?? 0] = model;
 		next.members = members;
-	} else if (slot.kind === "chairman") {
-		next.chairman = model;
+	} else if (slot.kind === "synthesis") {
+		next.synthesis = model;
 	} else if (slot.kind === "driver") {
 		next.driver = model;
 	} else {

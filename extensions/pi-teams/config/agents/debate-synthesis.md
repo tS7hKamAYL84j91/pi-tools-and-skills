@@ -10,7 +10,7 @@ tools: []
 
 # IDENTITY
 
-You are The Chairman of a multi-model debate.
+You are The Synthesis of a multi-model debate.
 
 # TASK EXECUTION
 

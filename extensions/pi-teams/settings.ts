@@ -23,9 +23,9 @@ interface TeamDefault {
 export interface ResolvedTeamSettings {
 	prompts: PromptCatalog;
 	defaultMembers: string[];
-	defaultChairman: string;
-	defaultDebate: { name: string; members: string[]; chairman: string; purpose?: string };
-	chairmanCandidates: string[];
+	defaultSynthesis: string;
+	defaultDebate: { name: string; members: string[]; synthesis: string; purpose?: string };
+	synthesisCandidates: string[];
 	defaultConsult?: { name: string; navigator: string; purpose?: string };
 }
 
@@ -106,12 +106,12 @@ function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const members = bindings
 		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
 		.map((binding) => binding.model as string);
-	const chairman = bindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]) && binding.model)?.model;
+	const synthesis = bindings.find((binding) => roleMatches(binding.role, ["synthesis"]) && binding.model)?.model;
 	const driver = bindings.find((binding) => roleMatches(binding.role, ["driver", "driver_implementation"]) && binding.model)?.model;
 	const navigator = bindings.find((binding) => roleMatches(binding.role, ["navigator", "navigator_brief", "navigator_review"]) && binding.model)?.model;
 	return {
 		...(members.length > 0 ? { members } : {}),
-		...(chairman ? { chairman } : {}),
+		...(synthesis ? { synthesis } : {}),
 		...(driver ? { driver } : {}),
 		...(navigator ? { navigator } : {}),
 	};
@@ -153,12 +153,12 @@ export function resolveTeamSettings(settingsPath: string = SETTINGS_JSON, extens
 	const defaultDebate = lastDefined(teamDefaults.map((entry) => entry.debate));
 	const defaultConsult = lastDefined(teamDefaults.map((entry) => entry.consult));
 	const members = defaultDebate?.models.members ?? [];
-	const chairman = defaultDebate?.models.chairman ?? members[0] ?? "";
+	const synthesis = defaultDebate?.models.synthesis ?? members[0] ?? "";
 	const consultNavigator = defaultConsult?.models.navigator;
 	const defaultDebateSettings = {
 		name: defaultDebate?.name ?? FALLBACK_DEFAULT_TEAM_NAME,
 		members,
-		chairman,
+		synthesis,
 		...(defaultDebate?.description ? { purpose: defaultDebate.description } : {}),
 	};
 	const defaultConsultSettings = consultNavigator
@@ -171,9 +171,9 @@ export function resolveTeamSettings(settingsPath: string = SETTINGS_JSON, extens
 	return {
 		prompts,
 		defaultMembers: members,
-		defaultChairman: chairman,
+		defaultSynthesis: synthesis,
 		defaultDebate: defaultDebateSettings,
-		chairmanCandidates: [chairman, ...members].filter((model, index, values) => model.length > 0 && values.indexOf(model) === index),
+		synthesisCandidates: [synthesis, ...members].filter((model, index, values) => model.length > 0 && values.indexOf(model) === index),
 		...(defaultConsultSettings ? { defaultConsult: defaultConsultSettings } : {}),
 	};
 }
@@ -181,4 +181,4 @@ export function resolveTeamSettings(settingsPath: string = SETTINGS_JSON, extens
 const EXTENSION_DEFAULT_SETTINGS = resolveTeamSettings("/nonexistent/pi-settings.json", DEFAULT_CONFIG_JSON);
 
 export const DEFAULT_MEMBER_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.defaultMembers;
-export const DEFAULT_CHAIRMAN_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.chairmanCandidates;
+export const DEFAULT_SYNTHESIS_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.synthesisCandidates;

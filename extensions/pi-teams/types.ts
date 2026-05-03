@@ -1,6 +1,6 @@
 /** Shared runtime types for team protocol execution and persistence. */
 
-export type RunStatus = "pending" | "generating" | "critiquing" | "synthesizing" | "completed" | "failed";
+export type RunStatus = "pending" | "running" | "completed" | "failed";
 
 /** @public */
 export type GenerationParameterValue = string | number | boolean;
@@ -10,17 +10,6 @@ export interface GenerationConfig {
 	parameters?: Record<string, GenerationParameterValue>;
 }
 
-/** @public */
-export interface TeamRunDefinition {
-	name: string;
-	purpose?: string;
-	members: string[];
-	chairman: string;
-	createdAt: number;
-	memberConfigs?: Array<GenerationConfig | undefined>;
-	chairmanConfig?: GenerationConfig;
-}
-
 export interface TeamParticipant extends GenerationConfig {
 	/** Protocol-local label used when packaging peer outputs. */
 	label: string;
@@ -28,7 +17,7 @@ export interface TeamParticipant extends GenerationConfig {
 	model: string;
 	/** Set when this participant is a live pi agent rather than a one-shot model invocation. */
 	agentName?: string;
-	/** Registry id of the live agent — populated alongside agentName. */
+	/** Registry id of the live agent - populated alongside agentName. */
 	agentId?: string;
 }
 
@@ -42,8 +31,15 @@ export interface ModelRun {
 	error?: string;
 }
 
-export interface ReviewRun extends ModelRun {
-	rankings: string;
+export interface TeamRunNodeRecord {
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	ok: boolean;
+	durationMs: number;
+	output: string;
+	error?: string;
 }
 
 /** Persistent record of one team protocol run. */
@@ -51,15 +47,14 @@ export interface TeamRunRecord {
 	version: 1;
 	id: string;
 	team: string;
+	protocol?: string;
 	prompt: string;
-	members: TeamParticipant[];
-	chairman: TeamParticipant;
 	status: RunStatus;
 	startedAt: number;
 	completedAt?: number;
 	orchestratorPid: number;
-	generation: ModelRun[];
-	critiques: ReviewRun[];
-	synthesis?: ModelRun;
+	phases: string[];
+	nodes: TeamRunNodeRecord[];
+	summary?: string;
 	error?: string;
 }

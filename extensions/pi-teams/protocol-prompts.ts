@@ -1,8 +1,8 @@
 /** Runtime prompt packaging helpers for protocol phases. */
 
-import type { LoadedFile, PairContext } from "./context-loader.js";
+import type { LoadedFile, TeamContext } from "./context-loader.js";
 import { renderTemplate } from "./prompt-renderer.js";
-import type { TeamRunRecord, TeamParticipant, ModelRun } from "./types.js";
+import type { TeamParticipant, ModelRun } from "./types.js";
 
 /** Replace each participant's model id and live-agent name with its anonymous label. */
 function anonymizeParticipantReferences(text: string, members: readonly TeamParticipant[]): string {
@@ -35,21 +35,27 @@ export function renderPeerCritiquePrompt(args: {
 	});
 }
 
-export function renderJoinedSynthesisPrompt(record: TeamRunRecord, template: readonly string[]): string {
-	const rawAnswers = record.generation
+export function renderJoinedSynthesisPrompt(args: {
+	originalPrompt: string;
+	generation: readonly ModelRun[];
+	critiques: readonly ModelRun[];
+	members: readonly TeamParticipant[];
+	template: readonly string[];
+}): string {
+	const rawAnswers = args.generation
 		.map((run) => `## ${run.member.label} (${run.member.model})\n${run.output}`)
 		.join("\n\n");
-	const critiques = record.critiques
-		.map((run) => `## Critique by ${run.member.label}\n${anonymizeParticipantReferences(run.output, record.members)}`)
+	const critiques = args.critiques
+		.map((run) => `## Critique by ${run.member.label}\n${anonymizeParticipantReferences(run.output, args.members)}`)
 		.join("\n\n");
-	return renderTemplate([...template], {
-		originalPrompt: record.prompt,
+	return renderTemplate([...args.template], {
+		originalPrompt: args.originalPrompt,
 		rawAnswers,
 		critiques,
 	});
 }
 
-export function formatProtocolContext(ctx: PairContext): string {
+export function formatProtocolContext(ctx: TeamContext): string {
 	const sections: string[] = [];
 	sections.push(`Project root: ${ctx.projectRoot}`);
 	if (ctx.instructions) {

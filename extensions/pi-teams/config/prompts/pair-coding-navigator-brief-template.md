@@ -1,6 +1,6 @@
 ---
 id: pair-coding/navigator-brief/template
-title: "Pair navigator brief prompt template"
+title: "Pair-coding navigator brief prompt template"
 scope: pair-coding
 stage: navigator-brief
 kind: template
