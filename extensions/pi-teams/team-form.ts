@@ -309,10 +309,10 @@ export async function formTeam(
 	const agentInput = await ctx.ui.input("Subagents (comma-separated)", defaultAgents.join(", "));
 	const agents = parseList(agentInput).length > 0 ? parseList(agentInput) : defaultAgents;
 
-	const memberModels = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;
-	const synthesisModel = protocol === "debate" ? await ctx.ui.input("Synthesis model (optional)", "") : undefined;
-	const driverModel = protocol === "pair-coding" ? await ctx.ui.input("Driver model (optional)", "") : undefined;
-	const navigatorModel = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model or agent:<name> (optional)", "") : undefined;
+	const memberModelIds = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;
+	const synthesisId = protocol === "debate" ? await ctx.ui.input("Synthesis model (optional)", "") : undefined;
+	const driverId = protocol === "pair-coding" ? await ctx.ui.input("Driver model (optional)", "") : undefined;
+	const navigatorId = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model or agent:<name> (optional)", "") : undefined;
 	const maxFixPassesInput = protocol === "pair-coding" ? await ctx.ui.input("Max fix passes", "1") : undefined;
 	const maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 
@@ -323,10 +323,10 @@ export async function formTeam(
 		protocol,
 		agents,
 		models: {
-			...(memberModels && memberModels.length > 0 ? { members: memberModels } : {}),
-			...(synthesisModel?.trim() ? { synthesis: synthesisModel.trim() } : {}),
-			...(driverModel?.trim() ? { driver: driverModel.trim() } : {}),
-			...(navigatorModel?.trim() ? { navigator: navigatorModel.trim() } : {}),
+			...(memberModelIds && memberModelIds.length > 0 ? { members: memberModelIds } : {}),
+			...(synthesisId?.trim() ? { synthesis: synthesisId.trim() } : {}),
+			...(driverId?.trim() ? { driver: driverId.trim() } : {}),
+			...(navigatorId?.trim() ? { navigator: navigatorId.trim() } : {}),
 		},
 		limits: {
 			...(Number.isFinite(maxFixPasses) ? { maxFixPasses } : {}),

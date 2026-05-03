@@ -2,7 +2,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
-import { graphPlanForSimpleProtocol } from "../extensions/pi-teams/team-handlers.js";
+import { graphPlanForSimpleProtocol } from "../extensions/pi-teams/team-lowering.js";
 import { runTeamGraph, validateTeamGraph } from "../extensions/pi-teams/team-graph.js";
 import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
 import type { ModelRun } from "../extensions/pi-teams/types.js";

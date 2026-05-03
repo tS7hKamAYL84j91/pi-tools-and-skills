@@ -9,14 +9,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
-import {
-	ensureTeamsSettingsDefaults,
-	ensureUserTeamDefaults,
-	loadTeamRegistry,
-	registerTeamTools,
-	requireBuiltinTeam,
-	type TeamSpec,
-} from "../extensions/pi-teams/teams.js";
+import { ensureTeamsSettingsDefaults, ensureUserTeamDefaults } from "../extensions/pi-teams/team-defaults.js";
+import { loadTeamRegistry, requireBuiltinTeam } from "../extensions/pi-teams/team-registry.js";
+import { registerTeamTools } from "../extensions/pi-teams/team-tools.js";
+import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
 const CONFIG_PATH = join(

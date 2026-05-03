@@ -43,7 +43,7 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 ### ADR-004 — Schema is protocol-first
 
-**Decision:** P4 makes `protocol`/`engine` the dispatch source. Authored team manifests are strict `schemaVersion: 2`; `topology` is derived display metadata only, never used for handler selection, and not emitted by new `team_form` output.
+**Decision:** P4 makes `protocol` the dispatch source. Authored team manifests are strict `schemaVersion: 2`; `engine` aliases, `topology`, and legacy top-level model fields are not accepted or emitted by new `team_form` output.
 
 ### ADR-005 — Execution topology belongs in team configuration
 
@@ -51,7 +51,7 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 ### ADR-006 — Authored teams are v2 protocol files
 
-**Decision:** New bundled and generated team files use `schemaVersion: 2`, `protocol`, object role bindings, and explicit prompt-slot maps. `topology` is retained only as derived in-memory display metadata so old UI affordances do not select execution.
+**Decision:** New bundled and generated team files use `schemaVersion: 2`, `protocol`, object role bindings, and explicit prompt-slot maps. `topology` is not parsed, retained, emitted, or used for execution.
 
 ### ADR-007 — Session state writes event deltas, not model-visible messages
 
@@ -96,6 +96,14 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 ### ADR-017 — Synthesis replaces chairman as the debate output slot
 
 **Decision:** Debate output is named `synthesis` in team bindings, model overrides, settings, prompt contracts, and tests. `chair`/`chairman` compatibility is removed; users should update authored team files to the v2 `synthesis` role and `models.synthesis` binding.
+
+### ADR-018 — Protocol lowering is separate from handler dispatch
+
+**Decision:** Refactor follow-up keeps runtime behavior unchanged but moves bundled protocol graph lowering into `team-lowering.ts`. `team-handlers.ts` now owns handler selection, progress/state recording, and result shaping only; lowering code owns protocol-to-graph planning and prompt packaging. This preserves the graph execution core while reducing the largest handler module below architecture limits.
+
+### ADR-019 — No manifest compatibility aliases
+
+**Decision:** Authored v2 team manifests use `protocol` and role binding `model` fields only. `engine`, `memberModels`, `synthesisModel`, `driverModel`, and `navigatorModel` parsing is removed from `team-registry.ts` instead of retained as compatibility surface. The obsolete `teams.ts` compatibility barrel is deleted; tests import concrete modules directly.
 
 ## Temperature support finding
 
@@ -164,7 +172,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 **Current state:**
 - ✅ `GenerationConfig` type defined and used in handlers
 - ✅ `team-handlers.ts` applies effective execution config through graph node bindings
-- ✅ `pair-coding.ts` accepts `driverConfig` and `navigatorConfig`
+- ✅ Pair-coding execution config is applied through graph-lowered driver/navigator bindings
 - ✅ `team-graph.ts` applies binding config to graph nodes
 - ✅ `provider-payload.ts` merges `parameters` per-provider
 
@@ -221,13 +229,14 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 **Status:** ✅ **IMPLEMENTED; validation green**
 
-**Goal:** Simplify team authoring by making protocol/engine the execution selector.
+**Goal:** Simplify team authoring by making `protocol` the execution selector.
 
 **Current state:**
 - ✅ Built-in team files (`config/teams/*.md`) do not include `topology`
 - ✅ `team-form.ts` generates v2 manifests without `topology`
 - ✅ Handlers dispatch by `protocol`, not `topology`
 - ✅ `team-registry.ts` no longer derives or emits `topology`
+- ✅ `team-registry.ts` no longer accepts `engine` aliases or legacy top-level model fields
 - ✅ `team-types.ts` no longer defines `TeamTopology` or `TeamSpec.topology`
 
 **Remaining work:** None for P4 scope. Derived display metadata is acceptable; authored v2 manifests are protocol-first.
@@ -256,7 +265,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] Lower telephone to a linear graph using protocol prompt slots
 - [x] Lower debate/council fanout, critique, and synthesis onto graph execution and delete bespoke deliberation runner
 - [x] Replace pair-coding orchestration with bounded static graph unrolling
-- [x] Keep protocol-specific names in config data only where they are intentional built-in protocol labels
+- [x] Keep protocol-specific names only where they are intentional built-in labels or explicit graph-lowering helpers
 
 **Assignee plan:** Complete. Consult, telephone, debate, and pair-coding all lower through graph execution. P6 now owns residual naming/config cleanup.
 
@@ -264,11 +273,11 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P6 — Remove legacy protocol assumptions (council/pair/telephone)
 
-**Status:** ✅ **COMPLETE — legacy assumptions removed from runtime surface**
+**Status:** ✅ **COMPLETE — legacy compatibility surface removed; built-ins lower through graph helpers**
 
 **Goal:** Eliminate hardcoded "council", "pair", "telephone" assumptions from types, modules, and prompts. Generalize to protocol-agnostic team slots driven entirely by configuration. This is the KISS/YAGNI cleanup pass to ensure the codebase does not bake in legacy protocol names.
 
-**Current smells:**
+**Original smells (closed or converted to graph-lowering helpers):**
 
 1. **Module/function naming:**
    - `deliberation.ts` — council-specific name (should be `team-execution.ts` or similar)
@@ -339,6 +348,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 **Acceptance criteria:**
 
 - [x] Runtime `topology` types/output removed
+- [x] Manifest compatibility aliases (`engine`, `memberModels`, `synthesisModel`, `driverModel`, `navigatorModel`) removed
+- [x] `teams.ts` compatibility barrel removed
 - [x] No runtime module names contain "council"
 - [x] No runtime module names contain "pair"; `pair-coding.ts` was deleted
 - [x] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
@@ -384,6 +395,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.05%).
 - `npm test` passed: 32 files, 354 tests.
 - Refactor prompt follow-up completed: baseline `npm run check && npm test` green, `npm run knip` zero findings, and `tests/architecture.test.ts` green.
+- Refactor pass 2 completed: extracted protocol graph-lowering/prompt-packaging from `team-handlers.ts` to `team-lowering.ts`; `team-handlers.ts` is now 238 lines and focused on dispatch/state/result shaping. Validation green: `npm run check` and `npm test`.
+- Compatibility cleanup completed: removed `engine` and legacy top-level model field parsing from `team-registry.ts`, deleted the obsolete `teams.ts` compatibility barrel, cleaned stale chair/council wording in config and generic tests, and verified no legacy-name matches remain in `extensions/pi-teams` or tests except unrelated task-brief topology fixtures. Validation green: `npm run check && npm test`.
 - P6 config cleanup completed: bundled agent/prompt filenames and prompt ids no longer use legacy shorthand; ids use protocol slot paths.
 - P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams`; unrelated task-brief tests still cover orchestration topology outside pi-teams.
 - P6 legacy-name grep passed for `extensions/pi-teams` and team tests: no `council`, `chairman`, `TeamRunDefinition`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or old conversion helpers remain.
