@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { TeamStateManager } from "../extensions/pi-teams/state.js";
+import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../extensions/pi-teams/state.js";
 import type { CouncilMember } from "../extensions/pi-teams/types.js";
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
@@ -23,6 +24,22 @@ function createArgs() {
 		members: [memberA, memberB],
 		chairman,
 	};
+}
+
+interface CustomEntry {
+	type: "custom";
+	customType: string;
+	data?: unknown;
+}
+
+function appendTo(entries: CustomEntry[]) {
+	return (customType: string, data?: unknown) => entries.push({ type: "custom", customType, data });
+}
+
+function runIdOf(entry: CustomEntry): string {
+	const data = entry.data as { runId?: string };
+	if (!data.runId) throw new Error("entry has no run id");
+	return data.runId;
 }
 
 describe("TeamStateManager", () => {
@@ -66,9 +83,9 @@ describe("TeamStateManager", () => {
 	});
 
 	it("appends protocol-abstract session events for non-debate runs", () => {
-		const entries: Array<{ customType: string; data?: unknown }> = [];
+		const entries: CustomEntry[] = [];
 		const sessionBacked = new TeamStateManager(dir, {
-			appendEntry: (customType, data) => entries.push({ customType, data }),
+			appendEntry: appendTo(entries),
 		});
 
 		const runId = sessionBacked.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
@@ -84,10 +101,82 @@ describe("TeamStateManager", () => {
 		});
 		sessionBacked.recordRunCompleted(runId, 20, "Looks good");
 
-		expect(entries.map((entry) => entry.customType)).toEqual(["pi-teams:run", "pi-teams:run", "pi-teams:run", "pi-teams:run"]);
+		expect(entries.map((entry) => entry.customType)).toEqual([TEAM_RUN_CUSTOM_TYPE, TEAM_RUN_CUSTOM_TYPE, TEAM_RUN_CUSTOM_TYPE, TEAM_RUN_CUSTOM_TYPE]);
 		expect(entries.map((entry) => (entry.data as { kind: string }).kind)).toEqual(["run_started", "phase_started", "node_completed", "run_completed"]);
 		expect(entries[0]?.data).toMatchObject({ protocol: "graph", teamId: "graph-team" });
 		expect(entries[2]?.data).toMatchObject({ nodeId: "qa", role: "qa", outputSha256: expect.any(String) });
+	});
+
+	it("rehydrates the active session branch and clears prior branch state", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager(dir, { appendEntry: appendTo(entries), filePersistence: false });
+		const runA = writer.startRun({ teamId: "team-a", protocol: "graph", prompt: "A?" });
+		writer.recordRunCompleted(runA, 1, "A done");
+		const runB = writer.startRun({ teamId: "team-b", protocol: "graph", prompt: "B?" });
+		writer.recordRunCompleted(runB, 1, "B done");
+		const branchA = entries.filter((entry) => runIdOf(entry) === runA);
+		const branchB = entries.filter((entry) => runIdOf(entry) === runB);
+
+		const reader = new TeamStateManager(dir, { filePersistence: false });
+		reader.rehydrateFromSession({ getBranch: () => branchA, getEntries: () => entries });
+		expect(reader.list().map((record) => record.team)).toEqual(["team-a"]);
+		reader.rehydrateFromSession({ getBranch: () => branchB, getEntries: () => entries });
+		expect(reader.list().map((record) => record.team)).toEqual(["team-b"]);
+	});
+
+	it("keeps per-run sequence numbers stable across reload", () => {
+		const entries: CustomEntry[] = [];
+		const sessionBacked = new TeamStateManager(dir, { appendEntry: appendTo(entries), filePersistence: false });
+		const runId = sessionBacked.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
+		sessionBacked.recordPhaseStarted(runId, "graph");
+
+		sessionBacked.rehydrateFromSession({ getBranch: () => entries });
+		sessionBacked.recordNodeCompleted(runId, {
+			phaseId: "graph",
+			nodeId: "qa",
+			role: "qa",
+			model: "test/qa",
+			ok: true,
+			durationMs: 1,
+			output: "ok",
+		});
+
+		expect(entries.map((entry) => (entry.data as { seq: number }).seq)).toEqual([1, 2, 3]);
+	});
+
+	it("bounds persisted node outputs and run summaries", () => {
+		const entries: CustomEntry[] = [];
+		const sessionBacked = new TeamStateManager(dir, { appendEntry: appendTo(entries), filePersistence: false });
+		const runId = sessionBacked.startRun({ teamId: "graph-team", protocol: "graph", prompt: "Ship?" });
+		const output = "x".repeat(70_000);
+		sessionBacked.recordNodeCompleted(runId, {
+			phaseId: "graph",
+			nodeId: "qa",
+			role: "qa",
+			model: "test/qa",
+			ok: true,
+			durationMs: 1,
+			output,
+		});
+		sessionBacked.recordRunCompleted(runId, 2, output);
+
+		const nodeEvent = entries[1]?.data as { output: string; outputChars: number; outputSha256: string; outputTruncated: boolean };
+		const completedEvent = entries[2]?.data as { summary: string };
+		expect(nodeEvent.output).toHaveLength(64_000);
+		expect(nodeEvent.outputChars).toBe(70_000);
+		expect(nodeEvent.outputSha256).toBe(createHash("sha256").update(output).digest("hex"));
+		expect(nodeEvent.outputTruncated).toBe(true);
+		expect(completedEvent.summary).toHaveLength(64_000);
+	});
+
+	it("does not list legacy JSON records after session rehydrate but can read them by id", () => {
+		const legacy = store.create(createArgs());
+		const sessionBacked = new TeamStateManager(dir, { filePersistence: false });
+
+		sessionBacked.rehydrateFromSession({ getBranch: () => [] });
+
+		expect(sessionBacked.list()).toEqual([]);
+		expect(sessionBacked.get(legacy.id)).toMatchObject({ id: legacy.id, team: "test" });
 	});
 
 	it("update() merges patches and re-persists", () => {

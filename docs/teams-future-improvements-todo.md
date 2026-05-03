@@ -69,6 +69,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Consult and telephone lower onto the existing graph executor first. Live-agent consult refs are rejected until a generic live graph-node runner exists. Debate fanout/critique/synthesis and pair-coding's bounded fix loop remain separate until they can be expressed with small, explicit execution primitives rather than protocol-named orchestration modules.
 
+### ADR-011 — Session rehydrate must not list global legacy runs
+
+**Decision:** Once a Pi session branch has been rehydrated, `TeamStateManager.list()` is branch-scoped even when the branch has zero team events. Legacy JSON remains readable by explicit id fallback, but new/resumed/forked sessions do not automatically inherit unrelated global run files.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -180,10 +184,12 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ Rehydration from session branch before legacy JSON fallback
 - ✅ Protocol-abstract state writer for consult, pair-coding, telephone, graph (not just debate)
 
-**Remaining work:**
-- [ ] Test reload/resume/fork scenarios explicitly
-- [ ] Verify legacy council JSON import path
-- [ ] Measure session file bloat under load
+**Remaining work:** None for P3 scope.
+
+**Verified:**
+- [x] Test reload/resume/fork branch replacement scenarios explicitly
+- [x] Verify legacy council JSON fallback by id without listing global legacy runs after session rehydrate
+- [x] Measure session file bloat controls with 70k-character output truncation/hash tests
 
 **Assignee plan:** Add focused session lifecycle tests.
 
@@ -347,8 +353,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.13%).
-- `npm test` passed: 34 files, 370 tests.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.12%).
+- `npm test` passed: 34 files, 374 tests.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.
