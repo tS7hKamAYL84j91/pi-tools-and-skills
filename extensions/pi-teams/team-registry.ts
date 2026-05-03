@@ -185,14 +185,6 @@ function protocolFromFrontMatter(frontMatter: Record<string, unknown>, id: strin
 	return protocol ?? engine;
 }
 
-function topologyForProtocol(protocol: string): TeamSpec["topology"] {
-	if (protocol === "debate") return "council";
-	if (protocol === "consult" || protocol === "pair-coding") return "pair";
-	if (protocol === "telephone") return "chain";
-	if (protocol === "graph") return "graph";
-	return undefined;
-}
-
 function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
@@ -243,7 +235,6 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		name,
 		...(description ? { description } : {}),
 		protocol,
-		...(topologyForProtocol(protocol) ? { topology: topologyForProtocol(protocol) } : {}),
 		prompts: promptRefs(frontMatter.prompts),
 		agents,
 		agentBindings,
@@ -306,7 +297,7 @@ export function loadBuiltinTeamIds(configPath: string = DEFAULT_CONFIG_JSON): Se
 	return new Set(loadTeamRegistry(configPath, { roots: [] }).teams.keys());
 }
 
-export function requireBuiltinTeam(id: string, expected: { protocol: string; topology?: string }): TeamSpec {
+export function requireBuiltinTeam(id: string, expected: { protocol: string }): TeamSpec {
 	const registry = loadTeamRegistry(undefined, { roots: [] });
 	const team = registry.teams.get(id);
 	if (!team) throw new Error(`Required built-in team "${id}" is missing. Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);

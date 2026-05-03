@@ -19,7 +19,6 @@ function teamSummary(team: TeamSpec): Record<string, unknown> {
 		id: team.id,
 		name: team.name,
 		description: team.description,
-		topology: team.topology,
 		protocol: team.protocol,
 		source: team.source,
 		models: team.models,

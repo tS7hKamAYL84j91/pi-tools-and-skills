@@ -85,6 +85,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** P6 removes `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, and `CreateArgs.council` rather than preserving aliases. Tests now use `TeamRunDefinition`, `TeamParticipant`, and `team` fields directly.
 
+### ADR-015 — Remove topology from runtime types and tool output
+
+**Decision:** `topology` is no longer derived, stored on `TeamSpec`, accepted by `requireBuiltinTeam`, or returned by `team_list`. Protocol and explicit graph policy are the only execution selectors.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -215,8 +219,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ Built-in team files (`config/teams/*.md`) do not include `topology`
 - ✅ `team-form.ts` generates v2 manifests without `topology`
 - ✅ Handlers dispatch by `protocol`, not `topology`
-- ⚠️ `team-registry.ts` still has 3 references to `topology` (legacy v1 loading)
-- ⚠️ `team-types.ts` still has 1 reference to `topology` in type definitions
+- ✅ `team-registry.ts` no longer derives or emits `topology`
+- ✅ `team-types.ts` no longer defines `TeamTopology` or `TeamSpec.topology`
 
 **Remaining work:** None for P4 scope. Derived display metadata is acceptable; authored v2 manifests are protocol-first.
 
@@ -252,7 +256,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P6 — Remove legacy protocol assumptions (council/pair/telephone)
 
-**Status:** 🚧 **IN PROGRESS — compatibility aliases removed**
+**Status:** 🚧 **IN PROGRESS — compatibility aliases and topology removed**
 
 **Goal:** Eliminate hardcoded "council", "pair", "telephone" assumptions from types, modules, and prompts. Generalize to protocol-agnostic team slots driven entirely by configuration. This is the KISS/YAGNI cleanup pass to ensure the codebase does not bake in legacy protocol names.
 
@@ -323,6 +327,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 **Acceptance criteria:**
 
+- [x] Runtime `topology` types/output removed
 - [ ] No module names contain "council" (except `config/agents/` where intentional)
 - [ ] No module names contain "pair" (except `pair-coding.ts` if kept as explicit engine)
 - [ ] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
@@ -367,6 +372,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.10%).
 - `npm test` passed: 34 files, 376 tests.
+- P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams` or `tests`.
 - P6 alias-removal grep passed: no `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or `council?:` matches remain in `extensions/pi-teams` or `tests`.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.

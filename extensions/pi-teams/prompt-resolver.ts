@@ -3,7 +3,7 @@
  *
  * This layer deals only in prompt slots, prompt ids, prompt assets, and binding
  * overrides. It intentionally has no knowledge of built-in team protocols,
- * topology names, or settings objects.
+ * protocol names, execution policy, or settings objects.
  */
 
 import type { TeamPromptRefs } from "./team-types.js";
