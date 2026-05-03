@@ -122,7 +122,6 @@ describe("loadTeamRegistry", () => {
 		expect(registry.warnings).toEqual([]);
 		const defaultCouncil = requireTeam(registry, "default-council");
 		expect(defaultCouncil).toMatchObject({
-			topology: "council",
 			protocol: "debate",
 			chair: "council_chairman",
 		});
@@ -138,16 +137,14 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("requires built-in teams by topology and protocol", () => {
+	it("requires built-in teams by protocol", () => {
 		const team = requireBuiltinTeam("pair-coding", {
-			topology: "pair",
 			protocol: "pair-coding",
 		});
 
 		expect(team.id).toBe("pair-coding");
 		expect(() =>
 			requireBuiltinTeam("pair-coding", {
-				topology: "pair",
 				protocol: "consult",
 			}),
 		).toThrow(/must use protocol consult/);
@@ -180,13 +177,12 @@ describe("loadTeamRegistry", () => {
 
 			expect(registry.warnings).toEqual([]);
 			expect(registry.teams.get("telephone-game")).toMatchObject({
-				topology: "chain",
 				protocol: "telephone",
 			});
 		});
 	});
 
-	it("derives topology and subagent execution config from protocol and manifests", () => {
+	it("derives subagent execution config from protocol and manifests", () => {
 		withTempConfig((configPath, root) => {
 			writeFileSync(
 				join(root, "agents", "navigator_agent.md"),
@@ -202,12 +198,12 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 			writeFileSync(
-				join(root, "teams", "topology-free.md"),
+				join(root, "teams", "protocol-only.md"),
 				[
 					"---",
 					"schemaVersion: 2",
-					'id: "topology-free"',
-					'name: "Topology Free"',
+					'id: "protocol-only"',
+					'name: "Protocol Only"',
 					'protocol: "consult"',
 					"agents:",
 					'  - role: "navigator"',
@@ -218,9 +214,8 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "topology-free");
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "protocol-only");
 
-			expect(team.topology).toBe("pair");
 			expect(team.agentBindings[0]).toMatchObject({
 				tools: [],
 				parameters: { temperature: 0.9 },
@@ -507,7 +502,7 @@ describe("team tools", () => {
 		expect(result.content[0]?.text).toContain("default-council");
 		expect(result.details.teams).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ id: "pair-consult", topology: "pair" }),
+				expect.objectContaining({ id: "pair-consult", protocol: "consult" }),
 			]),
 		);
 	});

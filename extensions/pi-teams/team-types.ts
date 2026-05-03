@@ -5,7 +5,6 @@
 import type { GenerationConfig } from "./types.js";
 
 export type TeamProtocol = string;
-export type TeamTopology = "council" | "pair" | "chain" | "graph";
 export type TeamPromptRefs = Record<string, string>;
 export type TeamSource = "builtin" | "user" | "project";
 export type TeamWritableSource = Exclude<TeamSource, "builtin">;
@@ -67,8 +66,6 @@ export interface TeamSpec {
 	name: string;
 	description?: string;
 	protocol: TeamProtocol;
-	/** @deprecated Derived display metadata only; protocol selects execution. */
-	topology?: TeamTopology;
 	prompts: TeamPromptRefs;
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
