@@ -55,6 +55,22 @@ type GraphNodeRunner = (args: {
 	cwd: string;
 }) => Promise<ModelRun>;
 
+interface GraphNodePromptInput {
+	prompt: string;
+	systemPrompt: string;
+}
+
+type GraphNodePromptBuilder = (args: {
+	binding: TeamAgentBinding;
+	model: string;
+	originalPrompt: string;
+	upstream: GraphNodeResult[];
+	upstreamRoles: string[];
+	completed: GraphNodeResult[];
+	catalog: Record<string, readonly string[]>;
+	defaultTemplate: string;
+}) => GraphNodePromptInput;
+
 interface GraphRunArgs {
 	team: TeamSpec;
 	prompt: string;
@@ -63,6 +79,7 @@ interface GraphRunArgs {
 	maxConcurrency?: number;
 	onProgress?: (text: string) => void;
 	runNode?: GraphNodeRunner;
+	buildNodePrompt?: GraphNodePromptBuilder;
 }
 
 function edgesOf(team: TeamSpec): TeamGraphEdge[] {
@@ -183,6 +200,22 @@ function graphSystemPrompt(binding: TeamAgentBinding, catalog: Record<string, re
 	return binding.subagentSystemPrompt ?? `You are ${binding.label ?? binding.role}.`;
 }
 
+function graphNodeTemplate(binding: TeamAgentBinding, catalog: Record<string, readonly string[]>, defaultTemplate: string): string {
+	return binding.templateId !== undefined ? promptAssetText(catalog, binding.templateId) : defaultTemplate;
+}
+
+function defaultGraphNodePrompt(args: Parameters<GraphNodePromptBuilder>[0]): GraphNodePromptInput {
+	return {
+		prompt: renderTemplate(graphNodeTemplate(args.binding, args.catalog, args.defaultTemplate).split("\n"), {
+			prompt: args.originalPrompt,
+			role: args.binding.role,
+			label: args.binding.label ?? args.binding.role,
+			inputs: upstreamPackage(args.completed, args.upstreamRoles),
+		}),
+		systemPrompt: graphSystemPrompt(args.binding, args.catalog),
+	};
+}
+
 function finalOutput(team: TeamSpec, validation: GraphValidationResult, nodes: readonly GraphNodeResult[]): string {
 	const byRole = new Map(nodes.map((node) => [node.role, node]));
 	const orderedOutputs = validation.sinks.sort((a, b) => (roleIndex(team).get(a) ?? 0) - (roleIndex(team).get(b) ?? 0));
@@ -230,18 +263,24 @@ async function runOneNode(args: {
 	runNode: GraphNodeRunner;
 	template: string;
 	catalog: Record<string, readonly string[]>;
+	buildNodePrompt: GraphNodePromptBuilder;
 }): Promise<GraphNodeResult> {
 	const model = modelForBinding(args.team, args.binding) as string;
 	const upstreamRoles = incoming(args.binding.role, edgesOf(args.team));
-	const failedUpstream = args.upstream.find((node) => !node.ok);
+	const upstream = args.upstream.filter((node) => upstreamRoles.includes(node.role));
+	const failedUpstream = upstream.find((node) => !node.ok);
 	if (failedUpstream && args.binding.dependencyPolicy !== "allow-failed") {
 		return skippedNode(args.binding, model, `upstream ${failedUpstream.role} ${failedUpstream.status}`);
 	}
-	const prompt = renderTemplate(args.template.split("\n"), {
-		prompt: args.prompt,
-		role: args.binding.role,
-		label: args.binding.label ?? args.binding.role,
-		inputs: upstreamPackage(args.upstream, upstreamRoles),
+	const inputs = args.buildNodePrompt({
+		binding: args.binding,
+		model,
+		originalPrompt: args.prompt,
+		upstream,
+		upstreamRoles,
+		completed: args.upstream,
+		catalog: args.catalog,
+		defaultTemplate: args.template,
 	});
 	const controller = new AbortController();
 	const timeout = args.timeoutMs ? setTimeout(() => controller.abort(), args.timeoutMs) : undefined;
@@ -252,8 +291,8 @@ async function runOneNode(args: {
 		const run = await args.runNode({
 			binding: args.binding,
 			model,
-			prompt,
-			systemPrompt: graphSystemPrompt(args.binding, args.catalog),
+			prompt: inputs.prompt,
+			systemPrompt: inputs.systemPrompt,
 			signal: controller.signal,
 			parentId: args.parentId,
 			cwd: args.ctx.cwd,
@@ -293,6 +332,7 @@ async function runLevel(args: {
 	runNode: GraphNodeRunner;
 	template: string;
 	catalog: Record<string, readonly string[]>;
+	buildNodePrompt: GraphNodePromptBuilder;
 	onProgress?: (text: string) => void;
 }): Promise<GraphNodeResult[]> {
 	const pending = [...args.level];
@@ -323,6 +363,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 	const chains = resolveProtocolPromptChains({ protocol: args.team.protocol, prompts: args.team.prompts, bindings: args.team.agentBindings }, catalog);
 	const template = requirePromptChain(chains, "node.template").text;
 	const runNode = args.runNode ?? productionRunNode;
+	const buildNodePrompt = args.buildNodePrompt ?? defaultGraphNodePrompt;
 	const nodes: GraphNodeResult[] = [];
 	for (const level of validation.levels) {
 		if (args.ctx.signal?.aborted) {
@@ -344,6 +385,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 			runNode,
 			template,
 			catalog,
+			buildNodePrompt,
 			onProgress: args.onProgress,
 		}));
 	}
