@@ -159,12 +159,9 @@ Effective chain examples:
   - Parse binding `promptId`, `templateId`, `systemPrompt`.
   - Preserve default inheritance when `prompts` is absent.
   - Avoid losing provenance by blindly merging subagent `systemPrompt` into bindings.
-- `extensions/pi-teams/prompts.ts`
-  - Move debate prompt selection behind resolver calls.
-  - Keep wrapper functions as compatibility helpers where useful.
-- `extensions/pi-teams/pair-prompts.ts`
-  - Move pair prompt selection behind resolver calls.
-  - Keep template render variable names unchanged.
+- `extensions/pi-teams/protocol-prompts.ts`
+  - Keep protocol-neutral runtime packaging helpers here.
+  - Do not reintroduce obsolete council/pair prompt wrapper modules.
 - `extensions/pi-teams/team-handlers.ts`
   - Resolve effective prompt chains before dispatch.
   - Pass critique role binding into debate critique phase.

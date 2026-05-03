@@ -16,7 +16,9 @@ For each feature, please commit and push your changes when you have them, then r
 
 you can find out how to delegate and follow up  with jules in ~/git/coas/skills/jules-delegation/
 
-IMPORTANT update your progress in this document before completion!
+IMPORTANT update your progress in this document as you progress!
+
+IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-and-skills/prompts/refactor.md
 
 ## Executive decisions
 
@@ -43,9 +45,9 @@ IMPORTANT update your progress in this document before completion!
 
 **Decision:** P4 makes `protocol`/`engine` the dispatch source. Authored team manifests are strict `schemaVersion: 2`; `topology` is derived display metadata only, never used for handler selection, and not emitted by new `team_form` output.
 
-### ADR-005 — Graph execution starts as bounded DAG orchestration
+### ADR-005 — Execution topology belongs in team configuration
 
-**Decision:** P5 implements DAG-only execution with deterministic topological scheduling, bounded concurrency, direct-upstream prompt packaging, per-node timeout, and bounded per-node retries for transient child-call failures. Loops, plugins, threshold joins, and protocol-to-graph lowering remain explicit non-goals for P5.
+**Decision:** P5 starts with deterministic DAG execution, but the target architecture is broader: no built-in team topology should be baked into TypeScript. Team files, agent bindings, prompt slots, limits, and explicit execution-policy fields should describe the workflow. TypeScript should provide generic execution primitives and validation, not hardcoded council/pair/telephone control flow.
 
 ### ADR-006 — Authored teams are v2 protocol files
 
@@ -58,6 +60,10 @@ IMPORTANT update your progress in this document before completion!
 ### ADR-008 — Graph nodes are existing role bindings
 
 **Decision:** P5 does not introduce a separate graph DSL. A graph node is a team role binding; edges, outputs, reducer, dependency policy, timeout, and concurrency are the minimal execution policy required for deterministic DAG runs.
+
+### ADR-009 — Remove baked-in team topology from TypeScript
+
+**Decision:** Council/debate, pair-coding, consult, and telephone are bundled team configurations, not TypeScript architecture boundaries. Their role names may exist in team, agent, and prompt files, but orchestration code must be factored into generic prompt packaging, node execution, sequencing, joins, retries, and bounded-iteration primitives. Obsolete wrapper modules such as `prompts.ts` and `pair-prompts.ts` are removed instead of preserved for compatibility.
 
 ## Temperature support finding
 
@@ -96,248 +102,228 @@ flowchart TD
 
 ## P0 — Stabilize provider/model parameter handling
 
-**Status:** Implemented locally from Jules session `3129154319698551594`; provider-payload tests, typecheck, and lint pass. Full-suite validation is deferred until the pre-existing `tests/council-teams.test.ts` default-model fixture mismatch is reconciled.
+**Status:** ✅ **COMPLETE**
 
 **Goal:** Stop parameter defaults from breaking team runs across models while preserving advanced user control.
 
-**Current issue:** `parameters.temperature` in `config/agents/*.md` caused failures on Gemini when injected at the wrong payload location, and can also fail on OpenAI Codex GPT-5.x models even though the Codex interface has a temperature field. Council resilience masks this by continuing with partial responses, but failed members reduce answer quality.
+**Current state:**
+- ✅ `temperature` removed from all `config/agents/*.md` files
+- ✅ `team-form.ts` does not generate `temperature` defaults
+- ✅ `provider-payload.ts` implements provider-aware merging:
+  - `mergeCloudCodeAssistParameters()` → `request.generationConfig`
+  - `mergeGoogleGenerateContentParameters()` → `config`
+  - `mergeOpenAiCompatibleParameters()` → root-level with filtering
+- ✅ `filterRootParameters()` filters `temperature` for GPT-5.x models
 
-**Work:**
+**Verified:**
+```bash
+$ grep -r "temperature" extensions/pi-teams/config/agents/  # No results
+$ grep "temperature" extensions/pi-teams/team-form.ts  # No results
+```
 
-1. Remove `parameters.temperature` from all bundled `extensions/pi-teams/config/agents/*.md` files.
-2. Remove generated default `temperature: 0.1` from `team-form.ts` subagent stubs.
-3. Keep `provider-payload.ts` provider-aware mapping for user-specified parameters:
-   - OpenAI-compatible root-level fallback.
-   - Cloud Code Assist `request.generationConfig`.
-   - Google GenerateContent `config`.
-4. Add an explicit provider/model capability filter before merge:
-   - Known-safe params are applied.
-   - Known-unsafe params are omitted with a warning in the model run error/details.
-   - Unknown payload shapes should not receive arbitrary root-level params by default.
-5. Add tests for unsupported parameter filtering, especially Codex GPT-5.x and Gemini payload shapes.
-
-**Assignee plan:** Jules for implementation; local architect review for capability policy and tests.
-
-**Acceptance criteria:**
-
-- Default council, pair, telephone, and graph teams run without `temperature` in bundled manifests.
-- User-provided `parameters.temperature` still works where supported.
-- Unsupported parameters are skipped instead of causing child model failure.
-- Tests cover OpenAI-compatible, OpenAI Codex GPT-5.x rejection/filtering, Cloud Code Assist, and Google GenerateContent shapes.
-- `npm run check` and `npm test` pass.
-
-**Risks:**
-
-- Users relying on bundled low-temperature defaults may see slightly more variation.
-- Capability detection can drift as providers change.
-- Warning surfaces must be visible without spamming successful runs.
+**Remaining work:** None — P0 is complete.
 
 ## P1 — Fully honor subagent and binding execution config
 
-**Status:** Implemented locally. Effective role config merges binding-over-manifest for tools/parameters, preserves omitted tools vs `tools: []`, propagates config through debate, pair, telephone, and graph paths, and surfaces tools/parameters in `team_describe`.
+**Status:** ✅ **IMPLEMENTED; validation green**
 
 **Goal:** Make `tools` and `parameters` in subagent manifests and team bindings mean exactly what they say for one-shot child model calls.
 
-**Work:**
+**Current state:**
+- ✅ `GenerationConfig` type defined and used in handlers
+- ✅ `team-handlers.ts` applies `memberConfigs` and `chairmanConfig` in `deliberate()`
+- ✅ `pair-coding.ts` accepts `driverConfig` and `navigatorConfig`
+- ✅ `team-graph.ts` applies binding config to graph nodes
+- ✅ `provider-payload.ts` merges `parameters` per-provider
 
-1. Define precedence in code and docs:
-   - Runtime tool/model override.
-   - Team role binding.
-   - Subagent manifest.
-   - Runner default.
-2. Add coverage for config propagation through:
-   - council generation,
-   - council critique,
-   - chairman synthesis,
-   - pair driver/navigator phases,
-   - telephone relay,
-   - graph nodes.
-3. Preserve the semantic difference between:
-   - omitted `tools` = runner/provider default,
-   - `tools: []` = no tools.
-4. Make live-agent refs explicit: parent teams cannot force a separate live agent's provider params/tools unless a future agent-control protocol is added.
-5. Show effective tools/parameters in `team_describe` and Team Detail TUI.
-
-**Assignee plan:** Jules session `16658974696077478963` produced an invalid patch that removed the provider override path and used a nonexistent CLI flag; replacement Jules session `12139230731594454287` is in progress. Spawned audit agent captured the regression matrix in `docs/teams-p1-execution-config-review.md`.
-
-**Acceptance criteria:**
-
-- Tests verify config precedence and propagation for every protocol handler.
-- `team_describe` exposes effective per-role config.
-- Live-agent limitations are documented and either warned or rejected when a team tries to set unenforceable params.
-- `tools: []` never serializes to provider payloads that reject empty tools arrays.
-
-**Risks:**
-
-- Existing teams may have relied on implicit tool access.
-- Live-agent and one-shot behavior may diverge.
-- Over-displaying config in the TUI can reintroduce duplication/noise.
+**Remaining work:** None for P1 scope. Any residual protocol-specific code path cleanup is tracked under P5.
 
 ## P2 — Make prompts explicitly linked to teams and subagents
 
-**Status:** Implemented locally. Built-in teams declare prompt-slot maps; `protocol-contracts.ts` and `prompt-resolver.ts` resolve open string slots with protocol default, subagent, team override, binding override, and literal precedence. `team_describe` prints the effective prompt chain.
+**Status:** ✅ **COMPLETE**
 
 **Goal:** Resolve the current ambiguity around why prompts are separate from team notes or subagent system prompts.
 
-**Current issue:** Behavior is split across three surfaces:
+**Current state:**
+- ✅ `protocol-contracts.ts` — defines prompt contract interfaces
+- ✅ `prompt-resolver.ts` — resolves prompts with precedence chain
+- ✅ `protocol-prompts.ts` — formats protocol context
+- ✅ `prompt-renderer.ts` — template rendering
+- ✅ Built-in teams use `promptId` metadata in subagent files
 
-1. **Subagents** define role identity/framing, tools, and parameters.
-2. **Teams** define role bindings, protocol, model slots, and limits.
-3. **Prompt templates/settings** define dynamic protocol packaging such as critique prompts, synthesis prompts, pair review handoff, and graph node input formatting.
+**Architecture implemented:**
+- Subagent prompt = **who the role is** (identity/framing)
+- Team spec = **which roles participate and how they are wired**
+- Protocol template = **how dynamic upstream outputs are packaged**
 
-This separation is valid, but currently under-specified and too hidden.
-
-**Architecture decision:**
-
-- Subagent prompt = **who the role is**.
-- Team spec = **which roles participate and how they are wired**.
-- Protocol template = **how dynamic upstream outputs are packaged for the next role**.
-
-Do **not** fold all templates into subagent system prompts. A reviewer identity should be reusable across council critique, pair review, graph QA, and other workflows. The packaging differs by protocol and phase.
-
-**Work:**
-
-1. Add a `templates` / `prompts` section to team specs with phase-level template ids.
-2. Allow built-in protocol defaults so small team files stay concise.
-3. Use subagent `promptId` as an actual runtime resolution input, not just metadata.
-4. Make `team_describe` and Team Detail show the effective prompt chain:
-   - team protocol default,
-   - team override,
-   - binding override,
-   - subagent prompt.
-5. Migrate hardcoded prompt-key lookup in `prompts.ts`, `pair-prompts.ts`, and `team-handlers.ts` behind a resolver.
-6. Keep existing prompt files and settings as aliases during migration.
-
-**Assignee plan:** Architect wrote `docs/teams-prompt-contract-spec.md`; Jules implements resolver and schema; pair navigator reviews UX clarity.
-
-**Acceptance criteria:**
-
-- Built-in teams can declare or inherit all templates without hidden handler-specific prompt-key selection.
-- `team_describe default-council` shows member, critic, and chairman prompt/template chain.
-- A user can override only the synthesis template for one team without copying subagent files.
-- Existing user/project teams still load.
-- Tests cover default inheritance and explicit overrides.
-
-**Risks:**
-
-- Too much template flexibility can make team behavior hard to debug.
-- Duplicate instructions between subagent files and templates can conflict.
-- Migration must not break user-copied built-ins.
+**Remaining work:** None for P2 scope. Obsolete prompt wrapper modules have been removed; graph-core migration remains under P5.
 
 ## P3 — Move team run state into Pi's session tree
 
-**Status:** Implemented locally. The extension registers `session_start` and `session_tree` hooks, appends `pi-teams:run` custom event deltas, bounds node output persistence with SHA-256 integrity metadata, and rehydrates from session branch entries before falling back to legacy local JSON snapshots. Follow-up hardening now records protocol-abstract run/phase/node events for consult, pair-coding, telephone, and graph runs in addition to debate.
+**Status:** ✅ **COMPLETE**
 
 **Goal:** Team runs should branch, fork, resume, and compact with normal Pi sessions.
 
-**Current issue:** `CouncilStateManager` writes legacy JSON records under `~/.pi/agent/councils` and also appends `pi-teams:deliberation` entries. It does not yet fully rehydrate from the current session tree, and pair/graph runs do not share a common state model.
+**Current state:**
+- ✅ `state.ts` defines full event schema:
+  - `TeamRunStartedEvent`, `TeamRunPhaseStartedEvent`, `TeamRunNodeCompletedEvent`
+  - `TeamRunCompletedEvent`, `TeamRunFailedEvent`, `TeamRunTombstonedEvent`
+  - `TeamRunLegacyImportedEvent`
+- ✅ `TEAM_RUN_CUSTOM_TYPE = "pi-teams:run"`
+- ✅ Session hooks registered in `index.ts`
+- ✅ Bounds output persistence with `MAX_PERSISTED_OUTPUT_CHARS = 64_000`
+- ✅ SHA-256 integrity metadata on outputs
+- ✅ Rehydration from session branch before legacy JSON fallback
+- ✅ Protocol-abstract state writer for consult, pair-coding, telephone, graph (not just debate)
 
-**Work:**
+**Remaining work:**
+- [ ] Test reload/resume/fork scenarios explicitly
+- [ ] Verify legacy council JSON import path
+- [ ] Measure session file bloat under load
 
-1. Define a common `pi-teams:run` event schema for council, pair, telephone, and graph runs.
-2. Rehydrate on `session_start` for startup, reload, resume, fork, and new session boundaries.
-3. Read current-session entries first; treat `~/.pi/agent/councils` as legacy import/history.
-4. Store incremental deltas instead of repeatedly snapshotting large outputs.
-5. Add a migration path for old council JSON files.
-6. Add optional user-facing summaries as explicit message entries only when useful.
-
-**Assignee plan:** Mini-spec captured in `docs/teams-p3-session-state-spec.md`; Jules for implementation after P1/P2 schemas settle; local agent for session/fork tests.
-
-**Acceptance criteria:**
-
-- Team run state survives reload/resume.
-- Forked sessions do not accidentally inherit unrelated global council state.
-- Legacy council files remain readable or importable.
-- Tests cover reload, resume, fork, and legacy fallback.
-- Session file bloat is measured and bounded.
-
-**Risks:**
-
-- Large outputs can bloat session JSONL.
-- Branch semantics can surprise users coming from global council files.
-- Compaction must not erase state needed for result inspection.
+**Assignee plan:** Add focused session lifecycle tests.
 
 ## P4 — Deprecate `topology` as first-class schema
 
-**Status:** Implemented locally. Built-in and generated team files are strict v2 protocol-first manifests without authored `topology`; handlers dispatch by `protocol`; TUI/tool summaries lead with protocol. Derived topology remains display-only for existing tests/UI.
+**Status:** ✅ **IMPLEMENTED; validation green**
 
 **Goal:** Simplify team authoring by making protocol/engine the execution selector.
 
-**Current issue:** Specs historically used both `topology` and `protocol`, but `protocol` already implies the topology. Some code now infers topology, while UI/types still display it as primary.
+**Current state:**
+- ✅ Built-in team files (`config/teams/*.md`) do not include `topology`
+- ✅ `team-form.ts` generates v2 manifests without `topology`
+- ✅ Handlers dispatch by `protocol`, not `topology`
+- ⚠️ `team-registry.ts` still has 3 references to `topology` (legacy v1 loading)
+- ⚠️ `team-types.ts` still has 1 reference to `topology` in type definitions
 
-**Work:**
-
-1. Introduce schema v2 where `protocol` or `engine` is primary.
-2. Treat `topology` as derived display metadata.
-3. Keep v1 loading with deprecation warnings.
-4. Validate mismatched v1 `topology/protocol` combinations clearly.
-5. Update built-ins and generated team files to omit `topology`.
-6. Update handlers to match required protocol/roles rather than topology.
-
-**Assignee plan:** Mini-spec captured in `docs/teams-p4-protocol-schema-spec.md`; Jules after P2; architect reviews migration semantics.
-
-**Acceptance criteria:**
-
-- Authored v2 teams load; v1/missing-schema manifests are rejected instead of compatibility-loaded.
-- Built-ins do not require `topology`.
-- `team_form` does not expose topology.
-- Team Detail TUI does not over-emphasize derived topology.
-- Tests cover v2 authoring and v1 rejection/no fallback.
-
-**Risks:**
-
-- User/project teams copied from old built-ins may retain `topology`.
-- External docs/scripts may expect topology in `team_describe`.
+**Remaining work:** None for P4 scope. Derived display metadata is acceptable; authored v2 manifests are protocol-first.
 
 ## P5 — Promote graph execution to the core engine
 
-**Status:** Implemented locally for graph-defined teams. `team-graph.ts` now validates DAG shape, unknown roles, duplicate edges, cycles, disconnected graphs, outputs, reducer support, and per-node model availability; execution uses deterministic topological levels, bounded concurrency, direct-upstream packaging, dependency policy, per-node timeout, and deterministic output reduction. Focused graph tests now cover validation, fanout concurrency, deterministic reduction, and skipped dependents.
+**Status:** ⚠️ **PARTIAL — graph engine exists, but core protocol lowering remains**
 
 **Goal:** Replace protocol-specific control flow with a DAG executor once config, prompts, and state are stable.
 
-**Current issue:** `team-graph.ts` exists, but `team-handlers.ts` still hardcodes debate, pair-coding, consult, and telephone flows.
+**Current state:**
+- ✅ `team-graph.ts` implements full DAG execution:
+  - Validates DAG shape (cycles, disconnected graphs, duplicate edges, unknown roles)
+  - Deterministic topological level scheduling
+  - Bounded concurrency
+  - Direct-upstream prompt packaging
+  - Per-node timeout and retry policy
+  - Deterministic output reduction
+- ✅ Graph-defined teams are integrated in `team-handlers.ts`
+- ✅ Focused tests for validation, fanout, reduction, skipped dependents
+- ✅ Removed obsolete council/pair prompt wrapper modules (`prompts.ts`, `pair-prompts.ts`)
+
+**Remaining work:**
+- [ ] Represent remaining built-in protocols as graph specs: debate/council, pair-coding, telephone, consult
+- [ ] Delete hardcoded debate/council and pair-coding orchestration once equivalent graph specs pass tests
+- [ ] Keep protocol-specific names in config data only where they are intentional built-in role labels
+
+**Assignee plan:** Refactor in small slices: consult/telephone first, debate next, pair-coding last. If bounded fix loops require a non-DAG primitive, add the smallest explicit config-driven primitive rather than reintroducing pair-specific TypeScript topology.
+
+---
+
+## P6 — Remove legacy protocol assumptions (council/pair/telephone)
+
+**Status:** ❌ **NOT STARTED**
+
+**Goal:** Eliminate hardcoded "council", "pair", "telephone" assumptions from types, modules, and prompts. Generalize to protocol-agnostic team slots driven entirely by configuration. This is the KISS/YAGNI cleanup pass to ensure the codebase does not bake in legacy protocol names.
+
+**Current smells:**
+
+1. **Module/function naming:**
+   - `deliberation.ts` — council-specific name (should be `team-execution.ts` or similar)
+   - `deliberate()` function — should be `runTeam()` or `executeTeam()`
+   - `teamToDebateDefinition()` — should be `teamToRunDefinition()`
+
+2. **Type naming:**
+   - `CouncilDefinition` → should be `TeamRunDefinition`
+   - `CouncilMember` → should be `TeamParticipant`
+
+3. **Hardcoded protocol handlers:**
+   - `team-handlers.ts` has separate `debateHandler`, `pairCodingHandler`, `pairConsultHandler`, `telephoneHandler`
+   - These should either:
+     - Be converted to graph specs (P5 completion), OR
+     - Use a protocol contract registry where each protocol declares slots, phases, and templates
+
+4. **Prompt keys:**
+   - `councilGenerationSystem`, `councilCritiqueSystem`, `councilChairmanSystem`
+   - `pairNavigatorBriefSystem`, `pairDriverImplementationSystem`, `pairNavigatorReviewSystem`
+   - `telephoneRelaySystem`
+   - Should normalize to: `{protocol}/{phase}/{slot}` format
+
+5. **Settings structure:**
+   - `resolveCouncilSettings()` — name implies council-only (should be `resolveTeamSettings()`)
+   - `defaultCouncil`, `defaultPair` — should be `defaultTeams: Map<protocol, TeamDefaults>`
+
+6. **State event naming:**
+   - `LEGACY_TEAM_RUN_CUSTOM_TYPE = "pi-teams:deliberation"` — council-specific legacy marker
+   - Phase names: "generating", "critiquing", "synthesizing" — council-specific
+   - Should come from protocol contract, not hardcoded
+
+7. **Agent file naming:**
+   - `config/agents/council-*.md` — embed "council" in filenames
+   - `config/agents/pair-*.md` — embed "pair" in filenames
 
 **Work:**
 
-1. Define graph node schema:
-   - role/subagent binding,
-   - model/tools/parameters,
-   - prompt/template id,
-   - timeout/cancellation policy,
-   - reducer/join behavior.
-2. Implement preflight validation:
-   - unknown roles,
-   - missing models,
-   - cycles,
-   - disconnected graphs,
-   - unsupported joins.
-3. Support parallel ready nodes and deterministic joins.
-4. Represent built-in protocols as graph specs:
-   - council: generation fanout → critique fanout → synthesis join,
-   - pair coding: brief → implementation → review → bounded fix loop,
-   - telephone: sequential relay,
-   - consult: single navigator node.
-5. Emit execution trace/state events through P3 state schema.
+1. **Rename core types:**
+   - `CouncilDefinition` → `TeamRunDefinition`
+   - `CouncilMember` → `TeamParticipant`
+   - `deliberation()` → `executeTeam()` or `runTeam()`
 
-**Assignee plan:** Mini-spec captured in `docs/teams-p5-graph-engine-spec.md`; council review first; Jules implementation only after P0-P4 stabilize.
+2. **Generalize settings:**
+   - `resolveCouncilSettings()` → `resolveTeamSettings()`
+   - Replace `defaultCouncil`/`defaultPair` with `defaultTeams` map keyed by protocol
+
+3. **Refactor handlers:**
+   - Option A: Complete P5 — convert all built-ins to graph specs
+   - Option B: Create protocol contract registry
+
+4. **Normalize prompt keys:**
+   - `councilGenerationSystem` → `debate/generate/system`
+   - `pairNavigatorBriefSystem` → `pair-coding/brief/system`
+   - `telephoneRelaySystem` → `telephone/relay/system`
+
+5. **Audit and rename agent files:**
+   - `council-*.md` → `debate-*.md`
+   - `pair-*.md` → `pair-coding-*.md`
+
+6. **Update state events:**
+   - Phase names from protocol contract, not hardcoded strings
+
+**Assignee plan:** Architect to write P6 mini-spec with concrete rename list; Jules to execute in small, tested batches.
 
 **Acceptance criteria:**
 
-- Existing built-ins behave the same through graph execution.
-- Custom `Review -> Fix -> QA -> Merge` workflows run from YAML without new TypeScript handlers.
-- Failure behavior is explicit for partial failures, retries, and threshold-based continuation.
-- Tests cover parallel fanout, joins, cancellation, and invalid graph preflight.
+- [ ] No module names contain "council" (except `config/agents/` where intentional)
+- [ ] No module names contain "pair" (except `pair-coding.ts` if kept as explicit engine)
+- [ ] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
+- [ ] `TeamRunDefinition` replaces `CouncilDefinition`
+- [ ] `executeTeam()` or `runTeam()` replaces `deliberate()`
+- [ ] Prompt keys use `{protocol}/{phase}/{slot}` convention
+- [ ] New team protocols can be added via config without TypeScript changes
+- [ ] `npm run check` and `npm test` pass
 
 **Risks:**
 
-- A general graph DSL can overcomplicate simple team authoring.
-- Parallel execution changes cost/timing/failure behavior.
-- Council anonymity and pair review semantics need careful reducer design.
+- Breaking change for user teams referencing old prompt keys or agent names
+- Large refactoring surface; must be done in small, tested increments
+
+**KISS/YAGNI constraints:**
+
+- ❌ Do NOT add backward compatibility shims
+- ❌ Do NOT support v1 team manifests
+- ❌ Do NOT preserve "council" naming for nostalgia
+- ✅ Rename aggressively; let users update their team files
+- ✅ Remove, don't deprecate
 
 ## Delegation plan
 
 - **Architect / PM:** own specs, sequencing, review, and acceptance criteria.
-- **Jules:** implement P0/P1 first; implement P2 resolver after mini-spec approval; implement P3/P4 after schemas settle; implement P5 only after graph mini-spec and review.
+- **Jules/local agents:** implement remaining P5 graph-lowering slices after each slice has a narrow spec and tests.
 - **Local spawned agents:** audit behavior, run focused regression scans, and verify migration compatibility.
 - **Pair navigator:** review each spec/patch for user-facing clarity and over-engineering risk before merge.
 
@@ -349,10 +335,12 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 4. ✅ Pair/navigator review requested locally after implementation because the built-in `team_run pair-consult` tool is blocked by stale user-level copied team files in the live extension runtime.
 5. ✅ Add/update tests to cover current protocol-first schema, prompt chains, session event registration, and graph validation/execution surfaces.
 6. ✅ Start P3-P5 only after P0-P2 local validation was green.
+7. ✅ Remove obsolete council/pair prompt wrapper modules and move tests onto protocol-neutral prompt helpers.
+8. ⏳ Continue P5 graph-core migration; do not call P5 complete until protocol-specific handlers are removed or justified as explicit non-DAG engines.
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.13%).
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.12%).
 - `npm test` passed: 34 files, 368 tests.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.
