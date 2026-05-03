@@ -38,7 +38,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-llm-council`. It does not alter runtime/project settings.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-teams`. It does not alter runtime/project settings.
 
 ### 2. Set up
 
@@ -68,7 +68,7 @@ Add project extensions such as `kanban`, `matrix`, or `pi-coas` per workspace vi
 | Extension | Type | What it does |
 |-----------|------|-------------|
 | **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
-| **pi-llm-council** | Global | Heterogeneous multi-model debate using the runtime model registry and visible config |
+| **pi-teams** | Global | Heterogeneous multi-model debate using the runtime model registry and visible config |
 | **kanban** | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
 | **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
 | **pi-coas** | Project | CoAS status, doctor, workspace, and schedule control surface |
@@ -111,7 +111,7 @@ Everything goes through `make`:
 ```text
 extensions/           Extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
-  pi-llm-council/       Global — multi-model deliberation from runtime model registry
+  pi-teams/       Global — multi-model deliberation from runtime model registry
   kanban/               Project — event-sourced task board + TUI overlay
   matrix/               Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
@@ -122,7 +122,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, pi-llm-council) are installed by `make setup` through this repo's local pi package entry. Project extensions (kanban, matrix, pi-coas) are added per-workspace in `.pi/settings.json`.
+Global extensions (panopticon, pi-teams) are installed by `make setup` through this repo's local pi package entry. Project extensions (kanban, matrix, pi-coas) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 

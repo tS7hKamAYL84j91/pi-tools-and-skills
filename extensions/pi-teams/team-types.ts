@@ -73,12 +73,15 @@ export interface TeamRegistry {
 }
 
 export interface TeamDirectories {
-	subagents: string;
+	root: string;
+	agents: string;
+	prompts: string;
 	teams: string;
 	source: TeamSource;
 }
 
 export interface TeamRegistryOptions {
 	cwd?: string;
-	userRoot?: string;
+	settingsPath?: string;
+	roots?: string[];
 }

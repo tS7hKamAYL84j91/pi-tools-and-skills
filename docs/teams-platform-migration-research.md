@@ -9,7 +9,7 @@ Plan a migration from bespoke council/pair orchestration toward a generic teams 
 
 Current snowflakes:
 
-- `extensions/pi-llm-council`: `council_form`, `council_update`, `council_list`, `council_dissolve`, `ask_council`, `pair_list`, `pair_consult`, automated `PAIR` mode.
+- `extensions/pi-teams`: `council_form`, `council_update`, `council_list`, `council_dissolve`, `ask_council`, `pair_list`, `pair_consult`, automated `PAIR` mode.
 - `extensions/pi-panopticon`: `spawn_agent`, `rpc_send`, messaging, registry, status monitoring.
 - `lib/task-brief.ts`: structured task dispatch with classification and topology hints.
 
@@ -246,7 +246,7 @@ Tools/commands:
 Resource locations:
 
 - `.pi/teams/**/*.md` or `.pi/teams/**/*.yaml`
-- `.pi/subagents/**/*.md`
+- `.pi/teams/agents/**/*.md`
 - package-provided teams via pi resource discovery
 
 Exit criteria:

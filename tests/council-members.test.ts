@@ -11,14 +11,41 @@ import {
 	chooseChairmanModel,
 	chooseCouncilModels,
 	providerOf,
-} from "../extensions/pi-llm-council/members.js";
+} from "../extensions/pi-teams/members.js";
 
-function withSettings<T>(council: object, fn: (settingsPath: string) => T): T {
+function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairman?: string }, fn: (settingsPath: string) => T): T {
 	const dir = join(tmpdir(), `council-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-	mkdirSync(dir, { recursive: true });
+	const root = join(dir, "team-root");
+	mkdirSync(join(root, "teams"), { recursive: true });
+	mkdirSync(join(root, "agents"), { recursive: true });
+	mkdirSync(join(root, "prompts"), { recursive: true });
 	const file = join(dir, "settings.json");
+	const members = teamConfig.defaultMembers ?? ["openai-codex/gpt-5.5", "google-gemini-cli/gemini-3.1-pro-preview", "ollama/qwen3.5:cloud"];
+	const chairman = teamConfig.defaultChairman ?? members[0] ?? "openai-codex/gpt-5.5";
 	try {
-		writeFileSync(file, JSON.stringify({ council }));
+		writeFileSync(file, JSON.stringify({ teams: { roots: [root] } }));
+		writeFileSync(
+			join(root, "teams", "default-council.md"),
+			[
+				"---",
+				"schemaVersion: 1",
+				'id: "default-council"',
+				'name: "Default Council"',
+				'protocol: "debate"',
+				"agents:",
+				...members.flatMap((model, index) => [
+					'  - role: "member"',
+					'    subagent: "member_agent"',
+					`    model: "${model}"`,
+					`    label: "Member ${index + 1}"`,
+				]),
+				'  - role: "chairman"',
+				'    subagent: "chair_agent"',
+				`    model: "${chairman}"`,
+				"---",
+				"",
+			].join("\n"),
+		);
 		return fn(file);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });

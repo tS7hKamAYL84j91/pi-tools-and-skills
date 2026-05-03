@@ -30,10 +30,6 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 		`Agents: ${team.agents.join(", ") || "(none)"}`,
 		...(bindingLines.length > 0 ? ["Agent bindings:", ...bindingLines] : []),
 		...(team.chair ? [`Chair: ${team.chair}`] : []),
-		...(team.models.members?.length ? [`Member models: ${team.models.members.join(", ")}`] : []),
-		...(team.models.chairman ? [`Chairman model: ${team.models.chairman}`] : []),
-		...(team.models.driver ? [`Driver model: ${team.models.driver}`] : []),
-		...(team.models.navigator ? [`Navigator model: ${team.models.navigator}`] : []),
 	];
 }
 

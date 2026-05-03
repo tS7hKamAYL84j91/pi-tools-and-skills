@@ -5,8 +5,8 @@ vi.mock("../lib/agent-api.js", () => ({
 }));
 
 import { findAgentByName } from "../lib/agent-api.js";
-import { preflight } from "../extensions/pi-llm-council/deliberation.js";
-import type { CouncilDefinition } from "../extensions/pi-llm-council/types.js";
+import { preflight } from "../extensions/pi-teams/deliberation.js";
+import type { CouncilDefinition } from "../extensions/pi-teams/types.js";
 
 const mockFind = findAgentByName as ReturnType<typeof vi.fn>;
 

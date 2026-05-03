@@ -2,51 +2,59 @@
  * Shared paths for declarative team discovery and persistence.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { TeamDirectories, TeamRegistryOptions, TeamWritableSource } from "./team-types.js";
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
-export const DEFAULT_SUBAGENT_DIRECTORY = "subagents";
+const DEFAULT_AGENT_DIRECTORY = "agents";
+const DEFAULT_PROMPT_DIRECTORY = "prompts";
 export const DEFAULT_TEAM_DIRECTORY = "teams";
 export const DEFAULT_USER_ROOT = join(homedir(), ".pi", "agent");
+export const DEFAULT_USER_TEAM_ROOT = join(DEFAULT_USER_ROOT, "teams");
+const PROJECT_SETTINGS_PATH = join(".pi", "settings.json");
+const PROJECT_TEAM_ROOT = join(".pi", "teams");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value.trim()
-		: undefined;
+function stringArray(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const values = value
+		.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+		.map((item) => item.trim());
+	return values.length > 0 ? values : undefined;
 }
 
-export function readBuiltinTeamDirectories(configPath: string): TeamDirectories {
-	try {
-		const raw = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
-		const config = isRecord(raw) ? raw : {};
-		const configDir = dirname(configPath);
-		return {
-			source: "builtin",
-			subagents: join(
-				configDir,
-				optionalString(config.subagentDirectory) ?? DEFAULT_SUBAGENT_DIRECTORY,
-			),
-			teams: join(
-				configDir,
-				optionalString(config.teamDirectory) ?? DEFAULT_TEAM_DIRECTORY,
-			),
-		};
-	} catch {
-		return {
-			source: "builtin",
-			subagents: join(dirname(configPath), DEFAULT_SUBAGENT_DIRECTORY),
-			teams: join(dirname(configPath), DEFAULT_TEAM_DIRECTORY),
-		};
-	}
+function expandRoot(root: string, cwd: string): string {
+	if (root === "~") return homedir();
+	if (root.startsWith("~/")) return join(homedir(), root.slice(2));
+	return isAbsolute(root) ? root : resolve(cwd, root);
+}
+
+function configuredRoots(settingsPath: string, cwd: string): string[] | undefined {
+	const settings = readPiSettingsKey("teams", settingsPath);
+	const roots = isRecord(settings) ? stringArray(settings.roots) : undefined;
+	return roots?.map((root) => expandRoot(root, cwd));
+}
+
+export function directoriesForRoot(root: string, source: TeamDirectories["source"]): TeamDirectories {
+	return {
+		source,
+		root,
+		agents: join(root, DEFAULT_AGENT_DIRECTORY),
+		prompts: join(root, DEFAULT_PROMPT_DIRECTORY),
+		teams: join(root, DEFAULT_TEAM_DIRECTORY),
+	};
+}
+
+export function readBuiltinTeamDirectories(configPath: string = DEFAULT_CONFIG_JSON): TeamDirectories {
+	return directoriesForRoot(dirname(configPath), "builtin");
 }
 
 function findProjectRoot(start: string): string {
@@ -65,34 +73,22 @@ export function teamDirectories(
 	configPath: string,
 	options: TeamRegistryOptions = {},
 ): TeamDirectories[] {
+	const cwd = options.cwd ?? process.cwd();
 	const dirs = [readBuiltinTeamDirectories(configPath)];
-	const userRoot = options.userRoot ?? DEFAULT_USER_ROOT;
-	dirs.push({
-		source: "user",
-		subagents: join(userRoot, DEFAULT_SUBAGENT_DIRECTORY),
-		teams: join(userRoot, DEFAULT_TEAM_DIRECTORY),
-	});
-	if (options.cwd) {
-		const projectRoot = findProjectRoot(options.cwd);
-		dirs.push({
-			source: "project",
-			subagents: join(projectRoot, ".pi", DEFAULT_SUBAGENT_DIRECTORY),
-			teams: join(projectRoot, ".pi", DEFAULT_TEAM_DIRECTORY),
-		});
+	if (options.roots) {
+		for (const root of options.roots) dirs.push(directoriesForRoot(root, "user"));
+		return dirs;
 	}
+	const userRoots = configuredRoots(options.settingsPath ?? PI_SETTINGS_PATH, cwd) ?? [DEFAULT_USER_TEAM_ROOT];
+	for (const root of userRoots) dirs.push(directoriesForRoot(root, "user"));
+	const projectRoot = findProjectRoot(cwd);
+	const projectRoots = configuredRoots(join(projectRoot, PROJECT_SETTINGS_PATH), projectRoot) ?? [];
+	for (const root of projectRoots) dirs.push(directoriesForRoot(root, "project"));
 	return dirs;
 }
 
-export function dirsForTeamScope(scope: TeamWritableSource, cwd: string): { teams: string; subagents: string } {
-	if (scope === "project") {
-		const root = findProjectRoot(cwd);
-		return {
-			teams: join(root, ".pi", DEFAULT_TEAM_DIRECTORY),
-			subagents: join(root, ".pi", DEFAULT_SUBAGENT_DIRECTORY),
-		};
-	}
-	return {
-		teams: join(DEFAULT_USER_ROOT, DEFAULT_TEAM_DIRECTORY),
-		subagents: join(DEFAULT_USER_ROOT, DEFAULT_SUBAGENT_DIRECTORY),
-	};
+export function dirsForTeamScope(scope: TeamWritableSource, cwd: string): { teams: string; agents: string; prompts: string } {
+	const root = scope === "project" ? join(findProjectRoot(cwd), PROJECT_TEAM_ROOT) : DEFAULT_USER_TEAM_ROOT;
+	const dirs = directoriesForRoot(root, scope);
+	return { teams: dirs.teams, agents: dirs.agents, prompts: dirs.prompts };
 }

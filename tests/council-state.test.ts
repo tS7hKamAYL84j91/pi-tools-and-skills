@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CouncilStateManager } from "../extensions/pi-llm-council/state.js";
-import type { CouncilMember } from "../extensions/pi-llm-council/types.js";
+import { CouncilStateManager } from "../extensions/pi-teams/state.js";
+import type { CouncilMember } from "../extensions/pi-teams/types.js";
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
 const memberB: CouncilMember = {
@@ -48,7 +48,7 @@ describe("CouncilStateManager", () => {
 		sessionBacked.update(record, { status: "generating" });
 
 		expect(entries).toHaveLength(2);
-		expect(entries[0]?.customType).toBe("pi-llm-council:deliberation");
+		expect(entries[0]?.customType).toBe("pi-teams:deliberation");
 		expect(entries[0]?.data).toMatchObject({ id: record.id, status: "pending" });
 		expect(entries[1]?.data).toMatchObject({ id: record.id, status: "generating" });
 		expect(sessionBacked.get(record.id)).toMatchObject({ id: record.id, status: "generating" });

@@ -12,7 +12,7 @@ The extension codebase is healthy but unevenly factored:
 
 | Extension | Files | Lines | Main pressure |
 | --- | ---: | ---: | --- |
-| `pi-llm-council` | 19 | ~3540 | `index.ts` owns too much session/tool/command wiring |
+| `pi-teams` | 19 | ~3540 | `index.ts` owns too much session/tool/command wiring |
 | `pi-panopticon` | 13 | ~2973 | `ui.ts`, `spawner.ts`, `health.ts` are broad modules |
 | `kanban` | 8 | ~2170 | `index.ts` contains 14 inline tool definitions |
 | `pi-cheatsheets` | 8 | ~869 | Mostly fine |
