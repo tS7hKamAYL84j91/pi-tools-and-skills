@@ -39,11 +39,11 @@ function createTeamRoot(root: string): void {
 
 function writeDefaultCouncil(root: string, members: string[], chairman: string): void {
 	writeFileSync(
-		join(root, "teams", "default-council.md"),
+		join(root, "teams", "default-debate.md"),
 		[
 			"---",
 			'schemaVersion: 2',
-			'id: "default-council"',
+			'id: "default-debate"',
 			'name: "Default Council"',
 			'description: "Architecture review"',
 			'protocol: "debate"',
@@ -66,11 +66,11 @@ function writeDefaultCouncil(root: string, members: string[], chairman: string):
 
 function writePairConsult(root: string, navigator: string): void {
 	writeFileSync(
-		join(root, "teams", "pair-consult.md"),
+		join(root, "teams", "consult.md"),
 		[
 			"---",
 			'schemaVersion: 2',
-			'id: "pair-consult"',
+			'id: "consult"',
 			'name: "Pair Consult"',
 			'description: "Navigator review"',
 			'protocol: "consult"',
@@ -86,7 +86,7 @@ function writePairConsult(root: string, navigator: string): void {
 }
 
 describe("DEFAULT_MEMBER_CANDIDATES", () => {
-	it("comes from the built-in default-council team", () => {
+	it("comes from the built-in default-debate team", () => {
 		expect(DEFAULT_MEMBER_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
@@ -97,7 +97,7 @@ describe("DEFAULT_MEMBER_CANDIDATES", () => {
 });
 
 describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
-	it("comes from the built-in default-council team", () => {
+	it("comes from the built-in default-debate team", () => {
 		expect(DEFAULT_CHAIRMAN_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
@@ -136,8 +136,8 @@ describe("resolveTeamSettings", () => {
 				join(root, "agents", "navigator.md"),
 				[
 					"---",
-					'name: "pair_navigator_consult"',
-					'promptId: "pairNavigatorConsultSystem"',
+					'name: "consult_navigator"',
+					'promptId: "consult/navigator/system"',
 					"---",
 					"# IDENTITY",
 					"",
@@ -146,7 +146,7 @@ describe("resolveTeamSettings", () => {
 			);
 			withTempSettings({ teams: { roots: [root] } }, (file) => {
 				const resolved = resolveTeamSettings(file);
-				expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
+				expect(resolved.prompts["consult/navigator/system"]).toEqual([
 					"# IDENTITY",
 					"",
 					"Agent navigator body.",
@@ -164,7 +164,7 @@ describe("resolveTeamSettings", () => {
 					join(first, "prompts", "consult.md"),
 					[
 						"---",
-						'id: "pairNavigatorConsultSystem"',
+						'id: "consult/navigator/system"',
 						"---",
 						"First body.",
 					].join("\n"),
@@ -173,14 +173,14 @@ describe("resolveTeamSettings", () => {
 					join(second, "prompts", "consult.md"),
 					[
 						"---",
-						'id: "pairNavigatorConsultSystem"',
+						'id: "consult/navigator/system"',
 						"---",
 						"Second body.",
 					].join("\n"),
 				);
 				withTempSettings({ teams: { roots: [first, second] } }, (file) => {
 					const resolved = resolveTeamSettings(file);
-					expect(resolved.prompts.pairNavigatorConsultSystem).toEqual(["Second body."]);
+					expect(resolved.prompts["consult/navigator/system"]).toEqual(["Second body."]);
 				});
 			});
 		});

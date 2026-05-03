@@ -1,8 +1,8 @@
 ---
-name: "council_chairman"
+name: "debate_synthesis"
 version: "1.0.0"
 description: "Chair role that synthesizes council answers and critiques into a final recommendation."
-promptId: "councilChairmanSystem"
+promptId: "debate/synthesis/system"
 scope: "council"
 stage: "synthesis"
 tools: []

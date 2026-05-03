@@ -1,5 +1,5 @@
 ---
-id: councilCritiqueTemplate
+id: debate/critique/template
 title: "Council critique prompt template"
 scope: council
 stage: critique

@@ -102,12 +102,12 @@ Handlers ask the resolver for slots by string id supplied by the protocol contra
 
 For debate-like workflows, a `critic` binding can still be meaningful: it supplies the critique phase role contract, while the reviewer model can remain the successful generation member model. That is a built-in protocol behavior, not a generic `TeamPromptSlot` type member.
 
-## Concrete `default-council` example
+## Concrete `default-debate` example
 
 ```yaml
 ---
 schemaVersion: 2
-id: "default-council"
+id: "default-debate"
 name: "Default Council"
 description: "General high-stakes reasoning and architecture review."
 protocol: "debate"
@@ -120,21 +120,21 @@ prompts:
 
 agents:
   - role: "member"
-    subagent: "council_generation_member"
+    subagent: "debate_generation_member"
     model: "openai-codex/gpt-5.5"
     label: "Member 1"
 
   - role: "member"
-    subagent: "council_generation_member"
+    subagent: "debate_generation_member"
     model: "google-gemini-cli/gemini-3.1-pro-preview"
     label: "Member 2"
 
   - role: "critic"
-    subagent: "council_critic"
+    subagent: "debate_critic"
     templateId: "riskWeightedCritiqueTemplate"
 
   - role: "chairman"
-    subagent: "council_chairman"
+    subagent: "debate_synthesis"
     model: "openai-codex/gpt-5.5"
 ---
 Human notes only. This body is not injected into model calls.
@@ -142,7 +142,7 @@ Human notes only. This body is not injected into model calls.
 
 Effective chain examples:
 
-- Generation system: protocol default slot `generation.system` → subagent `council_generation_member.promptId` → no team/binding override → effective prompt asset.
+- Generation system: protocol default slot `generation.system` → subagent `debate_generation_member.promptId` → no team/binding override → effective prompt asset.
 - Critique template: protocol default slot `critique.template` → team default/override → critic binding override `risk-weighted-critique-template` → effective prompt asset.
 - Synthesis template: protocol default slot `synthesis.template` → team override `strict-council-synthesis-template` → no chairman binding override → effective prompt asset.
 
@@ -181,6 +181,6 @@ Minimum coverage:
 4. System precedence: protocol default < subagent `promptId` < team prompt override < binding `promptId` < binding `systemPrompt`.
 5. Template precedence: protocol default < team override < binding `templateId`.
 6. Subagent `promptId` resolves at runtime; subagent markdown body is fallback only when no `promptId` exists.
-7. `team_describe default-council` includes member, critic, and chairman prompt/template chains.
+7. `team_describe default-debate` includes member, critic, and chairman prompt/template chains.
 8. Unknown prompt id fails clearly before launching partial child model calls.
 9. Built-in and fixture protocol handlers call resolver-selected prompt/template ids rather than hardcoded settings keys.

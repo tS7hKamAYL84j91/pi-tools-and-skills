@@ -1,8 +1,8 @@
 ---
-name: "pair_navigator_brief"
+name: "pair_coding_navigator_brief"
 version: "1.0.0"
 description: "Navigator role that sharpens a user request into an actionable Driver brief."
-promptId: "pairNavigatorBriefSystem"
+promptId: "pair-coding/navigator-brief/system"
 scope: "pair"
 stage: "navigator-brief"
 tools: []

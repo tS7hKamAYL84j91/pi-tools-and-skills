@@ -1,5 +1,5 @@
 ---
-id: telephoneRelaySystem
+id: telephone/relay/system
 title: "Telephone relay system prompt"
 scope: team
 stage: telephone

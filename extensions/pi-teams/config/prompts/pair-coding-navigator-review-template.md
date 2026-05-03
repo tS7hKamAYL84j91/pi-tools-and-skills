@@ -1,5 +1,5 @@
 ---
-id: pairNavigatorReviewTemplate
+id: pair-coding/navigator-review/template
 title: "Pair navigator review prompt template"
 scope: pair
 stage: navigator-review

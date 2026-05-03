@@ -44,7 +44,7 @@ P4 must follow the P2 prompt contract: prompt/system/template resolution remains
 ```yaml
 ---
 schemaVersion: 2
-id: "default-council"
+id: "default-debate"
 name: "Default Council"
 description: "General high-stakes reasoning and architecture review."
 protocol: "debate"
@@ -57,13 +57,13 @@ prompts:
 
 agents:
   - role: "member"
-    subagent: "council_generation_member"
+    subagent: "debate_generation_member"
     model: "openai-codex/gpt-5.5"
     label: "Member 1"
   - role: "critic"
-    subagent: "council_critic"
+    subagent: "debate_critic"
   - role: "chairman"
-    subagent: "council_chairman"
+    subagent: "debate_synthesis"
     model: "openai-codex/gpt-5.5"
 ---
 Human notes only; not injected into model calls.
@@ -184,7 +184,7 @@ schemaVersion: 2
 protocol: "consult"
 agents:
   - role: "navigator"
-    subagent: "pair_navigator_consult"
+    subagent: "consult_navigator"
 ```
 
 ---
@@ -346,7 +346,7 @@ These are outside the narrow file list but likely required to satisfy acceptance
    - No prompt fallback path checks topology.
 
 16. **Copied built-in prompt aliases preserved**
-   - Old copied default-council with existing prompt ids/settings aliases resolves same effective prompt chain.
+   - Old copied default-debate with existing prompt ids/settings aliases resolves same effective prompt chain.
 
 ---
 

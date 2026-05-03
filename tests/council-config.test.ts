@@ -100,8 +100,8 @@ function contextFor(models: string[]): ExtensionContext {
 describe("visible council config", () => {
 	it("uses a minimal team-root config and loads defaults from team files", () => {
 		const visible = readVisibleConfig();
-		const generationPrompt = readMarkdownPrompt(AGENTS_DIR, "council-generation-member.md");
-		const navigatorBriefPrompt = readMarkdownPrompt(AGENTS_DIR, "pair-navigator-brief.md");
+		const generationPrompt = readMarkdownPrompt(AGENTS_DIR, "debate-generation-member.md");
+		const navigatorBriefPrompt = readMarkdownPrompt(AGENTS_DIR, "pair-coding-navigator-brief.md");
 		const resolved = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 
 		expect(visible).toEqual({ schemaVersion: 1, layout: "teams-root" });
@@ -112,12 +112,12 @@ describe("visible council config", () => {
 			"ollama/glm-5.1:cloud",
 		]);
 		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
-		expect(resolved.defaultPair?.navigator).toBe("ollama/qwen3.5:cloud");
-		expect(generationPrompt.id).toBe("councilGenerationSystem");
-		expect(navigatorBriefPrompt.id).toBe("pairNavigatorBriefSystem");
-		expect(resolved.prompts.councilGenerationSystem).toEqual(generationPrompt.lines);
-		expect(resolved.prompts.pairNavigatorBriefSystem).toEqual(navigatorBriefPrompt.lines);
-		expect(resolved.prompts.pairNavigatorBriefTemplate).toContain("");
+		expect(resolved.defaultConsult?.navigator).toBe("ollama/qwen3.5:cloud");
+		expect(generationPrompt.id).toBe("debate/generation/system");
+		expect(navigatorBriefPrompt.id).toBe("pair-coding/navigator-brief/system");
+		expect(resolved.prompts["debate/generation/system"]).toEqual(generationPrompt.lines);
+		expect(resolved.prompts["pair-coding/navigator-brief/system"]).toEqual(navigatorBriefPrompt.lines);
+		expect(resolved.prompts["pair-coding/navigator-brief/template"]).toContain("");
 		expect(resolved.prompts.agentRequestTemplate).toContain("{{replyTag}}");
 	});
 
@@ -135,8 +135,8 @@ describe("visible council config", () => {
 			contextFor(settings.defaultMembers),
 		);
 
-		expect(result.content[0]?.text).toContain("default-council");
-		expect(result.content[0]?.text).toContain("pair-consult");
+		expect(result.content[0]?.text).toContain("default-debate");
+		expect(result.content[0]?.text).toContain("consult");
 		expect(result.content[0]?.text).toContain("pair-coding");
 	});
 });

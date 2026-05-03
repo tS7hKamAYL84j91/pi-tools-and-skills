@@ -1,5 +1,5 @@
 ---
-id: pairDriverImplementationTemplate
+id: pair-coding/driver-implementation/template
 title: "Pair driver implementation prompt template"
 scope: pair
 stage: driver-implementation

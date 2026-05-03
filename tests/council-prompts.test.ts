@@ -55,7 +55,7 @@ describe("peer critique prompt self-exclusion", () => {
 			generation,
 			members,
 			viewer: memberB,
-			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
+			template: promptAssetLines(PROMPTS_CONFIG, "debate/critique/template"),
 		});
 		expect(prompt).toContain("A's distinctive answer signature");
 		expect(prompt).toContain("C's distinctive answer signature");
@@ -72,7 +72,7 @@ describe("peer critique prompt self-exclusion", () => {
 			generation: generationWithModelMention,
 			members,
 			viewer: memberB,
-			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
+			template: promptAssetLines(PROMPTS_CONFIG, "debate/critique/template"),
 		});
 		expect(prompt).not.toContain("openai/gpt-5.5");
 		expect(prompt).toContain("Agent A says ...");
@@ -84,7 +84,7 @@ describe("peer critique prompt self-exclusion", () => {
 			generation,
 			members,
 			viewer: memberA,
-			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
+			template: promptAssetLines(PROMPTS_CONFIG, "debate/critique/template"),
 		});
 		expect(prompt).toMatch(/your own answer is excluded/i);
 	});
@@ -92,7 +92,7 @@ describe("peer critique prompt self-exclusion", () => {
 
 describe("pair primer asset", () => {
 	it("renders the configured pair primer template", () => {
-		const prompt = renderTemplate([...promptAssetLines(PROMPTS_CONFIG, "pairPrimer")], {
+		const prompt = renderTemplate([...promptAssetLines(PROMPTS_CONFIG, "consult/primer")], {
 			pairName: "review",
 			navigator: "ollama/glm-5.1:cloud",
 			taskLine: "\n\nTask: tighten the tests",
@@ -100,7 +100,7 @@ describe("pair primer asset", () => {
 
 		expect(prompt).toContain('[Pair-coding "review"');
 		expect(prompt).toContain("Navigator: ollama/glm-5.1:cloud");
-		expect(prompt).toContain('id="pair-consult"');
+		expect(prompt).toContain('id="consult"');
 		expect(prompt).toContain("Task: tighten the tests");
 	});
 });

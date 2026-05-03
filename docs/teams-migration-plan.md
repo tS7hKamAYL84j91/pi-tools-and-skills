@@ -76,7 +76,7 @@ flowchart TD
 ### Phase 2 — Team-gated execution
 
 - Existing execution was gated through the built-in team specs.
-- `default-council`, `pair-consult`, and `pair-coding` became required descriptors for their workflows.
+- `default-debate`, `consult`, and `pair-coding` became required descriptors for their workflows.
 
 ### Phase 3 — Remove old public implementation
 
@@ -182,20 +182,20 @@ Council example with repeated member behavior:
 ```md
 agents:
   - role: "member"
-    subagent: "council_generation_member"
+    subagent: "debate_generation_member"
     model: "openai-codex/gpt-5.5"
   - role: "member"
-    subagent: "council_generation_member"
+    subagent: "debate_generation_member"
     model: "ollama/qwen3.5:cloud"
   - role: "chairman"
-    subagent: "council_chairman"
+    subagent: "debate_synthesis"
     model: "openai-codex/gpt-5.5"
 ```
 
 Built-in teams:
 
-- `default-council` — council/debate.
-- `pair-consult` — lightweight Navigator consult.
+- `default-debate` — council/debate.
+- `consult` — lightweight Navigator consult.
 - `pair-coding` — bounded Driver/Navigator implementation loop.
 
 Additional user/project runtime shapes:

@@ -1,8 +1,8 @@
 ---
-name: "council_critic"
+name: "debate_critic"
 version: "1.0.0"
 description: "Council reviewer for anonymized peer-answer critique."
-promptId: "councilCritiqueSystem"
+promptId: "debate/critique/system"
 scope: "council"
 stage: "critique"
 tools: []

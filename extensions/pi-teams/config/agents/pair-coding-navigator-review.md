@@ -1,8 +1,8 @@
 ---
-name: "pair_navigator_review"
+name: "pair_coding_navigator_review"
 version: "1.0.0"
 description: "Navigator role that reviews the Driver's artifact before a bounded fix pass."
-promptId: "pairNavigatorReviewSystem"
+promptId: "pair-coding/navigator-review/system"
 scope: "pair"
 stage: "navigator-review"
 tools: []
