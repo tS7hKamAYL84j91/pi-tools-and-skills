@@ -96,9 +96,6 @@ export async function runTeam(args: {
 	if (!handler) {
 		throw new Error(`Team "${team.id}" has unsupported protocol ${team.protocol}.`);
 	}
-	if (team.protocol === "debate") {
-		return handler.run({ team, params: args.params, ctx: args.ctx, stateManager: args.stateManager });
-	}
 	const startedAt = Date.now();
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
 	try {

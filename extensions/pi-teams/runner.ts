@@ -27,7 +27,7 @@ interface RegistryRecord {
 	cwd?: string;
 }
 
-export interface PanopticonRecord {
+interface PanopticonRecord {
 	id: string;
 	name: string;
 }

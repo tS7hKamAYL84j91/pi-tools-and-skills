@@ -336,22 +336,20 @@ async function runLevel(args: {
 	buildNodePrompt: GraphNodePromptBuilder;
 	onProgress?: (text: string) => void;
 }): Promise<GraphNodeResult[]> {
-	const pending = [...args.level];
-	const running = new Set<Promise<GraphNodeResult>>();
+	let nextIndex = 0;
 	const results: GraphNodeResult[] = [];
 	const bindings = new Map(args.team.agentBindings.map((binding) => [binding.role, binding]));
-	while (pending.length > 0 || running.size > 0) {
-		while (pending.length > 0 && running.size < args.maxConcurrency) {
-			const role = pending.shift() as string;
+	async function worker(): Promise<void> {
+		while (nextIndex < args.level.length) {
+			const role = args.level[nextIndex] as string;
+			nextIndex += 1;
 			const binding = bindings.get(role) as TeamAgentBinding;
 			args.onProgress?.(`graph node ${role}`);
-			const task = runOneNode({ ...args, binding, upstream: args.completed });
-			running.add(task);
-			task.finally(() => running.delete(task)).catch(() => undefined);
+			results.push(await runOneNode({ ...args, binding, upstream: args.completed }));
 		}
-		const result = await Promise.race(running);
-		results.push(result);
 	}
+	const workerCount = Math.min(args.maxConcurrency, args.level.length);
+	await Promise.all(Array.from({ length: workerCount }, () => worker()));
 	return results.sort((a, b) => (roleIndex(args.team).get(a.role) ?? 0) - (roleIndex(args.team).get(b.role) ?? 0));
 }
 
@@ -362,9 +360,11 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
 	const catalog = resolveTeamSettings().prompts;
 	const chains = resolveProtocolPromptChains({ protocol: args.team.protocol, prompts: args.team.prompts, bindings: args.team.agentBindings }, catalog);
-	const template = requirePromptChain(chains, args.templateSlot ?? "node.template").text;
 	const runNode = args.runNode ?? productionRunNode;
 	const buildNodePrompt = args.buildNodePrompt ?? defaultGraphNodePrompt;
+	const template = args.buildNodePrompt
+		? (chains.get(args.templateSlot ?? "node.template")?.text ?? "")
+		: requirePromptChain(chains, args.templateSlot ?? "node.template").text;
 	const nodes: GraphNodeResult[] = [];
 	for (const level of validation.levels) {
 		if (args.ctx.signal?.aborted) {
