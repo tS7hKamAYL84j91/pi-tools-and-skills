@@ -3,7 +3,7 @@ name: "pair_coding_driver_fix"
 version: "1.0.0"
 description: "Driver role that applies Navigator review feedback in a bounded fix pass."
 promptId: "pair-coding/driver-fix/system"
-scope: "pair"
+scope: "pair-coding"
 stage: "driver-fix"
 tools: []
 ---

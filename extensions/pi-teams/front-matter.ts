@@ -1,5 +1,5 @@
 /**
- * Markdown front-matter loading for declarative council descriptors.
+ * Markdown front-matter loading for declarative team descriptors.
  *
  * The parser intentionally supports only the small YAML subset used by built-in
  * subagent and team descriptors: scalar key/value pairs, indented string

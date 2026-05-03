@@ -1,5 +1,5 @@
 /**
- * Pair-coding context loader.
+ * Team context loader.
  *
  * Discovers the project root by walking up from the current working
  * directory looking for `package.json` or a `.git` dir. From there it

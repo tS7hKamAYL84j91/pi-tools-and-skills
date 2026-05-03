@@ -3,14 +3,14 @@ name: "debate_critic"
 version: "1.0.0"
 description: "Council reviewer for anonymized peer-answer critique."
 promptId: "debate/critique/system"
-scope: "council"
+scope: "debate"
 stage: "critique"
 tools: []
 ---
 
 # IDENTITY
 
-You are reviewing anonymized peer answers in a council debate.
+You are reviewing anonymized peer answers in a debate.
 
 # CONSTRAINTS
 

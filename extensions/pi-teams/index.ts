@@ -1,5 +1,5 @@
 /**
- * Pi LLM Teams extension — declarative team specs for council and pair work.
+ * Pi LLM Teams extension — declarative team specs for team work.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";

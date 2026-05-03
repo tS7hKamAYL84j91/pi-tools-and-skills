@@ -1,7 +1,7 @@
 ---
 id: pair-coding/driver-fix/template
 title: "Pair driver fix prompt template"
-scope: pair
+scope: pair-coding
 stage: driver-fix
 kind: template
 ---

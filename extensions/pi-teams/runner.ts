@@ -2,7 +2,7 @@
  * Council runner — invokes a single pi model in non-interactive mode.
  *
  * Persistent RPC agents (lib/spawn-service) are overkill for one-shot
- * deliberation queries; spinning up the RPC channel costs more than the
+ * team run queries; spinning up the RPC channel costs more than the
  * `pi --print` invocation it replaces.
  */
 

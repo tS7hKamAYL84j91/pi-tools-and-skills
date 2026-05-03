@@ -2,7 +2,7 @@
  * Team member selection, heterogeneity validation, and registry caching.
  *
  * - Provider-family heterogeneity: a team must span ≥2 distinct providers
- *   (openai/, anthropic/, google/, ollama/, ...). Same-family councils are
+ *   (openai/, anthropic/, google/, ollama/, ...). Same-family teams are
  *   trivially correlated and undermine the point of multi-model deliberation.
  * - Registry snapshot: capture the available model list at team formation
  *   time; the live registry can change mid-session, but the team's notion

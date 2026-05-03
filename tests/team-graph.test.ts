@@ -157,7 +157,7 @@ describe("team graph execution", () => {
 		expect(prompts.get("generation_1")).toBe("ship?");
 		expect(prompts.get("critique_1")).toContain("## Beta");
 		expect(prompts.get("critique_1")).not.toContain("## Alpha");
-		expect(prompts.get("synthesis")).toContain("Raw council answers:");
+		expect(prompts.get("synthesis")).toContain("Raw debate answers:");
 		expect(prompts.get("synthesis")).toContain("## Critique by Alpha");
 		expect(result.output).toBe("## synthesis\noutput:synthesis");
 	});
@@ -230,7 +230,7 @@ describe("team graph execution", () => {
 		expect(plan.team.graph).toEqual({ edges: [], outputs: ["navigator"] });
 		expect(result.output).toBe("## navigator\nconsulted");
 		expect(seen[0]).toBe("review this");
-		expect(seen[1]).toContain("Navigator in a pair-coding session");
+		expect(seen[1]).toContain("Navigator in a team session");
 	});
 
 	it("lowers telephone to a linear graph that passes each output to the next relay", async () => {
