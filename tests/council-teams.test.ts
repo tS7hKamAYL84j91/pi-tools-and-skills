@@ -451,7 +451,7 @@ describe("loadTeamRegistry", () => {
 });
 
 describe("team adapters", () => {
-	it("projects default council team to the current default council definition", () => {
+	it("projects default debate team to the current default debate definition", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "default-debate");
@@ -462,8 +462,8 @@ describe("team adapters", () => {
 		});
 
 		expect(definition).toMatchObject({
-			name: settings.defaultCouncil.name,
-			purpose: settings.defaultCouncil.purpose,
+			name: settings.defaultDebate.name,
+			purpose: settings.defaultDebate.purpose,
 			members: settings.defaultMembers,
 			chairman: settings.defaultChairman,
 		});
@@ -476,9 +476,9 @@ describe("team adapters", () => {
 		const definition = teamToConsultDefinition({ team, settings });
 
 		expect(definition).toMatchObject({
-			name: settings.defaultPair?.name,
-			navigator: settings.defaultPair?.navigator,
-			purpose: settings.defaultPair?.purpose,
+			name: settings.defaultConsult?.name,
+			navigator: settings.defaultConsult?.navigator,
+			purpose: settings.defaultConsult?.purpose,
 		});
 	});
 });

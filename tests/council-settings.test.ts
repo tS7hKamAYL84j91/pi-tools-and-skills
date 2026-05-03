@@ -112,7 +112,6 @@ describe("resolveTeamSettings", () => {
 		const resolved = resolveTeamSettings("/nonexistent/path/settings.json");
 		expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
 		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
-		expect(resolved.councils).toEqual({});
 	});
 
 	it("uses teams.roots as the source of team defaults", () => {
@@ -124,7 +123,7 @@ describe("resolveTeamSettings", () => {
 				const resolved = resolveTeamSettings(file);
 				expect(resolved.defaultMembers).toEqual(["custom/model-1", "custom/model-2"]);
 				expect(resolved.defaultChairman).toBe("custom/chair");
-				expect(resolved.defaultPair?.navigator).toBe("custom/navigator");
+				expect(resolved.defaultConsult?.navigator).toBe("custom/navigator");
 			});
 		});
 	});
