@@ -333,6 +333,18 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
+	it("reports missing live-agent refs without requiring subagent ids", () => {
+		withTempConfig((configPath, root) => {
+			writeTeam(root, "live-consult", "agent:definitely-missing-live-peer");
+
+			const registry = loadTeamRegistry(configPath);
+
+			expect(registry.teams.has("live-consult")).toBe(true);
+			expect(registry.warnings.some((warning) => warning.startsWith("live-consult: live agent agent:definitely-missing-live-peer is not registered"))).toBe(true);
+			expect(registry.warnings.some((warning) => warning.includes("invalid agent id"))).toBe(false);
+		});
+	});
+
 	it("rejects mixed object and string agent lists", () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "known_agent");
@@ -456,6 +468,27 @@ describe("loadTeamRegistry", () => {
 			expect(body).toContain('subagent: "review_member"');
 			expect(body).toContain('role: "synthesis"');
 			expect(body).toContain('role: "critic"');
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
+	});
+
+	it("team_form preserves live-agent refs without creating subagent stubs", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-form-live-"));
+		try {
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+
+			const result = createTeamFiles({
+				id: "live-review",
+				protocol: "consult",
+				agents: ["agent:reviewer"],
+				scope: "project",
+			}, project);
+			const body = readFileSync(result.teamPath, "utf8");
+
+			expect(body).toContain('subagent: "agent:reviewer"');
+			expect(result.subagentPaths).toEqual([]);
+			expect(existsSync(join(project, ".pi", "teams", "agents", "agent:reviewer.md"))).toBe(false);
 		} finally {
 			rmSync(project, { recursive: true, force: true });
 		}

@@ -2,6 +2,8 @@
 
 import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
+import { findAgentByName, listLiveAgents } from "../../lib/agent-api.js";
+import { isLiveAgentRef, liveAgentName } from "./live-agent.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
@@ -236,10 +238,26 @@ function mergeSubagentConfig(binding: TeamAgentBinding, subagent: SubagentSpec |
 	};
 }
 
+function liveAgentWarning(teamId: string, ref: string): string | undefined {
+	const name = liveAgentName(ref);
+	if (!name) return `${teamId}: invalid live-agent ref ${ref}; use agent:<registered-name>`;
+	const agent = findAgentByName(name);
+	if (!agent) return `${teamId}: live agent ${ref} is not registered. Available: ${listLiveAgents().map((entry) => entry.name).join(", ") || "(none)"}`;
+	if (!agent.alive) return `${teamId}: live agent ${ref} is terminated`;
+	if (agent.status === "blocked" || agent.status === "stalled") return `${teamId}: live agent ${ref} is ${agent.status}`;
+	if (agent.status !== "running" && agent.status !== "waiting") return `${teamId}: live agent ${ref} is ${agent.status}`;
+	return undefined;
+}
+
 function validateTeam(team: TeamSpec, subagents: Map<string, SubagentSpec>): string[] {
 	const warnings: string[] = [];
 	if (team.agentBindings.length === 0) warnings.push(`${team.id}: agents must not be empty`);
 	for (const binding of team.agentBindings) {
+		if (isLiveAgentRef(binding.subagent)) {
+			const warning = liveAgentWarning(team.id, binding.subagent);
+			if (warning) warnings.push(warning);
+			continue;
+		}
 		if (!isSubagentId(binding.subagent)) warnings.push(`${team.id}: invalid agent id ${binding.subagent}`);
 		if (!subagents.has(binding.subagent)) warnings.push(`${team.id}: unknown agent ${binding.subagent}`);
 	}

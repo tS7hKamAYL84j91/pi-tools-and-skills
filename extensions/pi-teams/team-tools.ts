@@ -21,6 +21,8 @@ function teamSummary(team: TeamSpec): Record<string, unknown> {
 		description: team.description,
 		protocol: team.protocol,
 		source: team.source,
+		agents: team.agents,
+		bindings: team.agentBindings.map((binding) => ({ role: binding.role, subagent: binding.subagent, model: binding.model })),
 		models: team.models,
 	};
 }
@@ -45,7 +47,7 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 			const teams = [...registry.teams.values()];
 			const lines = teams.map(
 				(team) =>
-					`- ${team.id}: ${team.name} | protocol=${team.protocol}${team.description ? ` | ${team.description}` : ""}`,
+					`- ${team.id}: ${team.name} | protocol=${team.protocol} | agents=${team.agents.join(", ") || "(none)"}${team.description ? ` | ${team.description}` : ""}`,
 			);
 			const body = lines.length > 0
 				? `Teams:\n${lines.join("\n")}`

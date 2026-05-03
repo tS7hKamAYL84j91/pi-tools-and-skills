@@ -5,6 +5,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { availableLiveAgentNames, isLiveAgentRef } from "./live-agent.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
 import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
@@ -260,7 +261,7 @@ function validateFormInput(input: TeamFormInput): void {
 		throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	}
 	if (input.agents.length === 0 && (!input.agentBindings || input.agentBindings.length === 0)) {
-		throw new Error("Team must include at least one subagent.");
+		throw new Error("Team must include at least one subagent or live-agent ref.");
 	}
 }
 
@@ -278,7 +279,9 @@ export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResu
 	}
 	const bindings = defaultAgentBindings({ ...input, id });
 	const subagentIds = [...new Set(bindings.map((binding) => binding.subagent))];
-	const subagentPaths = subagentIds.map((agent) => ensureSubagentFile(dirs.agents, agent));
+	const subagentPaths = subagentIds
+		.filter((agent) => !isLiveAgentRef(agent))
+		.map((agent) => ensureSubagentFile(dirs.agents, agent));
 	writeFileSync(
 		teamPath,
 		teamFileContent({
@@ -354,7 +357,9 @@ export async function formTeam(
 			: protocol === "pair-coding"
 				? [subagentIdFromTeam(id, "navigator_brief"), subagentIdFromTeam(id, "driver"), subagentIdFromTeam(id, "navigator_review")]
 				: [subagentIdFromTeam(id, "navigator")];
-	const agentInput = await ctx.ui.input("Subagents (comma-separated)", defaultAgents.join(", "));
+	const liveAgents = availableLiveAgentNames();
+	const liveHelp = liveAgents.length > 0 ? `; live agents: ${liveAgents.map((name) => `agent:${name}`).join(", ")}` : "";
+	const agentInput = await ctx.ui.input(`Subagents or live agents (comma-separated${liveHelp})`, defaultAgents.join(", "));
 	const agents = parseList(agentInput).length > 0 ? parseList(agentInput) : defaultAgents;
 
 	const memberModelIds = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;

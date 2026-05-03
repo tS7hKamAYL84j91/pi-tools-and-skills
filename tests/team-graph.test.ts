@@ -49,6 +49,14 @@ describe("team graph validation", () => {
 		});
 	});
 
+	it("accepts explicit live-agent refs without model fields", () => {
+		expect(validateTeamGraph(team({
+			agents: ["agent:reviewer"],
+			agentBindings: [{ role: "review", subagent: "agent:reviewer" }],
+			graph: { edges: [], outputs: ["review"] },
+		}))).toMatchObject({ roles: ["review"], sinks: ["review"] });
+	});
+
 	it("rejects duplicate roles", () => {
 		const invalid = team({
 			agentBindings: [
@@ -146,6 +154,27 @@ describe("team graph execution", () => {
 
 		expect(result.ok).toBe(true);
 		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "succeeded", attempts: 2, output: "attempt:2" });
+	});
+
+	it("does not apply ambient team retry policy to live-agent refs", async () => {
+		let calls = 0;
+		const result = await runTeamGraph({
+			team: team({
+				agents: ["agent:reviewer"],
+				agentBindings: [{ role: "review", subagent: "agent:reviewer" }],
+				graph: { edges: [], outputs: ["review"] },
+				limits: { maxRetries: 2 },
+			}),
+			prompt: "review",
+			ctx: fakeCtx(),
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				calls++;
+				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "", durationMs: 1, ok: false, error: "no reply" };
+			},
+		});
+
+		expect(calls).toBe(1);
+		expect(result.nodes[0]).toMatchObject({ role: "review", status: "failed", attempts: 1 });
 	});
 
 	it("lets runtime retry limits override binding retry limits", async () => {

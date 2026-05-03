@@ -145,7 +145,17 @@ flowchart LR
 
 ### ADR-027 — Team manifests own the execution contract
 
-**Decision:** P7 will not create a separate `config/protocols` catalog. A `protocol` may name a reusable execution primitive/family so many teams can share runtime behavior, but the team manifest is the inspectable source of truth for prompt slots, prompt refs, role bindings, model slots, generation hints, limits, and graph/lowering policy. Splitting those fields into protocol files duplicates team data and weakens the relationship among agents, prompts, and execution.
+**Decision:** P7 will not create a separate `config/protocols` catalog. A `protocol` may name a reusable execution primitive/family so many teams can share runtime behavior, but the team manifest is the inspectable source of truth for prompt refs, role bindings, limits, and explicit graph policy. Splitting those fields into protocol files duplicates team data and weakens the relationship among agents, prompts, and execution.
+
+**Status:** Superseded in part by ADR-028. Moving prompt/model/form/lowering contracts wholesale into team manifests created too much mini-DSL surface.
+
+### ADR-028 — Evaluate LangGraph before expanding protocol configuration
+
+**Decision:** Pause the P7 team-local contract expansion and review LangGraph against the current custom DAG executor before adding more declarative protocol machinery. LangGraph may replace scheduling, fanout/join, retry, and state-transition plumbing, but Pi-specific prompt packaging, session events, one-shot model calls, live-agent routing, and inspectable tool output must remain explicit adapters. Migration is accepted only if a spike deletes more custom executor code than it adds in framework glue.
+
+### ADR-029 — Live agents are explicit graph node bindings
+
+**Decision:** P8 uses `subagent: "agent:<registered-name>"` as the only live-agent binding syntax. Live peers are executed by the generic graph node runner via a bounded Maildir request/response token, so scheduling, timeout, prompt packaging, output reduction, and session events stay in the existing graph path. Ambient team-level retries do not apply to live-agent nodes because each attempt sends an external request; retry requires an explicit binding or runtime override. Team files remain inspectable; live bindings do not create file-backed subagent manifest stubs and do not receive hidden tools, parameters, or transport details.
 
 
 ## Temperature support finding
@@ -418,9 +428,9 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P7 — Make team manifests the execution contract
 
-**Status:** ❌ **TODO — replanned after architecture feedback**
+**Status:** ⏸️ **PAUSED — superseded by LangGraph review before more protocol DSL**
 
-**Goal:** Make each team file self-contained and inspectable: the team definition should show the protocol/family, agents, prompt slots, prompt refs, model slots, generation hints, limits, and graph/lowering policy together. P6 removed legacy compatibility names; P7 removes remaining built-in protocol string tables from generic runtime code without creating a second protocol catalog that duplicates team files.
+**Goal:** Make each team file self-contained and inspectable without growing a bespoke protocol mini-language. P7 remains valid only where it keeps existing team files clear; the attempted broader move of prompt slots, model slots, form hints, and lowering policy into manifests is too complex and is paused pending P9.
 
 **Clarified model:**
 
@@ -493,15 +503,15 @@ Current matching modules:
 
 ## P8 — Select existing live agents as team members
 
-**Status:** ❌ **TODO**
+**Status:** ✅ **IMPLEMENTED; validation green**
 
 **Goal:** Let users and agents select currently available Pi peer agents as team members, not only file-backed subagent manifests or model ids. A team author should be able to choose `agent:coas` or another registered peer from the same discovery surface used by Panopticon, and team execution should route that node to the live agent safely.
 
 **Observed gap:**
 
-- `team_form` can write agent-looking refs, but current team validation rejects them as invalid subagent ids.
-- `team_run` currently reports errors like `invalid agent id agent:coas` instead of routing to the registered agent.
-- Earlier P5 consult lowering explicitly rejected `agent:` refs because only one-shot graph node execution existed.
+- ✅ `team_form` writes explicit `agent:<name>` refs and skips subagent stub generation for them.
+- ✅ `team_run` routes live refs through generic graph node execution instead of rejecting them as invalid subagent ids.
+- ✅ P5 consult lowering no longer rejects live navigator bindings; live execution remains graph-runner behavior.
 
 **Work:**
 
@@ -533,13 +543,13 @@ Current matching modules:
 
 **Acceptance criteria:**
 
-- [ ] A team can bind a role to `agent:<registered-name>` and pass validation.
-- [ ] `team_form` can create such a team from both interactive selection and tool-call arguments.
-- [ ] `team_run` executes a live-agent-bound node and captures its response in graph output/state.
-- [ ] `team_describe` shows live-agent bindings clearly.
-- [ ] Missing/unavailable live agents produce actionable errors.
-- [ ] Live-agent support works through generic graph execution, not protocol-specific handler branches.
-- [ ] `npm run check`, `npm test`, and focused live-agent tests pass.
+- [x] A team can bind a role to `agent:<registered-name>` and pass validation.
+- [x] `team_form` can create such a team from interactive entry and tool-call arguments.
+- [x] `team_run` executes a live-agent-bound node and captures its response in graph output/state.
+- [x] `team_describe` shows live-agent bindings clearly.
+- [x] Missing/unavailable live agents produce actionable errors.
+- [x] Live-agent support works through generic graph execution, not protocol-specific handler branches.
+- [x] `npm run check`, `npm test`, and focused live-agent tests pass.
 
 **KISS/YAGNI constraints:**
 
@@ -551,15 +561,17 @@ Current matching modules:
 
 ---
 
-## P9 — Evaluate LangGraph after team-local contract extraction
+## P9 — Evaluate LangGraph before further protocol extraction
 
-**Status:** ❌ **TODO — blocked until P7 is complete**
+**Status:** 🟡 **EVALUATION WRITTEN — spike recommended before implementation**
 
-**Goal:** Determine whether LangGraph would reduce the amount of custom TypeScript needed for team graph planning/execution after built-in execution contracts have moved into team manifests. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
+**Goal:** Determine whether LangGraph would reduce the custom TypeScript needed for team graph planning/execution before adding more protocol/config machinery. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
 
-**Why after P7:**
+**Why now:**
 
-P7 separates team-local execution contracts from execution primitives. LangGraph should be evaluated against the post-P7 shape, not the current code-hosted protocol catalog, so the comparison measures graph runtime value rather than cleanup work that P7 already owns.
+The P7 team-local contract expansion was becoming a bespoke mini-DSL. LangGraph should be evaluated against the current executor now, so the project can choose framework-backed graph execution or deliberately keep the small in-repo DAG executor before writing more protocol configuration code.
+
+**Evaluation:** `docs/teams-p9-langgraph-evaluation.md`
 
 **Research questions:**
 
@@ -628,6 +640,8 @@ P7 separates team-local execution contracts from execution primitives. LangGraph
 
 ## Latest validation
 
+- 2026-05-03 P8 live-agent support implemented: added `agent:<registered-name>` role bindings, team form stub skipping, registry validation, tool/describe inspectability, and a generic graph-node Maildir request/response runner. Council review identified two blockers; follow-up now archives stale protocol replies safely and prevents ambient team-level retry policy from resending live-agent requests by default. Focused tests cover ref parsing, request packaging, response capture, fresh unmatched reply preservation, stale protocol reply archiving, unavailable/self rejection, cancellation, team form output, registry warnings, graph validation, and live-node retry behavior. Validation green: `npm run check`, `npm test` (33 files, 369 tests; rerun green after one random soak threshold flake), and `npm test -- tests/architecture.test.ts`.
+- 2026-05-03 LangGraph pivot: paused the P7 team-local contract expansion as too complex, reverted the uncommitted implementation spike, stopped local spawned review agents, and wrote `docs/teams-p9-langgraph-evaluation.md`. Jules status checked; one unrelated testing-improvement Jules session is still in progress and the CLI exposes no cancel/close command, while older sessions are completed or awaiting user feedback.
 - 2026-05-03 architecture hardening refresh: added an architecture fitness function that fails if `extensions/pi-teams` runtime source/config files reintroduce removed legacy symbols (`council`, `chairman`, `topology`, old compatibility type/function names, or legacy run custom types). Navigator review and council review both found no true KISS/YAGNI blockers for closure. Validation green: `npm run check`, `npm test` (32 files, 360 tests), `npm test -- tests/architecture.test.ts` (16 tests), and `npm run knip` (zero findings). Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output.
 - 2026-05-03 refactor closure refresh: local audit found no P3-P6 blockers and one tiny duplication cleanup. Reused `graphNodeDetails()` in the graph handler and renamed the generic graph prompt asset from `teamGraphNodeTemplate` to `graph/node/template` to keep prompt IDs path-shaped. Validation green: `npm run check`, `npm test` (32 files, 359 tests), and `npm test -- tests/architecture.test.ts`. Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output; council review found no blockers.
 - 2026-05-03 final evidence refresh: local audit found a P5 documentation/code mismatch: graph retry policy was claimed but not implemented. Fixed with bounded `maxRetries` policy on team limits, role bindings, and runtime limits; `team_models` rewrites preserve it. Focused retry tests cover successful retry, runtime override precedence (`maxRetries: 0`), and timeout non-retry behavior. Validation green: `npm run check`, `npm test` (32 files, 359 tests), and `npm test -- tests/architecture.test.ts`. Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output. Live navigator (`team_run consult`) and council (`team_run default-debate`) reviews found no true KISS/YAGNI blockers after the fix.

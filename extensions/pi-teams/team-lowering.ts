@@ -2,6 +2,7 @@
  * Graph lowering for bundled team protocols.
  */
 
+import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
 import { loadTeamContext } from "./context-loader.js";
 import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { formatProtocolContext, renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
@@ -160,14 +161,12 @@ function graphPlanForPairCoding(args: GraphPlanArgs): LoweredGraphPlan {
 }
 
 function graphPlanForConsult(args: GraphPlanArgs): LoweredGraphPlan {
-	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultConsult?.navigator;
-	if (!navigator) throw new Error("consult teams need a navigator model.");
-	if (navigator.toLowerCase().startsWith("agent:")) {
-		throw new Error(`consult graph nodes require model ids; live-agent ref "${navigator}" is unsupported.`);
-	}
+	const source = firstBinding(args.team, ["navigator"]);
+	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? (isLiveAgentRef(source.subagent) ? liveAgentModel(source.subagent) : args.settings.defaultConsult?.navigator);
+	if (!navigator) throw new Error("consult teams need a navigator model or live-agent binding.");
 	const chains = promptChainsForTeam(args.team);
 	const binding = {
-		...firstBinding(args.team, ["navigator"]),
+		...source,
 		role: "navigator",
 		model: navigator,
 		systemPrompt: requirePromptChain(chains, "navigator.system").text,
