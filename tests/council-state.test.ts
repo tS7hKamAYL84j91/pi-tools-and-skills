@@ -5,21 +5,21 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../extensions/pi-teams/state.js";
-import type { CouncilMember } from "../extensions/pi-teams/types.js";
+import type { TeamParticipant } from "../extensions/pi-teams/types.js";
 
-const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
-const memberB: CouncilMember = {
+const memberA: TeamParticipant = { label: "Agent A", model: "openai/gpt-5.5" };
+const memberB: TeamParticipant = {
 	label: "Agent B",
 	model: "anthropic/claude-opus-4-6",
 };
-const chairman: CouncilMember = {
+const chairman: TeamParticipant = {
 	label: "Chairman",
 	model: "google/gemini-2.5-pro",
 };
 
 function createArgs() {
 	return {
-		council: "test",
+		team: "test",
 		prompt: "Should we ship?",
 		members: [memberA, memberB],
 		chairman,

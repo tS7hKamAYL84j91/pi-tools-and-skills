@@ -81,6 +81,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Pair-coding now lowers to a finite graph (`navigator_brief -> driver_implementation -> review/fix...`) using `maxFixPasses` for static unrolling. No cyclic graph edges, expression language, or pair-specific runner module is introduced.
 
+### ADR-014 — Remove compatibility aliases instead of carrying legacy type names
+
+**Decision:** P6 removes `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, and `CreateArgs.council` rather than preserving aliases. Tests now use `TeamRunDefinition`, `TeamParticipant`, and `team` fields directly.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -248,7 +252,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P6 — Remove legacy protocol assumptions (council/pair/telephone)
 
-**Status:** ❌ **NOT STARTED**
+**Status:** 🚧 **IN PROGRESS — compatibility aliases removed**
 
 **Goal:** Eliminate hardcoded "council", "pair", "telephone" assumptions from types, modules, and prompts. Generalize to protocol-agnostic team slots driven entirely by configuration. This is the KISS/YAGNI cleanup pass to ensure the codebase does not bake in legacy protocol names.
 
@@ -291,9 +295,9 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 **Work:**
 
 1. **Rename core types:**
-   - `CouncilDefinition` → `TeamRunDefinition`
-   - `CouncilMember` → `TeamParticipant`
-   - `deliberation()` → `executeTeam()` or `runTeam()`
+   - ✅ `CouncilDefinition` → `TeamRunDefinition`
+   - ✅ `CouncilMember` → `TeamParticipant`
+   - ✅ `deliberate()` execution path removed; graph-backed `runTeam()` dispatch is the execution path
 
 2. **Generalize settings:**
    - `resolveCouncilSettings()` → `resolveTeamSettings()`
@@ -322,8 +326,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [ ] No module names contain "council" (except `config/agents/` where intentional)
 - [ ] No module names contain "pair" (except `pair-coding.ts` if kept as explicit engine)
 - [ ] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
-- [ ] `TeamRunDefinition` replaces `CouncilDefinition`
-- [ ] `executeTeam()` or `runTeam()` replaces `deliberate()`
+- [x] `TeamRunDefinition` replaces `CouncilDefinition`
+- [x] `runTeam()` graph-backed dispatch replaces `deliberate()`
 - [ ] Prompt keys use `{protocol}/{phase}/{slot}` convention
 - [ ] New team protocols can be added via config without TypeScript changes
 - [ ] `npm run check` and `npm test` pass
@@ -363,6 +367,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.10%).
 - `npm test` passed: 34 files, 376 tests.
+- P6 alias-removal grep passed: no `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or `council?:` matches remain in `extensions/pi-teams` or `tests`.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.

@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 describe("resolveMembers — model entries", () => {
-	it("passes through model ids as plain CouncilMembers labelled A, B, C…", () => {
+	it("passes through model ids as plain participants labelled A, B, C…", () => {
 		const result = resolveMembers([
 			"openai/gpt-5.5",
 			"anthropic/claude-opus-4-6",
@@ -134,7 +134,7 @@ describe("resolveChairman", () => {
 		expect(r.chairman).toEqual({ label: "Chairman", model: "openai/gpt-5.5" });
 	});
 
-	it("resolves an agent: chairman to a CouncilMember with agent fields", () => {
+	it("resolves an agent: chairman to a participant with agent fields", () => {
 		mockFind.mockReturnValue({
 			id: "carol-id",
 			name: "carol",

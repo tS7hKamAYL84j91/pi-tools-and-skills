@@ -11,8 +11,6 @@ import type { ModelRun, ReviewRun, TeamParticipant, TeamRunRecord } from "./type
 export const DEFAULT_TEAM_RUNS_DIR = join(homedir(), ".pi", "agent", "team-runs");
 /** @public */
 export const TEAM_RUN_CUSTOM_TYPE = "pi-teams:run";
-/** @public */
-export const LEGACY_TEAM_RUN_CUSTOM_TYPE = "pi-teams:deliberation";
 const TMP_SUBDIR = "tmp";
 const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 
@@ -111,10 +109,8 @@ interface TeamStateManagerOptions {
 }
 
 interface CreateArgs {
-	team?: string;
+	team: string;
 	protocol?: string;
-	/** @deprecated Use team. */
-	council?: string;
 	prompt: string;
 	members: TeamParticipant[];
 	chairman: TeamParticipant;
@@ -331,7 +327,7 @@ export class TeamStateManager {
 		const record: TeamRunRecord = {
 			version: 1,
 			id: generateId(),
-			team: args.team ?? args.council ?? "default",
+			team: args.team,
 			prompt: args.prompt,
 			members: args.members,
 			chairman: args.chairman,

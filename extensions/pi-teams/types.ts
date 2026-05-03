@@ -32,12 +32,6 @@ export interface TeamParticipant extends GenerationConfig {
 	agentId?: string;
 }
 
-/** @deprecated Use TeamRunDefinition. */
-export type CouncilDefinition = TeamRunDefinition;
-
-/** @deprecated Use TeamParticipant. */
-export type CouncilMember = TeamParticipant;
-
 export interface ModelRun {
 	member: TeamParticipant;
 	prompt: string;
