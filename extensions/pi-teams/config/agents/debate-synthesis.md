@@ -1,7 +1,7 @@
 ---
 name: "debate_synthesis"
 version: "1.0.0"
-description: "Chair role that synthesizes debate answers and critiques into a final recommendation."
+description: "Synthesis role that combines debate answers and critiques into a final recommendation."
 promptId: "debate/synthesis/system"
 scope: "debate"
 stage: "synthesis"

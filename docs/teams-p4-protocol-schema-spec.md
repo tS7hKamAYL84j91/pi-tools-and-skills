@@ -1,8 +1,10 @@
 # P4 Mini-Spec: Protocol-First `pi-teams` Schema Simplification
 
+> Status: historical mini-spec. Current implementation is stricter than this draft: authored team manifests require `schemaVersion: 2`, `protocol`, object role bindings, and role-level `model` fields. `engine`, `topology`, legacy top-level model fields, and compatibility barrels are removed; see `docs/teams-future-improvements-todo.md` ADR-015 and ADR-019.
+
 ## Goal
 
-Make `protocol` / `engine` the sole execution selector for `pi-teams`; deprecate `topology` as an authored/primary concept and keep authored team manifests strict v2-only.
+Make `protocol` the sole execution selector for `pi-teams`; remove `topology` as an authored/primary concept and keep authored team manifests strict v2-only.
 
 P4 must follow the P2 prompt contract: prompt/system/template resolution remains **protocol-slot based**, not topology based.
 
@@ -12,13 +14,12 @@ P4 must follow the P2 prompt contract: prompt/system/template resolution remains
 
 1. **Authored v2 team files are protocol-first**
    - `schemaVersion: 2`
-   - Require `protocol` or `engine`.
-   - Omit `topology`.
+   - Require `protocol`.
+   - Omit `engine` and `topology`.
    - Built-in team files should be rewritten to v2 and drop `topology`.
 
-2. **`topology` is compatibility/display metadata only**
-   - Do not use `topology` for handler dispatch, prompt fallback, model-slot selection, or execution validation.
-   - Keep a normalized/deprecated `topology` value only where needed for backward-compatible details/UI output.
+2. **`topology` is removed**
+   - Do not use `topology` for handler dispatch, prompt fallback, model-slot selection, execution validation, details, or UI output.
    - Do not infer `protocol` from `topology`.
 
 3. **v1 authored teams do not load**
@@ -26,13 +27,13 @@ P4 must follow the P2 prompt contract: prompt/system/template resolution remains
    - Runtime legacy state fallback is separate from authored team manifest parsing.
    - Users migrate team files by writing `schemaVersion: 2`, `protocol`, and object role bindings.
 
-4. **`engine` is an alias for `protocol`**
-   - `protocol` remains canonical in memory.
-   - If both `protocol` and `engine` are present, they must match after alias normalization.
-   - Generated files should write `protocol`, not both.
+4. **No manifest aliases**
+   - `engine` is not accepted as an alias.
+   - Top-level `memberModels`, `synthesisModel`, `driverModel`, and `navigatorModel` are not accepted as model bindings.
+   - Generated files write `protocol` and role binding `model` fields only.
 
 5. **No topology fallback**
-   - If a team has `topology: "pair"` but no `protocol` / `engine`, reject it.
+   - If a team has `topology` but no `protocol`, reject it.
    - Prompt contracts and defaults must choose by protocol slots only.
 
 ---

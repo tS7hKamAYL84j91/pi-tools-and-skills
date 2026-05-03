@@ -166,16 +166,6 @@ function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
 	return edges.length > 0 ? edges : undefined;
 }
 
-function protocolFromFrontMatter(frontMatter: Record<string, unknown>, id: string, warnings: string[]): string | undefined {
-	const protocol = optionalString(frontMatter.protocol);
-	const engine = optionalString(frontMatter.engine);
-	if (protocol && engine && protocol !== engine) {
-		warnings.push(`${id}: protocol and engine must match; got ${protocol} and ${engine}`);
-		return undefined;
-	}
-	return protocol ?? engine;
-}
-
 function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
@@ -184,7 +174,7 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		warnings.push(`${id}: schemaVersion 2 is required`);
 		return undefined;
 	}
-	const protocol = protocolFromFrontMatter(frontMatter, id, warnings);
+	const protocol = optionalString(frontMatter.protocol);
 	if (!protocol) {
 		warnings.push(`${id}: protocol is required`);
 		return undefined;
@@ -198,16 +188,6 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 			: `${id}: agents must be object entries with role and subagent`);
 		return undefined;
 	}
-	const memberModels = stringArray(frontMatter.memberModels);
-	const synthesisModel = optionalString(frontMatter.synthesisModel);
-	const driverModel = optionalString(frontMatter.driverModel);
-	const navigatorModel = optionalString(frontMatter.navigatorModel);
-	const legacyModels: TeamModels = {
-		...(memberModels ? { members: memberModels } : {}),
-		...(synthesisModel ? { synthesis: synthesisModel } : {}),
-		...(driverModel ? { driver: driverModel } : {}),
-		...(navigatorModel ? { navigator: navigatorModel } : {}),
-	};
 	const graph = graphEdges(frontMatter.edges);
 	const outputs = stringArray(frontMatter.outputs);
 	const reducerValue = optionalString(frontMatter.reducer);
@@ -229,7 +209,7 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		agents,
 		agentBindings,
 		...(graph || outputs || reducer ? { graph: { edges: graph ?? [], ...(outputs ? { outputs } : {}), ...(reducer ? { reducer } : {}) } } : {}),
-		models: Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, protocol),
+		models: modelsFromBindings(agentBindings, protocol),
 		limits: {
 			...(timeoutMs ? { timeoutMs } : {}),
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),

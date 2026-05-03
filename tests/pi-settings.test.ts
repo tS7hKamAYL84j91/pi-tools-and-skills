@@ -19,24 +19,24 @@ afterEach(() => {
 
 describe("readPiSettingsKey", () => {
 	it("returns undefined when the file is missing", () => {
-		expect(readPiSettingsKey("council", path)).toBeUndefined();
+		expect(readPiSettingsKey("sample", path)).toBeUndefined();
 	});
 
 	it("returns undefined when the file is malformed", () => {
 		writeFileSync(path, "{ this is not json ");
-		expect(readPiSettingsKey("council", path)).toBeUndefined();
+		expect(readPiSettingsKey("sample", path)).toBeUndefined();
 	});
 
 	it("returns undefined when the key is absent", () => {
 		writeFileSync(path, JSON.stringify({ matrix: { homeserver: "x" } }));
-		expect(readPiSettingsKey("council", path)).toBeUndefined();
+		expect(readPiSettingsKey("sample", path)).toBeUndefined();
 	});
 
 	it("returns the raw value at the key when present", () => {
-		const settings = { council: { defaultChairman: "openai/gpt-5.5" } };
+		const settings = { sample: { defaultModel: "openai/gpt-5.5" } };
 		writeFileSync(path, JSON.stringify(settings));
-		expect(readPiSettingsKey("council", path)).toEqual({
-			defaultChairman: "openai/gpt-5.5",
+		expect(readPiSettingsKey("sample", path)).toEqual({
+			defaultModel: "openai/gpt-5.5",
 		});
 	});
 
@@ -46,7 +46,7 @@ describe("readPiSettingsKey", () => {
 	});
 
 	it("returns null when the key is explicitly null in JSON", () => {
-		writeFileSync(path, JSON.stringify({ council: null }));
-		expect(readPiSettingsKey("council", path)).toBeNull();
+		writeFileSync(path, JSON.stringify({ sample: null }));
+		expect(readPiSettingsKey("sample", path)).toBeNull();
 	});
 });
