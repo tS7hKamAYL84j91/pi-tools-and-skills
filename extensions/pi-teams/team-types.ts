@@ -36,6 +36,7 @@ export interface TeamAgentBinding extends GenerationConfig {
 	templateId?: string;
 	systemPrompt?: string;
 	dependencyPolicy?: TeamGraphDependencyPolicy;
+	maxRetries?: number;
 	subagentPromptId?: string;
 	subagentSystemPrompt?: string;
 }
@@ -47,6 +48,7 @@ export interface TeamLimits {
 	timeoutMs?: number;
 	maxFixPasses?: number;
 	maxConcurrency?: number;
+	maxRetries?: number;
 }
 
 export interface TeamGraphEdge {

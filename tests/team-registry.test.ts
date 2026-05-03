@@ -489,6 +489,7 @@ describe("loadTeamRegistry", () => {
 					'    promptId: "review/system"',
 					'    templateId: "review/template"',
 					'    dependencyPolicy: "allow-failed"',
+					"    maxRetries: 2",
 					'    tools: ["read"]',
 					'    parameters: { "temperature": 0.2, "maxTokens": 42 }',
 					'  - role: "qa"',
@@ -500,6 +501,7 @@ describe("loadTeamRegistry", () => {
 					'outputs: ["qa"]',
 					'reducer: "concat"',
 					"maxConcurrency: 1",
+					"maxRetries: 3",
 					"---",
 					"Team body.",
 				].join("\n"),
@@ -516,15 +518,18 @@ describe("loadTeamRegistry", () => {
 			expect(updated).toContain('outputs: ["qa"]');
 			expect(updated).toContain('reducer: "concat"');
 			expect(updated).toContain("maxConcurrency: 1");
+			expect(updated).toContain("maxRetries: 3");
 			expect(team.models.members).toEqual(["new/review", "new/qa"]);
 			expect(team.prompts["node.template"]).toBe("custom-node-template");
 			expect(team.graph).toEqual({ edges: [{ from: "review", to: "qa" }], outputs: ["qa"], reducer: "concat" });
 			expect(team.limits.maxConcurrency).toBe(1);
+			expect(team.limits.maxRetries).toBe(3);
 			expect(team.agentBindings[0]).toMatchObject({
 				model: "new/review",
 				promptId: "review/system",
 				templateId: "review/template",
 				dependencyPolicy: "allow-failed",
+				maxRetries: 2,
 				tools: ["read"],
 				parameters: { temperature: 0.2, maxTokens: 42 },
 			});

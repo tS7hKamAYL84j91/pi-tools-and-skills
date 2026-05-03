@@ -21,6 +21,7 @@ export interface TeamRunModels {
 export interface TeamRunLimits {
 	maxFixPasses?: number;
 	timeoutMs?: number;
+	maxRetries?: number;
 }
 
 export interface TeamRunInput {
@@ -93,6 +94,7 @@ function graphNodeDetails(result: GraphRunResult): Array<Record<string, unknown>
 		ok: node.ok,
 		status: node.status,
 		durationMs: node.durationMs,
+		attempts: node.attempts,
 	}));
 }
 
@@ -114,6 +116,7 @@ const graphHandler: TeamHandler = {
 			prompt: args.params.prompt,
 			ctx: args.ctx,
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			maxRetries: args.params.limits?.maxRetries,
 			onProgress: (text) => args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`),
 		});
 		recordPhase(args, "graph");
@@ -140,6 +143,7 @@ const graphHandler: TeamHandler = {
 				ok: node.ok,
 				status: node.status,
 				durationMs: node.durationMs,
+				attempts: node.attempts,
 			})),
 		});
 	},
@@ -185,6 +189,7 @@ const loweredGraphHandler: TeamHandler = {
 			prompt: args.params.prompt,
 			ctx: args.ctx,
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			maxRetries: args.params.limits?.maxRetries,
 			templateSlot: plan.templateSlot,
 			buildNodePrompt: plan.buildNodePrompt,
 			onProgress: (text) => args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`),

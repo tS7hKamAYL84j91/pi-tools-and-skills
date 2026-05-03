@@ -121,6 +121,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** File-mutating helpers such as `team_models` must preserve prompt refs, binding prompt/template overrides, tools, parameters, graph policy, outputs, reducers, and limits when rewriting a team manifest. Generated built-in protocol teams must also be runnable without optional model inputs; debate generation therefore emits at least one member binding even when `models.members` is omitted.
 
+### ADR-024 — Graph retries stay bounded and declarative
+
+**Decision:** P5 retry support is a small graph execution policy, not a protocol-specific loop. `maxRetries` may be set globally in team limits, overridden on a role binding, or supplied at run time; retries apply only to child-call failures and do not retry parent cancellation or node timeouts.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -268,7 +272,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
   - Deterministic topological level scheduling
   - Bounded concurrency
   - Direct-upstream prompt packaging
-  - Per-node timeout and retry policy
+  - Per-node timeout and bounded retry policy
   - Deterministic output reduction
 - ✅ Graph-defined teams are integrated in `team-handlers.ts`
 - ✅ Focused tests for validation, fanout, reduction, skipped dependents
@@ -407,6 +411,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
+- 2026-05-03 final evidence refresh: local audit found a P5 documentation/code mismatch: graph retry policy was claimed but not implemented. Fixed with bounded `maxRetries` policy on team limits, role bindings, and runtime limits; `team_models` rewrites preserve it. Focused retry tests cover successful retry, runtime override precedence (`maxRetries: 0`), and timeout non-retry behavior. Validation green: `npm run check`, `npm test` (32 files, 359 tests), and `npm test -- tests/architecture.test.ts`. Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output. Live navigator (`team_run consult`) and council (`team_run default-debate`) reviews found no true KISS/YAGNI blockers after the fix.
 - 2026-05-03 evidence refresh: local audit found two `team-form.ts` blockers (`team_form` debate without members; lossy `team_models` rewrite). Both are fixed and reviewed by the audit agent, council (`team_run default-debate`), and navigator (`team_run consult`) with no remaining true KISS/YAGNI blockers. Validation green: `npm run check`, `npm test` (32 files, 356 tests), and `npm test -- tests/architecture.test.ts`. Legacy runtime-symbol grep still only reports unrelated `tests/task-brief.test.ts` topology fixtures outside `extensions/pi-teams`.
 - Final handoff verification passed on 2026-05-03: `npm run check && npm test` green, `tests/architecture.test.ts` green, and `git status` clean on `main...origin/main` before this progress note.
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.05%).

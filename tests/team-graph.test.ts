@@ -124,6 +124,65 @@ describe("team graph execution", () => {
 		]);
 	});
 
+	it("retries child-call failures with bounded per-node policy", async () => {
+		let planAttempts = 0;
+		const result = await runTeamGraph({
+			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 1 }], graph: { edges: [], outputs: ["plan"] } }),
+			prompt: "ship?",
+			ctx: fakeCtx(),
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				planAttempts++;
+				return {
+					member: { label: binding.role, model },
+					prompt,
+					systemPrompt,
+					output: `attempt:${planAttempts}`,
+					durationMs: 1,
+					ok: planAttempts > 1,
+					...(planAttempts === 1 ? { error: "transient" } : {}),
+				};
+			},
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "succeeded", attempts: 2, output: "attempt:2" });
+	});
+
+	it("lets runtime retry limits override binding retry limits", async () => {
+		let attempts = 0;
+		const result = await runTeamGraph({
+			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 2 }], graph: { edges: [], outputs: ["plan"] } }),
+			prompt: "ship?",
+			ctx: fakeCtx(),
+			maxRetries: 0,
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				attempts++;
+				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "failed", durationMs: 1, ok: false, error: "nope" };
+			},
+		});
+
+		expect(attempts).toBe(1);
+		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "failed", attempts: 1 });
+	});
+
+	it("does not retry timed out nodes", async () => {
+		let attempts = 0;
+		const result = await runTeamGraph({
+			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 2 }], graph: { edges: [], outputs: ["plan"] } }),
+			prompt: "ship?",
+			ctx: fakeCtx(),
+			timeoutMs: 1,
+			runNode: async ({ signal }): Promise<ModelRun> => {
+				attempts++;
+				await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+				throw new Error("unreachable");
+			},
+		});
+
+		expect(attempts).toBe(1);
+		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "failed", attempts: 1, error: "timeout" });
+	});
+
 	it("lowers debate to generation, critique, and synthesis graph nodes", async () => {
 		const debateTeam = team({
 			id: "debate-test",
