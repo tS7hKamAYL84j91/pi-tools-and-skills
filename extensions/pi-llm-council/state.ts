@@ -22,7 +22,15 @@ import type { CouncilDeliberation, CouncilMember } from "./types.js";
 
 /** @public */
 export const DEFAULT_COUNCILS_DIR = join(homedir(), ".pi", "agent", "councils");
+const COUNCIL_STATE_CUSTOM_TYPE = "pi-llm-council:deliberation";
 const TMP_SUBDIR = "tmp";
+
+interface CouncilStateManagerOptions {
+	appendEntry?: (customType: string, data?: unknown) => void;
+	legacyFilePersistence?: boolean;
+}
+
+const MANAGER_OPTIONS = new WeakMap<CouncilStateManager, CouncilStateManagerOptions>();
 
 function generateId(): string {
 	return `council-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
@@ -36,7 +44,12 @@ interface CreateArgs {
 }
 
 export class CouncilStateManager {
-	constructor(private readonly councilsDir: string = DEFAULT_COUNCILS_DIR) {}
+	constructor(
+		private readonly councilsDir: string = DEFAULT_COUNCILS_DIR,
+		options: CouncilStateManagerOptions = {},
+	) {
+		MANAGER_OPTIONS.set(this, options);
+	}
 
 	private recordPath(id: string): string {
 		return join(this.councilsDir, `${id}.json`);
@@ -52,6 +65,9 @@ export class CouncilStateManager {
 
 	/** Atomic write via tmp/ → rename. */
 	private write(record: CouncilDeliberation): void {
+		const options = MANAGER_OPTIONS.get(this) ?? {};
+		options.appendEntry?.(COUNCIL_STATE_CUSTOM_TYPE, record);
+		if (options.legacyFilePersistence === false) return;
 		this.ensureDirs();
 		const tmp = this.tmpPath(record.id);
 		writeFileSync(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });

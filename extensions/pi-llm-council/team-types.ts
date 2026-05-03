@@ -2,17 +2,20 @@
  * Core declarative team types.
  */
 
+import type { GenerationConfig } from "./types.js";
+
 export type TeamTopology = "chain" | "council" | "pair";
-export type TeamProtocol = "debate" | "consult" | "pair-coding" | "telephone";
+export type TeamProtocol = "debate" | "consult" | "graph" | "pair-coding" | "telephone";
 export type TeamSource = "builtin" | "user" | "project";
 export type TeamWritableSource = Exclude<TeamSource, "builtin">;
 
-export interface SubagentSpec {
+export interface SubagentSpec extends GenerationConfig {
 	id: string;
 	name: string;
 	description?: string;
 	promptId?: string;
 	model?: string;
+	systemPrompt?: string;
 	source: TeamSource;
 	path: string;
 }
@@ -24,16 +27,26 @@ export interface TeamModels {
 	navigator?: string;
 }
 
-export interface TeamAgentBinding {
+export interface TeamAgentBinding extends GenerationConfig {
 	role: string;
 	subagent: string;
 	model?: string;
 	label?: string;
+	systemPrompt?: string;
 }
 
 export interface TeamLimits {
 	timeoutMs?: number;
 	maxFixPasses?: number;
+}
+
+export interface TeamGraphEdge {
+	from: string;
+	to: string;
+}
+
+export interface TeamGraph {
+	edges: TeamGraphEdge[];
 }
 
 export interface TeamSpec {
@@ -45,6 +58,7 @@ export interface TeamSpec {
 	protocol: TeamProtocol;
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
+	graph?: TeamGraph;
 	chair?: string;
 	models: TeamModels;
 	limits: TeamLimits;

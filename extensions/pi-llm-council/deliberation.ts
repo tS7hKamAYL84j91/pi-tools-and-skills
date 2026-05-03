@@ -39,6 +39,7 @@ import type {
 	CouncilDeliberation,
 	CouncilMember,
 	CritiqueRun,
+	GenerationConfig,
 	ModelRun,
 } from "./types.js";
 
@@ -47,6 +48,17 @@ export const DEFAULT_PARALLEL_TIMEOUT_MS = 5 * 60 * 1000;
 const MIN_GENERATION_FOR_CRITIQUE = 2;
 
 type StageLabel = "generate" | "critique" | "synthesize";
+
+function applyMemberConfig(
+	member: CouncilMember,
+	config: GenerationConfig | undefined,
+): CouncilMember {
+	return {
+		...member,
+		...(config?.tools ? { tools: config.tools } : {}),
+		...(config?.parameters ? { parameters: config.parameters } : {}),
+	};
+}
 
 // ── Pre-flight ─────────────────────────────────────────────────
 
@@ -126,8 +138,13 @@ export function preflight(
 		totalCalls: definition.members.length * 2 + 1,
 		reasons,
 		warnings,
-		members: memberResolution.members,
-		chairman: chairResolution.chairman,
+		members: memberResolution.members.map((member, index) => ({
+			...member,
+			...(definition.memberConfigs?.[index] ?? {}),
+		})),
+		chairman: chairResolution.chairman
+			? { ...chairResolution.chairman, ...(definition.chairmanConfig ?? {}) }
+			: null,
 		agents,
 	};
 }
@@ -252,8 +269,10 @@ export async function deliberate(
 		args.onProgress?.(`warning: ${warning}`);
 	}
 
-	const members = report.members;
-	const chairman = report.chairman;
+	const members = report.members.map((member, index) =>
+		applyMemberConfig(member, args.definition.memberConfigs?.[index]),
+	);
+	const chairman = applyMemberConfig(report.chairman, args.definition.chairmanConfig);
 	const ourRecord: PanopticonRecord | undefined = await currentPanopticonRecord(
 		args.ctx.cwd,
 	);

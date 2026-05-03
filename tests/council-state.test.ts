@@ -38,6 +38,22 @@ describe("CouncilStateManager", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
+	it("appends session entries while keeping legacy file persistence", () => {
+		const entries: Array<{ customType: string; data?: unknown }> = [];
+		const sessionBacked = new CouncilStateManager(dir, {
+			appendEntry: (customType, data) => entries.push({ customType, data }),
+		});
+
+		const record = sessionBacked.create(createArgs());
+		sessionBacked.update(record, { status: "generating" });
+
+		expect(entries).toHaveLength(2);
+		expect(entries[0]?.customType).toBe("pi-llm-council:deliberation");
+		expect(entries[0]?.data).toMatchObject({ id: record.id, status: "pending" });
+		expect(entries[1]?.data).toMatchObject({ id: record.id, status: "generating" });
+		expect(sessionBacked.get(record.id)).toMatchObject({ id: record.id, status: "generating" });
+	});
+
 	it("create() persists a pending record discoverable by id", () => {
 		const record = store.create(createArgs());
 		expect(record.status).toBe("pending");

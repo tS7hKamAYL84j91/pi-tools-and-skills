@@ -9,12 +9,14 @@ import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import { snapshotAvailableModels } from "./members.js";
 import { type PairResult, runPairCoding } from "./pair-coding.js";
 import { navigatorConsultSystemPrompt } from "./pair-prompts.js";
+import { renderTemplate } from "./prompt-renderer.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
 import { resolveCouncilSettings } from "./settings.js";
 import type { CouncilStateManager } from "./state.js";
+import { runTeamGraph } from "./team-graph.js";
 import { teamToCouncilDefinition } from "./team-registry.js";
-import type { TeamModels, TeamSpec } from "./team-types.js";
-import type { CouncilDefinition } from "./types.js";
+import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
+import type { CouncilDefinition, GenerationConfig } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 const CONSULT_TIMEOUT_MS = 5 * 60_000;
@@ -98,6 +100,22 @@ function memberModelSlots(args: {
 	}));
 }
 
+function bindingForRole(team: TeamSpec, roles: string[]): TeamAgentBinding | undefined {
+	return team.agentBindings.find((binding) => {
+		const normalized = binding.role.toLowerCase().replaceAll("-", "_");
+		return roles.some((role) => normalized === role || normalized.startsWith(`${role}_`));
+	});
+}
+
+function generationConfigForRole(team: TeamSpec, roles: string[]): GenerationConfig | undefined {
+	const binding = bindingForRole(team, roles);
+	if (!binding?.tools && !binding?.parameters) return undefined;
+	return {
+		...(binding.tools ? { tools: binding.tools } : {}),
+		...(binding.parameters ? { parameters: binding.parameters } : {}),
+	};
+}
+
 function formatPairResult(result: PairResult): TeamHandlerResult {
 	const sections: string[] = [];
 	if (result.context.warnings.length > 0) {
@@ -125,10 +143,11 @@ async function consultModel(args: {
 	navigator: string;
 	message: string;
 	ctx: ExtensionContext;
+	config?: GenerationConfig;
 }): Promise<ConsultOutcome> {
 	const promptsConfig = resolveCouncilSettings().prompts;
 	const run = await runMember(
-		{ label: "Navigator", model: args.navigator },
+		{ label: "Navigator", model: args.navigator, ...(args.config ?? {}) },
 		{
 			prompt: args.message,
 			systemPrompt: navigatorConsultSystemPrompt(promptsConfig),
@@ -194,14 +213,50 @@ async function consultAgent(args: {
 }
 
 function telephoneSystemPrompt(index: number, total: number): string {
-	return [
-		`You are relay ${index} of ${total} in a telephone-game chain.`,
-		"You receive the current message from the previous relay and pass one message to the next relay.",
-		"Preserve the core meaning, but rewrite naturally in your own words.",
-		"Do not add explanations, markdown, labels, or commentary.",
-		"Return only the message to pass along.",
-	].join("\n");
+	return renderTemplate(resolveCouncilSettings().prompts.telephoneRelaySystem, {
+		index: index.toString(),
+		total: total.toString(),
+	});
 }
+
+function telephonePrompt(message: string): string {
+	return renderTemplate(resolveCouncilSettings().prompts.telephoneRelayTemplate, {
+		message,
+	});
+}
+
+const graphHandler: TeamHandler = {
+	key: "graph",
+	matches(team) {
+		return (team.graph?.edges.length ?? 0) > 0 || team.protocol === "graph";
+	},
+	modelSlots(team, models) {
+		return memberModelSlots({
+			count: Math.max(team.agentBindings.length, models.members?.length ?? 0, 1),
+			label: (index) => team.agentBindings[index]?.role ?? `Graph node ${index + 1}`,
+			models,
+		});
+	},
+	async run(args) {
+		const result = await runTeamGraph({
+			team: args.team,
+			prompt: args.params.prompt,
+			ctx: args.ctx,
+			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			onProgress: (text) => args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`),
+		});
+		return okText(result.output, {
+			team: args.team.id,
+			ok: result.ok,
+			nodes: result.nodes.map((node) => ({
+				role: node.binding.role,
+				model: node.run.member.model,
+				ok: node.run.ok,
+				durationMs: node.run.durationMs,
+			})),
+		});
+	},
+};
 
 const debateHandler: TeamHandler = {
 	key: "debate",
@@ -299,6 +354,8 @@ const pairCodingHandler: TeamHandler = {
 			prompt: args.params.prompt,
 			driver,
 			navigator,
+			driverConfig: generationConfigForRole(args.team, ["driver"]),
+			navigatorConfig: generationConfigForRole(args.team, ["navigator"]),
 			files: args.params.files,
 			specPath: args.params.specPath,
 			maxFixPasses: args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses,
@@ -333,7 +390,12 @@ const pairConsultHandler: TeamHandler = {
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: consulting ${navigator}`);
 		const outcome = navigator.startsWith("agent:")
 			? await consultAgent({ navigator, message: args.params.prompt, ctx: args.ctx, teamId: args.team.id })
-			: await consultModel({ navigator, message: args.params.prompt, ctx: args.ctx });
+			: await consultModel({
+				navigator,
+				message: args.params.prompt,
+				ctx: args.ctx,
+				config: generationConfigForRole(args.team, ["navigator"]),
+			});
 		return okText(outcome.body, {
 			team: args.team.id,
 			navigator,
@@ -366,10 +428,16 @@ const telephoneHandler: TeamHandler = {
 		for (const [index, agent] of args.team.agents.entries()) {
 			const model = models[index] ?? fallbackModel;
 			args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: relay ${index + 1}/${args.team.agents.length}`);
+			const binding = args.team.agentBindings[index];
 			const run = await runMember(
-				{ label: agent, model },
 				{
-					prompt: `Current message:\n\n${message}`,
+					label: agent,
+					model,
+					...(binding?.tools ? { tools: binding.tools } : {}),
+					...(binding?.parameters ? { parameters: binding.parameters } : {}),
+				},
+				{
+					prompt: telephonePrompt(message),
 					systemPrompt: telephoneSystemPrompt(index + 1, args.team.agents.length),
 					cwd: args.ctx.cwd,
 					signal: args.ctx.signal,
@@ -389,6 +457,7 @@ const telephoneHandler: TeamHandler = {
 };
 
 const TEAM_HANDLERS: readonly TeamHandler[] = [
+	graphHandler,
 	debateHandler,
 	pairCodingHandler,
 	pairConsultHandler,

@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 export interface RawMarkdownDescriptor {
 	frontMatter: Record<string, unknown>;
+	body: string;
 	path: string;
 }
 
@@ -26,39 +27,60 @@ function unquote(value: string): string {
 	return trimmed;
 }
 
-function parseScalar(value: string): string | number {
+function parseInlineList(value: string): unknown[] | undefined {
+	const trimmed = value.trim();
+	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return undefined;
+	const inner = trimmed.slice(1, -1).trim();
+	if (inner.length === 0) return [];
+	return inner.split(",").map((item) => parseScalar(item.trim()));
+}
+
+function parseScalar(value: string): string | number | boolean | unknown[] {
+	const inlineList = parseInlineList(value);
+	if (inlineList) return inlineList;
 	const unquoted = unquote(value);
+	if (unquoted === "true") return true;
+	if (unquoted === "false") return false;
 	const numeric = Number(unquoted);
-	return Number.isFinite(numeric) && /^\d+$/.test(unquoted) ? numeric : unquoted;
+	return Number.isFinite(numeric) && /^-?\d+(?:\.\d+)?$/.test(unquoted) ? numeric : unquoted;
 }
 
 function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
-	let currentListKey: string | undefined;
+	let currentKey: string | undefined;
 	let currentListObject: Record<string, unknown> | undefined;
 	for (const rawLine of frontMatter.split("\n")) {
 		const line = rawLine.trimEnd();
 		if (line.trim().length === 0) continue;
 		const objectListMatch = /^\s*-\s*([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
-		if (objectListMatch?.[1] && currentListKey) {
-			const existing = result[currentListKey];
+		if (objectListMatch?.[1] && currentKey) {
+			const existing = result[currentKey];
 			const values = Array.isArray(existing) ? existing : [];
 			currentListObject = { [objectListMatch[1]]: parseScalar(objectListMatch[2] ?? "") };
 			values.push(currentListObject);
-			result[currentListKey] = values;
+			result[currentKey] = values;
 			continue;
 		}
 		const objectPropertyMatch = /^\s+([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
-		if (objectPropertyMatch?.[1] && currentListObject) {
-			currentListObject[objectPropertyMatch[1]] = parseScalar(objectPropertyMatch[2] ?? "");
-			continue;
+		if (objectPropertyMatch?.[1]) {
+			if (currentListObject) {
+				currentListObject[objectPropertyMatch[1]] = parseScalar(objectPropertyMatch[2] ?? "");
+				continue;
+			}
+			if (currentKey) {
+				const existing = result[currentKey];
+				const values = isRecord(existing) ? existing : {};
+				values[objectPropertyMatch[1]] = parseScalar(objectPropertyMatch[2] ?? "");
+				result[currentKey] = values;
+				continue;
+			}
 		}
 		const listMatch = /^\s*-\s*(.+)$/.exec(line);
-		if (listMatch?.[1] && currentListKey) {
-			const existing = result[currentListKey];
+		if (listMatch?.[1] && currentKey) {
+			const existing = result[currentKey];
 			const values = Array.isArray(existing) ? existing : [];
 			values.push(unquote(listMatch[1]));
-			result[currentListKey] = values;
+			result[currentKey] = values;
 			currentListObject = undefined;
 			continue;
 		}
@@ -68,15 +90,19 @@ function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 		const value = keyMatch[2] ?? "";
 		if (value.trim().length === 0) {
 			result[key] = [];
-			currentListKey = key;
+			currentKey = key;
 			currentListObject = undefined;
 			continue;
 		}
 		result[key] = parseScalar(value);
-		currentListKey = undefined;
+		currentKey = undefined;
 		currentListObject = undefined;
 	}
 	return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function readMarkdownDescriptor(path: string): RawMarkdownDescriptor | undefined {
@@ -84,7 +110,11 @@ function readMarkdownDescriptor(path: string): RawMarkdownDescriptor | undefined
 	if (!raw.startsWith("---\n")) return undefined;
 	const end = raw.indexOf("\n---\n", 4);
 	if (end < 0) return undefined;
-	return { frontMatter: parseFrontMatter(raw.slice(4, end)), path };
+	return {
+		frontMatter: parseFrontMatter(raw.slice(4, end)),
+		body: raw.slice(end + "\n---\n".length).replace(/\n$/, ""),
+		path,
+	};
 }
 
 export function readMarkdownDescriptors(dir: string): RawMarkdownDescriptor[] {

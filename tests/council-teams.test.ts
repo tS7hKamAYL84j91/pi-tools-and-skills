@@ -184,6 +184,84 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
+	it("derives topology and subagent execution config from protocol and manifests", () => {
+		withTempConfig((configPath, root) => {
+			writeFileSync(
+				join(root, "subagents", "navigator_agent.md"),
+				[
+					"---",
+					'name: "navigator_agent"',
+					"tools: []",
+					"parameters:",
+					"  temperature: 0.9",
+					"---",
+					"Navigator system prompt.",
+				].join("\n"),
+				"utf8",
+			);
+			writeFileSync(
+				join(root, "teams", "topology-free.md"),
+				[
+					"---",
+					"schemaVersion: 1",
+					'id: "topology-free"',
+					'name: "Topology Free"',
+					'protocol: "consult"',
+					"agents:",
+					'  - "navigator_agent"',
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "topology-free");
+
+			expect(team.topology).toBe("pair");
+			expect(team.agentBindings[0]).toMatchObject({
+				tools: [],
+				parameters: { temperature: 0.9 },
+				systemPrompt: "Navigator system prompt.",
+			});
+		});
+	});
+
+	it("accepts graph protocol teams with role edges", () => {
+		withTempConfig((configPath, root) => {
+			writeSubagent(root, "reviewer");
+			writeSubagent(root, "qa");
+			writeFileSync(
+				join(root, "teams", "review-qa.md"),
+				[
+					"---",
+					"schemaVersion: 1",
+					'id: "review-qa"',
+					'name: "Review QA"',
+					'protocol: "graph"',
+					"agents:",
+					'  - role: "review"',
+					'    subagent: "reviewer"',
+					'    model: "model/review"',
+					'  - role: "qa"',
+					'    subagent: "qa"',
+					'    model: "model/qa"',
+					"edges:",
+					'  - from: "review"',
+					'    to: "qa"',
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "review-qa");
+
+			expect(team.protocol).toBe("graph");
+			expect(team.graph?.edges).toEqual([{ from: "review", to: "qa" }]);
+			expect(team.agentBindings.map((binding) => binding.role)).toEqual(["review", "qa"]);
+		});
+	});
+
 	it("derives role model bindings from object agent entries", () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "shared_member");

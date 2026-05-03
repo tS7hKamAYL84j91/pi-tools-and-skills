@@ -8,14 +8,16 @@
 
 import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_VISIBILITY_ENV,
 	REGISTRY_DIR,
 } from "../../lib/agent-registry.js";
 import { resolvePiBinary } from "../../lib/spawn-service.js";
-import type { CouncilMember, ModelRun } from "./types.js";
+import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
+import type { CouncilMember, GenerationParameterValue, ModelRun } from "./types.js";
 
 /** Loose registry-record shape used for panopticon self-lookup. */
 interface RegistryRecord {
@@ -66,6 +68,8 @@ interface RunModelArgs {
 	cwd: string;
 	signal?: AbortSignal;
 	parentId?: string;
+	tools?: string[];
+	parameters?: Record<string, GenerationParameterValue>;
 }
 
 interface PiModelResult {
@@ -81,13 +85,22 @@ interface PiModelResult {
  * Honors the AbortSignal: aborted runs send SIGTERM and resolve with
  * { ok: false, error: "cancelled" } rather than rejecting.
  */
+const PROVIDER_OVERRIDES_EXTENSION = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"provider-overrides-extension.ts",
+);
+void providerOverridesExtension;
+
 function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	const startedAt = Date.now();
+	const tools = args.tools ?? [];
+	const parameters = args.parameters ?? {};
 	const piArgs = [
 		"--print",
 		"--model",
 		model,
-		"--no-tools",
+		...(tools.length > 0 ? ["--tools", tools.join(",")] : ["--no-tools"]),
+		...(Object.keys(parameters).length > 0 ? ["--extension", PROVIDER_OVERRIDES_EXTENSION] : []),
 		"--no-skills",
 		"--no-prompt-templates",
 		"--no-context-files",
@@ -103,6 +116,9 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 			stdio: ["ignore", "pipe", "pipe"],
 			env: {
 				...process.env,
+				...(Object.keys(parameters).length > 0
+					? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
+					: {}),
 				...(args.parentId
 					? {
 							[PANOPTICON_PARENT_ID_ENV]: args.parentId,
@@ -157,6 +173,10 @@ export async function runMember(
 	member: CouncilMember,
 	args: RunModelArgs,
 ): Promise<ModelRun> {
-	const result = await runPiModel(member.model, args);
+	const result = await runPiModel(member.model, {
+		...args,
+		tools: args.tools ?? member.tools,
+		parameters: args.parameters ?? member.parameters,
+	});
 	return { member, ...result };
 }

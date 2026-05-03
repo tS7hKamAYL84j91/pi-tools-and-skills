@@ -96,6 +96,7 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.commands, ["teams"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
+			"resources_discover",
 		]);
 	});
 

@@ -39,6 +39,9 @@ const PROMPT_KEYS = [
 	"agentCouncilFraming",
 	"agentPairConsultFraming",
 	"agentRequestTemplate",
+	"telephoneRelaySystem",
+	"telephoneRelayTemplate",
+	"teamGraphNodeTemplate",
 ] as const;
 
 type PromptKey = (typeof PROMPT_KEYS)[number];
@@ -86,6 +89,9 @@ export interface SettingsPromptsEntry {
 	agentCouncilFraming?: string[];
 	agentPairConsultFraming?: string[];
 	agentRequestTemplate?: string[];
+	telephoneRelaySystem?: string[];
+	telephoneRelayTemplate?: string[];
+	teamGraphNodeTemplate?: string[];
 }
 
 interface CouncilSettings {
@@ -473,6 +479,18 @@ function resolvePrompts(
 		agentRequestTemplate:
 			userPrompts.agentRequestTemplate ??
 			defaultPrompts.agentRequestTemplate ??
+			[],
+		telephoneRelaySystem:
+			userPrompts.telephoneRelaySystem ??
+			defaultPrompts.telephoneRelaySystem ??
+			[],
+		telephoneRelayTemplate:
+			userPrompts.telephoneRelayTemplate ??
+			defaultPrompts.telephoneRelayTemplate ??
+			[],
+		teamGraphNodeTemplate:
+			userPrompts.teamGraphNodeTemplate ??
+			defaultPrompts.teamGraphNodeTemplate ??
 			[],
 	};
 }

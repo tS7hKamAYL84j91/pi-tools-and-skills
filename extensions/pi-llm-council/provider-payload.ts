@@ -4,6 +4,8 @@
  * Some OpenAI-compatible providers reject `tools: []`; no-tools requests must
  * omit the field entirely while preserving non-empty tool definitions.
  */
+import type { GenerationParameterValue } from "./types.js";
+
 export function omitEmptyTools(payload: unknown): unknown {
 	if (!isRecord(payload) || !Object.hasOwn(payload, "tools")) {
 		return payload;
@@ -17,6 +19,14 @@ export function omitEmptyTools(payload: unknown): unknown {
 	const sanitized = { ...payload };
 	delete sanitized.tools;
 	return sanitized;
+}
+
+export function mergeGenerationParameters(
+	payload: unknown,
+	parameters: Record<string, GenerationParameterValue>,
+): unknown {
+	if (!isRecord(payload)) return payload;
+	return { ...payload, ...parameters };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
