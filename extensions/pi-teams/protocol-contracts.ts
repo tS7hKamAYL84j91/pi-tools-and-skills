@@ -33,6 +33,7 @@ const PROTOCOL_PROMPT_CONTRACTS: Record<string, readonly ProtocolPromptSlot[]> =
 	],
 	consult: [
 		{ id: "navigator.system", kind: "system", defaultPromptId: "pairNavigatorConsultSystem", roles: ["navigator"] },
+		{ id: "node.template", kind: "template", defaultPromptId: "consultNavigatorTemplate", roles: ["navigator"] },
 	],
 	"pair-coding": [
 		{ id: "navigatorBrief.system", kind: "system", defaultPromptId: "pairNavigatorBriefSystem", roles: ["navigator_brief"] },
