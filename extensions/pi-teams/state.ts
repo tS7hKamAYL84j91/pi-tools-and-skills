@@ -229,6 +229,7 @@ interface TeamStateManagerData {
 	emittedNodes: Set<string>;
 	emittedPhases: Set<string>;
 	sessionRecords: Map<string, TeamRunRecord>;
+	sessionHydrated: boolean;
 }
 
 export class TeamStateManager {
@@ -244,6 +245,7 @@ export class TeamStateManager {
 			emittedNodes: new Set<string>(),
 			emittedPhases: new Set<string>(),
 			sessionRecords: new Map<string, TeamRunRecord>(),
+			sessionHydrated: false,
 		};
 	}
 
@@ -388,6 +390,7 @@ export class TeamStateManager {
 		const entries = sessionManager.getBranch?.() ?? sessionManager.getEntries?.() ?? [];
 		const events = entries.filter((entry) => entry.type === "custom" && entry.customType === TEAM_RUN_CUSTOM_TYPE && isRunEvent(entry.data)).map((entry) => entry.data as TeamRunEvent);
 		this.data.sessionRecords.clear();
+		this.data.sessionHydrated = true;
 		for (const [id, record] of reduceEvents(events)) this.data.sessionRecords.set(id, record);
 		this.data.sequenceByRun.clear();
 		for (const event of events) this.data.sequenceByRun.set(event.runId, Math.max(this.data.sequenceByRun.get(event.runId) ?? 0, event.seq));
@@ -405,7 +408,7 @@ export class TeamStateManager {
 	}
 
 	list(): TeamRunRecord[] {
-		if (this.data.sessionRecords.size > 0) return [...this.data.sessionRecords.values()];
+		if (this.data.sessionHydrated) return [...this.data.sessionRecords.values()];
 		try {
 			this.ensureDirs();
 			const files = readdirSync(this.runsDir).filter((file) => file.endsWith(".json"));
