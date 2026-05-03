@@ -17,14 +17,15 @@ import { join } from "node:path";
 import { sendAgentMessage } from "../../lib/agent-api.js";
 import { REGISTRY_DIR } from "../../lib/agent-registry.js";
 import { renderTemplate } from "./prompt-renderer.js";
+import { promptAssetLines } from "./prompt-resolver.js";
 import {
-	resolveCouncilSettings,
-	type ResolvedCouncilSettings,
+	resolveTeamSettings,
+	type ResolvedTeamSettings,
 } from "./settings.js";
 
 const POLL_INTERVAL_MS = 500;
 
-type PromptConfig = ResolvedCouncilSettings["prompts"];
+type PromptConfig = ResolvedTeamSettings["prompts"];
 
 interface AskAgentArgs {
 	agentName: string;
@@ -64,11 +65,10 @@ function envelopeNames(stage: string): { request: string; reply: string } {
 }
 
 function framingFor(stage: string, promptsConfig: PromptConfig): string {
-	const lines =
-		stage === "consult"
-			? promptsConfig.agentPairConsultFraming
-			: promptsConfig.agentCouncilFraming;
-	return lines.join("\n");
+	return promptAssetLines(
+		promptsConfig,
+		stage === "consult" ? "agentPairConsultFraming" : "agentCouncilFraming",
+	).join("\n");
 }
 
 function formatTag(args: {
@@ -86,7 +86,7 @@ function formatRequest(
 	promptsConfig: PromptConfig,
 ): string {
 	const { request } = envelopeNames(args.stage);
-	return renderTemplate(promptsConfig.agentRequestTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "agentRequestTemplate")], {
 		requestTag: request,
 		deliberationId: args.deliberationId,
 		stage: args.stage,
@@ -187,7 +187,7 @@ async function findReply(args: FindReplyArgs): Promise<FoundReply | null> {
 /** Send a council prompt to a live agent and await its tagged reply. */
 export async function askAgent(args: AskAgentArgs): Promise<AskAgentResult> {
 	const startedAt = Date.now();
-	const promptsConfig = resolveCouncilSettings().prompts;
+	const promptsConfig = resolveTeamSettings().prompts;
 	const tag = formatTag({
 		deliberationId: args.deliberationId,
 		stage: args.stage,

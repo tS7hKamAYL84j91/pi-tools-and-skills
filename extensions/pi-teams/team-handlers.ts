@@ -7,16 +7,16 @@ import { findAgentByName } from "../../lib/agent-api.js";
 import { askAgent } from "./agent-runner.js";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import { snapshotAvailableModels } from "./members.js";
-import { type PairResult, runPairCoding } from "./pair-coding.js";
-import { navigatorConsultSystemPrompt } from "./pair-prompts.js";
+import { type WorkflowResult, runPairCoding } from "./pair-coding.js";
+import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
-import { resolveCouncilSettings } from "./settings.js";
-import type { CouncilStateManager } from "./state.js";
+import { resolveTeamSettings } from "./settings.js";
+import type { TeamStateManager } from "./state.js";
 import { runTeamGraph } from "./team-graph.js";
-import { teamToCouncilDefinition } from "./team-registry.js";
+import { teamToDebateDefinition } from "./team-registry.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
-import type { CouncilDefinition, GenerationConfig } from "./types.js";
+import type { TeamRunDefinition, GenerationConfig } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 const CONSULT_TIMEOUT_MS = 5 * 60_000;
@@ -65,7 +65,7 @@ interface TeamHandlerRunArgs {
 	team: TeamSpec;
 	params: TeamRunInput;
 	ctx: ExtensionContext;
-	stateManager: CouncilStateManager;
+	stateManager: TeamStateManager;
 }
 
 interface TeamHandler {
@@ -109,14 +109,14 @@ function bindingForRole(team: TeamSpec, roles: string[]): TeamAgentBinding | und
 
 function generationConfigForRole(team: TeamSpec, roles: string[]): GenerationConfig | undefined {
 	const binding = bindingForRole(team, roles);
-	if (!binding?.tools && !binding?.parameters) return undefined;
+	if (binding?.tools === undefined && binding?.parameters === undefined) return undefined;
 	return {
-		...(binding.tools ? { tools: binding.tools } : {}),
-		...(binding.parameters ? { parameters: binding.parameters } : {}),
+		...(binding.tools !== undefined ? { tools: binding.tools } : {}),
+		...(binding.parameters !== undefined ? { parameters: binding.parameters } : {}),
 	};
 }
 
-function formatPairResult(result: PairResult): TeamHandlerResult {
+function formatWorkflowResult(result: WorkflowResult): TeamHandlerResult {
 	const sections: string[] = [];
 	if (result.context.warnings.length > 0) {
 		sections.push(
@@ -143,14 +143,14 @@ async function consultModel(args: {
 	navigator: string;
 	message: string;
 	ctx: ExtensionContext;
+	systemPrompt: string;
 	config?: GenerationConfig;
 }): Promise<ConsultOutcome> {
-	const promptsConfig = resolveCouncilSettings().prompts;
 	const run = await runMember(
 		{ label: "Navigator", model: args.navigator, ...(args.config ?? {}) },
 		{
 			prompt: args.message,
-			systemPrompt: navigatorConsultSystemPrompt(promptsConfig),
+			systemPrompt: args.systemPrompt,
 			cwd: args.ctx.cwd,
 			signal: args.ctx.signal,
 			parentId: (await currentPanopticonRecord(args.ctx.cwd))?.id,
@@ -168,9 +168,9 @@ async function consultAgent(args: {
 	message: string;
 	ctx: ExtensionContext;
 	teamId: string;
+	systemPrompt: string;
 }): Promise<ConsultOutcome> {
 	const startedAt = Date.now();
-	const promptsConfig = resolveCouncilSettings().prompts;
 	const agentName = args.navigator.slice("agent:".length);
 	const info = findAgentByName(agentName);
 	if (!info) {
@@ -197,7 +197,7 @@ async function consultAgent(args: {
 		agentId: info.id,
 		memberLabel: "Navigator",
 		prompt: args.message,
-		systemPrompt: navigatorConsultSystemPrompt(promptsConfig),
+		systemPrompt: args.systemPrompt,
 		deliberationId: consultId,
 		stage: "consult",
 		ourAgentId: ourRecord.id,
@@ -212,17 +212,17 @@ async function consultAgent(args: {
 	};
 }
 
-function telephoneSystemPrompt(index: number, total: number): string {
-	return renderTemplate(resolveCouncilSettings().prompts.telephoneRelaySystem, {
-		index: index.toString(),
-		total: total.toString(),
-	});
+function promptChainsForTeam(team: TeamSpec) {
+	const catalog = resolveTeamSettings().prompts;
+	return resolveProtocolPromptChains({ protocol: team.protocol, prompts: team.prompts, bindings: team.agentBindings }, catalog);
 }
 
-function telephonePrompt(message: string): string {
-	return renderTemplate(resolveCouncilSettings().prompts.telephoneRelayTemplate, {
-		message,
-	});
+function renderTelephoneSystem(template: readonly string[], index: number, total: number): string {
+	return renderTemplate([...template], { index: index.toString(), total: total.toString() });
+}
+
+function renderTelephonePrompt(template: readonly string[], message: string): string {
+	return renderTemplate([...template], { message });
 }
 
 const graphHandler: TeamHandler = {
@@ -250,9 +250,10 @@ const graphHandler: TeamHandler = {
 			ok: result.ok,
 			nodes: result.nodes.map((node) => ({
 				role: node.binding.role,
-				model: node.run.member.model,
-				ok: node.run.ok,
-				durationMs: node.run.durationMs,
+				model: node.model,
+				ok: node.ok,
+				status: node.status,
+				durationMs: node.durationMs,
 			})),
 		});
 	},
@@ -261,7 +262,7 @@ const graphHandler: TeamHandler = {
 const debateHandler: TeamHandler = {
 	key: "debate",
 	matches(team) {
-		return team.topology === "council" && team.protocol === "debate";
+		return team.protocol === "debate";
 	},
 	modelSlots(_team, models) {
 		const memberCount = Math.max(models.members?.length ?? 0, 1);
@@ -281,8 +282,9 @@ const debateHandler: TeamHandler = {
 	},
 	async run(args) {
 		const snapshot = snapshotAvailableModels(args.ctx);
-		const base = teamToCouncilDefinition({ team: args.team, snapshot });
-		const definition: CouncilDefinition = {
+		const chains = promptChainsForTeam(args.team);
+		const base = teamToDebateDefinition({ team: args.team, snapshot });
+		const definition: TeamRunDefinition = {
 			...base,
 			members: args.params.models?.members ?? base.members,
 			chairman: args.params.models?.chairman ?? base.chairman,
@@ -295,6 +297,13 @@ const debateHandler: TeamHandler = {
 			ctx: args.ctx,
 			availableSnapshot: snapshot,
 			stateManager: args.stateManager,
+			prompts: {
+				generationSystem: requirePromptChain(chains, "generation.system").text,
+				critiqueSystem: requirePromptChain(chains, "critique.system").text,
+				synthesisSystem: requirePromptChain(chains, "synthesis.system").text,
+				critiqueTemplate: requirePromptChain(chains, "critique.template").text.split("\n"),
+				synthesisTemplate: requirePromptChain(chains, "synthesis.template").text.split("\n"),
+			},
 			parallelTimeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 			onProgress: (text) => {
 				args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`);
@@ -321,7 +330,7 @@ const debateHandler: TeamHandler = {
 const pairCodingHandler: TeamHandler = {
 	key: "pair-coding",
 	matches(team) {
-		return team.topology === "pair" && team.protocol === "pair-coding";
+		return team.protocol === "pair-coding";
 	},
 	modelSlots(_team, models) {
 		return [
@@ -340,7 +349,8 @@ const pairCodingHandler: TeamHandler = {
 		];
 	},
 	async run(args) {
-		const settings = resolveCouncilSettings();
+		const settings = resolveTeamSettings();
+		const chains = promptChainsForTeam(args.team);
 		const driver = args.params.models?.driver ?? args.team.models.driver ?? settings.defaultMembers[0];
 		const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? settings.defaultChairman;
 		if (!driver || !navigator) throw new Error("pair-coding needs driver and navigator models.");
@@ -356,6 +366,16 @@ const pairCodingHandler: TeamHandler = {
 			navigator,
 			driverConfig: generationConfigForRole(args.team, ["driver"]),
 			navigatorConfig: generationConfigForRole(args.team, ["navigator"]),
+			prompts: {
+				navigatorBriefSystem: requirePromptChain(chains, "navigatorBrief.system").text,
+				driverImplementationSystem: requirePromptChain(chains, "driverImplementation.system").text,
+				navigatorReviewSystem: requirePromptChain(chains, "navigatorReview.system").text,
+				driverFixSystem: requirePromptChain(chains, "driverFix.system").text,
+				navigatorBriefTemplate: requirePromptChain(chains, "navigatorBrief.template").text.split("\n"),
+				driverImplementationTemplate: requirePromptChain(chains, "driverImplementation.template").text.split("\n"),
+				navigatorReviewTemplate: requirePromptChain(chains, "navigatorReview.template").text.split("\n"),
+				driverFixTemplate: requirePromptChain(chains, "driverFix.template").text.split("\n"),
+			},
 			files: args.params.files,
 			specPath: args.params.specPath,
 			maxFixPasses: args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses,
@@ -364,14 +384,14 @@ const pairCodingHandler: TeamHandler = {
 				args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${label}`);
 			},
 		});
-		return formatPairResult(result);
+		return formatWorkflowResult(result);
 	},
 };
 
 const pairConsultHandler: TeamHandler = {
 	key: "consult",
 	matches(team) {
-		return team.topology === "pair" && team.protocol === "consult";
+		return team.protocol === "consult";
 	},
 	modelSlots(_team, models) {
 		return [
@@ -384,16 +404,19 @@ const pairConsultHandler: TeamHandler = {
 		];
 	},
 	async run(args) {
-		const settings = resolveCouncilSettings();
-		const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? settings.defaultPair?.navigator;
+		const settings = resolveTeamSettings();
+		const chains = promptChainsForTeam(args.team);
+		const systemPrompt = requirePromptChain(chains, "navigator.system").text;
+		const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? settings.defaultConsult?.navigator;
 		if (!navigator) throw new Error("pair-consult needs a navigator model or agent ref.");
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: consulting ${navigator}`);
 		const outcome = navigator.startsWith("agent:")
-			? await consultAgent({ navigator, message: args.params.prompt, ctx: args.ctx, teamId: args.team.id })
+			? await consultAgent({ navigator, message: args.params.prompt, ctx: args.ctx, teamId: args.team.id, systemPrompt })
 			: await consultModel({
 				navigator,
 				message: args.params.prompt,
 				ctx: args.ctx,
+				systemPrompt,
 				config: generationConfigForRole(args.team, ["navigator"]),
 			});
 		return okText(outcome.body, {
@@ -408,7 +431,7 @@ const pairConsultHandler: TeamHandler = {
 const telephoneHandler: TeamHandler = {
 	key: "telephone",
 	matches(team) {
-		return team.topology === "chain" && team.protocol === "telephone";
+		return team.protocol === "telephone";
 	},
 	modelSlots(team, models) {
 		const memberCount = Math.max(models.members?.length ?? 0, team.agents.length, 1);
@@ -419,7 +442,10 @@ const telephoneHandler: TeamHandler = {
 		});
 	},
 	async run(args) {
-		const settings = resolveCouncilSettings();
+		const settings = resolveTeamSettings();
+		const chains = promptChainsForTeam(args.team);
+		const relaySystemTemplate = requirePromptChain(chains, "relay.system").text.split("\n");
+		const relayTemplate = requirePromptChain(chains, "relay.template").text.split("\n");
 		const models = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
 		const fallbackModel = models[0];
 		if (!fallbackModel) throw new Error("telephone teams need at least one member model.");
@@ -433,12 +459,12 @@ const telephoneHandler: TeamHandler = {
 				{
 					label: agent,
 					model,
-					...(binding?.tools ? { tools: binding.tools } : {}),
-					...(binding?.parameters ? { parameters: binding.parameters } : {}),
+					...(binding?.tools !== undefined ? { tools: binding.tools } : {}),
+					...(binding?.parameters !== undefined ? { parameters: binding.parameters } : {}),
 				},
 				{
-					prompt: telephonePrompt(message),
-					systemPrompt: telephoneSystemPrompt(index + 1, args.team.agents.length),
+					prompt: renderTelephonePrompt(relayTemplate, message),
+					systemPrompt: renderTelephoneSystem(relaySystemTemplate, index + 1, args.team.agents.length),
 					cwd: args.ctx.cwd,
 					signal: args.ctx.signal,
 					parentId: (await currentPanopticonRecord(args.ctx.cwd))?.id,

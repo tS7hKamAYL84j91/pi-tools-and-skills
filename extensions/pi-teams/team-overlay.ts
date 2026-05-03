@@ -24,7 +24,6 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 	return [
 		`${team.name} (${team.id})`,
 		`Source: ${team.source}`,
-		`Topology: ${team.topology}`,
 		`Protocol: ${team.protocol}`,
 		...(team.description ? [`Description: ${team.description}`] : []),
 		`Agents: ${team.agents.join(", ") || "(none)"}`,
@@ -106,7 +105,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			} else {
 				for (const [index, team] of teams.entries()) {
 					const prefix = index === selected ? "> " : "  ";
-					const line = `${prefix}${team.id}: ${team.name} | ${team.topology}/${team.protocol} | ${team.source}${team.description ? ` | ${team.description}` : ""}`;
+					const line = `${prefix}${team.id}: ${team.name} | protocol=${team.protocol} | ${team.source}${team.description ? ` | ${team.description}` : ""}`;
 					container.addChild(new Text(index === selected ? theme.fg("accent", line) : line, 1, 0));
 				}
 				container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · m models · d delete · esc close"), 1, 0));

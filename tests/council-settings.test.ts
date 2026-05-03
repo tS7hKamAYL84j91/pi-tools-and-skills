@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_CHAIRMAN_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
-	resolveCouncilSettings,
+	resolveTeamSettings,
 } from "../extensions/pi-teams/settings.js";
 
 function withTempDir(fn: (dir: string) => void) {
@@ -42,7 +42,7 @@ function writeDefaultCouncil(root: string, members: string[], chairman: string):
 		join(root, "teams", "default-council.md"),
 		[
 			"---",
-			'schemaVersion: 1',
+			'schemaVersion: 2',
 			'id: "default-council"',
 			'name: "Default Council"',
 			'description: "Architecture review"',
@@ -69,7 +69,7 @@ function writePairConsult(root: string, navigator: string): void {
 		join(root, "teams", "pair-consult.md"),
 		[
 			"---",
-			'schemaVersion: 1',
+			'schemaVersion: 2',
 			'id: "pair-consult"',
 			'name: "Pair Consult"',
 			'description: "Navigator review"',
@@ -107,9 +107,9 @@ describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
 	});
 });
 
-describe("resolveCouncilSettings", () => {
+describe("resolveTeamSettings", () => {
 	it("returns built-in team defaults when no settings file exists", () => {
-		const resolved = resolveCouncilSettings("/nonexistent/path/settings.json");
+		const resolved = resolveTeamSettings("/nonexistent/path/settings.json");
 		expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
 		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
 		expect(resolved.councils).toEqual({});
@@ -121,7 +121,7 @@ describe("resolveCouncilSettings", () => {
 			writeDefaultCouncil(root, ["custom/model-1", "custom/model-2"], "custom/chair");
 			writePairConsult(root, "custom/navigator");
 			withTempSettings({ teams: { roots: [root] } }, (file) => {
-				const resolved = resolveCouncilSettings(file);
+				const resolved = resolveTeamSettings(file);
 				expect(resolved.defaultMembers).toEqual(["custom/model-1", "custom/model-2"]);
 				expect(resolved.defaultChairman).toBe("custom/chair");
 				expect(resolved.defaultPair?.navigator).toBe("custom/navigator");
@@ -145,7 +145,7 @@ describe("resolveCouncilSettings", () => {
 				].join("\n"),
 			);
 			withTempSettings({ teams: { roots: [root] } }, (file) => {
-				const resolved = resolveCouncilSettings(file);
+				const resolved = resolveTeamSettings(file);
 				expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
 					"# IDENTITY",
 					"",
@@ -179,7 +179,7 @@ describe("resolveCouncilSettings", () => {
 					].join("\n"),
 				);
 				withTempSettings({ teams: { roots: [first, second] } }, (file) => {
-					const resolved = resolveCouncilSettings(file);
+					const resolved = resolveTeamSettings(file);
 					expect(resolved.prompts.pairNavigatorConsultSystem).toEqual(["Second body."]);
 				});
 			});

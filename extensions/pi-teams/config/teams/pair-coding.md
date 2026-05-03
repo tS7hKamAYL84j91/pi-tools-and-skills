@@ -1,10 +1,18 @@
 ---
-schemaVersion: 1
+schemaVersion: 2
 id: "pair-coding"
 name: "Pair Coding"
 description: "Bounded Driver/Navigator implementation, review, and fix workflow."
-topology: "pair"
 protocol: "pair-coding"
+prompts:
+  navigatorBrief.system: "pairNavigatorBriefSystem"
+  navigatorBrief.template: "pairNavigatorBriefTemplate"
+  driverImplementation.system: "pairDriverImplementationSystem"
+  driverImplementation.template: "pairDriverImplementationTemplate"
+  navigatorReview.system: "pairNavigatorReviewSystem"
+  navigatorReview.template: "pairNavigatorReviewTemplate"
+  driverFix.system: "pairDriverFixSystem"
+  driverFix.template: "pairDriverFixTemplate"
 agents:
   - role: "navigator_brief"
     subagent: "pair_navigator_brief"

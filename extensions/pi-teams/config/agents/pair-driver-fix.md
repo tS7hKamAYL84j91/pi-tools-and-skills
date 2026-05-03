@@ -6,8 +6,6 @@ promptId: "pairDriverFixSystem"
 scope: "pair"
 stage: "driver-fix"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY

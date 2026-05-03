@@ -178,7 +178,7 @@ async function pickTeamForModels(ctx: ExtensionContext, requested?: string): Pro
 	const items = teams.map((team) => ({
 		value: team.id,
 		label: team.id,
-		description: `${team.name} • ${team.topology}/${team.protocol} • ${team.source}`,
+		description: `${team.name} • protocol=${team.protocol} • ${team.source}`,
 	}));
 	return pickOption(ctx, "Select team", items);
 }

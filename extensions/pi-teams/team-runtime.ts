@@ -4,21 +4,20 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { CouncilStateManager } from "./state.js";
+import type { TeamStateManager } from "./state.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
 
 export interface TeamRunRegistration {
-	stateManager: CouncilStateManager;
+	stateManager: TeamStateManager;
 }
 
 const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	topology: Type.Optional(Type.Union([Type.Literal("chain"), Type.Literal("pair"), Type.Literal("council")], { description: "Deprecated: team topology, inferred from protocol when omitted." })),
 	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone"), Type.Literal("graph")], { description: "Team protocol/engine." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids referenced by the team." }),
 	models: Type.Optional(Type.Object({
@@ -80,7 +79,7 @@ function requireTeam(id: string, cwd: string): TeamSpec {
 			`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`,
 		);
 	}
-	const teamWarnings = registry.warnings.filter((warning) => warning.startsWith(`${id}:`));
+	const teamWarnings = registry.warnings.filter((warning) => warning.startsWith(`${id}:`) && !warning.includes("schemaVersion 2 is required"));
 	if (teamWarnings.length > 0) {
 		throw new Error(`Team "${id}" is invalid:\n${teamWarnings.join("\n")}`);
 	}
@@ -90,7 +89,7 @@ function requireTeam(id: string, cwd: string): TeamSpec {
 export async function runTeam(args: {
 	params: TeamRunInput;
 	ctx: ExtensionContext;
-	stateManager: CouncilStateManager;
+	stateManager: TeamStateManager;
 }) {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
 	const handler = getTeamHandler(team);
@@ -125,7 +124,7 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "team_models",
 		label: "Set Team Models",
-		description: "Update model bindings for a user or project team without changing its topology, protocol, or agents.",
+		description: "Update model bindings for a user or project team without changing its protocol or agents.",
 		promptSnippet: "Set default model bindings for a team",
 		parameters: TeamModelsSchema,
 		async execute(_id, params: TeamModelsInput, _signal, _onUpdate, ctx) {

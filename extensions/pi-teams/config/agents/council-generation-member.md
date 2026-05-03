@@ -6,8 +6,6 @@ promptId: "councilGenerationSystem"
 scope: "council"
 stage: "generation"
 tools: []
-parameters:
-  temperature: 0.2
 ---
 
 # IDENTITY

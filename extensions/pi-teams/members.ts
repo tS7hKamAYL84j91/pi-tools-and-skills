@@ -13,7 +13,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	DEFAULT_CHAIRMAN_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
-	resolveCouncilSettings,
+	resolveTeamSettings,
 } from "./settings.js";
 
 export const COUNCIL_MIN = 3;
@@ -105,7 +105,7 @@ export function chooseCouncilModels(
 		return unique(requested).slice(0, COUNCIL_MAX);
 	}
 
-	const resolved = resolveCouncilSettings(settingsPath);
+	const resolved = resolveTeamSettings(settingsPath);
 	if (resolved.defaultMembers.length > 0) {
 		const available = new Set(availableSnapshot);
 		if (available.size === 0) return resolved.defaultMembers.slice(0, COUNCIL_MIN);
@@ -153,7 +153,7 @@ export function chooseChairmanModel(
 	settingsPath?: string,
 ): string {
 	if (requested) return requested;
-	const resolved = resolveCouncilSettings(settingsPath);
+	const resolved = resolveTeamSettings(settingsPath);
 	const available = new Set(availableSnapshot);
 	// Use the resolved chairman only if it's available in the registry
 	// (or the registry is empty, meaning we can't validate).

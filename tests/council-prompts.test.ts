@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { pairPrimerPrompt } from "../extensions/pi-teams/pair-prompts.js";
 import { critiquePrompt } from "../extensions/pi-teams/prompts.js";
-import { resolveCouncilSettings } from "../extensions/pi-teams/settings.js";
+import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import type {
 	CouncilMember,
 	ModelRun,
@@ -17,7 +17,7 @@ const CONFIG_PATH = join(
 	"config.json",
 );
 const NO_SETTINGS = "/nonexistent/path/settings.json";
-const PROMPTS_CONFIG = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH).prompts;
+const PROMPTS_CONFIG = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH).prompts;
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
 const memberB: CouncilMember = {

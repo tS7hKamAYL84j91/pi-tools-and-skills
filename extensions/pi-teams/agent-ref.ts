@@ -10,7 +10,7 @@
 
 import { findAgentByName } from "../../lib/agent-api.js";
 import { STALE_MS } from "../../lib/agent-registry.js";
-import type { CouncilMember } from "./types.js";
+import type { TeamParticipant } from "./types.js";
 
 const AGENT_PREFIX = "agent:";
 
@@ -50,19 +50,19 @@ export interface ResolveError {
 
 /** @public */
 export interface MemberResolution {
-	members: CouncilMember[];
+	members: TeamParticipant[];
 	agents: ResolvedAgent[];
 	errors: ResolveError[];
 	warnings: string[];
 }
 
 /**
- * Resolve a council's raw `members: string[]` into CouncilMember records,
+ * Resolve a council's raw `members: string[]` into TeamParticipant records,
  * looking up live agents in the panopticon registry. Agents that don't
  * resolve are returned in `errors`; pre-flight surfaces these before launch.
  */
 export function resolveMembers(rawMembers: string[]): MemberResolution {
-	const members: CouncilMember[] = [];
+	const members: TeamParticipant[] = [];
 	const agents: ResolvedAgent[] = [];
 	const errors: ResolveError[] = [];
 	const warnings: string[] = [];
@@ -109,7 +109,7 @@ function labelFor(index: number): string {
 
 /** @public */
 export interface ChairmanResolution {
-	chairman: CouncilMember | null;
+	chairman: TeamParticipant | null;
 	agent?: ResolvedAgent;
 	error?: ResolveError;
 }

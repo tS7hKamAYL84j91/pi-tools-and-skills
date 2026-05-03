@@ -7,12 +7,11 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
-import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamTopology, TeamWritableSource } from "./team-types.js";
+import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
 
 const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
 export type TeamFormScope = TeamWritableSource;
-export type TeamFormTopology = TeamTopology;
 export type TeamFormProtocol = TeamProtocol;
 
 export interface TeamFormModels extends TeamModels {}
@@ -26,7 +25,6 @@ export interface TeamFormInput {
 	id: string;
 	name?: string;
 	description?: string;
-	topology?: TeamFormTopology;
 	protocol: TeamFormProtocol;
 	agents: string[];
 	agentBindings?: TeamAgentBinding[];
@@ -87,18 +85,10 @@ function roleMatches(role: string, value: string): boolean {
 	return normalized === value || normalized.startsWith(`${value}_`);
 }
 
-function topologyForProtocol(protocol: TeamFormProtocol, topology?: TeamFormTopology): TeamFormTopology {
-	if (topology) return topology;
-	if (protocol === "debate") return "council";
-	if (protocol === "telephone") return "chain";
-	return "pair";
-}
-
 function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	const models = args.models ?? {};
-	const topology = topologyForProtocol(args.protocol, args.topology);
 	if (args.agentBindings && args.agentBindings.length > 0) return args.agentBindings;
-	if (topology === "council" && args.protocol === "debate") {
+	if (args.protocol === "debate") {
 		const memberSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "member");
 		const criticSubagents = args.agents.slice(1);
 		return [
@@ -116,17 +106,17 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 			...criticSubagents.map((subagent) => ({ role: "critic", subagent })),
 		];
 	}
-	if (topology === "pair" && args.protocol === "pair-coding") {
+	if (args.protocol === "pair-coding") {
 		return args.agents.map((subagent) => {
 			const role = subagent.includes("driver") ? "driver" : "navigator";
 			const model = role === "driver" ? models.driver : models.navigator;
 			return { role, subagent, ...(model ? { model } : {}) };
 		});
 	}
-	if (topology === "pair" && args.protocol === "consult") {
+	if (args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
-	if (topology === "chain" && args.protocol === "telephone") {
+	if (args.protocol === "telephone") {
 		return args.agents.map((subagent, index) => ({
 			role: "relay",
 			subagent,
@@ -169,8 +159,6 @@ function ensureSubagentFile(dir: string, id: string): string {
 			'version: "1.0.0"',
 			`description: ${quote(`${titleFromId(id)} team role.`)}`,
 			"tools: []",
-			"parameters:",
-			"  temperature: 0.1",
 			"---",
 			"",
 			"# IDENTITY",
@@ -207,7 +195,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 	const bindings = defaultAgentBindings(args);
 	return [
 		"---",
-		"schemaVersion: 1",
+		"schemaVersion: 2",
 		`id: ${quote(args.id)}`,
 		`name: ${quote(args.name)}`,
 		...(args.description ? [`description: ${quote(args.description)}`] : []),
@@ -223,16 +211,8 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const topology = topologyForProtocol(input.protocol, input.topology);
-	if (topology === "council" && input.protocol !== "debate") {
-		throw new Error("Council teams must use protocol=debate.");
-	}
-	if (topology === "pair" && input.protocol !== "consult" && input.protocol !== "pair-coding") {
-		throw new Error("Pair teams must use protocol=consult or protocol=pair-coding.");
-	}
-	if (topology === "chain" && input.protocol !== "telephone") {
-		throw new Error("Chain teams must use protocol=telephone.");
-	}
+	const supported = new Set(["consult", "pair-coding", "debate", "telephone", "graph"]);
+	if (!supported.has(input.protocol)) throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	if (input.agents.length === 0 && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error("Team must include at least one subagent.");
 	}
@@ -315,14 +295,7 @@ export async function formTeam(
 	if (!id) return undefined;
 	const name = await ctx.ui.input("Team name", titleFromId(id)) ?? titleFromId(id);
 	const description = await ctx.ui.input("Description (optional)", "");
-	const topologyChoice = await ctx.ui.select("Topology", ["pair", "council", "chain"]);
-	if (!topologyChoice) return undefined;
-	const topology = topologyChoice as TeamFormTopology;
-	const protocolChoice = topology === "council"
-		? "debate"
-		: topology === "chain"
-			? "telephone"
-			: await ctx.ui.select("Protocol", ["consult", "pair-coding"]);
+	const protocolChoice = await ctx.ui.select("Protocol", ["consult", "pair-coding", "debate", "telephone", "graph"]);
 	if (!protocolChoice) return undefined;
 	const protocol = protocolChoice as TeamFormProtocol;
 
@@ -347,7 +320,6 @@ export async function formTeam(
 		id,
 		name,
 		...(description?.trim() ? { description: description.trim() } : {}),
-		topology,
 		protocol,
 		agents,
 		models: {

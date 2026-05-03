@@ -19,26 +19,21 @@ import {
 	resolveChairman,
 	resolveMembers,
 } from "./agent-ref.js";
-import { resolveCouncilSettings } from "./settings.js";
+import { resolveTeamSettings } from "./settings.js";
 import { checkHeterogeneity, type HeterogeneityCheck } from "./members.js";
-import {
-	chairmanSystemPrompt,
-	critiquePrompt,
-	critiqueSystemPrompt,
-	generationSystemPrompt,
-	synthesisPrompt,
-} from "./prompts.js";
+import { promptAssetLines, promptAssetText, type PromptCatalog } from "./prompt-resolver.js";
+import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import {
 	currentPanopticonRecord,
 	type PanopticonRecord,
 	runMember,
 } from "./runner.js";
-import type { CouncilStateManager } from "./state.js";
+import type { TeamStateManager } from "./state.js";
 import type {
-	CouncilDefinition,
-	CouncilDeliberation,
-	CouncilMember,
-	CritiqueRun,
+	TeamRunDefinition,
+	TeamRunRecord,
+	TeamParticipant,
+	ReviewRun,
 	GenerationConfig,
 	ModelRun,
 } from "./types.js";
@@ -49,14 +44,24 @@ const MIN_GENERATION_FOR_CRITIQUE = 2;
 
 type StageLabel = "generate" | "critique" | "synthesize";
 
+function defaultDebatePrompts(catalog: PromptCatalog): DebatePromptInputs {
+	return {
+		generationSystem: promptAssetText(catalog, "councilGenerationSystem"),
+		critiqueSystem: promptAssetText(catalog, "councilCritiqueSystem"),
+		synthesisSystem: promptAssetText(catalog, "councilChairmanSystem"),
+		critiqueTemplate: promptAssetLines(catalog, "councilCritiqueTemplate"),
+		synthesisTemplate: promptAssetLines(catalog, "councilSynthesisTemplate"),
+	};
+}
+
 function applyMemberConfig(
-	member: CouncilMember,
+	member: TeamParticipant,
 	config: GenerationConfig | undefined,
-): CouncilMember {
+): TeamParticipant {
 	return {
 		...member,
-		...(config?.tools ? { tools: config.tools } : {}),
-		...(config?.parameters ? { parameters: config.parameters } : {}),
+		...(config?.tools !== undefined ? { tools: config.tools } : {}),
+		...(config?.parameters !== undefined ? { parameters: config.parameters } : {}),
 	};
 }
 
@@ -70,14 +75,14 @@ export interface PreflightReport {
 	totalCalls: number;
 	reasons: string[];
 	warnings: string[];
-	members: CouncilMember[];
-	chairman: CouncilMember | null;
+	members: TeamParticipant[];
+	chairman: TeamParticipant | null;
 	agents: ResolvedAgent[];
 }
 
 /** Resolve members and validate the council before launching a deliberation. */
 export function preflight(
-	definition: CouncilDefinition,
+	definition: TeamRunDefinition,
 	availableSnapshot: string[],
 ): PreflightReport {
 	const memberResolution = resolveMembers(definition.members);
@@ -173,12 +178,21 @@ async function runStageParallel<T>(
 
 // ── 3-stage protocol ────────────────────────────────────────────
 
+interface DebatePromptInputs {
+	generationSystem: string;
+	critiqueSystem: string;
+	synthesisSystem: string;
+	critiqueTemplate: readonly string[];
+	synthesisTemplate: readonly string[];
+}
+
 interface DeliberateArgs {
-	definition: CouncilDefinition;
+	definition: TeamRunDefinition;
 	prompt: string;
 	ctx: ExtensionContext;
 	availableSnapshot: string[];
-	stateManager: CouncilStateManager;
+	stateManager: TeamStateManager;
+	prompts?: DebatePromptInputs;
 	parallelTimeoutMs?: number;
 	onProgress?: (text: string) => void;
 }
@@ -198,7 +212,7 @@ interface DispatchContext {
 }
 
 interface DispatchArgs {
-	member: CouncilMember;
+	member: TeamParticipant;
 	stage: StageLabel;
 	inputs: StageInputs;
 	ctx: DispatchContext;
@@ -251,15 +265,15 @@ async function dispatchMember(args: DispatchArgs): Promise<ModelRun> {
 
 export async function deliberate(
 	args: DeliberateArgs,
-): Promise<CouncilDeliberation> {
-	const settings = resolveCouncilSettings();
+): Promise<TeamRunRecord> {
+	const settings = resolveTeamSettings();
 	const promptsConfig = settings.prompts;
 	const timeoutMs = args.parallelTimeoutMs ?? DEFAULT_PARALLEL_TIMEOUT_MS;
 
 	const report = preflight(args.definition, args.availableSnapshot);
 	if (!report.ok || !report.chairman) {
 		throw new Error(
-			`Council pre-flight failed:\n  ${report.reasons.join("\n  ")}`,
+			`Team pre-flight failed:\n  ${report.reasons.join("\n  ")}`,
 		);
 	}
 	args.onProgress?.(
@@ -286,7 +300,7 @@ export async function deliberate(
 	};
 
 	let record = args.stateManager.create({
-		council: args.definition.name,
+		team: args.definition.name,
 		prompt: args.prompt,
 		members,
 		chairman,
@@ -294,9 +308,9 @@ export async function deliberate(
 	dispatchCtx.deliberationId = record.id;
 
 	const runStage = (
-		stageMembers: CouncilMember[],
+		stageMembers: TeamParticipant[],
 		stage: StageLabel,
-		buildInputs: (member: CouncilMember) => StageInputs,
+		buildInputs: (member: TeamParticipant) => StageInputs,
 	): Promise<ModelRun[]> =>
 		runStageParallel(
 			stageMembers.map(
@@ -316,9 +330,10 @@ export async function deliberate(
 	// ── Stage 1: parallel generation ─────────────────────────────
 	record = args.stateManager.update(record, { status: "generating" });
 	args.onProgress?.(`stage 1/3 generating (${members.length} members)`);
+	const promptInputs = args.prompts ?? defaultDebatePrompts(promptsConfig);
 	const generationInputs: StageInputs = {
 		prompt: args.prompt,
-		systemPrompt: generationSystemPrompt(promptsConfig),
+		systemPrompt: promptInputs.generationSystem,
 	};
 	const generation = await runStage(
 		members,
@@ -342,16 +357,16 @@ export async function deliberate(
 	const reviewers = successfulGen.map((r) => r.member);
 	args.onProgress?.(`stage 2/3 critiquing (${reviewers.length} reviewers)`);
 	const critiqueRuns = await runStage(reviewers, "critique", (viewer) => ({
-		prompt: critiquePrompt({
+		prompt: renderPeerCritiquePrompt({
 			originalPrompt: args.prompt,
 			generation: successfulGen,
 			members,
 			viewer,
-			promptsConfig,
+			template: promptInputs.critiqueTemplate,
 		}),
-		systemPrompt: critiqueSystemPrompt(promptsConfig),
+		systemPrompt: promptInputs.critiqueSystem,
 	}));
-	const critiques: CritiqueRun[] = critiqueRuns.map((r) => ({
+	const critiques: ReviewRun[] = critiqueRuns.map((r) => ({
 		...r,
 		rankings:
 			r.output.match(/rank(?:ing|ings)?\s*:?([\s\S]*)/i)?.[1]?.trim() ?? "",
@@ -362,8 +377,8 @@ export async function deliberate(
 	record = args.stateManager.update(record, { status: "synthesizing" });
 	args.onProgress?.(`stage 3/3 chairman synthesis (${chairman.model})`);
 	const synthesisInputs: StageInputs = {
-		prompt: synthesisPrompt(record, promptsConfig),
-		systemPrompt: chairmanSystemPrompt(promptsConfig),
+		prompt: renderJoinedSynthesisPrompt(record, promptInputs.synthesisTemplate),
+		systemPrompt: promptInputs.synthesisSystem,
 	};
 	const [synthesis] = await runStage(
 		[chairman],

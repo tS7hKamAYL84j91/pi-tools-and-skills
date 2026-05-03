@@ -52,7 +52,7 @@ function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 	for (const rawLine of frontMatter.split("\n")) {
 		const line = rawLine.trimEnd();
 		if (line.trim().length === 0) continue;
-		const objectListMatch = /^\s*-\s*([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
+		const objectListMatch = /^\s*-\s*([A-Za-z][A-Za-z0-9.]*):\s*(.+)$/.exec(line);
 		if (objectListMatch?.[1] && currentKey) {
 			const existing = result[currentKey];
 			const values = Array.isArray(existing) ? existing : [];
@@ -61,7 +61,7 @@ function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 			result[currentKey] = values;
 			continue;
 		}
-		const objectPropertyMatch = /^\s+([A-Za-z][A-Za-z0-9]*):\s*(.+)$/.exec(line);
+		const objectPropertyMatch = /^\s+([A-Za-z][A-Za-z0-9.]*):\s*(.+)$/.exec(line);
 		if (objectPropertyMatch?.[1]) {
 			if (currentListObject) {
 				currentListObject[objectPropertyMatch[1]] = parseScalar(objectPropertyMatch[2] ?? "");
@@ -84,7 +84,7 @@ function parseFrontMatter(frontMatter: string): Record<string, unknown> {
 			currentListObject = undefined;
 			continue;
 		}
-		const keyMatch = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/.exec(line);
+		const keyMatch = /^([A-Za-z][A-Za-z0-9.]*):\s*(.*)$/.exec(line);
 		if (!keyMatch?.[1]) continue;
 		const key = keyMatch[1];
 		const value = keyMatch[2] ?? "";

@@ -13,8 +13,8 @@ import {
 	loadBuiltinTeamIds as loadBuiltinTeamIdsImpl,
 	loadTeamRegistry as loadTeamRegistryImpl,
 	requireBuiltinTeam as requireBuiltinTeamImpl,
-	teamToCouncilDefinition as teamToCouncilDefinitionImpl,
-	teamToPairDefinition as teamToPairDefinitionImpl,
+	teamToDebateDefinition as teamToDebateDefinitionImpl,
+	teamToConsultDefinition as teamToConsultDefinitionImpl,
 } from "./team-registry.js";
 import { registerTeamTools as registerTeamToolsImpl } from "./team-tools.js";
 import type {
@@ -24,11 +24,8 @@ import type {
 	TeamProtocol as TeamProtocolType,
 	TeamSource as TeamSourceType,
 	TeamSpec as TeamSpecType,
-	TeamTopology as TeamTopologyType,
 } from "./team-types.js";
 
-/** @public */
-export type TeamTopology = TeamTopologyType;
 /** @public */
 export type TeamProtocol = TeamProtocolType;
 /** @public */
@@ -53,8 +50,8 @@ export const loadBuiltinTeamIds = loadBuiltinTeamIdsImpl;
 /** @public */
 export const requireBuiltinTeam = requireBuiltinTeamImpl;
 /** @public */
-export const teamToCouncilDefinition = teamToCouncilDefinitionImpl;
+export const teamToDebateDefinition = teamToDebateDefinitionImpl;
 /** @public */
-export const teamToPairDefinition = teamToPairDefinitionImpl;
+export const teamToConsultDefinition = teamToConsultDefinitionImpl;
 /** @public */
 export const registerTeamTools = registerTeamToolsImpl;

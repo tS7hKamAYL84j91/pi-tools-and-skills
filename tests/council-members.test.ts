@@ -28,7 +28,7 @@ function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairma
 			join(root, "teams", "default-council.md"),
 			[
 				"---",
-				"schemaVersion: 1",
+				"schemaVersion: 2",
 				'id: "default-council"',
 				'name: "Default Council"',
 				'protocol: "debate"',

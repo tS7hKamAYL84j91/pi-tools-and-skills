@@ -6,8 +6,6 @@ promptId: "pairNavigatorConsultSystem"
 scope: "pair"
 stage: "navigator-consult"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY
