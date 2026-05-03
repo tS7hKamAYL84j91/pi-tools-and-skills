@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { mergeGenerationParameters } from "./provider-payload.js";
 import type { GenerationParameterValue } from "./types.js";
 
-export const PROVIDER_PARAMETERS_ENV = "PI_LLM_COUNCIL_GENERATION_PARAMETERS";
+export const PROVIDER_PARAMETERS_ENV = "PI_LLM_TEAM_GENERATION_PARAMETERS";
 
 function isParameterValue(value: unknown): value is GenerationParameterValue {
 	return ["boolean", "number", "string"].includes(typeof value);
