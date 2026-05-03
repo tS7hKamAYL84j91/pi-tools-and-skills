@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import {
-	COUNCIL_MAX,
-	COUNCIL_MIN,
+	TEAM_MEMBER_MAX,
+	TEAM_MEMBER_MIN,
 	checkHeterogeneity,
 	chooseChairmanModel,
-	chooseCouncilModels,
+	chooseTeamMemberModels,
 	providerOf,
 } from "../extensions/pi-teams/members.js";
 
@@ -103,9 +103,9 @@ describe("checkHeterogeneity", () => {
 	});
 });
 
-// ── chooseCouncilModels ─────────────────────────────────────────
+// ── chooseTeamMemberModels ─────────────────────────────────────────
 
-describe("chooseCouncilModels", () => {
+describe("chooseTeamMemberModels", () => {
 	const snapshot = [
 		"google-gemini-cli/gemini-3.1-pro-preview",
 		"ollama/glm-5.1:cloud",
@@ -113,14 +113,14 @@ describe("chooseCouncilModels", () => {
 		"openai-codex/gpt-5.5",
 	];
 
-	it("returns the explicit request unchanged (capped at COUNCIL_MAX)", () => {
+	it("returns the explicit request unchanged (capped at TEAM_MEMBER_MAX)", () => {
 		const requested = ["a/m1", "b/m2", "c/m3", "d/m4", "e/m5", "f/m6", "g/m7"];
-		const chosen = chooseCouncilModels(snapshot, requested, NO_SETTINGS);
-		expect(chosen).toEqual(requested.slice(0, COUNCIL_MAX));
+		const chosen = chooseTeamMemberModels(snapshot, requested, NO_SETTINGS);
+		expect(chosen).toEqual(requested.slice(0, TEAM_MEMBER_MAX));
 	});
 
 	it("dedupes and trims explicit requests", () => {
-		const chosen = chooseCouncilModels(snapshot, [
+		const chosen = chooseTeamMemberModels(snapshot, [
 			"  a/m1  ",
 			"a/m1",
 			"",
@@ -130,9 +130,9 @@ describe("chooseCouncilModels", () => {
 	});
 
 	it("uses visible extension defaults filtered by snapshot when no settings file exists", () => {
-		const chosen = chooseCouncilModels(snapshot, undefined, NO_SETTINGS);
-		expect(chosen.length).toBeGreaterThanOrEqual(COUNCIL_MIN);
-		expect(chosen.length).toBeLessThanOrEqual(COUNCIL_MAX);
+		const chosen = chooseTeamMemberModels(snapshot, undefined, NO_SETTINGS);
+		expect(chosen.length).toBeGreaterThanOrEqual(TEAM_MEMBER_MIN);
+		expect(chosen.length).toBeLessThanOrEqual(TEAM_MEMBER_MAX);
 		for (const model of chosen) expect(snapshot).toContain(model);
 	});
 
@@ -143,15 +143,15 @@ describe("chooseCouncilModels", () => {
 				// Snapshot doesn't need to contain the custom models because
 				// when available.size > 0, resolved defaults are matched against it.
 				// Use an empty snapshot to get the raw defaults (no filtering).
-				const chosen = chooseCouncilModels([], undefined, settingsPath);
-				expect(chosen).toEqual(["a/m1", "b/m2", "c/m3"].slice(0, COUNCIL_MIN));
+				const chosen = chooseTeamMemberModels([], undefined, settingsPath);
+				expect(chosen).toEqual(["a/m1", "b/m2", "c/m3"].slice(0, TEAM_MEMBER_MIN));
 			},
 		);
 	});
 
 	it("returns default candidates when the snapshot is empty", () => {
-		const chosen = chooseCouncilModels([], undefined, NO_SETTINGS);
-		expect(chosen.length).toBeGreaterThanOrEqual(COUNCIL_MIN);
+		const chosen = chooseTeamMemberModels([], undefined, NO_SETTINGS);
+		expect(chosen.length).toBeGreaterThanOrEqual(TEAM_MEMBER_MIN);
 	});
 
 	it("pads from snapshot when too few defaults match", () => {
@@ -159,13 +159,13 @@ describe("chooseCouncilModels", () => {
 		withSettings(
 			{ defaultMembers: ["a/m1"] },
 			(settingsPath) => {
-				const chosen = chooseCouncilModels(
+				const chosen = chooseTeamMemberModels(
 					["a/m1", "b/m2", "c/m3"],
 					undefined,
 					settingsPath,
 				);
 				expect(chosen).toContain("a/m1");
-				expect(chosen.length).toBeGreaterThanOrEqual(COUNCIL_MIN);
+				expect(chosen.length).toBeGreaterThanOrEqual(TEAM_MEMBER_MIN);
 			},
 		);
 	});

@@ -1,11 +1,11 @@
 /**
- * Council member selection, heterogeneity validation, and registry caching.
+ * Team member selection, heterogeneity validation, and registry caching.
  *
- * - Provider-family heterogeneity: a council must span ≥2 distinct providers
+ * - Provider-family heterogeneity: a team must span ≥2 distinct providers
  *   (openai/, anthropic/, google/, ollama/, ...). Same-family councils are
  *   trivially correlated and undermine the point of multi-model deliberation.
- * - Registry snapshot: capture the available model list at council-formation
- *   time; the live registry can change mid-session, but the council's notion
+ * - Registry snapshot: capture the available model list at team formation
+ *   time; the live registry can change mid-session, but the team's notion
  *   of "members are real" should be stable.
  */
 
@@ -16,8 +16,8 @@ import {
 	resolveTeamSettings,
 } from "./settings.js";
 
-export const COUNCIL_MIN = 3;
-export const COUNCIL_MAX = 5;
+export const TEAM_MEMBER_MIN = 3;
+export const TEAM_MEMBER_MAX = 5;
 /** @public */
 export const MIN_PROVIDER_FAMILIES = 2;
 
@@ -37,7 +37,7 @@ export interface HeterogeneityCheck {
 }
 
 /**
- * A council must span at least MIN_PROVIDER_FAMILIES distinct providers.
+ * A team must span at least MIN_PROVIDER_FAMILIES distinct providers.
  * Returns the providers seen and a reason if the check fails.
  */
 export function checkHeterogeneity(modelIds: string[]): HeterogeneityCheck {
@@ -49,7 +49,7 @@ export function checkHeterogeneity(modelIds: string[]): HeterogeneityCheck {
 	return {
 		ok: false,
 		providers,
-		reason: `Council needs ≥${MIN_PROVIDER_FAMILIES} distinct providers; got ${providers.length}: ${got}`,
+		reason: `Team needs ≥${MIN_PROVIDER_FAMILIES} distinct providers; got ${providers.length}: ${got}`,
 	};
 }
 
@@ -96,35 +96,35 @@ function modelMatches(available: Set<string>, model: string): boolean {
  *
  * @param settingsPath - Optional path to settings.json for hermetic tests.
  */
-export function chooseCouncilModels(
+export function chooseTeamMemberModels(
 	availableSnapshot: string[],
 	requested?: string[],
 	settingsPath?: string,
 ): string[] {
 	if (requested && requested.length > 0) {
-		return unique(requested).slice(0, COUNCIL_MAX);
+		return unique(requested).slice(0, TEAM_MEMBER_MAX);
 	}
 
 	const resolved = resolveTeamSettings(settingsPath);
 	if (resolved.defaultMembers.length > 0) {
 		const available = new Set(availableSnapshot);
-		if (available.size === 0) return resolved.defaultMembers.slice(0, COUNCIL_MIN);
+		if (available.size === 0) return resolved.defaultMembers.slice(0, TEAM_MEMBER_MIN);
 		const matched = resolved.defaultMembers.filter((m) => modelMatches(available, m));
-		return matched.length >= COUNCIL_MIN
-			? matched.slice(0, COUNCIL_MAX)
+		return matched.length >= TEAM_MEMBER_MIN
+			? matched.slice(0, TEAM_MEMBER_MAX)
 			: padFromSnapshot(matched, available);
 	}
 
 	const available = new Set(availableSnapshot);
 	if (available.size === 0) {
-		return DEFAULT_MEMBER_CANDIDATES.slice(0, COUNCIL_MIN);
+		return DEFAULT_MEMBER_CANDIDATES.slice(0, TEAM_MEMBER_MIN);
 	}
 
 	const chosen = DEFAULT_MEMBER_CANDIDATES.filter((m) =>
 		modelMatches(available, m),
 	);
-	return chosen.length >= COUNCIL_MIN
-		? chosen.slice(0, COUNCIL_MAX)
+	return chosen.length >= TEAM_MEMBER_MIN
+		? chosen.slice(0, TEAM_MEMBER_MAX)
 		: padFromSnapshot(chosen, available);
 }
 
@@ -135,10 +135,10 @@ function padFromSnapshot(
 ): string[] {
 	const result = [...chosen];
 	for (const model of available) {
-		if (result.length >= COUNCIL_MIN) break;
+		if (result.length >= TEAM_MEMBER_MIN) break;
 		if (!result.includes(model)) result.push(model);
 	}
-	return result.slice(0, COUNCIL_MAX);
+	return result.slice(0, TEAM_MEMBER_MAX);
 }
 
 /**
