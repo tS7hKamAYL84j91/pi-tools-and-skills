@@ -3,15 +3,15 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
-import { type WorkflowResult, runPairCoding } from "./pair-coding.js";
+import { loadPairContext } from "./context-loader.js";
+import { formatProtocolContext, renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { type GraphNodePromptBuilder, type GraphRunResult, runTeamGraph } from "./team-graph.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
-import type { GenerationConfig, ModelRun, TeamParticipant, TeamRunRecord } from "./types.js";
+import type { ModelRun, TeamParticipant, TeamRunRecord } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 export interface TeamRunModels {
@@ -95,54 +95,8 @@ function bindingForRole(team: TeamSpec, roles: string[]): TeamAgentBinding | und
 	});
 }
 
-function generationConfigForRole(team: TeamSpec, roles: string[]): GenerationConfig | undefined {
-	const binding = bindingForRole(team, roles);
-	if (binding?.tools === undefined && binding?.parameters === undefined) return undefined;
-	return {
-		...(binding.tools !== undefined ? { tools: binding.tools } : {}),
-		...(binding.parameters !== undefined ? { parameters: binding.parameters } : {}),
-	};
-}
-
 function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId): void {
 	if (args.runId) args.stateManager.recordPhaseStarted(args.runId, phaseId, label);
-}
-
-function recordModelRun(args: TeamHandlerRunArgs, phaseId: string, nodeId: string, run: ModelRun): void {
-	if (!args.runId) return;
-	args.stateManager.recordNodeCompleted(args.runId, {
-		phaseId,
-		nodeId,
-		role: run.member.label,
-		model: run.member.model,
-		ok: run.ok,
-		durationMs: run.durationMs,
-		output: run.output,
-		...(run.error ? { error: run.error } : {}),
-	});
-}
-
-function formatWorkflowResult(result: WorkflowResult): TeamHandlerResult {
-	const sections: string[] = [];
-	if (result.context.warnings.length > 0) {
-		sections.push(
-			`Context warnings:\n${result.context.warnings.map((warning) => `- ${warning}`).join("\n")}`,
-		);
-	}
-	if (result.errors.length > 0) {
-		sections.push(`Errors:\n${result.errors.map((error) => `- ${error}`).join("\n")}`);
-	}
-	const body = sections.length > 0
-		? `${result.summary}\n\n${sections.join("\n\n")}`
-		: result.summary;
-	return okText(body, {
-		team: "pair-coding",
-		mode: result.mode,
-		ok: result.ok,
-		phases: result.phases,
-		context: result.context,
-		warnings: result.context.warnings,
-	});
 }
 
 interface LoweredGraphPlan {
@@ -157,6 +111,7 @@ interface GraphPlanArgs {
 	team: TeamSpec;
 	params: TeamRunInput;
 	settings: ResolvedTeamSettings;
+	cwd?: string;
 }
 
 function promptChainsForTeam(team: TeamSpec) {
@@ -224,6 +179,50 @@ function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
 	};
 }
 
+function cloneBinding(source: TeamAgentBinding, role: string, model: string, systemPrompt: string): TeamAgentBinding {
+	return { ...source, role, model, systemPrompt };
+}
+
+function graphPlanForPairCoding(args: GraphPlanArgs): LoweredGraphPlan {
+	const chains = promptChainsForTeam(args.team);
+	const driver = args.params.models?.driver ?? args.team.models.driver ?? args.settings.defaultMembers[0];
+	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultChairman;
+	if (!driver || !navigator) throw new Error("pair-coding needs driver and navigator models.");
+	const driverError = rejectAgentRef("driver", driver);
+	if (driverError) throw new Error(driverError);
+	const navigatorError = rejectAgentRef("navigator", navigator);
+	if (navigatorError) throw new Error(navigatorError);
+	const navBriefSource = firstBinding(args.team, ["navigator_brief", "navigator"]);
+	const driverSource = firstBinding(args.team, ["driver_implementation", "driver"]);
+	const reviewSource = bindingForRole(args.team, ["navigator_review", "navigator"]) ?? navBriefSource;
+	const fixSource = bindingForRole(args.team, ["driver_fix", "driver"]) ?? driverSource;
+	const maxFixPasses = Math.max(0, args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses ?? 1);
+	const context = loadPairContext({ cwd: args.cwd ?? process.cwd(), specPath: args.params.specPath, files: args.params.files });
+	const nodes: TeamAgentBinding[] = [
+		cloneBinding(navBriefSource, "navigator_brief", navigator, requirePromptChain(chains, "navigatorBrief.system").text),
+		cloneBinding(driverSource, "driver_implementation", driver, requirePromptChain(chains, "driverImplementation.system").text),
+	];
+	for (let pass = 1; pass <= maxFixPasses; pass++) {
+		nodes.push(
+			cloneBinding(reviewSource, `navigator_review_${pass}`, navigator, requirePromptChain(chains, "navigatorReview.system").text),
+			cloneBinding(fixSource, `driver_fix_${pass}`, driver, requirePromptChain(chains, "driverFix.system").text),
+		);
+	}
+	const edges = nodes.slice(1).map((node, index) => ({ from: nodes[index]?.role ?? "", to: node.role }));
+	return {
+		team: {
+			...args.team,
+			agents: [...new Set(nodes.map((binding) => binding.subagent))],
+			agentBindings: nodes,
+			graph: { edges, outputs: [nodes[nodes.length - 1]?.role ?? "driver_implementation"] },
+			models: { driver, navigator },
+		},
+		phaseId: "pair-coding",
+		outputRole: nodes[nodes.length - 1]?.role ?? "driver_implementation",
+		buildNodePrompt: pairCodingPromptBuilder(args.team, formatProtocolContext(context)),
+	};
+}
+
 function graphPlanForConsult(args: GraphPlanArgs): LoweredGraphPlan {
 	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultConsult?.navigator;
 	if (!navigator) throw new Error("consult teams need a navigator model.");
@@ -275,6 +274,7 @@ function graphPlanForTelephone(args: GraphPlanArgs): LoweredGraphPlan {
 
 export function graphPlanForSimpleProtocol(args: GraphPlanArgs): LoweredGraphPlan | undefined {
 	if (args.team.protocol === "debate") return graphPlanForDebate(args);
+	if (args.team.protocol === "pair-coding") return graphPlanForPairCoding(args);
 	if (args.team.protocol === "consult") return graphPlanForConsult(args);
 	if (args.team.protocol === "telephone") return graphPlanForTelephone(args);
 	return undefined;
@@ -334,6 +334,59 @@ function debatePromptBuilder(
 			prompt: renderJoinedSynthesisPrompt(record, requirePromptChain(chains, "synthesis.template").text.split("\n")),
 			systemPrompt: args.binding.systemPrompt ?? "",
 		};
+	};
+}
+
+function priorOutput(args: Parameters<GraphNodePromptBuilder>[0], role: string): string {
+	return args.completed.find((node) => node.role === role)?.output ?? "";
+}
+
+function pairCodingPromptBuilder(team: TeamSpec, context: string): GraphNodePromptBuilder {
+	const chains = promptChainsForTeam(team);
+	return (args) => {
+		if (args.binding.role === "navigator_brief") {
+			return {
+				prompt: renderTemplate(requirePromptChain(chains, "navigatorBrief.template").text.split("\n"), { context, prompt: args.originalPrompt }),
+				systemPrompt: args.binding.systemPrompt ?? "",
+			};
+		}
+		if (args.binding.role === "driver_implementation") {
+			return {
+				prompt: renderTemplate(requirePromptChain(chains, "driverImplementation.template").text.split("\n"), {
+					context,
+					prompt: args.originalPrompt,
+					navigatorBrief: priorOutput(args, "navigator_brief"),
+				}),
+				systemPrompt: args.binding.systemPrompt ?? "",
+			};
+		}
+		const reviewMatch = /^navigator_review_(\d+)$/.exec(args.binding.role);
+		if (reviewMatch?.[1]) {
+			const pass = Number(reviewMatch[1]);
+			const artifact = pass === 1 ? priorOutput(args, "driver_implementation") : priorOutput(args, `driver_fix_${pass - 1}`);
+			return {
+				prompt: renderTemplate(requirePromptChain(chains, "navigatorReview.template").text.split("\n"), {
+					context,
+					prompt: args.originalPrompt,
+					driverArtifact: artifact,
+				}),
+				systemPrompt: args.binding.systemPrompt ?? "",
+			};
+		}
+		const fixMatch = /^driver_fix_(\d+)$/.exec(args.binding.role);
+		if (fixMatch?.[1]) {
+			const pass = Number(fixMatch[1]);
+			const artifact = pass === 1 ? priorOutput(args, "driver_implementation") : priorOutput(args, `driver_fix_${pass - 1}`);
+			return {
+				prompt: renderTemplate(requirePromptChain(chains, "driverFix.template").text.split("\n"), {
+					prompt: args.originalPrompt,
+					driverArtifact: artifact,
+					navigatorReview: priorOutput(args, `navigator_review_${pass}`),
+				}),
+				systemPrompt: args.binding.systemPrompt ?? "",
+			};
+		}
+		return { prompt: args.originalPrompt, systemPrompt: args.binding.systemPrompt ?? "" };
 	};
 }
 
@@ -417,80 +470,20 @@ const graphHandler: TeamHandler = {
 	},
 };
 
-const pairCodingHandler: TeamHandler = {
-	key: "pair-coding",
-	matches(team) {
-		return team.protocol === "pair-coding";
-	},
-	modelSlots(_team, models) {
-		return [
-			{
-				id: "driver",
-				label: "Driver model",
-				current: models.driver,
-				kind: "driver",
-			},
-			{
-				id: "navigator",
-				label: "Navigator model",
-				current: models.navigator,
-				kind: "navigator",
-			},
-		];
-	},
-	async run(args) {
-		const settings = resolveTeamSettings();
-		const chains = promptChainsForTeam(args.team);
-		const driver = args.params.models?.driver ?? args.team.models.driver ?? settings.defaultMembers[0];
-		const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? settings.defaultChairman;
-		if (!driver || !navigator) throw new Error("pair-coding needs driver and navigator models.");
-		const driverError = rejectAgentRef("driver", driver);
-		if (driverError) throw new Error(driverError);
-		const navigatorError = rejectAgentRef("navigator", navigator);
-		if (navigatorError) throw new Error(navigatorError);
-		args.ctx.ui.notify(`Team "${args.team.id}": driver=${driver} navigator=${navigator}`, "info");
-		const result = await runPairCoding({
-			ctx: args.ctx,
-			prompt: args.params.prompt,
-			driver,
-			navigator,
-			driverConfig: generationConfigForRole(args.team, ["driver"]),
-			navigatorConfig: generationConfigForRole(args.team, ["navigator"]),
-			prompts: {
-				navigatorBriefSystem: requirePromptChain(chains, "navigatorBrief.system").text,
-				driverImplementationSystem: requirePromptChain(chains, "driverImplementation.system").text,
-				navigatorReviewSystem: requirePromptChain(chains, "navigatorReview.system").text,
-				driverFixSystem: requirePromptChain(chains, "driverFix.system").text,
-				navigatorBriefTemplate: requirePromptChain(chains, "navigatorBrief.template").text.split("\n"),
-				driverImplementationTemplate: requirePromptChain(chains, "driverImplementation.template").text.split("\n"),
-				navigatorReviewTemplate: requirePromptChain(chains, "navigatorReview.template").text.split("\n"),
-				driverFixTemplate: requirePromptChain(chains, "driverFix.template").text.split("\n"),
-			},
-			files: args.params.files,
-			specPath: args.params.specPath,
-			maxFixPasses: args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses,
-			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
-			onProgress: (label) => {
-				args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${label}`);
-			},
-		});
-		recordPhase(args, "pair-coding");
-		if (result.navigatorBrief) recordModelRun(args, "pair-coding", "navigator-brief", result.navigatorBrief);
-		if (result.driverImplementation) recordModelRun(args, "pair-coding", "driver-implementation", result.driverImplementation);
-		for (const [index, review] of result.reviews.entries()) recordModelRun(args, "pair-coding", `navigator-review:${index + 1}`, review);
-		for (const [index, fix] of result.fixes.entries()) recordModelRun(args, "pair-coding", `driver-fix:${index + 1}`, fix);
-		return formatWorkflowResult(result);
-	},
-};
-
 const loweredGraphHandler: TeamHandler = {
 	key: "lowered-graph",
 	matches(team) {
-		return team.protocol === "debate" || team.protocol === "consult" || team.protocol === "telephone";
+		return team.protocol === "debate" || team.protocol === "pair-coding" || team.protocol === "consult" || team.protocol === "telephone";
 	},
 	modelSlots(team, models) {
 		if (team.protocol === "consult") {
 			return [{ id: "navigator", label: "Navigator model", current: models.navigator, kind: "navigator" }];
+		}
+		if (team.protocol === "pair-coding") {
+			return [
+				{ id: "driver", label: "Driver model", current: models.driver, kind: "driver" },
+				{ id: "navigator", label: "Navigator model", current: models.navigator, kind: "navigator" },
+			];
 		}
 		if (team.protocol === "debate") {
 			return [
@@ -510,7 +503,7 @@ const loweredGraphHandler: TeamHandler = {
 	},
 	async run(args) {
 		const settings = resolveTeamSettings();
-		const plan = graphPlanForSimpleProtocol({ team: args.team, params: args.params, settings });
+		const plan = graphPlanForSimpleProtocol({ team: args.team, params: args.params, settings, cwd: args.ctx.cwd });
 		if (!plan) throw new Error(`Protocol ${args.team.protocol} cannot be lowered to graph execution.`);
 		const result = await runTeamGraph({
 			team: plan.team,
@@ -546,7 +539,6 @@ const loweredGraphHandler: TeamHandler = {
 
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	graphHandler,
-	pairCodingHandler,
 	loweredGraphHandler,
 ];
 

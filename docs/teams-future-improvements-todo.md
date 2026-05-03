@@ -77,6 +77,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Debate now lowers into ordinary graph nodes for generation, critique, and synthesis. The old live-agent deliberation runner and mailbox request path are removed from the execution surface instead of wrapped. Residual preflight helpers remain only for focused tests until the P6 naming cleanup removes legacy council terminology.
 
+### ADR-013 — Bounded pair loops are unrolled DAGs
+
+**Decision:** Pair-coding now lowers to a finite graph (`navigator_brief -> driver_implementation -> review/fix...`) using `maxFixPasses` for static unrolling. No cyclic graph edges, expression language, or pair-specific runner module is introduced.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -214,7 +218,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P5 — Promote graph execution to the core engine
 
-**Status:** 🚧 **IN PROGRESS — lowering consult/telephone onto graph core**
+**Status:** ✅ **COMPLETE — built-in protocols lower onto graph core**
 
 **Goal:** Replace protocol-specific control flow with a DAG executor once config, prompts, and state are stable.
 
@@ -235,10 +239,10 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] Lower consult to a one-node graph and reject `agent:` refs clearly
 - [x] Lower telephone to a linear graph using protocol prompt slots
 - [x] Lower debate/council fanout, critique, and synthesis onto graph execution and delete bespoke deliberation runner
-- [ ] Replace pair-coding orchestration with explicit bounded-iteration primitive or justify it as a generic loop engine
+- [x] Replace pair-coding orchestration with bounded static graph unrolling
 - [ ] Keep protocol-specific names in config data only where they are intentional built-in role labels
 
-**Assignee plan:** Refactor in small slices: consult/telephone first, debate next, pair-coding last. If bounded fix loops require a non-DAG primitive, add the smallest explicit config-driven primitive rather than reintroducing pair-specific TypeScript topology.
+**Assignee plan:** Complete. Consult, telephone, debate, and pair-coding all lower through graph execution. P6 now owns residual naming/config cleanup.
 
 ---
 
@@ -357,8 +361,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.11%).
-- `npm test` passed: 34 files, 375 tests.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.10%).
+- `npm test` passed: 34 files, 376 tests.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.
