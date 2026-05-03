@@ -113,6 +113,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** `team_form` does not offer `graph` until it can author explicit edges and output policy. Graph remains a supported runtime protocol for manually authored v2 team files; generated team files should be runnable without hidden follow-up edits.
 
+### ADR-022 — Refactor closure is evidence-gated
+
+**Decision:** After P3-P6 completion, do not keep rewriting working graph/state/registry code without a concrete smell, failing fitness function, or user-visible simplification. The refactor follow-up closes on objective evidence: green full validation, zero knip findings, architecture fitness green, no legacy runtime-symbol matches in `extensions/pi-teams`, and council/navigator review finding no blockers.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -399,8 +403,12 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
+- Final handoff verification passed on 2026-05-03: `npm run check && npm test` green, `tests/architecture.test.ts` green, and `git status` clean on `main...origin/main` before this progress note.
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.05%).
 - `npm test` passed: 32 files, 354 tests.
+- Council review (`team_run default-debate`) found no true KISS/YAGNI blockers requiring code changes before handoff.
+- Navigator review (`team_run consult`) found no true blockers requiring code changes before handoff.
+- Local audit agent found P3-P6 claims consistent with code at a high level; legacy compatibility surface appears removed and built-ins lower through graph execution.
 - Refactor prompt follow-up completed: baseline `npm run check && npm test` green, `npm run knip` zero findings, and `tests/architecture.test.ts` green.
 - Refactor pass 2 completed: extracted protocol graph-lowering/prompt-packaging from `team-handlers.ts` to `team-lowering.ts`; `team-handlers.ts` is now 238 lines and focused on dispatch/state/result shaping. Validation green: `npm run check` and `npm test`.
 - Compatibility cleanup completed: removed `engine` and legacy top-level model field parsing from `team-registry.ts`, deleted the obsolete `teams.ts` compatibility barrel, cleaned stale chair/council wording in config and generic tests, and verified no legacy-name matches remain in `extensions/pi-teams` or tests except unrelated task-brief topology fixtures. Validation green: `npm run check && npm test`.
