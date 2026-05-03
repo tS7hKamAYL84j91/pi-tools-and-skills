@@ -3,17 +3,15 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { deliberate, formatFailures, preflight } from "./deliberation.js";
-import { snapshotAvailableModels } from "./members.js";
+import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { type WorkflowResult, runPairCoding } from "./pair-coding.js";
 import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { type GraphNodePromptBuilder, type GraphRunResult, runTeamGraph } from "./team-graph.js";
-import { teamToDebateDefinition } from "./team-registry.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
-import type { GenerationConfig, ModelRun, TeamRunDefinition } from "./types.js";
+import type { GenerationConfig, ModelRun, TeamParticipant, TeamRunRecord } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
 export interface TeamRunModels {
@@ -172,6 +170,60 @@ function firstBinding(team: TeamSpec, roles: string[]): TeamAgentBinding {
 	return binding;
 }
 
+function roleBindings(team: TeamSpec, roles: string[]): TeamAgentBinding[] {
+	return team.agentBindings.filter((binding) => bindingForRole({ ...team, agentBindings: [binding] }, roles));
+}
+
+function debateParticipants(bindings: readonly TeamAgentBinding[]): TeamParticipant[] {
+	return bindings.map((binding) => ({ label: binding.label ?? binding.role, model: binding.model ?? "" }));
+}
+
+function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
+	const chains = promptChainsForTeam(args.team);
+	const memberModels = args.params.models?.members ?? args.team.models.members ?? args.settings.defaultMembers;
+	if (memberModels.length === 0) throw new Error("debate teams need at least one member model.");
+	const chairmanModel = args.params.models?.chairman ?? args.team.models.chairman ?? args.settings.defaultChairman ?? memberModels[0];
+	if (!chairmanModel) throw new Error("debate teams need a synthesis model.");
+	const sourceMembers = roleBindings(args.team, ["member"]);
+	const memberSource = sourceMembers[0] ?? firstBinding(args.team, ["member"]);
+	const criticSource = bindingForRole(args.team, ["critic"]) ?? memberSource;
+	const synthesisSource = bindingForRole(args.team, ["chairman", "chair", "synthesis"]) ?? firstBinding(args.team, ["chairman", "chair", "synthesis"]);
+	const generationBindings = memberModels.map((model, index) => {
+		const source = sourceMembers[index] ?? memberSource;
+		return { ...source, role: `generation_${index + 1}`, label: source.label ?? `Member ${index + 1}`, model, systemPrompt: requirePromptChain(chains, "generation.system").text };
+	});
+	const critiqueBindings = memberModels.map((model, index) => ({
+		...criticSource,
+		role: `critique_${index + 1}`,
+		label: generationBindings[index]?.label ?? `Member ${index + 1}`,
+		model,
+		systemPrompt: requirePromptChain(chains, "critique.system").text,
+		dependencyPolicy: "allow-failed" as const,
+	}));
+	const synthesisBinding = {
+		...synthesisSource,
+		role: "synthesis",
+		label: synthesisSource.label ?? "Synthesis",
+		model: chairmanModel,
+		systemPrompt: requirePromptChain(chains, "synthesis.system").text,
+		dependencyPolicy: "allow-failed" as const,
+	};
+	const generationEdges = generationBindings.flatMap((from) => critiqueBindings.map((to) => ({ from: from.role, to: to.role })));
+	const synthesisEdges = [...generationBindings, ...critiqueBindings].map((from) => ({ from: from.role, to: synthesisBinding.role }));
+	return {
+		team: {
+			...args.team,
+			agents: [...new Set([...generationBindings, ...critiqueBindings, synthesisBinding].map((binding) => binding.subagent))],
+			agentBindings: [...generationBindings, ...critiqueBindings, synthesisBinding],
+			graph: { edges: [...generationEdges, ...synthesisEdges], outputs: [synthesisBinding.role] },
+			models: { members: memberModels, chairman: chairmanModel },
+		},
+		phaseId: "debate",
+		outputRole: synthesisBinding.role,
+		buildNodePrompt: debatePromptBuilder(args.team, generationBindings, critiqueBindings),
+	};
+}
+
 function graphPlanForConsult(args: GraphPlanArgs): LoweredGraphPlan {
 	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultConsult?.navigator;
 	if (!navigator) throw new Error("consult teams need a navigator model.");
@@ -222,9 +274,67 @@ function graphPlanForTelephone(args: GraphPlanArgs): LoweredGraphPlan {
 }
 
 export function graphPlanForSimpleProtocol(args: GraphPlanArgs): LoweredGraphPlan | undefined {
+	if (args.team.protocol === "debate") return graphPlanForDebate(args);
 	if (args.team.protocol === "consult") return graphPlanForConsult(args);
 	if (args.team.protocol === "telephone") return graphPlanForTelephone(args);
 	return undefined;
+}
+
+function modelRunFromNode(node: GraphRunResult["nodes"][number]): ModelRun {
+	return {
+		member: { label: node.binding.label ?? node.role, model: node.model ?? "" },
+		prompt: "",
+		systemPrompt: "",
+		output: node.output,
+		durationMs: node.durationMs ?? 0,
+		ok: node.ok,
+		...(node.error ? { error: node.error } : {}),
+	};
+}
+
+function debatePromptBuilder(
+	team: TeamSpec,
+	generationBindings: readonly TeamAgentBinding[],
+	critiqueBindings: readonly TeamAgentBinding[],
+): GraphNodePromptBuilder {
+	const chains = promptChainsForTeam(team);
+	const generationRoles = new Set(generationBindings.map((binding) => binding.role));
+	const critiqueRoles = new Set(critiqueBindings.map((binding) => binding.role));
+	const members = debateParticipants(generationBindings);
+	return (args) => {
+		if (generationRoles.has(args.binding.role)) return { prompt: args.originalPrompt, systemPrompt: args.binding.systemPrompt ?? "" };
+		const generation = args.completed.filter((node) => generationRoles.has(node.role) && node.ok).map(modelRunFromNode);
+		if (critiqueRoles.has(args.binding.role)) {
+			return {
+				prompt: renderPeerCritiquePrompt({
+					originalPrompt: args.originalPrompt,
+					generation,
+					members,
+					viewer: { label: args.binding.label ?? args.binding.role, model: args.model },
+					template: requirePromptChain(chains, "critique.template").text.split("\n"),
+				}),
+				systemPrompt: args.binding.systemPrompt ?? "",
+			};
+		}
+		const critiques = args.completed.filter((node) => critiqueRoles.has(node.role) && node.ok).map(modelRunFromNode);
+		const record: TeamRunRecord = {
+			version: 1,
+			id: "debate-graph",
+			team: team.id,
+			prompt: args.originalPrompt,
+			members,
+			chairman: { label: args.binding.label ?? args.binding.role, model: args.model },
+			status: "synthesizing",
+			startedAt: Date.now(),
+			orchestratorPid: process.pid,
+			generation,
+			critiques: critiques.map((run) => ({ ...run, rankings: "" })),
+		};
+		return {
+			prompt: renderJoinedSynthesisPrompt(record, requirePromptChain(chains, "synthesis.template").text.split("\n")),
+			systemPrompt: args.binding.systemPrompt ?? "",
+		};
+	};
 }
 
 function telephonePromptBuilder(team: TeamSpec): GraphNodePromptBuilder {
@@ -307,74 +417,6 @@ const graphHandler: TeamHandler = {
 	},
 };
 
-const debateHandler: TeamHandler = {
-	key: "debate",
-	matches(team) {
-		return team.protocol === "debate";
-	},
-	modelSlots(_team, models) {
-		const memberCount = Math.max(models.members?.length ?? 0, 1);
-		return [
-			...memberModelSlots({
-				count: memberCount,
-				label: (index) => `Member model ${index + 1}`,
-				models,
-			}),
-			{
-				id: "chairman",
-				label: "Chairman model",
-				current: models.chairman,
-				kind: "chairman",
-			},
-		];
-	},
-	async run(args) {
-		const snapshot = snapshotAvailableModels(args.ctx);
-		const chains = promptChainsForTeam(args.team);
-		const base = teamToDebateDefinition({ team: args.team, snapshot });
-		const definition: TeamRunDefinition = {
-			...base,
-			members: args.params.models?.members ?? base.members,
-			chairman: args.params.models?.chairman ?? base.chairman,
-		};
-		const report = preflight(definition, snapshot);
-		args.ctx.ui.notify(`Team "${args.team.id}" debating with ${definition.members.length} member(s)...`, "info");
-		const record = await deliberate({
-			definition,
-			prompt: args.params.prompt,
-			ctx: args.ctx,
-			availableSnapshot: snapshot,
-			stateManager: args.stateManager,
-			prompts: {
-				generationSystem: requirePromptChain(chains, "generation.system").text,
-				critiqueSystem: requirePromptChain(chains, "critique.system").text,
-				synthesisSystem: requirePromptChain(chains, "synthesis.system").text,
-				critiqueTemplate: requirePromptChain(chains, "critique.template").text.split("\n"),
-				synthesisTemplate: requirePromptChain(chains, "synthesis.template").text.split("\n"),
-			},
-			parallelTimeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
-			onProgress: (text) => {
-				args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`);
-			},
-		});
-		const failures = [...record.generation, ...record.critiques].filter((run) => !run.ok);
-		const sections: string[] = [];
-		if (report.warnings.length > 0) {
-			sections.push(`Pre-flight warnings:\n${report.warnings.map((warning) => `- ${warning}`).join("\n")}`);
-		}
-		if (failures.length > 0) sections.push(`Partial failures:\n${formatFailures(failures)}`);
-		const synthesis = record.synthesis?.output ?? "(no synthesis)";
-		const body = sections.length > 0 ? `${synthesis}\n\n${sections.join("\n\n")}` : synthesis;
-		return okText(body, {
-			team: args.team.id,
-			id: record.id,
-			members: record.members.map((member) => member.model),
-			chairman: record.chairman.model,
-			warnings: report.warnings,
-		});
-	},
-};
-
 const pairCodingHandler: TeamHandler = {
 	key: "pair-coding",
 	matches(team) {
@@ -444,11 +486,21 @@ const pairCodingHandler: TeamHandler = {
 const loweredGraphHandler: TeamHandler = {
 	key: "lowered-graph",
 	matches(team) {
-		return team.protocol === "consult" || team.protocol === "telephone";
+		return team.protocol === "debate" || team.protocol === "consult" || team.protocol === "telephone";
 	},
 	modelSlots(team, models) {
 		if (team.protocol === "consult") {
 			return [{ id: "navigator", label: "Navigator model", current: models.navigator, kind: "navigator" }];
+		}
+		if (team.protocol === "debate") {
+			return [
+				...memberModelSlots({
+					count: Math.max(models.members?.length ?? 0, roleBindings(team, ["member"]).length, 1),
+					label: (index) => `Member model ${index + 1}`,
+					models,
+				}),
+				{ id: "chairman", label: "Synthesis model", current: models.chairman, kind: "chairman" },
+			];
 		}
 		return memberModelSlots({
 			count: Math.max(models.members?.length ?? 0, team.agents.length, 1),
@@ -494,7 +546,6 @@ const loweredGraphHandler: TeamHandler = {
 
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	graphHandler,
-	debateHandler,
 	pairCodingHandler,
 	loweredGraphHandler,
 ];

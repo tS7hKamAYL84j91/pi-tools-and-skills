@@ -73,6 +73,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Once a Pi session branch has been rehydrated, `TeamStateManager.list()` is branch-scoped even when the branch has zero team events. Legacy JSON remains readable by explicit id fallback, but new/resumed/forked sessions do not automatically inherit unrelated global run files.
 
+### ADR-012 — Debate lowering deletes bespoke orchestration before broad renames
+
+**Decision:** Debate now lowers into ordinary graph nodes for generation, critique, and synthesis. The old live-agent deliberation runner and mailbox request path are removed from the execution surface instead of wrapped. Residual preflight helpers remain only for focused tests until the P6 naming cleanup removes legacy council terminology.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -230,7 +234,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] Spec consult/telephone lowering slice in `docs/teams-p5-protocol-lowering-slice.md`
 - [x] Lower consult to a one-node graph and reject `agent:` refs clearly
 - [x] Lower telephone to a linear graph using protocol prompt slots
-- [ ] Represent debate/council as graph specs or a generic fanout/join primitive
+- [x] Lower debate/council fanout, critique, and synthesis onto graph execution and delete bespoke deliberation runner
 - [ ] Replace pair-coding orchestration with explicit bounded-iteration primitive or justify it as a generic loop engine
 - [ ] Keep protocol-specific names in config data only where they are intentional built-in role labels
 
@@ -353,8 +357,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.12%).
-- `npm test` passed: 34 files, 374 tests.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.11%).
+- `npm test` passed: 34 files, 375 tests.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.

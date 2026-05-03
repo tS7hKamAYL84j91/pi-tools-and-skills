@@ -124,6 +124,44 @@ describe("team graph execution", () => {
 		]);
 	});
 
+	it("lowers debate to generation, critique, and synthesis graph nodes", async () => {
+		const debateTeam = team({
+			id: "debate-test",
+			protocol: "debate",
+			agents: ["member_agent", "critic_agent", "chair_agent"],
+			agentBindings: [
+				{ role: "member", subagent: "member_agent", model: "test/a", label: "Alpha" },
+				{ role: "member", subagent: "member_agent", model: "test/b", label: "Beta" },
+				{ role: "critic", subagent: "critic_agent" },
+				{ role: "chairman", subagent: "chair_agent", model: "test/chair" },
+			],
+			graph: undefined,
+			models: { members: ["test/a", "test/b"], chairman: "test/chair" },
+		});
+		const plan = graphPlanForSimpleProtocol({ team: debateTeam, params: { id: "debate-test", prompt: "ship?" }, settings });
+		if (!plan) throw new Error("missing debate graph plan");
+		const prompts = new Map<string, string>();
+		const result = await runTeamGraph({
+			team: plan.team,
+			prompt: "ship?",
+			ctx: fakeCtx(),
+			buildNodePrompt: plan.buildNodePrompt,
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				prompts.set(binding.role, prompt);
+				return { member: { label: binding.label ?? binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
+			},
+		});
+
+		expect(plan.team.graph?.outputs).toEqual(["synthesis"]);
+		expect(plan.team.agentBindings.map((binding) => binding.role)).toEqual(["generation_1", "generation_2", "critique_1", "critique_2", "synthesis"]);
+		expect(prompts.get("generation_1")).toBe("ship?");
+		expect(prompts.get("critique_1")).toContain("## Beta");
+		expect(prompts.get("critique_1")).not.toContain("## Alpha");
+		expect(prompts.get("synthesis")).toContain("Raw council answers:");
+		expect(prompts.get("synthesis")).toContain("## Critique by Alpha");
+		expect(result.output).toBe("## synthesis\noutput:synthesis");
+	});
+
 	it("lowers consult to one graph node with the consult prompt contract", async () => {
 		const consultTeam = team({
 			id: "consult-test",
