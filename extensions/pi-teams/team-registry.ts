@@ -1,27 +1,23 @@
-/**
- * Declarative team descriptor loading and registry construction.
- */
+/** Declarative team descriptor loading and registry construction. */
 
 import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
 import { chooseChairmanModel, chooseCouncilModels } from "./members.js";
-import { resolveCouncilSettings, type ResolvedCouncilSettings } from "./settings.js";
+import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
 	TeamAgentBinding,
 	TeamGraphEdge,
 	TeamModels,
-	TeamProtocol,
 	TeamRegistry,
 	TeamRegistryOptions,
 	TeamSource,
 	TeamSpec,
-	TeamTopology,
 } from "./team-types.js";
-import type { CouncilDefinition, GenerationConfig, GenerationParameterValue } from "./types.js";
+import type { GenerationConfig, GenerationParameterValue, TeamRunDefinition } from "./types.js";
 
-interface PairDefinition {
+interface ConsultDefinition {
 	name: string;
 	navigator: string;
 	purpose?: string;
@@ -29,23 +25,21 @@ interface PairDefinition {
 }
 
 function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value.trim()
-		: undefined;
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function stringArray(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
-	const values = value
-		.map(optionalString)
-		.filter((item): item is string => item !== undefined);
+	const values = value.map(optionalString).filter((item): item is string => item !== undefined);
 	return values.length > 0 ? values : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function generationParameterValue(value: unknown): GenerationParameterValue | undefined {
-	return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-		? value
-		: undefined;
+	return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : undefined;
 }
 
 function generationConfig(value: Record<string, unknown>): GenerationConfig {
@@ -58,121 +52,8 @@ function generationConfig(value: Record<string, unknown>): GenerationConfig {
 	}
 	return {
 		...(tools ? { tools } : Array.isArray(value.tools) ? { tools: [] } : {}),
-		...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+		...(value.parameters !== undefined && isRecord(value.parameters) ? { parameters } : {}),
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function unique(values: string[]): string[] {
-	return [...new Set(values)];
-}
-
-function roleMatches(role: string, candidates: string[]): boolean {
-	const normalized = role.toLowerCase().replaceAll("-", "_");
-	return candidates.some((candidate) => normalized === candidate || normalized.startsWith(`${candidate}_`));
-}
-
-function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): string | undefined {
-	return bindings.find((binding) => roleMatches(binding.role, roles) && binding.model)?.model;
-}
-
-function modelsFromBindings(
-	bindings: TeamAgentBinding[],
-	topology: TeamTopology,
-	protocol: TeamProtocol,
-): TeamModels {
-	if (topology === "council" && protocol === "debate") {
-		const members = bindings
-			.filter((binding) => roleMatches(binding.role, ["member"]) && binding.model)
-			.map((binding) => binding.model as string);
-		return {
-			...(members.length > 0 ? { members } : {}),
-			...(firstModelForRole(bindings, ["chairman", "chair"]) ? { chairman: firstModelForRole(bindings, ["chairman", "chair"]) } : {}),
-		};
-	}
-	if (topology === "pair" && protocol === "pair-coding") {
-		return {
-			...(firstModelForRole(bindings, ["driver"]) ? { driver: firstModelForRole(bindings, ["driver"]) } : {}),
-			...(firstModelForRole(bindings, ["navigator"]) ? { navigator: firstModelForRole(bindings, ["navigator"]) } : {}),
-		};
-	}
-	if (topology === "pair" && protocol === "consult") {
-		return {
-			...(firstModelForRole(bindings, ["navigator"]) ? { navigator: firstModelForRole(bindings, ["navigator"]) } : {}),
-		};
-	}
-	if (topology === "chain" && protocol === "telephone") {
-		const members = bindings
-			.filter((binding) => roleMatches(binding.role, ["relay", "member"]) && binding.model)
-			.map((binding) => binding.model as string);
-		return members.length > 0 ? { members } : {};
-	}
-	return {};
-}
-
-function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const bindings = value
-		.filter(isRecord)
-		.map((entry) => {
-			const role = optionalString(entry.role);
-			const subagent = optionalString(entry.subagent) ?? optionalString(entry.agent) ?? optionalString(entry.manifest);
-			const model = optionalString(entry.model);
-			const label = optionalString(entry.label);
-			if (!role || !subagent) return undefined;
-			return {
-				role,
-				subagent,
-				...(model ? { model } : {}),
-				...(label ? { label } : {}),
-				...generationConfig(entry),
-			};
-		})
-		.filter((entry): entry is TeamAgentBinding => entry !== undefined);
-	return bindings.length > 0 ? bindings : undefined;
-}
-
-function legacyAgentBindings(args: {
-	topology: TeamTopology;
-	protocol: TeamProtocol;
-	agents: string[];
-	chair?: string;
-	models: TeamModels;
-}): TeamAgentBinding[] {
-	if (args.topology === "council" && args.protocol === "debate") {
-		const memberSubagent = args.agents[0] ?? "council_generation_member";
-		return [
-			...(args.models.members ?? []).map((model, index) => ({
-				role: "member",
-				subagent: memberSubagent,
-				model,
-				label: `Member ${index + 1}`,
-			})),
-			...(args.chair ? [{ role: "chairman", subagent: args.chair, ...(args.models.chairman ? { model: args.models.chairman } : {}) }] : []),
-			...args.agents.slice(1).map((agent) => ({ role: "critic", subagent: agent })),
-		];
-	}
-	if (args.topology === "pair" && args.protocol === "pair-coding") {
-		return args.agents.map((agent) => {
-			const role = agent.includes("driver") ? "driver" : "navigator";
-			const model = role === "driver" ? args.models.driver : args.models.navigator;
-			return { role, subagent: agent, ...(model ? { model } : {}) };
-		});
-	}
-	if (args.topology === "pair" && args.protocol === "consult") {
-		return args.agents.map((agent) => ({ role: "navigator", subagent: agent, ...(args.models.navigator ? { model: args.models.navigator } : {}) }));
-	}
-	if (args.topology === "chain" && args.protocol === "telephone") {
-		return args.agents.map((agent, index) => ({
-			role: "relay",
-			subagent: agent,
-			...(args.models.members?.[index] ? { model: args.models.members[index] } : {}),
-		}));
-	}
-	return args.agents.map((agent) => ({ role: "agent", subagent: agent }));
 }
 
 function optionalNumber(value: unknown): number | undefined {
@@ -190,10 +71,26 @@ function isSubagentId(value: string): boolean {
 	return /^[a-z][a-z0-9_]*$/.test(value);
 }
 
-function toSubagentSpec(
-	descriptor: RawMarkdownDescriptor,
-	source: TeamSource,
-): SubagentSpec {
+function roleMatches(role: string, candidates: string[]): boolean {
+	const normalized = role.toLowerCase().replaceAll("-", "_");
+	return candidates.some((candidate) => normalized === candidate || normalized.startsWith(`${candidate}_`));
+}
+
+function unique(values: string[]): string[] {
+	return [...new Set(values)];
+}
+
+function promptRefs(value: unknown): Record<string, string> {
+	if (!isRecord(value)) return {};
+	const result: Record<string, string> = {};
+	for (const [key, raw] of Object.entries(value)) {
+		const parsed = optionalString(raw);
+		if (parsed) result[key] = parsed;
+	}
+	return result;
+}
+
+function toSubagentSpec(descriptor: RawMarkdownDescriptor, source: TeamSource): SubagentSpec {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.name) ?? descriptorIdFromPath(descriptor.path);
 	const description = optionalString(frontMatter.description);
@@ -212,21 +109,57 @@ function toSubagentSpec(
 	};
 }
 
-function isTeamTopology(value: string): value is TeamTopology {
-	return value === "chain" || value === "council" || value === "pair";
+function hasMixedAgentEntries(value: unknown): boolean {
+	if (!Array.isArray(value)) return false;
+	return value.some(isRecord) && value.some((entry) => typeof entry === "string");
 }
 
-function isTeamProtocol(value: string): value is TeamProtocol {
-	return value === "debate" || value === "consult" || value === "graph" || value === "pair-coding" || value === "telephone";
+function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefined {
+	if (!Array.isArray(value) || hasMixedAgentEntries(value)) return undefined;
+	const bindings = value
+		.filter(isRecord)
+		.map((entry) => {
+			const role = optionalString(entry.role);
+			const subagent = optionalString(entry.subagent);
+			const model = optionalString(entry.model);
+			const label = optionalString(entry.label);
+			const promptId = optionalString(entry.promptId);
+			const templateId = optionalString(entry.templateId);
+			const systemPrompt = optionalString(entry.systemPrompt);
+			const dependencyPolicy = optionalString(entry.dependencyPolicy);
+			if (!role || !subagent) return undefined;
+			if (dependencyPolicy !== undefined && dependencyPolicy !== "require-ok" && dependencyPolicy !== "allow-failed") return undefined;
+			return {
+				role,
+				subagent,
+				...(model ? { model } : {}),
+				...(label ? { label } : {}),
+				...(promptId ? { promptId } : {}),
+				...(templateId ? { templateId } : {}),
+				...(systemPrompt ? { systemPrompt } : {}),
+				...(dependencyPolicy ? { dependencyPolicy } : {}),
+				...generationConfig(entry),
+			};
+		})
+		.filter((entry): entry is TeamAgentBinding => entry !== undefined);
+	return bindings.length > 0 ? bindings : undefined;
 }
 
-function inferTopology(protocol: TeamProtocol, bindings: TeamAgentBinding[]): TeamTopology {
-	if (protocol === "debate") return "council";
-	if (protocol === "consult" || protocol === "pair-coding") return "pair";
-	if (protocol === "telephone") return "chain";
-	if (bindings.some((binding) => roleMatches(binding.role, ["chairman", "chair", "member"]))) return "council";
-	if (bindings.some((binding) => roleMatches(binding.role, ["driver", "navigator"]))) return "pair";
-	return "chain";
+function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): string | undefined {
+	return bindings.find((binding) => roleMatches(binding.role, roles) && binding.model)?.model;
+}
+
+function modelsFromBindings(bindings: TeamAgentBinding[], protocol: string): TeamModels {
+	const members = bindings
+		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
+		.map((binding) => binding.model as string);
+	return {
+		...(members.length > 0 ? { members } : {}),
+		...(firstModelForRole(bindings, ["chairman", "chair", "synthesis"]) ? { chairman: firstModelForRole(bindings, ["chairman", "chair", "synthesis"]) } : {}),
+		...(firstModelForRole(bindings, ["driver", "driver_implementation"]) ? { driver: firstModelForRole(bindings, ["driver", "driver_implementation"]) } : {}),
+		...(firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) ? { navigator: firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) } : {}),
+		...(protocol === "graph" && members.length === 0 && bindings[0]?.model ? { members: [bindings[0].model] } : {}),
+	};
 }
 
 function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
@@ -242,34 +175,46 @@ function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
 	return edges.length > 0 ? edges : undefined;
 }
 
-function toTeamSpec(
-	descriptor: RawMarkdownDescriptor,
-	warnings: string[],
-	source: TeamSource,
-): TeamSpec | undefined {
+function protocolFromFrontMatter(frontMatter: Record<string, unknown>, id: string, warnings: string[]): string | undefined {
+	const protocol = optionalString(frontMatter.protocol);
+	const engine = optionalString(frontMatter.engine);
+	if (protocol && engine && protocol !== engine) {
+		warnings.push(`${id}: protocol and engine must match; got ${protocol} and ${engine}`);
+		return undefined;
+	}
+	return protocol ?? engine;
+}
+
+function topologyForProtocol(protocol: string): TeamSpec["topology"] {
+	if (protocol === "debate") return "council";
+	if (protocol === "consult" || protocol === "pair-coding") return "pair";
+	if (protocol === "telephone") return "chain";
+	if (protocol === "graph") return "graph";
+	return undefined;
+}
+
+function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
 	const schemaVersion = optionalNumber(frontMatter.schemaVersion);
-	const topologyValue = optionalString(frontMatter.topology);
-	const protocolValue = optionalString(frontMatter.protocol) ?? optionalString(frontMatter.engine);
-	const legacyAgents = stringArray(frontMatter.agents) ?? [];
-	if (schemaVersion !== 1) {
-		warnings.push(`${id}: unsupported schemaVersion ${schemaVersion ?? "(missing)"}`);
+	if (schemaVersion !== 2) {
+		warnings.push(`${id}: schemaVersion 2 is required`);
 		return undefined;
 	}
-	if (topologyValue && !isTeamTopology(topologyValue)) {
-		warnings.push(`${id}: invalid topology ${topologyValue}`);
+	const protocol = protocolFromFrontMatter(frontMatter, id, warnings);
+	if (!protocol) {
+		warnings.push(`${id}: protocol is required`);
 		return undefined;
 	}
-	const explicitTopology = topologyValue && isTeamTopology(topologyValue) ? topologyValue : undefined;
-	if (!protocolValue || !isTeamProtocol(protocolValue)) {
-		warnings.push(`${id}: invalid protocol ${protocolValue ?? "(missing)"}`);
-		return undefined;
-	}
-
 	const name = optionalString(frontMatter.name) ?? id;
 	const description = optionalString(frontMatter.description);
-	const chair = optionalString(frontMatter.chair);
+	const agentBindings = agentBindingsFromObjects(frontMatter.agents);
+	if (!agentBindings) {
+		warnings.push(hasMixedAgentEntries(frontMatter.agents)
+			? `${id}: agents list must not mix object and string entries`
+			: `${id}: agents must be object entries with role and subagent`);
+		return undefined;
+	}
 	const memberModels = stringArray(frontMatter.memberModels);
 	const chairmanModel = optionalString(frontMatter.chairmanModel);
 	const driverModel = optionalString(frontMatter.driverModel);
@@ -280,101 +225,62 @@ function toTeamSpec(
 		...(driverModel ? { driver: driverModel } : {}),
 		...(navigatorModel ? { navigator: navigatorModel } : {}),
 	};
-	if (Array.isArray(frontMatter.agents)) {
-		const hasObjectEntry = frontMatter.agents.some(isRecord);
-		const hasStringEntry = frontMatter.agents.some((entry) => typeof entry === "string");
-		if (hasObjectEntry && hasStringEntry) {
-			warnings.push(`${id}: agents list must not mix object and string entries`);
-			return undefined;
-		}
-		if (hasObjectEntry && !agentBindingsFromObjects(frontMatter.agents)) {
-			warnings.push(`${id}: object agent entries require role and subagent`);
-			return undefined;
-		}
-	}
-	const objectBindings = agentBindingsFromObjects(frontMatter.agents);
 	const graph = graphEdges(frontMatter.edges);
-	const inferredTopology = explicitTopology ?? inferTopology(protocolValue, objectBindings ?? []);
-	const agentBindings = objectBindings ?? legacyAgentBindings({
-		topology: inferredTopology,
-		protocol: protocolValue,
-		agents: legacyAgents,
-		...(chair ? { chair } : {}),
-		models: legacyModels,
-	});
-	const topology = explicitTopology ?? inferTopology(protocolValue, agentBindings);
+	const outputs = stringArray(frontMatter.outputs);
+	const reducerValue = optionalString(frontMatter.reducer);
+	if (reducerValue && reducerValue !== "concat") {
+		warnings.push(`${id}: unsupported graph reducer ${reducerValue}`);
+		return undefined;
+	}
+	const reducer = reducerValue === "concat" ? reducerValue : undefined;
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
-	const derivedChair = chair ?? agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair"]))?.subagent;
-	const models = Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, topology, protocolValue);
+	const chair = optionalString(frontMatter.chair) ?? agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]))?.subagent;
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	return {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		id,
 		name,
 		...(description ? { description } : {}),
-		topology,
-		protocol: protocolValue,
+		protocol,
+		...(topologyForProtocol(protocol) ? { topology: topologyForProtocol(protocol) } : {}),
+		prompts: promptRefs(frontMatter.prompts),
 		agents,
 		agentBindings,
-		...(graph ? { graph: { edges: graph } } : {}),
-		...(derivedChair ? { chair: derivedChair } : {}),
-		models,
+		...(graph || outputs || reducer ? { graph: { edges: graph ?? [], ...(outputs ? { outputs } : {}), ...(reducer ? { reducer } : {}) } } : {}),
+		...(chair ? { chair } : {}),
+		models: Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, protocol),
 		limits: {
 			...(timeoutMs ? { timeoutMs } : {}),
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),
+			...(optionalNumber(frontMatter.maxConcurrency) !== undefined ? { maxConcurrency: optionalNumber(frontMatter.maxConcurrency) } : {}),
 		},
 		source,
 		path: descriptor.path,
 	};
 }
 
-function mergeSubagentConfig(
-	binding: TeamAgentBinding,
-	subagent: SubagentSpec | undefined,
-): TeamAgentBinding {
+function mergeSubagentConfig(binding: TeamAgentBinding, subagent: SubagentSpec | undefined): TeamAgentBinding {
 	return {
 		...binding,
-		...(binding.tools ? { tools: binding.tools } : subagent?.tools ? { tools: subagent.tools } : {}),
-		...(binding.parameters ? { parameters: binding.parameters } : subagent?.parameters ? { parameters: subagent.parameters } : {}),
-		...(subagent?.systemPrompt ? { systemPrompt: subagent.systemPrompt } : {}),
+		...(binding.tools !== undefined ? { tools: binding.tools } : subagent?.tools !== undefined ? { tools: subagent.tools } : {}),
+		...(binding.parameters !== undefined ? { parameters: binding.parameters } : subagent?.parameters !== undefined ? { parameters: subagent.parameters } : {}),
+		...(subagent?.promptId !== undefined ? { subagentPromptId: subagent.promptId } : {}),
+		...(subagent?.systemPrompt !== undefined ? { subagentSystemPrompt: subagent.systemPrompt } : {}),
 	};
 }
 
-function validateTeam(
-	team: TeamSpec,
-	subagents: Map<string, SubagentSpec>,
-): string[] {
+function validateTeam(team: TeamSpec, subagents: Map<string, SubagentSpec>): string[] {
 	const warnings: string[] = [];
 	if (team.agentBindings.length === 0) warnings.push(`${team.id}: agents must not be empty`);
 	for (const binding of team.agentBindings) {
-		if (!isSubagentId(binding.subagent)) {
-			warnings.push(`${team.id}: invalid agent id ${binding.subagent}`);
-		}
+		if (!isSubagentId(binding.subagent)) warnings.push(`${team.id}: invalid agent id ${binding.subagent}`);
 		if (!subagents.has(binding.subagent)) warnings.push(`${team.id}: unknown agent ${binding.subagent}`);
-	}
-	if (team.chair && !isSubagentId(team.chair)) {
-		warnings.push(`${team.id}: invalid chair id ${team.chair}`);
-	}
-	if (team.chair && !subagents.has(team.chair)) {
-		warnings.push(`${team.id}: unknown chair ${team.chair}`);
-	}
-	if (!team.graph && team.topology === "council" && team.protocol !== "debate") {
-		warnings.push(`${team.id}: council topology requires debate protocol`);
-	}
-	if (!team.graph && team.topology === "pair" && team.protocol !== "consult" && team.protocol !== "pair-coding") {
-		warnings.push(`${team.id}: pair topology requires consult or pair-coding protocol`);
-	}
-	if (!team.graph && team.topology === "chain" && team.protocol !== "telephone") {
-		warnings.push(`${team.id}: chain topology requires telephone protocol`);
 	}
 	return warnings;
 }
 
-export function loadTeamRegistry(
-	configPath: string = DEFAULT_CONFIG_JSON,
-	options: TeamRegistryOptions = {},
-): TeamRegistry {
+export function loadTeamRegistry(configPath: string = DEFAULT_CONFIG_JSON, options: TeamRegistryOptions = {}): TeamRegistry {
 	const warnings: string[] = [];
 	const subagents = new Map<string, SubagentSpec>();
 	const teams = new Map<string, TeamSpec>();
@@ -386,14 +292,11 @@ export function loadTeamRegistry(
 		}
 		for (const descriptor of readMarkdownDescriptors(dirs.teams)) {
 			const team = toTeamSpec(descriptor, warnings, dirs.source);
-			if (!team) continue;
-			teams.set(team.id, team);
+			if (team) teams.set(team.id, team);
 		}
 	}
 	for (const team of teams.values()) {
-		team.agentBindings = team.agentBindings.map((binding) =>
-			mergeSubagentConfig(binding, subagents.get(binding.subagent)),
-		);
+		team.agentBindings = team.agentBindings.map((binding) => mergeSubagentConfig(binding, subagents.get(binding.subagent)));
 		warnings.push(...validateTeam(team, subagents));
 	}
 	return { teams, subagents, warnings };
@@ -403,79 +306,48 @@ export function loadBuiltinTeamIds(configPath: string = DEFAULT_CONFIG_JSON): Se
 	return new Set(loadTeamRegistry(configPath, { roots: [] }).teams.keys());
 }
 
-export function requireBuiltinTeam(
-	id: string,
-	expected: { topology: TeamTopology; protocol: TeamProtocol },
-): TeamSpec {
-	const registry = loadTeamRegistry();
+export function requireBuiltinTeam(id: string, expected: { protocol: string; topology?: string }): TeamSpec {
+	const registry = loadTeamRegistry(undefined, { roots: [] });
 	const team = registry.teams.get(id);
-	if (!team) {
-		throw new Error(
-			`Required built-in team "${id}" is missing. Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`,
-		);
-	}
-	if (team.topology !== expected.topology || team.protocol !== expected.protocol) {
-		throw new Error(
-			`Team "${id}" must be ${expected.topology}/${expected.protocol}; got ${team.topology}/${team.protocol}.`,
-		);
-	}
+	if (!team) throw new Error(`Required built-in team "${id}" is missing. Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
+	if (team.protocol !== expected.protocol) throw new Error(`Team "${id}" must use protocol ${expected.protocol}; got ${team.protocol}.`);
 	const teamWarnings = registry.warnings.filter((warning) => warning.startsWith(`${id}:`));
-	if (teamWarnings.length > 0) {
-		throw new Error(`Team "${id}" is invalid:\n${teamWarnings.join("\n")}`);
-	}
+	if (teamWarnings.length > 0) throw new Error(`Team "${id}" is invalid:\n${teamWarnings.join("\n")}`);
 	return team;
 }
 
-export function teamToCouncilDefinition(args: {
-	team: TeamSpec;
-	settings?: ResolvedCouncilSettings;
-	snapshot?: string[];
-}): CouncilDefinition {
-	if (args.team.topology !== "council" || args.team.protocol !== "debate") {
-		throw new Error(`Team ${args.team.id} is not a council debate team.`);
-	}
+function configFromBinding(binding: TeamAgentBinding | undefined): GenerationConfig | undefined {
+	if (binding?.tools === undefined && binding?.parameters === undefined) return undefined;
+	return {
+		...(binding.tools !== undefined ? { tools: binding.tools } : {}),
+		...(binding.parameters !== undefined ? { parameters: binding.parameters } : {}),
+	};
+}
+
+export function teamToDebateDefinition(args: { team: TeamSpec; settings?: ResolvedTeamSettings; snapshot?: string[] }): TeamRunDefinition {
+	if (args.team.protocol !== "debate") throw new Error(`Team ${args.team.id} is not a debate team.`);
 	const snapshot = args.snapshot ?? [];
-	const settings = args.settings ?? resolveCouncilSettings();
+	const settings = args.settings ?? resolveTeamSettings();
 	const members = args.team.models.members ?? chooseCouncilModels(snapshot);
 	return {
-		name: settings.defaultCouncil.name,
-		purpose: settings.defaultCouncil.purpose,
+		name: settings.defaultDebate.name,
+		purpose: settings.defaultDebate.purpose,
 		members,
 		chairman: args.team.models.chairman ?? chooseChairmanModel(snapshot, members),
-		memberConfigs: args.team.agentBindings
-			.filter((binding) => roleMatches(binding.role, ["member"]))
-			.map((binding) => ({
-				...(binding.tools ? { tools: binding.tools } : {}),
-				...(binding.parameters ? { parameters: binding.parameters } : {}),
-			})),
-		chairmanConfig: (() => {
-			const binding = args.team.agentBindings.find((entry) => roleMatches(entry.role, ["chairman", "chair"]));
-			return binding
-				? {
-						...(binding.tools ? { tools: binding.tools } : {}),
-						...(binding.parameters ? { parameters: binding.parameters } : {}),
-					}
-				: undefined;
-		})(),
+		memberConfigs: args.team.agentBindings.filter((binding) => roleMatches(binding.role, ["member"])).map(configFromBinding),
+		chairmanConfig: configFromBinding(args.team.agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]))),
 		createdAt: Date.now(),
 	};
 }
 
-export function teamToPairDefinition(args: {
-	team: TeamSpec;
-	settings?: ResolvedCouncilSettings;
-}): PairDefinition {
-	if (args.team.topology !== "pair") {
-		throw new Error(`Team ${args.team.id} is not a pair team.`);
-	}
-	const settings = args.settings ?? resolveCouncilSettings();
-	if (!settings.defaultPair) {
-		throw new Error("No default pair configured.");
-	}
+export function teamToConsultDefinition(args: { team: TeamSpec; settings?: ResolvedTeamSettings }): ConsultDefinition {
+	if (args.team.protocol !== "consult") throw new Error(`Team ${args.team.id} is not a consult team.`);
+	const settings = args.settings ?? resolveTeamSettings();
+	if (!settings.defaultConsult) throw new Error("No default consult team configured.");
 	return {
-		name: settings.defaultPair.name,
-		navigator: settings.defaultPair.navigator,
-		...(settings.defaultPair.purpose ? { purpose: settings.defaultPair.purpose } : {}),
+		name: settings.defaultConsult.name,
+		navigator: settings.defaultConsult.navigator,
+		...(settings.defaultConsult.purpose ? { purpose: settings.defaultConsult.purpose } : {}),
 		createdAt: Date.now(),
 	};
 }

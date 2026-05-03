@@ -6,8 +6,6 @@ promptId: "pairDriverImplementationSystem"
 scope: "pair"
 stage: "driver-implementation"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY

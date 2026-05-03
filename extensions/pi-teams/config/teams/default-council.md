@@ -1,10 +1,15 @@
 ---
-schemaVersion: 1
+schemaVersion: 2
 id: "default-council"
 name: "Default Council"
 description: "General high-stakes reasoning and architecture review."
-topology: "council"
 protocol: "debate"
+prompts:
+  generation.system: "councilGenerationSystem"
+  critique.system: "councilCritiqueSystem"
+  critique.template: "councilCritiqueTemplate"
+  synthesis.system: "councilChairmanSystem"
+  synthesis.template: "councilSynthesisTemplate"
 agents:
   - role: "member"
     subagent: "council_generation_member"

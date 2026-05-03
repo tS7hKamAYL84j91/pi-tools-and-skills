@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import councilExtension from "../extensions/pi-teams/index.js";
-import { resolveCouncilSettings } from "../extensions/pi-teams/settings.js";
+import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
 interface VisibleConfig {
@@ -102,7 +102,7 @@ describe("visible council config", () => {
 		const visible = readVisibleConfig();
 		const generationPrompt = readMarkdownPrompt(AGENTS_DIR, "council-generation-member.md");
 		const navigatorBriefPrompt = readMarkdownPrompt(AGENTS_DIR, "pair-navigator-brief.md");
-		const resolved = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
+		const resolved = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 
 		expect(visible).toEqual({ schemaVersion: 1, layout: "teams-root" });
 		expect(resolved.defaultMembers).toEqual([
@@ -126,7 +126,7 @@ describe("visible council config", () => {
 		councilExtension(fake.api);
 		const teamList = fake.tools.get("team_list");
 		if (!teamList) throw new Error("team_list not registered");
-		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
+		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 		const result = await teamList.execute(
 			"test",
 			{},

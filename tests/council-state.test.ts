@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CouncilStateManager } from "../extensions/pi-teams/state.js";
+import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import type { CouncilMember } from "../extensions/pi-teams/types.js";
 
 const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
@@ -25,13 +25,13 @@ function createArgs() {
 	};
 }
 
-describe("CouncilStateManager", () => {
+describe("TeamStateManager", () => {
 	let dir: string;
-	let store: CouncilStateManager;
+	let store: TeamStateManager;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "council-state-"));
-		store = new CouncilStateManager(dir);
+		store = new TeamStateManager(dir);
 	});
 
 	afterEach(() => {
@@ -40,7 +40,7 @@ describe("CouncilStateManager", () => {
 
 	it("appends session entries while keeping legacy file persistence", () => {
 		const entries: Array<{ customType: string; data?: unknown }> = [];
-		const sessionBacked = new CouncilStateManager(dir, {
+		const sessionBacked = new TeamStateManager(dir, {
 			appendEntry: (customType, data) => entries.push({ customType, data }),
 		});
 
@@ -48,9 +48,9 @@ describe("CouncilStateManager", () => {
 		sessionBacked.update(record, { status: "generating" });
 
 		expect(entries).toHaveLength(2);
-		expect(entries[0]?.customType).toBe("pi-teams:deliberation");
-		expect(entries[0]?.data).toMatchObject({ id: record.id, status: "pending" });
-		expect(entries[1]?.data).toMatchObject({ id: record.id, status: "generating" });
+		expect(entries[0]?.customType).toBe("pi-teams:run");
+		expect(entries[0]?.data).toMatchObject({ kind: "run_started", runId: record.id });
+		expect(entries[1]?.data).toMatchObject({ kind: "phase_started", runId: record.id, phaseId: "generation" });
 		expect(sessionBacked.get(record.id)).toMatchObject({ id: record.id, status: "generating" });
 	});
 

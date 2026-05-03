@@ -6,8 +6,6 @@ promptId: "pairNavigatorReviewSystem"
 scope: "pair"
 stage: "navigator-review"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY

@@ -1,15 +1,6 @@
-/**
- * Council types — shared shape across deliberation orchestration and state
- * persistence. No sibling imports (architecture rule: types.ts is a leaf).
- */
+/** Shared runtime types for team protocol execution and persistence. */
 
-export type CouncilStatus =
-	| "pending"
-	| "generating"
-	| "critiquing"
-	| "synthesizing"
-	| "completed"
-	| "failed";
+export type RunStatus = "pending" | "generating" | "critiquing" | "synthesizing" | "completed" | "failed";
 
 /** @public */
 export type GenerationParameterValue = string | number | boolean;
@@ -19,29 +10,36 @@ export interface GenerationConfig {
 	parameters?: Record<string, GenerationParameterValue>;
 }
 
-export interface CouncilDefinition {
+/** @public */
+export interface TeamRunDefinition {
 	name: string;
 	purpose?: string;
 	members: string[];
 	chairman: string;
 	createdAt: number;
-	memberConfigs?: GenerationConfig[];
+	memberConfigs?: Array<GenerationConfig | undefined>;
 	chairmanConfig?: GenerationConfig;
 }
 
-export interface CouncilMember extends GenerationConfig {
-	/** Anonymized identifier ("Agent A", "Chairman") used in critique prompts. */
+export interface TeamParticipant extends GenerationConfig {
+	/** Protocol-local label used when packaging peer outputs. */
 	label: string;
 	/** Underlying model id; for live agents this is the agent's registered model. */
 	model: string;
-	/** Set when this member is a live pi agent rather than a one-shot model invocation. */
+	/** Set when this participant is a live pi agent rather than a one-shot model invocation. */
 	agentName?: string;
 	/** Registry id of the live agent — populated alongside agentName. */
 	agentId?: string;
 }
 
+/** @deprecated Use TeamRunDefinition. */
+export type CouncilDefinition = TeamRunDefinition;
+
+/** @deprecated Use TeamParticipant. */
+export type CouncilMember = TeamParticipant;
+
 export interface ModelRun {
-	member: CouncilMember;
+	member: TeamParticipant;
 	prompt: string;
 	systemPrompt: string;
 	output: string;
@@ -50,28 +48,24 @@ export interface ModelRun {
 	error?: string;
 }
 
-export interface CritiqueRun extends ModelRun {
+export interface ReviewRun extends ModelRun {
 	rankings: string;
 }
 
-/**
- * Persistent record of a single council deliberation. Written incrementally
- * to ~/.pi/agent/councils/{id}.json as the 3-stage protocol progresses, so
- * an orchestrator crash mid-deliberation leaves a recoverable trail.
- */
-export interface CouncilDeliberation {
+/** Persistent record of one team protocol run. */
+export interface TeamRunRecord {
 	version: 1;
 	id: string;
-	council: string;
+	team: string;
 	prompt: string;
-	members: CouncilMember[];
-	chairman: CouncilMember;
-	status: CouncilStatus;
+	members: TeamParticipant[];
+	chairman: TeamParticipant;
+	status: RunStatus;
 	startedAt: number;
 	completedAt?: number;
 	orchestratorPid: number;
 	generation: ModelRun[];
-	critiques: CritiqueRun[];
+	critiques: ReviewRun[];
 	synthesis?: ModelRun;
 	error?: string;
 }

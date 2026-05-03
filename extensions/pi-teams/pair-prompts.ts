@@ -7,9 +7,10 @@
 
 import type { LoadedFile, PairContext } from "./context-loader.js";
 import { renderTemplate } from "./prompt-renderer.js";
-import type { ResolvedCouncilSettings } from "./settings.js";
+import { promptAssetLines, promptAssetText } from "./prompt-resolver.js";
+import type { ResolvedTeamSettings } from "./settings.js";
 
-type PromptConfig = ResolvedCouncilSettings["prompts"];
+type PromptConfig = ResolvedTeamSettings["prompts"];
 
 interface PairPrimerArgs {
 	pairName: string;
@@ -18,36 +19,41 @@ interface PairPrimerArgs {
 	promptsConfig: PromptConfig;
 }
 
+/** @public */
 export function navigatorBriefSystemPrompt(
 	promptsConfig: PromptConfig,
 ): string {
-	return promptsConfig.pairNavigatorBriefSystem.join("\n");
+	return promptAssetText(promptsConfig, "pairNavigatorBriefSystem");
 }
 
+/** @public */
 export function driverImplementationSystemPrompt(
 	promptsConfig: PromptConfig,
 ): string {
-	return promptsConfig.pairDriverImplementationSystem.join("\n");
+	return promptAssetText(promptsConfig, "pairDriverImplementationSystem");
 }
 
+/** @public */
 export function navigatorConsultSystemPrompt(
 	promptsConfig: PromptConfig,
 ): string {
-	return promptsConfig.pairNavigatorConsultSystem.join("\n");
+	return promptAssetText(promptsConfig, "pairNavigatorConsultSystem");
 }
 
+/** @public */
 export function navigatorReviewSystemPrompt(
 	promptsConfig: PromptConfig,
 ): string {
-	return promptsConfig.pairNavigatorReviewSystem.join("\n");
+	return promptAssetText(promptsConfig, "pairNavigatorReviewSystem");
 }
 
+/** @public */
 export function driverFixSystemPrompt(promptsConfig: PromptConfig): string {
-	return promptsConfig.pairDriverFixSystem.join("\n");
+	return promptAssetText(promptsConfig, "pairDriverFixSystem");
 }
 
 export function pairPrimerPrompt(args: PairPrimerArgs): string {
-	return renderTemplate(args.promptsConfig.pairPrimer, {
+	return renderTemplate([...promptAssetLines(args.promptsConfig, "pairPrimer")], {
 		pairName: args.pairName,
 		navigator: args.navigator,
 		taskLine: args.task ? `\n\nTask: ${args.task}` : "",
@@ -78,50 +84,54 @@ function formatFile(file: LoadedFile): string {
 	return `### ${file.path}\n\n\`\`\`\n${file.content}\n\`\`\``;
 }
 
+/** @public */
 export function navigatorBriefPrompt(
 	prompt: string,
 	ctx: PairContext,
 	promptsConfig: PromptConfig,
 ): string {
-	return renderTemplate(promptsConfig.pairNavigatorBriefTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "pairNavigatorBriefTemplate")], {
 		context: formatContext(ctx),
 		prompt,
 	});
 }
 
+/** @public */
 export function driverImplementationPrompt(
 	prompt: string,
 	ctx: PairContext,
 	navigatorBrief: string,
 	promptsConfig: PromptConfig,
 ): string {
-	return renderTemplate(promptsConfig.pairDriverImplementationTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "pairDriverImplementationTemplate")], {
 		context: formatContext(ctx),
 		prompt,
 		navigatorBrief,
 	});
 }
 
+/** @public */
 export function navigatorReviewPrompt(
 	prompt: string,
 	ctx: PairContext,
 	driverArtifact: string,
 	promptsConfig: PromptConfig,
 ): string {
-	return renderTemplate(promptsConfig.pairNavigatorReviewTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "pairNavigatorReviewTemplate")], {
 		context: formatContext(ctx),
 		prompt,
 		driverArtifact,
 	});
 }
 
+/** @public */
 export function driverFixPrompt(
 	prompt: string,
 	driverArtifact: string,
 	navigatorReview: string,
 	promptsConfig: PromptConfig,
 ): string {
-	return renderTemplate(promptsConfig.pairDriverFixTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "pairDriverFixTemplate")], {
 		prompt,
 		driverArtifact,
 		navigatorReview,

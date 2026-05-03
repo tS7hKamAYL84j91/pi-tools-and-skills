@@ -6,25 +6,29 @@
  */
 
 import { renderTemplate } from "./prompt-renderer.js";
-import type { ResolvedCouncilSettings } from "./settings.js";
-import type { CouncilDeliberation, CouncilMember, ModelRun } from "./types.js";
+import { promptAssetLines, promptAssetText } from "./prompt-resolver.js";
+import type { ResolvedTeamSettings } from "./settings.js";
+import type { TeamRunRecord, TeamParticipant, ModelRun } from "./types.js";
 
-type PromptConfig = ResolvedCouncilSettings["prompts"];
+type PromptConfig = ResolvedTeamSettings["prompts"];
 
+/** @public */
 export function generationSystemPrompt(promptsConfig: PromptConfig): string {
-	return promptsConfig.councilGenerationSystem.join("\n");
+	return promptAssetText(promptsConfig, "councilGenerationSystem");
 }
 
+/** @public */
 export function critiqueSystemPrompt(promptsConfig: PromptConfig): string {
-	return promptsConfig.councilCritiqueSystem.join("\n");
+	return promptAssetText(promptsConfig, "councilCritiqueSystem");
 }
 
+/** @public */
 export function chairmanSystemPrompt(promptsConfig: PromptConfig): string {
-	return promptsConfig.councilChairmanSystem.join("\n");
+	return promptAssetText(promptsConfig, "councilChairmanSystem");
 }
 
 /** Replace each member's model id (and agent name, if any) in `text` with its anonymous label. */
-function anonymizeText(text: string, members: CouncilMember[]): string {
+function anonymizeText(text: string, members: TeamParticipant[]): string {
 	let anonymized = text;
 	for (const member of members) {
 		const tokens = [member.model];
@@ -47,8 +51,8 @@ function anonymizeText(text: string, members: CouncilMember[]): string {
 export function critiquePrompt(args: {
 	originalPrompt: string;
 	generation: ModelRun[];
-	members: CouncilMember[];
-	viewer: CouncilMember;
+	members: TeamParticipant[];
+	viewer: TeamParticipant;
 	promptsConfig: PromptConfig;
 }): string {
 	const peers = args.generation.filter(
@@ -60,14 +64,15 @@ export function critiquePrompt(args: {
 				`## ${run.member.label}\n${anonymizeText(run.output, args.members)}`,
 		)
 		.join("\n\n");
-	return renderTemplate(args.promptsConfig.councilCritiqueTemplate, {
+	return renderTemplate([...promptAssetLines(args.promptsConfig, "councilCritiqueTemplate")], {
 		originalPrompt: args.originalPrompt,
 		answers,
 	});
 }
 
+/** @public */
 export function synthesisPrompt(
-	record: CouncilDeliberation,
+	record: TeamRunRecord,
 	promptsConfig: PromptConfig,
 ): string {
 	const rawAnswers = record.generation
@@ -79,7 +84,7 @@ export function synthesisPrompt(
 				`## Critique by ${run.member.label}\n${anonymizeText(run.output, record.members)}`,
 		)
 		.join("\n\n");
-	return renderTemplate(promptsConfig.councilSynthesisTemplate, {
+	return renderTemplate([...promptAssetLines(promptsConfig, "councilSynthesisTemplate")], {
 		originalPrompt: record.prompt,
 		rawAnswers,
 		critiques,

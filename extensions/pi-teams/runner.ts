@@ -17,7 +17,7 @@ import {
 } from "../../lib/agent-registry.js";
 import { resolvePiBinary } from "../../lib/spawn-service.js";
 import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
-import type { CouncilMember, GenerationParameterValue, ModelRun } from "./types.js";
+import type { TeamParticipant, GenerationParameterValue, ModelRun } from "./types.js";
 
 /** Loose registry-record shape used for panopticon self-lookup. */
 interface RegistryRecord {
@@ -91,16 +91,23 @@ const PROVIDER_OVERRIDES_EXTENSION = join(
 );
 void providerOverridesExtension;
 
+export function toolArgs(tools: string[] | undefined): string[] {
+	if (tools === undefined) {
+		return [];
+	}
+	return tools.length > 0 ? ["--tools", tools.join(",")] : ["--no-tools"];
+}
+
 function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	const startedAt = Date.now();
-	const tools = args.tools ?? [];
-	const parameters = args.parameters ?? {};
+	const parameters = args.parameters;
+	const hasParameters = parameters !== undefined && Object.keys(parameters).length > 0;
 	const piArgs = [
 		"--print",
 		"--model",
 		model,
-		...(tools.length > 0 ? ["--tools", tools.join(",")] : ["--no-tools"]),
-		...(Object.keys(parameters).length > 0 ? ["--extension", PROVIDER_OVERRIDES_EXTENSION] : []),
+		...toolArgs(args.tools),
+		...(hasParameters ? ["--extension", PROVIDER_OVERRIDES_EXTENSION] : []),
 		"--no-skills",
 		"--no-prompt-templates",
 		"--no-context-files",
@@ -116,7 +123,7 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 			stdio: ["ignore", "pipe", "pipe"],
 			env: {
 				...process.env,
-				...(Object.keys(parameters).length > 0
+				...(hasParameters
 					? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
 					: {}),
 				...(args.parentId
@@ -170,13 +177,13 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 
 /** Run a single member and package the result into a ModelRun. */
 export async function runMember(
-	member: CouncilMember,
+	member: TeamParticipant,
 	args: RunModelArgs,
 ): Promise<ModelRun> {
 	const result = await runPiModel(member.model, {
 		...args,
-		tools: args.tools ?? member.tools,
-		parameters: args.parameters ?? member.parameters,
+		tools: args.tools !== undefined ? args.tools : member.tools,
+		parameters: args.parameters !== undefined ? args.parameters : member.parameters,
 	});
 	return { member, ...result };
 }

@@ -7,17 +7,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CouncilStateManager } from "../extensions/pi-teams/state.js";
+import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
-import { resolveCouncilSettings } from "../extensions/pi-teams/settings.js";
+import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import {
 	ensureTeamsSettingsDefaults,
 	ensureUserTeamDefaults,
 	loadTeamRegistry,
 	registerTeamTools,
 	requireBuiltinTeam,
-	teamToCouncilDefinition,
-	teamToPairDefinition,
+	teamToDebateDefinition,
+	teamToConsultDefinition,
 	type TeamSpec,
 } from "../extensions/pi-teams/teams.js";
 import type { ToolResult } from "../lib/tool-result.js";
@@ -78,13 +78,13 @@ function writeTeam(root: string, id: string, agent: string): void {
 		join(root, "teams", `${id}.md`),
 		[
 			"---",
-			"schemaVersion: 1",
+			"schemaVersion: 2",
 			`id: "${id}"`,
 			`name: "${id}"`,
-			'topology: "pair"',
-			'protocol: "consult"',
+						'protocol: "consult"',
 			"agents:",
-			`  - "${agent}"`,
+			'  - role: "navigator"',
+			`    subagent: "${agent}"`,
 			"---",
 			"Team body.",
 		].join("\n"),
@@ -150,7 +150,7 @@ describe("loadTeamRegistry", () => {
 				topology: "pair",
 				protocol: "consult",
 			}),
-		).toThrow(/must be pair\/consult/);
+		).toThrow(/must use protocol consult/);
 	});
 
 	it("accepts telephone chain teams", () => {
@@ -161,14 +161,15 @@ describe("loadTeamRegistry", () => {
 				join(root, "teams", "telephone-game.md"),
 				[
 					"---",
-					"schemaVersion: 1",
+					"schemaVersion: 2",
 					'id: "telephone-game"',
 					'name: "Telephone Game"',
-					'topology: "chain"',
-					'protocol: "telephone"',
+										'protocol: "telephone"',
 					"agents:",
-					'  - "telephone_relay_1"',
-					'  - "telephone_relay_2"',
+					'  - role: "relay_1"',
+					'    subagent: "telephone_relay_1"',
+					'  - role: "relay_2"',
+					'    subagent: "telephone_relay_2"',
 					"---",
 					"Team body.",
 				].join("\n"),
@@ -204,12 +205,13 @@ describe("loadTeamRegistry", () => {
 				join(root, "teams", "topology-free.md"),
 				[
 					"---",
-					"schemaVersion: 1",
+					"schemaVersion: 2",
 					'id: "topology-free"',
 					'name: "Topology Free"',
 					'protocol: "consult"',
 					"agents:",
-					'  - "navigator_agent"',
+					'  - role: "navigator"',
+					'    subagent: "navigator_agent"',
 					"---",
 					"Team body.",
 				].join("\n"),
@@ -222,7 +224,51 @@ describe("loadTeamRegistry", () => {
 			expect(team.agentBindings[0]).toMatchObject({
 				tools: [],
 				parameters: { temperature: 0.9 },
-				systemPrompt: "Navigator system prompt.",
+				subagentSystemPrompt: "Navigator system prompt.",
+			});
+		});
+	});
+
+	it("lets binding config explicitly override subagent config with empty values", () => {
+		withTempConfig((configPath, root) => {
+			writeFileSync(
+				join(root, "agents", "navigator_agent.md"),
+				[
+					"---",
+					'name: "navigator_agent"',
+					"tools:",
+					'  - "read"',
+					"parameters:",
+					"  temperature: 0.9",
+					"---",
+					"Navigator system prompt.",
+				].join("\n"),
+				"utf8",
+			);
+			writeFileSync(
+				join(root, "teams", "binding-override.md"),
+				[
+					"---",
+					"schemaVersion: 2",
+					'id: "binding-override"',
+					'name: "Binding Override"',
+					'protocol: "consult"',
+					"agents:",
+					'  - role: "navigator"',
+					'    subagent: "navigator_agent"',
+					"    tools: []",
+					"    parameters: {}",
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "binding-override");
+
+			expect(team.agentBindings[0]).toMatchObject({
+				tools: [],
+				parameters: {},
 			});
 		});
 	});
@@ -235,7 +281,7 @@ describe("loadTeamRegistry", () => {
 				join(root, "teams", "review-qa.md"),
 				[
 					"---",
-					"schemaVersion: 1",
+					"schemaVersion: 2",
 					'id: "review-qa"',
 					'name: "Review QA"',
 					'protocol: "graph"',
@@ -271,11 +317,10 @@ describe("loadTeamRegistry", () => {
 				join(root, "teams", "object-council.md"),
 				[
 					"---",
-					"schemaVersion: 1",
+					"schemaVersion: 2",
 					'id: "object-council"',
 					'name: "Object Council"',
-					'topology: "council"',
-					'protocol: "debate"',
+										'protocol: "debate"',
 					"agents:",
 					'  - role: "member"',
 					'    subagent: "shared_member"',
@@ -310,11 +355,10 @@ describe("loadTeamRegistry", () => {
 				join(root, "teams", "mixed-agents.md"),
 				[
 					"---",
-					"schemaVersion: 1",
+					"schemaVersion: 2",
 					'id: "mixed-agents"',
 					'name: "Mixed Agents"',
-					'topology: "pair"',
-					'protocol: "consult"',
+										'protocol: "consult"',
 					"agents:",
 					'  - role: "navigator"',
 					'    subagent: "known_agent"',
@@ -414,9 +458,9 @@ describe("loadTeamRegistry", () => {
 describe("team adapters", () => {
 	it("projects default council team to the current default council definition", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
-		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
+		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "default-council");
-		const definition = teamToCouncilDefinition({
+		const definition = teamToDebateDefinition({
 			team,
 			settings,
 			snapshot: settings.defaultMembers,
@@ -432,9 +476,9 @@ describe("team adapters", () => {
 
 	it("projects pair teams to the current default pair definition", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
-		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
+		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "pair-consult");
-		const definition = teamToPairDefinition({ team, settings });
+		const definition = teamToConsultDefinition({ team, settings });
 
 		expect(definition).toMatchObject({
 			name: settings.defaultPair?.name,
@@ -497,7 +541,7 @@ describe("team tools", () => {
 			writeTeam(join(project, ".pi", "teams"), "delete-me", "delete_agent");
 			const teamPath = join(project, ".pi", "teams", "teams", "delete-me.md");
 			const { api, tools } = createFakeApi();
-			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+			registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 			const remove = tools.get("team_delete");
 			if (!remove) throw new Error("team_delete missing");
 
@@ -518,7 +562,7 @@ describe("team tools", () => {
 
 	it("team_delete protects built-in ids unless scoped", async () => {
 		const { api, tools } = createFakeApi();
-		registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 		const remove = tools.get("team_delete");
 		if (!remove) throw new Error("team_delete missing");
 
@@ -543,7 +587,7 @@ describe("team tools", () => {
 			writeSubagent(join(project, ".pi", "teams"), "project_agent");
 			writeTeam(join(project, ".pi", "teams"), "pair-consult", "project_agent");
 			const { api, tools } = createFakeApi();
-			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+			registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 			const remove = tools.get("team_delete");
 			if (!remove) throw new Error("team_delete missing");
 
@@ -564,7 +608,7 @@ describe("team tools", () => {
 
 	it("team_delete rejects unknown team ids", async () => {
 		const { api, tools } = createFakeApi();
-		registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 		const remove = tools.get("team_delete");
 		if (!remove) throw new Error("team_delete missing");
 
@@ -581,7 +625,7 @@ describe("team tools", () => {
 
 	it("team_run rejects unknown team ids with a clear list", async () => {
 		const { api, tools } = createFakeApi();
-		registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
+		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 		const run = tools.get("team_run");
 		if (!run) throw new Error("team_run missing");
 

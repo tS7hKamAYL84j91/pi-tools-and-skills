@@ -6,8 +6,6 @@ promptId: "councilChairmanSystem"
 scope: "council"
 stage: "synthesis"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY

@@ -1,84 +1,318 @@
-/**
- * Council state manager — atomic persistence and orphan recovery.
- *
- * Writes are atomic (tmp/ → rename) so a crash during persistence cannot
- * corrupt a record. Orphans (non-terminal records whose orchestrator pid is
- * dead) are surfaced on demand so callers can decide whether to resume them.
- */
+/** Team run state manager — session-first run events plus legacy file snapshots. */
 
-import { randomUUID } from "node:crypto";
-import {
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isPidAlive } from "../../lib/agent-registry.js";
-import type { CouncilDeliberation, CouncilMember } from "./types.js";
+import type { ModelRun, ReviewRun, TeamParticipant, TeamRunRecord } from "./types.js";
 
 /** @public */
-export const DEFAULT_COUNCILS_DIR = join(homedir(), ".pi", "agent", "councils");
-const COUNCIL_STATE_CUSTOM_TYPE = "pi-teams:deliberation";
+export const DEFAULT_TEAM_RUNS_DIR = join(homedir(), ".pi", "agent", "team-runs");
+/** @public */
+export const TEAM_RUN_CUSTOM_TYPE = "pi-teams:run";
+/** @public */
+export const LEGACY_TEAM_RUN_CUSTOM_TYPE = "pi-teams:deliberation";
 const TMP_SUBDIR = "tmp";
+const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 
-interface CouncilStateManagerOptions {
-	appendEntry?: (customType: string, data?: unknown) => void;
-	legacyFilePersistence?: boolean;
+/** @public */
+/** @public */
+export type TeamRunEventKind =
+	| "run_started"
+	| "phase_started"
+	| "node_completed"
+	| "run_completed"
+	| "run_failed"
+	| "run_tombstoned"
+	| "legacy_imported";
+
+interface TeamRunEventBase {
+	schemaVersion: 1;
+	kind: TeamRunEventKind;
+	runId: string;
+	seq: number;
+	timestamp: number;
+	orchestratorPid: number;
 }
 
-const MANAGER_OPTIONS = new WeakMap<CouncilStateManager, CouncilStateManagerOptions>();
+/** @public */
+export interface TeamRunStartedEvent extends TeamRunEventBase {
+	kind: "run_started";
+	teamId: string;
+	protocol?: string;
+	input: { prompt: string };
+	members: TeamParticipant[];
+	chairman: TeamParticipant;
+}
 
-function generateId(): string {
-	return `council-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+/** @public */
+export interface TeamRunPhaseStartedEvent extends TeamRunEventBase {
+	kind: "phase_started";
+	phaseId: string;
+	label: string;
+}
+
+/** @public */
+export interface TeamRunNodeCompletedEvent extends TeamRunEventBase {
+	kind: "node_completed";
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	ok: boolean;
+	durationMs: number;
+	output?: string;
+	outputChars: number;
+	outputSha256: string;
+	outputTruncated: boolean;
+	error?: string;
+}
+
+/** @public */
+export interface TeamRunCompletedEvent extends TeamRunEventBase {
+	kind: "run_completed";
+	ok: true;
+	durationMs: number;
+	summary?: string;
+}
+
+/** @public */
+export interface TeamRunFailedEvent extends TeamRunEventBase {
+	kind: "run_failed";
+	ok: false;
+	error: string;
+}
+
+/** @public */
+export interface TeamRunTombstonedEvent extends TeamRunEventBase {
+	kind: "run_tombstoned";
+	reason?: string;
+}
+
+/** @public */
+export interface TeamRunLegacyImportedEvent extends TeamRunEventBase {
+	kind: "legacy_imported";
+	source: "legacy-file" | "legacy-session";
+}
+
+/** @public */
+export type TeamRunEvent =
+	| TeamRunStartedEvent
+	| TeamRunPhaseStartedEvent
+	| TeamRunNodeCompletedEvent
+	| TeamRunCompletedEvent
+	| TeamRunFailedEvent
+	| TeamRunTombstonedEvent
+	| TeamRunLegacyImportedEvent;
+
+interface TeamStateManagerOptions {
+	appendEntry?: (customType: string, data?: unknown) => void;
+	filePersistence?: boolean;
 }
 
 interface CreateArgs {
-	council: string;
+	team?: string;
+	/** @deprecated Use team. */
+	council?: string;
 	prompt: string;
-	members: CouncilMember[];
-	chairman: CouncilMember;
+	members: TeamParticipant[];
+	chairman: TeamParticipant;
 }
 
-export class CouncilStateManager {
+interface SessionEntryLike {
+	type: string;
+	customType?: string;
+	data?: unknown;
+}
+
+interface SessionManagerLike {
+	getBranch?: () => SessionEntryLike[];
+	getEntries?: () => SessionEntryLike[];
+}
+
+function generateId(): string {
+	return `team-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+function boundedOutput(output: string): Pick<TeamRunNodeCompletedEvent, "output" | "outputChars" | "outputSha256" | "outputTruncated"> {
+	return {
+		output: output.slice(0, MAX_PERSISTED_OUTPUT_CHARS),
+		outputChars: output.length,
+		outputSha256: createHash("sha256").update(output).digest("hex"),
+		outputTruncated: output.length > MAX_PERSISTED_OUTPUT_CHARS,
+	};
+}
+
+function isRunEvent(value: unknown): value is TeamRunEvent {
+	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === 1 && typeof (value as { kind?: unknown }).kind === "string";
+}
+
+function reduceEvents(events: readonly TeamRunEvent[]): Map<string, TeamRunRecord> {
+	const records = new Map<string, TeamRunRecord>();
+	for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+		if (event.kind === "run_started") {
+			records.set(event.runId, {
+				version: 1,
+				id: event.runId,
+				team: event.teamId,
+				prompt: event.input.prompt,
+				members: event.members,
+				chairman: event.chairman,
+				status: "pending",
+				startedAt: event.timestamp,
+				orchestratorPid: event.orchestratorPid,
+				generation: [],
+				critiques: [],
+			});
+			continue;
+		}
+		const record = records.get(event.runId);
+		if (!record) continue;
+		if (event.kind === "phase_started") {
+			record.status = event.phaseId === "generation" ? "generating" : event.phaseId === "critique" ? "critiquing" : event.phaseId === "synthesis" ? "synthesizing" : record.status;
+		} else if (event.kind === "node_completed") {
+			const run = nodeEventToRun(event, record);
+			if (event.phaseId === "generation") record.generation.push(run);
+			else if (event.phaseId === "critique") record.critiques.push({ ...run, rankings: "" });
+			else if (event.phaseId === "synthesis") record.synthesis = run;
+		} else if (event.kind === "run_completed") {
+			record.status = "completed";
+			record.completedAt = event.timestamp;
+		} else if (event.kind === "run_failed") {
+			record.status = "failed";
+			record.error = event.error;
+			record.completedAt = event.timestamp;
+		} else if (event.kind === "run_tombstoned") {
+			records.delete(event.runId);
+		}
+	}
+	return records;
+}
+
+function nodeEventToRun(event: TeamRunNodeCompletedEvent, record: TeamRunRecord): ModelRun {
+	const member = [...record.members, record.chairman].find((entry) => entry.label === event.role || entry.model === event.model) ?? {
+		label: event.role,
+		model: event.model,
+	};
+	return {
+		member,
+		prompt: "",
+		systemPrompt: "",
+		output: event.output ?? "",
+		durationMs: event.durationMs,
+		ok: event.ok,
+		...(event.error ? { error: event.error } : {}),
+	};
+}
+
+interface TeamStateManagerData {
+	options: TeamStateManagerOptions;
+	sequenceByRun: Map<string, number>;
+	emittedNodes: Set<string>;
+	emittedPhases: Set<string>;
+	sessionRecords: Map<string, TeamRunRecord>;
+}
+
+export class TeamStateManager {
+	private readonly data: TeamStateManagerData;
+
 	constructor(
-		private readonly councilsDir: string = DEFAULT_COUNCILS_DIR,
-		options: CouncilStateManagerOptions = {},
+		private readonly runsDir: string = DEFAULT_TEAM_RUNS_DIR,
+		options: TeamStateManagerOptions = {},
 	) {
-		MANAGER_OPTIONS.set(this, options);
+		this.data = {
+			options,
+			sequenceByRun: new Map<string, number>(),
+			emittedNodes: new Set<string>(),
+			emittedPhases: new Set<string>(),
+			sessionRecords: new Map<string, TeamRunRecord>(),
+		};
 	}
 
 	private recordPath(id: string): string {
-		return join(this.councilsDir, `${id}.json`);
+		return join(this.runsDir, `${id}.json`);
 	}
 
 	private tmpPath(id: string): string {
-		return join(this.councilsDir, TMP_SUBDIR, `${id}-${process.pid}.json`);
+		return join(this.runsDir, TMP_SUBDIR, `${id}-${process.pid}.json`);
 	}
 
 	private ensureDirs(): void {
-		mkdirSync(join(this.councilsDir, TMP_SUBDIR), { recursive: true });
+		mkdirSync(join(this.runsDir, TMP_SUBDIR), { recursive: true });
 	}
 
-	/** Atomic write via tmp/ → rename. */
-	private write(record: CouncilDeliberation): void {
-		const options = MANAGER_OPTIONS.get(this) ?? {};
-		options.appendEntry?.(COUNCIL_STATE_CUSTOM_TYPE, record);
-		if (options.legacyFilePersistence === false) return;
+	private nextSeq(runId: string): number {
+		const next = (this.data.sequenceByRun.get(runId) ?? 0) + 1;
+		this.data.sequenceByRun.set(runId, next);
+		return next;
+	}
+
+	private appendEvent(event: Record<string, unknown> & { kind: TeamRunEventKind; runId: string }): void {
+		const full = {
+			...event,
+			schemaVersion: 1 as const,
+			seq: this.nextSeq(event.runId),
+			timestamp: Date.now(),
+			orchestratorPid: process.pid,
+		} as TeamRunEvent;
+		this.data.options.appendEntry?.(TEAM_RUN_CUSTOM_TYPE, full);
+	}
+
+	private persistFile(record: TeamRunRecord): void {
+		if (this.data.options.filePersistence === false) return;
 		this.ensureDirs();
 		const tmp = this.tmpPath(record.id);
 		writeFileSync(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
 		renameSync(tmp, this.recordPath(record.id));
 	}
 
-	create(args: CreateArgs): CouncilDeliberation {
-		const record: CouncilDeliberation = {
+	private emitPhase(record: TeamRunRecord): void {
+		const phase = record.status === "generating" ? "generation" : record.status === "critiquing" ? "critique" : record.status === "synthesizing" ? "synthesis" : undefined;
+		if (!phase || this.data.emittedPhases.has(`${record.id}:${phase}`)) return;
+		this.data.emittedPhases.add(`${record.id}:${phase}`);
+		this.appendEvent({ kind: "phase_started", runId: record.id, phaseId: phase, label: phase });
+	}
+
+	private emitNode(record: TeamRunRecord, phaseId: string, nodeId: string, run: ModelRun | ReviewRun): void {
+		const key = `${record.id}:${phaseId}:${nodeId}`;
+		if (this.data.emittedNodes.has(key)) return;
+		this.data.emittedNodes.add(key);
+		this.appendEvent({
+			kind: "node_completed",
+			runId: record.id,
+			phaseId,
+			nodeId,
+			role: run.member.label,
+			model: run.member.model,
+			ok: run.ok,
+			durationMs: run.durationMs,
+			...boundedOutput(run.output),
+			...(run.error ? { error: run.error } : {}),
+		});
+	}
+
+	private emitDelta(record: TeamRunRecord): void {
+		this.emitPhase(record);
+		for (const [index, run] of record.generation.entries()) {
+			this.emitNode(record, "generation", `generation:${index}`, run);
+		}
+		for (const [index, run] of record.critiques.entries()) {
+			this.emitNode(record, "critique", `critique:${index}`, run);
+		}
+		if (record.synthesis) this.emitNode(record, "synthesis", "synthesis", record.synthesis);
+		if (record.status === "completed") {
+			this.appendEvent({ kind: "run_completed", runId: record.id, ok: true, durationMs: (record.completedAt ?? Date.now()) - record.startedAt, ...(record.synthesis?.output ? { summary: record.synthesis.output.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
+		} else if (record.status === "failed") {
+			this.appendEvent({ kind: "run_failed", runId: record.id, ok: false, error: record.error ?? "failed" });
+		}
+	}
+
+	create(args: CreateArgs): TeamRunRecord {
+		const record: TeamRunRecord = {
 			version: 1,
 			id: generateId(),
-			council: args.council,
+			team: args.team ?? args.council ?? "default",
 			prompt: args.prompt,
 			members: args.members,
 			chairman: args.chairman,
@@ -88,39 +322,47 @@ export class CouncilStateManager {
 			generation: [],
 			critiques: [],
 		};
-		this.write(record);
+		this.persistFile(record);
+		this.appendEvent({ kind: "run_started", runId: record.id, teamId: record.team, input: { prompt: record.prompt }, members: record.members, chairman: record.chairman });
 		return record;
 	}
 
-	/** Merge a patch into the record and persist atomically. */
-	update(
-		record: CouncilDeliberation,
-		patch: Partial<CouncilDeliberation>,
-	): CouncilDeliberation {
-		const next: CouncilDeliberation = { ...record, ...patch };
-		this.write(next);
+	update(record: TeamRunRecord, patch: Partial<TeamRunRecord>): TeamRunRecord {
+		const next: TeamRunRecord = { ...record, ...patch };
+		this.persistFile(next);
+		this.emitDelta(next);
 		return next;
 	}
 
-	get(id: string): CouncilDeliberation | undefined {
+	rehydrateFromSession(sessionManager: SessionManagerLike): void {
+		const entries = sessionManager.getBranch?.() ?? sessionManager.getEntries?.() ?? [];
+		const events = entries.filter((entry) => entry.type === "custom" && entry.customType === TEAM_RUN_CUSTOM_TYPE && isRunEvent(entry.data)).map((entry) => entry.data as TeamRunEvent);
+		this.data.sessionRecords.clear();
+		for (const [id, record] of reduceEvents(events)) this.data.sessionRecords.set(id, record);
+		this.data.sequenceByRun.clear();
+		for (const event of events) this.data.sequenceByRun.set(event.runId, Math.max(this.data.sequenceByRun.get(event.runId) ?? 0, event.seq));
+	}
+
+	get(id: string): TeamRunRecord | undefined {
+		const sessionRecord = this.data.sessionRecords.get(id);
+		if (sessionRecord) return sessionRecord;
 		try {
 			const raw = readFileSync(this.recordPath(id), "utf-8");
-			return JSON.parse(raw) as CouncilDeliberation;
+			return JSON.parse(raw) as TeamRunRecord;
 		} catch {
 			return undefined;
 		}
 	}
 
-	list(): CouncilDeliberation[] {
+	list(): TeamRunRecord[] {
+		if (this.data.sessionRecords.size > 0) return [...this.data.sessionRecords.values()];
 		try {
 			this.ensureDirs();
-			const files = readdirSync(this.councilsDir).filter((f) =>
-				f.endsWith(".json"),
-			);
-			return files.flatMap((f) => {
+			const files = readdirSync(this.runsDir).filter((file) => file.endsWith(".json"));
+			return files.flatMap((file) => {
 				try {
-					const raw = readFileSync(join(this.councilsDir, f), "utf-8");
-					return [JSON.parse(raw) as CouncilDeliberation];
+					const raw = readFileSync(join(this.runsDir, file), "utf-8");
+					return [JSON.parse(raw) as TeamRunRecord];
 				} catch {
 					return [];
 				}
@@ -131,32 +373,25 @@ export class CouncilStateManager {
 	}
 
 	remove(id: string): void {
+		this.appendEvent({ kind: "run_tombstoned", runId: id });
+		this.data.sessionRecords.delete(id);
 		try {
 			rmSync(this.recordPath(id), { force: true });
 		} catch {
-			/* best-effort */
+			// best-effort cleanup
 		}
 	}
 
-	/**
-	 * Identify deliberations whose orchestrator is no longer running and which
-	 * never reached a terminal status. These are recovery candidates.
-	 */
-	findOrphans(): CouncilDeliberation[] {
-		return this.list().filter((d) => {
-			if (d.status === "completed" || d.status === "failed") return false;
-			return !isPidAlive(d.orchestratorPid);
+	findOrphans(): TeamRunRecord[] {
+		return this.list().filter((record) => {
+			if (record.status === "completed" || record.status === "failed") return false;
+			return !isPidAlive(record.orchestratorPid);
 		});
 	}
 
-	/** Mark an orphan as failed so it stops being recovered repeatedly. */
 	markFailed(id: string, reason: string): void {
 		const record = this.get(id);
 		if (!record) return;
-		this.update(record, {
-			status: "failed",
-			error: reason,
-			completedAt: Date.now(),
-		});
+		this.update(record, { status: "failed", error: reason, completedAt: Date.now() });
 	}
 }

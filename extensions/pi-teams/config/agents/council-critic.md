@@ -6,8 +6,6 @@ promptId: "councilCritiqueSystem"
 scope: "council"
 stage: "critique"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY

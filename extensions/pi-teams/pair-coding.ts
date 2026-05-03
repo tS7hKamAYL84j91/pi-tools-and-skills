@@ -17,26 +17,32 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadPairContext, type PairContext } from "./context-loader.js";
-import { resolveCouncilSettings } from "./settings.js";
-import {
-	driverFixPrompt,
-	driverFixSystemPrompt,
-	driverImplementationPrompt,
-	driverImplementationSystemPrompt,
-	navigatorBriefPrompt,
-	navigatorBriefSystemPrompt,
-	navigatorReviewPrompt,
-	navigatorReviewSystemPrompt,
-} from "./pair-prompts.js";
+import { resolveTeamSettings } from "./settings.js";
+import { promptAssetLines, promptAssetText, type PromptCatalog } from "./prompt-resolver.js";
+import { formatProtocolContext } from "./protocol-prompts.js";
+import { renderTemplate } from "./prompt-renderer.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
-import type { CouncilMember, GenerationConfig, ModelRun } from "./types.js";
+import type { TeamParticipant, GenerationConfig, ModelRun } from "./types.js";
 
 const DEFAULT_PAIR_PHASE_TIMEOUT_MS = 5 * 60 * 1000;
 const DRIVER_LABEL = "Driver";
 const NAVIGATOR_LABEL = "Navigator";
 
+function defaultWorkflowPrompts(catalog: PromptCatalog): WorkflowPromptInputs {
+	return {
+		navigatorBriefSystem: promptAssetText(catalog, "pairNavigatorBriefSystem"),
+		driverImplementationSystem: promptAssetText(catalog, "pairDriverImplementationSystem"),
+		navigatorReviewSystem: promptAssetText(catalog, "pairNavigatorReviewSystem"),
+		driverFixSystem: promptAssetText(catalog, "pairDriverFixSystem"),
+		navigatorBriefTemplate: promptAssetLines(catalog, "pairNavigatorBriefTemplate"),
+		driverImplementationTemplate: promptAssetLines(catalog, "pairDriverImplementationTemplate"),
+		navigatorReviewTemplate: promptAssetLines(catalog, "pairNavigatorReviewTemplate"),
+		driverFixTemplate: promptAssetLines(catalog, "pairDriverFixTemplate"),
+	};
+}
+
 /** @public */
-export type PairPhase =
+export type WorkflowPhase =
 	| "preparing context"
 	| "navigator brief"
 	| "driver implementation"
@@ -45,13 +51,13 @@ export type PairPhase =
 	| "complete";
 
 /** @public */
-export interface PairResult {
+export interface WorkflowResult {
 	mode: "PAIR";
 	ok: boolean;
 	summary: string;
 	context: { projectRoot: string; loaded: string[]; warnings: string[] };
 	phases: Array<{
-		name: PairPhase;
+		name: WorkflowPhase;
 		durationMs: number;
 		ok: boolean;
 		error?: string;
@@ -63,6 +69,17 @@ export interface PairResult {
 	errors: string[];
 }
 
+interface WorkflowPromptInputs {
+	navigatorBriefSystem: string;
+	driverImplementationSystem: string;
+	navigatorReviewSystem: string;
+	driverFixSystem: string;
+	navigatorBriefTemplate: readonly string[];
+	driverImplementationTemplate: readonly string[];
+	navigatorReviewTemplate: readonly string[];
+	driverFixTemplate: readonly string[];
+}
+
 interface PairArgs {
 	ctx: ExtensionContext;
 	prompt: string;
@@ -70,6 +87,7 @@ interface PairArgs {
 	navigator: string;
 	driverConfig?: GenerationConfig;
 	navigatorConfig?: GenerationConfig;
+	prompts?: WorkflowPromptInputs;
 	files?: string[];
 	specPath?: string;
 	maxFixPasses?: number;
@@ -78,19 +96,19 @@ interface PairArgs {
 }
 
 /** Run the bounded PAIR-CODING workflow. */
-export async function runPairCoding(args: PairArgs): Promise<PairResult> {
-	const settings = resolveCouncilSettings();
-	const promptsConfig = settings.prompts;
-	const phases: PairResult["phases"] = [];
+export async function runPairCoding(args: PairArgs): Promise<WorkflowResult> {
+	const settings = resolveTeamSettings();
+	const promptInputs = args.prompts ?? defaultWorkflowPrompts(settings.prompts);
+	const phases: WorkflowResult["phases"] = [];
 	const errors: string[] = [];
 	const reviews: ModelRun[] = [];
 	const fixes: ModelRun[] = [];
-	const driver: CouncilMember = {
+	const driver: TeamParticipant = {
 		label: DRIVER_LABEL,
 		model: args.driver,
 		...(args.driverConfig ?? {}),
 	};
-	const navigator: CouncilMember = {
+	const navigator: TeamParticipant = {
 		label: NAVIGATOR_LABEL,
 		model: args.navigator,
 		...(args.navigatorConfig ?? {}),
@@ -113,14 +131,15 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
 
 	const phaseCtx: PhaseCtx = { args, parentId, phases, errors, timeoutMs };
+	const contextText = formatProtocolContext(context);
 
 	const navigatorBrief = await runPhase(phaseCtx, {
 		name: "navigator brief",
 		member: navigator,
 		label: "navigator brief",
 		build: () => ({
-			prompt: navigatorBriefPrompt(args.prompt, context, promptsConfig),
-			systemPrompt: navigatorBriefSystemPrompt(promptsConfig),
+			prompt: renderTemplate([...promptInputs.navigatorBriefTemplate], { context: contextText, prompt: args.prompt }),
+			systemPrompt: promptInputs.navigatorBriefSystem,
 		}),
 	});
 	if (!navigatorBrief.ok)
@@ -131,13 +150,12 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 		member: driver,
 		label: "driver implementation",
 		build: () => ({
-			prompt: driverImplementationPrompt(
-				args.prompt,
-				context,
-				navigatorBrief.output,
-				promptsConfig,
-			),
-			systemPrompt: driverImplementationSystemPrompt(promptsConfig),
+			prompt: renderTemplate([...promptInputs.driverImplementationTemplate], {
+				context: contextText,
+				prompt: args.prompt,
+				navigatorBrief: navigatorBrief.output,
+			}),
+			systemPrompt: promptInputs.driverImplementationSystem,
 		}),
 	});
 	if (!driverImplementation.ok) {
@@ -159,13 +177,12 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 			member: navigator,
 			label: `navigator review (pass ${pass}/${fixPasses})`,
 			build: () => ({
-				prompt: navigatorReviewPrompt(
-					args.prompt,
-					context,
-					currentArtifact,
-					promptsConfig,
-				),
-				systemPrompt: navigatorReviewSystemPrompt(promptsConfig),
+				prompt: renderTemplate([...promptInputs.navigatorReviewTemplate], {
+					context: contextText,
+					prompt: args.prompt,
+					driverArtifact: currentArtifact,
+				}),
+				systemPrompt: promptInputs.navigatorReviewSystem,
 			}),
 		});
 		reviews.push(review);
@@ -176,13 +193,12 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 			member: driver,
 			label: `driver fix pass (${pass}/${fixPasses})`,
 			build: () => ({
-				prompt: driverFixPrompt(
-					args.prompt,
-					currentArtifact,
-					review.output,
-					promptsConfig,
-				),
-				systemPrompt: driverFixSystemPrompt(promptsConfig),
+				prompt: renderTemplate([...promptInputs.driverFixTemplate], {
+					prompt: args.prompt,
+					driverArtifact: currentArtifact,
+					navigatorReview: review.output,
+				}),
+				systemPrompt: promptInputs.driverFixSystem,
 			}),
 		});
 		fixes.push(fix);
@@ -207,7 +223,7 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 interface PhaseCtx {
 	args: PairArgs;
 	parentId: string | undefined;
-	phases: PairResult["phases"];
+	phases: WorkflowResult["phases"];
 	errors: string[];
 	timeoutMs: number;
 }
@@ -218,8 +234,8 @@ interface PhaseInputs {
 }
 
 interface PhaseDescriptor {
-	name: PairPhase;
-	member: CouncilMember;
+	name: WorkflowPhase;
+	member: TeamParticipant;
 	label: string;
 	build: () => PhaseInputs;
 }
@@ -262,7 +278,7 @@ async function runPhase(
 
 interface FinalisingArgs {
 	context: PairContext;
-	phases: PairResult["phases"];
+	phases: WorkflowResult["phases"];
 	errors: string[];
 	navigatorBrief?: ModelRun;
 	driverImplementation?: ModelRun;
@@ -271,7 +287,7 @@ interface FinalisingArgs {
 	finalArtifact?: string;
 }
 
-function done(args: FinalisingArgs): PairResult {
+function done(args: FinalisingArgs): WorkflowResult {
 	args.phases.push({
 		name: "complete",
 		durationMs: 0,

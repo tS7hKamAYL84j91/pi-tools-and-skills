@@ -1,76 +1,18 @@
-/**
- * Team prompt settings loaded from team roots.
- *
- * Built-in defaults live under `config/{teams,agents,prompts}`. User/project
- * overrides are selected by top-level `teams.roots` in settings.json.
- */
+/** Team settings loaded from team roots. */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PI_SETTINGS_PATH } from "../../lib/pi-settings.js";
 import { readMarkdownDescriptors } from "./front-matter.js";
-import {
-	DEFAULT_CONFIG_JSON,
-	DEFAULT_USER_TEAM_ROOT,
-	teamDirectories,
-} from "./team-paths.js";
+import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type { TeamAgentBinding, TeamDirectories, TeamModels } from "./team-types.js";
 
 const SETTINGS_JSON = PI_SETTINGS_PATH;
-const FALLBACK_DEFAULT_COUNCIL_NAME = "default";
-const DEFAULT_COUNCIL_TEAM_ID = "default-council";
-const DEFAULT_PAIR_TEAM_ID = "pair-consult";
+const FALLBACK_DEFAULT_TEAM_NAME = "default";
+const DEFAULT_DEBATE_TEAM_ID = "default-council";
+const DEFAULT_CONSULT_TEAM_ID = "pair-consult";
 
-const PROMPT_KEYS = [
-	"councilGenerationSystem",
-	"councilCritiqueSystem",
-	"councilChairmanSystem",
-	"councilCritiqueTemplate",
-	"councilSynthesisTemplate",
-	"pairNavigatorBriefSystem",
-	"pairDriverImplementationSystem",
-	"pairNavigatorConsultSystem",
-	"pairNavigatorReviewSystem",
-	"pairDriverFixSystem",
-	"pairNavigatorBriefTemplate",
-	"pairDriverImplementationTemplate",
-	"pairNavigatorReviewTemplate",
-	"pairDriverFixTemplate",
-	"pairPrimer",
-	"agentCouncilFraming",
-	"agentPairConsultFraming",
-	"agentRequestTemplate",
-	"telephoneRelaySystem",
-	"telephoneRelayTemplate",
-	"teamGraphNodeTemplate",
-] as const;
-
-type PromptKey = (typeof PROMPT_KEYS)[number];
-
-/** @public */
-export interface SettingsPromptsEntry {
-	councilGenerationSystem?: string[];
-	councilCritiqueSystem?: string[];
-	councilChairmanSystem?: string[];
-	councilCritiqueTemplate?: string[];
-	councilSynthesisTemplate?: string[];
-	pairNavigatorBriefSystem?: string[];
-	pairDriverImplementationSystem?: string[];
-	pairNavigatorConsultSystem?: string[];
-	pairNavigatorReviewSystem?: string[];
-	pairDriverFixSystem?: string[];
-	pairNavigatorBriefTemplate?: string[];
-	pairDriverImplementationTemplate?: string[];
-	pairNavigatorReviewTemplate?: string[];
-	pairDriverFixTemplate?: string[];
-	pairPrimer?: string[];
-	agentCouncilFraming?: string[];
-	agentPairConsultFraming?: string[];
-	agentRequestTemplate?: string[];
-	telephoneRelaySystem?: string[];
-	telephoneRelayTemplate?: string[];
-	teamGraphNodeTemplate?: string[];
-}
+export type PromptCatalog = Record<string, string[]>;
 
 interface TeamDefault {
 	name: string;
@@ -78,39 +20,19 @@ interface TeamDefault {
 	models: TeamModels;
 }
 
-/** @public */
-export interface SettingsCouncilEntry {
-	members?: string[];
-	chairman?: string;
-	purpose?: string;
-}
-
-/** @public */
-export interface SettingsDefaultCouncilEntry extends SettingsCouncilEntry {
-	name?: string;
-}
-
-/** @public */
-export interface SettingsPairEntry {
-	navigator?: string;
-	purpose?: string;
-}
-
-/** @public */
-export interface SettingsDefaultPairEntry extends SettingsPairEntry {
-	name?: string;
-}
-
-/** @public */
-export interface ResolvedCouncilSettings {
-	prompts: Required<SettingsPromptsEntry>;
+export interface ResolvedTeamSettings {
+	prompts: PromptCatalog;
 	defaultMembers: string[];
 	defaultChairman: string;
-	defaultCouncil: Required<Pick<SettingsDefaultCouncilEntry, "name" | "members" | "chairman">> & { purpose?: string };
+	defaultDebate: { name: string; members: string[]; chairman: string; purpose?: string };
 	chairmanCandidates: string[];
-	defaultPair?: Required<Pick<SettingsDefaultPairEntry, "name" | "navigator">> & { purpose?: string };
-	councils: Record<string, SettingsCouncilEntry>;
-	pairs: Record<string, SettingsPairEntry>;
+	defaultConsult?: { name: string; navigator: string; purpose?: string };
+	/** @deprecated Use defaultDebate. */
+	defaultCouncil: { name: string; members: string[]; chairman: string; purpose?: string };
+	/** @deprecated Use defaultConsult. */
+	defaultPair?: { name: string; navigator: string; purpose?: string };
+	/** @deprecated Legacy per-team overrides are replaced by declarative team files. */
+	councils: Record<string, never>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,10 +41,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function isPromptKey(value: string): value is PromptKey {
-	return PROMPT_KEYS.some((key) => key === value);
 }
 
 function unquoteFrontMatterValue(value: string): string {
@@ -143,20 +61,20 @@ function frontMatterPromptId(frontMatter: string): string | undefined {
 	return undefined;
 }
 
-function parseMarkdownPrompt(raw: string): { id: PromptKey; lines: string[] } | undefined {
+function parseMarkdownPrompt(raw: string): { id: string; lines: string[] } | undefined {
 	const normalized = raw.replace(/\r\n/g, "\n");
 	if (!normalized.startsWith("---\n")) return undefined;
 	const end = normalized.indexOf("\n---\n", 4);
 	if (end < 0) return undefined;
 	const id = frontMatterPromptId(normalized.slice(4, end));
-	if (!id || !isPromptKey(id)) return undefined;
+	if (!id) return undefined;
 	const body = normalized.slice(end + "\n---\n".length).replace(/\n$/, "");
 	const lines = body.split("\n");
 	return lines.length > 0 ? { id, lines } : undefined;
 }
 
-function readMarkdownPrompts(promptDir: string): SettingsPromptsEntry {
-	const result: SettingsPromptsEntry = {};
+function readMarkdownPrompts(promptDir: string): PromptCatalog {
+	const result: PromptCatalog = {};
 	let files: string[];
 	try {
 		files = readdirSync(promptDir).filter((file) => file.endsWith(".md"));
@@ -168,7 +86,7 @@ function readMarkdownPrompts(promptDir: string): SettingsPromptsEntry {
 			const parsed = parseMarkdownPrompt(readFileSync(join(promptDir, file), "utf8"));
 			if (parsed) result[parsed.id] = parsed.lines;
 		} catch {
-			// Ignore unreadable prompt files; tests cover shipped defaults.
+			// Ignore unreadable prompt files; validation catches missing ids at run time.
 		}
 	}
 	return result;
@@ -194,9 +112,9 @@ function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const members = bindings
 		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
 		.map((binding) => binding.model as string);
-	const chairman = bindings.find((binding) => roleMatches(binding.role, ["chairman", "chair"]) && binding.model)?.model;
-	const driver = bindings.find((binding) => roleMatches(binding.role, ["driver"]) && binding.model)?.model;
-	const navigator = bindings.find((binding) => roleMatches(binding.role, ["navigator"]) && binding.model)?.model;
+	const chairman = bindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]) && binding.model)?.model;
+	const driver = bindings.find((binding) => roleMatches(binding.role, ["driver", "driver_implementation"]) && binding.model)?.model;
+	const navigator = bindings.find((binding) => roleMatches(binding.role, ["navigator", "navigator_brief", "navigator_review"]) && binding.model)?.model;
 	return {
 		...(members.length > 0 ? { members } : {}),
 		...(chairman ? { chairman } : {}),
@@ -215,12 +133,6 @@ function readTeamDefault(dirs: TeamDirectories, teamId: string): TeamDefault | u
 	};
 }
 
-function requiredPrompts(prompts: SettingsPromptsEntry): Required<SettingsPromptsEntry> {
-	const result: SettingsPromptsEntry = {};
-	for (const key of PROMPT_KEYS) result[key] = prompts[key] ?? [];
-	return result as Required<SettingsPromptsEntry>;
-}
-
 function lastDefined<T>(values: Array<T | undefined>): T | undefined {
 	for (let index = values.length - 1; index >= 0; index--) {
 		const value = values[index];
@@ -232,65 +144,50 @@ function lastDefined<T>(values: Array<T | undefined>): T | undefined {
 function rootsForSettings(settingsPath: string, extensionConfigPath: string): TeamDirectories[] {
 	return teamDirectories(extensionConfigPath, {
 		settingsPath,
-		roots: settingsPath === "/nonexistent/pi-settings.json" ? [DEFAULT_USER_TEAM_ROOT] : undefined,
+		roots: settingsPath === SETTINGS_JSON || !existsSync(settingsPath) ? [] : undefined,
 	});
 }
 
-export function resolveCouncilSettings(
-	settingsPath: string = SETTINGS_JSON,
-	extensionConfigPath: string = DEFAULT_CONFIG_JSON,
-): ResolvedCouncilSettings {
+export function resolveTeamSettings(settingsPath: string = SETTINGS_JSON, extensionConfigPath: string = DEFAULT_CONFIG_JSON): ResolvedTeamSettings {
 	const dirs = rootsForSettings(settingsPath, extensionConfigPath);
-	const promptDefaults: SettingsPromptsEntry = {};
-	for (const entry of dirs) {
-		Object.assign(
-			promptDefaults,
-			readMarkdownPrompts(entry.prompts),
-			readMarkdownPrompts(entry.agents),
-		);
-	}
+	const prompts: PromptCatalog = {};
+	for (const entry of dirs) Object.assign(prompts, readMarkdownPrompts(entry.prompts), readMarkdownPrompts(entry.agents));
 	const teamDefaults = dirs.map((entry) => ({
-		council: readTeamDefault(entry, DEFAULT_COUNCIL_TEAM_ID),
-		pair: readTeamDefault(entry, DEFAULT_PAIR_TEAM_ID),
+		debate: readTeamDefault(entry, DEFAULT_DEBATE_TEAM_ID),
+		consult: readTeamDefault(entry, DEFAULT_CONSULT_TEAM_ID),
 	}));
-	const defaultCouncil = lastDefined(teamDefaults.map((entry) => entry.council));
-	const defaultPair = lastDefined(teamDefaults.map((entry) => entry.pair));
-	const members = defaultCouncil?.models.members ?? [];
-	const chairman = defaultCouncil?.models.chairman ?? members[0] ?? "";
-	const pairNavigator = defaultPair?.models.navigator;
+	const defaultDebate = lastDefined(teamDefaults.map((entry) => entry.debate));
+	const defaultConsult = lastDefined(teamDefaults.map((entry) => entry.consult));
+	const members = defaultDebate?.models.members ?? [];
+	const chairman = defaultDebate?.models.chairman ?? members[0] ?? "";
+	const consultNavigator = defaultConsult?.models.navigator;
+	const defaultDebateSettings = {
+		name: defaultDebate?.name ?? FALLBACK_DEFAULT_TEAM_NAME,
+		members,
+		chairman,
+		...(defaultDebate?.description ? { purpose: defaultDebate.description } : {}),
+	};
+	const defaultConsultSettings = consultNavigator
+		? {
+				name: defaultConsult?.name ?? DEFAULT_CONSULT_TEAM_ID,
+				navigator: consultNavigator,
+				...(defaultConsult?.description ? { purpose: defaultConsult.description } : {}),
+			}
+		: undefined;
 	return {
+		prompts,
 		defaultMembers: members,
 		defaultChairman: chairman,
-		defaultCouncil: {
-			name: defaultCouncil?.name ?? FALLBACK_DEFAULT_COUNCIL_NAME,
-			members,
-			chairman,
-			...(defaultCouncil?.description ? { purpose: defaultCouncil.description } : {}),
-		},
+		defaultDebate: defaultDebateSettings,
 		chairmanCandidates: [chairman, ...members].filter((model, index, values) => model.length > 0 && values.indexOf(model) === index),
-		...(pairNavigator
-			? {
-					defaultPair: {
-						name: defaultPair?.name ?? DEFAULT_PAIR_TEAM_ID,
-						navigator: pairNavigator,
-						...(defaultPair?.description ? { purpose: defaultPair.description } : {}),
-					},
-				}
-			: {}),
+		...(defaultConsultSettings ? { defaultConsult: defaultConsultSettings } : {}),
+		defaultCouncil: defaultDebateSettings,
+		...(defaultConsultSettings ? { defaultPair: defaultConsultSettings } : {}),
 		councils: {},
-		pairs: {},
-		prompts: requiredPrompts(promptDefaults),
 	};
 }
 
-const EXTENSION_DEFAULT_SETTINGS = resolveCouncilSettings(
-	"/nonexistent/pi-settings.json",
-	DEFAULT_CONFIG_JSON,
-);
+const EXTENSION_DEFAULT_SETTINGS = resolveTeamSettings("/nonexistent/pi-settings.json", DEFAULT_CONFIG_JSON);
 
-/** The visible default member list from the built-in default-council team. */
 export const DEFAULT_MEMBER_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.defaultMembers;
-
-/** Chairman fallback candidates from built-in team definitions. */
 export const DEFAULT_CHAIRMAN_CANDIDATES = EXTENSION_DEFAULT_SETTINGS.chairmanCandidates;
-

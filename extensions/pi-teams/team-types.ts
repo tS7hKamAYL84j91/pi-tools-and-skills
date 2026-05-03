@@ -4,8 +4,9 @@
 
 import type { GenerationConfig } from "./types.js";
 
-export type TeamTopology = "chain" | "council" | "pair";
-export type TeamProtocol = "debate" | "consult" | "graph" | "pair-coding" | "telephone";
+export type TeamProtocol = string;
+export type TeamTopology = "council" | "pair" | "chain" | "graph";
+export type TeamPromptRefs = Record<string, string>;
 export type TeamSource = "builtin" | "user" | "project";
 export type TeamWritableSource = Exclude<TeamSource, "builtin">;
 
@@ -32,12 +33,21 @@ export interface TeamAgentBinding extends GenerationConfig {
 	subagent: string;
 	model?: string;
 	label?: string;
+	promptId?: string;
+	templateId?: string;
 	systemPrompt?: string;
+	dependencyPolicy?: TeamGraphDependencyPolicy;
+	subagentPromptId?: string;
+	subagentSystemPrompt?: string;
 }
+
+export type TeamGraphDependencyPolicy = "require-ok" | "allow-failed";
+export type TeamGraphReducer = "concat";
 
 export interface TeamLimits {
 	timeoutMs?: number;
 	maxFixPasses?: number;
+	maxConcurrency?: number;
 }
 
 export interface TeamGraphEdge {
@@ -47,15 +57,19 @@ export interface TeamGraphEdge {
 
 export interface TeamGraph {
 	edges: TeamGraphEdge[];
+	outputs?: string[];
+	reducer?: TeamGraphReducer;
 }
 
 export interface TeamSpec {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	id: string;
 	name: string;
 	description?: string;
-	topology: TeamTopology;
 	protocol: TeamProtocol;
+	/** @deprecated Derived display metadata only; protocol selects execution. */
+	topology?: TeamTopology;
+	prompts: TeamPromptRefs;
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
 	graph?: TeamGraph;

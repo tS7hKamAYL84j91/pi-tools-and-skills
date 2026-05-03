@@ -6,8 +6,6 @@ promptId: "pairNavigatorBriefSystem"
 scope: "pair"
 stage: "navigator-brief"
 tools: []
-parameters:
-  temperature: 0.1
 ---
 
 # IDENTITY
