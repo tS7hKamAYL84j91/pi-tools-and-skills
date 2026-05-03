@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
-import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
+import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
 
 const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
@@ -19,6 +19,7 @@ export interface TeamFormModels extends TeamModels {}
 export interface TeamFormLimits {
 	maxFixPasses?: number;
 	timeoutMs?: number;
+	maxConcurrency?: number;
 }
 
 export interface TeamFormInput {
@@ -28,6 +29,8 @@ export interface TeamFormInput {
 	protocol: TeamFormProtocol;
 	agents: string[];
 	agentBindings?: TeamAgentBinding[];
+	prompts?: Record<string, string>;
+	graph?: TeamGraph;
 	models?: TeamFormModels;
 	limits?: TeamFormLimits;
 	scope?: TeamFormScope;
@@ -91,11 +94,12 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	if (args.protocol === "debate") {
 		const memberSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "member");
 		const criticSubagents = args.agents.slice(1);
+		const memberModelIds = models.members && models.members.length > 0 ? models.members : [undefined];
 		return [
-			...(models.members ?? []).map((model, index) => ({
+			...memberModelIds.map((model, index) => ({
 				role: "member",
 				subagent: memberSubagent,
-				model,
+				...(model ? { model } : {}),
 				label: `Member ${index + 1}`,
 			})),
 			{
@@ -126,10 +130,10 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	return args.agents.map((subagent) => ({ role: "agent", subagent }));
 }
 
-function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormModels): TeamAgentBinding[] {
+function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormModels, allRolesAreMembers = false): TeamAgentBinding[] {
 	let memberIndex = 0;
 	return bindings.map((binding) => {
-		if (roleMatches(binding.role, "member") || roleMatches(binding.role, "relay")) {
+		if (allRolesAreMembers || roleMatches(binding.role, "member") || roleMatches(binding.role, "relay")) {
 			const model = models.members?.[memberIndex];
 			memberIndex++;
 			return { ...binding, ...(model ? { model } : {}) };
@@ -179,6 +183,25 @@ function ensureSubagentFile(dir: string, id: string): string {
 	return path;
 }
 
+function scalar(value: string | number | boolean): string {
+	return typeof value === "string" ? quote(value) : String(value);
+}
+
+function inlineList(values: string[]): string {
+	return `[${values.map(quote).join(", ")}]`;
+}
+
+function inlineParameters(parameters: Record<string, string | number | boolean>): string {
+	const entries = Object.entries(parameters);
+	if (entries.length === 0) return "{}";
+	return `{ ${entries.map(([key, value]) => `${quote(key)}: ${scalar(value)}`).join(", ")} }`;
+}
+
+function promptLines(prompts: Record<string, string> | undefined): string[] {
+	const entries = Object.entries(prompts ?? {});
+	return entries.length > 0 ? ["prompts:", ...entries.map(([key, value]) => `  ${key}: ${quote(value)}`)] : [];
+}
+
 function agentBindingLines(bindings: TeamAgentBinding[]): string[] {
 	return [
 		"agents:",
@@ -187,7 +210,22 @@ function agentBindingLines(bindings: TeamAgentBinding[]): string[] {
 			`    subagent: ${quote(binding.subagent)}`,
 			...(binding.model ? [`    model: ${quote(binding.model)}`] : []),
 			...(binding.label ? [`    label: ${quote(binding.label)}`] : []),
+			...(binding.promptId ? [`    promptId: ${quote(binding.promptId)}`] : []),
+			...(binding.templateId ? [`    templateId: ${quote(binding.templateId)}`] : []),
+			...(binding.systemPrompt ? [`    systemPrompt: ${quote(binding.systemPrompt)}`] : []),
+			...(binding.dependencyPolicy ? [`    dependencyPolicy: ${quote(binding.dependencyPolicy)}`] : []),
+			...(binding.tools ? [`    tools: ${inlineList(binding.tools)}`] : []),
+			...(binding.parameters ? [`    parameters: ${inlineParameters(binding.parameters)}`] : []),
 		]),
+	];
+}
+
+function graphLines(graph: TeamGraph | undefined): string[] {
+	if (!graph) return [];
+	return [
+		...(graph.edges.length > 0 ? ["edges:", ...graph.edges.flatMap((edge) => [`  - from: ${quote(edge.from)}`, `    to: ${quote(edge.to)}`])] : []),
+		...(graph.outputs ? [`outputs: ${inlineList(graph.outputs)}`] : []),
+		...(graph.reducer ? [`reducer: ${quote(graph.reducer)}`] : []),
 	];
 }
 
@@ -200,9 +238,12 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 		`name: ${quote(args.name)}`,
 		...(args.description ? [`description: ${quote(args.description)}`] : []),
 		`protocol: ${quote(args.protocol)}`,
+		...promptLines(args.prompts),
 		...agentBindingLines(bindings),
+		...graphLines(args.graph),
 		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
 		...(args.limits?.timeoutMs !== undefined ? [`timeoutMs: ${args.limits.timeoutMs}`] : []),
+		...(args.limits?.maxConcurrency !== undefined ? [`maxConcurrency: ${args.limits.maxConcurrency}`] : []),
 		"---",
 		"",
 		`${args.name} team.`,
@@ -212,7 +253,9 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 
 function validateFormInput(input: TeamFormInput): void {
 	const supported = new Set(["consult", "pair-coding", "debate", "telephone"]);
-	if (!supported.has(input.protocol)) throw new Error(`Unsupported team protocol ${input.protocol}.`);
+	if (!supported.has(input.protocol) && (!input.agentBindings || input.agentBindings.length === 0)) {
+		throw new Error(`Unsupported team protocol ${input.protocol}.`);
+	}
 	if (input.agents.length === 0 && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error("Team must include at least one subagent.");
 	}
@@ -258,7 +301,9 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 		...(team.description ? { description: team.description } : {}),
 		protocol: team.protocol,
 		agents: team.agents,
-		agentBindings: applyModelsToBindings(team.agentBindings, input.models),
+		agentBindings: applyModelsToBindings(team.agentBindings, input.models, team.protocol === "graph" || (team.graph?.edges.length ?? 0) > 0),
+		prompts: team.prompts,
+		...(team.graph ? { graph: team.graph } : {}),
 		models: input.models,
 		limits: team.limits,
 		scope: input.scope ?? (team.source === "project" ? "project" : "user"),

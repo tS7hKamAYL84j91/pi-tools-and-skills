@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
+import { createTeamFiles, updateTeamModels } from "../extensions/pi-teams/team-form.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
 import { ensureTeamsSettingsDefaults, ensureUserTeamDefaults } from "../extensions/pi-teams/team-defaults.js";
 import { loadTeamRegistry, requireBuiltinTeam } from "../extensions/pi-teams/team-registry.js";
@@ -436,6 +437,100 @@ describe("loadTeamRegistry", () => {
 			expect(existsSync(join(userRoot, "agents", "builtin_agent.md"))).toBe(true);
 			expect(readFileSync(teamPath, "utf8")).toBe("custom");
 		});
+	});
+
+	it("team_form creates runnable debate bindings without member models", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-form-debate-"));
+		try {
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+
+			const result = createTeamFiles({
+				id: "review-debate",
+				protocol: "debate",
+				agents: ["review_member", "review_critic"],
+				scope: "project",
+			}, project);
+			const body = readFileSync(result.teamPath, "utf8");
+
+			expect(body).toContain('role: "member"');
+			expect(body).toContain('subagent: "review_member"');
+			expect(body).toContain('role: "synthesis"');
+			expect(body).toContain('role: "critic"');
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
+	});
+
+	it("team_models preserves inspectable graph team policy and binding config", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-models-graph-"));
+		try {
+			const teamsRoot = join(project, ".pi", "teams");
+			mkdirSync(join(teamsRoot, "agents"), { recursive: true });
+			mkdirSync(join(teamsRoot, "teams"), { recursive: true });
+			mkdirSync(join(project, ".pi"), { recursive: true });
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			writeFileSync(join(project, ".pi", "settings.json"), JSON.stringify({ teams: { roots: [".pi/teams"] } }), "utf8");
+			writeSubagent(teamsRoot, "reviewer");
+			writeSubagent(teamsRoot, "qa");
+			writeFileSync(
+				join(teamsRoot, "teams", "review-qa.md"),
+				[
+					"---",
+					"schemaVersion: 2",
+					'id: "review-qa"',
+					'name: "Review QA"',
+					'protocol: "graph"',
+					"prompts:",
+					'  node.template: "custom-node-template"',
+					"agents:",
+					'  - role: "review"',
+					'    subagent: "reviewer"',
+					'    model: "old/review"',
+					'    promptId: "review/system"',
+					'    templateId: "review/template"',
+					'    dependencyPolicy: "allow-failed"',
+					'    tools: ["read"]',
+					'    parameters: { "temperature": 0.2, "maxTokens": 42 }',
+					'  - role: "qa"',
+					'    subagent: "qa"',
+					'    model: "old/qa"',
+					"edges:",
+					'  - from: "review"',
+					'    to: "qa"',
+					'outputs: ["qa"]',
+					'reducer: "concat"',
+					"maxConcurrency: 1",
+					"---",
+					"Team body.",
+				].join("\n"),
+				"utf8",
+			);
+
+			updateTeamModels({ id: "review-qa", models: { members: ["new/review", "new/qa"] } }, project);
+			const updated = readFileSync(join(teamsRoot, "teams", "review-qa.md"), "utf8");
+			const team = requireTeam(loadTeamRegistry(CONFIG_PATH, { cwd: project }), "review-qa");
+
+			expect(updated).toContain('node.template: "custom-node-template"');
+			expect(updated).toContain('tools: ["read"]');
+			expect(updated).toContain('parameters: { "temperature": 0.2, "maxTokens": 42 }');
+			expect(updated).toContain('outputs: ["qa"]');
+			expect(updated).toContain('reducer: "concat"');
+			expect(updated).toContain("maxConcurrency: 1");
+			expect(team.models.members).toEqual(["new/review", "new/qa"]);
+			expect(team.prompts["node.template"]).toBe("custom-node-template");
+			expect(team.graph).toEqual({ edges: [{ from: "review", to: "qa" }], outputs: ["qa"], reducer: "concat" });
+			expect(team.limits.maxConcurrency).toBe(1);
+			expect(team.agentBindings[0]).toMatchObject({
+				model: "new/review",
+				promptId: "review/system",
+				templateId: "review/template",
+				dependencyPolicy: "allow-failed",
+				tools: ["read"],
+				parameters: { temperature: 0.2, maxTokens: 42 },
+			});
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
 	});
 });
 

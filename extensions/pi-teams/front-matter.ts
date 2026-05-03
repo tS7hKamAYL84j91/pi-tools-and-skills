@@ -27,17 +27,51 @@ function unquote(value: string): string {
 	return trimmed;
 }
 
+function splitInlineItems(value: string): string[] {
+	const items: string[] = [];
+	let current = "";
+	let quote: string | undefined;
+	for (const char of value) {
+		if ((char === '"' || char === "'") && quote === undefined) quote = char;
+		else if (char === quote) quote = undefined;
+		if (char === "," && quote === undefined) {
+			items.push(current.trim());
+			current = "";
+		} else {
+			current += char;
+		}
+	}
+	if (current.trim().length > 0) items.push(current.trim());
+	return items;
+}
+
 function parseInlineList(value: string): unknown[] | undefined {
 	const trimmed = value.trim();
 	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return undefined;
 	const inner = trimmed.slice(1, -1).trim();
 	if (inner.length === 0) return [];
-	return inner.split(",").map((item) => parseScalar(item.trim()));
+	return splitInlineItems(inner).map((item) => parseScalar(item));
 }
 
-function parseScalar(value: string): string | number | boolean | unknown[] {
+function parseInlineRecord(value: string): Record<string, unknown> | undefined {
+	const trimmed = value.trim();
+	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+	const inner = trimmed.slice(1, -1).trim();
+	if (inner.length === 0) return {};
+	const result: Record<string, unknown> = {};
+	for (const item of splitInlineItems(inner)) {
+		const separator = item.indexOf(":");
+		if (separator < 1) continue;
+		result[unquote(item.slice(0, separator).trim())] = parseScalar(item.slice(separator + 1).trim());
+	}
+	return result;
+}
+
+function parseScalar(value: string): string | number | boolean | unknown[] | Record<string, unknown> {
 	const inlineList = parseInlineList(value);
 	if (inlineList) return inlineList;
+	const inlineRecord = parseInlineRecord(value);
+	if (inlineRecord) return inlineRecord;
 	const unquoted = unquote(value);
 	if (unquoted === "true") return true;
 	if (unquoted === "false") return false;
