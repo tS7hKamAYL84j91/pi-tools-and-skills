@@ -22,7 +22,7 @@ import type { CouncilDeliberation, CouncilMember } from "./types.js";
 
 /** @public */
 export const DEFAULT_COUNCILS_DIR = join(homedir(), ".pi", "agent", "councils");
-const COUNCIL_STATE_CUSTOM_TYPE = "pi-llm-council:deliberation";
+const COUNCIL_STATE_CUSTOM_TYPE = "pi-teams:deliberation";
 const TMP_SUBDIR = "tmp";
 
 interface CouncilStateManagerOptions {

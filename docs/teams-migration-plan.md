@@ -5,15 +5,16 @@ Status: completed migration to team tools; refactored team module boundaries
 
 ## Goal
 
-Move `pi-llm-council` to a standard teams structure and remove the old council/pair tool implementation.
+Move `pi-teams` to a standard teams structure and remove the old council/pair tool implementation.
 
 ## Final shape
 
 ```mermaid
 flowchart TD
   TeamTools[team_list / team_describe / team_run] --> Loader[Team loader/validator]
+  Settings[settings.json teams.roots] --> Loader
   Teams[config/teams/*.md] --> Loader
-  Subagents[config/subagents/*.md] --> Loader
+  Agents[config/agents/*.md] --> Loader
   Loader --> Runtime[Team runtime]
   Runtime --> Debate[Debate engine]
   Runtime --> PairCoding[Pair-coding engine]
@@ -44,8 +45,8 @@ flowchart TD
   Handlers --> Engines[debate / pair-coding / consult / telephone / graph engines]
 ```
 
-- `team-types.ts` owns core team/subagent/registry type definitions.
-- `team-paths.ts` owns package, user, and project path resolution.
+- `team-types.ts` owns core team/agent/registry type definitions.
+- `team-paths.ts` owns `teams.roots` plus package, user, and project path resolution.
 - `team-registry.ts` owns descriptor loading, validation, and registry construction.
 - `team-defaults.ts` seeds user defaults from built-in descriptors.
 - `team-handlers.ts` dispatches supported protocols and exposes model slot metadata.
@@ -59,8 +60,8 @@ flowchart TD
 ### Phase 1 — Declarative specs
 
 - Added `config/teams/*.md` built-in specs.
-- Added a narrow `TeamSpec` and `SubagentSpec` loader.
-- Validated team references to subagent descriptors.
+- Added a narrow `TeamSpec` and role-agent descriptor loader.
+- Validated team references to agent descriptors.
 - Added read-only `team_list` and `team_describe` tools.
 - Added adapters that project built-in teams to current runtime definitions.
 
@@ -93,8 +94,8 @@ flowchart TD
 Tools:
 
 - `team_list` — list teams.
-- `team_describe` — inspect a team and its subagent references.
-- `team_form` — create or replace a user/project team and missing subagent stubs.
+- `team_describe` — inspect a team and its agent references.
+- `team_form` — create or replace a user/project team and missing agent stubs.
 - `team_models` — update model bindings for an existing team.
 - `team_delete` — delete/dissolve a user/project team; built-in default ids are protected unless scoped.
 - `team_run` — execute a team by id.
@@ -113,25 +114,47 @@ TUI commands:
 
 ## Team discovery
 
-Built-in package team and subagent files are templates. At startup, missing defaults are instantiated into `~/.pi/agent/teams/` and `~/.pi/agent/subagents/` without overwriting edits. The active team set is therefore user teams plus project overrides.
+Built-in package team-root files are templates. At startup, missing defaults are instantiated into `~/.pi/agent/teams/{teams,agents,prompts}/` without overwriting edits. Project overrides are opt-in via project `.pi/settings.json`.
 
-Teams and subagents are loaded in this order, with later sources overriding earlier sources by id:
+Team roots are loaded in this order, with later roots overriding earlier roots by id:
 
 1. Built-in package defaults:
-   - `extensions/pi-llm-council/config/teams/*.md`
-   - `extensions/pi-llm-council/config/subagents/*.md`
-2. User defaults:
-   - `~/.pi/agent/teams/*.md`
-   - `~/.pi/agent/subagents/*.md`
-3. Project overrides:
-   - `<project-root>/.pi/teams/*.md`
-   - `<project-root>/.pi/subagents/*.md`
+   - `extensions/pi-teams/config/teams/*.md`
+   - `extensions/pi-teams/config/agents/*.md`
+   - `extensions/pi-teams/config/prompts/*.md`
+2. Roots from top-level settings:
 
-`<project-root>` is found by walking up from the current working directory until a `package.json` or `.git` directory is found.
+```json
+{
+  "teams": {
+    "roots": [
+      "~/.pi/agent/teams"
+    ]
+  }
+}
+```
+
+Each root contains:
+
+```text
+<root>/teams/*.md
+<root>/agents/*.md
+<root>/prompts/*.md
+```
+
+A project can opt in with `.pi/settings.json`:
+
+```json
+{
+  "teams": {
+    "roots": [".pi/teams"]
+  }
+}
+```
 
 Team file changes are discovered by subsequent team commands/tools. Built-in default ids are protected from unscoped deletion. To remove a user/project default/override whose id matches a package default, use scoped deletion (`scope: "user"` or `scope: "project"`). Extension code or tool schema changes still require a pi session reload before the live API reflects them.
 
-Team files bind subagent manifests and default models together. A subagent descriptor owns reusable behavior/prompting, tool allowlists, and provider parameters; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same subagent with different models. `topology` is deprecated and inferred from `protocol`/`engine` plus role bindings when omitted.
+Team files bind agent manifests and default models together. An agent descriptor owns reusable behavior/prompting, tool allowlists, and provider parameters; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same agent with different models. `topology` is deprecated and inferred from `protocol`/`engine` plus role bindings when omitted.
 
 ```md
 ---
@@ -160,13 +183,6 @@ agents:
     subagent: "council_chairman"
     model: "openai-codex/gpt-5.5"
 ```
-
-Legacy model fields are still read for compatibility:
-
-- `memberModels` — council/debate member model list or chain/telephone relay model list.
-- `chairmanModel` — council/debate synthesis model.
-- `driverModel` — pair-coding Driver model.
-- `navigatorModel` — pair-consult or pair-coding Navigator model.
 
 Built-in teams:
 

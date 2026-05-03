@@ -1,18 +1,18 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { pairPrimerPrompt } from "../extensions/pi-llm-council/pair-prompts.js";
-import { critiquePrompt } from "../extensions/pi-llm-council/prompts.js";
-import { resolveCouncilSettings } from "../extensions/pi-llm-council/settings.js";
+import { pairPrimerPrompt } from "../extensions/pi-teams/pair-prompts.js";
+import { critiquePrompt } from "../extensions/pi-teams/prompts.js";
+import { resolveCouncilSettings } from "../extensions/pi-teams/settings.js";
 import type {
 	CouncilMember,
 	ModelRun,
-} from "../extensions/pi-llm-council/types.js";
+} from "../extensions/pi-teams/types.js";
 
 const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
-	"pi-llm-council",
+	"pi-teams",
 	"config",
 	"config.json",
 );

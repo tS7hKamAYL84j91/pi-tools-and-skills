@@ -2,13 +2,13 @@
 
 Status: superseded by teams migration  
 Date: 2026-05-02  
-Scope: `extensions/pi-llm-council/config/`
+Scope: `extensions/pi-teams/config/`
 
 ## Current state
 
 The council extension now uses a teams/subagents structure:
 
-- `config/subagents/` — role/system prompts.
+- `config/agents/` — role/system prompts.
 - `config/teams/` — declarative team specs.
 - `config/prompts/` — reusable templates, framing, and primer text.
 
@@ -39,9 +39,9 @@ The standard tools are now:
 
 ### Council prompts/subagents — 5
 
-- `config/subagents/council-generation-member.md`
-- `config/subagents/council-critic.md`
-- `config/subagents/council-chairman.md`
+- `config/agents/council-generation-member.md`
+- `config/agents/council-critic.md`
+- `config/agents/council-chairman.md`
 - `config/prompts/council-critique-template.md`
 - `config/prompts/council-synthesis-template.md`
 
@@ -54,14 +54,14 @@ These map to the 3-stage council protocol:
 ### Pair prompts/subagents — 10
 
 - `config/prompts/pair-primer.md`
-- `config/subagents/pair-navigator-consult.md`
-- `config/subagents/pair-navigator-brief.md`
+- `config/agents/pair-navigator-consult.md`
+- `config/agents/pair-navigator-brief.md`
 - `config/prompts/pair-navigator-brief-template.md`
-- `config/subagents/pair-driver-implementation.md`
+- `config/agents/pair-driver-implementation.md`
 - `config/prompts/pair-driver-implementation-template.md`
-- `config/subagents/pair-navigator-review.md`
+- `config/agents/pair-navigator-review.md`
 - `config/prompts/pair-navigator-review-template.md`
-- `config/subagents/pair-driver-fix.md`
+- `config/agents/pair-driver-fix.md`
 - `config/prompts/pair-driver-fix-template.md`
 
 Pair workflows are now selected by team id:

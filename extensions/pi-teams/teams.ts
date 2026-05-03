@@ -5,7 +5,10 @@
  * team-tools directly. This file preserves the pre-refactor module path.
  */
 
-import { ensureUserTeamDefaults as ensureUserTeamDefaultsImpl } from "./team-defaults.js";
+import {
+	ensureTeamsSettingsDefaults as ensureTeamsSettingsDefaultsImpl,
+	ensureUserTeamDefaults as ensureUserTeamDefaultsImpl,
+} from "./team-defaults.js";
 import {
 	loadBuiltinTeamIds as loadBuiltinTeamIdsImpl,
 	loadTeamRegistry as loadTeamRegistryImpl,
@@ -39,6 +42,8 @@ export type TeamLimits = TeamLimitsType;
 /** @public */
 export type TeamSpec = TeamSpecType;
 
+/** @public */
+export const ensureTeamsSettingsDefaults = ensureTeamsSettingsDefaultsImpl;
 /** @public */
 export const ensureUserTeamDefaults = ensureUserTeamDefaultsImpl;
 /** @public */

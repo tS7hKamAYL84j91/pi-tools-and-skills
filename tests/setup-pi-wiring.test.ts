@@ -25,7 +25,7 @@ const SETTINGS_SCRIPT = join(
 );
 const GLOBAL_EXTENSION_ALLOWLIST = [
 	"extensions/pi-panopticon/**",
-	"extensions/pi-llm-council/**",
+	"extensions/pi-teams/**",
 ];
 
 let tmpDir: string;

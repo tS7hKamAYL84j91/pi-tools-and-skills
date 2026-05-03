@@ -379,7 +379,7 @@ export function loadTeamRegistry(
 	const subagents = new Map<string, SubagentSpec>();
 	const teams = new Map<string, TeamSpec>();
 	for (const dirs of teamDirectories(configPath, options)) {
-		for (const descriptor of readMarkdownDescriptors(dirs.subagents)) {
+		for (const descriptor of readMarkdownDescriptors(dirs.agents)) {
 			const spec = toSubagentSpec(descriptor, dirs.source);
 			if (!isSubagentId(spec.id)) warnings.push(`invalid subagent id ${spec.id}`);
 			subagents.set(spec.id, spec);
@@ -400,7 +400,7 @@ export function loadTeamRegistry(
 }
 
 export function loadBuiltinTeamIds(configPath: string = DEFAULT_CONFIG_JSON): Set<string> {
-	return new Set(loadTeamRegistry(configPath, { userRoot: "/nonexistent/pi-team-user-root" }).teams.keys());
+	return new Set(loadTeamRegistry(configPath, { roots: [] }).teams.keys());
 }
 
 export function requireBuiltinTeam(

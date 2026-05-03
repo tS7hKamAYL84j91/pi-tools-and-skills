@@ -5,14 +5,14 @@ Status: implementation plan
 
 ## Goal
 
-Move pi-llm-council default system prompts from generic prompt files into subagent descriptor files, while preserving existing prompt IDs and user settings overrides.
+Move pi-teams default system prompts from generic prompt files into subagent descriptor files, while preserving existing prompt IDs and user settings overrides.
 
 ## Scope
 
 In scope:
 
-- Add `extensions/pi-llm-council/config/subagents/` Markdown descriptors for council and pair system prompts.
-- Teach the settings loader to read a configured `subagentDirectory` in addition to the existing `promptDirectory`.
+- Add `extensions/pi-teams/config/agents/` Markdown descriptors for council and pair system prompts.
+- Teach the settings loader to read a configured `agents directory` in addition to the existing `prompts directory`.
 - Keep template/framing prompts in `config/prompts/` for now.
 - Preserve existing public settings keys such as `councilGenerationSystem` and `pairNavigatorConsultSystem`.
 
@@ -28,7 +28,7 @@ Out of scope:
 ```mermaid
 flowchart TD
   Config[config.json] --> PromptDir[config/prompts]
-  Config --> SubagentDir[config/subagents]
+  Config --> SubagentDir[config/agents]
   PromptDir --> Templates[Template / framing prompts]
   SubagentDir --> SystemPrompts[Subagent system prompt descriptors]
   Templates --> Settings[ResolvedCouncilSettings.prompts]
@@ -56,8 +56,8 @@ parameters:
 
 Loader precedence:
 
-1. prompt Markdown files from `promptDirectory`;
-2. subagent descriptors from `subagentDirectory`, overriding matching default prompt IDs;
+1. prompt Markdown files from `prompts directory`;
+2. subagent descriptors from `agents directory`, overriding matching default prompt IDs;
 3. extension config JSON inline prompt defaults;
 4. user settings overrides.
 

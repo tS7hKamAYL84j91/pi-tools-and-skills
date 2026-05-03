@@ -6,24 +6,10 @@ SHELL := /bin/bash
 ROOT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 NPM ?= npm
 
-.PHONY: help setup setup-clean check typecheck lint knip type-coverage test test-watch clean-mailboxes
-
-DRY_RUN ?= 0
-ifeq ($(DRY_RUN),1)
-  CLEAN_MAILBOX_ARGS := --dry-run
-else ifeq ($(DRY_RUN),0)
-  CLEAN_MAILBOX_ARGS :=
-else
-  $(error DRY_RUN must be 0 or 1)
-endif
+.PHONY: help check typecheck lint knip type-coverage test test-watch clean-mailboxes
 
 help: ## Show available make targets
-	@awk 'BEGIN {FS = ":.*## "; printf "Usage:\n  make <target> [VAR=value]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf "\nOptions:\n"
-	@printf "  make clean-mailboxes DRY_RUN=1  # show stale mailbox cleanup actions\n"
-
-setup: ## Register this repo as a reusable pi package
-	$(ROOT_DIR)scripts/setup-pi
+	@awk 'BEGIN {FS = ":.*## "; printf "Usage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 check: ## Run typecheck, lint, knip, and type-coverage
 	$(NPM) run check
@@ -47,7 +33,5 @@ test-watch: ## Run tests in watch mode
 	$(NPM) run test:watch
 
 clean-mailboxes: ## Clean stale agent mailboxes
-	$(ROOT_DIR)scripts/clean-mailboxes $(CLEAN_MAILBOX_ARGS)
+	$(ROOT_DIR)scripts/clean-mailboxes
 
-setup-clean: ## Remove this repo's pi package and memory registrations
-	$(ROOT_DIR)scripts/setup-pi-clean

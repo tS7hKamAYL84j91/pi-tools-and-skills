@@ -7,10 +7,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CouncilStateManager } from "../extensions/pi-llm-council/state.js";
-import { registerTeamRunTool } from "../extensions/pi-llm-council/team-runtime.js";
-import { resolveCouncilSettings } from "../extensions/pi-llm-council/settings.js";
+import { CouncilStateManager } from "../extensions/pi-teams/state.js";
+import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
+import { resolveCouncilSettings } from "../extensions/pi-teams/settings.js";
 import {
+	ensureTeamsSettingsDefaults,
 	ensureUserTeamDefaults,
 	loadTeamRegistry,
 	registerTeamTools,
@@ -18,13 +19,13 @@ import {
 	teamToCouncilDefinition,
 	teamToPairDefinition,
 	type TeamSpec,
-} from "../extensions/pi-llm-council/teams.js";
+} from "../extensions/pi-teams/teams.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
 const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
-	"pi-llm-council",
+	"pi-teams",
 	"config",
 	"config.json",
 );
@@ -44,12 +45,12 @@ interface RegisteredTool {
 function withTempConfig(fn: (configPath: string, root: string) => void): void {
 	const root = mkdtempSync(join(tmpdir(), "council-teams-"));
 	try {
-		mkdirSync(join(root, "subagents"));
+		mkdirSync(join(root, "agents"));
 		mkdirSync(join(root, "teams"));
 		const configPath = join(root, "config.json");
 		writeFileSync(
 			configPath,
-			JSON.stringify({ subagentDirectory: "subagents", teamDirectory: "teams" }),
+			JSON.stringify({ layout: "teams-root" }),
 			"utf8",
 		);
 		fn(configPath, root);
@@ -60,7 +61,7 @@ function withTempConfig(fn: (configPath: string, root: string) => void): void {
 
 function writeSubagent(root: string, name: string): void {
 	writeFileSync(
-		join(root, "subagents", `${name}.md`),
+		join(root, "agents", `${name}.md`),
 		[
 			"---",
 			`name: "${name}"`,
@@ -111,7 +112,7 @@ function requireTeam(registry: ReturnType<typeof loadTeamRegistry>, id: string):
 
 describe("loadTeamRegistry", () => {
 	it("loads built-in teams and validates subagent references", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
+		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"default-council",
@@ -174,7 +175,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const registry = loadTeamRegistry(configPath, { userRoot: NO_SETTINGS });
+			const registry = loadTeamRegistry(configPath, { roots: [] });
 
 			expect(registry.warnings).toEqual([]);
 			expect(registry.teams.get("telephone-game")).toMatchObject({
@@ -187,7 +188,7 @@ describe("loadTeamRegistry", () => {
 	it("derives topology and subagent execution config from protocol and manifests", () => {
 		withTempConfig((configPath, root) => {
 			writeFileSync(
-				join(root, "subagents", "navigator_agent.md"),
+				join(root, "agents", "navigator_agent.md"),
 				[
 					"---",
 					'name: "navigator_agent"',
@@ -215,7 +216,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "topology-free");
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "topology-free");
 
 			expect(team.topology).toBe("pair");
 			expect(team.agentBindings[0]).toMatchObject({
@@ -254,7 +255,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "review-qa");
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "review-qa");
 
 			expect(team.protocol).toBe("graph");
 			expect(team.graph?.edges).toEqual([{ from: "review", to: "qa" }]);
@@ -291,7 +292,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { userRoot: NO_SETTINGS }), "object-council");
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "object-council");
 
 			expect(team.agents).toEqual(["shared_member", "chair_agent"]);
 			expect(team.models).toEqual({
@@ -324,7 +325,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const registry = loadTeamRegistry(configPath, { userRoot: NO_SETTINGS });
+			const registry = loadTeamRegistry(configPath, { roots: [] });
 
 			expect(registry.teams.has("mixed-agents")).toBe(false);
 			expect(registry.warnings).toContain("mixed-agents: agents list must not mix object and string entries");
@@ -347,17 +348,19 @@ describe("loadTeamRegistry", () => {
 		withTempConfig((configPath, root) => {
 			const userRoot = join(root, "user");
 			const project = join(root, "project");
-			mkdirSync(join(userRoot, "subagents"), { recursive: true });
+			mkdirSync(join(userRoot, "agents"), { recursive: true });
 			mkdirSync(join(userRoot, "teams"), { recursive: true });
-			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
-			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "agents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "teams"), { recursive: true });
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			writeFileSync(join(root, "settings.json"), JSON.stringify({ teams: { roots: [userRoot] } }), "utf8");
+			writeFileSync(join(project, ".pi", "settings.json"), JSON.stringify({ teams: { roots: [".pi/teams"] } }), "utf8");
 			writeSubagent(userRoot, "user_agent");
 			writeTeam(userRoot, "user-team", "user_agent");
-			writeSubagent(join(project, ".pi"), "project_agent");
-			writeTeam(join(project, ".pi"), "pair-consult", "project_agent");
+			writeSubagent(join(project, ".pi", "teams"), "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "pair-consult", "project_agent");
 
-			const registry = loadTeamRegistry(configPath, { userRoot, cwd: project });
+			const registry = loadTeamRegistry(configPath, { settingsPath: join(root, "settings.json"), cwd: project });
 
 			expect(registry.teams.get("user-team")?.source).toBe("user");
 			expect(registry.teams.get("pair-consult")?.source).toBe("project");
@@ -365,6 +368,29 @@ describe("loadTeamRegistry", () => {
 				"project_agent",
 			]);
 		});
+	});
+
+	it("adds default teams.roots to settings without overwriting existing roots", () => {
+		const root = mkdtempSync(join(tmpdir(), "team-settings-defaults-"));
+		try {
+			const settingsPath = join(root, "settings.json");
+			writeFileSync(settingsPath, JSON.stringify({ defaultModel: "x" }), "utf8");
+
+			ensureTeamsSettingsDefaults(settingsPath);
+
+			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toMatchObject({
+				defaultModel: "x",
+				teams: { roots: ["~/.pi/agent/teams"] },
+			});
+
+			writeFileSync(settingsPath, JSON.stringify({ teams: { roots: ["custom"] } }), "utf8");
+			ensureTeamsSettingsDefaults(settingsPath);
+			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toMatchObject({
+				teams: { roots: ["custom"] },
+			});
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("instantiates built-in teams into the user directory without overwriting edits", () => {
@@ -379,7 +405,7 @@ describe("loadTeamRegistry", () => {
 			ensureUserTeamDefaults(userRoot, configPath);
 
 			expect(existsSync(teamPath)).toBe(true);
-			expect(existsSync(join(userRoot, "subagents", "builtin_agent.md"))).toBe(true);
+			expect(existsSync(join(userRoot, "agents", "builtin_agent.md"))).toBe(true);
 			expect(readFileSync(teamPath, "utf8")).toBe("custom");
 		});
 	});
@@ -387,7 +413,7 @@ describe("loadTeamRegistry", () => {
 
 describe("team adapters", () => {
 	it("projects default council team to the current default council definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
+		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "default-council");
 		const definition = teamToCouncilDefinition({
@@ -405,7 +431,7 @@ describe("team adapters", () => {
 	});
 
 	it("projects pair teams to the current default pair definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS });
+		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 		const settings = resolveCouncilSettings(NO_SETTINGS, CONFIG_PATH);
 		const team = requireTeam(registry, "pair-consult");
 		const definition = teamToPairDefinition({ team, settings });
@@ -463,12 +489,13 @@ describe("team tools", () => {
 		const root = mkdtempSync(join(tmpdir(), "team-delete-"));
 		try {
 			const project = join(root, "project");
-			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
-			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "agents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "teams"), { recursive: true });
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
-			writeSubagent(join(project, ".pi"), "delete_agent");
-			writeTeam(join(project, ".pi"), "delete-me", "delete_agent");
-			const teamPath = join(project, ".pi", "teams", "delete-me.md");
+			writeFileSync(join(project, ".pi", "settings.json"), JSON.stringify({ teams: { roots: [".pi/teams"] } }), "utf8");
+			writeSubagent(join(project, ".pi", "teams"), "delete_agent");
+			writeTeam(join(project, ".pi", "teams"), "delete-me", "delete_agent");
+			const teamPath = join(project, ".pi", "teams", "teams", "delete-me.md");
 			const { api, tools } = createFakeApi();
 			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
 			const remove = tools.get("team_delete");
@@ -510,11 +537,11 @@ describe("team tools", () => {
 		const root = mkdtempSync(join(tmpdir(), "team-delete-override-"));
 		try {
 			const project = join(root, "project");
-			mkdirSync(join(project, ".pi", "subagents"), { recursive: true });
-			mkdirSync(join(project, ".pi", "teams"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "agents"), { recursive: true });
+			mkdirSync(join(project, ".pi", "teams", "teams"), { recursive: true });
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
-			writeSubagent(join(project, ".pi"), "project_agent");
-			writeTeam(join(project, ".pi"), "pair-consult", "project_agent");
+			writeSubagent(join(project, ".pi", "teams"), "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "pair-consult", "project_agent");
 			const { api, tools } = createFakeApi();
 			registerTeamRunTool(api, { stateManager: new CouncilStateManager() });
 			const remove = tools.get("team_delete");
@@ -528,7 +555,7 @@ describe("team tools", () => {
 				{ cwd: project },
 			);
 
-			const registry = loadTeamRegistry(CONFIG_PATH, { userRoot: NO_SETTINGS, cwd: project });
+			const registry = loadTeamRegistry(CONFIG_PATH, { roots: [], cwd: project });
 			expect(registry.teams.get("pair-consult")?.source).toBe("builtin");
 		} finally {
 			rmSync(root, { recursive: true, force: true });

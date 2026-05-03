@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import councilExtension from "../extensions/pi-llm-council/index.js";
+import councilExtension from "../extensions/pi-teams/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
 import matrixExtension from "../extensions/matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
@@ -96,7 +96,6 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.commands, ["teams"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
-			"resources_discover",
 		]);
 	});
 

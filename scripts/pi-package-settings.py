@@ -10,12 +10,12 @@ from typing import Any
 
 PACKAGE_EXTENSIONS = [
     "extensions/pi-panopticon/**",
-    "extensions/pi-llm-council/**",
+    "extensions/pi-teams/**",
 ]
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
-    "pi-llm-council",
+    "pi-teams",
     "council",
     "kanban",
     "matrix",

@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -8,7 +8,7 @@ import {
 	DEFAULT_CHAIRMAN_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
 	resolveCouncilSettings,
-} from "../extensions/pi-llm-council/settings.js";
+} from "../extensions/pi-teams/settings.js";
 
 function withTempDir(fn: (dir: string) => void) {
 	const dir = join(
@@ -31,22 +31,62 @@ function withTempSettings(settings: object, fn: (path: string) => void) {
 	});
 }
 
-function writeTempExtensionConfig(dir: string): string {
-	mkdirSync(join(dir, "prompts"));
-	mkdirSync(join(dir, "subagents"));
-	const configPath = join(dir, "config.json");
+function createTeamRoot(root: string): void {
+	mkdirSync(join(root, "teams"), { recursive: true });
+	mkdirSync(join(root, "agents"), { recursive: true });
+	mkdirSync(join(root, "prompts"), { recursive: true });
+}
+
+function writeDefaultCouncil(root: string, members: string[], chairman: string): void {
 	writeFileSync(
-		configPath,
-		JSON.stringify({
-			promptDirectory: "prompts",
-			subagentDirectory: "subagents",
-		}),
+		join(root, "teams", "default-council.md"),
+		[
+			"---",
+			'schemaVersion: 1',
+			'id: "default-council"',
+			'name: "Default Council"',
+			'description: "Architecture review"',
+			'protocol: "debate"',
+			"agents:",
+			...members.flatMap((model, index) => [
+				'  - role: "member"',
+				'    subagent: "member_agent"',
+				`    model: "${model}"`,
+				`    label: "Member ${index + 1}"`,
+			]),
+			'  - role: "chairman"',
+			'    subagent: "chair_agent"',
+			`    model: "${chairman}"`,
+			"---",
+			"",
+		].join("\n"),
+		"utf8",
 	);
-	return configPath;
+}
+
+function writePairConsult(root: string, navigator: string): void {
+	writeFileSync(
+		join(root, "teams", "pair-consult.md"),
+		[
+			"---",
+			'schemaVersion: 1',
+			'id: "pair-consult"',
+			'name: "Pair Consult"',
+			'description: "Navigator review"',
+			'protocol: "consult"',
+			"agents:",
+			'  - role: "navigator"',
+			'    subagent: "navigator_agent"',
+			`    model: "${navigator}"`,
+			"---",
+			"",
+		].join("\n"),
+		"utf8",
+	);
 }
 
 describe("DEFAULT_MEMBER_CANDIDATES", () => {
-	it("is the canonical visible-config list", () => {
+	it("comes from the built-in default-council team", () => {
 		expect(DEFAULT_MEMBER_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
@@ -57,63 +97,43 @@ describe("DEFAULT_MEMBER_CANDIDATES", () => {
 });
 
 describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
-	it("is the canonical visible-config list", () => {
+	it("comes from the built-in default-council team", () => {
 		expect(DEFAULT_CHAIRMAN_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
+			"ollama/qwen3.5:cloud",
 			"ollama/glm-5.1:cloud",
 		]);
 	});
 });
 
 describe("resolveCouncilSettings", () => {
-	it("returns visible config defaults when no settings file exists", () => {
+	it("returns built-in team defaults when no settings file exists", () => {
 		const resolved = resolveCouncilSettings("/nonexistent/path/settings.json");
 		expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
 		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
 		expect(resolved.councils).toEqual({});
 	});
 
-	it("returns user overrides when settings file has them", () => {
-		withTempSettings(
-			{
-				council: {
-					defaultMembers: ["custom/model-1", "custom/model-2"],
-					defaultChairman: "custom/chair",
-				},
-			},
-			(file) => {
+	it("uses teams.roots as the source of team defaults", () => {
+		withTempDir((root) => {
+			createTeamRoot(root);
+			writeDefaultCouncil(root, ["custom/model-1", "custom/model-2"], "custom/chair");
+			writePairConsult(root, "custom/navigator");
+			withTempSettings({ teams: { roots: [root] } }, (file) => {
 				const resolved = resolveCouncilSettings(file);
-				expect(resolved.defaultMembers).toEqual([
-					"custom/model-1",
-					"custom/model-2",
-				]);
+				expect(resolved.defaultMembers).toEqual(["custom/model-1", "custom/model-2"]);
 				expect(resolved.defaultChairman).toBe("custom/chair");
-			},
-		);
+				expect(resolved.defaultPair?.navigator).toBe("custom/navigator");
+			});
+		});
 	});
 
-	it("fills in missing fields with visible config defaults (field-level merge)", () => {
-		// User only set defaultMembers, not defaultChairman
-		withTempSettings(
-			{
-				council: {
-					defaultMembers: ["custom/model-1"],
-				},
-			},
-			(file) => {
-				const resolved = resolveCouncilSettings(file);
-				expect(resolved.defaultMembers).toEqual(["custom/model-1"]);
-				expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
-			},
-		);
-	});
-
-	it("loads default system prompts from subagent descriptors", () => {
-		withTempDir((dir) => {
-			const configPath = writeTempExtensionConfig(dir);
+	it("loads system prompts from agent descriptors", () => {
+		withTempDir((root) => {
+			createTeamRoot(root);
 			writeFileSync(
-				join(dir, "subagents", "navigator.md"),
+				join(root, "agents", "navigator.md"),
 				[
 					"---",
 					'name: "pair_navigator_consult"',
@@ -121,79 +141,48 @@ describe("resolveCouncilSettings", () => {
 					"---",
 					"# IDENTITY",
 					"",
-					"Subagent navigator body.",
+					"Agent navigator body.",
 				].join("\n"),
 			);
-
-			const resolved = resolveCouncilSettings(
-				"/nonexistent/path/settings.json",
-				configPath,
-			);
-			expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
-				"# IDENTITY",
-				"",
-				"Subagent navigator body.",
-			]);
-		});
-	});
-
-	it("keeps user prompt overrides ahead of subagent defaults", () => {
-		withTempDir((dir) => {
-			const configPath = writeTempExtensionConfig(dir);
-			writeFileSync(
-				join(dir, "subagents", "navigator.md"),
-				[
-					"---",
-					'name: "pair_navigator_consult"',
-					'promptId: "pairNavigatorConsultSystem"',
-					"---",
-					"Subagent default body.",
-				].join("\n"),
-			);
-			withTempSettings(
-				{
-					council: {
-						prompts: {
-							pairNavigatorConsultSystem: ["User override body."],
-						},
-					},
-				},
-				(settingsPath) => {
-					const resolved = resolveCouncilSettings(settingsPath, configPath);
-					expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
-						"User override body.",
-					]);
-				},
-			);
-		});
-	});
-
-	it("preserves named councils from user settings", () => {
-		withTempSettings(
-			{
-				council: {
-					councils: {
-						architecture: {
-							members: ["openai-codex/gpt-5.5"],
-							chairman: "google-gemini-cli/gemini-3.1-pro-preview",
-							purpose: "Architecture review",
-						},
-					},
-				},
-			},
-			(file) => {
+			withTempSettings({ teams: { roots: [root] } }, (file) => {
 				const resolved = resolveCouncilSettings(file);
-				expect(resolved.councils).toEqual({
-					architecture: {
-						members: ["openai-codex/gpt-5.5"],
-						chairman: "google-gemini-cli/gemini-3.1-pro-preview",
-						purpose: "Architecture review",
-					},
+				expect(resolved.prompts.pairNavigatorConsultSystem).toEqual([
+					"# IDENTITY",
+					"",
+					"Agent navigator body.",
+				]);
+			});
+		});
+	});
+
+	it("later roots override earlier prompt templates", () => {
+		withTempDir((first) => {
+			withTempDir((second) => {
+				createTeamRoot(first);
+				createTeamRoot(second);
+				writeFileSync(
+					join(first, "prompts", "consult.md"),
+					[
+						"---",
+						'id: "pairNavigatorConsultSystem"',
+						"---",
+						"First body.",
+					].join("\n"),
+				);
+				writeFileSync(
+					join(second, "prompts", "consult.md"),
+					[
+						"---",
+						'id: "pairNavigatorConsultSystem"',
+						"---",
+						"Second body.",
+					].join("\n"),
+				);
+				withTempSettings({ teams: { roots: [first, second] } }, (file) => {
+					const resolved = resolveCouncilSettings(file);
+					expect(resolved.prompts.pairNavigatorConsultSystem).toEqual(["Second body."]);
 				});
-				// Defaults still come from visible extension config.
-				expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
-				expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
-			},
-		);
+			});
+		});
 	});
 });

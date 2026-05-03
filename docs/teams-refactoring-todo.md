@@ -2,7 +2,7 @@
 
 ## Goal
 
-Tighten the `pi-llm-council` teams abstractions so core team concepts, persistence, runtime handlers, tools, commands, and UI concerns are separated.
+Tighten the `pi-teams` teams abstractions so core team concepts, persistence, runtime handlers, tools, commands, and UI concerns are separated.
 
 ## Acceptance criteria
 

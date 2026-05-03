@@ -9,7 +9,7 @@ import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
 import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamTopology, TeamWritableSource } from "./team-types.js";
 
-const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, DEFAULT_TEAM_DIRECTORY);
+const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
 export type TeamFormScope = TeamWritableSource;
 export type TeamFormTopology = TeamTopology;
@@ -252,7 +252,7 @@ export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResu
 	}
 	const bindings = defaultAgentBindings({ ...input, id });
 	const subagentIds = [...new Set(bindings.map((binding) => binding.subagent))];
-	const subagentPaths = subagentIds.map((agent) => ensureSubagentFile(dirs.subagents, agent));
+	const subagentPaths = subagentIds.map((agent) => ensureSubagentFile(dirs.agents, agent));
 	writeFileSync(
 		teamPath,
 		teamFileContent({
