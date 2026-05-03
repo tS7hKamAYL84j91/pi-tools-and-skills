@@ -28,7 +28,6 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 		...(team.description ? [`Description: ${team.description}`] : []),
 		`Agents: ${team.agents.join(", ") || "(none)"}`,
 		...(bindingLines.length > 0 ? ["Agent bindings:", ...bindingLines] : []),
-		...(team.chair ? [`Chair: ${team.chair}`] : []),
 	];
 }
 

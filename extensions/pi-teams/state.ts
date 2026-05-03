@@ -1,17 +1,11 @@
-/** Team run state manager — session-first run events plus legacy file snapshots. */
+/** Team run state manager — session-first protocol-neutral run events. */
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { isPidAlive } from "../../lib/agent-registry.js";
-import type { ModelRun, ReviewRun, TeamParticipant, TeamRunRecord } from "./types.js";
+import type { TeamParticipant, TeamRunNodeRecord, TeamRunRecord } from "./types.js";
 
 /** @public */
-export const DEFAULT_TEAM_RUNS_DIR = join(homedir(), ".pi", "agent", "team-runs");
-/** @public */
 export const TEAM_RUN_CUSTOM_TYPE = "pi-teams:run";
-const TMP_SUBDIR = "tmp";
 const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 
 /** @public */
@@ -21,8 +15,7 @@ export type TeamRunEventKind =
 	| "node_completed"
 	| "run_completed"
 	| "run_failed"
-	| "run_tombstoned"
-	| "legacy_imported";
+	| "run_tombstoned";
 
 interface TeamRunEventBase {
 	schemaVersion: 1;
@@ -37,10 +30,9 @@ interface TeamRunEventBase {
 export interface TeamRunStartedEvent extends TeamRunEventBase {
 	kind: "run_started";
 	teamId: string;
-	protocol?: string;
+	protocol: string;
 	input: { prompt: string };
-	members?: TeamParticipant[];
-	chairman?: TeamParticipant;
+	participants?: TeamParticipant[];
 }
 
 /** @public */
@@ -88,38 +80,23 @@ export interface TeamRunTombstonedEvent extends TeamRunEventBase {
 }
 
 /** @public */
-export interface TeamRunLegacyImportedEvent extends TeamRunEventBase {
-	kind: "legacy_imported";
-	source: "legacy-file" | "legacy-session";
-}
-
-/** @public */
 export type TeamRunEvent =
 	| TeamRunStartedEvent
 	| TeamRunPhaseStartedEvent
 	| TeamRunNodeCompletedEvent
 	| TeamRunCompletedEvent
 	| TeamRunFailedEvent
-	| TeamRunTombstonedEvent
-	| TeamRunLegacyImportedEvent;
+	| TeamRunTombstonedEvent;
 
 interface TeamStateManagerOptions {
 	appendEntry?: (customType: string, data?: unknown) => void;
-	filePersistence?: boolean;
-}
-
-interface CreateArgs {
-	team: string;
-	protocol?: string;
-	prompt: string;
-	members: TeamParticipant[];
-	chairman: TeamParticipant;
 }
 
 interface StartRunArgs {
 	teamId: string;
 	protocol: string;
 	prompt: string;
+	participants?: TeamParticipant[];
 }
 
 interface RecordNodeArgs {
@@ -161,105 +138,71 @@ function isRunEvent(value: unknown): value is TeamRunEvent {
 	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === 1 && typeof (value as { kind?: unknown }).kind === "string";
 }
 
-function reduceEvents(events: readonly TeamRunEvent[]): Map<string, TeamRunRecord> {
-	const records = new Map<string, TeamRunRecord>();
-	for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
-		if (event.kind === "run_started") {
-			records.set(event.runId, {
-				version: 1,
-				id: event.runId,
-				team: event.teamId,
-				prompt: event.input.prompt,
-				members: event.members ?? [],
-				chairman: event.chairman ?? { label: "", model: "" },
-				status: "pending",
-				startedAt: event.timestamp,
-				orchestratorPid: event.orchestratorPid,
-				generation: [],
-				critiques: [],
-			});
-			continue;
-		}
-		const record = records.get(event.runId);
-		if (!record) continue;
-		if (event.kind === "phase_started") {
-			record.status = event.phaseId === "generation" ? "generating" : event.phaseId === "critique" ? "critiquing" : event.phaseId === "synthesis" ? "synthesizing" : record.status;
-		} else if (event.kind === "node_completed") {
-			const run = nodeEventToRun(event, record);
-			if (event.phaseId === "generation") record.generation.push(run);
-			else if (event.phaseId === "critique") record.critiques.push({ ...run, rankings: "" });
-			else if (event.phaseId === "synthesis") record.synthesis = run;
-		} else if (event.kind === "run_completed") {
-			record.status = "completed";
-			record.completedAt = event.timestamp;
-		} else if (event.kind === "run_failed") {
-			record.status = "failed";
-			record.error = event.error;
-			record.completedAt = event.timestamp;
-		} else if (event.kind === "run_tombstoned") {
-			records.delete(event.runId);
-		}
-	}
-	return records;
-}
-
-function nodeEventToRun(event: TeamRunNodeCompletedEvent, record: TeamRunRecord): ModelRun {
-	const member = [...record.members, record.chairman].find((entry) => entry.label === event.role || entry.model === event.model) ?? {
-		label: event.role,
-		model: event.model,
-	};
+function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {
 	return {
-		member,
-		prompt: "",
-		systemPrompt: "",
-		output: event.output ?? "",
-		durationMs: event.durationMs,
+		phaseId: event.phaseId,
+		nodeId: event.nodeId,
+		role: event.role,
+		model: event.model,
 		ok: event.ok,
+		durationMs: event.durationMs,
+		output: event.output ?? "",
 		...(event.error ? { error: event.error } : {}),
 	};
 }
 
-interface TeamStateManagerData {
-	options: TeamStateManagerOptions;
-	sequenceByRun: Map<string, number>;
-	emittedNodes: Set<string>;
-	emittedPhases: Set<string>;
-	sessionRecords: Map<string, TeamRunRecord>;
-	sessionHydrated: boolean;
+function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): void {
+	if (event.kind === "run_started") {
+		records.set(event.runId, {
+			version: 1,
+			id: event.runId,
+			team: event.teamId,
+			protocol: event.protocol,
+			prompt: event.input.prompt,
+			status: "pending",
+			startedAt: event.timestamp,
+			orchestratorPid: event.orchestratorPid,
+			phases: [],
+			nodes: [],
+		});
+		return;
+	}
+	const record = records.get(event.runId);
+	if (!record) return;
+	if (event.kind === "phase_started") {
+		record.status = "running";
+		if (!record.phases.includes(event.phaseId)) record.phases.push(event.phaseId);
+	} else if (event.kind === "node_completed") {
+		record.nodes.push(nodeRecord(event));
+	} else if (event.kind === "run_completed") {
+		record.status = "completed";
+		record.completedAt = event.timestamp;
+		if (event.summary) record.summary = event.summary;
+	} else if (event.kind === "run_failed") {
+		record.status = "failed";
+		record.error = event.error;
+		record.completedAt = event.timestamp;
+	} else if (event.kind === "run_tombstoned") {
+		records.delete(event.runId);
+	}
+}
+
+function reduceEvents(events: readonly TeamRunEvent[]): Map<string, TeamRunRecord> {
+	const records = new Map<string, TeamRunRecord>();
+	for (const event of [...events].sort((a, b) => a.seq - b.seq)) applyEvent(records, event);
+	return records;
 }
 
 export class TeamStateManager {
-	private readonly data: TeamStateManagerData;
+	private readonly sequenceByRun = new Map<string, number>();
+	private readonly sessionRecords = new Map<string, TeamRunRecord>();
+	private sessionHydrated = false;
 
-	constructor(
-		private readonly runsDir: string = DEFAULT_TEAM_RUNS_DIR,
-		options: TeamStateManagerOptions = {},
-	) {
-		this.data = {
-			options,
-			sequenceByRun: new Map<string, number>(),
-			emittedNodes: new Set<string>(),
-			emittedPhases: new Set<string>(),
-			sessionRecords: new Map<string, TeamRunRecord>(),
-			sessionHydrated: false,
-		};
-	}
-
-	private recordPath(id: string): string {
-		return join(this.runsDir, `${id}.json`);
-	}
-
-	private tmpPath(id: string): string {
-		return join(this.runsDir, TMP_SUBDIR, `${id}-${process.pid}.json`);
-	}
-
-	private ensureDirs(): void {
-		mkdirSync(join(this.runsDir, TMP_SUBDIR), { recursive: true });
-	}
+	constructor(private readonly options: TeamStateManagerOptions = {}) {}
 
 	private nextSeq(runId: string): number {
-		const next = (this.data.sequenceByRun.get(runId) ?? 0) + 1;
-		this.data.sequenceByRun.set(runId, next);
+		const next = (this.sequenceByRun.get(runId) ?? 0) + 1;
+		this.sequenceByRun.set(runId, next);
 		return next;
 	}
 
@@ -271,80 +214,20 @@ export class TeamStateManager {
 			timestamp: Date.now(),
 			orchestratorPid: process.pid,
 		} as TeamRunEvent;
-		this.data.options.appendEntry?.(TEAM_RUN_CUSTOM_TYPE, full);
-	}
-
-	private persistFile(record: TeamRunRecord): void {
-		if (this.data.options.filePersistence === false) return;
-		this.ensureDirs();
-		const tmp = this.tmpPath(record.id);
-		writeFileSync(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
-		renameSync(tmp, this.recordPath(record.id));
-	}
-
-	private emitPhase(record: TeamRunRecord): void {
-		const phase = record.status === "generating" ? "generation" : record.status === "critiquing" ? "critique" : record.status === "synthesizing" ? "synthesis" : undefined;
-		if (!phase || this.data.emittedPhases.has(`${record.id}:${phase}`)) return;
-		this.data.emittedPhases.add(`${record.id}:${phase}`);
-		this.appendEvent({ kind: "phase_started", runId: record.id, phaseId: phase, label: phase });
-	}
-
-	private emitNode(record: TeamRunRecord, phaseId: string, nodeId: string, run: ModelRun | ReviewRun): void {
-		const key = `${record.id}:${phaseId}:${nodeId}`;
-		if (this.data.emittedNodes.has(key)) return;
-		this.data.emittedNodes.add(key);
-		this.appendEvent({
-			kind: "node_completed",
-			runId: record.id,
-			phaseId,
-			nodeId,
-			role: run.member.label,
-			model: run.member.model,
-			ok: run.ok,
-			durationMs: run.durationMs,
-			...boundedOutput(run.output),
-			...(run.error ? { error: run.error } : {}),
-		});
-	}
-
-	private emitDelta(record: TeamRunRecord): void {
-		this.emitPhase(record);
-		for (const [index, run] of record.generation.entries()) {
-			this.emitNode(record, "generation", `generation:${index}`, run);
-		}
-		for (const [index, run] of record.critiques.entries()) {
-			this.emitNode(record, "critique", `critique:${index}`, run);
-		}
-		if (record.synthesis) this.emitNode(record, "synthesis", "synthesis", record.synthesis);
-		if (record.status === "completed") {
-			this.appendEvent({ kind: "run_completed", runId: record.id, ok: true, durationMs: (record.completedAt ?? Date.now()) - record.startedAt, ...(record.synthesis?.output ? { summary: record.synthesis.output.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
-		} else if (record.status === "failed") {
-			this.appendEvent({ kind: "run_failed", runId: record.id, ok: false, error: record.error ?? "failed" });
-		}
-	}
-
-	create(args: CreateArgs): TeamRunRecord {
-		const record: TeamRunRecord = {
-			version: 1,
-			id: generateId(),
-			team: args.team,
-			prompt: args.prompt,
-			members: args.members,
-			chairman: args.chairman,
-			status: "pending",
-			startedAt: Date.now(),
-			orchestratorPid: process.pid,
-			generation: [],
-			critiques: [],
-		};
-		this.persistFile(record);
-		this.appendEvent({ kind: "run_started", runId: record.id, teamId: record.team, ...(args.protocol ? { protocol: args.protocol } : {}), input: { prompt: record.prompt }, members: record.members, chairman: record.chairman });
-		return record;
+		this.options.appendEntry?.(TEAM_RUN_CUSTOM_TYPE, full);
+		if (this.sessionHydrated) applyEvent(this.sessionRecords, full);
 	}
 
 	startRun(args: StartRunArgs): string {
 		const runId = generateId();
-		this.appendEvent({ kind: "run_started", runId, teamId: args.teamId, protocol: args.protocol, input: { prompt: args.prompt } });
+		this.appendEvent({
+			kind: "run_started",
+			runId,
+			teamId: args.teamId,
+			protocol: args.protocol,
+			input: { prompt: args.prompt },
+			...(args.participants ? { participants: args.participants } : {}),
+		});
 		return runId;
 	}
 
@@ -375,60 +258,27 @@ export class TeamStateManager {
 		this.appendEvent({ kind: "run_failed", runId, ok: false, error });
 	}
 
-	update(record: TeamRunRecord, patch: Partial<TeamRunRecord>): TeamRunRecord {
-		const next: TeamRunRecord = { ...record, ...patch };
-		this.persistFile(next);
-		this.emitDelta(next);
-		return next;
-	}
-
 	rehydrateFromSession(sessionManager: SessionManagerLike): void {
 		const entries = sessionManager.getBranch?.() ?? sessionManager.getEntries?.() ?? [];
 		const events = entries.filter((entry) => entry.type === "custom" && entry.customType === TEAM_RUN_CUSTOM_TYPE && isRunEvent(entry.data)).map((entry) => entry.data as TeamRunEvent);
-		this.data.sessionRecords.clear();
-		this.data.sessionHydrated = true;
-		for (const [id, record] of reduceEvents(events)) this.data.sessionRecords.set(id, record);
-		this.data.sequenceByRun.clear();
-		for (const event of events) this.data.sequenceByRun.set(event.runId, Math.max(this.data.sequenceByRun.get(event.runId) ?? 0, event.seq));
+		this.sessionRecords.clear();
+		this.sessionHydrated = true;
+		for (const [id, record] of reduceEvents(events)) this.sessionRecords.set(id, record);
+		this.sequenceByRun.clear();
+		for (const event of events) this.sequenceByRun.set(event.runId, Math.max(this.sequenceByRun.get(event.runId) ?? 0, event.seq));
 	}
 
 	get(id: string): TeamRunRecord | undefined {
-		const sessionRecord = this.data.sessionRecords.get(id);
-		if (sessionRecord) return sessionRecord;
-		try {
-			const raw = readFileSync(this.recordPath(id), "utf-8");
-			return JSON.parse(raw) as TeamRunRecord;
-		} catch {
-			return undefined;
-		}
+		return this.sessionRecords.get(id);
 	}
 
 	list(): TeamRunRecord[] {
-		if (this.data.sessionHydrated) return [...this.data.sessionRecords.values()];
-		try {
-			this.ensureDirs();
-			const files = readdirSync(this.runsDir).filter((file) => file.endsWith(".json"));
-			return files.flatMap((file) => {
-				try {
-					const raw = readFileSync(join(this.runsDir, file), "utf-8");
-					return [JSON.parse(raw) as TeamRunRecord];
-				} catch {
-					return [];
-				}
-			});
-		} catch {
-			return [];
-		}
+		return this.sessionHydrated ? [...this.sessionRecords.values()] : [];
 	}
 
 	remove(id: string): void {
 		this.appendEvent({ kind: "run_tombstoned", runId: id });
-		this.data.sessionRecords.delete(id);
-		try {
-			rmSync(this.recordPath(id), { force: true });
-		} catch {
-			// best-effort cleanup
-		}
+		this.sessionRecords.delete(id);
 	}
 
 	findOrphans(): TeamRunRecord[] {
@@ -439,8 +289,7 @@ export class TeamStateManager {
 	}
 
 	markFailed(id: string, reason: string): void {
-		const record = this.get(id);
-		if (!record) return;
-		this.update(record, { status: "failed", error: reason, completedAt: Date.now() });
+		if (!this.get(id)) return;
+		this.recordRunFailed(id, reason);
 	}
 }

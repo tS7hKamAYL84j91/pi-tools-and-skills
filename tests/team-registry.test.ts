@@ -1,5 +1,5 @@
 /**
- * Tests for declarative council team specs.
+ * Tests for declarative team specs.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -9,15 +9,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
-import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import {
 	ensureTeamsSettingsDefaults,
 	ensureUserTeamDefaults,
 	loadTeamRegistry,
 	registerTeamTools,
 	requireBuiltinTeam,
-	teamToDebateDefinition,
-	teamToConsultDefinition,
 	type TeamSpec,
 } from "../extensions/pi-teams/teams.js";
 import type { ToolResult } from "../lib/tool-result.js";
@@ -29,8 +26,6 @@ const CONFIG_PATH = join(
 	"config",
 	"config.json",
 );
-const NO_SETTINGS = "/nonexistent/path/settings.json";
-
 interface RegisteredTool {
 	name: string;
 	execute: (
@@ -43,7 +38,7 @@ interface RegisteredTool {
 }
 
 function withTempConfig(fn: (configPath: string, root: string) => void): void {
-	const root = mkdtempSync(join(tmpdir(), "council-teams-"));
+	const root = mkdtempSync(join(tmpdir(), "team-registry-"));
 	try {
 		mkdirSync(join(root, "agents"));
 		mkdirSync(join(root, "teams"));
@@ -123,7 +118,6 @@ describe("loadTeamRegistry", () => {
 		const defaultDebate = requireTeam(registry, "default-debate");
 		expect(defaultDebate).toMatchObject({
 			protocol: "debate",
-			chair: "debate_synthesis",
 		});
 		expect(defaultDebate.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
 		expect(defaultDebate.agentBindings.filter((binding) => binding.subagent === "debate_generation_member")).toHaveLength(4);
@@ -307,14 +301,14 @@ describe("loadTeamRegistry", () => {
 	it("derives role model bindings from object agent entries", () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "shared_member");
-			writeSubagent(root, "chair_agent");
+			writeSubagent(root, "synthesis_agent");
 			writeFileSync(
-				join(root, "teams", "object-council.md"),
+				join(root, "teams", "object-debate.md"),
 				[
 					"---",
 					"schemaVersion: 2",
-					'id: "object-council"',
-					'name: "Object Council"',
+					'id: "object-debate"',
+					'name: "Object Debate"',
 										'protocol: "debate"',
 					"agents:",
 					'  - role: "member"',
@@ -323,23 +317,22 @@ describe("loadTeamRegistry", () => {
 					'  - role: "member"',
 					'    subagent: "shared_member"',
 					'    model: "model/b"',
-					'  - role: "chairman"',
-					'    subagent: "chair_agent"',
-					'    model: "model/chair"',
+					'  - role: "synthesis"',
+					'    subagent: "synthesis_agent"',
+					'    model: "model/synthesis"',
 					"---",
 					"Team body.",
 				].join("\n"),
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "object-council");
+			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "object-debate");
 
-			expect(team.agents).toEqual(["shared_member", "chair_agent"]);
+			expect(team.agents).toEqual(["shared_member", "synthesis_agent"]);
 			expect(team.models).toEqual({
 				members: ["model/a", "model/b"],
-				chairman: "model/chair",
+				synthesis: "model/synthesis",
 			});
-			expect(team.chair).toBe("chair_agent");
 		});
 	});
 
@@ -446,39 +439,6 @@ describe("loadTeamRegistry", () => {
 			expect(existsSync(teamPath)).toBe(true);
 			expect(existsSync(join(userRoot, "agents", "builtin_agent.md"))).toBe(true);
 			expect(readFileSync(teamPath, "utf8")).toBe("custom");
-		});
-	});
-});
-
-describe("team adapters", () => {
-	it("projects default debate team to the current default debate definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
-		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
-		const team = requireTeam(registry, "default-debate");
-		const definition = teamToDebateDefinition({
-			team,
-			settings,
-			snapshot: settings.defaultMembers,
-		});
-
-		expect(definition).toMatchObject({
-			name: settings.defaultDebate.name,
-			purpose: settings.defaultDebate.purpose,
-			members: settings.defaultMembers,
-			chairman: settings.defaultChairman,
-		});
-	});
-
-	it("projects pair teams to the current default pair definition", () => {
-		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
-		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
-		const team = requireTeam(registry, "consult");
-		const definition = teamToConsultDefinition({ team, settings });
-
-		expect(definition).toMatchObject({
-			name: settings.defaultConsult?.name,
-			navigator: settings.defaultConsult?.navigator,
-			purpose: settings.defaultConsult?.purpose,
 		});
 	});
 });

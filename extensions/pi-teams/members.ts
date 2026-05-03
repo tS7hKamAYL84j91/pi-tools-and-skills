@@ -3,7 +3,7 @@
  *
  * - Provider-family heterogeneity: a team must span ≥2 distinct providers
  *   (openai/, anthropic/, google/, ollama/, ...). Same-family teams are
- *   trivially correlated and undermine the point of multi-model deliberation.
+ *   trivially correlated and undermine the point of multi-model debate.
  * - Registry snapshot: capture the available model list at team formation
  *   time; the live registry can change mid-session, but the team's notion
  *   of "members are real" should be stable.
@@ -11,7 +11,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
-	DEFAULT_CHAIRMAN_CANDIDATES,
+	DEFAULT_SYNTHESIS_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
 	resolveTeamSettings,
 } from "./settings.js";
@@ -142,11 +142,11 @@ function padFromSnapshot(
 }
 
 /**
- * Pick the chairman: explicit → user/config default (if available) → candidate list → members[0].
+ * Pick the synthesis: explicit → user/config default (if available) → candidate list → members[0].
  *
  * @param settingsPath - Optional path to settings.json for hermetic tests.
  */
-export function chooseChairmanModel(
+export function chooseSynthesisModel(
 	availableSnapshot: string[],
 	members: string[],
 	requested?: string,
@@ -155,21 +155,21 @@ export function chooseChairmanModel(
 	if (requested) return requested;
 	const resolved = resolveTeamSettings(settingsPath);
 	const available = new Set(availableSnapshot);
-	// Use the resolved chairman only if it's available in the registry
+	// Use the resolved synthesis only if it's available in the registry
 	// (or the registry is empty, meaning we can't validate).
 	if (
-		resolved.defaultChairman &&
-		(available.size === 0 || modelMatches(available, resolved.defaultChairman))
+		resolved.defaultSynthesis &&
+		(available.size === 0 || modelMatches(available, resolved.defaultSynthesis))
 	) {
-		return resolved.defaultChairman;
+		return resolved.defaultSynthesis;
 	}
-	const candidate = DEFAULT_CHAIRMAN_CANDIDATES.find((m) =>
+	const candidate = DEFAULT_SYNTHESIS_CANDIDATES.find((m) =>
 		modelMatches(available, m),
 	);
 	return (
 		candidate ??
 		members[0] ??
-		DEFAULT_CHAIRMAN_CANDIDATES[0] ??
+		DEFAULT_SYNTHESIS_CANDIDATES[0] ??
 		"openai-codex/gpt-5.5"
 	);
 }

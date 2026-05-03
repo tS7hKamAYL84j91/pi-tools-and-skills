@@ -12,7 +12,7 @@ import { registerTeamTools } from "./team-tools.js";
 
 export default function (pi: ExtensionAPI) {
 	ensureUserTeamDefaults();
-	const stateManager = new TeamStateManager(undefined, {
+	const stateManager = new TeamStateManager({
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 	});
 

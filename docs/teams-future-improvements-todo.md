@@ -75,7 +75,7 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 ### ADR-012 — Debate lowering deletes bespoke orchestration before broad renames
 
-**Decision:** Debate now lowers into ordinary graph nodes for generation, critique, and synthesis. The old live-agent deliberation runner and mailbox request path are removed from the execution surface instead of wrapped. Residual preflight helpers remain only for focused tests until the P6 naming cleanup removes legacy council terminology.
+**Decision:** Debate now lowers into ordinary graph nodes for generation, critique, and synthesis. The old live-agent deliberation runner, mailbox request path, and preflight helper surface are removed instead of wrapped.
 
 ### ADR-013 — Bounded pair loops are unrolled DAGs
 
@@ -83,11 +83,19 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 ### ADR-014 — Remove compatibility aliases instead of carrying legacy type names
 
-**Decision:** P6 removes `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, and `CreateArgs.council` rather than preserving aliases. Tests now use `TeamRunDefinition`, `TeamParticipant`, and `team` fields directly.
+**Decision:** P6 removes `CouncilDefinition`, `CouncilMember`, `TeamRunDefinition`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, and compatibility conversion helpers rather than preserving aliases. Tests now target protocol-neutral team registry, graph, prompt, runner, and state surfaces directly.
 
 ### ADR-015 — Remove topology from runtime types and tool output
 
 **Decision:** `topology` is no longer derived, stored on `TeamSpec`, accepted by `requireBuiltinTeam`, or returned by `team_list`. Protocol and explicit graph policy are the only execution selectors.
+
+### ADR-016 — Session state records are protocol-neutral
+
+**Decision:** `TeamStateManager` no longer writes or rehydrates debate-shaped snapshots with generation/critique/synthesis fields, legacy file fallback, or `chairman` participants. The session branch contains only bounded protocol-neutral run, phase, node, completion, failure, and tombstone events; inspection reduces those events into generic phase/node records.
+
+### ADR-017 — Synthesis replaces chairman as the debate output slot
+
+**Decision:** Debate output is named `synthesis` in team bindings, model overrides, settings, prompt contracts, and tests. `chair`/`chairman` compatibility is removed; users should update authored team files to the v2 `synthesis` role and `models.synthesis` binding.
 
 ## Temperature support finding
 
@@ -155,7 +163,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 **Current state:**
 - ✅ `GenerationConfig` type defined and used in handlers
-- ✅ `team-handlers.ts` applies `memberConfigs` and `chairmanConfig` in `deliberate()`
+- ✅ `team-handlers.ts` applies effective execution config through graph node bindings
 - ✅ `pair-coding.ts` accepts `driverConfig` and `navigatorConfig`
 - ✅ `team-graph.ts` applies binding config to graph nodes
 - ✅ `provider-payload.ts` merges `parameters` per-provider
@@ -197,14 +205,14 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ Session hooks registered in `index.ts`
 - ✅ Bounds output persistence with `MAX_PERSISTED_OUTPUT_CHARS = 64_000`
 - ✅ SHA-256 integrity metadata on outputs
-- ✅ Rehydration from session branch before legacy JSON fallback
-- ✅ Protocol-abstract state writer for consult, pair-coding, telephone, graph (not just debate)
+- ✅ Rehydration from session branch only; legacy JSON fallback removed
+- ✅ Protocol-abstract state writer and reducer for consult, pair-coding, telephone, graph, and debate
 
 **Remaining work:** None for P3 scope.
 
 **Verified:**
 - [x] Test reload/resume/fork branch replacement scenarios explicitly
-- [x] Verify legacy council JSON fallback by id without listing global legacy runs after session rehydrate
+- [x] Remove legacy council JSON fallback instead of carrying compatibility state
 - [x] Measure session file bloat controls with 70k-character output truncation/hash tests
 
 **Assignee plan:** Add focused session lifecycle tests.
@@ -248,7 +256,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] Lower telephone to a linear graph using protocol prompt slots
 - [x] Lower debate/council fanout, critique, and synthesis onto graph execution and delete bespoke deliberation runner
 - [x] Replace pair-coding orchestration with bounded static graph unrolling
-- [ ] Keep protocol-specific names in config data only where they are intentional built-in role labels
+- [x] Keep protocol-specific names in config data only where they are intentional built-in protocol labels
 
 **Assignee plan:** Complete. Consult, telephone, debate, and pair-coding all lower through graph execution. P6 now owns residual naming/config cleanup.
 
@@ -299,8 +307,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 **Work:**
 
 1. **Rename core types:**
-   - ✅ `CouncilDefinition` → `TeamRunDefinition`
-   - ✅ `CouncilMember` → `TeamParticipant`
+   - ✅ `CouncilDefinition`/`CouncilMember` removed; `TeamParticipant` remains for protocol-local labels
+   - ✅ `TeamRunDefinition` compatibility type removed
    - ✅ `deliberate()` execution path removed; graph-backed `runTeam()` dispatch is the execution path
 
 2. **Generalize settings:**
@@ -318,7 +326,13 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
    - ✅ `pair-*.md` → `pair-coding-*.md` or `consult-*.md`
 
 6. **Update state events:**
-   - Phase names from protocol contract, not hardcoded strings
+   - ✅ Phase names are protocol ids, not hardcoded debate statuses
+   - ✅ `TeamRunRecord` is protocol-neutral (`phases[]`, `nodes[]`, `summary`) and no longer stores debate-shaped generation/critique/synthesis snapshots
+   - ✅ Legacy file-backed state and live-agent request prompt leftovers removed
+
+7. **Rename debate output role:**
+   - ✅ `chairman` role/model/settings/tool wording replaced with `synthesis`
+   - ✅ Built-in default debate team uses `role: "synthesis"` and `models.synthesis`
 
 **Assignee plan:** Architect to write P6 mini-spec with concrete rename list; Jules to execute in small, tested batches.
 
@@ -328,7 +342,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] No runtime module names contain "council"
 - [x] No runtime module names contain "pair"; `pair-coding.ts` was deleted
 - [x] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
-- [x] `TeamRunDefinition` replaces `CouncilDefinition`
+- [x] `TeamRunDefinition` compatibility type removed with `CouncilDefinition`
 - [x] `runTeam()` graph-backed dispatch replaces `deliberate()`
 - [x] Prompt keys use `{protocol}/{phase}/{slot}` convention
 - [x] New custom workflows can be added via graph protocol config without TypeScript execution changes
@@ -363,16 +377,17 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 5. ✅ Add/update tests to cover current protocol-first schema, prompt chains, session event registration, and graph validation/execution surfaces.
 6. ✅ Start P3-P5 only after P0-P2 local validation was green.
 7. ✅ Remove obsolete council/pair prompt wrapper modules and move tests onto protocol-neutral prompt helpers.
-8. ⏳ Continue P5 graph-core migration; do not call P5 complete until protocol-specific handlers are removed or justified as explicit non-DAG engines.
+8. ✅ P5 graph-core migration completed; remaining protocol-specific names are intentional built-in protocol labels or graph-lowering helpers.
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.09%).
-- `npm test` passed: 34 files, 376 tests.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.05%).
+- `npm test` passed: 32 files, 354 tests.
 - Refactor prompt follow-up completed: baseline `npm run check && npm test` green, `npm run knip` zero findings, and `tests/architecture.test.ts` green.
-- P6 config cleanup completed: bundled agent/prompt filenames and prompt ids no longer use legacy `council*`, `pair*` shorthand; ids use protocol slot paths.
+- P6 config cleanup completed: bundled agent/prompt filenames and prompt ids no longer use legacy shorthand; ids use protocol slot paths.
 - P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams`; unrelated task-brief tests still cover orchestration topology outside pi-teams.
-- P6 alias-removal grep passed: no `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or `council?:` matches remain in `extensions/pi-teams` or `tests`.
+- P6 legacy-name grep passed for `extensions/pi-teams` and team tests: no `council`, `chairman`, `TeamRunDefinition`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or old conversion helpers remain.
+- Refactor prompt follow-up removed dead compatibility files (`agent-ref.ts`, `preflight.ts`, unused live-agent request/framing prompts), renamed tests to team-oriented names, and simplified session state to protocol-neutral event reduction.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run consult` review could not run in this harness because the active installed extension sees a stale user-level `consult` v1 override; local spawned audit/navigation was used instead.

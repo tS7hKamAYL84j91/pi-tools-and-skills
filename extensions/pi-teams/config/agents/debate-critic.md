@@ -1,7 +1,7 @@
 ---
 name: "debate_critic"
 version: "1.0.0"
-description: "Council reviewer for anonymized peer-answer critique."
+description: "Debate reviewer for anonymized peer-answer critique."
 promptId: "debate/critique/system"
 scope: "debate"
 stage: "critique"

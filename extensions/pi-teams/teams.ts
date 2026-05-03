@@ -13,8 +13,6 @@ import {
 	loadBuiltinTeamIds as loadBuiltinTeamIdsImpl,
 	loadTeamRegistry as loadTeamRegistryImpl,
 	requireBuiltinTeam as requireBuiltinTeamImpl,
-	teamToDebateDefinition as teamToDebateDefinitionImpl,
-	teamToConsultDefinition as teamToConsultDefinitionImpl,
 } from "./team-registry.js";
 import { registerTeamTools as registerTeamToolsImpl } from "./team-tools.js";
 import type {
@@ -49,9 +47,5 @@ export const loadTeamRegistry = loadTeamRegistryImpl;
 export const loadBuiltinTeamIds = loadBuiltinTeamIdsImpl;
 /** @public */
 export const requireBuiltinTeam = requireBuiltinTeamImpl;
-/** @public */
-export const teamToDebateDefinition = teamToDebateDefinitionImpl;
-/** @public */
-export const teamToConsultDefinition = teamToConsultDefinitionImpl;
 /** @public */
 export const registerTeamTools = registerTeamToolsImpl;

@@ -1,7 +1,7 @@
 ---
 schemaVersion: 2
 id: "pair-coding"
-name: "Pair Coding"
+name: "Pair-coding"
 description: "Bounded Driver/Navigator implementation, review, and fix workflow."
 protocol: "pair-coding"
 prompts:

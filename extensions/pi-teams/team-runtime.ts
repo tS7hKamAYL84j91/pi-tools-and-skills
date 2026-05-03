@@ -21,10 +21,10 @@ const TeamFormSchema = Type.Object({
 	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone"), Type.Literal("graph")], { description: "Team protocol/engine." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids referenced by the team." }),
 	models: Type.Optional(Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "council: default member model IDs." })),
-		chairman: Type.Optional(Type.String({ description: "council: default synthesis model." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
+		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding: default Driver model." })),
-		navigator: Type.Optional(Type.String({ description: "pair workflows: default Navigator model or agent ref." })),
+		navigator: Type.Optional(Type.String({ description: "navigator workflow default model or agent ref." })),
 	})),
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
@@ -37,10 +37,10 @@ const TeamFormSchema = Type.Object({
 const TeamModelsSchema = Type.Object({
 	id: Type.String({ description: "Team id to update." }),
 	models: Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "council/chain member model IDs." })),
-		chairman: Type.Optional(Type.String({ description: "debate synthesis model." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
+		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding Driver model." })),
-		navigator: Type.Optional(Type.String({ description: "pair Navigator model or agent ref." })),
+		navigator: Type.Optional(Type.String({ description: "navigator workflow model or agent ref." })),
 	}),
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Where to write the model binding. Defaults to current team scope, or user for built-ins." })),
 });
@@ -56,10 +56,10 @@ const TeamRunSchema = Type.Object({
 	files: Type.Optional(Type.Array(Type.String(), { description: "pair-coding: files to load." })),
 	specPath: Type.Optional(Type.String({ description: "pair-coding: spec path; defaults to spec.md or docs/spec.md." })),
 	models: Type.Optional(Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "council: override member model IDs." })),
-		chairman: Type.Optional(Type.String({ description: "council: override synthesis model ID." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate: override member model IDs." })),
+		synthesis: Type.Optional(Type.String({ description: "debate: override synthesis model ID." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding: override Driver model." })),
-		navigator: Type.Optional(Type.String({ description: "pair workflows: override Navigator model or agent ref." })),
+		navigator: Type.Optional(Type.String({ description: "navigator workflow override model or agent ref." })),
 	})),
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
@@ -174,7 +174,7 @@ export function registerTeamRunTool(
 		name: "team_run",
 		label: "Run Team",
 		description: "Run a declarative team by id. Use team_list first if you do not know the team id.",
-		promptSnippet: "Run a declarative council or pair team by id",
+		promptSnippet: "Run a declarative team by id",
 		promptGuidelines: [
 			"Use team_run with id=default-debate for high-impact architecture, strategy, or research where disagreement is valuable.",
 			"Use team_run with id=consult for lightweight Navigator review.",

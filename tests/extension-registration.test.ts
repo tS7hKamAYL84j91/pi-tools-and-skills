@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import councilExtension from "../extensions/pi-teams/index.js";
+import teamExtension from "../extensions/pi-teams/index.js";
 import kanbanExtension from "../extensions/kanban/index.js";
 import matrixExtension from "../extensions/matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
@@ -80,10 +80,10 @@ function expectRegistered(actual: Set<string>, expected: string[]): void {
 }
 
 describe("extension registration smoke tests", () => {
-	it("council registers its tools, commands, and lifecycle hooks", () => {
+	it("team extension registers its tools, commands, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
 
-		councilExtension(api);
+		teamExtension(api);
 
 		expectRegistered(registrations.tools, [
 			"team_delete",

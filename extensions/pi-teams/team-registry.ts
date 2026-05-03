@@ -2,8 +2,6 @@
 
 import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
-import { chooseChairmanModel, chooseTeamMemberModels } from "./members.js";
-import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
@@ -15,14 +13,7 @@ import type {
 	TeamSource,
 	TeamSpec,
 } from "./team-types.js";
-import type { GenerationConfig, GenerationParameterValue, TeamRunDefinition } from "./types.js";
-
-interface ConsultDefinition {
-	name: string;
-	navigator: string;
-	purpose?: string;
-	createdAt: number;
-}
+import type { GenerationConfig, GenerationParameterValue } from "./types.js";
 
 function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
@@ -155,7 +146,7 @@ function modelsFromBindings(bindings: TeamAgentBinding[], protocol: string): Tea
 		.map((binding) => binding.model as string);
 	return {
 		...(members.length > 0 ? { members } : {}),
-		...(firstModelForRole(bindings, ["chairman", "chair", "synthesis"]) ? { chairman: firstModelForRole(bindings, ["chairman", "chair", "synthesis"]) } : {}),
+		...(firstModelForRole(bindings, ["synthesis"]) ? { synthesis: firstModelForRole(bindings, ["synthesis"]) } : {}),
 		...(firstModelForRole(bindings, ["driver", "driver_implementation"]) ? { driver: firstModelForRole(bindings, ["driver", "driver_implementation"]) } : {}),
 		...(firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) ? { navigator: firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) } : {}),
 		...(protocol === "graph" && members.length === 0 && bindings[0]?.model ? { members: [bindings[0].model] } : {}),
@@ -208,12 +199,12 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		return undefined;
 	}
 	const memberModels = stringArray(frontMatter.memberModels);
-	const chairmanModel = optionalString(frontMatter.chairmanModel);
+	const synthesisModel = optionalString(frontMatter.synthesisModel);
 	const driverModel = optionalString(frontMatter.driverModel);
 	const navigatorModel = optionalString(frontMatter.navigatorModel);
 	const legacyModels: TeamModels = {
 		...(memberModels ? { members: memberModels } : {}),
-		...(chairmanModel ? { chairman: chairmanModel } : {}),
+		...(synthesisModel ? { synthesis: synthesisModel } : {}),
 		...(driverModel ? { driver: driverModel } : {}),
 		...(navigatorModel ? { navigator: navigatorModel } : {}),
 	};
@@ -226,7 +217,6 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 	}
 	const reducer = reducerValue === "concat" ? reducerValue : undefined;
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
-	const chair = optionalString(frontMatter.chair) ?? agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]))?.subagent;
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	return {
@@ -239,7 +229,6 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		agents,
 		agentBindings,
 		...(graph || outputs || reducer ? { graph: { edges: graph ?? [], ...(outputs ? { outputs } : {}), ...(reducer ? { reducer } : {}) } } : {}),
-		...(chair ? { chair } : {}),
 		models: Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, protocol),
 		limits: {
 			...(timeoutMs ? { timeoutMs } : {}),
@@ -305,40 +294,4 @@ export function requireBuiltinTeam(id: string, expected: { protocol: string }): 
 	const teamWarnings = registry.warnings.filter((warning) => warning.startsWith(`${id}:`));
 	if (teamWarnings.length > 0) throw new Error(`Team "${id}" is invalid:\n${teamWarnings.join("\n")}`);
 	return team;
-}
-
-function configFromBinding(binding: TeamAgentBinding | undefined): GenerationConfig | undefined {
-	if (binding?.tools === undefined && binding?.parameters === undefined) return undefined;
-	return {
-		...(binding.tools !== undefined ? { tools: binding.tools } : {}),
-		...(binding.parameters !== undefined ? { parameters: binding.parameters } : {}),
-	};
-}
-
-export function teamToDebateDefinition(args: { team: TeamSpec; settings?: ResolvedTeamSettings; snapshot?: string[] }): TeamRunDefinition {
-	if (args.team.protocol !== "debate") throw new Error(`Team ${args.team.id} is not a debate team.`);
-	const snapshot = args.snapshot ?? [];
-	const settings = args.settings ?? resolveTeamSettings();
-	const members = args.team.models.members ?? chooseTeamMemberModels(snapshot);
-	return {
-		name: settings.defaultDebate.name,
-		purpose: settings.defaultDebate.purpose,
-		members,
-		chairman: args.team.models.chairman ?? chooseChairmanModel(snapshot, members),
-		memberConfigs: args.team.agentBindings.filter((binding) => roleMatches(binding.role, ["member"])).map(configFromBinding),
-		chairmanConfig: configFromBinding(args.team.agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair", "synthesis"]))),
-		createdAt: Date.now(),
-	};
-}
-
-export function teamToConsultDefinition(args: { team: TeamSpec; settings?: ResolvedTeamSettings }): ConsultDefinition {
-	if (args.team.protocol !== "consult") throw new Error(`Team ${args.team.id} is not a consult team.`);
-	const settings = args.settings ?? resolveTeamSettings();
-	if (!settings.defaultConsult) throw new Error("No default consult team configured.");
-	return {
-		name: settings.defaultConsult.name,
-		navigator: settings.defaultConsult.navigator,
-		...(settings.defaultConsult.purpose ? { purpose: settings.defaultConsult.purpose } : {}),
-		createdAt: Date.now(),
-	};
 }

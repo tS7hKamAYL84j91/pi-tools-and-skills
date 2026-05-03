@@ -1,5 +1,5 @@
 /**
- * Council runner — invokes a single pi model in non-interactive mode.
+ * Team model runner — invokes a single pi model in non-interactive mode.
  *
  * Persistent RPC agents (lib/spawn-service) are overkill for one-shot
  * team run queries; spinning up the RPC channel costs more than the

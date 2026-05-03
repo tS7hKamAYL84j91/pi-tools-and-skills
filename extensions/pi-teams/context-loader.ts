@@ -38,7 +38,7 @@ export interface LoadedFile {
 	content: string;
 }
 
-export interface PairContext {
+export interface TeamContext {
 	projectRoot: string;
 	instructions?: string;
 	spec?: string;
@@ -105,8 +105,8 @@ interface LoadArgs {
 	files?: string[];
 }
 
-/** Build a PairContext for a pair-coding team invocation. */
-export function loadPairContext(args: LoadArgs): PairContext {
+/** Build file/spec context for a team invocation. */
+export function loadTeamContext(args: LoadArgs): TeamContext {
 	const projectRoot = findProjectRoot(args.cwd);
 	const warnings: string[] = [];
 	const loaded: LoadedEntry[] = [];

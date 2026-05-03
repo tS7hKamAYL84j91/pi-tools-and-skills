@@ -27,9 +27,9 @@ const PROTOCOL_PROMPT_CONTRACTS: Record<string, readonly ProtocolPromptSlot[]> =
 	debate: [
 		{ id: "generation.system", kind: "system", defaultPromptId: "debate/generation/system", roles: ["member"] },
 		{ id: "critique.system", kind: "system", defaultPromptId: "debate/critique/system", roles: ["critic"] },
-		{ id: "synthesis.system", kind: "system", defaultPromptId: "debate/synthesis/system", roles: ["chairman", "chair"] },
+		{ id: "synthesis.system", kind: "system", defaultPromptId: "debate/synthesis/system", roles: ["synthesis"] },
 		{ id: "critique.template", kind: "template", defaultPromptId: "debate/critique/template", roles: ["critic"] },
-		{ id: "synthesis.template", kind: "template", defaultPromptId: "debate/synthesis/template", roles: ["chairman", "chair"] },
+		{ id: "synthesis.template", kind: "template", defaultPromptId: "debate/synthesis/template", roles: ["synthesis"] },
 	],
 	consult: [
 		{ id: "navigator.system", kind: "system", defaultPromptId: "consult/navigator/system", roles: ["navigator"] },

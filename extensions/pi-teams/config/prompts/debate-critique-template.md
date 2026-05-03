@@ -1,6 +1,6 @@
 ---
 id: debate/critique/template
-title: "Council critique prompt template"
+title: "Debate critique prompt template"
 scope: debate
 stage: critique
 kind: template

@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import councilExtension from "../extensions/pi-teams/index.js";
+import teamExtension from "../extensions/pi-teams/index.js";
 import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
@@ -97,7 +97,7 @@ function contextFor(models: string[]): ExtensionContext {
 	} as unknown as ExtensionContext;
 }
 
-describe("visible council config", () => {
+describe("visible team config", () => {
 	it("uses a minimal team-root config and loads defaults from team files", () => {
 		const visible = readVisibleConfig();
 		const generationPrompt = readMarkdownPrompt(AGENTS_DIR, "debate-generation-member.md");
@@ -111,19 +111,18 @@ describe("visible council config", () => {
 			"ollama/qwen3.5:cloud",
 			"ollama/glm-5.1:cloud",
 		]);
-		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
+		expect(resolved.defaultSynthesis).toBe("openai-codex/gpt-5.5");
 		expect(resolved.defaultConsult?.navigator).toBe("ollama/qwen3.5:cloud");
 		expect(generationPrompt.id).toBe("debate/generation/system");
 		expect(navigatorBriefPrompt.id).toBe("pair-coding/navigator-brief/system");
 		expect(resolved.prompts["debate/generation/system"]).toEqual(generationPrompt.lines);
 		expect(resolved.prompts["pair-coding/navigator-brief/system"]).toEqual(navigatorBriefPrompt.lines);
 		expect(resolved.prompts["pair-coding/navigator-brief/template"]).toContain("");
-		expect(resolved.prompts.agentRequestTemplate).toContain("{{replyTag}}");
 	});
 
 	it("exposes configured workflows as teams without session bootstrap", async () => {
 		const fake = createFakeApi();
-		councilExtension(fake.api);
+		teamExtension(fake.api);
 		const teamList = fake.tools.get("team_list");
 		if (!teamList) throw new Error("team_list not registered");
 		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);

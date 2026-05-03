@@ -1,7 +1,7 @@
 ---
 id: consult/primer
-title: "Pair activation primer"
-scope: pair-coding
+title: "Consult activation primer"
+scope: consult
 stage: primer
 kind: template
 ---

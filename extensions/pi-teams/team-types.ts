@@ -22,7 +22,7 @@ export interface SubagentSpec extends GenerationConfig {
 
 export interface TeamModels {
 	members?: string[];
-	chairman?: string;
+	synthesis?: string;
 	driver?: string;
 	navigator?: string;
 }
@@ -70,7 +70,6 @@ export interface TeamSpec {
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
 	graph?: TeamGraph;
-	chair?: string;
 	models: TeamModels;
 	limits: TeamLimits;
 	source: TeamSource;

@@ -1,6 +1,6 @@
 ---
 id: pair-coding/navigator-review/template
-title: "Pair navigator review prompt template"
+title: "Pair-coding navigator review prompt template"
 scope: pair-coding
 stage: navigator-review
 kind: template

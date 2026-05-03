@@ -128,15 +128,15 @@ describe("team graph execution", () => {
 		const debateTeam = team({
 			id: "debate-test",
 			protocol: "debate",
-			agents: ["member_agent", "critic_agent", "chair_agent"],
+			agents: ["member_agent", "critic_agent", "synthesis_agent"],
 			agentBindings: [
 				{ role: "member", subagent: "member_agent", model: "test/a", label: "Alpha" },
 				{ role: "member", subagent: "member_agent", model: "test/b", label: "Beta" },
 				{ role: "critic", subagent: "critic_agent" },
-				{ role: "chairman", subagent: "chair_agent", model: "test/chair" },
+				{ role: "synthesis", subagent: "synthesis_agent", model: "test/synthesis" },
 			],
 			graph: undefined,
-			models: { members: ["test/a", "test/b"], chairman: "test/chair" },
+			models: { members: ["test/a", "test/b"], synthesis: "test/synthesis" },
 		});
 		const plan = graphPlanForSimpleProtocol({ team: debateTeam, params: { id: "debate-test", prompt: "ship?" }, settings });
 		if (!plan) throw new Error("missing debate graph plan");
@@ -164,7 +164,7 @@ describe("team graph execution", () => {
 
 	it("lowers pair-coding to an unrolled review and fix graph", async () => {
 		const pairTeam = team({
-			id: "pair-test",
+			id: "pair-coding-test",
 			protocol: "pair-coding",
 			agents: ["navigator_agent", "driver_agent"],
 			agentBindings: [
@@ -177,8 +177,8 @@ describe("team graph execution", () => {
 			models: { driver: "test/driver", navigator: "test/nav" },
 			limits: { maxFixPasses: 1 },
 		});
-		const plan = graphPlanForSimpleProtocol({ team: pairTeam, params: { id: "pair-test", prompt: "change x" }, settings });
-		if (!plan) throw new Error("missing pair graph plan");
+		const plan = graphPlanForSimpleProtocol({ team: pairTeam, params: { id: "pair-coding-test", prompt: "change x" }, settings });
+		if (!plan) throw new Error("missing pair-coding graph plan");
 		const prompts = new Map<string, string>();
 		const result = await runTeamGraph({
 			team: plan.team,

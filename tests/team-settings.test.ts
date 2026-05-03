@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-	DEFAULT_CHAIRMAN_CANDIDATES,
+	DEFAULT_SYNTHESIS_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
 	resolveTeamSettings,
 } from "../extensions/pi-teams/settings.js";
@@ -13,7 +13,7 @@ import {
 function withTempDir(fn: (dir: string) => void) {
 	const dir = join(
 		tmpdir(),
-		`council-test-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		`team-test-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 	);
 	mkdirSync(dir, { recursive: true });
 	try {
@@ -37,14 +37,14 @@ function createTeamRoot(root: string): void {
 	mkdirSync(join(root, "prompts"), { recursive: true });
 }
 
-function writeDefaultCouncil(root: string, members: string[], chairman: string): void {
+function writeDefaultDebate(root: string, members: string[], synthesis: string): void {
 	writeFileSync(
 		join(root, "teams", "default-debate.md"),
 		[
 			"---",
 			'schemaVersion: 2',
 			'id: "default-debate"',
-			'name: "Default Council"',
+			'name: "Default Debate"',
 			'description: "Architecture review"',
 			'protocol: "debate"',
 			"agents:",
@@ -54,9 +54,9 @@ function writeDefaultCouncil(root: string, members: string[], chairman: string):
 				`    model: "${model}"`,
 				`    label: "Member ${index + 1}"`,
 			]),
-			'  - role: "chairman"',
-			'    subagent: "chair_agent"',
-			`    model: "${chairman}"`,
+			'  - role: "synthesis"',
+			'    subagent: "synthesis_agent"',
+			`    model: "${synthesis}"`,
 			"---",
 			"",
 		].join("\n"),
@@ -64,14 +64,14 @@ function writeDefaultCouncil(root: string, members: string[], chairman: string):
 	);
 }
 
-function writePairConsult(root: string, navigator: string): void {
+function writeConsult(root: string, navigator: string): void {
 	writeFileSync(
 		join(root, "teams", "consult.md"),
 		[
 			"---",
 			'schemaVersion: 2',
 			'id: "consult"',
-			'name: "Pair Consult"',
+			'name: "Consult"',
 			'description: "Navigator review"',
 			'protocol: "consult"',
 			"agents:",
@@ -96,9 +96,9 @@ describe("DEFAULT_MEMBER_CANDIDATES", () => {
 	});
 });
 
-describe("DEFAULT_CHAIRMAN_CANDIDATES", () => {
+describe("DEFAULT_SYNTHESIS_CANDIDATES", () => {
 	it("comes from the built-in default-debate team", () => {
-		expect(DEFAULT_CHAIRMAN_CANDIDATES).toEqual([
+		expect(DEFAULT_SYNTHESIS_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
 			"google-gemini-cli/gemini-3.1-pro-preview",
 			"ollama/qwen3.5:cloud",
@@ -111,18 +111,18 @@ describe("resolveTeamSettings", () => {
 	it("returns built-in team defaults when no settings file exists", () => {
 		const resolved = resolveTeamSettings("/nonexistent/path/settings.json");
 		expect(resolved.defaultMembers).toEqual(DEFAULT_MEMBER_CANDIDATES);
-		expect(resolved.defaultChairman).toBe("openai-codex/gpt-5.5");
+		expect(resolved.defaultSynthesis).toBe("openai-codex/gpt-5.5");
 	});
 
 	it("uses teams.roots as the source of team defaults", () => {
 		withTempDir((root) => {
 			createTeamRoot(root);
-			writeDefaultCouncil(root, ["custom/model-1", "custom/model-2"], "custom/chair");
-			writePairConsult(root, "custom/navigator");
+			writeDefaultDebate(root, ["custom/model-1", "custom/model-2"], "custom/synthesis");
+			writeConsult(root, "custom/navigator");
 			withTempSettings({ teams: { roots: [root] } }, (file) => {
 				const resolved = resolveTeamSettings(file);
 				expect(resolved.defaultMembers).toEqual(["custom/model-1", "custom/model-2"]);
-				expect(resolved.defaultChairman).toBe("custom/chair");
+				expect(resolved.defaultSynthesis).toBe("custom/synthesis");
 				expect(resolved.defaultConsult?.navigator).toBe("custom/navigator");
 			});
 		});

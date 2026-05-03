@@ -8,20 +8,20 @@ import {
 	TEAM_MEMBER_MAX,
 	TEAM_MEMBER_MIN,
 	checkHeterogeneity,
-	chooseChairmanModel,
+	chooseSynthesisModel,
 	chooseTeamMemberModels,
 	providerOf,
 } from "../extensions/pi-teams/members.js";
 
-function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairman?: string }, fn: (settingsPath: string) => T): T {
-	const dir = join(tmpdir(), `council-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultSynthesis?: string }, fn: (settingsPath: string) => T): T {
+	const dir = join(tmpdir(), `team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	const root = join(dir, "team-root");
 	mkdirSync(join(root, "teams"), { recursive: true });
 	mkdirSync(join(root, "agents"), { recursive: true });
 	mkdirSync(join(root, "prompts"), { recursive: true });
 	const file = join(dir, "settings.json");
 	const members = teamConfig.defaultMembers ?? ["openai-codex/gpt-5.5", "google-gemini-cli/gemini-3.1-pro-preview", "ollama/qwen3.5:cloud"];
-	const chairman = teamConfig.defaultChairman ?? members[0] ?? "openai-codex/gpt-5.5";
+	const synthesis = teamConfig.defaultSynthesis ?? members[0] ?? "openai-codex/gpt-5.5";
 	try {
 		writeFileSync(file, JSON.stringify({ teams: { roots: [root] } }));
 		writeFileSync(
@@ -30,7 +30,7 @@ function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairma
 				"---",
 				"schemaVersion: 2",
 				'id: "default-debate"',
-				'name: "Default Council"',
+				'name: "Default Debate"',
 				'protocol: "debate"',
 				"agents:",
 				...members.flatMap((model, index) => [
@@ -39,9 +39,9 @@ function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairma
 					`    model: "${model}"`,
 					`    label: "Member ${index + 1}"`,
 				]),
-				'  - role: "chairman"',
-				'    subagent: "chair_agent"',
-				`    model: "${chairman}"`,
+				'  - role: "synthesis"',
+				'    subagent: "synthesis_agent"',
+				`    model: "${synthesis}"`,
 				"---",
 				"",
 			].join("\n"),
@@ -96,7 +96,7 @@ describe("checkHeterogeneity", () => {
 		expect(result.reason).toContain("openai-codex");
 	});
 
-	it("fails on an empty council", () => {
+	it("fails on an empty team", () => {
 		const result = checkHeterogeneity([]);
 		expect(result.ok).toBe(false);
 		expect(result.providers).toEqual([]);
@@ -171,9 +171,9 @@ describe("chooseTeamMemberModels", () => {
 	});
 });
 
-// ── chooseChairmanModel ──────────────────────────────────────────
+// ── chooseSynthesisModel ──────────────────────────────────────────
 
-describe("chooseChairmanModel", () => {
+describe("chooseSynthesisModel", () => {
 	const snapshot = [
 		"google-gemini-cli/gemini-3.1-pro-preview",
 		"openai-codex/gpt-5.5",
@@ -181,66 +181,66 @@ describe("chooseChairmanModel", () => {
 
 	it("honors an explicit request", () => {
 		expect(
-			chooseChairmanModel(snapshot, ["a/m1"], "custom/chairman", NO_SETTINGS),
-		).toBe("custom/chairman");
+			chooseSynthesisModel(snapshot, ["a/m1"], "custom/synthesis", NO_SETTINGS),
+		).toBe("custom/synthesis");
 	});
 
-	it("picks resolved default chairman when it is in the registry", () => {
+	it("picks resolved default synthesis when it is in the registry", () => {
 		withSettings(
-			{ defaultChairman: "openai-codex/gpt-5.5" },
+			{ defaultSynthesis: "openai-codex/gpt-5.5" },
 			(settingsPath) => {
-				const chairman = chooseChairmanModel(
+				const synthesis = chooseSynthesisModel(
 					snapshot,
 					["openai-codex/gpt-5.5"],
 					undefined,
 					settingsPath,
 				);
-				expect(chairman).toBe("openai-codex/gpt-5.5");
+				expect(synthesis).toBe("openai-codex/gpt-5.5");
 			},
 		);
 	});
 
-	it("falls back to chairman candidates when resolved default is not in registry", () => {
-		// User's default chairman isn't in the snapshot at all
+	it("falls back to synthesis candidates when resolved default is not in registry", () => {
+		// User's default synthesis isn't in the snapshot at all
 		withSettings(
-			{ defaultChairman: "proprietary/ultra-model" },
+			{ defaultSynthesis: "proprietary/ultra-model" },
 			(settingsPath) => {
-				const chairman = chooseChairmanModel(
+				const synthesis = chooseSynthesisModel(
 					snapshot,
 					["google-gemini-cli/gemini-3.1-pro-preview"],
 					undefined,
 					settingsPath,
 				);
-				// Should fall through to DEFAULT_CHAIRMAN_CANDIDATES matching snapshot
-				expect(snapshot).toContain(chairman);
+				// Should fall through to DEFAULT_SYNTHESIS_CANDIDATES matching snapshot
+				expect(snapshot).toContain(synthesis);
 			},
 		);
 	});
 
 	it("uses resolved default when registry is empty (can't validate)", () => {
 		withSettings(
-			{ defaultChairman: "proprietary/ultra-model" },
+			{ defaultSynthesis: "proprietary/ultra-model" },
 			(settingsPath) => {
-				const chairman = chooseChairmanModel(
+				const synthesis = chooseSynthesisModel(
 					[],
 					["only/member"],
 					undefined,
 					settingsPath,
 				);
 				// Empty snapshot → can't validate → use resolved default
-				expect(chairman).toBe("proprietary/ultra-model");
+				expect(synthesis).toBe("proprietary/ultra-model");
 			},
 		);
 	});
 
 	it("falls back to members[0] when no candidate and no default match", () => {
-		const chairman = chooseChairmanModel(
+		const synthesis = chooseSynthesisModel(
 			["unknown/host"],
 			["only/member"],
 			undefined,
 			NO_SETTINGS,
 		);
-		// No settings/config default in registry, no chairman candidates match
-		expect(chairman).toBe("only/member");
+		// No settings/config default in registry, no synthesis candidates match
+		expect(synthesis).toBe("only/member");
 	});
 });

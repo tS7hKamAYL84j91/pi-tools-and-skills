@@ -1,7 +1,7 @@
 ---
 name: "debate_generation_member"
 version: "1.0.0"
-description: "Independent debate member for first-pass generation in a multi-model deliberation."
+description: "Independent debate member for first-pass generation in a multi-model debate."
 promptId: "debate/generation/system"
 scope: "debate"
 stage: "generation"
