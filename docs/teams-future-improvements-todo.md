@@ -157,6 +157,14 @@ flowchart LR
 
 **Decision:** P8 uses `subagent: "agent:<registered-name>"` as the only live-agent binding syntax. Live peers are executed by the generic graph node runner via a bounded Maildir request/response token, so scheduling, timeout, prompt packaging, output reduction, and session events stay in the existing graph path. Ambient team-level retries do not apply to live-agent nodes because each attempt sends an external request; retry requires an explicit binding or runtime override. Team files remain inspectable; live bindings do not create file-backed subagent manifest stubs and do not receive hidden tools, parameters, or transport details.
 
+### ADR-030 — Do not migrate pi-teams to LangGraph now
+
+**Decision:** P9 closes with a do-not-migrate decision. The branch-only spike at `origin/langgraph-spike` commit `94628e8` proved LangGraph can reproduce the current DAG semantics, but it did not produce objective simplification. Pi-specific adapters remain required for prompt packaging, session events, one-shot model calls, live-agent routing, retries, timeouts, cancellation, skipped dependents, and output reduction. The spike also added dependency/audit surface and required a structural cast for dynamic team role names. Keep the in-repo DAG executor until a future concrete requirement proves LangGraph deletes more code than it adds without reducing inspectability.
+
+### ADR-031 — Close P7 as a non-change after the P9 spike
+
+**Decision:** Do not continue the paused P7 protocol-contract extraction or team-local mini-DSL. Current v2 team manifests are already inspectable for role bindings, prompt refs, models, limits, and graph policy; moving the remaining built-in prompt/slot/lowering metadata into a larger manifest DSL would add authoring surface without a concrete user-visible simplification. Future protocol cleanup must be driven by a specific smell or failing fitness function, not by broad extraction goals.
+
 
 ## Temperature support finding
 
@@ -428,76 +436,50 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P7 — Make team manifests the execution contract
 
-**Status:** ⏸️ **PAUSED — superseded by LangGraph review before more protocol DSL**
+**Status:** ✅ **CLOSED — no broad protocol DSL after P9 spike**
 
-**Goal:** Make each team file self-contained and inspectable without growing a bespoke protocol mini-language. P7 remains valid only where it keeps existing team files clear; the attempted broader move of prompt slots, model slots, form hints, and lowering policy into manifests is too complex and is paused pending P9.
+**Goal:** Keep each team file self-contained and inspectable without growing a bespoke protocol mini-language. The P7 extraction idea was evaluated and narrowed: current v2 team files already show the execution-critical facts users need (roles, prompt refs, model bindings, tools/parameters, limits, and graph policy). The attempted broader move of prompt-slot contracts, model slots, form hints, and lowering policy into manifests was rejected as extra DSL surface.
 
-**Clarified model:**
+**Decision path:**
 
-- `protocol` is a reusable execution family/primitive selector, so many teams can share behavior such as fanout/synthesis, single-node review, linear relay, bounded review/fix, or explicit graph.
-- The team manifest owns the concrete contract for that team: roles, prompt slots, default prompt asset ids, role matchers, generated-team metadata, graph policy, and model slots.
-- TypeScript supplies generic validation/execution primitives and a small lowering-kind dispatcher; it should not be a built-in protocol catalog.
+- ADR-027 rejected a separate `config/protocols` catalog because it would duplicate team data.
+- ADR-028 paused team-local contract expansion until the graph runtime question was answered.
+- P9's spike showed LangGraph did not simplify enough to justify a new dependency or more abstraction.
+- ADR-031 closes P7 as a non-change: do not add manifest fields until a concrete user-visible gap demands them.
 
-**Current TypeScript protocol-name footprint:**
+**Current inspectable contract:**
 
-```text
-pair-coding  5 modules
-council      0 modules
-telephone    5 modules
-debate       7 modules
-consult      6 modules
-```
-
-Current matching modules:
-
-- `protocol-contracts.ts` — prompt-slot contracts are code-hosted configuration.
-- `team-lowering.ts` — built-in protocol graph plans are still selected by protocol name.
-- `team-handlers.ts` — built-in protocol dispatch and model-slot inspection still branch on protocol names.
-- `team-form.ts` / `team-runtime.ts` — generated-team protocol choices and model prompts are hardcoded.
-- `settings.ts` / `members.ts` — built-in default team ids/protocol labels remain in runtime helpers.
+- Built-in team manifests declare `schemaVersion: 2`, `protocol`, role bindings, prompt refs, model bindings, limits, and any explicit graph policy.
+- Authored graph teams can already be added by manifest only when they provide `protocol: "graph"`, role bindings, edges, and outputs.
+- TypeScript keeps only the current generic execution primitives and the small built-in protocol lowering helpers needed by existing bundled workflows.
 
 **Work:**
 
-1. **Extend v2 team manifests, not separate protocol files:**
-   - Add team-local fields for prompt slot contracts, model slots, generation/form hints, and lowering policy.
-   - Keep prompt asset bodies in `config/prompts`/agent files; keep references in the team file.
-   - Do not add `extensions/pi-teams/config/protocols/*`.
+1. **Do not add protocol config files or a team-local DSL:**
+   - ✅ No `extensions/pi-teams/config/protocols/*` catalog is introduced.
+   - ✅ No compatibility aliases or v1 manifest support are added.
+   - ✅ Existing v2 team files remain the inspectable source for execution configuration.
 
-2. **Replace `protocol-contracts.ts` tables with team-local loading:**
-   - Keep generic validation/resolution helpers in TypeScript.
-   - Resolve prompt-slot contracts from the selected `TeamSpec`.
-   - Unknown custom teams should work when their team manifest supplies a contract and graph/lowering policy.
-
-3. **Move built-in graph lowering choices into team manifests where practical:**
-   - Static DAG policies should be data in the team file.
-   - Keep only generic primitives in TypeScript: DAG execution, static unrolling, joins, retries, output reduction, prompt packaging.
-   - If pair-coding needs bounded static unrolling, express the loop policy declaratively in that team manifest rather than by checking `protocol === "pair-coding"`.
-
-4. **Generalize team authoring/runtime surfaces:**
-   - `team_form` should discover generated team templates from built-in team manifests or explicit generation hints, not a hardcoded protocol set.
-   - `team_runtime` descriptions should come from team metadata where possible.
-   - Model-slot prompts should come from team-local model-slot metadata.
-
-5. **Tighten fitness functions:**
-   - Add an architecture test that limits built-in protocol-name references in generic `.ts` runtime modules.
-   - Allow protocol names in team/config assets, tests, and narrowly named protocol-fixture tests.
+2. **Keep current code unless evidence appears:**
+   - ✅ `PROTOCOL_PROMPT_CONTRACTS` remains a small implementation table for current built-ins rather than expanding into a new user-facing schema.
+   - ✅ Built-in protocol branches remain only where they represent current bundled workflows and graph-lowering helpers.
+   - ✅ Further extraction is deferred until a concrete smell, failing architecture test, or user-visible simplification exists.
 
 **Acceptance criteria:**
 
-- [ ] `PROTOCOL_PROMPT_CONTRACTS` is removed from TypeScript.
-- [ ] Built-in prompt slots are defined in built-in team manifests.
-- [ ] `team_form` discovers supported generated teams/protocol families from team-local metadata.
-- [ ] Generic runtime modules no longer branch directly on `debate`, `consult`, `telephone`, or `pair-coding` except in migration-free test fixtures or explicit lowering-kind primitives.
-- [ ] A new graph-backed team can be added by team manifest changes only, without TypeScript execution changes.
-- [ ] `npm run check`, `npm test`, and architecture tests pass.
+- [x] Separate protocol config files were not added.
+- [x] Team-local contract expansion was evaluated and rejected as over-engineering.
+- [x] Graph-backed custom teams remain addable by team manifest only.
+- [x] LangGraph was evaluated before further protocol extraction.
+- [x] `npm run check`, `npm test`, and architecture tests pass after closing the decision.
 
 **KISS/YAGNI constraints:**
 
 - ❌ Do not introduce a large DSL or expression language.
 - ❌ Do not add separate protocol config files that duplicate team definitions.
 - ❌ Do not add compatibility aliases for old protocol names or prompt ids.
-- ✅ Prefer small team-local declarative fields matching the current fields exactly.
-- ✅ Keep TypeScript as validation/execution primitives, not built-in protocol catalog storage.
+- ✅ Keep v2 manifests clear and inspectable.
+- ✅ Make future protocol cleanup evidence-gated.
 
 ---
 
@@ -563,62 +545,45 @@ Current matching modules:
 
 ## P9 — Evaluate LangGraph before further protocol extraction
 
-**Status:** 🟡 **EVALUATION WRITTEN — spike recommended before implementation**
+**Status:** ✅ **COMPLETE — spike done; do not migrate now**
 
-**Goal:** Determine whether LangGraph would reduce the custom TypeScript needed for team graph planning/execution before adding more protocol/config machinery. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
+**Goal:** Determine whether LangGraph would reduce the custom TypeScript needed for team graph planning/execution before adding more protocol/config machinery. If it materially simplified the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
 
-**Why now:**
-
-The P7 team-local contract expansion was becoming a bespoke mini-DSL. LangGraph should be evaluated against the current executor now, so the project can choose framework-backed graph execution or deliberately keep the small in-repo DAG executor before writing more protocol configuration code.
+**Decision:** Keep the in-repo DAG executor. Do not merge the LangGraph dependency or spike branch into `main`.
 
 **Evaluation:** `docs/teams-p9-langgraph-evaluation.md`
 
-**Research questions:**
+**Spike evidence:**
 
-1. **Code reduction:**
-   - Which parts of `team-graph.ts`, `team-lowering.ts`, retry scheduling, dependency handling, and output reduction would LangGraph replace?
-   - How many lines/modules disappear versus how many adapter/config modules are added?
+- Branch-only prototype: `origin/langgraph-spike` at commit `94628e8` (`Spike LangGraph team graph adapter`).
+- Prototype coverage: fanout/concurrency, skipped dependents, bounded retries, timeout non-retry behavior, parent cancellation, and output reduction.
+- Prototype validation: `npm run check` and `npm test` green on the spike branch (34 files, 374 tests).
+- Prototype cost: 229 lines of spike test/adapter code, `package-lock.json` +389 lines, and five added dev dependencies/peers (`@langchain/langgraph`, `@langchain/core`, `zod`, `zod-to-json-schema`, plus lockfile transitives).
+- Audit delta: current `main` already reports 15 audit findings; the LangGraph spike branch reports 19, adding four moderate dependency findings tied to LangGraph packages and shared `uuid` transitives.
+- Simplification result: zero net reduction in abstraction complexity. Pi-specific wrappers still own prompt packaging, session events, model/live-agent routing, retry/timeout/cancellation semantics, skipped-dependent behavior, and output reduction.
+- Type result: dynamic team role names required a structural cast around LangGraph's statically narrowed node-name generics.
 
-2. **Pi integration fit:**
-   - Can LangGraph preserve existing `pi-teams:run` session events, bounded output persistence, cancellation, timeout, retry, and progress reporting semantics?
-   - Can live `agent:<name>` nodes from P8 and one-shot model nodes share the same graph abstraction cleanly?
+**Council/navigator review:**
 
-3. **Configuration fit:**
-   - Can P7 team-local execution contracts compile to LangGraph nodes/edges without a large custom DSL?
-   - Can bounded pair-coding unrolling stay declarative and inspectable?
-
-4. **Operational risk:**
-   - Dependency size, ESM compatibility, Node version support, transitive dependency risk, and test ergonomics.
-   - Whether LangGraph failure modes are easier or harder to inspect than the current small DAG executor.
-
-**Work:**
-
-1. **Write a short spike document:**
-   - Add `docs/teams-p9-langgraph-evaluation.md` with current executor responsibilities, LangGraph mapping, estimated deletion/addition counts, risks, and recommendation.
-
-2. **Prototype on a branch only:**
-   - Convert one graph-backed protocol/config fixture to LangGraph.
-   - Do not merge the prototype unless the evaluation recommends migration.
-
-3. **Decision gate:**
-   - Use council/navigator review before accepting a new dependency.
-   - Require objective simplification: less code, fewer custom scheduling paths, equal or better tests, and no loss of inspectability.
+- Council review recommended closing P9 with a do-not-migrate decision: the spike proves feasibility, not necessity.
+- Navigator review agreed with the KISS/YAGNI direction and requested stronger wording around abstraction complexity, type inference loss, and audit evidence.
+- Local audit agent agreed: LangGraph is viable but unnecessary for the current static lowered graph model.
 
 **Acceptance criteria:**
 
-- [ ] P7 is complete before implementation starts.
-- [ ] LangGraph spike document exists with a migrate / do-not-migrate recommendation.
-- [ ] Prototype proves session events, retries, timeouts, cancellation, graph output reduction, and prompt packaging still work.
-- [ ] Migration only proceeds if it deletes more custom graph code than it adds in adapters/config glue.
-- [ ] `npm run check`, `npm test`, and focused graph tests pass after any accepted migration.
+- [x] LangGraph spike document exists with a do-not-migrate recommendation.
+- [x] Branch-only prototype proves retries, timeouts, cancellation, skipped dependents, and output reduction can be preserved only by keeping Pi-owned wrappers.
+- [x] Migration was rejected because it does not delete more custom graph code than it adds in adapters/config glue.
+- [x] `npm run check`, `npm test`, and focused graph tests passed on the spike branch.
+- [x] Main stays dependency-clean: no LangGraph package or lockfile changes are merged.
 
 **KISS/YAGNI constraints:**
 
 - ❌ Do not add LangGraph just because it is popular.
 - ❌ Do not hide team behavior behind opaque framework callbacks.
-- ❌ Do not migrate before P7 makes protocols config-driven.
-- ✅ Prefer the current small executor if LangGraph does not clearly reduce code and complexity.
-- ✅ Treat LangGraph as an evidence-gated dependency, not an assumed direction.
+- ❌ Do not migrate without objective code deletion and audit posture improvement.
+- ✅ Prefer the current small executor because LangGraph does not clearly reduce code or complexity now.
+- ✅ Revisit only for a concrete future requirement such as durable graph checkpoints, human-in-the-loop graph state, or substantial deletion of Pi-owned scheduling code.
 
 ## Delegation plan
 
@@ -640,6 +605,7 @@ The P7 team-local contract expansion was becoming a bespoke mini-DSL. LangGraph 
 
 ## Latest validation
 
+- 2026-05-03 P9 LangGraph decision completed: pushed branch-only spike `origin/langgraph-spike` at `94628e8`, proving LangGraph can preserve fanout/concurrency, skipped dependents, retries, timeout non-retry behavior, parent cancellation, and output reduction. Spike validation green: `npm run check` and `npm test` (34 files, 374 tests). Decision: do not merge LangGraph because it produced zero net reduction in abstraction complexity, added dependency/audit surface, and weakened type inference for dynamic team roles. Council, navigator, and local audit review agreed with closing P9 as do-not-migrate. Main validation green after docs update: `npm run check`, `npm test`, and `npm test -- tests/architecture.test.ts`.
 - 2026-05-03 P8 live-agent support implemented: added `agent:<registered-name>` role bindings, team form stub skipping, registry validation, tool/describe inspectability, and a generic graph-node Maildir request/response runner. Council review identified two blockers; follow-up now archives stale protocol replies safely and prevents ambient team-level retry policy from resending live-agent requests by default. Focused tests cover ref parsing, request packaging, response capture, fresh unmatched reply preservation, stale protocol reply archiving, unavailable/self rejection, cancellation, team form output, registry warnings, graph validation, and live-node retry behavior. Validation green: `npm run check`, `npm test` (33 files, 369 tests; rerun green after one random soak threshold flake), and `npm test -- tests/architecture.test.ts`.
 - 2026-05-03 LangGraph pivot: paused the P7 team-local contract expansion as too complex, reverted the uncommitted implementation spike, stopped local spawned review agents, and wrote `docs/teams-p9-langgraph-evaluation.md`. Jules status checked; one unrelated testing-improvement Jules session is still in progress and the CLI exposes no cancel/close command, while older sessions are completed or awaiting user feedback.
 - 2026-05-03 architecture hardening refresh: added an architecture fitness function that fails if `extensions/pi-teams` runtime source/config files reintroduce removed legacy symbols (`council`, `chairman`, `topology`, old compatibility type/function names, or legacy run custom types). Navigator review and council review both found no true KISS/YAGNI blockers for closure. Validation green: `npm run check`, `npm test` (32 files, 360 tests), `npm test -- tests/architecture.test.ts` (16 tests), and `npm run knip` (zero findings). Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output.
