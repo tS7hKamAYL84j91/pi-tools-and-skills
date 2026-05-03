@@ -476,6 +476,66 @@ Current matching modules:
 - ✅ Prefer small declarative config matching the current fields exactly.
 - ✅ Keep TypeScript as validation/execution primitives, not built-in protocol catalog storage.
 
+---
+
+## P8 — Select existing live agents as team members
+
+**Status:** ❌ **TODO**
+
+**Goal:** Let users and agents select currently available Pi peer agents as team members, not only file-backed subagent manifests or model ids. A team author should be able to choose `agent:coas` or another registered peer from the same discovery surface used by Panopticon, and team execution should route that node to the live agent safely.
+
+**Observed gap:**
+
+- `team_form` can write agent-looking refs, but current team validation rejects them as invalid subagent ids.
+- `team_run` currently reports errors like `invalid agent id agent:coas` instead of routing to the registered agent.
+- Earlier P5 consult lowering explicitly rejected `agent:` refs because only one-shot graph node execution existed.
+
+**Work:**
+
+1. **Define live-agent binding syntax:**
+   - Use one explicit form, e.g. `agent:<registered-name>`.
+   - Do not infer live agents from arbitrary invalid subagent ids.
+   - Keep file-backed subagent ids and model ids distinct.
+
+2. **Expose selection to users:**
+   - `team_form` interactive UI should list registered agents alongside subagent manifests where protocol roles allow live agents.
+   - Tool/API callers should be able to pass live-agent refs in `agents[]` or role bindings.
+   - Error messages should show available agent names when a live-agent ref cannot be resolved.
+
+3. **Expose selection to agents:**
+   - Tool schemas/descriptions should document the `agent:<name>` form.
+   - `team_describe` and `team_list` should make live-agent bindings inspectable.
+   - Avoid hidden runtime-only magic; the team file should reveal which roles use live peers.
+
+4. **Implement a generic live graph-node runner:**
+   - Add an execution path for graph nodes bound to live agents.
+   - Reuse existing agent messaging/RPC primitives where possible.
+   - Preserve timeout, cancellation, retry, prompt packaging, state events, and output reduction semantics.
+   - Live-agent support must be generic graph execution behavior, not consult-specific branching.
+
+5. **Validate lifecycle and safety:**
+   - Detect unavailable, self, terminated, blocked, or stalled agents clearly before or during execution.
+   - Do not send secrets or hidden config; send only the rendered role prompt/package intended for that node.
+   - Record live-agent node metadata in session state without leaking private transport details.
+
+**Acceptance criteria:**
+
+- [ ] A team can bind a role to `agent:<registered-name>` and pass validation.
+- [ ] `team_form` can create such a team from both interactive selection and tool-call arguments.
+- [ ] `team_run` executes a live-agent-bound node and captures its response in graph output/state.
+- [ ] `team_describe` shows live-agent bindings clearly.
+- [ ] Missing/unavailable live agents produce actionable errors.
+- [ ] Live-agent support works through generic graph execution, not protocol-specific handler branches.
+- [ ] `npm run check`, `npm test`, and focused live-agent tests pass.
+
+**KISS/YAGNI constraints:**
+
+- ❌ Do not add distributed orchestration or multi-agent chat rooms.
+- ❌ Do not add broad compatibility for old invalid agent ids.
+- ❌ Do not bypass graph/state/prompt-contract paths.
+- ✅ Add the smallest live-node runner needed for existing registered agents.
+- ✅ Keep authored team files explicit and inspectable.
+
 ## Delegation plan
 
 - **Architect / PM:** own specs, sequencing, review, and acceptance criteria.
