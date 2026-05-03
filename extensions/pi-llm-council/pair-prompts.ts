@@ -6,6 +6,7 @@
  */
 
 import type { LoadedFile, PairContext } from "./context-loader.js";
+import { renderTemplate } from "./prompt-renderer.js";
 import type { ResolvedCouncilSettings } from "./settings.js";
 
 type PromptConfig = ResolvedCouncilSettings["prompts"];
@@ -15,18 +16,6 @@ interface PairPrimerArgs {
 	navigator: string;
 	task?: string;
 	promptsConfig: PromptConfig;
-}
-
-interface TemplateValues {
-	[key: string]: string;
-}
-
-function renderTemplate(lines: string[], values: TemplateValues): string {
-	let rendered = lines.join("\n");
-	for (const [key, value] of Object.entries(values)) {
-		rendered = rendered.replaceAll(`{{${key}}}`, value);
-	}
-	return rendered;
 }
 
 export function navigatorBriefSystemPrompt(

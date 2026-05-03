@@ -12,15 +12,24 @@ export type CouncilStatus =
 	| "failed";
 
 /** @public */
+export type GenerationParameterValue = string | number | boolean;
+
+export interface GenerationConfig {
+	tools?: string[];
+	parameters?: Record<string, GenerationParameterValue>;
+}
+
 export interface CouncilDefinition {
 	name: string;
 	purpose?: string;
 	members: string[];
 	chairman: string;
 	createdAt: number;
+	memberConfigs?: GenerationConfig[];
+	chairmanConfig?: GenerationConfig;
 }
 
-export interface CouncilMember {
+export interface CouncilMember extends GenerationConfig {
 	/** Anonymized identifier ("Agent A", "Chairman") used in critique prompts. */
 	label: string;
 	/** Underlying model id; for live agents this is the agent's registered model. */

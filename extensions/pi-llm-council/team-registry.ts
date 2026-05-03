@@ -10,6 +10,7 @@ import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
 	TeamAgentBinding,
+	TeamGraphEdge,
 	TeamModels,
 	TeamProtocol,
 	TeamRegistry,
@@ -18,7 +19,7 @@ import type {
 	TeamSpec,
 	TeamTopology,
 } from "./team-types.js";
-import type { CouncilDefinition } from "./types.js";
+import type { CouncilDefinition, GenerationConfig, GenerationParameterValue } from "./types.js";
 
 interface PairDefinition {
 	name: string;
@@ -39,6 +40,26 @@ function stringArray(value: unknown): string[] | undefined {
 		.map(optionalString)
 		.filter((item): item is string => item !== undefined);
 	return values.length > 0 ? values : undefined;
+}
+
+function generationParameterValue(value: unknown): GenerationParameterValue | undefined {
+	return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+		? value
+		: undefined;
+}
+
+function generationConfig(value: Record<string, unknown>): GenerationConfig {
+	const tools = stringArray(value.tools);
+	const rawParameters = isRecord(value.parameters) ? value.parameters : undefined;
+	const parameters: Record<string, GenerationParameterValue> = {};
+	for (const [key, rawValue] of Object.entries(rawParameters ?? {})) {
+		const parsed = generationParameterValue(rawValue);
+		if (parsed !== undefined) parameters[key] = parsed;
+	}
+	return {
+		...(tools ? { tools } : Array.isArray(value.tools) ? { tools: [] } : {}),
+		...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,6 +128,7 @@ function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefine
 				subagent,
 				...(model ? { model } : {}),
 				...(label ? { label } : {}),
+				...generationConfig(entry),
 			};
 		})
 		.filter((entry): entry is TeamAgentBinding => entry !== undefined);
@@ -183,6 +205,8 @@ function toSubagentSpec(
 		...(description ? { description } : {}),
 		...(promptId ? { promptId } : {}),
 		...(model ? { model } : {}),
+		...(descriptor.body.trim().length > 0 ? { systemPrompt: descriptor.body } : {}),
+		...generationConfig(frontMatter),
 		source,
 		path: descriptor.path,
 	};
@@ -193,7 +217,29 @@ function isTeamTopology(value: string): value is TeamTopology {
 }
 
 function isTeamProtocol(value: string): value is TeamProtocol {
-	return value === "debate" || value === "consult" || value === "pair-coding" || value === "telephone";
+	return value === "debate" || value === "consult" || value === "graph" || value === "pair-coding" || value === "telephone";
+}
+
+function inferTopology(protocol: TeamProtocol, bindings: TeamAgentBinding[]): TeamTopology {
+	if (protocol === "debate") return "council";
+	if (protocol === "consult" || protocol === "pair-coding") return "pair";
+	if (protocol === "telephone") return "chain";
+	if (bindings.some((binding) => roleMatches(binding.role, ["chairman", "chair", "member"]))) return "council";
+	if (bindings.some((binding) => roleMatches(binding.role, ["driver", "navigator"]))) return "pair";
+	return "chain";
+}
+
+function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const edges = value
+		.filter(isRecord)
+		.map((entry) => {
+			const from = optionalString(entry.from);
+			const to = optionalString(entry.to);
+			return from && to ? { from, to } : undefined;
+		})
+		.filter((edge): edge is TeamGraphEdge => edge !== undefined);
+	return edges.length > 0 ? edges : undefined;
 }
 
 function toTeamSpec(
@@ -205,16 +251,17 @@ function toTeamSpec(
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
 	const schemaVersion = optionalNumber(frontMatter.schemaVersion);
 	const topologyValue = optionalString(frontMatter.topology);
-	const protocolValue = optionalString(frontMatter.protocol);
+	const protocolValue = optionalString(frontMatter.protocol) ?? optionalString(frontMatter.engine);
 	const legacyAgents = stringArray(frontMatter.agents) ?? [];
 	if (schemaVersion !== 1) {
 		warnings.push(`${id}: unsupported schemaVersion ${schemaVersion ?? "(missing)"}`);
 		return undefined;
 	}
-	if (!topologyValue || !isTeamTopology(topologyValue)) {
-		warnings.push(`${id}: invalid topology ${topologyValue ?? "(missing)"}`);
+	if (topologyValue && !isTeamTopology(topologyValue)) {
+		warnings.push(`${id}: invalid topology ${topologyValue}`);
 		return undefined;
 	}
+	const explicitTopology = topologyValue && isTeamTopology(topologyValue) ? topologyValue : undefined;
 	if (!protocolValue || !isTeamProtocol(protocolValue)) {
 		warnings.push(`${id}: invalid protocol ${protocolValue ?? "(missing)"}`);
 		return undefined;
@@ -246,16 +293,19 @@ function toTeamSpec(
 		}
 	}
 	const objectBindings = agentBindingsFromObjects(frontMatter.agents);
+	const graph = graphEdges(frontMatter.edges);
+	const inferredTopology = explicitTopology ?? inferTopology(protocolValue, objectBindings ?? []);
 	const agentBindings = objectBindings ?? legacyAgentBindings({
-		topology: topologyValue,
+		topology: inferredTopology,
 		protocol: protocolValue,
 		agents: legacyAgents,
 		...(chair ? { chair } : {}),
 		models: legacyModels,
 	});
+	const topology = explicitTopology ?? inferTopology(protocolValue, agentBindings);
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
 	const derivedChair = chair ?? agentBindings.find((binding) => roleMatches(binding.role, ["chairman", "chair"]))?.subagent;
-	const models = Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, topologyValue, protocolValue);
+	const models = Object.keys(legacyModels).length > 0 ? legacyModels : modelsFromBindings(agentBindings, topology, protocolValue);
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	return {
@@ -263,10 +313,11 @@ function toTeamSpec(
 		id,
 		name,
 		...(description ? { description } : {}),
-		topology: topologyValue,
+		topology,
 		protocol: protocolValue,
 		agents,
 		agentBindings,
+		...(graph ? { graph: { edges: graph } } : {}),
 		...(derivedChair ? { chair: derivedChair } : {}),
 		models,
 		limits: {
@@ -275,6 +326,18 @@ function toTeamSpec(
 		},
 		source,
 		path: descriptor.path,
+	};
+}
+
+function mergeSubagentConfig(
+	binding: TeamAgentBinding,
+	subagent: SubagentSpec | undefined,
+): TeamAgentBinding {
+	return {
+		...binding,
+		...(binding.tools ? { tools: binding.tools } : subagent?.tools ? { tools: subagent.tools } : {}),
+		...(binding.parameters ? { parameters: binding.parameters } : subagent?.parameters ? { parameters: subagent.parameters } : {}),
+		...(subagent?.systemPrompt ? { systemPrompt: subagent.systemPrompt } : {}),
 	};
 }
 
@@ -296,13 +359,13 @@ function validateTeam(
 	if (team.chair && !subagents.has(team.chair)) {
 		warnings.push(`${team.id}: unknown chair ${team.chair}`);
 	}
-	if (team.topology === "council" && team.protocol !== "debate") {
+	if (!team.graph && team.topology === "council" && team.protocol !== "debate") {
 		warnings.push(`${team.id}: council topology requires debate protocol`);
 	}
-	if (team.topology === "pair" && team.protocol !== "consult" && team.protocol !== "pair-coding") {
+	if (!team.graph && team.topology === "pair" && team.protocol !== "consult" && team.protocol !== "pair-coding") {
 		warnings.push(`${team.id}: pair topology requires consult or pair-coding protocol`);
 	}
-	if (team.topology === "chain" && team.protocol !== "telephone") {
+	if (!team.graph && team.topology === "chain" && team.protocol !== "telephone") {
 		warnings.push(`${team.id}: chain topology requires telephone protocol`);
 	}
 	return warnings;
@@ -327,7 +390,12 @@ export function loadTeamRegistry(
 			teams.set(team.id, team);
 		}
 	}
-	for (const team of teams.values()) warnings.push(...validateTeam(team, subagents));
+	for (const team of teams.values()) {
+		team.agentBindings = team.agentBindings.map((binding) =>
+			mergeSubagentConfig(binding, subagents.get(binding.subagent)),
+		);
+		warnings.push(...validateTeam(team, subagents));
+	}
 	return { teams, subagents, warnings };
 }
 
@@ -374,6 +442,21 @@ export function teamToCouncilDefinition(args: {
 		purpose: settings.defaultCouncil.purpose,
 		members,
 		chairman: args.team.models.chairman ?? chooseChairmanModel(snapshot, members),
+		memberConfigs: args.team.agentBindings
+			.filter((binding) => roleMatches(binding.role, ["member"]))
+			.map((binding) => ({
+				...(binding.tools ? { tools: binding.tools } : {}),
+				...(binding.parameters ? { parameters: binding.parameters } : {}),
+			})),
+		chairmanConfig: (() => {
+			const binding = args.team.agentBindings.find((entry) => roleMatches(entry.role, ["chairman", "chair"]));
+			return binding
+				? {
+						...(binding.tools ? { tools: binding.tools } : {}),
+						...(binding.parameters ? { parameters: binding.parameters } : {}),
+					}
+				: undefined;
+		})(),
 		createdAt: Date.now(),
 	};
 }

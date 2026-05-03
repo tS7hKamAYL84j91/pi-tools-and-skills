@@ -16,6 +16,7 @@ import { readdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { sendAgentMessage } from "../../lib/agent-api.js";
 import { REGISTRY_DIR } from "../../lib/agent-registry.js";
+import { renderTemplate } from "./prompt-renderer.js";
 import {
 	resolveCouncilSettings,
 	type ResolvedCouncilSettings,
@@ -53,19 +54,7 @@ interface InboxFileMessage {
 	ts?: number;
 }
 
-interface TemplateValues {
-	[key: string]: string;
-}
-
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
-
-function renderTemplate(lines: string[], values: TemplateValues): string {
-	let rendered = lines.join("\n");
-	for (const [key, value] of Object.entries(values)) {
-		rendered = rendered.replaceAll(`{{${key}}}`, value);
-	}
-	return rendered;
-}
 
 function envelopeNames(stage: string): { request: string; reply: string } {
 	if (stage === "consult") {

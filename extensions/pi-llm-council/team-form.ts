@@ -26,7 +26,7 @@ export interface TeamFormInput {
 	id: string;
 	name?: string;
 	description?: string;
-	topology: TeamFormTopology;
+	topology?: TeamFormTopology;
 	protocol: TeamFormProtocol;
 	agents: string[];
 	agentBindings?: TeamAgentBinding[];
@@ -87,10 +87,18 @@ function roleMatches(role: string, value: string): boolean {
 	return normalized === value || normalized.startsWith(`${value}_`);
 }
 
+function topologyForProtocol(protocol: TeamFormProtocol, topology?: TeamFormTopology): TeamFormTopology {
+	if (topology) return topology;
+	if (protocol === "debate") return "council";
+	if (protocol === "telephone") return "chain";
+	return "pair";
+}
+
 function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	const models = args.models ?? {};
+	const topology = topologyForProtocol(args.protocol, args.topology);
 	if (args.agentBindings && args.agentBindings.length > 0) return args.agentBindings;
-	if (args.topology === "council" && args.protocol === "debate") {
+	if (topology === "council" && args.protocol === "debate") {
 		const memberSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "member");
 		const criticSubagents = args.agents.slice(1);
 		return [
@@ -108,17 +116,17 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 			...criticSubagents.map((subagent) => ({ role: "critic", subagent })),
 		];
 	}
-	if (args.topology === "pair" && args.protocol === "pair-coding") {
+	if (topology === "pair" && args.protocol === "pair-coding") {
 		return args.agents.map((subagent) => {
 			const role = subagent.includes("driver") ? "driver" : "navigator";
 			const model = role === "driver" ? models.driver : models.navigator;
 			return { role, subagent, ...(model ? { model } : {}) };
 		});
 	}
-	if (args.topology === "pair" && args.protocol === "consult") {
+	if (topology === "pair" && args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
-	if (args.topology === "chain" && args.protocol === "telephone") {
+	if (topology === "chain" && args.protocol === "telephone") {
 		return args.agents.map((subagent, index) => ({
 			role: "relay",
 			subagent,
@@ -203,7 +211,6 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 		`id: ${quote(args.id)}`,
 		`name: ${quote(args.name)}`,
 		...(args.description ? [`description: ${quote(args.description)}`] : []),
-		`topology: ${quote(args.topology)}`,
 		`protocol: ${quote(args.protocol)}`,
 		...agentBindingLines(bindings),
 		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
@@ -216,13 +223,14 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	if (input.topology === "council" && input.protocol !== "debate") {
+	const topology = topologyForProtocol(input.protocol, input.topology);
+	if (topology === "council" && input.protocol !== "debate") {
 		throw new Error("Council teams must use protocol=debate.");
 	}
-	if (input.topology === "pair" && input.protocol !== "consult" && input.protocol !== "pair-coding") {
+	if (topology === "pair" && input.protocol !== "consult" && input.protocol !== "pair-coding") {
 		throw new Error("Pair teams must use protocol=consult or protocol=pair-coding.");
 	}
-	if (input.topology === "chain" && input.protocol !== "telephone") {
+	if (topology === "chain" && input.protocol !== "telephone") {
 		throw new Error("Chain teams must use protocol=telephone.");
 	}
 	if (input.agents.length === 0 && (!input.agentBindings || input.agentBindings.length === 0)) {
@@ -268,7 +276,6 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 		id,
 		name: team.name,
 		...(team.description ? { description: team.description } : {}),
-		topology: team.topology,
 		protocol: team.protocol,
 		agents: team.agents,
 		agentBindings: applyModelsToBindings(team.agentBindings, input.models),

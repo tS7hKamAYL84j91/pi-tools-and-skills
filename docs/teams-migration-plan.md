@@ -19,7 +19,9 @@ flowchart TD
   Runtime --> PairCoding[Pair-coding engine]
   Runtime --> PairConsult[Navigator consult]
   Runtime --> Telephone[Telephone chain]
+  Runtime --> Graph[DAG graph executor]
   Prompts[config/prompts/*.md templates] --> Runtime
+  State[pi.appendEntry custom session entries] --> Runtime
 ```
 
 ## Current module boundaries
@@ -39,7 +41,7 @@ flowchart TD
   Commands --> Overlay
   Models[team-models.ts] --> Handlers
   Overlay[team-overlay.ts] --> Registry
-  Handlers --> Engines[debate / pair-coding / consult / telephone engines]
+  Handlers --> Engines[debate / pair-coding / consult / telephone / graph engines]
 ```
 
 - `team-types.ts` owns core team/subagent/registry type definitions.
@@ -47,6 +49,7 @@ flowchart TD
 - `team-registry.ts` owns descriptor loading, validation, and registry construction.
 - `team-defaults.ts` seeds user defaults from built-in descriptors.
 - `team-handlers.ts` dispatches supported protocols and exposes model slot metadata.
+- `team-graph.ts` owns the generic DAG executor for graph-defined role workflows.
 - `team-tools.ts` contains read-only `team_list` and `team_describe` registration.
 - `team-runtime.ts` contains mutating team tools and run dispatch.
 - `team-commands.ts` contains the `/teams` command flow.
@@ -128,14 +131,13 @@ Teams and subagents are loaded in this order, with later sources overriding earl
 
 Team file changes are discovered by subsequent team commands/tools. Built-in default ids are protected from unscoped deletion. To remove a user/project default/override whose id matches a package default, use scoped deletion (`scope: "user"` or `scope: "project"`). Extension code or tool schema changes still require a pi session reload before the live API reflects them.
 
-Team files bind subagent manifests and default models together. A subagent descriptor owns reusable behavior/prompting; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same subagent with different models.
+Team files bind subagent manifests and default models together. A subagent descriptor owns reusable behavior/prompting, tool allowlists, and provider parameters; each team agent entry chooses that manifest plus the model for this team slot. Multiple entries may reuse the same subagent with different models. `topology` is deprecated and inferred from `protocol`/`engine` plus role bindings when omitted.
 
 ```md
 ---
 schemaVersion: 1
 id: "my-review"
 name: "My Review"
-topology: "pair"
 protocol: "consult"
 agents:
   - role: "navigator"
@@ -172,11 +174,32 @@ Built-in teams:
 - `pair-consult` — lightweight Navigator consult.
 - `pair-coding` — bounded Driver/Navigator implementation loop.
 
-Additional user/project runtime shape:
+Additional user/project runtime shapes:
 
-- `chain/telephone` — sequential relay where each member receives the current message, rewrites it, passes it to the next member, and returns the final relay output.
+- `telephone` — sequential relay where each member receives the current message, rewrites it, passes it to the next member, and returns the final relay output.
+- `graph` — generic DAG execution where `edges` connect role names; sink node outputs are returned.
+
+Graph example:
+
+```md
+---
+schemaVersion: 1
+id: "review-fix-qa"
+name: "Review Fix QA"
+protocol: "graph"
+agents:
+  - role: "review"
+    subagent: "reviewer"
+    model: "openai-codex/gpt-5.5"
+  - role: "qa"
+    subagent: "qa"
+    model: "ollama/glm-5.1:cloud"
+edges:
+  - from: "review"
+    to: "qa"
+---
+```
 
 ## Deferred
 
 - Dynamic runtime teams.
-- LangGraph or another graph runtime.

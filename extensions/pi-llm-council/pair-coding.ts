@@ -29,7 +29,7 @@ import {
 	navigatorReviewSystemPrompt,
 } from "./pair-prompts.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
-import type { CouncilMember, ModelRun } from "./types.js";
+import type { CouncilMember, GenerationConfig, ModelRun } from "./types.js";
 
 const DEFAULT_PAIR_PHASE_TIMEOUT_MS = 5 * 60 * 1000;
 const DRIVER_LABEL = "Driver";
@@ -68,6 +68,8 @@ interface PairArgs {
 	prompt: string;
 	driver: string;
 	navigator: string;
+	driverConfig?: GenerationConfig;
+	navigatorConfig?: GenerationConfig;
 	files?: string[];
 	specPath?: string;
 	maxFixPasses?: number;
@@ -83,10 +85,15 @@ export async function runPairCoding(args: PairArgs): Promise<PairResult> {
 	const errors: string[] = [];
 	const reviews: ModelRun[] = [];
 	const fixes: ModelRun[] = [];
-	const driver: CouncilMember = { label: DRIVER_LABEL, model: args.driver };
+	const driver: CouncilMember = {
+		label: DRIVER_LABEL,
+		model: args.driver,
+		...(args.driverConfig ?? {}),
+	};
 	const navigator: CouncilMember = {
 		label: NAVIGATOR_LABEL,
 		model: args.navigator,
+		...(args.navigatorConfig ?? {}),
 	};
 	const fixPasses = Math.max(0, args.maxFixPasses ?? 1);
 	const timeoutMs = args.timeoutMs ?? DEFAULT_PAIR_PHASE_TIMEOUT_MS;

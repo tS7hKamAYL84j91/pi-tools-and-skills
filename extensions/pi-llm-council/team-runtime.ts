@@ -18,8 +18,8 @@ const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	topology: Type.Union([Type.Literal("chain"), Type.Literal("pair"), Type.Literal("council")], { description: "Team topology." }),
-	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone")], { description: "Team protocol." }),
+	topology: Type.Optional(Type.Union([Type.Literal("chain"), Type.Literal("pair"), Type.Literal("council")], { description: "Deprecated: team topology, inferred from protocol when omitted." })),
+	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone"), Type.Literal("graph")], { description: "Team protocol/engine." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids referenced by the team." }),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "council: default member model IDs." })),
@@ -95,7 +95,7 @@ export async function runTeam(args: {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
 	const handler = getTeamHandler(team);
 	if (!handler) {
-		throw new Error(`Team "${team.id}" has unsupported topology/protocol ${team.topology}/${team.protocol}.`);
+		throw new Error(`Team "${team.id}" has unsupported protocol ${team.protocol}.`);
 	}
 	return handler.run({
 		team,

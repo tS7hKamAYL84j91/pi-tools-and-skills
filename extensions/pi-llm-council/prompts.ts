@@ -5,22 +5,11 @@
  * this module only anonymizes dynamic model output and fills configured templates.
  */
 
+import { renderTemplate } from "./prompt-renderer.js";
 import type { ResolvedCouncilSettings } from "./settings.js";
 import type { CouncilDeliberation, CouncilMember, ModelRun } from "./types.js";
 
 type PromptConfig = ResolvedCouncilSettings["prompts"];
-
-interface TemplateValues {
-	[key: string]: string;
-}
-
-function renderTemplate(lines: string[], values: TemplateValues): string {
-	let rendered = lines.join("\n");
-	for (const [key, value] of Object.entries(values)) {
-		rendered = rendered.replaceAll(`{{${key}}}`, value);
-	}
-	return rendered;
-}
 
 export function generationSystemPrompt(promptsConfig: PromptConfig): string {
 	return promptsConfig.councilGenerationSystem.join("\n");
