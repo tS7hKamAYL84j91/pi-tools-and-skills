@@ -27,12 +27,6 @@ export interface ResolvedTeamSettings {
 	defaultDebate: { name: string; members: string[]; chairman: string; purpose?: string };
 	chairmanCandidates: string[];
 	defaultConsult?: { name: string; navigator: string; purpose?: string };
-	/** @deprecated Use defaultDebate. */
-	defaultCouncil: { name: string; members: string[]; chairman: string; purpose?: string };
-	/** @deprecated Use defaultConsult. */
-	defaultPair?: { name: string; navigator: string; purpose?: string };
-	/** @deprecated Legacy per-team overrides are replaced by declarative team files. */
-	councils: Record<string, never>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -181,9 +175,6 @@ export function resolveTeamSettings(settingsPath: string = SETTINGS_JSON, extens
 		defaultDebate: defaultDebateSettings,
 		chairmanCandidates: [chairman, ...members].filter((model, index, values) => model.length > 0 && values.indexOf(model) === index),
 		...(defaultConsultSettings ? { defaultConsult: defaultConsultSettings } : {}),
-		defaultCouncil: defaultDebateSettings,
-		...(defaultConsultSettings ? { defaultPair: defaultConsultSettings } : {}),
-		councils: {},
 	};
 }
 
