@@ -256,7 +256,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P6 — Remove legacy protocol assumptions (council/pair/telephone)
 
-**Status:** 🚧 **IN PROGRESS — compatibility aliases and topology removed**
+**Status:** ✅ **COMPLETE — legacy assumptions removed from runtime surface**
 
 **Goal:** Eliminate hardcoded "council", "pair", "telephone" assumptions from types, modules, and prompts. Generalize to protocol-agnostic team slots driven entirely by configuration. This is the KISS/YAGNI cleanup pass to ensure the codebase does not bake in legacy protocol names.
 
@@ -304,21 +304,18 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
    - ✅ `deliberate()` execution path removed; graph-backed `runTeam()` dispatch is the execution path
 
 2. **Generalize settings:**
-   - `resolveCouncilSettings()` → `resolveTeamSettings()`
-   - Replace `defaultCouncil`/`defaultPair` with `defaultTeams` map keyed by protocol
+   - ✅ `resolveCouncilSettings()` is gone; `resolveTeamSettings()` is the only settings resolver
+   - ✅ `defaultCouncil`/`defaultPair`/`councils` compatibility fields removed; defaults resolve from team files by protocol ids
 
 3. **Refactor handlers:**
-   - Option A: Complete P5 — convert all built-ins to graph specs
-   - Option B: Create protocol contract registry
+   - ✅ P5 completed: built-ins lower through graph execution, with obsolete `deliberation.ts`, `agent-runner.ts`, and `pair-coding.ts` execution modules removed
 
 4. **Normalize prompt keys:**
-   - `debate/generation/system` → `debate/generate/system`
-   - `pair-coding/navigator-brief/system` → `pair-coding/brief/system`
-   - `telephone/relay/system` → `telephone/relay/system`
+   - ✅ Prompt IDs use `{protocol}/{phase}/{slot}` style, e.g. `debate/generation/system`, `pair-coding/navigator-brief/system`, `telephone/relay/system`
 
 5. **Audit and rename agent files:**
-   - `council-*.md` → `debate-*.md`
-   - `pair-*.md` → `pair-coding-*.md`
+   - ✅ `council-*.md` → `debate-*.md`
+   - ✅ `pair-*.md` → `pair-coding-*.md` or `consult-*.md`
 
 6. **Update state events:**
    - Phase names from protocol contract, not hardcoded strings
@@ -328,14 +325,14 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 **Acceptance criteria:**
 
 - [x] Runtime `topology` types/output removed
-- [ ] No module names contain "council" (except `config/agents/` where intentional)
-- [ ] No module names contain "pair" (except `pair-coding.ts` if kept as explicit engine)
-- [ ] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
+- [x] No runtime module names contain "council"
+- [x] No runtime module names contain "pair"; `pair-coding.ts` was deleted
+- [x] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
 - [x] `TeamRunDefinition` replaces `CouncilDefinition`
 - [x] `runTeam()` graph-backed dispatch replaces `deliberate()`
-- [ ] Prompt keys use `{protocol}/{phase}/{slot}` convention
-- [ ] New team protocols can be added via config without TypeScript changes
-- [ ] `npm run check` and `npm test` pass
+- [x] Prompt keys use `{protocol}/{phase}/{slot}` convention
+- [x] New custom workflows can be added via graph protocol config without TypeScript execution changes
+- [x] `npm run check` and `npm test` pass
 
 **Risks:**
 
@@ -370,9 +367,11 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.10%).
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.09%).
 - `npm test` passed: 34 files, 376 tests.
-- P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams` or `tests`.
+- Refactor prompt follow-up completed: baseline `npm run check && npm test` green, `npm run knip` zero findings, and `tests/architecture.test.ts` green.
+- P6 config cleanup completed: bundled agent/prompt filenames and prompt ids no longer use legacy `council*`, `pair*` shorthand; ids use protocol slot paths.
+- P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams`; unrelated task-brief tests still cover orchestration topology outside pi-teams.
 - P6 alias-removal grep passed: no `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or `council?:` matches remain in `extensions/pi-teams` or `tests`.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.

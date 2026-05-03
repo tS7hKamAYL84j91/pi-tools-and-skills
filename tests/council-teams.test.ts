@@ -120,13 +120,13 @@ describe("loadTeamRegistry", () => {
 			"pair-coding",
 		]);
 		expect(registry.warnings).toEqual([]);
-		const defaultCouncil = requireTeam(registry, "default-debate");
-		expect(defaultCouncil).toMatchObject({
+		const defaultDebate = requireTeam(registry, "default-debate");
+		expect(defaultDebate).toMatchObject({
 			protocol: "debate",
 			chair: "debate_synthesis",
 		});
-		expect(defaultCouncil.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
-		expect(defaultCouncil.agentBindings.filter((binding) => binding.subagent === "debate_generation_member")).toHaveLength(4);
+		expect(defaultDebate.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
+		expect(defaultDebate.agentBindings.filter((binding) => binding.subagent === "debate_generation_member")).toHaveLength(4);
 		expect(requireTeam(registry, "consult").agents).toEqual([
 			"consult_navigator",
 		]);
