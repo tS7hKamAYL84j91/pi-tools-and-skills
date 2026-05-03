@@ -60,7 +60,7 @@ interface GraphNodePromptInput {
 	systemPrompt: string;
 }
 
-type GraphNodePromptBuilder = (args: {
+export type GraphNodePromptBuilder = (args: {
 	binding: TeamAgentBinding;
 	model: string;
 	originalPrompt: string;
@@ -78,6 +78,7 @@ interface GraphRunArgs {
 	timeoutMs?: number;
 	maxConcurrency?: number;
 	onProgress?: (text: string) => void;
+	templateSlot?: string;
 	runNode?: GraphNodeRunner;
 	buildNodePrompt?: GraphNodePromptBuilder;
 }
@@ -361,7 +362,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
 	const catalog = resolveTeamSettings().prompts;
 	const chains = resolveProtocolPromptChains({ protocol: args.team.protocol, prompts: args.team.prompts, bindings: args.team.agentBindings }, catalog);
-	const template = requirePromptChain(chains, "node.template").text;
+	const template = requirePromptChain(chains, args.templateSlot ?? "node.template").text;
 	const runNode = args.runNode ?? productionRunNode;
 	const buildNodePrompt = args.buildNodePrompt ?? defaultGraphNodePrompt;
 	const nodes: GraphNodeResult[] = [];

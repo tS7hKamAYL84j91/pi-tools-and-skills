@@ -1,6 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
+import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
+import { graphPlanForSimpleProtocol } from "../extensions/pi-teams/team-handlers.js";
 import { runTeamGraph, validateTeamGraph } from "../extensions/pi-teams/team-graph.js";
 import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
 import type { ModelRun } from "../extensions/pi-teams/types.js";
@@ -34,6 +36,8 @@ function fakeCtx(signal?: AbortSignal): ExtensionContext {
 		ui: { setStatus: () => undefined },
 	} as unknown as ExtensionContext;
 }
+
+const settings = resolveTeamSettings("/nonexistent/pi-settings.json");
 
 describe("team graph validation", () => {
 	it("accepts a connected DAG and derives deterministic levels", () => {
@@ -118,5 +122,70 @@ describe("team graph execution", () => {
 			["review", "skipped"],
 			["qa", "skipped"],
 		]);
+	});
+
+	it("lowers consult to one graph node with the consult prompt contract", async () => {
+		const consultTeam = team({
+			id: "consult-test",
+			protocol: "consult",
+			agents: ["navigator_agent"],
+			agentBindings: [{ role: "navigator", subagent: "navigator_agent", model: "test/nav", subagentPromptId: "pairNavigatorConsultSystem", subagentSystemPrompt: "wrong" }],
+			graph: undefined,
+			models: { navigator: "test/nav" },
+		});
+		const plan = graphPlanForSimpleProtocol({ team: consultTeam, params: { id: "consult-test", prompt: "review this" }, settings });
+		if (!plan) throw new Error("missing consult graph plan");
+		const seen: string[] = [];
+		const result = await runTeamGraph({
+			team: plan.team,
+			prompt: "review this",
+			ctx: fakeCtx(),
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				seen.push(prompt, systemPrompt);
+				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "consulted", durationMs: 1, ok: true };
+			},
+		});
+
+		expect(plan.team.graph).toEqual({ edges: [], outputs: ["navigator"] });
+		expect(result.output).toBe("## navigator\nconsulted");
+		expect(seen[0]).toBe("review this");
+		expect(seen[1]).toContain("Navigator in a pair-coding session");
+	});
+
+	it("lowers telephone to a linear graph that passes each output to the next relay", async () => {
+		const telephoneTeam = team({
+			id: "telephone-test",
+			protocol: "telephone",
+			agents: ["relay_agent"],
+			agentBindings: [
+				{ role: "relay_1", subagent: "relay_agent", model: "test/one" },
+				{ role: "relay_2", subagent: "relay_agent", model: "test/two" },
+			],
+			graph: undefined,
+			models: { members: ["test/one", "test/two"] },
+		});
+		const plan = graphPlanForSimpleProtocol({ team: telephoneTeam, params: { id: "telephone-test", prompt: "hello" }, settings });
+		if (!plan) throw new Error("missing telephone graph plan");
+		const prompts: string[] = [];
+		const systems: string[] = [];
+		const result = await runTeamGraph({
+			team: plan.team,
+			prompt: "hello",
+			ctx: fakeCtx(),
+			templateSlot: plan.templateSlot,
+			buildNodePrompt: plan.buildNodePrompt,
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				prompts.push(prompt);
+				systems.push(systemPrompt);
+				return { member: { label: binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
+			},
+		});
+
+		expect(plan.team.graph).toEqual({ edges: [{ from: "relay_1", to: "relay_2" }], outputs: ["relay_2"] });
+		expect(prompts[0]).toContain("hello");
+		expect(prompts[1]).toContain("output:relay_1");
+		expect(systems[0]).toContain("relay 1 of 2");
+		expect(systems[1]).toContain("relay 2 of 2");
+		expect(result.output).toBe("## relay_2\noutput:relay_2");
 	});
 });

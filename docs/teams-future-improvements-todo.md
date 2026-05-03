@@ -65,6 +65,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Council/debate, pair-coding, consult, and telephone are bundled team configurations, not TypeScript architecture boundaries. Their role names may exist in team, agent, and prompt files, but orchestration code must be factored into generic prompt packaging, node execution, sequencing, joins, retries, and bounded-iteration primitives. Obsolete wrapper modules such as `prompts.ts` and `pair-prompts.ts` are removed instead of preserved for compatibility.
 
+### ADR-010 — Lower simple protocols before inventing new primitives
+
+**Decision:** Consult and telephone lower onto the existing graph executor first. Live-agent consult refs are rejected until a generic live graph-node runner exists. Debate fanout/critique/synthesis and pair-coding's bounded fix loop remain separate until they can be expressed with small, explicit execution primitives rather than protocol-named orchestration modules.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -200,7 +204,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## P5 — Promote graph execution to the core engine
 
-**Status:** ⚠️ **PARTIAL — graph engine exists, but core protocol lowering remains**
+**Status:** 🚧 **IN PROGRESS — lowering consult/telephone onto graph core**
 
 **Goal:** Replace protocol-specific control flow with a DAG executor once config, prompts, and state are stable.
 
@@ -217,8 +221,11 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ Removed obsolete council/pair prompt wrapper modules (`prompts.ts`, `pair-prompts.ts`)
 
 **Remaining work:**
-- [ ] Represent remaining built-in protocols as graph specs: debate/council, pair-coding, telephone, consult
-- [ ] Delete hardcoded debate/council and pair-coding orchestration once equivalent graph specs pass tests
+- [x] Spec consult/telephone lowering slice in `docs/teams-p5-protocol-lowering-slice.md`
+- [x] Lower consult to a one-node graph and reject `agent:` refs clearly
+- [x] Lower telephone to a linear graph using protocol prompt slots
+- [ ] Represent debate/council as graph specs or a generic fanout/join primitive
+- [ ] Replace pair-coding orchestration with explicit bounded-iteration primitive or justify it as a generic loop engine
 - [ ] Keep protocol-specific names in config data only where they are intentional built-in role labels
 
 **Assignee plan:** Refactor in small slices: consult/telephone first, debate next, pair-coding last. If bounded fix loops require a non-DAG primitive, add the smallest explicit config-driven primitive rather than reintroducing pair-specific TypeScript topology.
@@ -340,7 +347,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.12%).
-- `npm test` passed: 34 files, 368 tests.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.13%).
+- `npm test` passed: 34 files, 370 tests.
+- P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
 - Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.

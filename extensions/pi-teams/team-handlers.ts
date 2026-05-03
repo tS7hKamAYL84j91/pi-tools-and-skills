@@ -3,24 +3,19 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { findAgentByName } from "../../lib/agent-api.js";
-import { askAgent } from "./agent-runner.js";
 import { deliberate, formatFailures, preflight } from "./deliberation.js";
 import { snapshotAvailableModels } from "./members.js";
 import { type WorkflowResult, runPairCoding } from "./pair-coding.js";
 import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-contracts.js";
 import { renderTemplate } from "./prompt-renderer.js";
-import { currentPanopticonRecord, runMember } from "./runner.js";
-import { resolveTeamSettings } from "./settings.js";
+import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
-import { runTeamGraph } from "./team-graph.js";
+import { type GraphNodePromptBuilder, type GraphRunResult, runTeamGraph } from "./team-graph.js";
 import { teamToDebateDefinition } from "./team-registry.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
 import type { GenerationConfig, ModelRun, TeamRunDefinition } from "./types.js";
 
 export const TEAM_STATUS_KEY = "team";
-const CONSULT_TIMEOUT_MS = 5 * 60_000;
-
 export interface TeamRunModels {
 	members?: string[];
 	chairman?: string;
@@ -53,12 +48,6 @@ export interface TeamModelSlot {
 interface TeamHandlerResult {
 	content: Array<{ type: "text"; text: string }>;
 	details: Record<string, unknown>;
-}
-
-interface ConsultOutcome {
-	body: string;
-	ok: boolean;
-	durationMs: number;
 }
 
 interface TeamHandlerRunArgs {
@@ -158,77 +147,18 @@ function formatWorkflowResult(result: WorkflowResult): TeamHandlerResult {
 	});
 }
 
-async function consultModel(args: {
-	navigator: string;
-	message: string;
-	ctx: ExtensionContext;
-	systemPrompt: string;
-	config?: GenerationConfig;
-}): Promise<ConsultOutcome> {
-	const run = await runMember(
-		{ label: "Navigator", model: args.navigator, ...(args.config ?? {}) },
-		{
-			prompt: args.message,
-			systemPrompt: args.systemPrompt,
-			cwd: args.ctx.cwd,
-			signal: args.ctx.signal,
-			parentId: (await currentPanopticonRecord(args.ctx.cwd))?.id,
-		},
-	);
-	return {
-		body: run.ok ? run.output : `Navigator failed: ${run.error ?? "unknown error"}`,
-		ok: run.ok,
-		durationMs: run.durationMs,
-	};
+interface LoweredGraphPlan {
+	team: TeamSpec;
+	phaseId: string;
+	outputRole: string;
+	templateSlot?: string;
+	buildNodePrompt?: GraphNodePromptBuilder;
 }
 
-async function consultAgent(args: {
-	navigator: string;
-	message: string;
-	ctx: ExtensionContext;
-	teamId: string;
-	systemPrompt: string;
-}): Promise<ConsultOutcome> {
-	const startedAt = Date.now();
-	const agentName = args.navigator.slice("agent:".length);
-	const info = findAgentByName(agentName);
-	if (!info) {
-		return { body: `Agent "${agentName}" is no longer registered.`, ok: false, durationMs: Date.now() - startedAt };
-	}
-	if (!info.alive) {
-		return {
-			body: `Agent "${agentName}" is not alive (status=${info.status}).`,
-			ok: false,
-			durationMs: Date.now() - startedAt,
-		};
-	}
-	const ourRecord = await currentPanopticonRecord(args.ctx.cwd);
-	if (!ourRecord) {
-		return {
-			body: "Pilot is not registered with panopticon — cannot reach live agents.",
-			ok: false,
-			durationMs: Date.now() - startedAt,
-		};
-	}
-	const consultId = `team-${args.teamId}-${Date.now().toString(36)}`;
-	const reply = await askAgent({
-		agentName: info.name,
-		agentId: info.id,
-		memberLabel: "Navigator",
-		prompt: args.message,
-		systemPrompt: args.systemPrompt,
-		deliberationId: consultId,
-		stage: "consult",
-		ourAgentId: ourRecord.id,
-		ourAgentName: ourRecord.name,
-		signal: args.ctx.signal,
-		timeoutMs: CONSULT_TIMEOUT_MS,
-	});
-	return {
-		body: reply.ok ? reply.output : `Navigator failed: ${reply.error ?? "unknown error"}`,
-		ok: reply.ok,
-		durationMs: reply.durationMs,
-	};
+interface GraphPlanArgs {
+	team: TeamSpec;
+	params: TeamRunInput;
+	settings: ResolvedTeamSettings;
 }
 
 function promptChainsForTeam(team: TeamSpec) {
@@ -236,12 +166,96 @@ function promptChainsForTeam(team: TeamSpec) {
 	return resolveProtocolPromptChains({ protocol: team.protocol, prompts: team.prompts, bindings: team.agentBindings }, catalog);
 }
 
-function renderTelephoneSystem(template: readonly string[], index: number, total: number): string {
-	return renderTemplate([...template], { index: index.toString(), total: total.toString() });
+function firstBinding(team: TeamSpec, roles: string[]): TeamAgentBinding {
+	const binding = bindingForRole(team, roles) ?? team.agentBindings[0];
+	if (!binding) throw new Error(`Team "${team.id}" needs at least one role binding.`);
+	return binding;
 }
 
-function renderTelephonePrompt(template: readonly string[], message: string): string {
-	return renderTemplate([...template], { message });
+function graphPlanForConsult(args: GraphPlanArgs): LoweredGraphPlan {
+	const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? args.settings.defaultConsult?.navigator;
+	if (!navigator) throw new Error("consult teams need a navigator model.");
+	if (navigator.toLowerCase().startsWith("agent:")) {
+		throw new Error(`consult graph nodes require model ids; live-agent ref "${navigator}" is unsupported.`);
+	}
+	const chains = promptChainsForTeam(args.team);
+	const binding = {
+		...firstBinding(args.team, ["navigator"]),
+		role: "navigator",
+		model: navigator,
+		systemPrompt: requirePromptChain(chains, "navigator.system").text,
+	};
+	return {
+		team: {
+			...args.team,
+			agents: [binding.subagent],
+			agentBindings: [binding],
+			graph: { edges: [], outputs: ["navigator"] },
+			models: { members: [navigator], navigator },
+		},
+		phaseId: "consult",
+		outputRole: "navigator",
+	};
+}
+
+function graphPlanForTelephone(args: GraphPlanArgs): LoweredGraphPlan {
+	const models = args.params.models?.members ?? args.team.models.members ?? args.settings.defaultMembers;
+	const fallbackModel = models[0];
+	if (!fallbackModel) throw new Error("telephone teams need at least one member model.");
+	const bindings = args.team.agentBindings.map((binding, index) => ({
+		...binding,
+		model: models[index] ?? fallbackModel,
+	}));
+	const edges = bindings.slice(1).map((binding, index) => ({ from: bindings[index]?.role ?? "", to: binding.role }));
+	return {
+		team: {
+			...args.team,
+			agentBindings: bindings,
+			graph: { edges, outputs: [bindings[bindings.length - 1]?.role ?? ""] },
+			models: { members: bindings.map((binding) => binding.model as string) },
+		},
+		phaseId: "telephone",
+		outputRole: bindings[bindings.length - 1]?.role ?? "",
+		templateSlot: "relay.template",
+		buildNodePrompt: telephonePromptBuilder(args.team),
+	};
+}
+
+export function graphPlanForSimpleProtocol(args: GraphPlanArgs): LoweredGraphPlan | undefined {
+	if (args.team.protocol === "consult") return graphPlanForConsult(args);
+	if (args.team.protocol === "telephone") return graphPlanForTelephone(args);
+	return undefined;
+}
+
+function telephonePromptBuilder(team: TeamSpec): GraphNodePromptBuilder {
+	const chains = promptChainsForTeam(team);
+	const relaySystemTemplate = requirePromptChain(chains, "relay.system").text;
+	const roleOrder = new Map(team.agentBindings.map((binding, index) => [binding.role, index]));
+	return (args) => {
+		const index = (roleOrder.get(args.binding.role) ?? 0) + 1;
+		const priorMessage = args.upstream[0]?.output.trim() || args.originalPrompt;
+		return {
+			prompt: renderTemplate(args.defaultTemplate.split("\n"), { message: priorMessage }),
+			systemPrompt: renderTemplate(relaySystemTemplate.split("\n"), {
+				index: index.toString(),
+				total: team.agentBindings.length.toString(),
+			}),
+		};
+	};
+}
+
+function graphResultText(result: GraphRunResult, outputRole: string): string {
+	return result.nodes.find((node) => node.role === outputRole)?.output || result.output;
+}
+
+function graphNodeDetails(result: GraphRunResult): Array<Record<string, unknown>> {
+	return result.nodes.map((node) => ({
+		role: node.binding.role,
+		model: node.model,
+		ok: node.ok,
+		status: node.status,
+		durationMs: node.durationMs,
+	}));
 }
 
 const graphHandler: TeamHandler = {
@@ -427,111 +441,53 @@ const pairCodingHandler: TeamHandler = {
 	},
 };
 
-const pairConsultHandler: TeamHandler = {
-	key: "consult",
+const loweredGraphHandler: TeamHandler = {
+	key: "lowered-graph",
 	matches(team) {
-		return team.protocol === "consult";
-	},
-	modelSlots(_team, models) {
-		return [
-			{
-				id: "navigator",
-				label: "Navigator model",
-				current: models.navigator,
-				kind: "navigator",
-			},
-		];
-	},
-	async run(args) {
-		const settings = resolveTeamSettings();
-		const chains = promptChainsForTeam(args.team);
-		const systemPrompt = requirePromptChain(chains, "navigator.system").text;
-		const navigator = args.params.models?.navigator ?? args.team.models.navigator ?? settings.defaultConsult?.navigator;
-		if (!navigator) throw new Error("pair-consult needs a navigator model or agent ref.");
-		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: consulting ${navigator}`);
-		const outcome = navigator.startsWith("agent:")
-			? await consultAgent({ navigator, message: args.params.prompt, ctx: args.ctx, teamId: args.team.id, systemPrompt })
-			: await consultModel({
-				navigator,
-				message: args.params.prompt,
-				ctx: args.ctx,
-				systemPrompt,
-				config: generationConfigForRole(args.team, ["navigator"]),
-			});
-		recordPhase(args, "consult");
-		if (args.runId) {
-			args.stateManager.recordNodeCompleted(args.runId, {
-				phaseId: "consult",
-				nodeId: "navigator",
-				role: "navigator",
-				model: navigator,
-				ok: outcome.ok,
-				durationMs: outcome.durationMs,
-				output: outcome.body,
-				...(outcome.ok ? {} : { error: outcome.body }),
-			});
-		}
-		return okText(outcome.body, {
-			team: args.team.id,
-			navigator,
-			durationMs: outcome.durationMs,
-			ok: outcome.ok,
-		});
-	},
-};
-
-const telephoneHandler: TeamHandler = {
-	key: "telephone",
-	matches(team) {
-		return team.protocol === "telephone";
+		return team.protocol === "consult" || team.protocol === "telephone";
 	},
 	modelSlots(team, models) {
-		const memberCount = Math.max(models.members?.length ?? 0, team.agents.length, 1);
+		if (team.protocol === "consult") {
+			return [{ id: "navigator", label: "Navigator model", current: models.navigator, kind: "navigator" }];
+		}
 		return memberModelSlots({
-			count: memberCount,
+			count: Math.max(models.members?.length ?? 0, team.agents.length, 1),
 			label: (index) => `Relay model ${index + 1}`,
 			models,
 		});
 	},
 	async run(args) {
 		const settings = resolveTeamSettings();
-		const chains = promptChainsForTeam(args.team);
-		const relaySystemTemplate = requirePromptChain(chains, "relay.system").text.split("\n");
-		const relayTemplate = requirePromptChain(chains, "relay.template").text.split("\n");
-		const models = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
-		const fallbackModel = models[0];
-		if (!fallbackModel) throw new Error("telephone teams need at least one member model.");
-		let message = args.params.prompt;
-		const hops: Array<{ agent: string; model: string; ok: boolean; output: string; durationMs: number }> = [];
-		recordPhase(args, "telephone");
-		for (const [index, agent] of args.team.agents.entries()) {
-			const model = models[index] ?? fallbackModel;
-			args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: relay ${index + 1}/${args.team.agents.length}`);
-			const binding = args.team.agentBindings[index];
-			const run = await runMember(
-				{
-					label: agent,
-					model,
-					...(binding?.tools !== undefined ? { tools: binding.tools } : {}),
-					...(binding?.parameters !== undefined ? { parameters: binding.parameters } : {}),
-				},
-				{
-					prompt: renderTelephonePrompt(relayTemplate, message),
-					systemPrompt: renderTelephoneSystem(relaySystemTemplate, index + 1, args.team.agents.length),
-					cwd: args.ctx.cwd,
-					signal: args.ctx.signal,
-					parentId: (await currentPanopticonRecord(args.ctx.cwd))?.id,
-				},
-			);
-			const output = run.ok ? run.output.trim() : message;
-			hops.push({ agent, model, ok: run.ok, output, durationMs: run.durationMs });
-			recordModelRun(args, "telephone", `relay:${index + 1}`, run);
-			message = output;
+		const plan = graphPlanForSimpleProtocol({ team: args.team, params: args.params, settings });
+		if (!plan) throw new Error(`Protocol ${args.team.protocol} cannot be lowered to graph execution.`);
+		const result = await runTeamGraph({
+			team: plan.team,
+			prompt: args.params.prompt,
+			ctx: args.ctx,
+			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			templateSlot: plan.templateSlot,
+			buildNodePrompt: plan.buildNodePrompt,
+			onProgress: (text) => args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${text}`),
+		});
+		recordPhase(args, plan.phaseId);
+		if (args.runId) {
+			for (const node of result.nodes) {
+				args.stateManager.recordNodeCompleted(args.runId, {
+					phaseId: plan.phaseId,
+					nodeId: node.role,
+					role: node.binding.role,
+					model: node.model ?? "",
+					ok: node.ok,
+					durationMs: node.durationMs ?? 0,
+					output: node.output,
+					...(node.error ? { error: node.error } : {}),
+				});
+			}
 		}
-		return okText(message, {
+		return okText(graphResultText(result, plan.outputRole), {
 			team: args.team.id,
-			ok: hops.every((hop) => hop.ok),
-			hops,
+			ok: result.ok,
+			nodes: graphNodeDetails(result),
 		});
 	},
 };
@@ -540,8 +496,7 @@ const TEAM_HANDLERS: readonly TeamHandler[] = [
 	graphHandler,
 	debateHandler,
 	pairCodingHandler,
-	pairConsultHandler,
-	telephoneHandler,
+	loweredGraphHandler,
 ];
 
 export function getTeamHandler(team: TeamSpec): TeamHandler | undefined {
