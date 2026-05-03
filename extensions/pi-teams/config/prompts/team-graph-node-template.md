@@ -1,5 +1,5 @@
 ---
-id: teamGraphNodeTemplate
+id: graph/node/template
 title: "Generic team graph node prompt template"
 scope: team
 stage: graph-node
