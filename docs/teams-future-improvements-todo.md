@@ -129,6 +129,20 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Built-in prompt asset IDs use protocol path names such as `graph/node/template`, not camelCase compatibility IDs. Prompt slot keys remain protocol-local map keys, but the referenced assets should be inspectable and grouped by protocol without TypeScript-only naming conventions.
 
+### ADR-026 — Legacy cleanup is architecture-gated
+
+**Decision:** The P6 cleanup is now guarded by an architecture fitness function, not only an ad hoc grep. Runtime `extensions/pi-teams` source/config files must not reintroduce removed compatibility symbols such as `council`, `chairman`, `topology`, legacy run custom types, or old compatibility type/function names. Intentional protocol labels such as `debate`, `consult`, `telephone`, and `pair-coding` remain allowed as team configuration vocabulary.
+
+```mermaid
+flowchart LR
+  RuntimeFiles[extensions/pi-teams runtime files]
+  Fitness[architecture.test.ts legacy cleanup rule]
+  Suite[npm test / npm run check]
+  Handoff[remediation handoff]
+
+  RuntimeFiles --> Fitness --> Suite --> Handoff
+```
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -415,6 +429,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
+- 2026-05-03 architecture hardening refresh: added an architecture fitness function that fails if `extensions/pi-teams` runtime source/config files reintroduce removed legacy symbols (`council`, `chairman`, `topology`, old compatibility type/function names, or legacy run custom types). Navigator review and council review both found no true KISS/YAGNI blockers for closure. Validation green: `npm run check`, `npm test` (32 files, 360 tests), `npm test -- tests/architecture.test.ts` (16 tests), and `npm run knip` (zero findings). Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output.
 - 2026-05-03 refactor closure refresh: local audit found no P3-P6 blockers and one tiny duplication cleanup. Reused `graphNodeDetails()` in the graph handler and renamed the generic graph prompt asset from `teamGraphNodeTemplate` to `graph/node/template` to keep prompt IDs path-shaped. Validation green: `npm run check`, `npm test` (32 files, 359 tests), and `npm test -- tests/architecture.test.ts`. Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output; council review found no blockers.
 - 2026-05-03 final evidence refresh: local audit found a P5 documentation/code mismatch: graph retry policy was claimed but not implemented. Fixed with bounded `maxRetries` policy on team limits, role bindings, and runtime limits; `team_models` rewrites preserve it. Focused retry tests cover successful retry, runtime override precedence (`maxRetries: 0`), and timeout non-retry behavior. Validation green: `npm run check`, `npm test` (32 files, 359 tests), and `npm test -- tests/architecture.test.ts`. Fresh legacy runtime-symbol grep over `extensions/pi-teams` returned no output. Live navigator (`team_run consult`) and council (`team_run default-debate`) reviews found no true KISS/YAGNI blockers after the fix.
 - 2026-05-03 evidence refresh: local audit found two `team-form.ts` blockers (`team_form` debate without members; lossy `team_models` rewrite). Both are fixed and reviewed by the audit agent, council (`team_run default-debate`), and navigator (`team_run consult`) with no remaining true KISS/YAGNI blockers. Validation green: `npm run check`, `npm test` (32 files, 356 tests), and `npm test -- tests/architecture.test.ts`. Legacy runtime-symbol grep still only reports unrelated `tests/task-brief.test.ts` topology fixtures outside `extensions/pi-teams`.

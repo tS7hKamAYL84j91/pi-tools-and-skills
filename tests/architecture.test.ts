@@ -12,18 +12,22 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, normalize, relative, sep } from "node:path";
 import { projectFiles, metrics } from "archunit";
 
-function listTsFiles(root: string): string[] {
+function listFiles(root: string, extensions: string[]): string[] {
 	const files: string[] = [];
 	if (!existsSync(root)) return files;
 	for (const entry of readdirSync(root)) {
 		const path = join(root, entry);
 		if (statSync(path).isDirectory()) {
-			files.push(...listTsFiles(path));
-		} else if (path.endsWith(".ts")) {
+			files.push(...listFiles(path, extensions));
+		} else if (extensions.some((extension) => path.endsWith(extension))) {
 			files.push(path);
 		}
 	}
 	return files;
+}
+
+function listTsFiles(root: string): string[] {
+	return listFiles(root, [".ts"]);
 }
 
 function extensionNames(): string[] {
@@ -209,7 +213,25 @@ describe("documentation", () => {
 	});
 });
 
-// ── 8. Clean Code: Function parameter limits (Bob Martin: ≤3) ───
+// ── 8. pi-teams legacy cleanup invariants ───────────────────────
+
+describe("pi-teams legacy cleanup", () => {
+	it("runtime files should not reintroduce removed legacy protocol symbols", () => {
+		const forbidden = /\b(council|chairman|TeamRunDefinition|CouncilDefinition|CouncilMember|resolveCouncilSettings|LEGACY_TEAM_RUN_CUSTOM_TYPE|pi-teams:deliberation|topology|TeamTopology|deliberate)\b/;
+		const violations: string[] = [];
+		for (const file of listFiles("extensions/pi-teams", [".ts", ".md", ".json"])) {
+			const content = readFileSync(file, "utf8");
+			const match = forbidden.exec(content);
+			if (match) {
+				violations.push(`${relative(process.cwd(), file)} contains ${match[0]}`);
+			}
+		}
+
+		expect(violations).toEqual([]);
+	});
+});
+
+// ── 9. Clean Code: Function parameter limits (Bob Martin: ≤3) ───
 
 function countFuncParams(content: string, maxParams: number): boolean {
 	const funcPattern = /function\s+\w+\s*\(([^)]*?)\)/g;
