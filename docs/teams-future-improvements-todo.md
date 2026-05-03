@@ -105,6 +105,14 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** Authored v2 team manifests use `protocol` and role binding `model` fields only. `engine`, `memberModels`, `synthesisModel`, `driverModel`, and `navigatorModel` parsing is removed from `team-registry.ts` instead of retained as compatibility surface. The obsolete `teams.ts` compatibility barrel is deleted; tests import concrete modules directly.
 
+### ADR-020 — Role matching is a shared execution primitive
+
+**Decision:** Protocol lowering and handler model-slot inspection use one shared role-binding matcher. This keeps fuzzy role matching (`role` and `role_*`) protocol-neutral and removes ad hoc fake-team wrappers from graph planning code.
+
+### ADR-021 — Generated forms only create runnable built-in protocols
+
+**Decision:** `team_form` does not offer `graph` until it can author explicit edges and output policy. Graph remains a supported runtime protocol for manually authored v2 team files; generated team files should be runnable without hidden follow-up edits.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -208,7 +216,6 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ `state.ts` defines full event schema:
   - `TeamRunStartedEvent`, `TeamRunPhaseStartedEvent`, `TeamRunNodeCompletedEvent`
   - `TeamRunCompletedEvent`, `TeamRunFailedEvent`, `TeamRunTombstonedEvent`
-  - `TeamRunLegacyImportedEvent`
 - ✅ `TEAM_RUN_CUSTOM_TYPE = "pi-teams:run"`
 - ✅ Session hooks registered in `index.ts`
 - ✅ Bounds output persistence with `MAX_PERSISTED_OUTPUT_CHARS = 64_000`
@@ -355,7 +362,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] `resolveTeamSettings()` replaces `resolveCouncilSettings()`
 - [x] `TeamRunDefinition` compatibility type removed with `CouncilDefinition`
 - [x] `runTeam()` graph-backed dispatch replaces `deliberate()`
-- [x] Prompt keys use `{protocol}/{phase}/{slot}` convention
+- [x] Prompt asset IDs use `{protocol}/{phase}/{slot}` convention; team prompt slot keys remain short protocol-local names such as `navigatorBrief.system`
 - [x] New custom workflows can be added via graph protocol config without TypeScript execution changes
 - [x] `npm run check` and `npm test` pass
 
@@ -398,6 +405,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - Refactor pass 2 completed: extracted protocol graph-lowering/prompt-packaging from `team-handlers.ts` to `team-lowering.ts`; `team-handlers.ts` is now 238 lines and focused on dispatch/state/result shaping. Validation green: `npm run check` and `npm test`.
 - Compatibility cleanup completed: removed `engine` and legacy top-level model field parsing from `team-registry.ts`, deleted the obsolete `teams.ts` compatibility barrel, cleaned stale chair/council wording in config and generic tests, and verified no legacy-name matches remain in `extensions/pi-teams` or tests except unrelated task-brief topology fixtures. Validation green: `npm run check && npm test`.
 - P6 config cleanup completed: bundled agent/prompt filenames and prompt ids no longer use legacy shorthand; ids use protocol slot paths.
+- Refactor pass 3 completed: extracted shared role-binding lookup to `team-bindings.ts`, removed duplicate/fake-team role matching in `team-handlers.ts` and `team-lowering.ts`, and kept behavior unchanged. Validation green: `npm run check && npm test` (32 files, 354 tests, type coverage 99.05%, knip zero findings).
+- Navigator review follow-up completed: corrected P3 event documentation, clarified prompt asset-id vs prompt-slot naming, stopped advertising unsupported `agent:` refs as navigator model input, and removed `graph` from generated `team_form` protocol choices because graph teams need explicit manual edge policy. Validation green: `npm run check && npm test` (32 files, 354 tests, type coverage 99.05%, knip zero findings).
 - P6 topology-removal grep passed: no `topology` or `TeamTopology` matches remain in `extensions/pi-teams`; unrelated task-brief tests still cover orchestration topology outside pi-teams.
 - P6 legacy-name grep passed for `extensions/pi-teams` and team tests: no `council`, `chairman`, `TeamRunDefinition`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or old conversion helpers remain.
 - Refactor prompt follow-up removed dead compatibility files (`agent-ref.ts`, `preflight.ts`, unused live-agent request/framing prompts), renamed tests to team-oriented names, and simplified session state to protocol-neutral event reduction.

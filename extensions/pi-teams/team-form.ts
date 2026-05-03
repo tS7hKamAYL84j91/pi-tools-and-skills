@@ -211,7 +211,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const supported = new Set(["consult", "pair-coding", "debate", "telephone", "graph"]);
+	const supported = new Set(["consult", "pair-coding", "debate", "telephone"]);
 	if (!supported.has(input.protocol)) throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	if (input.agents.length === 0 && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error("Team must include at least one subagent.");
@@ -295,7 +295,7 @@ export async function formTeam(
 	if (!id) return undefined;
 	const name = await ctx.ui.input("Team name", titleFromId(id)) ?? titleFromId(id);
 	const description = await ctx.ui.input("Description (optional)", "");
-	const protocolChoice = await ctx.ui.select("Protocol", ["consult", "pair-coding", "debate", "telephone", "graph"]);
+	const protocolChoice = await ctx.ui.select("Protocol", ["consult", "pair-coding", "debate", "telephone"]);
 	if (!protocolChoice) return undefined;
 	const protocol = protocolChoice as TeamFormProtocol;
 
@@ -312,7 +312,7 @@ export async function formTeam(
 	const memberModelIds = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;
 	const synthesisId = protocol === "debate" ? await ctx.ui.input("Synthesis model (optional)", "") : undefined;
 	const driverId = protocol === "pair-coding" ? await ctx.ui.input("Driver model (optional)", "") : undefined;
-	const navigatorId = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model or agent:<name> (optional)", "") : undefined;
+	const navigatorId = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model id (optional)", "") : undefined;
 	const maxFixPassesInput = protocol === "pair-coding" ? await ctx.ui.input("Max fix passes", "1") : undefined;
 	const maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 
