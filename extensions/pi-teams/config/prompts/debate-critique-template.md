@@ -1,7 +1,7 @@
 ---
 id: debate/critique/template
 title: "Council critique prompt template"
-scope: council
+scope: debate
 stage: critique
 kind: template
 ---

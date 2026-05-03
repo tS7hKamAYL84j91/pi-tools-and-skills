@@ -90,15 +90,15 @@ describe("peer critique prompt self-exclusion", () => {
 	});
 });
 
-describe("pair primer asset", () => {
-	it("renders the configured pair primer template", () => {
+describe("consult primer asset", () => {
+	it("renders the configured consult primer template", () => {
 		const prompt = renderTemplate([...promptAssetLines(PROMPTS_CONFIG, "consult/primer")], {
-			pairName: "review",
+			teamName: "review",
 			navigator: "ollama/glm-5.1:cloud",
 			taskLine: "\n\nTask: tighten the tests",
 		});
 
-		expect(prompt).toContain('[Pair-coding "review"');
+		expect(prompt).toContain('[Team "review"');
 		expect(prompt).toContain("Navigator: ollama/glm-5.1:cloud");
 		expect(prompt).toContain('id="consult"');
 		expect(prompt).toContain("Task: tighten the tests");

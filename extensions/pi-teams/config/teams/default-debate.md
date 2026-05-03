@@ -34,4 +34,4 @@ agents:
     model: "openai-codex/gpt-5.5"
 ---
 
-Default built-in team for the existing multi-model council debate workflow.
+Default built-in team for the existing multi-model debate workflow.

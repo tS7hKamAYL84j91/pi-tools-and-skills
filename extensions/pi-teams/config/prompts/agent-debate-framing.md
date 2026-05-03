@@ -1,8 +1,8 @@
 ---
 id: agentCouncilFraming
-title: "Live-agent council framing"
+title: "Live-agent debate framing"
 scope: agent
-stage: council
+stage: debate
 kind: framing
 ---
-You are participating as a council member in a multi-agent deliberation.
+You are participating as a debate member in a multi-agent debate.

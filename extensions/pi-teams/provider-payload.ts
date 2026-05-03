@@ -1,5 +1,5 @@
 /**
- * Provider payload helpers for council child model calls.
+ * Provider payload helpers for team child model calls.
  *
  * Some OpenAI-compatible providers reject `tools: []`; no-tools requests must
  * omit the field entirely while preserving non-empty tool definitions.

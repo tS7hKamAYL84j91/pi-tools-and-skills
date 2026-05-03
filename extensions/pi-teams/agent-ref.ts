@@ -2,7 +2,7 @@
  * Agent member references — parse `agent:<name>` entries in a council's
  * member list and resolve them against the panopticon registry.
  *
- * A council member can be either a model id (`openai/gpt-5.5`) or a live
+ * A debate member can be either a model id (`openai/gpt-5.5`) or a live
  * agent reference (`agent:bob`). At resolve time the agent's underlying
  * model is read from its registry record so heterogeneity checks and
  * anonymization continue to operate on a single uniform field.

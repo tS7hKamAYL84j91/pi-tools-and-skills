@@ -38,7 +38,7 @@ const TeamModelsSchema = Type.Object({
 	id: Type.String({ description: "Team id to update." }),
 	models: Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "council/chain member model IDs." })),
-		chairman: Type.Optional(Type.String({ description: "council synthesis model." })),
+		chairman: Type.Optional(Type.String({ description: "debate synthesis model." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding Driver model." })),
 		navigator: Type.Optional(Type.String({ description: "pair Navigator model or agent ref." })),
 	}),
