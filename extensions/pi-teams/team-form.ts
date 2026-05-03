@@ -20,6 +20,7 @@ export interface TeamFormLimits {
 	maxFixPasses?: number;
 	timeoutMs?: number;
 	maxConcurrency?: number;
+	maxRetries?: number;
 }
 
 export interface TeamFormInput {
@@ -214,6 +215,7 @@ function agentBindingLines(bindings: TeamAgentBinding[]): string[] {
 			...(binding.templateId ? [`    templateId: ${quote(binding.templateId)}`] : []),
 			...(binding.systemPrompt ? [`    systemPrompt: ${quote(binding.systemPrompt)}`] : []),
 			...(binding.dependencyPolicy ? [`    dependencyPolicy: ${quote(binding.dependencyPolicy)}`] : []),
+			...(binding.maxRetries !== undefined ? [`    maxRetries: ${binding.maxRetries}`] : []),
 			...(binding.tools ? [`    tools: ${inlineList(binding.tools)}`] : []),
 			...(binding.parameters ? [`    parameters: ${inlineParameters(binding.parameters)}`] : []),
 		]),
@@ -244,6 +246,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
 		...(args.limits?.timeoutMs !== undefined ? [`timeoutMs: ${args.limits.timeoutMs}`] : []),
 		...(args.limits?.maxConcurrency !== undefined ? [`maxConcurrency: ${args.limits.maxConcurrency}`] : []),
+		...(args.limits?.maxRetries !== undefined ? [`maxRetries: ${args.limits.maxRetries}`] : []),
 		"---",
 		"",
 		`${args.name} team.`,

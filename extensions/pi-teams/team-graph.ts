@@ -33,6 +33,7 @@ export interface GraphNodeResult {
 	startedAt?: number;
 	completedAt?: number;
 	durationMs?: number;
+	attempts?: number;
 }
 
 /** @public */
@@ -77,6 +78,7 @@ interface GraphRunArgs {
 	ctx: ExtensionContext;
 	timeoutMs?: number;
 	maxConcurrency?: number;
+	maxRetries?: number;
 	onProgress?: (text: string) => void;
 	templateSlot?: string;
 	runNode?: GraphNodeRunner;
@@ -147,6 +149,14 @@ function modelForBinding(team: TeamSpec, binding: TeamAgentBinding): string | un
 	return binding.model ?? (index !== undefined ? team.models.members?.[index] : undefined);
 }
 
+function assertNonNegativeInteger(value: number | undefined, label: string): void {
+	if (value !== undefined && (!Number.isInteger(value) || value < 0)) throw new Error(`${label} must be a non-negative integer.`);
+}
+
+function maxRetriesForBinding(team: TeamSpec, binding: TeamAgentBinding, override: number | undefined): number {
+	return override ?? binding.maxRetries ?? team.limits.maxRetries ?? 0;
+}
+
 /** @public */
 export function validateTeamGraph(team: TeamSpec): GraphValidationResult {
 	if (team.agentBindings.length === 0) throw new Error("Team graph must include at least one node.");
@@ -164,8 +174,10 @@ export function validateTeamGraph(team: TeamSpec): GraphValidationResult {
 	if (team.graph?.reducer !== undefined && team.graph.reducer !== "concat") {
 		throw new Error(`Unsupported graph reducer "${team.graph.reducer}"; supported reducers: concat.`);
 	}
+	assertNonNegativeInteger(team.limits.maxRetries, "Graph maxRetries");
 	for (const binding of team.agentBindings) {
 		if (!modelForBinding(team, binding)) throw new Error(`Graph node "${binding.role}" needs a model binding.`);
+		assertNonNegativeInteger(binding.maxRetries, `Graph node "${binding.role}" maxRetries`);
 	}
 	assertConnected(roles, edgesOf(team));
 	const levels = topologicalLevels(team, roles, edgesOf(team));
@@ -250,7 +262,7 @@ async function productionRunNode(args: Parameters<GraphNodeRunner>[0]): Promise<
 }
 
 function skippedNode(binding: TeamAgentBinding, model: string, error: string): GraphNodeResult {
-	return { role: binding.role, binding, model, status: "skipped", ok: false, output: "", error };
+	return { role: binding.role, binding, model, status: "skipped", ok: false, output: "", error, attempts: 0 };
 }
 
 async function runOneNode(args: {
@@ -261,6 +273,7 @@ async function runOneNode(args: {
 	ctx: ExtensionContext;
 	parentId?: string;
 	timeoutMs?: number;
+	maxRetries?: number;
 	runNode: GraphNodeRunner;
 	template: string;
 	catalog: Record<string, readonly string[]>;
@@ -283,42 +296,65 @@ async function runOneNode(args: {
 		catalog: args.catalog,
 		defaultTemplate: args.template,
 	});
-	const controller = new AbortController();
-	const timeout = args.timeoutMs ? setTimeout(() => controller.abort(), args.timeoutMs) : undefined;
-	const onParentAbort = () => controller.abort();
-	args.ctx.signal?.addEventListener("abort", onParentAbort, { once: true });
 	const startedAt = Date.now();
-	try {
-		const run = await args.runNode({
-			binding: args.binding,
-			model,
-			prompt: inputs.prompt,
-			systemPrompt: inputs.systemPrompt,
-			signal: controller.signal,
-			parentId: args.parentId,
-			cwd: args.ctx.cwd,
-		});
-		const status = run.ok ? "succeeded" : controller.signal.aborted && args.ctx.signal?.aborted ? "cancelled" : "failed";
-		return {
-			role: args.binding.role,
-			binding: args.binding,
-			status,
-			ok: run.ok,
-			model,
-			run,
-			output: run.output,
-			...(run.error ? { error: run.error } : {}),
-			startedAt,
-			completedAt: Date.now(),
-			durationMs: run.durationMs,
-		};
-	} catch (error) {
-		const message = controller.signal.aborted && !args.ctx.signal?.aborted ? "timeout" : error instanceof Error ? error.message : String(error);
-		return { role: args.binding.role, binding: args.binding, status: "failed", ok: false, model, output: "", error: message, startedAt, completedAt: Date.now(), durationMs: Date.now() - startedAt };
-	} finally {
-		if (timeout) clearTimeout(timeout);
-		args.ctx.signal?.removeEventListener("abort", onParentAbort);
+	const maxAttempts = maxRetriesForBinding(args.team, args.binding, args.maxRetries) + 1;
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		const controller = new AbortController();
+		const timeout = args.timeoutMs ? setTimeout(() => controller.abort(), args.timeoutMs) : undefined;
+		const onParentAbort = () => controller.abort();
+		args.ctx.signal?.addEventListener("abort", onParentAbort, { once: true });
+		try {
+			const run = await args.runNode({
+				binding: args.binding,
+				model,
+				prompt: inputs.prompt,
+				systemPrompt: inputs.systemPrompt,
+				signal: controller.signal,
+				parentId: args.parentId,
+				cwd: args.ctx.cwd,
+			});
+			const status = run.ok ? "succeeded" : controller.signal.aborted && args.ctx.signal?.aborted ? "cancelled" : "failed";
+			if (!run.ok && status !== "cancelled" && !controller.signal.aborted && attempt < maxAttempts) continue;
+			const completedAt = Date.now();
+			return {
+				role: args.binding.role,
+				binding: args.binding,
+				status,
+				ok: run.ok,
+				model,
+				run,
+				output: run.output,
+				...(run.error || controller.signal.aborted && !args.ctx.signal?.aborted ? { error: controller.signal.aborted && !args.ctx.signal?.aborted ? "timeout" : run.error } : {}),
+				startedAt,
+				completedAt,
+				durationMs: completedAt - startedAt,
+				attempts: attempt,
+			};
+		} catch (error) {
+			const parentCancelled = controller.signal.aborted && args.ctx.signal?.aborted;
+			const timedOut = controller.signal.aborted && !args.ctx.signal?.aborted;
+			const message = timedOut ? "timeout" : error instanceof Error ? error.message : String(error);
+			if (!controller.signal.aborted && attempt < maxAttempts) continue;
+			const completedAt = Date.now();
+			return {
+				role: args.binding.role,
+				binding: args.binding,
+				status: parentCancelled ? "cancelled" : "failed",
+				ok: false,
+				model,
+				output: "",
+				error: message,
+				startedAt,
+				completedAt,
+				durationMs: completedAt - startedAt,
+				attempts: attempt,
+			};
+		} finally {
+			if (timeout) clearTimeout(timeout);
+			args.ctx.signal?.removeEventListener("abort", onParentAbort);
+		}
 	}
+	throw new Error("unreachable graph retry state.");
 }
 
 async function runLevel(args: {
@@ -330,6 +366,7 @@ async function runLevel(args: {
 	parentId?: string;
 	timeoutMs?: number;
 	maxConcurrency: number;
+	maxRetries?: number;
 	runNode: GraphNodeRunner;
 	template: string;
 	catalog: Record<string, readonly string[]>;
@@ -357,6 +394,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 	const validation = validateTeamGraph(args.team);
 	const maxConcurrency = args.maxConcurrency ?? args.team.limits.maxConcurrency ?? 4;
 	if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1) throw new Error("Graph maxConcurrency must be a positive integer.");
+	assertNonNegativeInteger(args.maxRetries, "Graph maxRetries");
 	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
 	const catalog = resolveTeamSettings().prompts;
 	const chains = resolveProtocolPromptChains({ protocol: args.team.protocol, prompts: args.team.prompts, bindings: args.team.agentBindings }, catalog);
@@ -370,7 +408,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 		if (args.ctx.signal?.aborted) {
 			for (const role of level) {
 				const binding = args.team.agentBindings.find((entry) => entry.role === role) as TeamAgentBinding;
-				nodes.push({ role, binding, status: "cancelled", ok: false, model: modelForBinding(args.team, binding), output: "", error: "cancelled" });
+				nodes.push({ role, binding, status: "cancelled", ok: false, model: modelForBinding(args.team, binding), output: "", error: "cancelled", attempts: 0 });
 			}
 			continue;
 		}
@@ -383,6 +421,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 			parentId,
 			timeoutMs: args.timeoutMs,
 			maxConcurrency,
+			maxRetries: args.maxRetries,
 			runNode,
 			template,
 			catalog,

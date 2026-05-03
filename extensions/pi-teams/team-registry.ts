@@ -118,6 +118,7 @@ function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefine
 			const templateId = optionalString(entry.templateId);
 			const systemPrompt = optionalString(entry.systemPrompt);
 			const dependencyPolicy = optionalString(entry.dependencyPolicy);
+			const maxRetries = optionalNumber(entry.maxRetries);
 			if (!role || !subagent) return undefined;
 			if (dependencyPolicy !== undefined && dependencyPolicy !== "require-ok" && dependencyPolicy !== "allow-failed") return undefined;
 			return {
@@ -129,6 +130,7 @@ function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefine
 				...(templateId ? { templateId } : {}),
 				...(systemPrompt ? { systemPrompt } : {}),
 				...(dependencyPolicy ? { dependencyPolicy } : {}),
+				...(maxRetries !== undefined ? { maxRetries } : {}),
 				...generationConfig(entry),
 			};
 		})
@@ -201,6 +203,7 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
+	const maxRetries = optionalNumber(frontMatter.maxRetries);
 	return {
 		schemaVersion: 2,
 		id,
@@ -216,6 +219,7 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 			...(timeoutMs ? { timeoutMs } : {}),
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),
 			...(optionalNumber(frontMatter.maxConcurrency) !== undefined ? { maxConcurrency: optionalNumber(frontMatter.maxConcurrency) } : {}),
+			...(maxRetries !== undefined ? { maxRetries } : {}),
 		},
 		source,
 		path: descriptor.path,

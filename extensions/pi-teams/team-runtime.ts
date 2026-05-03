@@ -29,6 +29,7 @@ const TeamFormSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
+		maxRetries: Type.Optional(Type.Number({ description: "Bounded graph node retries after child-call failure." })),
 	})),
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Where to write the team. Defaults to user." })),
 	overwrite: Type.Optional(Type.Boolean({ description: "Replace an existing team file." })),
@@ -64,6 +65,7 @@ const TeamRunSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
+		maxRetries: Type.Optional(Type.Number({ description: "Bounded graph node retries after child-call failure." })),
 	})),
 });
 
