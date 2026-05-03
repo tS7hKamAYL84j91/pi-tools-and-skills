@@ -536,6 +536,65 @@ Current matching modules:
 - ✅ Add the smallest live-node runner needed for existing registered agents.
 - ✅ Keep authored team files explicit and inspectable.
 
+---
+
+## P9 — Evaluate LangGraph after protocol config extraction
+
+**Status:** ❌ **TODO — blocked until P7 is complete**
+
+**Goal:** Determine whether LangGraph would reduce the amount of custom TypeScript needed for team graph planning/execution after built-in protocol definitions have moved into configuration. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
+
+**Why after P7:**
+
+P7 separates protocol configuration from execution primitives. LangGraph should be evaluated against the post-P7 shape, not the current code-hosted protocol catalog, so the comparison measures graph runtime value rather than cleanup work that P7 already owns.
+
+**Research questions:**
+
+1. **Code reduction:**
+   - Which parts of `team-graph.ts`, `team-lowering.ts`, retry scheduling, dependency handling, and output reduction would LangGraph replace?
+   - How many lines/modules disappear versus how many adapter/config modules are added?
+
+2. **Pi integration fit:**
+   - Can LangGraph preserve existing `pi-teams:run` session events, bounded output persistence, cancellation, timeout, retry, and progress reporting semantics?
+   - Can live `agent:<name>` nodes from P8 and one-shot model nodes share the same graph abstraction cleanly?
+
+3. **Configuration fit:**
+   - Can P7 protocol config compile to LangGraph nodes/edges without a large custom DSL?
+   - Can bounded pair-coding unrolling stay declarative and inspectable?
+
+4. **Operational risk:**
+   - Dependency size, ESM compatibility, Node version support, transitive dependency risk, and test ergonomics.
+   - Whether LangGraph failure modes are easier or harder to inspect than the current small DAG executor.
+
+**Work:**
+
+1. **Write a short spike document:**
+   - Add `docs/teams-p9-langgraph-evaluation.md` with current executor responsibilities, LangGraph mapping, estimated deletion/addition counts, risks, and recommendation.
+
+2. **Prototype on a branch only:**
+   - Convert one graph-backed protocol/config fixture to LangGraph.
+   - Do not merge the prototype unless the evaluation recommends migration.
+
+3. **Decision gate:**
+   - Use council/navigator review before accepting a new dependency.
+   - Require objective simplification: less code, fewer custom scheduling paths, equal or better tests, and no loss of inspectability.
+
+**Acceptance criteria:**
+
+- [ ] P7 is complete before implementation starts.
+- [ ] LangGraph spike document exists with a migrate / do-not-migrate recommendation.
+- [ ] Prototype proves session events, retries, timeouts, cancellation, graph output reduction, and prompt packaging still work.
+- [ ] Migration only proceeds if it deletes more custom graph code than it adds in adapters/config glue.
+- [ ] `npm run check`, `npm test`, and focused graph tests pass after any accepted migration.
+
+**KISS/YAGNI constraints:**
+
+- ❌ Do not add LangGraph just because it is popular.
+- ❌ Do not hide team behavior behind opaque framework callbacks.
+- ❌ Do not migrate before P7 makes protocols config-driven.
+- ✅ Prefer the current small executor if LangGraph does not clearly reduce code and complexity.
+- ✅ Treat LangGraph as an evidence-gated dependency, not an assumed direction.
+
 ## Delegation plan
 
 - **Architect / PM:** own specs, sequencing, review, and acceptance criteria.
