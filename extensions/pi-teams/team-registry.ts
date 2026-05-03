@@ -2,7 +2,7 @@
 
 import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
-import { chooseChairmanModel, chooseCouncilModels } from "./members.js";
+import { chooseChairmanModel, chooseTeamMemberModels } from "./members.js";
 import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
@@ -319,7 +319,7 @@ export function teamToDebateDefinition(args: { team: TeamSpec; settings?: Resolv
 	if (args.team.protocol !== "debate") throw new Error(`Team ${args.team.id} is not a debate team.`);
 	const snapshot = args.snapshot ?? [];
 	const settings = args.settings ?? resolveTeamSettings();
-	const members = args.team.models.members ?? chooseCouncilModels(snapshot);
+	const members = args.team.models.members ?? chooseTeamMemberModels(snapshot);
 	return {
 		name: settings.defaultDebate.name,
 		purpose: settings.defaultDebate.purpose,
