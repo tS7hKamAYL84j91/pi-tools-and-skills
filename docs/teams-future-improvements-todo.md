@@ -143,6 +143,11 @@ flowchart LR
   RuntimeFiles --> Fitness --> Suite --> Handoff
 ```
 
+### ADR-027 — Team manifests own the execution contract
+
+**Decision:** P7 will not create a separate `config/protocols` catalog. A `protocol` may name a reusable execution primitive/family so many teams can share runtime behavior, but the team manifest is the inspectable source of truth for prompt slots, prompt refs, role bindings, model slots, generation hints, limits, and graph/lowering policy. Splitting those fields into protocol files duplicates team data and weakens the relationship among agents, prompts, and execution.
+
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -393,7 +398,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - [x] `TeamRunDefinition` compatibility type removed with `CouncilDefinition`
 - [x] `runTeam()` graph-backed dispatch replaces `deliberate()`
 - [x] Prompt asset IDs use `{protocol}/{phase}/{slot}` convention; team prompt slot keys remain short protocol-local names such as `navigatorBrief.system`
-- [x] New custom workflows can be added via graph protocol config without TypeScript execution changes
+- [x] New custom workflows can be added via graph team configuration without TypeScript execution changes
 - [x] `npm run check` and `npm test` pass
 
 **Risks:**
@@ -411,11 +416,17 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ---
 
-## P7 — Move built-in protocol definitions out of TypeScript
+## P7 — Make team manifests the execution contract
 
-**Status:** ❌ **TODO**
+**Status:** ❌ **TODO — replanned after architecture feedback**
 
-**Goal:** Make built-in protocol prompt slots, generated-team choices, and graph-lowering policy inspectable configuration instead of TypeScript string tables. P6 removed legacy compatibility names; P7 removes the remaining built-in protocol names from generic runtime modules where they are acting as configuration.
+**Goal:** Make each team file self-contained and inspectable: the team definition should show the protocol/family, agents, prompt slots, prompt refs, model slots, generation hints, limits, and graph/lowering policy together. P6 removed legacy compatibility names; P7 removes remaining built-in protocol string tables from generic runtime code without creating a second protocol catalog that duplicates team files.
+
+**Clarified model:**
+
+- `protocol` is a reusable execution family/primitive selector, so many teams can share behavior such as fanout/synthesis, single-node review, linear relay, bounded review/fix, or explicit graph.
+- The team manifest owns the concrete contract for that team: roles, prompt slots, default prompt asset ids, role matchers, generated-team metadata, graph policy, and model slots.
+- TypeScript supplies generic validation/execution primitives and a small lowering-kind dispatcher; it should not be a built-in protocol catalog.
 
 **Current TypeScript protocol-name footprint:**
 
@@ -437,43 +448,45 @@ Current matching modules:
 
 **Work:**
 
-1. **Create protocol config files:**
-   - Add `extensions/pi-teams/config/protocols/*.json` or `.md` front-matter manifests.
-   - Include prompt slots, default prompt asset ids, role matchers, supported generated-team metadata, model slots, limits, and graph-lowering policy.
+1. **Extend v2 team manifests, not separate protocol files:**
+   - Add team-local fields for prompt slot contracts, model slots, generation/form hints, and lowering policy.
+   - Keep prompt asset bodies in `config/prompts`/agent files; keep references in the team file.
+   - Do not add `extensions/pi-teams/config/protocols/*`.
 
-2. **Replace `protocol-contracts.ts` tables with a loader:**
+2. **Replace `protocol-contracts.ts` tables with team-local loading:**
    - Keep generic validation/resolution helpers in TypeScript.
-   - Load prompt-slot contracts from protocol config.
-   - Unknown custom protocols should work when their config supplies a contract and graph policy.
+   - Resolve prompt-slot contracts from the selected `TeamSpec`.
+   - Unknown custom teams should work when their team manifest supplies a contract and graph/lowering policy.
 
-3. **Move built-in graph lowering to config where practical:**
-   - Static DAG policies should be data.
+3. **Move built-in graph lowering choices into team manifests where practical:**
+   - Static DAG policies should be data in the team file.
    - Keep only generic primitives in TypeScript: DAG execution, static unrolling, joins, retries, output reduction, prompt packaging.
-   - If pair-coding needs bounded static unrolling, express the loop policy declaratively rather than by checking `protocol === "pair-coding"`.
+   - If pair-coding needs bounded static unrolling, express the loop policy declaratively in that team manifest rather than by checking `protocol === "pair-coding"`.
 
 4. **Generalize team authoring/runtime surfaces:**
-   - `team_form` should discover generated protocols from protocol config instead of a hardcoded set.
-   - `team_runtime` descriptions should not bake in protocol ids except as examples loaded from config.
-   - Model-slot prompts should come from protocol metadata.
+   - `team_form` should discover generated team templates from built-in team manifests or explicit generation hints, not a hardcoded protocol set.
+   - `team_runtime` descriptions should come from team metadata where possible.
+   - Model-slot prompts should come from team-local model-slot metadata.
 
 5. **Tighten fitness functions:**
    - Add an architecture test that limits built-in protocol-name references in generic `.ts` runtime modules.
-   - Allow protocol names in config assets, tests, and narrowly named protocol-fixture tests.
+   - Allow protocol names in team/config assets, tests, and narrowly named protocol-fixture tests.
 
 **Acceptance criteria:**
 
 - [ ] `PROTOCOL_PROMPT_CONTRACTS` is removed from TypeScript.
-- [ ] Built-in prompt slots are defined in protocol config files.
-- [ ] `team_form` discovers supported generated protocols from config metadata.
-- [ ] Generic runtime modules no longer branch directly on `debate`, `consult`, `telephone`, or `pair-coding` except in migration-free test fixtures or protocol config loading boundaries.
-- [ ] New graph-backed protocol can be added by config only, without TypeScript changes.
+- [ ] Built-in prompt slots are defined in built-in team manifests.
+- [ ] `team_form` discovers supported generated teams/protocol families from team-local metadata.
+- [ ] Generic runtime modules no longer branch directly on `debate`, `consult`, `telephone`, or `pair-coding` except in migration-free test fixtures or explicit lowering-kind primitives.
+- [ ] A new graph-backed team can be added by team manifest changes only, without TypeScript execution changes.
 - [ ] `npm run check`, `npm test`, and architecture tests pass.
 
 **KISS/YAGNI constraints:**
 
 - ❌ Do not introduce a large DSL or expression language.
+- ❌ Do not add separate protocol config files that duplicate team definitions.
 - ❌ Do not add compatibility aliases for old protocol names or prompt ids.
-- ✅ Prefer small declarative config matching the current fields exactly.
+- ✅ Prefer small team-local declarative fields matching the current fields exactly.
 - ✅ Keep TypeScript as validation/execution primitives, not built-in protocol catalog storage.
 
 ---
@@ -538,15 +551,15 @@ Current matching modules:
 
 ---
 
-## P9 — Evaluate LangGraph after protocol config extraction
+## P9 — Evaluate LangGraph after team-local contract extraction
 
 **Status:** ❌ **TODO — blocked until P7 is complete**
 
-**Goal:** Determine whether LangGraph would reduce the amount of custom TypeScript needed for team graph planning/execution after built-in protocol definitions have moved into configuration. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
+**Goal:** Determine whether LangGraph would reduce the amount of custom TypeScript needed for team graph planning/execution after built-in execution contracts have moved into team manifests. If it materially simplifies the implementation without hiding Pi-specific state, prompts, cancellation, or agent routing, migrate to it; otherwise keep the in-repo graph executor.
 
 **Why after P7:**
 
-P7 separates protocol configuration from execution primitives. LangGraph should be evaluated against the post-P7 shape, not the current code-hosted protocol catalog, so the comparison measures graph runtime value rather than cleanup work that P7 already owns.
+P7 separates team-local execution contracts from execution primitives. LangGraph should be evaluated against the post-P7 shape, not the current code-hosted protocol catalog, so the comparison measures graph runtime value rather than cleanup work that P7 already owns.
 
 **Research questions:**
 
@@ -559,7 +572,7 @@ P7 separates protocol configuration from execution primitives. LangGraph should 
    - Can live `agent:<name>` nodes from P8 and one-shot model nodes share the same graph abstraction cleanly?
 
 3. **Configuration fit:**
-   - Can P7 protocol config compile to LangGraph nodes/edges without a large custom DSL?
+   - Can P7 team-local execution contracts compile to LangGraph nodes/edges without a large custom DSL?
    - Can bounded pair-coding unrolling stay declarative and inspectable?
 
 4. **Operational risk:**
