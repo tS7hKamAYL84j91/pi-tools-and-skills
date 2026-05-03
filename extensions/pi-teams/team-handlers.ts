@@ -5,9 +5,10 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { resolveTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
+import { roleBindings } from "./team-bindings.js";
 import { type GraphRunResult, runTeamGraph } from "./team-graph.js";
 import { graphPlanForSimpleProtocol } from "./team-lowering.js";
-import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
+import type { TeamModels, TeamSpec } from "./team-types.js";
 
 export const TEAM_STATUS_KEY = "team";
 export interface TeamRunModels {
@@ -75,17 +76,6 @@ function memberModelSlots(args: {
 		kind: "member" as const,
 		index,
 	}));
-}
-
-function bindingForRole(team: TeamSpec, roles: string[]): TeamAgentBinding | undefined {
-	return team.agentBindings.find((binding) => {
-		const normalized = binding.role.toLowerCase().replaceAll("-", "_");
-		return roles.some((role) => normalized === role || normalized.startsWith(`${role}_`));
-	});
-}
-
-function roleBindings(team: TeamSpec, roles: string[]): TeamAgentBinding[] {
-	return team.agentBindings.filter((binding) => bindingForRole({ ...team, agentBindings: [binding] }, roles));
 }
 
 function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId): void {
@@ -173,7 +163,7 @@ const loweredGraphHandler: TeamHandler = {
 		if (team.protocol === "debate") {
 			return [
 				...memberModelSlots({
-					count: Math.max(models.members?.length ?? 0, roleBindings(team, ["member"]).length, 1),
+					count: Math.max(models.members?.length ?? 0, roleBindings(team.agentBindings, ["member"]).length, 1),
 					label: (index) => `Member model ${index + 1}`,
 					models,
 				}),

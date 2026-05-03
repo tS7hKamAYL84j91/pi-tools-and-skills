@@ -7,6 +7,7 @@ import { requirePromptChain, resolveProtocolPromptChains } from "./protocol-cont
 import { formatProtocolContext, renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { resolveTeamSettings, type ResolvedTeamSettings } from "./settings.js";
+import { bindingForRole, roleBindings } from "./team-bindings.js";
 import type { GraphNodePromptBuilder, GraphRunResult } from "./team-graph.js";
 import type { TeamAgentBinding, TeamSpec } from "./team-types.js";
 import type { ModelRun, TeamParticipant } from "./types.js";
@@ -53,24 +54,13 @@ function rejectAgentRef(role: "driver" | "navigator", value: string): string | u
 	return undefined;
 }
 
-function bindingForRole(team: TeamSpec, roles: string[]): TeamAgentBinding | undefined {
-	return team.agentBindings.find((binding) => {
-		const normalized = binding.role.toLowerCase().replaceAll("-", "_");
-		return roles.some((role) => normalized === role || normalized.startsWith(`${role}_`));
-	});
-}
-
-function roleBindings(team: TeamSpec, roles: string[]): TeamAgentBinding[] {
-	return team.agentBindings.filter((binding) => bindingForRole({ ...team, agentBindings: [binding] }, roles));
-}
-
 function promptChainsForTeam(team: TeamSpec) {
 	const catalog = resolveTeamSettings().prompts;
 	return resolveProtocolPromptChains({ protocol: team.protocol, prompts: team.prompts, bindings: team.agentBindings }, catalog);
 }
 
 function firstBinding(team: TeamSpec, roles: string[]): TeamAgentBinding {
-	const binding = bindingForRole(team, roles) ?? team.agentBindings[0];
+	const binding = bindingForRole(team.agentBindings, roles) ?? team.agentBindings[0];
 	if (!binding) throw new Error(`Team "${team.id}" needs at least one role binding.`);
 	return binding;
 }
@@ -89,10 +79,10 @@ function graphPlanForDebate(args: GraphPlanArgs): LoweredGraphPlan {
 	if (memberModelIds.length === 0) throw new Error("debate teams need at least one member model.");
 	const synthesisId = args.params.models?.synthesis ?? args.team.models.synthesis ?? args.settings.defaultSynthesis ?? memberModelIds[0];
 	if (!synthesisId) throw new Error("debate teams need a synthesis model.");
-	const sourceMembers = roleBindings(args.team, ["member"]);
+	const sourceMembers = roleBindings(args.team.agentBindings, ["member"]);
 	const memberSource = sourceMembers[0] ?? firstBinding(args.team, ["member"]);
-	const criticSource = bindingForRole(args.team, ["critic"]) ?? memberSource;
-	const synthesisSource = bindingForRole(args.team, ["synthesis"]) ?? firstBinding(args.team, ["synthesis"]);
+	const criticSource = bindingForRole(args.team.agentBindings, ["critic"]) ?? memberSource;
+	const synthesisSource = bindingForRole(args.team.agentBindings, ["synthesis"]) ?? firstBinding(args.team, ["synthesis"]);
 	const generationBindings = memberModelIds.map((model, index) => {
 		const source = sourceMembers[index] ?? memberSource;
 		return { ...source, role: `generation_${index + 1}`, label: source.label ?? `Member ${index + 1}`, model, systemPrompt: requirePromptChain(chains, "generation.system").text };
@@ -140,8 +130,8 @@ function graphPlanForPairCoding(args: GraphPlanArgs): LoweredGraphPlan {
 	if (navigatorError) throw new Error(navigatorError);
 	const navBriefSource = firstBinding(args.team, ["navigator_brief", "navigator"]);
 	const driverSource = firstBinding(args.team, ["driver_implementation", "driver"]);
-	const reviewSource = bindingForRole(args.team, ["navigator_review", "navigator"]) ?? navBriefSource;
-	const fixSource = bindingForRole(args.team, ["driver_fix", "driver"]) ?? driverSource;
+	const reviewSource = bindingForRole(args.team.agentBindings, ["navigator_review", "navigator"]) ?? navBriefSource;
+	const fixSource = bindingForRole(args.team.agentBindings, ["driver_fix", "driver"]) ?? driverSource;
 	const maxFixPasses = Math.max(0, args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses ?? 1);
 	const context = loadTeamContext({ cwd: args.cwd ?? process.cwd(), specPath: args.params.specPath, files: args.params.files });
 	const nodes: TeamAgentBinding[] = [
