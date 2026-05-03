@@ -17,7 +17,6 @@ const TMP_SUBDIR = "tmp";
 const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 
 /** @public */
-/** @public */
 export type TeamRunEventKind =
 	| "run_started"
 	| "phase_started"
@@ -42,8 +41,8 @@ export interface TeamRunStartedEvent extends TeamRunEventBase {
 	teamId: string;
 	protocol?: string;
 	input: { prompt: string };
-	members: TeamParticipant[];
-	chairman: TeamParticipant;
+	members?: TeamParticipant[];
+	chairman?: TeamParticipant;
 }
 
 /** @public */
@@ -113,11 +112,29 @@ interface TeamStateManagerOptions {
 
 interface CreateArgs {
 	team?: string;
+	protocol?: string;
 	/** @deprecated Use team. */
 	council?: string;
 	prompt: string;
 	members: TeamParticipant[];
 	chairman: TeamParticipant;
+}
+
+interface StartRunArgs {
+	teamId: string;
+	protocol: string;
+	prompt: string;
+}
+
+interface RecordNodeArgs {
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	ok: boolean;
+	durationMs: number;
+	output: string;
+	error?: string;
 }
 
 interface SessionEntryLike {
@@ -157,8 +174,8 @@ function reduceEvents(events: readonly TeamRunEvent[]): Map<string, TeamRunRecor
 				id: event.runId,
 				team: event.teamId,
 				prompt: event.input.prompt,
-				members: event.members,
-				chairman: event.chairman,
+				members: event.members ?? [],
+				chairman: event.chairman ?? { label: "", model: "" },
 				status: "pending",
 				startedAt: event.timestamp,
 				orchestratorPid: event.orchestratorPid,
@@ -323,8 +340,41 @@ export class TeamStateManager {
 			critiques: [],
 		};
 		this.persistFile(record);
-		this.appendEvent({ kind: "run_started", runId: record.id, teamId: record.team, input: { prompt: record.prompt }, members: record.members, chairman: record.chairman });
+		this.appendEvent({ kind: "run_started", runId: record.id, teamId: record.team, ...(args.protocol ? { protocol: args.protocol } : {}), input: { prompt: record.prompt }, members: record.members, chairman: record.chairman });
 		return record;
+	}
+
+	startRun(args: StartRunArgs): string {
+		const runId = generateId();
+		this.appendEvent({ kind: "run_started", runId, teamId: args.teamId, protocol: args.protocol, input: { prompt: args.prompt } });
+		return runId;
+	}
+
+	recordPhaseStarted(runId: string, phaseId: string, label: string = phaseId): void {
+		this.appendEvent({ kind: "phase_started", runId, phaseId, label });
+	}
+
+	recordNodeCompleted(runId: string, args: RecordNodeArgs): void {
+		this.appendEvent({
+			kind: "node_completed",
+			runId,
+			phaseId: args.phaseId,
+			nodeId: args.nodeId,
+			role: args.role,
+			model: args.model,
+			ok: args.ok,
+			durationMs: args.durationMs,
+			...boundedOutput(args.output),
+			...(args.error ? { error: args.error } : {}),
+		});
+	}
+
+	recordRunCompleted(runId: string, durationMs: number, summary?: string): void {
+		this.appendEvent({ kind: "run_completed", runId, ok: true, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
+	}
+
+	recordRunFailed(runId: string, error: string): void {
+		this.appendEvent({ kind: "run_failed", runId, ok: false, error });
 	}
 
 	update(record: TeamRunRecord, patch: Partial<TeamRunRecord>): TeamRunRecord {

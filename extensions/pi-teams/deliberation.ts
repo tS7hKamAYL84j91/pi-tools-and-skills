@@ -301,6 +301,7 @@ export async function deliberate(
 
 	let record = args.stateManager.create({
 		team: args.definition.name,
+		protocol: "debate",
 		prompt: args.prompt,
 		members,
 		chairman,

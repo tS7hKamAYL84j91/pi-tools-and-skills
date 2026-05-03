@@ -23,7 +23,7 @@ IMPORTANT update your progress in this document before completion!
 1. **Do not ship `temperature` in bundled agent defaults.** Pi exposes `temperature` as a generic stream option, and several provider implementations map it correctly, but support is not universal at the model/API level. Defaults should be portable and boring.
 2. **Keep generation parameters provider-aware.** User-specified `parameters` can remain supported, but they must be mapped or filtered per provider/model before reaching the payload.
 3. **Make team behavior inspectable from the team file.** A user should be able to see which subagents, templates, tools, model bindings, and generation parameters a team run will use.
-4. **Use backward-compatible migrations.** Many users may have copied built-in team/subagent files into user/project roots.
+4. **Keep authored team manifests v2-only.** Runtime legacy state import/fallback is isolated from team manifest loading; copied v1 team files are not a compatibility target.
 
 ## Architecture decision records
 
@@ -41,7 +41,7 @@ IMPORTANT update your progress in this document before completion!
 
 ### ADR-004 — Schema is protocol-first
 
-**Decision:** P4 makes `protocol`/`engine` the dispatch source. `topology` is v1 compatibility metadata only: accepted on old files, shown as deprecated, never used for handler selection, and not emitted by new `team_form` output.
+**Decision:** P4 makes `protocol`/`engine` the dispatch source. Authored team manifests are strict `schemaVersion: 2`; `topology` is derived display metadata only, never used for handler selection, and not emitted by new `team_form` output.
 
 ### ADR-005 — Graph execution starts as bounded DAG orchestration
 
@@ -226,7 +226,7 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 
 ## P3 — Move team run state into Pi's session tree
 
-**Status:** Implemented locally. The extension registers `session_start` and `session_tree` hooks, appends `pi-teams:run` custom event deltas, bounds node output persistence with SHA-256 integrity metadata, and rehydrates from session branch entries before falling back to legacy local JSON snapshots.
+**Status:** Implemented locally. The extension registers `session_start` and `session_tree` hooks, appends `pi-teams:run` custom event deltas, bounds node output persistence with SHA-256 integrity metadata, and rehydrates from session branch entries before falling back to legacy local JSON snapshots. Follow-up hardening now records protocol-abstract run/phase/node events for consult, pair-coding, telephone, and graph runs in addition to debate.
 
 **Goal:** Team runs should branch, fork, resume, and compact with normal Pi sessions.
 
@@ -259,7 +259,7 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 
 ## P4 — Deprecate `topology` as first-class schema
 
-**Status:** Implemented locally. Built-in and generated team files are v2 protocol-first manifests without authored `topology`; handlers dispatch by `protocol`; TUI/tool summaries lead with protocol. Derived topology remains display-only for existing tests/UI.
+**Status:** Implemented locally. Built-in and generated team files are strict v2 protocol-first manifests without authored `topology`; handlers dispatch by `protocol`; TUI/tool summaries lead with protocol. Derived topology remains display-only for existing tests/UI.
 
 **Goal:** Simplify team authoring by making protocol/engine the execution selector.
 
@@ -278,11 +278,11 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 
 **Acceptance criteria:**
 
-- v1 and v2 teams both load.
+- Authored v2 teams load; v1/missing-schema manifests are rejected instead of compatibility-loaded.
 - Built-ins do not require `topology`.
-- `team_form` does not expose topology unless compatibility requires it.
+- `team_form` does not expose topology.
 - Team Detail TUI does not over-emphasize derived topology.
-- Tests cover v1 compatibility and v2 authoring.
+- Tests cover v2 authoring and v1 rejection/no fallback.
 
 **Risks:**
 
@@ -291,7 +291,7 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 
 ## P5 — Promote graph execution to the core engine
 
-**Status:** Implemented locally for graph-defined teams. `team-graph.ts` now validates DAG shape, unknown roles, duplicate edges, cycles, disconnected graphs, outputs, reducer support, and per-node model availability; execution uses deterministic topological levels, bounded concurrency, direct-upstream packaging, dependency policy, per-node timeout, and deterministic output reduction.
+**Status:** Implemented locally for graph-defined teams. `team-graph.ts` now validates DAG shape, unknown roles, duplicate edges, cycles, disconnected graphs, outputs, reducer support, and per-node model availability; execution uses deterministic topological levels, bounded concurrency, direct-upstream packaging, dependency policy, per-node timeout, and deterministic output reduction. Focused graph tests now cover validation, fanout concurrency, deterministic reduction, and skipped dependents.
 
 **Goal:** Replace protocol-specific control flow with a DAG executor once config, prompts, and state are stable.
 
@@ -352,6 +352,7 @@ Do **not** fold all templates into subagent system prompts. A reviewer identity 
 
 ## Latest validation
 
-- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.12%).
-- `npm test` passed: 33 files, 362 tests.
-- Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; a local spawned navigator review was requested instead.
+- `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.13%).
+- `npm test` passed: 34 files, 368 tests.
+- Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
+- Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.
