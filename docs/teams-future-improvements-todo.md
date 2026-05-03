@@ -117,6 +117,10 @@ IMPORTANT Complete the outstanding tasks -- then follow /Users/jim/git/pi-tools-
 
 **Decision:** After P3-P6 completion, do not keep rewriting working graph/state/registry code without a concrete smell, failing fitness function, or user-visible simplification. The refactor follow-up closes on objective evidence: green full validation, zero knip findings, architecture fitness green, no legacy runtime-symbol matches in `extensions/pi-teams`, and council/navigator review finding no blockers.
 
+### ADR-023 — Team file rewrites preserve inspectable execution config
+
+**Decision:** File-mutating helpers such as `team_models` must preserve prompt refs, binding prompt/template overrides, tools, parameters, graph policy, outputs, reducers, and limits when rewriting a team manifest. Generated built-in protocol teams must also be runnable without optional model inputs; debate generation therefore emits at least one member binding even when `models.members` is omitted.
+
 ## Temperature support finding
 
 `temperature` is supported by **some interfaces**, but not safely enough to use as a universal default.
@@ -403,6 +407,7 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 ## Latest validation
 
+- 2026-05-03 evidence refresh: local audit found two `team-form.ts` blockers (`team_form` debate without members; lossy `team_models` rewrite). Both are fixed and reviewed by the audit agent, council (`team_run default-debate`), and navigator (`team_run consult`) with no remaining true KISS/YAGNI blockers. Validation green: `npm run check`, `npm test` (32 files, 356 tests), and `npm test -- tests/architecture.test.ts`. Legacy runtime-symbol grep still only reports unrelated `tests/task-brief.test.ts` topology fixtures outside `extensions/pi-teams`.
 - Final handoff verification passed on 2026-05-03: `npm run check && npm test` green, `tests/architecture.test.ts` green, and `git status` clean on `main...origin/main` before this progress note.
 - `npm run check` passed: typecheck, Biome lint, knip, and type coverage (99.05%).
 - `npm test` passed: 32 files, 354 tests.
