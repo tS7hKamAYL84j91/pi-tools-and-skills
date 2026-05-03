@@ -7,6 +7,7 @@ out/
 .DS_Store
 .pi/
 .workers/
+.ralph/
 
 # Local Claude runtime locks
 .claude/*.lock
