@@ -409,6 +409,73 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - ✅ Rename aggressively; let users update their team files
 - ✅ Remove, don't deprecate
 
+---
+
+## P7 — Move built-in protocol definitions out of TypeScript
+
+**Status:** ❌ **TODO**
+
+**Goal:** Make built-in protocol prompt slots, generated-team choices, and graph-lowering policy inspectable configuration instead of TypeScript string tables. P6 removed legacy compatibility names; P7 removes the remaining built-in protocol names from generic runtime modules where they are acting as configuration.
+
+**Current TypeScript protocol-name footprint:**
+
+```text
+pair-coding  5 modules
+council      0 modules
+telephone    5 modules
+debate       7 modules
+consult      6 modules
+```
+
+Current matching modules:
+
+- `protocol-contracts.ts` — prompt-slot contracts are code-hosted configuration.
+- `team-lowering.ts` — built-in protocol graph plans are still selected by protocol name.
+- `team-handlers.ts` — built-in protocol dispatch and model-slot inspection still branch on protocol names.
+- `team-form.ts` / `team-runtime.ts` — generated-team protocol choices and model prompts are hardcoded.
+- `settings.ts` / `members.ts` — built-in default team ids/protocol labels remain in runtime helpers.
+
+**Work:**
+
+1. **Create protocol config files:**
+   - Add `extensions/pi-teams/config/protocols/*.json` or `.md` front-matter manifests.
+   - Include prompt slots, default prompt asset ids, role matchers, supported generated-team metadata, model slots, limits, and graph-lowering policy.
+
+2. **Replace `protocol-contracts.ts` tables with a loader:**
+   - Keep generic validation/resolution helpers in TypeScript.
+   - Load prompt-slot contracts from protocol config.
+   - Unknown custom protocols should work when their config supplies a contract and graph policy.
+
+3. **Move built-in graph lowering to config where practical:**
+   - Static DAG policies should be data.
+   - Keep only generic primitives in TypeScript: DAG execution, static unrolling, joins, retries, output reduction, prompt packaging.
+   - If pair-coding needs bounded static unrolling, express the loop policy declaratively rather than by checking `protocol === "pair-coding"`.
+
+4. **Generalize team authoring/runtime surfaces:**
+   - `team_form` should discover generated protocols from protocol config instead of a hardcoded set.
+   - `team_runtime` descriptions should not bake in protocol ids except as examples loaded from config.
+   - Model-slot prompts should come from protocol metadata.
+
+5. **Tighten fitness functions:**
+   - Add an architecture test that limits built-in protocol-name references in generic `.ts` runtime modules.
+   - Allow protocol names in config assets, tests, and narrowly named protocol-fixture tests.
+
+**Acceptance criteria:**
+
+- [ ] `PROTOCOL_PROMPT_CONTRACTS` is removed from TypeScript.
+- [ ] Built-in prompt slots are defined in protocol config files.
+- [ ] `team_form` discovers supported generated protocols from config metadata.
+- [ ] Generic runtime modules no longer branch directly on `debate`, `consult`, `telephone`, or `pair-coding` except in migration-free test fixtures or protocol config loading boundaries.
+- [ ] New graph-backed protocol can be added by config only, without TypeScript changes.
+- [ ] `npm run check`, `npm test`, and architecture tests pass.
+
+**KISS/YAGNI constraints:**
+
+- ❌ Do not introduce a large DSL or expression language.
+- ❌ Do not add compatibility aliases for old protocol names or prompt ids.
+- ✅ Prefer small declarative config matching the current fields exactly.
+- ✅ Keep TypeScript as validation/execution primitives, not built-in protocol catalog storage.
+
 ## Delegation plan
 
 - **Architect / PM:** own specs, sequencing, review, and acceptance criteria.
