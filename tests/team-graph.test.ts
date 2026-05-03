@@ -162,6 +162,49 @@ describe("team graph execution", () => {
 		expect(result.output).toBe("## synthesis\noutput:synthesis");
 	});
 
+	it("lowers pair-coding to an unrolled review and fix graph", async () => {
+		const pairTeam = team({
+			id: "pair-test",
+			protocol: "pair-coding",
+			agents: ["navigator_agent", "driver_agent"],
+			agentBindings: [
+				{ role: "navigator_brief", subagent: "navigator_agent", model: "test/nav" },
+				{ role: "driver_implementation", subagent: "driver_agent", model: "test/driver" },
+				{ role: "navigator_review", subagent: "navigator_agent", model: "test/nav" },
+				{ role: "driver_fix", subagent: "driver_agent", model: "test/driver" },
+			],
+			graph: undefined,
+			models: { driver: "test/driver", navigator: "test/nav" },
+			limits: { maxFixPasses: 1 },
+		});
+		const plan = graphPlanForSimpleProtocol({ team: pairTeam, params: { id: "pair-test", prompt: "change x" }, settings });
+		if (!plan) throw new Error("missing pair graph plan");
+		const prompts = new Map<string, string>();
+		const result = await runTeamGraph({
+			team: plan.team,
+			prompt: "change x",
+			ctx: fakeCtx(),
+			buildNodePrompt: plan.buildNodePrompt,
+			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
+				prompts.set(binding.role, prompt);
+				return { member: { label: binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
+			},
+		});
+
+		expect(plan.team.graph).toEqual({
+			edges: [
+				{ from: "navigator_brief", to: "driver_implementation" },
+				{ from: "driver_implementation", to: "navigator_review_1" },
+				{ from: "navigator_review_1", to: "driver_fix_1" },
+			],
+			outputs: ["driver_fix_1"],
+		});
+		expect(prompts.get("driver_implementation")).toContain("output:navigator_brief");
+		expect(prompts.get("navigator_review_1")).toContain("output:driver_implementation");
+		expect(prompts.get("driver_fix_1")).toContain("output:navigator_review_1");
+		expect(result.output).toBe("## driver_fix_1\noutput:driver_fix_1");
+	});
+
 	it("lowers consult to one graph node with the consult prompt contract", async () => {
 		const consultTeam = team({
 			id: "consult-test",
