@@ -19,7 +19,7 @@ const TeamFormSchema = Type.Object({
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
 	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone")], { description: "Team protocol for generated team files. Author graph teams manually when edge policy is needed." }),
-	agents: Type.Array(Type.String(), { description: "Subagent ids referenced by the team." }),
+	agents: Type.Array(Type.String(), { description: "Subagent ids or explicit live-agent refs (agent:<registered-name>) referenced by the team." }),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
 		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
@@ -121,7 +121,7 @@ function registerTeamFormTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "team_form",
 		label: "Form Team",
-		description: "Create or replace a declarative team in user or project scope, creating missing subagent stubs as needed.",
+		description: "Create or replace a declarative team in user or project scope, creating missing subagent stubs as needed. Use agent:<name> to bind a role to a registered live peer.",
 		promptSnippet: "Create a user or project declarative team",
 		parameters: TeamFormSchema,
 		async execute(_id, params: TeamFormInput, _signal, _onUpdate, ctx) {

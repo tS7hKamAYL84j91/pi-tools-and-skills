@@ -1,6 +1,7 @@
 /** Generic bounded DAG execution for graph-defined teams. */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isLiveAgentRef, liveAgentModel, runLiveAgentNode } from "./live-agent.js";
 import { currentPanopticonRecord, runMember } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import type { TeamAgentBinding, TeamGraphEdge, TeamSpec } from "./team-types.js";
@@ -53,6 +54,7 @@ type GraphNodeRunner = (args: {
 	systemPrompt: string;
 	signal: AbortSignal;
 	parentId?: string;
+	orchestratorName?: string;
 	cwd: string;
 }) => Promise<ModelRun>;
 
@@ -145,6 +147,7 @@ function topologicalLevels(team: TeamSpec, roles: readonly string[], edges: read
 }
 
 function modelForBinding(team: TeamSpec, binding: TeamAgentBinding): string | undefined {
+	if (isLiveAgentRef(binding.subagent)) return liveAgentModel(binding.subagent) ?? binding.model ?? binding.subagent;
 	const index = roleIndex(team).get(binding.role);
 	return binding.model ?? (index !== undefined ? team.models.members?.[index] : undefined);
 }
@@ -154,6 +157,7 @@ function assertNonNegativeInteger(value: number | undefined, label: string): voi
 }
 
 function maxRetriesForBinding(team: TeamSpec, binding: TeamAgentBinding, override: number | undefined): number {
+	if (isLiveAgentRef(binding.subagent)) return override ?? binding.maxRetries ?? 0;
 	return override ?? binding.maxRetries ?? team.limits.maxRetries ?? 0;
 }
 
@@ -244,6 +248,9 @@ function finalOutput(team: TeamSpec, validation: GraphValidationResult, nodes: r
 }
 
 async function productionRunNode(args: Parameters<GraphNodeRunner>[0]): Promise<ModelRun> {
+	if (isLiveAgentRef(args.binding.subagent)) {
+		return runLiveAgentNode(args);
+	}
 	return runMember(
 		{
 			label: args.binding.label ?? args.binding.role,
@@ -272,6 +279,7 @@ async function runOneNode(args: {
 	upstream: GraphNodeResult[];
 	ctx: ExtensionContext;
 	parentId?: string;
+	orchestratorName?: string;
 	timeoutMs?: number;
 	maxRetries?: number;
 	runNode: GraphNodeRunner;
@@ -311,6 +319,7 @@ async function runOneNode(args: {
 				systemPrompt: inputs.systemPrompt,
 				signal: controller.signal,
 				parentId: args.parentId,
+				orchestratorName: args.orchestratorName,
 				cwd: args.ctx.cwd,
 			});
 			const status = run.ok ? "succeeded" : controller.signal.aborted && args.ctx.signal?.aborted ? "cancelled" : "failed";
@@ -364,6 +373,7 @@ async function runLevel(args: {
 	completed: GraphNodeResult[];
 	ctx: ExtensionContext;
 	parentId?: string;
+	orchestratorName?: string;
 	timeoutMs?: number;
 	maxConcurrency: number;
 	maxRetries?: number;
@@ -395,7 +405,8 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 	const maxConcurrency = args.maxConcurrency ?? args.team.limits.maxConcurrency ?? 4;
 	if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1) throw new Error("Graph maxConcurrency must be a positive integer.");
 	assertNonNegativeInteger(args.maxRetries, "Graph maxRetries");
-	const parentId = (await currentPanopticonRecord(args.ctx.cwd))?.id;
+	const parent = await currentPanopticonRecord(args.ctx.cwd);
+	const parentId = parent?.id;
 	const catalog = resolveTeamSettings().prompts;
 	const chains = resolveProtocolPromptChains({ protocol: args.team.protocol, prompts: args.team.prompts, bindings: args.team.agentBindings }, catalog);
 	const runNode = args.runNode ?? productionRunNode;
@@ -419,6 +430,7 @@ export async function runTeamGraph(args: GraphRunArgs): Promise<GraphRunResult> 
 			completed: nodes,
 			ctx: args.ctx,
 			parentId,
+			orchestratorName: parent?.name,
 			timeoutMs: args.timeoutMs,
 			maxConcurrency,
 			maxRetries: args.maxRetries,
