@@ -25,11 +25,11 @@ function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultChairma
 	try {
 		writeFileSync(file, JSON.stringify({ teams: { roots: [root] } }));
 		writeFileSync(
-			join(root, "teams", "default-council.md"),
+			join(root, "teams", "default-debate.md"),
 			[
 				"---",
 				"schemaVersion: 2",
-				'id: "default-council"',
+				'id: "default-debate"',
 				'name: "Default Council"',
 				'protocol: "debate"',
 				"agents:",

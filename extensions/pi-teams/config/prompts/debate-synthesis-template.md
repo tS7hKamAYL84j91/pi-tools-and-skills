@@ -1,5 +1,5 @@
 ---
-id: councilSynthesisTemplate
+id: debate/synthesis/template
 title: "Council synthesis prompt template"
 scope: council
 stage: synthesis

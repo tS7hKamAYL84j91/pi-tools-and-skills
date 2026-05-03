@@ -29,7 +29,7 @@ Status: implemented.
    - `matches(team)`
    - `modelSlots(team, models)`
    - `run(args)`
-7. [x] Move debate, pair-coding, pair-consult, and telephone execution into handlers.
+7. [x] Move debate, pair-coding, consult, and telephone execution into handlers.
 8. [x] Update `team-models.ts` to use handler-provided model slots.
 9. [x] Move team list/describe tools out of registry code into `team-tools.ts`.
 10. [x] Keep `/teams` command registration separate from execution dispatch where practical.

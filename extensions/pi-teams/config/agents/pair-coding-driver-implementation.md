@@ -1,8 +1,8 @@
 ---
-name: "pair_driver_implementation"
+name: "pair_coding_driver_implementation"
 version: "1.0.0"
 description: "Driver role that implements from the Navigator's aligned brief."
-promptId: "pairDriverImplementationSystem"
+promptId: "pair-coding/driver-implementation/system"
 scope: "pair"
 stage: "driver-implementation"
 tools: []

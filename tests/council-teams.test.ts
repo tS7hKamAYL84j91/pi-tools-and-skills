@@ -115,20 +115,20 @@ describe("loadTeamRegistry", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
-			"default-council",
+			"consult",
+			"default-debate",
 			"pair-coding",
-			"pair-consult",
 		]);
 		expect(registry.warnings).toEqual([]);
-		const defaultCouncil = requireTeam(registry, "default-council");
+		const defaultCouncil = requireTeam(registry, "default-debate");
 		expect(defaultCouncil).toMatchObject({
 			protocol: "debate",
-			chair: "council_chairman",
+			chair: "debate_synthesis",
 		});
 		expect(defaultCouncil.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
-		expect(defaultCouncil.agentBindings.filter((binding) => binding.subagent === "council_generation_member")).toHaveLength(4);
-		expect(requireTeam(registry, "pair-consult").agents).toEqual([
-			"pair_navigator_consult",
+		expect(defaultCouncil.agentBindings.filter((binding) => binding.subagent === "debate_generation_member")).toHaveLength(4);
+		expect(requireTeam(registry, "consult").agents).toEqual([
+			"consult_navigator",
 		]);
 		expect(requireTeam(registry, "pair-coding").limits.maxFixPasses).toBe(1);
 		expect(requireTeam(registry, "pair-coding").models).toMatchObject({
@@ -397,13 +397,13 @@ describe("loadTeamRegistry", () => {
 			writeSubagent(userRoot, "user_agent");
 			writeTeam(userRoot, "user-team", "user_agent");
 			writeSubagent(join(project, ".pi", "teams"), "project_agent");
-			writeTeam(join(project, ".pi", "teams"), "pair-consult", "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "consult", "project_agent");
 
 			const registry = loadTeamRegistry(configPath, { settingsPath: join(root, "settings.json"), cwd: project });
 
 			expect(registry.teams.get("user-team")?.source).toBe("user");
-			expect(registry.teams.get("pair-consult")?.source).toBe("project");
-			expect(registry.teams.get("pair-consult")?.agents).toEqual([
+			expect(registry.teams.get("consult")?.source).toBe("project");
+			expect(registry.teams.get("consult")?.agents).toEqual([
 				"project_agent",
 			]);
 		});
@@ -454,7 +454,7 @@ describe("team adapters", () => {
 	it("projects default council team to the current default council definition", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
-		const team = requireTeam(registry, "default-council");
+		const team = requireTeam(registry, "default-debate");
 		const definition = teamToDebateDefinition({
 			team,
 			settings,
@@ -472,7 +472,7 @@ describe("team adapters", () => {
 	it("projects pair teams to the current default pair definition", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 		const settings = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
-		const team = requireTeam(registry, "pair-consult");
+		const team = requireTeam(registry, "consult");
 		const definition = teamToConsultDefinition({ team, settings });
 
 		expect(definition).toMatchObject({
@@ -499,10 +499,10 @@ describe("team tools", () => {
 			{ cwd: process.cwd() },
 		);
 
-		expect(result.content[0]?.text).toContain("default-council");
+		expect(result.content[0]?.text).toContain("default-debate");
 		expect(result.details.teams).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ id: "pair-consult", protocol: "consult" }),
+				expect.objectContaining({ id: "consult", protocol: "consult" }),
 			]),
 		);
 	});
@@ -515,7 +515,7 @@ describe("team tools", () => {
 
 		const result = await describeTeam.execute(
 			"test",
-			{ id: "pair-consult" },
+			{ id: "consult" },
 			undefined,
 			undefined,
 			{ cwd: process.cwd() },
@@ -564,7 +564,7 @@ describe("team tools", () => {
 		await expect(
 			remove.execute(
 				"test",
-				{ id: "default-council" },
+				{ id: "default-debate" },
 				undefined,
 				undefined,
 				{ cwd: process.cwd() },
@@ -580,7 +580,7 @@ describe("team tools", () => {
 			mkdirSync(join(project, ".pi", "teams", "teams"), { recursive: true });
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 			writeSubagent(join(project, ".pi", "teams"), "project_agent");
-			writeTeam(join(project, ".pi", "teams"), "pair-consult", "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "consult", "project_agent");
 			const { api, tools } = createFakeApi();
 			registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 			const remove = tools.get("team_delete");
@@ -588,14 +588,14 @@ describe("team tools", () => {
 
 			await remove.execute(
 				"test",
-				{ id: "pair-consult", scope: "project" },
+				{ id: "consult", scope: "project" },
 				undefined,
 				undefined,
 				{ cwd: project },
 			);
 
 			const registry = loadTeamRegistry(CONFIG_PATH, { roots: [], cwd: project });
-			expect(registry.teams.get("pair-consult")?.source).toBe("builtin");
+			expect(registry.teams.get("consult")?.source).toBe("builtin");
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -632,6 +632,6 @@ describe("team tools", () => {
 				undefined,
 				{ cwd: process.cwd(), ui: { setStatus: () => undefined } },
 			),
-		).rejects.toThrow(/No team "missing".*default-council.*pair-coding.*pair-consult/s);
+		).rejects.toThrow(/No team "missing".*consult.*default-debate.*pair-coding/s);
 	});
 });

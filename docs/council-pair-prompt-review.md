@@ -33,8 +33,8 @@ The standard tools are now:
 
 ### Teams — 3
 
-- `config/teams/default-council.md`
-- `config/teams/pair-consult.md`
+- `config/teams/default-debate.md`
+- `config/teams/consult.md`
 - `config/teams/pair-coding.md`
 
 ### Council prompts/subagents — 5
@@ -66,13 +66,13 @@ These map to the 3-stage council protocol:
 
 Pair workflows are now selected by team id:
 
-- `pair-consult` — lightweight Navigator review.
+- `consult` — lightweight Navigator review.
 - `pair-coding` — bounded Driver/Navigator implementation pipeline.
 
 ### Live-agent prompts — 3
 
 - `config/prompts/agent-council-framing.md`
-- `config/prompts/agent-pair-consult-framing.md`
+- `config/prompts/agent-consult-framing.md`
 - `config/prompts/agent-request-template.md`
 
 These remain for live-agent team participants.

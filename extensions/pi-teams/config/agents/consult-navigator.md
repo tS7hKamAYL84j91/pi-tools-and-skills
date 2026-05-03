@@ -1,8 +1,8 @@
 ---
-name: "pair_navigator_consult"
+name: "consult_navigator"
 version: "1.0.0"
 description: "Navigator consulted by the main Pilot for focused pair review or design feedback."
-promptId: "pairNavigatorConsultSystem"
+promptId: "consult/navigator/system"
 scope: "pair"
 stage: "navigator-consult"
 tools: []

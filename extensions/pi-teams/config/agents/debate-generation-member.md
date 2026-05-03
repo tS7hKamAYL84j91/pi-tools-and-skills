@@ -1,8 +1,8 @@
 ---
-name: "council_generation_member"
+name: "debate_generation_member"
 version: "1.0.0"
 description: "Independent council member for first-pass generation in a multi-model deliberation."
-promptId: "councilGenerationSystem"
+promptId: "debate/generation/system"
 scope: "council"
 stage: "generation"
 tools: []

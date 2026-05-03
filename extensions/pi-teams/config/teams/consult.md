@@ -1,14 +1,14 @@
 ---
 schemaVersion: 2
-id: "pair-consult"
+id: "consult"
 name: "Pair Consult"
 description: "Lightweight Navigator consultation for focused review and design feedback."
 protocol: "consult"
 prompts:
-  navigator.system: "pairNavigatorConsultSystem"
+  navigator.system: "consult/navigator/system"
 agents:
   - role: "navigator"
-    subagent: "pair_navigator_consult"
+    subagent: "consult_navigator"
     model: "ollama/qwen3.5:cloud"
 ---
 

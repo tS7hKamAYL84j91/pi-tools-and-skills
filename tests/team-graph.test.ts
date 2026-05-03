@@ -210,7 +210,7 @@ describe("team graph execution", () => {
 			id: "consult-test",
 			protocol: "consult",
 			agents: ["navigator_agent"],
-			agentBindings: [{ role: "navigator", subagent: "navigator_agent", model: "test/nav", subagentPromptId: "pairNavigatorConsultSystem", subagentSystemPrompt: "wrong" }],
+			agentBindings: [{ role: "navigator", subagent: "navigator_agent", model: "test/nav", subagentPromptId: "consult/navigator/system", subagentSystemPrompt: "wrong" }],
 			graph: undefined,
 			models: { navigator: "test/nav" },
 		});

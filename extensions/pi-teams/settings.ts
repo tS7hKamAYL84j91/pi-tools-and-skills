@@ -9,8 +9,8 @@ import type { TeamAgentBinding, TeamDirectories, TeamModels } from "./team-types
 
 const SETTINGS_JSON = PI_SETTINGS_PATH;
 const FALLBACK_DEFAULT_TEAM_NAME = "default";
-const DEFAULT_DEBATE_TEAM_ID = "default-council";
-const DEFAULT_CONSULT_TEAM_ID = "pair-consult";
+const DEFAULT_DEBATE_TEAM_ID = "default-debate";
+const DEFAULT_CONSULT_TEAM_ID = "consult";
 
 export type PromptCatalog = Record<string, string[]>;
 

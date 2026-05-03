@@ -278,9 +278,9 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
      - Use a protocol contract registry where each protocol declares slots, phases, and templates
 
 4. **Prompt keys:**
-   - `councilGenerationSystem`, `councilCritiqueSystem`, `councilChairmanSystem`
-   - `pairNavigatorBriefSystem`, `pairDriverImplementationSystem`, `pairNavigatorReviewSystem`
-   - `telephoneRelaySystem`
+   - `debate/generation/system`, `debate/critique/system`, `debate/synthesis/system`
+   - `pair-coding/navigator-brief/system`, `pair-coding/driver-implementation/system`, `pair-coding/navigator-review/system`
+   - `telephone/relay/system`
    - Should normalize to: `{protocol}/{phase}/{slot}` format
 
 5. **Settings structure:**
@@ -312,9 +312,9 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
    - Option B: Create protocol contract registry
 
 4. **Normalize prompt keys:**
-   - `councilGenerationSystem` → `debate/generate/system`
-   - `pairNavigatorBriefSystem` → `pair-coding/brief/system`
-   - `telephoneRelaySystem` → `telephone/relay/system`
+   - `debate/generation/system` → `debate/generate/system`
+   - `pair-coding/navigator-brief/system` → `pair-coding/brief/system`
+   - `telephone/relay/system` → `telephone/relay/system`
 
 5. **Audit and rename agent files:**
    - `council-*.md` → `debate-*.md`
@@ -361,8 +361,8 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 
 1. ✅ Create Jules task for **P0 parameter stabilization**.
 2. ✅ Create/replace P1 execution config propagation work and local audit notes.
-3. ✅ Draft a short P2 mini-spec that shows a concrete default-council team file with explicit prompt/template inheritance.
-4. ✅ Pair/navigator review requested locally after implementation because the built-in `team_run pair-consult` tool is blocked by stale user-level copied team files in the live extension runtime.
+3. ✅ Draft a short P2 mini-spec that shows a concrete default-debate team file with explicit prompt/template inheritance.
+4. ✅ Pair/navigator review requested locally after implementation because the built-in `team_run consult` tool is blocked by stale user-level copied team files in the live extension runtime.
 5. ✅ Add/update tests to cover current protocol-first schema, prompt chains, session event registration, and graph validation/execution surfaces.
 6. ✅ Start P3-P5 only after P0-P2 local validation was green.
 7. ✅ Remove obsolete council/pair prompt wrapper modules and move tests onto protocol-neutral prompt helpers.
@@ -376,4 +376,4 @@ $ grep "temperature" extensions/pi-teams/team-form.ts  # No results
 - P6 alias-removal grep passed: no `CouncilDefinition`, `CouncilMember`, `LEGACY_TEAM_RUN_CUSTOM_TYPE`, `pi-teams:deliberation`, or `council?:` matches remain in `extensions/pi-teams` or `tests`.
 - P5 consult/telephone lowering slice complete: both protocols now run through `runTeamGraph`; focused tests cover one-node consult lowering, linear telephone prompts, and deterministic outputs.
 - Council review recommended a narrow evidence pass rather than a broad rewrite; resulting follow-up added protocol-abstract state writer methods, non-debate run instrumentation, and focused graph/state tests.
-- Live `team_run pair-consult` review could not run in this harness because the active installed extension sees a stale user-level `pair-consult` v1 override; local spawned audit/navigation was used instead.
+- Live `team_run consult` review could not run in this harness because the active installed extension sees a stale user-level `consult` v1 override; local spawned audit/navigation was used instead.

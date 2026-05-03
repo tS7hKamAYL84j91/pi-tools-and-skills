@@ -14,7 +14,7 @@ In scope:
 - Add `extensions/pi-teams/config/agents/` Markdown descriptors for council and pair system prompts.
 - Teach the settings loader to read a configured `agents directory` in addition to the existing `prompts directory`.
 - Keep template/framing prompts in `config/prompts/` for now.
-- Preserve existing public settings keys such as `councilGenerationSystem` and `pairNavigatorConsultSystem`.
+- Preserve existing public settings keys such as `debate/generation/system` and `consult/navigator/system`.
 
 Out of scope:
 
@@ -41,10 +41,10 @@ Subagent descriptor files use YAML frontmatter plus a Markdown body. The frontma
 
 ```md
 ---
-name: "pair_navigator_consult"
+name: "consult_navigator"
 version: "1.0.0"
 description: "Navigator consulted by the main Pilot for focused pair review."
-promptId: "pairNavigatorConsultSystem"
+promptId: "consult/navigator/system"
 tools: []
 parameters:
   temperature: 0.1

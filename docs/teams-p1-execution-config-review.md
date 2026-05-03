@@ -62,8 +62,8 @@ Prepared while Jules session `16658974696077478963` works on P1.
 
 - `pair-coding` does not use one generic driver config for both implementation and fix if separate bindings exist.
 - `pair-coding` does not use one generic navigator config for both brief and review if separate bindings exist.
-- `pair-consult` model navigator receives effective navigator config.
-- `pair-consult` live-agent navigator rejects or warns when tools/parameters are configured but unenforceable.
+- `consult` model navigator receives effective navigator config.
+- `consult` live-agent navigator rejects or warns when tools/parameters are configured but unenforceable.
 - `pair-coding` continues rejecting `agent:` refs for driver/navigator unless intentionally changed.
 
 ### Telephone protocol

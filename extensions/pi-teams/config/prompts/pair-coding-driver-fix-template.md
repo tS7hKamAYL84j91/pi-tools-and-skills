@@ -1,5 +1,5 @@
 ---
-id: pairDriverFixTemplate
+id: pair-coding/driver-fix/template
 title: "Pair driver fix prompt template"
 scope: pair
 stage: driver-fix

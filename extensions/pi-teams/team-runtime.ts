@@ -51,7 +51,7 @@ const TeamDeleteSchema = Type.Object({
 });
 
 const TeamRunSchema = Type.Object({
-	id: Type.String({ description: "Team id to run, e.g. default-council, pair-consult, pair-coding, telephone-game." }),
+	id: Type.String({ description: "Team id to run, e.g. default-debate, consult, pair-coding, telephone-game." }),
 	prompt: Type.String({ description: "Task, question, or review request for the team." }),
 	files: Type.Optional(Type.Array(Type.String(), { description: "pair-coding: files to load." })),
 	specPath: Type.Optional(Type.String({ description: "pair-coding: spec path; defaults to spec.md or docs/spec.md." })),
@@ -176,8 +176,8 @@ export function registerTeamRunTool(
 		description: "Run a declarative team by id. Use team_list first if you do not know the team id.",
 		promptSnippet: "Run a declarative council or pair team by id",
 		promptGuidelines: [
-			"Use team_run with id=default-council for high-impact architecture, strategy, or research where disagreement is valuable.",
-			"Use team_run with id=pair-consult for lightweight Navigator review.",
+			"Use team_run with id=default-debate for high-impact architecture, strategy, or research where disagreement is valuable.",
+			"Use team_run with id=consult for lightweight Navigator review.",
 			"Use team_run with id=pair-coding only when an automated Driver/Navigator implementation loop is explicitly requested.",
 			"Use chain/telephone teams for sequential relay experiments where each member rewrites and passes a message to the next.",
 		],
