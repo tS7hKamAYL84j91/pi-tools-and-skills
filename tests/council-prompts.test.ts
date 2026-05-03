@@ -6,7 +6,7 @@ import { promptAssetLines } from "../extensions/pi-teams/prompt-resolver.js";
 import { renderPeerCritiquePrompt } from "../extensions/pi-teams/protocol-prompts.js";
 import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import type {
-	CouncilMember,
+	TeamParticipant,
 	ModelRun,
 } from "../extensions/pi-teams/types.js";
 
@@ -20,17 +20,17 @@ const CONFIG_PATH = join(
 const NO_SETTINGS = "/nonexistent/path/settings.json";
 const PROMPTS_CONFIG = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH).prompts;
 
-const memberA: CouncilMember = { label: "Agent A", model: "openai/gpt-5.5" };
-const memberB: CouncilMember = {
+const memberA: TeamParticipant = { label: "Agent A", model: "openai/gpt-5.5" };
+const memberB: TeamParticipant = {
 	label: "Agent B",
 	model: "anthropic/claude-opus-4-6",
 };
-const memberC: CouncilMember = {
+const memberC: TeamParticipant = {
 	label: "Agent C",
 	model: "google/gemini-2.5-pro",
 };
 
-function makeRun(member: CouncilMember, output: string): ModelRun {
+function makeRun(member: TeamParticipant, output: string): ModelRun {
 	return {
 		member,
 		prompt: "Q?",

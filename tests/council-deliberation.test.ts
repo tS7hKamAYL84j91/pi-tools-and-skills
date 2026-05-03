@@ -6,7 +6,7 @@ vi.mock("../lib/agent-api.js", () => ({
 
 import { findAgentByName } from "../lib/agent-api.js";
 import { preflight } from "../extensions/pi-teams/deliberation.js";
-import type { CouncilDefinition } from "../extensions/pi-teams/types.js";
+import type { TeamRunDefinition } from "../extensions/pi-teams/types.js";
 
 const mockFind = findAgentByName as ReturnType<typeof vi.fn>;
 
@@ -14,7 +14,7 @@ beforeEach(() => {
 	mockFind.mockReset();
 });
 
-function definition(over: Partial<CouncilDefinition> = {}): CouncilDefinition {
+function definition(over: Partial<TeamRunDefinition> = {}): TeamRunDefinition {
 	return {
 		name: "test",
 		members: [
