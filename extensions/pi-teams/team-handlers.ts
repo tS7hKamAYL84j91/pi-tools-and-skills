@@ -137,14 +137,7 @@ const graphHandler: TeamHandler = {
 		return okText(result.output, {
 			team: args.team.id,
 			ok: result.ok,
-			nodes: result.nodes.map((node) => ({
-				role: node.binding.role,
-				model: node.model,
-				ok: node.ok,
-				status: node.status,
-				durationMs: node.durationMs,
-				attempts: node.attempts,
-			})),
+			nodes: graphNodeDetails(result),
 		});
 	},
 };

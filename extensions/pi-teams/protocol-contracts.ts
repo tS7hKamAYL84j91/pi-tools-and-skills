@@ -50,7 +50,7 @@ const PROTOCOL_PROMPT_CONTRACTS: Record<string, readonly ProtocolPromptSlot[]> =
 		{ id: "relay.template", kind: "template", defaultPromptId: "telephone/relay/template", roles: ["relay", "member"] },
 	],
 	graph: [
-		{ id: "node.template", kind: "template", defaultPromptId: "teamGraphNodeTemplate", roles: ["node", "agent", "member"] },
+		{ id: "node.template", kind: "template", defaultPromptId: "graph/node/template", roles: ["node", "agent", "member"] },
 	],
 };
 
