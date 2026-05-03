@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { pairPrimerPrompt } from "../extensions/pi-teams/pair-prompts.js";
-import { critiquePrompt } from "../extensions/pi-teams/prompts.js";
+import { renderTemplate } from "../extensions/pi-teams/prompt-renderer.js";
+import { promptAssetLines } from "../extensions/pi-teams/prompt-resolver.js";
+import { renderPeerCritiquePrompt } from "../extensions/pi-teams/protocol-prompts.js";
 import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
 import type {
 	CouncilMember,
@@ -40,7 +41,7 @@ function makeRun(member: CouncilMember, output: string): ModelRun {
 	};
 }
 
-describe("critiquePrompt self-exclusion", () => {
+describe("peer critique prompt self-exclusion", () => {
 	const generation = [
 		makeRun(memberA, "A's distinctive answer signature"),
 		makeRun(memberB, "B's distinctive answer signature"),
@@ -49,12 +50,12 @@ describe("critiquePrompt self-exclusion", () => {
 	const members = [memberA, memberB, memberC];
 
 	it("omits the viewer's own answer from the critique input", () => {
-		const prompt = critiquePrompt({
+		const prompt = renderPeerCritiquePrompt({
 			originalPrompt: "Q?",
 			generation,
 			members,
 			viewer: memberB,
-			promptsConfig: PROMPTS_CONFIG,
+			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
 		});
 		expect(prompt).toContain("A's distinctive answer signature");
 		expect(prompt).toContain("C's distinctive answer signature");
@@ -66,36 +67,35 @@ describe("critiquePrompt self-exclusion", () => {
 			makeRun(memberA, "openai/gpt-5.5 says ..."),
 			makeRun(memberB, "B's answer"),
 		];
-		const prompt = critiquePrompt({
+		const prompt = renderPeerCritiquePrompt({
 			originalPrompt: "Q?",
 			generation: generationWithModelMention,
 			members,
 			viewer: memberB,
-			promptsConfig: PROMPTS_CONFIG,
+			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
 		});
 		expect(prompt).not.toContain("openai/gpt-5.5");
 		expect(prompt).toContain("Agent A says ...");
 	});
 
 	it("notes self-exclusion explicitly so reviewers don't look for their answer", () => {
-		const prompt = critiquePrompt({
+		const prompt = renderPeerCritiquePrompt({
 			originalPrompt: "Q?",
 			generation,
 			members,
 			viewer: memberA,
-			promptsConfig: PROMPTS_CONFIG,
+			template: promptAssetLines(PROMPTS_CONFIG, "councilCritiqueTemplate"),
 		});
 		expect(prompt).toMatch(/your own answer is excluded/i);
 	});
 });
 
-describe("pairPrimerPrompt", () => {
+describe("pair primer asset", () => {
 	it("renders the configured pair primer template", () => {
-		const prompt = pairPrimerPrompt({
+		const prompt = renderTemplate([...promptAssetLines(PROMPTS_CONFIG, "pairPrimer")], {
 			pairName: "review",
 			navigator: "ollama/glm-5.1:cloud",
-			task: "tighten the tests",
-			promptsConfig: PROMPTS_CONFIG,
+			taskLine: "\n\nTask: tighten the tests",
 		});
 
 		expect(prompt).toContain('[Pair-coding "review"');
