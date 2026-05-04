@@ -21,6 +21,7 @@ export interface TruncatedText {
 	truncated: boolean;
 	originalBytes: number;
 	originalLines: number;
+	limitHit?: "bytes" | "lines";
 }
 
 export interface WorkspaceSummary {

@@ -3,7 +3,6 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { resolveCoasConfig } from "./config.js";
 import { pathInside, workspaceRoot } from "./store.js";
@@ -23,7 +22,11 @@ function contextInstruction(ctx: ExtensionContext): string | undefined {
 	const workspace = currentWorkspaceLabel(ctx.cwd);
 	const config = resolveCoasConfig(ctx.cwd);
 	const inWorkspaceRoot = pathInside(workspaceRoot(config), ctx.cwd);
-	if (!workspace && !inWorkspaceRoot && !existsSync(join(ctx.cwd, ".coas", "workspace.env"))) return undefined;
+	// currentWorkspaceLabel detects cwd-relative workspaces and COAS_WORKSPACE_ID;
+	// pathInside+workspaceRoot detects cwd inside COAS_HOME/workspaces.
+	// The previous .coas/workspace.env file check was redundant because both
+	// detection paths already cover those workspaces.
+	if (!workspace && !inWorkspaceRoot) return undefined;
 	return [
 		"CoAS workspace context is available for this session.",
 		"Use coas_workspace_read before workspace-sensitive work when relevant.",
