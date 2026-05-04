@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
-import { createTeamFiles, updateTeamModels } from "../extensions/pi-teams/team-form.js";
+import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../extensions/pi-teams/team-form.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
 import { loadTeamRegistry, requireBuiltinTeam } from "../extensions/pi-teams/team-registry.js";
 import { registerTeamTools } from "../extensions/pi-teams/team-tools.js";
@@ -448,6 +448,27 @@ describe("loadTeamRegistry", () => {
 			expect(body).toContain('subagent: "agent:reviewer"');
 			expect(result.subagentPaths).toEqual([]);
 			expect(existsSync(join(project, ".pi", "teams", "agents", "agent:reviewer.md"))).toBe(false);
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
+	});
+
+	it("team_delete removes unreferenced generated subagent stubs", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-delete-generated-"));
+		try {
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+			mkdirSync(join(project, ".pi"), { recursive: true });
+			writeFileSync(join(project, ".pi", "settings.json"), JSON.stringify({ teams: { roots: [".pi/teams"] } }), "utf8");
+			const result = createTeamFiles({ id: "generated-review", protocol: "consult", agents: ["generated_navigator"], scope: "project" }, project);
+			const subagentPath = join(project, ".pi", "teams", "agents", "generated_navigator.md");
+
+			expect(result.subagentPaths).toEqual([subagentPath]);
+			expect(readFileSync(subagentPath, "utf8")).toContain('generatedBy: "pi-teams"');
+
+			deleteTeamFiles({ id: "generated-review", scope: "project" }, project);
+
+			expect(existsSync(result.teamPath)).toBe(false);
+			expect(existsSync(subagentPath)).toBe(false);
 		} finally {
 			rmSync(project, { recursive: true, force: true });
 		}

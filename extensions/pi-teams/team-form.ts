@@ -3,13 +3,13 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isLiveAgentRef } from "./live-agent.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
 import { chooseModel, chooseTeamTarget } from "./team-picker.js";
-import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
+import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamSpec, TeamWritableSource } from "./team-types.js";
 
 const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
@@ -203,6 +203,7 @@ function ensureSubagentFile(dir: string, id: string): string {
 			`name: ${quote(id)}`,
 			'version: "1.0.0"',
 			`description: ${quote(`${titleFromId(id)} team role.`)}`,
+			'generatedBy: "pi-teams"',
 			"tools: []",
 			"---",
 			"",
@@ -357,23 +358,49 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 	}, cwd);
 }
 
+function isGeneratedSubagent(path: string): boolean {
+	try {
+		return readFileSync(path, "utf8").includes('generatedBy: "pi-teams"');
+	} catch {
+		return false;
+	}
+}
+
+function deleteGeneratedSubagents(team: TeamSpec, cwd: string): void {
+	if (team.source === "builtin") return;
+	const registry = loadTeamRegistry(undefined, { cwd });
+	const referenced = new Set(
+		[...registry.teams.values()]
+			.filter((entry) => entry.id !== team.id)
+			.flatMap((entry) => entry.agents),
+	);
+	const agentsDir = dirsForTeamScope(team.source, cwd).agents;
+	for (const subagent of team.agents) {
+		if (referenced.has(subagent) || isLiveAgentRef(subagent)) continue;
+		const path = join(agentsDir, `${subagent}.md`);
+		if (isGeneratedSubagent(path)) unlinkSync(path);
+	}
+}
+
 export function deleteTeamFiles(input: TeamDeleteInput, cwd: string): TeamDeleteResult {
 	const id = normalizeTeamId(input.id);
 	if (!id) throw new Error("Team id is required.");
+	const registry = loadTeamRegistry(undefined, { cwd });
+	const team = registry.teams.get(id);
 	if (input.scope) {
 		const teamPath = join(dirsForTeamScope(input.scope, cwd).teams, `${id}.md`);
 		if (!existsSync(teamPath)) throw new Error(`No ${input.scope} team "${id}" at ${teamPath}.`);
 		unlinkSync(teamPath);
+		if (team?.source === input.scope) deleteGeneratedSubagents(team, cwd);
 		return { id, teamPath, source: input.scope };
 	}
 	if (loadBuiltinTeamIds().has(id)) {
 		throw new Error(`Team "${id}" is a built-in default id. Pass scope=user or scope=project to delete only an override.`);
 	}
-	const registry = loadTeamRegistry(undefined, { cwd });
-	const team = registry.teams.get(id);
 	if (!team) throw new Error(`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
 	if (team.source === "builtin") throw new Error(`Built-in team "${id}" cannot be deleted.`);
 	unlinkSync(team.path);
+	deleteGeneratedSubagents(team, cwd);
 	return { id, teamPath: team.path, source: team.source };
 }
 
