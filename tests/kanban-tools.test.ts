@@ -7,16 +7,20 @@
  * invoked, so no FSWatcher is started.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-
-import type { ToolResult } from "../lib/tool-result.js";
-import kanbanExtension from "../extensions/kanban/index.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WIP_LIMIT } from "../extensions/kanban/board.js";
+import kanbanExtension from "../extensions/kanban/index.js";
+import type { ToolResult } from "../lib/tool-result.js";
 
 // ── Fake ExtensionAPI ────────────────────────────────────────────
 
@@ -45,23 +49,46 @@ function createFakeApi(): { api: FakeApi; tools: Map<string, RegisteredTool> } {
 	const tools = new Map<string, RegisteredTool>();
 	const flags = new Map<string, string | boolean>();
 	const api: FakeApi = {
-		registerTool(def: RegisteredTool) { tools.set(def.name, def); },
-		registerCommand(_name: string, _opts: unknown) { /* no-op */ },
-		registerShortcut(_shortcut: string, _opts: unknown) { /* no-op */ },
+		registerTool(def: RegisteredTool) {
+			tools.set(def.name, def);
+		},
+		registerCommand(_name: string, _opts: unknown) {
+			/* no-op */
+		},
+		registerShortcut(_shortcut: string, _opts: unknown) {
+			/* no-op */
+		},
 		registerFlag(name: string, opts: { default?: string | boolean }) {
 			if (opts.default !== undefined) flags.set(`--${name}`, opts.default);
 		},
-		on(_event: string, _handler: unknown) { /* captured but never fired */ },
-		getFlag(name: string) { return flags.get(name); },
-		sendUserMessage(_msg: string, _opts?: unknown) { /* no-op */ },
+		on(_event: string, _handler: unknown) {
+			/* captured but never fired */
+		},
+		getFlag(name: string) {
+			return flags.get(name);
+		},
+		sendUserMessage(_msg: string, _opts?: unknown) {
+			/* no-op */
+		},
 	};
 	return { api, tools };
 }
 
-async function callTool(tools: Map<string, RegisteredTool>, name: string, params: Record<string, unknown>, cwd?: string): Promise<ToolResult> {
+async function callTool(
+	tools: Map<string, RegisteredTool>,
+	name: string,
+	params: Record<string, unknown>,
+	cwd?: string,
+): Promise<ToolResult> {
 	const tool = tools.get(name);
 	if (!tool) throw new Error(`Tool not registered: ${name}`);
-	return tool.execute("test-call-id", params, undefined, undefined, cwd ? { cwd } : undefined);
+	return tool.execute(
+		"test-call-id",
+		params,
+		undefined,
+		undefined,
+		cwd ? { cwd } : undefined,
+	);
 }
 
 // ── Test fixture ─────────────────────────────────────────────────
@@ -115,34 +142,61 @@ describe("kanban_create", () => {
 		expect(log).toContain('priority="high"');
 
 		const taskFile = readFileSync(join(tmpDir, "tasks", "T-001.md"), "utf-8");
-		expect(taskFile).toContain("title: \"Build the thing\"");
+		expect(taskFile).toContain('title: "Build the thing"');
 		expect(taskFile).toContain("priority: high");
 		expect(taskFile).toContain("A task that builds the thing");
 	});
 
 	it("rejects duplicate task IDs", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-002", agent: "lead", title: "First", priority: "low" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-002",
+			agent: "lead",
+			title: "First",
+			priority: "low",
+		});
 		await expect(
-			callTool(tools, "kanban_create", { task_id: "T-002", agent: "lead", title: "Second", priority: "low" }),
+			callTool(tools, "kanban_create", {
+				task_id: "T-002",
+				agent: "lead",
+				title: "Second",
+				priority: "low",
+			}),
 		).rejects.toThrow(/already exists/);
 	});
 
 	it("rejects malformed task IDs", async () => {
 		await expect(
-			callTool(tools, "kanban_create", { task_id: "bogus", agent: "lead", title: "x", priority: "low" }),
+			callTool(tools, "kanban_create", {
+				task_id: "bogus",
+				agent: "lead",
+				title: "x",
+				priority: "low",
+			}),
 		).rejects.toThrow(/T-NNN/);
 	});
 });
 
 describe("kanban_claim", () => {
 	beforeEach(async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-010", agent: "lead", title: "Claimable", priority: "high" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-010",
+			agent: "lead",
+			title: "Claimable",
+			priority: "high",
+		});
 		// CREATE puts task in backlog; move it to todo so claim can pick it up
-		await callTool(tools, "kanban_move", { task_id: "T-010", agent: "lead", to: "todo" });
+		await callTool(tools, "kanban_move", {
+			task_id: "T-010",
+			agent: "lead",
+			to: "todo",
+		});
 	});
 
 	it("claims a todo task and moves it to in-progress", async () => {
-		const result = await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-1" });
+		const result = await callTool(tools, "kanban_claim", {
+			task_id: "T-010",
+			agent: "worker-1",
+		});
 
 		expect(result.isError).toBeFalsy();
 		expect(result.details.result).toBe("CLAIMED");
@@ -154,15 +208,24 @@ describe("kanban_claim", () => {
 	});
 
 	it("returns TASK_NOT_FOUND for unknown task", async () => {
-		const result = await callTool(tools, "kanban_claim", { task_id: "T-999", agent: "worker-1" });
+		const result = await callTool(tools, "kanban_claim", {
+			task_id: "T-999",
+			agent: "worker-1",
+		});
 		expect(result.details.result).toBe("TASK_NOT_FOUND");
 		expect(result.details.claimed).toBe(false);
 	});
 
 	it("reassigns an in-progress task to a new agent", async () => {
-		await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-1" });
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-010",
+			agent: "worker-1",
+		});
 
-		const result = await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-2" });
+		const result = await callTool(tools, "kanban_claim", {
+			task_id: "T-010",
+			agent: "worker-2",
+		});
 
 		expect(result.isError).toBeFalsy();
 		expect(result.details.task_id).toBe("T-010");
@@ -175,9 +238,17 @@ describe("kanban_claim", () => {
 	});
 
 	it("returns WRONG_COLUMN if task not in todo", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-011", agent: "lead", title: "Backlog item", priority: "low" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-011",
+			agent: "lead",
+			title: "Backlog item",
+			priority: "low",
+		});
 		// Still in backlog
-		const result = await callTool(tools, "kanban_claim", { task_id: "T-011", agent: "worker-1" });
+		const result = await callTool(tools, "kanban_claim", {
+			task_id: "T-011",
+			agent: "worker-1",
+		});
 		expect(result.details.result).toBe("WRONG_COLUMN");
 		expect(result.details.col).toBe("backlog");
 	});
@@ -186,26 +257,61 @@ describe("kanban_claim", () => {
 		// Fill WIP up to the limit using fresh tasks
 		for (let i = 0; i < WIP_LIMIT; i++) {
 			const id = `T-${String(20 + i).padStart(3, "0")}`;
-			await callTool(tools, "kanban_create", { task_id: id, agent: "lead", title: id, priority: "medium" });
-			await callTool(tools, "kanban_move", { task_id: id, agent: "lead", to: "todo" });
-			const c = await callTool(tools, "kanban_claim", { task_id: id, agent: `worker${id.slice(2)}` });
-			expect(c.details.result, `claim ${id}: ${c.content[0]?.text}`).toBe("CLAIMED");
+			await callTool(tools, "kanban_create", {
+				task_id: id,
+				agent: "lead",
+				title: id,
+				priority: "medium",
+			});
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
+			const c = await callTool(tools, "kanban_claim", {
+				task_id: id,
+				agent: `worker${id.slice(2)}`,
+			});
+			expect(c.details.result, `claim ${id}: ${c.content[0]?.text}`).toBe(
+				"CLAIMED",
+			);
 		}
 		// T-010 (already in todo from outer beforeEach) should now hit the cap
-		const result = await callTool(tools, "kanban_claim", { task_id: "T-010", agent: "worker-extra" });
-		expect(result.details.result, result.content[0]?.text).toBe("WIP_LIMIT_REACHED");
+		const result = await callTool(tools, "kanban_claim", {
+			task_id: "T-010",
+			agent: "worker-extra",
+		});
+		expect(result.details.result, result.content[0]?.text).toBe(
+			"WIP_LIMIT_REACHED",
+		);
 	});
 });
 
 describe("kanban_complete", () => {
 	beforeEach(async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-030", agent: "lead", title: "To finish", priority: "high" });
-		await callTool(tools, "kanban_move", { task_id: "T-030", agent: "lead", to: "todo" });
-		await callTool(tools, "kanban_claim", { task_id: "T-030", agent: "worker-1" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-030",
+			agent: "lead",
+			title: "To finish",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-030",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-030",
+			agent: "worker-1",
+		});
 	});
 
 	it("completes an in-progress task and moves it to done", async () => {
-		const result = await callTool(tools, "kanban_complete", { task_id: "T-030", agent: "worker-1", duration: "45m" });
+		const result = await callTool(tools, "kanban_complete", {
+			task_id: "T-030",
+			agent: "worker-1",
+			duration: "45m",
+		});
 		expect(result.isError).toBeFalsy();
 		expect(result.details.task_id).toBe("T-030");
 		expect(result.details.duration).toBe("45m");
@@ -216,25 +322,56 @@ describe("kanban_complete", () => {
 	});
 
 	it("rejects completing a task not in in-progress", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-031", agent: "lead", title: "x", priority: "low" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-031",
+			agent: "lead",
+			title: "x",
+			priority: "low",
+		});
 		await expect(
-			callTool(tools, "kanban_complete", { task_id: "T-031", agent: "lead", duration: "1m" }),
+			callTool(tools, "kanban_complete", {
+				task_id: "T-031",
+				agent: "lead",
+				duration: "1m",
+			}),
 		).rejects.toThrow(/not in-progress/);
 	});
 
 	it("defaults duration to 'unknown' when omitted", async () => {
-		const result = await callTool(tools, "kanban_complete", { task_id: "T-030", agent: "worker-1" });
+		const result = await callTool(tools, "kanban_complete", {
+			task_id: "T-030",
+			agent: "worker-1",
+		});
 		expect(result.details.duration).toBe("unknown");
 	});
 });
 
 describe("kanban_claim without task_id", () => {
 	it("picks the highest-priority todo task", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-040", agent: "lead", title: "low", priority: "low" });
-		await callTool(tools, "kanban_create", { task_id: "T-041", agent: "lead", title: "critical", priority: "critical" });
-		await callTool(tools, "kanban_create", { task_id: "T-042", agent: "lead", title: "medium", priority: "medium" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-040",
+			agent: "lead",
+			title: "low",
+			priority: "low",
+		});
+		await callTool(tools, "kanban_create", {
+			task_id: "T-041",
+			agent: "lead",
+			title: "critical",
+			priority: "critical",
+		});
+		await callTool(tools, "kanban_create", {
+			task_id: "T-042",
+			agent: "lead",
+			title: "medium",
+			priority: "medium",
+		});
 		for (const id of ["T-040", "T-041", "T-042"]) {
-			await callTool(tools, "kanban_move", { task_id: id, agent: "lead", to: "todo" });
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
 		}
 
 		const result = await callTool(tools, "kanban_claim", { agent: "worker-1" });
@@ -244,10 +381,24 @@ describe("kanban_claim without task_id", () => {
 	});
 
 	it("uses the lowest task ID as the priority tie-breaker", async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-045", agent: "lead", title: "later", priority: "high" });
-		await callTool(tools, "kanban_create", { task_id: "T-044", agent: "lead", title: "earlier", priority: "high" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-045",
+			agent: "lead",
+			title: "later",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_create", {
+			task_id: "T-044",
+			agent: "lead",
+			title: "earlier",
+			priority: "high",
+		});
 		for (const id of ["T-045", "T-044"]) {
-			await callTool(tools, "kanban_move", { task_id: id, agent: "lead", to: "todo" });
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
 		}
 
 		const result = await callTool(tools, "kanban_claim", { agent: "worker-1" });
@@ -264,13 +415,29 @@ describe("kanban_claim without task_id", () => {
 
 describe("kanban_edit note + kanban_block", () => {
 	beforeEach(async () => {
-		await callTool(tools, "kanban_create", { task_id: "T-050", agent: "lead", title: "Notable", priority: "medium" });
-		await callTool(tools, "kanban_move", { task_id: "T-050", agent: "lead", to: "todo" });
-		await callTool(tools, "kanban_claim", { task_id: "T-050", agent: "worker-1" });
+		await callTool(tools, "kanban_create", {
+			task_id: "T-050",
+			agent: "lead",
+			title: "Notable",
+			priority: "medium",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-050",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-050",
+			agent: "worker-1",
+		});
 	});
 
 	it("appends a note to the log and the task file", async () => {
-		const result = await callTool(tools, "kanban_edit", { task_id: "T-050", agent: "worker-1", note: "halfway done" });
+		const result = await callTool(tools, "kanban_edit", {
+			task_id: "T-050",
+			agent: "worker-1",
+			note: "halfway done",
+		});
 		expect(result.isError).toBeFalsy();
 		expect(result.details.changed).toEqual({ note: "halfway done" });
 
@@ -282,7 +449,11 @@ describe("kanban_edit note + kanban_block", () => {
 	});
 
 	it("blocks an in-progress task", async () => {
-		const result = await callTool(tools, "kanban_block", { task_id: "T-050", agent: "worker-1", reason: "waiting on API key" });
+		const result = await callTool(tools, "kanban_block", {
+			task_id: "T-050",
+			agent: "worker-1",
+			reason: "waiting on API key",
+		});
 		expect(result.isError).toBeFalsy();
 
 		const log = readFileSync(join(tmpDir, "board.log"), "utf-8");
@@ -321,7 +492,11 @@ describe("kanban_snapshot", () => {
 			priority: "high",
 			description: "Detailed implementation notes stay out of model context",
 		});
-		await callTool(tools, "kanban_edit", { task_id: "T-060", agent: "lead", note: "private-ish detail" });
+		await callTool(tools, "kanban_edit", {
+			task_id: "T-060",
+			agent: "lead",
+			note: "private-ish detail",
+		});
 		const result = await callTool(tools, "kanban_snapshot", {});
 
 		expect(result.isError).toBeFalsy();
@@ -345,14 +520,20 @@ describe("kanban_snapshot", () => {
 			priority: "medium",
 			description: "Only include this in explicit full output",
 		});
-		await callTool(tools, "kanban_edit", { task_id: "T-061", agent: "lead", note: "full board note" });
+		await callTool(tools, "kanban_edit", {
+			task_id: "T-061",
+			agent: "lead",
+			note: "full board note",
+		});
 
 		const result = await callTool(tools, "kanban_snapshot", { detail: "full" });
 
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("Returned view: full");
 		expect(result.content[0]?.text).toContain("Notes for T-061");
-		expect(result.content[0]?.text).toContain("Only include this in explicit full output");
+		expect(result.content[0]?.text).toContain(
+			"Only include this in explicit full output",
+		);
 		expect(result.content[0]?.text).toContain("full board note");
 	});
 
@@ -364,7 +545,11 @@ describe("kanban_snapshot", () => {
 			priority: "critical",
 			description: "Specific card context",
 		});
-		await callTool(tools, "kanban_edit", { task_id: "T-062", agent: "lead", note: "specific note" });
+		await callTool(tools, "kanban_edit", {
+			task_id: "T-062",
+			agent: "lead",
+			note: "specific note",
+		});
 		await callTool(tools, "kanban_create", {
 			task_id: "T-063",
 			agent: "lead",
@@ -373,7 +558,9 @@ describe("kanban_snapshot", () => {
 			description: "Should stay out of task-specific output",
 		});
 
-		const result = await callTool(tools, "kanban_snapshot", { task_id: "T-062" });
+		const result = await callTool(tools, "kanban_snapshot", {
+			task_id: "T-062",
+		});
 
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("Returned view: task");
@@ -381,6 +568,286 @@ describe("kanban_snapshot", () => {
 		expect(result.content[0]?.text).toContain("Specific card context");
 		expect(result.content[0]?.text).toContain("specific note");
 		expect(result.content[0]?.text).not.toContain("T-063");
-		expect(result.content[0]?.text).not.toContain("Should stay out of task-specific output");
+		expect(result.content[0]?.text).not.toContain(
+			"Should stay out of task-specific output",
+		);
+	});
+});
+
+describe("kanban_snapshot UX improvements", () => {
+	it("includes blocked reason in compact summary", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-070",
+			agent: "lead",
+			title: "Blockable",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-070",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-070",
+			agent: "worker-1",
+		});
+		await callTool(tools, "kanban_block", {
+			task_id: "T-070",
+			agent: "worker-1",
+			reason: "waiting on API key",
+		});
+
+		const result = await callTool(tools, "kanban_snapshot", {});
+		expect(result.isError).toBeFalsy();
+		// Blocked tasks should show the reason in the compact summary
+		expect(result.content[0]?.text).toContain("waiting on API key");
+	});
+
+	it("shows plain count when all done tasks fit in summary", async () => {
+		// Create 3 done tasks and verify the compact summary shows "3" not "last 3 of 3"
+		for (let i = 0; i < 3; i++) {
+			const id = `T-08${i}`;
+			await callTool(tools, "kanban_create", {
+				task_id: id,
+				agent: "lead",
+				title: `Done task ${i}`,
+				priority: "low",
+			});
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
+			await callTool(tools, "kanban_claim", {
+				task_id: id,
+				agent: `worker-${i}`,
+			});
+			await callTool(tools, "kanban_complete", {
+				task_id: id,
+				agent: `worker-${i}`,
+				duration: "1h",
+			});
+		}
+
+		const result = await callTool(tools, "kanban_snapshot", {});
+		expect(result.isError).toBeFalsy();
+		// Should show "(3)" not "(last 3 of 3)"
+		expect(result.content[0]?.text).toMatch(/Done \(3\)/);
+		expect(result.content[0]?.text).not.toContain("last 3 of 3");
+	});
+
+	it("shows last N of M when done tasks exceed summary limit", async () => {
+		// Create 6 done tasks (more than the 5-item summary limit)
+		for (let i = 0; i < 6; i++) {
+			const id = `T-09${i}`;
+			await callTool(tools, "kanban_create", {
+				task_id: id,
+				agent: "lead",
+				title: `Done task ${i}`,
+				priority: "low",
+			});
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
+			await callTool(tools, "kanban_claim", {
+				task_id: id,
+				agent: `worker-${i}`,
+			});
+			await callTool(tools, "kanban_complete", {
+				task_id: id,
+				agent: `worker-${i}`,
+				duration: "1h",
+			});
+		}
+
+		const result = await callTool(tools, "kanban_snapshot", {});
+		expect(result.isError).toBeFalsy();
+		// Should show "last 5 of 6" in the compact summary
+		expect(result.content[0]?.text).toContain("last 5 of 6");
+	});
+
+	it("shows plain count in full snapshot when done tasks fit within 10", async () => {
+		for (let i = 0; i < 3; i++) {
+			const id = `T-10${i}`;
+			await callTool(tools, "kanban_create", {
+				task_id: id,
+				agent: "lead",
+				title: `Done full ${i}`,
+				priority: "low",
+			});
+			await callTool(tools, "kanban_move", {
+				task_id: id,
+				agent: "lead",
+				to: "todo",
+			});
+			await callTool(tools, "kanban_claim", {
+				task_id: id,
+				agent: `worker-${i}`,
+			});
+			await callTool(tools, "kanban_complete", {
+				task_id: id,
+				agent: `worker-${i}`,
+				duration: "1h",
+			});
+		}
+
+		const result = await callTool(tools, "kanban_snapshot", { detail: "full" });
+		expect(result.isError).toBeFalsy();
+		const snap = readFileSync(join(tmpDir, "snapshot.md"), "utf-8");
+		// Should show "(3)" not "(last 10 of 3)"
+		expect(snap).toMatch(/Done \(3\)/);
+		expect(snap).not.toContain("last 10 of 3");
+	});
+});
+
+describe("kanban_edit metadata error message", () => {
+	it("shows improved error message when editing in-progress task metadata", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-110",
+			agent: "lead",
+			title: "IP task",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-110",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-110",
+			agent: "worker-1",
+		});
+
+		await expect(
+			callTool(tools, "kanban_edit", {
+				task_id: "T-110",
+				agent: "worker-1",
+				title: "New title",
+			}),
+		).rejects.toThrow(/Metadata edits.*only allowed.*backlog or todo/);
+	});
+
+	it("allows notes on in-progress tasks", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-111",
+			agent: "lead",
+			title: "IP task 2",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-111",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-111",
+			agent: "worker-1",
+		});
+
+		const result = await callTool(tools, "kanban_edit", {
+			task_id: "T-111",
+			agent: "worker-1",
+			note: "progress update",
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.details.changed).toEqual({ note: "progress update" });
+	});
+});
+
+describe("overlay guard logic", () => {
+	// These tests verify the guard behavior indirectly through the overlay controller.
+	// The overlay.ts module uses internal class state; we test snapshot/render functions instead.
+	// Guard logic is: move-picker only for backlog/todo, delete only for backlog/todo/done.
+
+	it("delete rejects in-progress task", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-120",
+			agent: "lead",
+			title: "IP delete",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-120",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-120",
+			agent: "worker-1",
+		});
+
+		await expect(
+			callTool(tools, "kanban_delete", { task_id: "T-120", agent: "lead" }),
+		).rejects.toThrow(/Cannot delete task T-120.*in-progress/);
+	});
+
+	it("delete rejects blocked task", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-121",
+			agent: "lead",
+			title: "Blocked delete",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-121",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-121",
+			agent: "worker-1",
+		});
+		await callTool(tools, "kanban_block", {
+			task_id: "T-121",
+			agent: "worker-1",
+			reason: "stuck",
+		});
+
+		await expect(
+			callTool(tools, "kanban_delete", { task_id: "T-121", agent: "lead" }),
+		).rejects.toThrow(/Cannot delete task T-121.*blocked/);
+	});
+
+	it("delete allows backlog task", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-122",
+			agent: "lead",
+			title: "Backlog delete",
+			priority: "low",
+		});
+		const result = await callTool(tools, "kanban_delete", {
+			task_id: "T-122",
+			agent: "lead",
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.details.task_id).toBe("T-122");
+	});
+
+	it("move rejects in-progress task", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-123",
+			agent: "lead",
+			title: "IP move",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-123",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(tools, "kanban_claim", {
+			task_id: "T-123",
+			agent: "worker-1",
+		});
+
+		await expect(
+			callTool(tools, "kanban_move", {
+				task_id: "T-123",
+				agent: "lead",
+				to: "backlog",
+			}),
+		).rejects.toThrow(/Cannot move task T-123 from 'in-progress'/);
 	});
 });

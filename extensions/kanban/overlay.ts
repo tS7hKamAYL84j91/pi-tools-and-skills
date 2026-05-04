@@ -10,17 +10,17 @@
  * file is the controller, that file is the view.
  */
 
+import { type FSWatcher, watch } from "node:fs";
 import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import type { Component, TUI } from "@mariozechner/pi-tui";
 import { matchesKey } from "@mariozechner/pi-tui";
-import { type FSWatcher, watch } from "node:fs";
 import {
 	type BoardState,
-	type TaskState,
 	boardLogPath,
 	deleteTask,
 	moveTask,
 	parseBoard,
+	type TaskState,
 } from "./board.js";
 import {
 	COLUMNS,
@@ -80,7 +80,9 @@ class KanbanOverlay implements Component {
 							this.clampSelection();
 							this.tui.requestRender();
 						})
-						.catch(() => { /* non-fatal */ });
+						.catch(() => {
+							/* non-fatal */
+						});
 				}, DEBOUNCE_MS);
 			});
 			this.watcher.unref();
@@ -146,28 +148,48 @@ class KanbanOverlay implements Component {
 
 	handleInput(data: string): void {
 		switch (this.mode) {
-			case "detail":         this.handleDetailInput(data); return;
-			case "confirm-delete": this.handleConfirmDeleteInput(data); return;
-			case "move-picker":    this.handleMovePickerInput(data); return;
-			default:               this.handleBoardInput(data); return;
+			case "detail":
+				this.handleDetailInput(data);
+				return;
+			case "confirm-delete":
+				this.handleConfirmDeleteInput(data);
+				return;
+			case "move-picker":
+				this.handleMovePickerInput(data);
+				return;
+			default:
+				this.handleBoardInput(data);
+				return;
 		}
 	}
 
 	private handleDetailInput(data: string): void {
-		if (matchesKey(data, "escape") || matchesKey(data, "q") || matchesKey(data, "left")) {
+		if (
+			matchesKey(data, "escape") ||
+			matchesKey(data, "q") ||
+			matchesKey(data, "left")
+		) {
 			this.mode = "board";
 			this.statusMessage = "";
 		}
 	}
 
 	private handleConfirmDeleteInput(data: string): void {
-		if (matchesKey(data, "escape") || matchesKey(data, "q") || matchesKey(data, "n")) {
+		if (
+			matchesKey(data, "escape") ||
+			matchesKey(data, "q") ||
+			matchesKey(data, "n")
+		) {
 			this.mode = "board";
 			this.pendingDeleteTask = null;
 			this.statusMessage = "";
 			return;
 		}
-		if (matchesKey(data, "y") || matchesKey(data, "enter") || matchesKey(data, "return")) {
+		if (
+			matchesKey(data, "y") ||
+			matchesKey(data, "enter") ||
+			matchesKey(data, "return")
+		) {
 			void this.executeDelete();
 		}
 	}
@@ -191,24 +213,35 @@ class KanbanOverlay implements Component {
 
 		if (matchesKey(data, "d")) {
 			const task = this.selectedTask();
-			if (task) {
-				this.pendingDeleteTask = task;
-				this.mode = "confirm-delete";
+			if (!task) return;
+			if (task.col === "in-progress") {
+				this.statusMessage = "Delete unavailable: complete the task first";
+				return;
 			}
+			if (task.col === "blocked") {
+				this.statusMessage = "Delete unavailable: unblock the task first";
+				return;
+			}
+			this.pendingDeleteTask = task;
+			this.mode = "confirm-delete";
 			return;
 		}
 
 		if (matchesKey(data, "m")) {
 			const task = this.selectedTask();
-			if (task) {
-				this.pendingMoveTask = task;
-				this.mode = "move-picker";
+			if (!task) return;
+			if (task.col !== "backlog" && task.col !== "todo") {
+				this.statusMessage = `Move unavailable: ${task.col} tasks cannot be moved`;
+				return;
 			}
+			this.pendingMoveTask = task;
+			this.mode = "move-picker";
 			return;
 		}
 
 		if (matchesKey(data, "left") || matchesKey(data, "shift+tab")) {
-			this.activeColIdx = (this.activeColIdx + COLUMNS.length - 1) % COLUMNS.length;
+			this.activeColIdx =
+				(this.activeColIdx + COLUMNS.length - 1) % COLUMNS.length;
 			this.activeRow = 0;
 			return;
 		}
@@ -309,7 +342,10 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 	try {
 		board = await parseBoard();
 	} catch {
-		ctx.ui.notify("Kanban board not available — set KANBAN_DIR or create a 'kanban' directory", "warning");
+		ctx.ui.notify(
+			"Kanban board not available — set KANBAN_DIR or create a 'kanban' directory",
+			"warning",
+		);
 		return;
 	}
 

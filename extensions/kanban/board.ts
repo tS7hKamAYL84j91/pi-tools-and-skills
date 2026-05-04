@@ -32,7 +32,10 @@ function findKanbanDir(): string | null {
 
 function kanbanDir(): string {
 	const dir = findKanbanDir();
-	if (!dir) throw new Error("Kanban directory not found. Set KANBAN_DIR or create a 'kanban' directory in the current working directory.");
+	if (!dir)
+		throw new Error(
+			"Kanban directory not found. Set KANBAN_DIR or create a 'kanban' directory in the current working directory.",
+		);
 	return dir;
 }
 
@@ -53,18 +56,21 @@ export const logAppend = async (line: string): Promise<void> => {
  * field — it has no escape sequence — so any embedded `"` must be replaced
  * to keep the line round-trippable through parseBoard.
  */
-export const escapeLogValue = (s: string): string => s.replace(/[\r\n]/g, " ").replace(/"/g, "'");
+export const escapeLogValue = (s: string): string =>
+	s.replace(/[\r\n]/g, " ").replace(/"/g, "'");
 
 /**
  * Sanitise an agent name for safe inclusion in log lines.
  * Strips anything that isn't lowercase alphanumeric or hyphen.
  */
-export const sanitiseAgent = (s: string): string => s.replace(/[^a-z0-9-]/g, "").slice(0, 64) || "unknown";
+export const sanitiseAgent = (s: string): string =>
+	s.replace(/[^a-z0-9-]/g, "").slice(0, 64) || "unknown";
 
 // ── Task file helpers ────────────────────────────────────────────
 
 const tasksDir = (): string => join(kanbanDir(), "tasks");
-const taskFilePath = (taskId: string): string => join(tasksDir(), `${taskId}.md`);
+const taskFilePath = (taskId: string): string =>
+	join(tasksDir(), `${taskId}.md`);
 
 /** Ensure the tasks directory exists. */
 async function ensureTasksDir(): Promise<void> {
@@ -75,21 +81,31 @@ async function ensureTasksDir(): Promise<void> {
 /** Format tags string as a YAML array. */
 function formatTagsYaml(tags: string): string {
 	if (!tags.trim()) return "[]";
-	const items = tags.split(",").map((t) => t.trim()).filter(Boolean);
+	const items = tags
+		.split(",")
+		.map((t) => t.trim())
+		.filter(Boolean);
 	return `[${items.join(", ")}]`;
 }
 
 /** Write or overwrite a task markdown file with YAML frontmatter. */
 export async function writeTaskFile(
 	taskId: string,
-	meta: { title: string; description: string; priority: string; tags: string; agent: string },
+	meta: {
+		title: string;
+		description: string;
+		priority: string;
+		tags: string;
+		agent: string;
+	},
 	notes: string[] = [],
 	created?: string,
 ): Promise<void> {
 	await ensureTasksDir();
-	const notesSection = notes.length > 0
-		? ["\n## Notes", "", ...notes.map((n) => `- ${n}`)].join("\n")
-		: "\n## Notes";
+	const notesSection =
+		notes.length > 0
+			? ["\n## Notes", "", ...notes.map((n) => `- ${n}`)].join("\n")
+			: "\n## Notes";
 	const lines = [
 		"---",
 		`title: "${meta.title.replace(/"/g, "'")}"`,
@@ -108,7 +124,11 @@ export async function writeTaskFile(
 }
 
 /** Append a timestamped note to an existing task markdown file. Creates a stub file if missing. */
-export async function appendTaskNote(taskId: string, agent: string, text: string): Promise<void> {
+export async function appendTaskNote(
+	taskId: string,
+	agent: string,
+	text: string,
+): Promise<void> {
 	await ensureTasksDir();
 	const fp = taskFilePath(taskId);
 	const entry = `${nowZ()} [${agent}] ${text}`;
@@ -116,7 +136,17 @@ export async function appendTaskNote(taskId: string, agent: string, text: string
 		const existing = await readFile(fp, "utf-8");
 		await writeFile(fp, `${existing.trimEnd()}\n- ${entry}\n`, "utf-8");
 	} else {
-		await writeTaskFile(taskId, { title: taskId, description: "", priority: "medium", tags: "", agent: "" }, [entry]);
+		await writeTaskFile(
+			taskId,
+			{
+				title: taskId,
+				description: "",
+				priority: "medium",
+				tags: "",
+				agent: "",
+			},
+			[entry],
+		);
 	}
 }
 
@@ -146,7 +176,13 @@ async function readTaskCreated(taskId: string): Promise<string | undefined> {
 /** Rewrite a task file after an edit, preserving existing notes and created timestamp. */
 export async function rewriteTaskFile(
 	taskId: string,
-	meta: { title: string; description: string; priority: string; tags: string; agent: string },
+	meta: {
+		title: string;
+		description: string;
+		priority: string;
+		tags: string;
+		agent: string;
+	},
 ): Promise<void> {
 	await ensureTasksDir();
 	const notes = await readTaskNotes(taskId);
@@ -188,10 +224,24 @@ export interface BoardState {
 
 function newTask(id: string, ts: string): TaskState {
 	return {
-		id, col: "backlog", deleted: false, priority: "medium",
-		claimed: false, notes: [], createdAt: ts,
-		title: "", tags: "", description: "", agent: "", claimAgent: "", model: "", expires: "",
-		reason: "", completedAt: "", duration: "", doneAgent: "",
+		id,
+		col: "backlog",
+		deleted: false,
+		priority: "medium",
+		claimed: false,
+		notes: [],
+		createdAt: ts,
+		title: "",
+		tags: "",
+		description: "",
+		agent: "",
+		claimAgent: "",
+		model: "",
+		expires: "",
+		reason: "",
+		completedAt: "",
+		duration: "",
+		doneAgent: "",
 	};
 }
 
@@ -202,7 +252,10 @@ function parseKV(fields: string[]): Record<string, string> {
 	while (i < fields.length) {
 		const field = fields[i] ?? "";
 		const eq = field.indexOf("=");
-		if (eq <= 0) { i++; continue; }
+		if (eq <= 0) {
+			i++;
+			continue;
+		}
 		const key = field.slice(0, eq);
 		let val = field.slice(eq + 1);
 		if (val.startsWith('"')) {
@@ -220,7 +273,13 @@ function parseKV(fields: string[]): Record<string, string> {
 }
 
 /** Apply a single event to a task accumulator. */
-function applyEvent(task: TaskState, event: string, agent: string, ts: string, kv: Record<string, string>): void {
+function applyEvent(
+	task: TaskState,
+	event: string,
+	agent: string,
+	ts: string,
+	kv: Record<string, string>,
+): void {
 	switch (event) {
 		case "CREATE":
 			if (kv.title) task.title = kv.title;
@@ -340,15 +399,23 @@ export async function getTask(taskId: string): Promise<TaskState> {
  *
  * Throws on validation failure or filesystem error.
  */
-export async function deleteTask(taskId: string, agent: string, reason: string = ""): Promise<{ task_id: string; previousCol: string; reason: string }> {
+export async function deleteTask(
+	taskId: string,
+	agent: string,
+	reason: string = "",
+): Promise<{ task_id: string; previousCol: string; reason: string }> {
 	validateTaskId(taskId);
 	const task = await getTask(taskId);
 	if (task.deleted) throw new Error(`Task ${taskId} has already been deleted`);
 	if (["in-progress", "blocked"].includes(task.col)) {
-		throw new Error(`Cannot delete task ${taskId}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`);
+		throw new Error(
+			`Cannot delete task ${taskId}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`,
+		);
 	}
 	const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
-	await logAppend(`${nowZ()} DELETE ${taskId} ${sanitiseAgent(agent)}${reasonSuffix}`);
+	await logAppend(
+		`${nowZ()} DELETE ${taskId} ${sanitiseAgent(agent)}${reasonSuffix}`,
+	);
 	return { task_id: taskId, previousCol: task.col, reason };
 }
 
@@ -359,16 +426,24 @@ export async function deleteTask(taskId: string, agent: string, reason: string =
  *
  * Throws on validation failure or filesystem error.
  */
-export async function moveTask(taskId: string, agent: string, to: "backlog" | "todo"): Promise<{ task_id: string; from: string; to: string }> {
+export async function moveTask(
+	taskId: string,
+	agent: string,
+	to: "backlog" | "todo",
+): Promise<{ task_id: string; from: string; to: string }> {
 	validateTaskId(taskId);
 	const task = await getTask(taskId);
 	if (["in-progress", "blocked", "done"].includes(task.col)) {
-		throw new Error(`Cannot move task ${taskId} from '${task.col}' column. Can only move from backlog or todo.`);
+		throw new Error(
+			`Cannot move task ${taskId} from '${task.col}' column. Can only move from backlog or todo.`,
+		);
 	}
 	const from = task.col;
 	if (from === to) {
 		throw new Error(`Task ${taskId} is already in ${to}.`);
 	}
-	await logAppend(`${nowZ()} MOVE ${taskId} ${sanitiseAgent(agent)} from=${from} to=${to}`);
+	await logAppend(
+		`${nowZ()} MOVE ${taskId} ${sanitiseAgent(agent)} from=${from} to=${to}`,
+	);
 	return { task_id: taskId, from, to };
 }

@@ -2,13 +2,10 @@
  * Kanban board view and column-management tool registrations.
  */
 
+import { writeFile } from "node:fs/promises";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { writeFile } from "node:fs/promises";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
-import { compactIfNeeded } from "./compaction.js";
-import { generateSnapshot, generateSnapshotSummary, generateTaskDetail } from "./snapshot.js";
-import { TASK_ID_SCHEMA } from "./schemas.js";
 import {
 	deleteTask,
 	getTask,
@@ -19,6 +16,13 @@ import {
 	sanitiseAgent,
 	snapshotPath,
 } from "./board.js";
+import { compactIfNeeded } from "./compaction.js";
+import { TASK_ID_SCHEMA } from "./schemas.js";
+import {
+	generateSnapshot,
+	generateSnapshotSummary,
+	generateTaskDetail,
+} from "./snapshot.js";
 
 export function registerBoardTools(pi: ExtensionAPI): void {
 	// ── kanban_snapshot ─────────────────────────────────────────
@@ -27,20 +31,23 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 		label: "Kanban Snapshot",
 		description:
 			"Regenerate full snapshot.md from board.log and return a compact board summary by default. " +
-			"Uses gradual disclosure: pass detail=\"full\" for the full board or task_id for one card's details.",
-		promptSnippet: "Regenerate the kanban board snapshot and return a compact summary",
+			'Uses gradual disclosure: pass detail="full" for the full board or task_id for one card\'s details.',
+		promptSnippet:
+			"Regenerate the kanban board snapshot and return a compact summary",
 		parameters: Type.Object({
-			detail: Type.Optional(Type.String({
-				description: 'Return view: "compact" (default) or "full"',
-				enum: ["compact", "full"],
-				default: "compact",
-			})),
+			detail: Type.Optional(
+				Type.String({
+					description: 'Return view: "compact" (default) or "full"',
+					enum: ["compact", "full"],
+					default: "compact",
+				}),
+			),
 			task_id: Type.Optional(TASK_ID_SCHEMA),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const board = await parseBoard();
 			const snapshot = generateSnapshot(board);
-			const view = params.task_id ? "task" : params.detail ?? "compact";
+			const view = params.task_id ? "task" : (params.detail ?? "compact");
 			let returnedView: string;
 			if (params.task_id) {
 				returnedView = generateTaskDetail(board, params.task_id);
@@ -51,15 +58,26 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			}
 			const sp = snapshotPath();
 			await writeFile(sp, snapshot, "utf-8");
-			await logAppend(`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`);
+			await logAppend(
+				`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
+			);
 			// Auto-compaction checkpoint: snapshot is the natural housekeeping moment
-			const compactResult = await compactIfNeeded(board, board.totalEvents, "snapshot");
+			const compactResult = await compactIfNeeded(
+				board,
+				board.totalEvents,
+				"snapshot",
+			);
 			const compactNote = compactResult.ran
 				? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
 				: "";
 			return ok(
 				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nReturned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
-				{ snapshotPath: sp, totalEvents: board.totalEvents, autoCompacted: compactResult.ran, view },
+				{
+					snapshotPath: sp,
+					totalEvents: board.totalEvents,
+					autoCompacted: compactResult.ran,
+					view,
+				},
 			);
 		},
 	});
@@ -68,22 +86,39 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_unblock",
 		label: "Kanban Unblock",
-		description: "Unblock a blocked task and move it to todo. Task must be in the blocked column. Records the resolution reason in the log.",
+		description:
+			"Unblock a blocked task and move it to todo. Task must be in the blocked column. Records the resolution reason in the log.",
 		promptSnippet: "Unblock a kanban task and move to todo",
 		parameters: Type.Object({
 			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({ description: "Agent name unblocking the task" }),
-			reason: Type.Optional(Type.String({ description: 'Resolution reason (e.g. "API key received")', default: "" })),
+			reason: Type.Optional(
+				Type.String({
+					description: 'Resolution reason (e.g. "API key received")',
+					default: "",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
 			const reason = params.reason ?? "";
 			const task = await getTask(task_id);
-			if (task.col !== "blocked") throw new Error(`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`);
+			if (task.col !== "blocked")
+				throw new Error(
+					`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
+				);
 			const ts = nowZ();
-			await logAppend(`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${reason}"`);
-			await logAppend(`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`);
-			return ok(`Unblocked ${task_id}, moved to todo`, { task_id, agent, reason });
+			await logAppend(
+				`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${reason}"`,
+			);
+			await logAppend(
+				`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`,
+			);
+			return ok(`Unblocked ${task_id}, moved to todo`, {
+				task_id,
+				agent,
+				reason,
+			});
 		},
 	});
 
@@ -91,17 +126,30 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_move",
 		label: "Kanban Move",
-		description: "Move a task between backlog and todo columns. Task must not be in in-progress, blocked, or done columns.",
+		description:
+			"Move a task between backlog and todo columns. Task must not be in in-progress, blocked, or done columns.",
 		promptSnippet: "Move a kanban task between backlog and todo",
 		parameters: Type.Object({
 			task_id: TASK_ID_SCHEMA,
 			agent: Type.String({ description: "Agent name moving the task" }),
-			to: Type.String({ description: "Target column: backlog | todo", enum: ["backlog", "todo"] }),
+			to: Type.String({
+				description: "Target column: backlog | todo",
+				enum: ["backlog", "todo"],
+			}),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, to } = params;
-			const { from, to: toCol } = await moveTask(task_id, agent, to as "backlog" | "todo");
-			return ok(`Moved ${task_id} from ${from} to ${toCol}`, { task_id, agent, from, to: toCol });
+			const { from, to: toCol } = await moveTask(
+				task_id,
+				agent,
+				to as "backlog" | "todo",
+			);
+			return ok(`Moved ${task_id} from ${from} to ${toCol}`, {
+				task_id,
+				agent,
+				from,
+				to: toCol,
+			});
 		},
 	});
 
@@ -117,8 +165,17 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 		promptSnippet: "Delete a kanban task from the board",
 		parameters: Type.Object({
 			task_id: TASK_ID_SCHEMA,
-			agent: Type.String({ description: "Agent name performing the deletion (lowercase, hyphens only)" }),
-			reason: Type.Optional(Type.String({ description: 'Optional reason for deletion (e.g. "duplicate of T-042", "no longer needed")', default: "" })),
+			agent: Type.String({
+				description:
+					"Agent name performing the deletion (lowercase, hyphens only)",
+			}),
+			reason: Type.Optional(
+				Type.String({
+					description:
+						'Optional reason for deletion (e.g. "duplicate of T-042", "no longer needed")',
+					default: "",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;

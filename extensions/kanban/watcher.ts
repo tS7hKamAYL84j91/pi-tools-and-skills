@@ -13,13 +13,17 @@
  * - Counter resets on agent_end (human engaged)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { watch, readFileSync, type FSWatcher } from "node:fs";
+import { type FSWatcher, readFileSync, watch } from "node:fs";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import {
-	parseBoard,
-	boardLogPath,
-	selfAppendedLines,
 	type BoardState,
+	boardLogPath,
+	parseBoard,
+	selfAppendedLines,
+	type TaskState,
 	WIP_LIMIT,
 } from "./board.js";
 import { openKanbanOverlay } from "./overlay.js";
@@ -33,7 +37,7 @@ const MAX_CONSECUTIVE_INJECTS = 3;
 const INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
 	"Use gradual disclosure: do not dump the full board into context.",
-	"Run kanban_snapshot for a compact board summary; use task_id=\"T-NNN\" for one card or detail=\"full\" only when full board details are explicitly needed.",
+	'Run kanban_snapshot for a compact board summary; use task_id="T-NNN" for one card or detail="full" only when full board details are explicitly needed.',
 	"Agents signal completion themselves via kanban_complete — no filesystem watching.",
 	"Do not ask me any questions. Keep your response brief.",
 ].join(" ");
@@ -76,16 +80,22 @@ function hasExternalEvents(newLines: string[]): boolean {
 
 // ── Widget rendering (fast path, no LLM) ────────────────────
 
-function buildWidgetLines(board: BoardState): string[] {
+export function buildWidgetLines(board: BoardState): string[] {
 	const buckets: Record<string, number> = {};
 	const inProgress: string[] = [];
+	const blockedTasks: TaskState[] = [];
 
 	for (const tid of board.order) {
 		const t = board.tasks.get(tid);
 		if (!t || t.deleted) continue;
 		buckets[t.col] = (buckets[t.col] ?? 0) + 1;
 		if (t.col === "in-progress") {
-			inProgress.push(`  ${t.id} ${t.title.slice(0, 30)} (${t.claimAgent || "?"})`);
+			inProgress.push(
+				`  ${t.id} ${t.title.slice(0, 30)} (${t.claimAgent || "?"})`,
+			);
+		}
+		if (t.col === "blocked") {
+			blockedTasks.push(t);
 		}
 	}
 
@@ -94,8 +104,18 @@ function buildWidgetLines(board: BoardState): string[] {
 	const done = buckets.done ?? 0;
 	const todo = buckets.todo ?? 0;
 
+	let blockedInfo = `blocked ${blocked}`;
+	const latestBlocked = blockedTasks[blockedTasks.length - 1];
+	if (blocked > 0 && latestBlocked?.reason) {
+		const truncated =
+			latestBlocked.reason.length > 30
+				? `${latestBlocked.reason.slice(0, 27)}...`
+				: latestBlocked.reason;
+		blockedInfo += ` (${truncated})`;
+	}
+
 	const lines = [
-		`📋 WIP ${wip}/${WIP_LIMIT} | todo ${todo} | blocked ${blocked} | done ${done}`,
+		`📋 WIP ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
 		...inProgress,
 	];
 	return lines;
@@ -166,7 +186,10 @@ export function setupWatcher(pi: ExtensionAPI): void {
 
 		// Gate: max consecutive without human input
 		if (state.consecutiveAutoInjects >= MAX_CONSECUTIVE_INJECTS) {
-			ctx.ui.setStatus("kanban", "⏸ Auto-follow-up paused — type anything to resume");
+			ctx.ui.setStatus(
+				"kanban",
+				"⏸ Auto-follow-up paused — type anything to resume",
+			);
 			return;
 		}
 
@@ -181,7 +204,9 @@ export function setupWatcher(pi: ExtensionAPI): void {
 	function onFileChange(): void {
 		if (state.debounceTimer) clearTimeout(state.debounceTimer);
 		state.debounceTimer = setTimeout(() => {
-			updateWidget().catch(() => { /* non-fatal */ });
+			updateWidget().catch(() => {
+				/* non-fatal */
+			});
 		}, DEBOUNCE_MS);
 	}
 
@@ -194,7 +219,9 @@ export function setupWatcher(pi: ExtensionAPI): void {
 			state.watcher = watch(logPath, onFileChange);
 			state.watcher.unref();
 			// Initial read
-			updateWidget().catch(() => { /* non-fatal */ });
+			updateWidget().catch(() => {
+				/* non-fatal */
+			});
 		} catch {
 			/* board.log path may not resolve — watcher will not start */
 		}
@@ -229,7 +256,9 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		// Human (or LLM) finished a turn — reset injection counter
 		state.consecutiveAutoInjects = 0;
 		// Refresh widget
-		updateWidget().catch(() => { /* non-fatal */ });
+		updateWidget().catch(() => {
+			/* non-fatal */
+		});
 	});
 
 	// ── Commands ────────────────────────────────────────────
@@ -247,5 +276,4 @@ export function setupWatcher(pi: ExtensionAPI): void {
 			await openKanbanOverlay(ctx);
 		},
 	});
-
 }

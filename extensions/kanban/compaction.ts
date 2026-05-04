@@ -64,7 +64,10 @@ interface CompactionResult {
  *                    ("compact" for manual, "auto-compact" for automatic)
  * @param triggerParam  Optional trigger reason appended as trigger=<value>
  */
-async function runCompaction(agentLabel: string, triggerParam?: string): Promise<CompactionResult> {
+async function runCompaction(
+	agentLabel: string,
+	triggerParam?: string,
+): Promise<CompactionResult> {
 	const logPath = boardLogPath();
 	const raw = await readFile(logPath, "utf-8");
 	const originalLines = raw.split("\n").filter((l) => l.trim());
@@ -90,15 +93,21 @@ async function runCompaction(agentLabel: string, triggerParam?: string): Promise
 		}
 	}
 
-	const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+	const sevenDaysAgo = new Date(
+		Date.now() - 7 * 24 * 60 * 60 * 1000,
+	).toISOString();
 	const newLines: string[] = [];
 	const ts = nowZ();
 
 	for (const tid of board.order) {
 		const task = board.tasks.get(tid);
 		if (!task || task.deleted) continue;
-		const descPart = task.description ? ` description="${escapeLogValue(task.description)}"` : "";
-		newLines.push(`${task.createdAt} CREATE ${tid} compact title="${escapeLogValue(task.title)}" priority="${task.priority}" tags="${escapeLogValue(task.tags)}"${descPart}`);
+		const descPart = task.description
+			? ` description="${escapeLogValue(task.description)}"`
+			: "";
+		newLines.push(
+			`${task.createdAt} CREATE ${tid} compact title="${escapeLogValue(task.title)}" priority="${task.priority}" tags="${escapeLogValue(task.tags)}"${descPart}`,
+		);
 		const bh = blockHistory.get(tid);
 		if (bh) newLines.push(...bh);
 
@@ -109,15 +118,20 @@ async function runCompaction(agentLabel: string, triggerParam?: string): Promise
 			case "in-progress":
 				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=in-progress`);
 				if (task.claimed) {
-					const expires = task.expires || new Date(Date.now() + 7_200_000).toISOString();
-					newLines.push(`${ts} CLAIM ${tid} ${task.claimAgent || "unknown"} expires=${expires}`);
+					const expires =
+						task.expires || new Date(Date.now() + 7_200_000).toISOString();
+					newLines.push(
+						`${ts} CLAIM ${tid} ${task.claimAgent || "unknown"} expires=${expires}`,
+					);
 				}
 				break;
 			case "blocked":
 				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=blocked`);
 				break;
 			case "done":
-				newLines.push(`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}`);
+				newLines.push(
+					`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}`,
+				);
 				break;
 		}
 
@@ -127,15 +141,21 @@ async function runCompaction(agentLabel: string, triggerParam?: string): Promise
 			if (!noteMatch) continue;
 			const [, noteTs, noteAgent, noteText] = noteMatch;
 			if (keepAllNotes || (noteTs ?? "") >= sevenDaysAgo) {
-				newLines.push(`${noteTs} NOTE ${tid} ${noteAgent} text="${escapeLogValue(noteText ?? "")}"`);
+				newLines.push(
+					`${noteTs} NOTE ${tid} ${noteAgent} text="${escapeLogValue(noteText ?? "")}"`,
+				);
 			}
 		}
 	}
 
-	const tasksPreserved = [...board.tasks.values()].filter((t) => !t.deleted).length;
+	const tasksPreserved = [...board.tasks.values()].filter(
+		(t) => !t.deleted,
+	).length;
 	const triggerSuffix = triggerParam ? ` trigger=${triggerParam}` : "";
 	const eventsAfter = newLines.length + 1;
-	newLines.push(`${ts} COMPACT T-000 ${agentLabel} events_before=${eventsBefore} events_after=${eventsAfter}${triggerSuffix}`);
+	newLines.push(
+		`${ts} COMPACT T-000 ${agentLabel} events_before=${eventsBefore} events_after=${eventsAfter}${triggerSuffix}`,
+	);
 	await writeFile(logPath, `${newLines.join("\n")}\n`, "utf-8");
 
 	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
@@ -153,7 +173,12 @@ export async function compactIfNeeded(
 	board: BoardState,
 	totalLines: number,
 	trigger: string,
-): Promise<{ ran: boolean; eventsBefore?: number; eventsAfter?: number; backupPath?: string }> {
+): Promise<{
+	ran: boolean;
+	eventsBefore?: number;
+	eventsAfter?: number;
+	backupPath?: string;
+}> {
 	if (compacting) return { ran: false };
 
 	const compactedEstimate = estimateCompactedLines(board);
@@ -175,7 +200,8 @@ export async function compactIfNeeded(
  * Throws if a compaction (auto or manual) is already in progress.
  */
 export async function runManualCompaction(): Promise<CompactionResult> {
-	if (compacting) throw new Error("Compaction is already in progress — try again shortly");
+	if (compacting)
+		throw new Error("Compaction is already in progress — try again shortly");
 	compacting = true;
 	try {
 		return await runCompaction("compact");
