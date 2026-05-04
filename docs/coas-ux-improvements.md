@@ -152,10 +152,23 @@ Minor cleanliness pass already done:
 
 ## Step 7: Commit
 
-> To be completed after all reviews.
+**Completed.** Commit `896b054` on branch `feature/coas-ux`.
 
 ---
 
 ## Step 8: ADR & Progress Log
 
-> To be completed after commit.
+**Completed.**
+
+### ADRs created:
+- `docs/adr/001-coas-tool-error-handling.md` — Tool error handling pattern (fail vs throw)
+- `docs/adr/002-truncatedtext-limithit.md` — limitHit diagnostic field
+- `docs/adr/003-lifecycle-context-gate-simplification.md` — Removed redundant .coas/workspace.env check
+
+### Progress summary:
+- F1–F7 findings documented, reviewed, and implemented
+- 408 tests pass (34 new tests added)
+- Typecheck, lint, knip clean
+- Type coverage 99.08%
+- All Navigator reviews completed
+- Commit pushed to feature/coas-ux
