@@ -9,7 +9,7 @@ import { isLiveAgentRef } from "./live-agent.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
 import { chooseModel, chooseTeamTarget } from "./team-picker.js";
-import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamSpec, TeamWritableSource } from "./team-types.js";
+import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamSpec, TeamWritableSource } from "./team-types.js";
 
 const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
@@ -33,7 +33,6 @@ export interface TeamFormInput {
 	agents: string[];
 	agentBindings?: TeamAgentBinding[];
 	prompts?: Record<string, string>;
-	graph?: TeamGraph;
 	models?: TeamFormModels;
 	limits?: TeamFormLimits;
 	scope?: TeamFormScope;
@@ -255,20 +254,10 @@ function agentBindingLines(bindings: TeamAgentBinding[]): string[] {
 			...(binding.promptId ? [`    promptId: ${quote(binding.promptId)}`] : []),
 			...(binding.templateId ? [`    templateId: ${quote(binding.templateId)}`] : []),
 			...(binding.systemPrompt ? [`    systemPrompt: ${quote(binding.systemPrompt)}`] : []),
-			...(binding.dependencyPolicy ? [`    dependencyPolicy: ${quote(binding.dependencyPolicy)}`] : []),
 			...(binding.maxRetries !== undefined ? [`    maxRetries: ${binding.maxRetries}`] : []),
 			...(binding.tools ? [`    tools: ${inlineList(binding.tools)}`] : []),
 			...(binding.parameters ? [`    parameters: ${inlineParameters(binding.parameters)}`] : []),
 		]),
-	];
-}
-
-function graphLines(graph: TeamGraph | undefined): string[] {
-	if (!graph) return [];
-	return [
-		...(graph.edges.length > 0 ? ["edges:", ...graph.edges.flatMap((edge) => [`  - from: ${quote(edge.from)}`, `    to: ${quote(edge.to)}`])] : []),
-		...(graph.outputs ? [`outputs: ${inlineList(graph.outputs)}`] : []),
-		...(graph.reducer ? [`reducer: ${quote(graph.reducer)}`] : []),
 	];
 }
 
@@ -283,7 +272,6 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 		`protocol: ${quote(args.protocol)}`,
 		...promptLines(args.prompts),
 		...agentBindingLines(bindings),
-		...graphLines(args.graph),
 		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
 		...(args.limits?.timeoutMs !== undefined ? [`timeoutMs: ${args.limits.timeoutMs}`] : []),
 		...(args.limits?.maxConcurrency !== undefined ? [`maxConcurrency: ${args.limits.maxConcurrency}`] : []),
@@ -348,9 +336,8 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 		...(team.description ? { description: team.description } : {}),
 		protocol: team.protocol,
 		agents: team.agents,
-		agentBindings: applyModelsToBindings(team.agentBindings, input.models, team.protocol === "graph" || (team.graph?.edges.length ?? 0) > 0),
+		agentBindings: applyModelsToBindings(team.agentBindings, input.models),
 		prompts: team.prompts,
-		...(team.graph ? { graph: team.graph } : {}),
 		models: input.models,
 		limits: team.limits,
 		scope: input.scope ?? (team.source === "project" ? "project" : "user"),

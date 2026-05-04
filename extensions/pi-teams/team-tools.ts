@@ -5,8 +5,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatPromptChains } from "./prompt-resolver.js";
-import { resolveTeamSettings } from "./settings.js";
-import { resolveProtocolPromptChains } from "./protocol-contracts.js";
+import { promptChainsForTeam } from "./team-handlers.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamAgentBinding, TeamSpec } from "./team-types.js";
 
@@ -77,11 +76,7 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 			}
 			const agents = team.agents.map((agent) => registry.subagents.get(agent) ?? { id: agent });
 			const bindingLines = team.agentBindings.map(formatBindingLine);
-			const promptChains = [...resolveProtocolPromptChains({
-				protocol: team.protocol,
-				prompts: team.prompts,
-				bindings: team.agentBindings,
-			}, resolveTeamSettings().prompts).values()];
+			const promptChains = promptChainsForTeam(team);
 			const lines = [
 				`${team.name} (${team.id})`,
 				`Protocol: ${team.protocol}`,

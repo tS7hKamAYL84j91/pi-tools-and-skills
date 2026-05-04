@@ -11,7 +11,7 @@ import type { TeamPromptRefs } from "./team-types.js";
 export type PromptSlotKind = "system" | "template";
 export type PromptCatalog = Record<string, readonly string[]>;
 
-export interface PromptBindingSource {
+interface PromptBindingSource {
 	promptId?: string;
 	templateId?: string;
 	systemPrompt?: string;
@@ -49,7 +49,7 @@ export function promptAssetLines(catalog: PromptCatalog, id: string): readonly s
 	return lines;
 }
 
-export function promptAssetText(catalog: PromptCatalog, id: string): string {
+function promptAssetText(catalog: PromptCatalog, id: string): string {
 	return promptAssetLines(catalog, id).join("\n");
 }
 

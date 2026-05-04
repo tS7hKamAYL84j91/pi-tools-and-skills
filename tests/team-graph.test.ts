@@ -1,360 +1,76 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
-import { graphPlanForSimpleProtocol } from "../extensions/pi-teams/team-lowering.js";
-import { runTeamGraph, validateTeamGraph } from "../extensions/pi-teams/team-graph.js";
+import { getTeamHandler, modelSlotsForTeam, promptChainsForTeam } from "../extensions/pi-teams/team-handlers.js";
 import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
-import type { ModelRun } from "../extensions/pi-teams/types.js";
 
 function team(overrides: Partial<TeamSpec> = {}): TeamSpec {
 	return {
 		schemaVersion: 2,
-		id: "graph-test",
-		name: "Graph Test",
-		protocol: "graph",
+		id: "direct-test",
+		name: "Direct Test",
+		protocol: "debate",
 		prompts: {},
-		agents: ["graph_agent"],
+		agents: ["member_agent", "critic_agent", "synthesis_agent"],
 		agentBindings: [
-			{ role: "plan", subagent: "graph_agent", model: "test/plan", subagentSystemPrompt: "plan system" },
-			{ role: "review", subagent: "graph_agent", model: "test/review", subagentSystemPrompt: "review system" },
-			{ role: "qa", subagent: "graph_agent", model: "test/qa", subagentSystemPrompt: "qa system" },
+			{ role: "member", subagent: "member_agent", model: "test/a", label: "Alpha" },
+			{ role: "member", subagent: "member_agent", model: "test/b", label: "Beta" },
+			{ role: "critic", subagent: "critic_agent" },
+			{ role: "synthesis", subagent: "synthesis_agent", model: "test/synthesis" },
 		],
-		graph: { edges: [{ from: "plan", to: "review" }, { from: "plan", to: "qa" }] },
-		models: {},
+		models: { members: ["test/a", "test/b"], synthesis: "test/synthesis" },
 		limits: {},
 		source: "builtin",
-		path: "graph-test.md",
+		path: "direct-test.md",
 		...overrides,
 	};
 }
 
-function fakeCtx(signal?: AbortSignal): ExtensionContext {
-	return {
-		cwd: process.cwd(),
-		signal,
-		ui: { setStatus: () => undefined },
-	} as unknown as ExtensionContext;
-}
-
-const settings = resolveTeamSettings("/nonexistent/pi-settings.json");
-
-describe("team graph validation", () => {
-	it("accepts a connected DAG and derives deterministic levels", () => {
-		expect(validateTeamGraph(team())).toMatchObject({
-			roles: ["plan", "review", "qa"],
-			roots: ["plan"],
-			sinks: ["review", "qa"],
-			levels: [["plan"], ["review", "qa"]],
-		});
+describe("direct team handlers", () => {
+	it("routes built-in protocols to direct handlers and rejects graph", () => {
+		expect(getTeamHandler(team({ protocol: "consult", models: { navigator: "test/nav" } }))?.key).toBe("council");
+		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
+		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
+		expect(getTeamHandler(team({ protocol: "pair-coding" }))?.key).toBe("pair-coding");
+		expect(getTeamHandler(team({ protocol: "telephone" }))?.key).toBe("telephone");
+		expect(getTeamHandler(team({ protocol: "graph" }))).toBeUndefined();
 	});
 
-	it("accepts explicit live-agent refs without model fields", () => {
-		expect(validateTeamGraph(team({
-			agents: ["agent:reviewer"],
-			agentBindings: [{ role: "review", subagent: "agent:reviewer" }],
-			graph: { edges: [], outputs: ["review"] },
-		}))).toMatchObject({ roles: ["review"], sinks: ["review"] });
-	});
-
-	it("rejects duplicate roles", () => {
-		const invalid = team({
-			agentBindings: [
-				{ role: "plan", subagent: "graph_agent", model: "test/a" },
-				{ role: "plan", subagent: "graph_agent", model: "test/b" },
-			],
-			graph: { edges: [] },
-		});
-		expect(() => validateTeamGraph(invalid)).toThrow(/duplicate role/);
-	});
-
-	it("rejects missing edge endpoints and cycles before execution", () => {
-		expect(() => validateTeamGraph(team({ graph: { edges: [{ from: "missing", to: "qa" }] } }))).toThrow(/unknown from role/);
-		expect(() => validateTeamGraph(team({ graph: { edges: [{ from: "plan", to: "review" }, { from: "review", to: "qa" }, { from: "qa", to: "plan" }] } }))).toThrow(/cycle/);
-	});
-});
-
-describe("team graph execution", () => {
-	it("runs fanout nodes concurrently and reduces output in role order", async () => {
-		let active = 0;
-		let maxActive = 0;
-		const calls: string[] = [];
-		const result = await runTeamGraph({
-			team: team(),
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			maxConcurrency: 2,
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				active += 1;
-				maxActive = Math.max(maxActive, active);
-				calls.push(binding.role);
-				await new Promise((resolve) => setTimeout(resolve, binding.role === "review" ? 20 : 1));
-				active -= 1;
-				return {
-					member: { label: binding.role, model },
-					prompt,
-					systemPrompt,
-					output: `output:${binding.role}`,
-					durationMs: 1,
-					ok: true,
-				};
-			},
-		});
-
-		expect(calls[0]).toBe("plan");
-		expect(new Set(calls.slice(1))).toEqual(new Set(["review", "qa"]));
-		expect(maxActive).toBe(2);
-		expect(result.ok).toBe(true);
-		expect(result.output).toBe("## review\noutput:review\n\n## qa\noutput:qa");
-	});
-
-	it("skips dependents after failed upstream by default", async () => {
-		const result = await runTeamGraph({
-			team: team({ graph: { edges: [{ from: "plan", to: "review" }, { from: "review", to: "qa" }] } }),
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => ({
-				member: { label: binding.role, model },
-				prompt,
-				systemPrompt,
-				output: binding.role === "plan" ? "bad" : "unexpected",
-				durationMs: 1,
-				ok: binding.role !== "plan",
-				...(binding.role === "plan" ? { error: "failed" } : {}),
-			}),
-		});
-
-		expect(result.ok).toBe(false);
-		expect(result.nodes.map((node) => [node.role, node.status])).toEqual([
-			["plan", "failed"],
-			["review", "skipped"],
-			["qa", "skipped"],
+	it("reports debate, consult, and pair-coding model slots without graph lowering", () => {
+		expect(modelSlotsForTeam(team(), team().models)).toEqual([
+			{ id: "member:0", label: "Member model 1", current: "test/a", kind: "member", index: 0 },
+			{ id: "member:1", label: "Member model 2", current: "test/b", kind: "member", index: 1 },
+			{ id: "synthesis", label: "Synthesis model", current: "test/synthesis", kind: "synthesis" },
+		]);
+		expect(modelSlotsForTeam(team({ protocol: "consult", models: { navigator: "test/nav" } }), { navigator: "test/nav" })).toEqual([
+			{ id: "navigator", label: "Navigator model", current: "test/nav", kind: "navigator" },
+		]);
+		expect(modelSlotsForTeam(team({ protocol: "pair-coding", models: { driver: "test/driver", navigator: "test/nav" } }), { driver: "test/driver", navigator: "test/nav" })).toEqual([
+			{ id: "driver", label: "Driver model", current: "test/driver", kind: "driver" },
+			{ id: "navigator", label: "Navigator model", current: "test/nav", kind: "navigator" },
 		]);
 	});
 
-	it("retries child-call failures with bounded per-node policy", async () => {
-		let planAttempts = 0;
-		const result = await runTeamGraph({
-			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 1 }], graph: { edges: [], outputs: ["plan"] } }),
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				planAttempts++;
-				return {
-					member: { label: binding.role, model },
-					prompt,
-					systemPrompt,
-					output: `attempt:${planAttempts}`,
-					durationMs: 1,
-					ok: planAttempts > 1,
-					...(planAttempts === 1 ? { error: "transient" } : {}),
-				};
-			},
-		});
-
-		expect(result.ok).toBe(true);
-		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "succeeded", attempts: 2, output: "attempt:2" });
-	});
-
-	it("does not apply ambient team retry policy to live-agent refs", async () => {
-		let calls = 0;
-		const result = await runTeamGraph({
-			team: team({
-				agents: ["agent:reviewer"],
-				agentBindings: [{ role: "review", subagent: "agent:reviewer" }],
-				graph: { edges: [], outputs: ["review"] },
-				limits: { maxRetries: 2 },
-			}),
-			prompt: "review",
-			ctx: fakeCtx(),
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				calls++;
-				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "", durationMs: 1, ok: false, error: "no reply" };
-			},
-		});
-
-		expect(calls).toBe(1);
-		expect(result.nodes[0]).toMatchObject({ role: "review", status: "failed", attempts: 1 });
-	});
-
-	it("lets runtime retry limits override binding retry limits", async () => {
-		let attempts = 0;
-		const result = await runTeamGraph({
-			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 2 }], graph: { edges: [], outputs: ["plan"] } }),
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			maxRetries: 0,
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				attempts++;
-				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "failed", durationMs: 1, ok: false, error: "nope" };
-			},
-		});
-
-		expect(attempts).toBe(1);
-		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "failed", attempts: 1 });
-	});
-
-	it("does not retry timed out nodes", async () => {
-		let attempts = 0;
-		const result = await runTeamGraph({
-			team: team({ agentBindings: [{ role: "plan", subagent: "graph_agent", model: "test/plan", maxRetries: 2 }], graph: { edges: [], outputs: ["plan"] } }),
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			timeoutMs: 1,
-			runNode: async ({ signal }): Promise<ModelRun> => {
-				attempts++;
-				await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
-				throw new Error("unreachable");
-			},
-		});
-
-		expect(attempts).toBe(1);
-		expect(result.nodes[0]).toMatchObject({ role: "plan", status: "failed", attempts: 1, error: "timeout" });
-	});
-
-	it("lowers debate to generation, critique, and synthesis graph nodes", async () => {
-		const debateTeam = team({
-			id: "debate-test",
-			protocol: "debate",
-			agents: ["member_agent", "critic_agent", "synthesis_agent"],
-			agentBindings: [
-				{ role: "member", subagent: "member_agent", model: "test/a", label: "Alpha" },
-				{ role: "member", subagent: "member_agent", model: "test/b", label: "Beta" },
-				{ role: "critic", subagent: "critic_agent" },
-				{ role: "synthesis", subagent: "synthesis_agent", model: "test/synthesis" },
-			],
-			graph: undefined,
-			models: { members: ["test/a", "test/b"], synthesis: "test/synthesis" },
-		});
-		const plan = graphPlanForSimpleProtocol({ team: debateTeam, params: { id: "debate-test", prompt: "ship?" }, settings });
-		if (!plan) throw new Error("missing debate graph plan");
-		const prompts = new Map<string, string>();
-		const result = await runTeamGraph({
-			team: plan.team,
-			prompt: "ship?",
-			ctx: fakeCtx(),
-			buildNodePrompt: plan.buildNodePrompt,
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				prompts.set(binding.role, prompt);
-				return { member: { label: binding.label ?? binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
-			},
-		});
-
-		expect(plan.team.graph?.outputs).toEqual(["synthesis"]);
-		expect(plan.team.agentBindings.map((binding) => binding.role)).toEqual(["generation_1", "generation_2", "critique_1", "critique_2", "synthesis"]);
-		expect(prompts.get("generation_1")).toBe("ship?");
-		expect(prompts.get("critique_1")).toContain("## Beta");
-		expect(prompts.get("critique_1")).not.toContain("## Alpha");
-		expect(prompts.get("synthesis")).toContain("Raw debate answers:");
-		expect(prompts.get("synthesis")).toContain("## Critique by Alpha");
-		expect(result.output).toBe("## synthesis\noutput:synthesis");
-	});
-
-	it("lowers pair-coding to an unrolled review and fix graph", async () => {
-		const pairTeam = team({
-			id: "pair-coding-test",
-			protocol: "pair-coding",
-			agents: ["navigator_agent", "driver_agent"],
-			agentBindings: [
-				{ role: "navigator_brief", subagent: "navigator_agent", model: "test/nav" },
-				{ role: "driver_implementation", subagent: "driver_agent", model: "test/driver" },
-				{ role: "navigator_review", subagent: "navigator_agent", model: "test/nav" },
-				{ role: "driver_fix", subagent: "driver_agent", model: "test/driver" },
-			],
-			graph: undefined,
-			models: { driver: "test/driver", navigator: "test/nav" },
-			limits: { maxFixPasses: 1 },
-		});
-		const plan = graphPlanForSimpleProtocol({ team: pairTeam, params: { id: "pair-coding-test", prompt: "change x" }, settings });
-		if (!plan) throw new Error("missing pair-coding graph plan");
-		const prompts = new Map<string, string>();
-		const result = await runTeamGraph({
-			team: plan.team,
-			prompt: "change x",
-			ctx: fakeCtx(),
-			buildNodePrompt: plan.buildNodePrompt,
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				prompts.set(binding.role, prompt);
-				return { member: { label: binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
-			},
-		});
-
-		expect(plan.team.graph).toEqual({
-			edges: [
-				{ from: "navigator_brief", to: "driver_implementation" },
-				{ from: "driver_implementation", to: "navigator_review_1" },
-				{ from: "navigator_review_1", to: "driver_fix_1" },
-			],
-			outputs: ["driver_fix_1"],
-		});
-		expect(prompts.get("driver_implementation")).toContain("output:navigator_brief");
-		expect(prompts.get("navigator_review_1")).toContain("output:driver_implementation");
-		expect(prompts.get("driver_fix_1")).toContain("output:navigator_review_1");
-		expect(result.output).toBe("## driver_fix_1\noutput:driver_fix_1");
-	});
-
-	it("lowers consult to one graph node with the consult prompt contract", async () => {
-		const consultTeam = team({
-			id: "consult-test",
-			protocol: "consult",
-			agents: ["navigator_agent"],
-			agentBindings: [{ role: "navigator", subagent: "navigator_agent", model: "test/nav", subagentPromptId: "consult/navigator/system", subagentSystemPrompt: "wrong" }],
-			graph: undefined,
-			models: { navigator: "test/nav" },
-		});
-		const plan = graphPlanForSimpleProtocol({ team: consultTeam, params: { id: "consult-test", prompt: "review this" }, settings });
-		if (!plan) throw new Error("missing consult graph plan");
-		const seen: string[] = [];
-		const result = await runTeamGraph({
-			team: plan.team,
-			prompt: "review this",
-			ctx: fakeCtx(),
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				seen.push(prompt, systemPrompt);
-				return { member: { label: binding.role, model }, prompt, systemPrompt, output: "consulted", durationMs: 1, ok: true };
-			},
-		});
-
-		expect(plan.team.graph).toEqual({ edges: [], outputs: ["navigator"] });
-		expect(result.output).toBe("## navigator\nconsulted");
-		expect(seen[0]).toBe("review this");
-		expect(seen[1]).toContain("Navigator in a team session");
-	});
-
-	it("lowers telephone to a linear graph that passes each output to the next relay", async () => {
-		const telephoneTeam = team({
-			id: "telephone-test",
-			protocol: "telephone",
-			agents: ["relay_agent"],
-			agentBindings: [
-				{ role: "relay_1", subagent: "relay_agent", model: "test/one" },
-				{ role: "relay_2", subagent: "relay_agent", model: "test/two" },
-			],
-			graph: undefined,
-			models: { members: ["test/one", "test/two"] },
-		});
-		const plan = graphPlanForSimpleProtocol({ team: telephoneTeam, params: { id: "telephone-test", prompt: "hello" }, settings });
-		if (!plan) throw new Error("missing telephone graph plan");
-		const prompts: string[] = [];
-		const systems: string[] = [];
-		const result = await runTeamGraph({
-			team: plan.team,
-			prompt: "hello",
-			ctx: fakeCtx(),
-			templateSlot: plan.templateSlot,
-			buildNodePrompt: plan.buildNodePrompt,
-			runNode: async ({ binding, model, prompt, systemPrompt }): Promise<ModelRun> => {
-				prompts.push(prompt);
-				systems.push(systemPrompt);
-				return { member: { label: binding.role, model }, prompt, systemPrompt, output: `output:${binding.role}`, durationMs: 1, ok: true };
-			},
-		});
-
-		expect(plan.team.graph).toEqual({ edges: [{ from: "relay_1", to: "relay_2" }], outputs: ["relay_2"] });
-		expect(prompts[0]).toContain("hello");
-		expect(prompts[1]).toContain("output:relay_1");
-		expect(systems[0]).toContain("relay 1 of 2");
-		expect(systems[1]).toContain("relay 2 of 2");
-		expect(result.output).toBe("## relay_2\noutput:relay_2");
+	it("declares protocol prompt chains from handlers", () => {
+		expect(promptChainsForTeam(team()).map((chain) => chain.slot)).toEqual([
+			"generation.system",
+			"critique.system",
+			"critique.template",
+			"synthesis.system",
+			"synthesis.template",
+		]);
+		expect(promptChainsForTeam(team({ protocol: "consult", models: { navigator: "test/nav" } })).map((chain) => chain.slot)).toEqual([
+			"navigator.system",
+			"navigator.template",
+		]);
+		expect(promptChainsForTeam(team({ protocol: "pair-coding" })).map((chain) => chain.slot)).toEqual([
+			"navigatorBrief.system",
+			"driverImplementation.system",
+			"navigatorReview.system",
+			"driverFix.system",
+			"navigatorBrief.template",
+			"driverImplementation.template",
+			"navigatorReview.template",
+			"driverFix.template",
+		]);
 	});
 });

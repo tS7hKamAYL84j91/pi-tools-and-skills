@@ -35,14 +35,11 @@ export interface TeamAgentBinding extends GenerationConfig {
 	promptId?: string;
 	templateId?: string;
 	systemPrompt?: string;
-	dependencyPolicy?: TeamGraphDependencyPolicy;
 	maxRetries?: number;
 	subagentPromptId?: string;
 	subagentSystemPrompt?: string;
 }
 
-export type TeamGraphDependencyPolicy = "require-ok" | "allow-failed";
-export type TeamGraphReducer = "concat";
 export type TeamPromptSlotKind = "system" | "template";
 export type TeamModelSlotKind = "member" | "synthesis" | "driver" | "navigator";
 export type TeamModelSlotCount = number | "dynamic";
@@ -68,17 +65,6 @@ export interface TeamLimits {
 	maxRetries?: number;
 }
 
-export interface TeamGraphEdge {
-	from: string;
-	to: string;
-}
-
-export interface TeamGraph {
-	edges: TeamGraphEdge[];
-	outputs?: string[];
-	reducer?: TeamGraphReducer;
-}
-
 export interface TeamSpec {
 	schemaVersion: 2;
 	id: string;
@@ -90,7 +76,6 @@ export interface TeamSpec {
 	modelSlots?: TeamModelSlotSpec[];
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
-	graph?: TeamGraph;
 	models: TeamModels;
 	limits: TeamLimits;
 	source: TeamSource;

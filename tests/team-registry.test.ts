@@ -260,7 +260,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("accepts graph protocol teams with role edges", () => {
+	it("loads graph protocol manifests as unsupported legacy teams and ignores graph fields", () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "reviewer");
 			writeSubagent(root, "qa");
@@ -288,10 +288,11 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "review-qa");
+			const registry = loadTeamRegistry(configPath, { roots: [] });
+			const team = requireTeam(registry, "review-qa");
 
 			expect(team.protocol).toBe("graph");
-			expect(team.graph?.edges).toEqual([{ from: "review", to: "qa" }]);
+			expect(registry.warnings).toContain("review-qa: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs");
 			expect(team.agentBindings.map((binding) => binding.role)).toEqual(["review", "qa"]);
 		});
 	});
@@ -476,7 +477,7 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("team_models preserves inspectable graph team policy and binding config", () => {
+	it("team_models preserves binding config while dropping legacy graph policy", () => {
 		const project = mkdtempSync(join(tmpdir(), "team-models-graph-"));
 		try {
 			const teamsRoot = join(project, ".pi", "teams");
@@ -503,7 +504,6 @@ describe("loadTeamRegistry", () => {
 					'    model: "old/review"',
 					'    promptId: "review/system"',
 					'    templateId: "review/template"',
-					'    dependencyPolicy: "allow-failed"',
 					"    maxRetries: 2",
 					'    tools: ["read"]',
 					'    parameters: { "temperature": 0.2, "maxTokens": 42 }',
@@ -530,20 +530,18 @@ describe("loadTeamRegistry", () => {
 			expect(updated).toContain('node.template: "custom-node-template"');
 			expect(updated).toContain('tools: ["read"]');
 			expect(updated).toContain('parameters: { "temperature": 0.2, "maxTokens": 42 }');
-			expect(updated).toContain('outputs: ["qa"]');
-			expect(updated).toContain('reducer: "concat"');
+			expect(updated).not.toContain('outputs: ["qa"]');
+			expect(updated).not.toContain('reducer: "concat"');
 			expect(updated).toContain("maxConcurrency: 1");
 			expect(updated).toContain("maxRetries: 3");
-			expect(team.models.members).toEqual(["new/review", "new/qa"]);
+			expect(team.models.members).toBeUndefined();
 			expect(team.prompts["node.template"]).toBe("custom-node-template");
-			expect(team.graph).toEqual({ edges: [{ from: "review", to: "qa" }], outputs: ["qa"], reducer: "concat" });
 			expect(team.limits.maxConcurrency).toBe(1);
 			expect(team.limits.maxRetries).toBe(3);
 			expect(team.agentBindings[0]).toMatchObject({
-				model: "new/review",
+				model: "old/review",
 				promptId: "review/system",
 				templateId: "review/template",
-				dependencyPolicy: "allow-failed",
 				maxRetries: 2,
 				tools: ["read"],
 				parameters: { temperature: 0.2, maxTokens: 42 },
@@ -594,10 +592,10 @@ describe("loadTeamRegistry", () => {
 			const team = requireTeam(loadTeamRegistry(configPath, { roots: [] }), "manifest-graph");
 
 			expect(team.promptContracts).toEqual([{ id: "node.template", kind: "template", defaultPromptId: "graph/node/template", roles: ["node", "member"] }]);
-			expect(validateTeamManifest(team).graph).toMatchObject({ roots: ["draft"], sinks: ["review"] });
+			expect(validateTeamManifest(team)).toEqual({ ok: true });
 			expect(modelSlotsForTeam(team, team.models)).toEqual([
-				{ id: "members:0", label: "Graph member", current: "test/draft", kind: "member", index: 0 },
-				{ id: "members:1", label: "Graph member", current: "test/review", kind: "member", index: 1 },
+				{ id: "members:0", label: "Graph member", current: undefined, kind: "member", index: 0 },
+				{ id: "members:1", label: "Graph member", current: undefined, kind: "member", index: 1 },
 			]);
 		});
 	});
@@ -720,7 +718,7 @@ describe("loadTeamRegistry", () => {
 			expect(registry.teams.has("bad-slots")).toBe(true);
 			expect(registry.teams.has("future-schema")).toBe(false);
 			expect(registry.warnings).toContain('duplicate-slots: modelSlots has duplicate id "members".');
-			expect(registry.warnings).toContain('broken-edge: Graph edge references unknown to role "missing".');
+			expect(registry.warnings).toContain("broken-edge: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs");
 			expect(registry.warnings).toContain("future-schema: schemaVersion 2 is required");
 		});
 	});

@@ -1,10 +1,9 @@
 /** Manifest compiler validation for declarative team specs. */
 
-import { validateTeamGraph, type GraphValidationResult } from "./team-graph.js";
 import type { TeamModelSlotSpec, TeamPromptContract, TeamSpec } from "./team-types.js";
 
 interface TeamManifestValidationResult {
-	graph?: GraphValidationResult;
+	ok: true;
 }
 
 function assertNonEmpty(value: string, label: string): void {
@@ -47,11 +46,10 @@ function validateModelSlots(slots: readonly TeamModelSlotSpec[] | undefined): vo
 	}
 }
 
-/** Validates compiled team manifest metadata and graph shape when present. */
+/** Validates compiled team manifest metadata. */
 export function validateTeamManifest(team: TeamSpec): TeamManifestValidationResult {
 	if (team.schemaVersion !== 2) throw new Error(`Team manifest "${team.id}" must declare schemaVersion: 2.`);
 	validatePromptContracts(team.promptContracts);
 	validateModelSlots(team.modelSlots);
-	const needsGraphValidation = team.protocol === "graph" || team.graph !== undefined;
-	return needsGraphValidation ? { graph: validateTeamGraph(team) } : {};
+	return { ok: true };
 }

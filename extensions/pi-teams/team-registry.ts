@@ -9,7 +9,6 @@ import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
 	TeamAgentBinding,
-	TeamGraphEdge,
 	TeamModelSlotKind,
 	TeamModelSlotSpec,
 	TeamModels,
@@ -124,10 +123,8 @@ function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefine
 			const promptId = optionalString(entry.promptId);
 			const templateId = optionalString(entry.templateId);
 			const systemPrompt = optionalString(entry.systemPrompt);
-			const dependencyPolicy = optionalString(entry.dependencyPolicy);
 			const maxRetries = optionalNumber(entry.maxRetries);
 			if (!role || !subagent) return undefined;
-			if (dependencyPolicy !== undefined && dependencyPolicy !== "require-ok" && dependencyPolicy !== "allow-failed") return undefined;
 			return {
 				role,
 				subagent,
@@ -136,7 +133,6 @@ function agentBindingsFromObjects(value: unknown): TeamAgentBinding[] | undefine
 				...(promptId ? { promptId } : {}),
 				...(templateId ? { templateId } : {}),
 				...(systemPrompt ? { systemPrompt } : {}),
-				...(dependencyPolicy ? { dependencyPolicy } : {}),
 				...(maxRetries !== undefined ? { maxRetries } : {}),
 				...generationConfig(entry),
 			};
@@ -149,32 +145,17 @@ function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): strin
 	return bindings.find((binding) => roleMatches(binding.role, roles) && binding.model)?.model;
 }
 
-function modelsFromBindings(bindings: TeamAgentBinding[], protocol: string): TeamModels {
+function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const roleMembers = bindings
 		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
 		.map((binding) => binding.model as string);
-	const members = protocol === "graph"
-		? bindings.filter((binding) => binding.model).map((binding) => binding.model as string)
-		: roleMembers;
+	const members = roleMembers;
 	return {
 		...(members.length > 0 ? { members } : {}),
 		...(firstModelForRole(bindings, ["synthesis"]) ? { synthesis: firstModelForRole(bindings, ["synthesis"]) } : {}),
 		...(firstModelForRole(bindings, ["driver", "driver_implementation"]) ? { driver: firstModelForRole(bindings, ["driver", "driver_implementation"]) } : {}),
 		...(firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) ? { navigator: firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) } : {}),
 	};
-}
-
-function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const edges = value
-		.filter(isRecord)
-		.map((entry) => {
-			const from = optionalString(entry.from);
-			const to = optionalString(entry.to);
-			return from && to ? { from, to } : undefined;
-		})
-		.filter((edge): edge is TeamGraphEdge => edge !== undefined);
-	return edges.length > 0 ? edges : undefined;
 }
 
 function promptSlotKind(value: unknown): TeamPromptSlotKind | undefined {
@@ -245,14 +226,6 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 			: `${id}: agents must be object entries with role and subagent`);
 		return undefined;
 	}
-	const graph = graphEdges(frontMatter.edges);
-	const outputs = stringArray(frontMatter.outputs);
-	const reducerValue = optionalString(frontMatter.reducer);
-	if (reducerValue && reducerValue !== "concat") {
-		warnings.push(`${id}: unsupported graph reducer ${reducerValue}`);
-		return undefined;
-	}
-	const reducer = reducerValue === "concat" ? reducerValue : undefined;
 	const contracts = promptContracts(frontMatter.promptContracts);
 	if (frontMatter.promptContracts !== undefined && !contracts) {
 		warnings.push(`${id}: promptContracts entries must include id and kind`);
@@ -267,6 +240,9 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	const maxRetries = optionalNumber(frontMatter.maxRetries);
+	if (frontMatter.edges !== undefined || frontMatter.outputs !== undefined || frontMatter.reducer !== undefined) {
+		warnings.push(`${id}: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs`);
+	}
 	return {
 		schemaVersion: 2,
 		id,
@@ -278,8 +254,7 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		...(slots ? { modelSlots: slots } : {}),
 		agents,
 		agentBindings,
-		...(graph || outputs || reducer ? { graph: { edges: graph ?? [], ...(outputs ? { outputs } : {}), ...(reducer ? { reducer } : {}) } } : {}),
-		models: modelsFromBindings(agentBindings, protocol),
+		models: modelsFromBindings(agentBindings),
 		limits: {
 			...(timeoutMs ? { timeoutMs } : {}),
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),

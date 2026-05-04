@@ -12,7 +12,7 @@ const FALLBACK_DEFAULT_TEAM_NAME = "default";
 const DEFAULT_DEBATE_TEAM_ID = "default-debate";
 const DEFAULT_CONSULT_TEAM_ID = "consult";
 
-export type PromptCatalog = Record<string, string[]>;
+type PromptCatalog = Record<string, string[]>;
 
 interface TeamDefault {
 	name: string;
@@ -20,7 +20,7 @@ interface TeamDefault {
 	models: TeamModels;
 }
 
-export interface ResolvedTeamSettings {
+interface ResolvedTeamSettings {
 	prompts: PromptCatalog;
 	defaultMembers: string[];
 	defaultSynthesis: string;
