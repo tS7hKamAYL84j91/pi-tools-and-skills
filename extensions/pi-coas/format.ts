@@ -38,6 +38,8 @@ export function commandSummary(name: string, result: CommandResult): string {
 }
 
 export function widgetLines(text: string, limit = 12): string[] {
+	if (limit <= 0) return [];
 	const lines = text.split("\n").filter((line) => line.trim().length > 0);
-	return lines.slice(0, limit);
+	if (lines.length <= limit) return lines;
+	return [...lines.slice(0, limit - 1), "..."];
 }
