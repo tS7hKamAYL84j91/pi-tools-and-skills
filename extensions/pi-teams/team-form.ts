@@ -77,8 +77,68 @@ function titleFromId(id: string): string {
 	return id.split(/[-_]/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 
-function parseList(value: string | undefined): string[] {
-	return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+function choiceId(choice: string): string {
+	return choice.split(" — ")[0]?.trim() ?? choice.trim();
+}
+
+function availableModelIds(ctx: ExtensionContext): string[] {
+	try {
+		return ctx.modelRegistry.getAvailable()
+			.map((model) => `${model.provider}/${model.id}`)
+			.sort((a, b) => a.localeCompare(b));
+	} catch {
+		return [];
+	}
+}
+
+async function chooseModel(ctx: ExtensionContext, label: string): Promise<string | undefined> {
+	const models = availableModelIds(ctx);
+	if (models.length === 0) {
+		const entered = await ctx.ui.input(`${label} model id (optional)`, "");
+		return entered?.trim() || undefined;
+	}
+	const selected = await ctx.ui.select(label, ["(none)", ...models]);
+	return selected && selected !== "(none)" ? selected : undefined;
+}
+
+async function chooseMemberModels(ctx: ExtensionContext): Promise<string[]> {
+	const result: string[] = [];
+	for (let index = 1; index <= 5; index++) {
+		const model = await chooseModel(ctx, `Debate member ${index} model${index <= 3 ? "" : " (optional)"}`);
+		if (!model) {
+			if (index <= 3 && result.length === 0) continue;
+			break;
+		}
+		result.push(model);
+		if (index >= 3) {
+			const addMore = await ctx.ui.confirm("Add another debate member?", "Debate supports up to 5 members.");
+			if (!addMore) break;
+		}
+	}
+	return result;
+}
+
+function subagentChoices(cwd: string, fallbackId: string): string[] {
+	const registry = loadTeamRegistry(undefined, { cwd });
+	const fileBacked = [...registry.subagents.values()]
+		.sort((a, b) => a.id.localeCompare(b.id))
+		.map((agent) => `${agent.id}${agent.description ? ` — ${agent.description}` : ""}`);
+	const live = availableLiveAgentNames().map((name) => `agent:${name} — live peer`);
+	return [`${fallbackId} — new stub`, ...fileBacked, ...live, "custom..."];
+}
+
+async function chooseSubagent(ctx: ExtensionContext, label: string, fallbackId: string): Promise<string | undefined> {
+	const selected = await ctx.ui.select(label, subagentChoices(ctx.cwd, fallbackId));
+	if (!selected) return undefined;
+	if (selected === "custom...") {
+		const entered = await ctx.ui.input(`${label} id or agent:<name>`, fallbackId);
+		return entered?.trim() || undefined;
+	}
+	return choiceId(selected);
+}
+
+function protocolFromChoice(choice: string): TeamFormProtocol {
+	return choiceId(choice) as TeamFormProtocol;
 }
 
 function quote(value: string): string {
@@ -278,9 +338,10 @@ export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResu
 		throw new Error(`Team "${id}" already exists at ${teamPath}. Pass overwrite=true to replace it.`);
 	}
 	const bindings = defaultAgentBindings({ ...input, id });
+	const knownSubagents = loadTeamRegistry(undefined, { cwd }).subagents;
 	const subagentIds = [...new Set(bindings.map((binding) => binding.subagent))];
 	const subagentPaths = subagentIds
-		.filter((agent) => !isLiveAgentRef(agent))
+		.filter((agent) => !isLiveAgentRef(agent) && !knownSubagents.has(agent))
 		.map((agent) => ensureSubagentFile(dirs.agents, agent));
 	writeFileSync(
 		teamPath,
@@ -341,33 +402,65 @@ export async function formTeam(
 	ctx: ExtensionContext,
 	requestedId?: string,
 ): Promise<string | undefined> {
-	const rawId = requestedId || await ctx.ui.input("Team id", "my-review");
-	const id = normalizeTeamId(rawId ?? "");
+	const nameInput = await ctx.ui.input("Team name", requestedId ? titleFromId(normalizeTeamId(requestedId)) : "My Review");
+	const name = nameInput?.trim() || "My Review";
+	const rawId = requestedId ?? await ctx.ui.input("Team id (leave as generated unless you need a stable id)", normalizeTeamId(name));
+	const id = normalizeTeamId(rawId ?? name);
 	if (!id) return undefined;
-	const name = await ctx.ui.input("Team name", titleFromId(id)) ?? titleFromId(id);
 	const description = await ctx.ui.input("Description (optional)", "");
-	const protocolChoice = await ctx.ui.select("Protocol", ["consult", "pair-coding", "debate", "telephone"]);
+	const protocolChoice = await ctx.ui.select("Protocol", [
+		"consult — one Navigator gives focused review",
+		"debate — members critique and synthesis joins answers",
+		"telephone — sequential relay/rewrite chain",
+		"pair-coding — constrained Driver/Navigator implementation loop",
+	]);
 	if (!protocolChoice) return undefined;
-	const protocol = protocolChoice as TeamFormProtocol;
+	const protocol = protocolFromChoice(protocolChoice);
 
-	const defaultAgents = protocol === "debate"
-		? [subagentIdFromTeam(id, "member"), subagentIdFromTeam(id, "critic")]
-		: protocol === "telephone"
-			? [1, 2, 3, 4, 5].map((index) => subagentIdFromTeam(id, `relay_${index}`))
-			: protocol === "pair-coding"
-				? [subagentIdFromTeam(id, "navigator_brief"), subagentIdFromTeam(id, "driver"), subagentIdFromTeam(id, "navigator_review")]
-				: [subagentIdFromTeam(id, "navigator")];
-	const liveAgents = availableLiveAgentNames();
-	const liveHelp = liveAgents.length > 0 ? `; live agents: ${liveAgents.map((name) => `agent:${name}`).join(", ")}` : "";
-	const agentInput = await ctx.ui.input(`Subagents or live agents (comma-separated${liveHelp})`, defaultAgents.join(", "));
-	const agents = parseList(agentInput).length > 0 ? parseList(agentInput) : defaultAgents;
+	const agents: string[] = [];
+	let memberModelIds: string[] | undefined;
+	let synthesisId: string | undefined;
+	let driverId: string | undefined;
+	let navigatorId: string | undefined;
+	let maxFixPasses: number | undefined;
 
-	const memberModelIds = protocol === "debate" ? parseList(await ctx.ui.input("Member models (comma-separated, optional)", "")) : undefined;
-	const synthesisId = protocol === "debate" ? await ctx.ui.input("Synthesis model (optional)", "") : undefined;
-	const driverId = protocol === "pair-coding" ? await ctx.ui.input("Driver model (optional)", "") : undefined;
-	const navigatorId = protocol === "consult" || protocol === "pair-coding" ? await ctx.ui.input("Navigator model id (optional)", "") : undefined;
-	const maxFixPassesInput = protocol === "pair-coding" ? await ctx.ui.input("Max fix passes", "1") : undefined;
-	const maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
+	if (protocol === "consult") {
+		const navigator = await chooseSubagent(ctx, "Navigator agent", subagentIdFromTeam(id, "navigator"));
+		if (!navigator) return undefined;
+		agents.push(navigator);
+		navigatorId = await chooseModel(ctx, "Navigator model");
+	} else if (protocol === "debate") {
+		const member = await chooseSubagent(ctx, "Member agent", subagentIdFromTeam(id, "member"));
+		if (!member) return undefined;
+		agents.push(member);
+		const critic = await chooseSubagent(ctx, "Critic agent", subagentIdFromTeam(id, "critic"));
+		if (critic) agents.push(critic);
+		memberModelIds = await chooseMemberModels(ctx);
+		synthesisId = await chooseModel(ctx, "Synthesis model");
+	} else if (protocol === "telephone") {
+		const relayCountInput = await ctx.ui.input("Relay count", "5");
+		const relayCount = Math.min(10, Math.max(2, Number(relayCountInput) || 5));
+		for (let index = 1; index <= relayCount; index++) {
+			const relay = await chooseSubagent(ctx, `Relay ${index} agent`, subagentIdFromTeam(id, `relay_${index}`));
+			if (!relay) return undefined;
+			agents.push(relay);
+		}
+		memberModelIds = [];
+		for (let index = 1; index <= relayCount; index++) {
+			const model = await chooseModel(ctx, `Relay ${index} model`);
+			if (model) memberModelIds.push(model);
+		}
+	} else if (protocol === "pair-coding") {
+		const navigator = await chooseSubagent(ctx, "Navigator agent", subagentIdFromTeam(id, "navigator"));
+		if (!navigator) return undefined;
+		const driver = await chooseSubagent(ctx, "Driver agent", subagentIdFromTeam(id, "driver"));
+		if (!driver) return undefined;
+		agents.push(navigator, driver);
+		navigatorId = await chooseModel(ctx, "Navigator model");
+		driverId = await chooseModel(ctx, "Driver model");
+		const maxFixPassesInput = await ctx.ui.input("Max fix passes", "1");
+		maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
+	}
 
 	const result = createTeamFiles({
 		id,
@@ -377,9 +470,9 @@ export async function formTeam(
 		agents,
 		models: {
 			...(memberModelIds && memberModelIds.length > 0 ? { members: memberModelIds } : {}),
-			...(synthesisId?.trim() ? { synthesis: synthesisId.trim() } : {}),
-			...(driverId?.trim() ? { driver: driverId.trim() } : {}),
-			...(navigatorId?.trim() ? { navigator: navigatorId.trim() } : {}),
+			...(synthesisId ? { synthesis: synthesisId } : {}),
+			...(driverId ? { driver: driverId } : {}),
+			...(navigatorId ? { navigator: navigatorId } : {}),
 		},
 		limits: {
 			...(Number.isFinite(maxFixPasses) ? { maxFixPasses } : {}),
