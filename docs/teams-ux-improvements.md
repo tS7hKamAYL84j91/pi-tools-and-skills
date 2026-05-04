@@ -74,7 +74,7 @@ Assessed 2026-05-04 against `team-overlay.ts`, `team-picker.ts`, `team-models.ts
 | Degradation | ✅ | ✅ | ✅ | All color via `theme.fg()`/`theme.bold()`, ASCII `>`, no emoji |
 | Performance | ✅ | ✅ | ✅ | `requestRender()` only after state changes, no intervals |
 | Keyboard-only | ✅ | ✅ | ✅ | All flows keyboard-operable, hints per state |
-| Narrow width | ✅ | ⚠️ | ✅ | Target picker `minWidth: 70` vs 60 elsewhere; works at 80 cols but slightly wider |
+| Narrow width | ✅ | ✅ | ✅ | Browser: minWidth 60; target picker normalized to 60; truncateToWidth on all content |
 | Clean exit | ✅ | ✅ | ✅ | `done()` on escape, pi-tui handles reset |
 
 **pi-mono TUI Philosophy**
@@ -88,12 +88,12 @@ Assessed 2026-05-04 against `team-overlay.ts`, `team-picker.ts`, `team-models.ts
 | Input routing | ✅ | ✅ | ✅ | Mode-based dispatch; no keybinding conflicts |
 | Accessibility over decoration | ✅ | ✅ | ✅ | Minimal, info-dense, no decorative borders/emoji |
 
-**Minor inconsistencies (non-blocking):**
+**Resolved inconsistencies (UX-003, fixed in `eea9549`):**
 
-1. **`minWidth` mismatch** — target picker uses 70, browser and model picker use 60. Does not break at 80 columns, but inconsistent.
-2. **Escape hint wording** — browser says "esc close", target picker says "esc cancel", model picker says "esc exit". All convey the right meaning but terms vary.
-3. **Navigation hint wording** — target picker says "↑/↓ select", browser and model picker say "↑/↓ navigate" / "↑/↓ select". Minor terminology variation.
-4. **Hint indent** — model picker hint has 2-space indent (`"  Type to filter..."`), others use 0 or 1 space.
+1. ✅ **Escape hint** — all overlays now say `esc close`
+2. ✅ **Navigation hint** — all overlays now say `↑/↓ navigate`
+3. ✅ **Hint indent** — all overlays now use single space indent
+4. ✅ **`minWidth`** — target picker normalized to 60, matching browser and model picker
 
 All checkboxes **pass**. The four inconsistencies above are cosmetic, not compliance failures. UX-003 opened below to track normalization if desired.
 
@@ -116,7 +116,7 @@ After recording findings, follow this sequence:
 | --- | --- | --- | --- | --- |
 | UX-001 selection/highlight affordance | ADR-001 accepted, marker standardized to `>` | All three overlays use `>` prefix; pickers post-process pi-tui `→` via `selectedText`; browser adds `bold` for selected content | `npm run check` + `npm test` pass | Done |
 | UX-002 picker/search consistency | ADR-002 accepted | `/` toggles search mode in browser with fuzzy filter; browse keys silent in search mode | `npm run check` + `npm test` pass | Done |
-| UX-003 hint terminology normalization | Deferred | Minor wording inconsistencies across overlays (escape, navigation, indent) | Low priority, cosmetic only | Open |
+| UX-003 hint terminology normalization | Accepted — normalize per navigator feedback | Standardized escape→'esc close', navigation→'↑/↓ navigate', indent→1 space, minWidth 70→60 | `npm run check` + `npm test` pass | Done |
 | UX-004 detail-mode action keys broken | Fixed | `f`/`m`/`d` were silently swallowed in detail view due to early return | `npm run check` + `npm test` pass | Done |
 
 ## Issues
@@ -162,7 +162,7 @@ After recording findings, follow this sequence:
 | Checkbox | Result | Evidence |
 | --- | --- | --- |
 | Keyboard-only | ✅ Pass | `/` enters search mode, escape clears/exits. All navigation keyboard-operable (`team-overlay.ts:121-167`). |
-| Narrow width | ✅ Pass (browser) / ⚠️ (target picker) | Browser: `minWidth: 60`, `truncateToWidth(..., Math.max(18, width - 6))`. Target picker: `minWidth: 70` (`team-picker.ts:56`) — works at 80 cols but slightly inconsistent. |
+| Narrow width | ✅ Pass | Browser: `minWidth: 60`, `truncateToWidth(..., Math.max(18, width - 6))`. Target picker: normalized to `minWidth: 60`. |
 | Performance | ✅ Pass | `requestRender()` called only after state changes. Search filter via `fuzzyFilter` on demand. No interval timers. |
 | Input routing | ✅ Pass | Mode-based dispatch: search mode routes browse keys (f/m/d) to input; browse mode routes `/` to search. Documented in comments (`team-overlay.ts:132`). |
 
@@ -175,14 +175,16 @@ After recording findings, follow this sequence:
 3. Hint indent: model picker uses 2-space indent, others use 0 or 1 space.
 4. `minWidth: 70` in target picker vs 60 in browser and model picker.
 
-**Decision:** Deferred. All terms convey the correct meaning and the inconsistencies do not affect usability or compliance. Normalizing is a low-priority cosmetic improvement.
+**Decision:** Promoted from deferred after navigator review. Inconsistent hint wording degrades keyboard muscle memory and violates the consistent-markers principle. All terms now normalized.
 
-**Candidate fix (if pursued):**
+**Fix applied:**
 
-- Standardize escape hint to "esc close" (matches browser and pi convention for overlays).
-- Standardize navigation hint to "↑/↓ select" (matches target picker and is more precise).
-- Normalize indent to 1 space across all overlays.
-- Normalize `minWidth` to 60 across all pickers (or justify 70 for target picker's longer item labels).
+- Escape hint standardized to `esc close` across all overlays (matches pi overlay convention).
+- Navigation hint standardized to `↑/↓ navigate` across all overlays (accurate verb for list traversal).
+- Indent normalized to 1 space in model picker (was 2-space).
+- `minWidth` normalized from 70 to 60 in target picker (consistent with browser and model picker).
+
+**Commit:** `eea9549`
 
 ### UX-004 — Detail-mode action keys (f/m/d) silently swallowed
 
@@ -307,3 +309,4 @@ npm run test   → 374 tests pass
 - 2026-05-04: ADR-001 completed: standardized `>` marker across all three overlays. Pickers now use `selectedText` post-processing to replace pi-tui's hardcoded `→` with `>`. Browser adds `bold()` on selected content for non-color visibility. Hint text standardized to `filter` terminology and `·` separator. No remaining marker inconsistencies.
 - 2026-05-04: Compliance assessment completed. All 13 checkboxes (7 TUI Design Guide + 6 pi-mono TUI Philosophy) pass across all three overlays (browser, target picker, model picker). Opened UX-003 for four minor cosmetic inconsistencies (escape/navigation hint wording, hint indent, minWidth mismatch) — deferred as non-blocking. No code changes required.
 - 2026-05-04: Fixed UX-004 — `f`/`m`/`d` keys in detail view were silently swallowed. The `if (detailId)` block in `handleInput` only handled backspace/left then unconditionally returned, bypassing browse-mode key handlers. Added `else if` branches for `f`, `m`, `d` inside the detail-mode block. `m` now opens model picker for the currently-viewed team, `f` opens form flow, `d` initiates delete (with builtin guard). All checks pass (374 tests, 99.10% type coverage).
+- 2026-05-04: Compliance assessment completed via Navigator `consult` review. All 13 checkboxes pass. Navigator recommended promoting UX-003 from deferred to active (inconsistent hints degrade muscle memory and violate consistent-markers principle). Promoted and implemented: escape→'esc close', navigation→'↑/↓ navigate', indent→1 space, minWidth 70→60. Committed as `eea9549`, pushed to remote.
