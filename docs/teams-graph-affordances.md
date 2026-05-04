@@ -40,7 +40,64 @@ Out of scope:
 
 ## Compliance Assessment
 
-Before changing any schema or executor, assess the current state against these references and record findings inline:
+**Status:** ✅ All 9 checkboxes PASS (2026-05-04)
+
+**Navigator review:** 2026-05-04 via `team_run id=consult`
+
+**Outcome:** Implementation can proceed on Stage 1 (T-001 through T-007) after UI specs documented.
+
+**Prep work completed:**
+- UI specifications documented inline (interrupt marker, conditional skip, approval event schema)
+- Shared `status-symbols.ts` module created
+- Compliance findings recorded in `docs/teams-graph-affordances-compliance.md`
+
+See `docs/teams-graph-affordances-compliance.md` for detailed findings.
+
+### UI Specifications for New Affordances
+
+Before Stage 1 implementation, these UI specs are defined:
+
+#### GA-003 Interrupt Marker
+- **Symbol:** `⏸` (reused from `kanban/watcher.ts` line 191)
+- **Text label:** "interrupted"
+- **Usage:** Displayed in graph node status when `interruptAfter: true` node completes and graph pauses
+- **Render location:** `team-graph.ts` node status output; future overlay display
+
+#### GA-001 Conditional Skip Representation
+- **Primary:** Text "(condition not met)" in node's `error` field
+- **Status:** `skipped` (same as dependency skip)
+- **Optional symbol:** `⇢` only if visual distinction proves necessary in testing
+- **Rationale:** Avoids symbol proliferation; text is clear and theme-agnostic
+
+#### GA-003 Inline Approval Event Schema
+
+When a node with `interruptAfter: true` completes:
+
+```typescript
+// Follow-up event emitted to orchestrating agent
+{
+  type: "graph-interrupt",
+  graphId: string,
+  nodeId: string,
+  nodeRole: string,
+  nodeOutput: string,
+  prompt: "Graph paused after '${nodeRole}'. Approve to continue?",
+  actions: [
+    { id: "approve", label: "Approve", payload: { approved: true } },
+    { id: "reject", label: "Request changes", payload: { approved: false, reason?: string } },
+    { id: "abort", label: "Abort graph", payload: { aborted: true } }
+  ]
+}
+```
+
+**Resume behavior:**
+- Approve: Graph continues to next level
+- Reject: Graph continues (node marked succeeded) but rejection reason passed to downstream via channels
+- Abort: Graph cancelled, remaining nodes marked `cancelled`
+
+**Timeout:** Interrupted graphs expire after 24 hours (configurable). Expired graphs marked `cancelled`.
+
+**Persistence:** Interrupt state written to pi session tree under `.pi/team-runs/<graph-id>/interrupt.json`.
 
 ### TUI Design Guide (Toby)
 
@@ -110,28 +167,50 @@ Today, the debate protocol works around this by always running every critic (wit
 **Candidate acceptance criteria:**
 
 - `TeamGraphEdge` gains an optional `condition` field. When omitted, the edge is unconditional (current behavior).
-- Condition resolution is prompt-based: the edge's `condition` is a short prompt evaluated against the upstream node's output. If the evaluation returns "yes" (or matches a truthy pattern), the edge is traversed; otherwise, it is skipped.
+- `condition` is a structured predicate, not an arbitrary prompt or eval-able string, per ADR-001. Initial operators are deliberately small: equality on structured fields and substring matching on `output`.
+- Numeric comparison operators (`gt`, `lt`, `gte`, `lte`) are out of scope for Stage 1 and Stage 2. If scores or loop counters become necessary, add numeric field typing and tests before adding numeric operators.
+- Predicate evaluation is deterministic against the upstream node result and declared channels. No model call is used for routing decisions.
+- If a predicate references an undeclared channel or unsupported field, validation fails before execution. If an expected declared channel has no runtime value, the predicate evaluates false and the target is marked `skipped` with a missing-field reason.
 - Skipped conditional targets are marked `skipped` in `GraphNodeResult` with a reason like `condition not met on edge from X`.
 - Existing manifests with no `condition` fields behave identically to today.
-- `team_describe` output shows conditional edges with their condition text.
-- Fitness function: an arch test verifies that all `condition` fields in built-in manifests are non-empty strings if present.
+- `team_describe` output shows conditional edges with their predicate summary.
+- Fitness function: an arch test verifies that all `condition` fields in built-in manifests match the structured predicate schema if present.
 
 **Design sketch:**
 
 ```typescript
-// team-types.ts — additive change
+// team-types.ts — additive target shape
+interface TeamGraphCondition {
+  field: "status" | "output" | `channels.${string}`;
+  op?: "eq" | "neq" | "contains" | "not-contains";
+  value: string;
+}
+
+// Channel references must point to a declared channel key.
+// Channel keys use /^[a-z][a-z0-9_]{0,63}$/ and must not be "status" or "output".
+
 interface TeamGraphEdge {
   from: string;
   to: string;
-  condition?: string; // prompt evaluated against upstream output; truthy = traverse
+  condition?: TeamGraphCondition;
 }
 
-// team-graph.ts — conditional traversal in runOneNode
-// After a node succeeds, evaluate its outgoing edge conditions.
+// team-graph.ts — conditional traversal after a node completes
 // An edge with no condition is always traversed (current behavior).
-// An edge with a condition is traversed only if the condition evaluates truthy
-// against the node's output (using a lightweight model call or rule match).
+// An edge with a condition is traversed only if the deterministic predicate
+// matches the upstream node result and declared channel state.
 ```
+
+### Compliance findings
+
+- **Non-color meaning:** PASS — conditional skips use `GraphNodeStatus` text (`skipped`) plus an error reason; current status labels are text in `team-graph.ts:14` and output packaging includes `Status:` / `Error:` in `team-graph.ts:198-210`.
+- **Narrow width:** PASS — no overlay field is added yet; if `team_describe` or overlay surfaces predicates later, truncate like `team-overlay.ts:147`.
+- **Overlay/theme/markers:** PASS — no alternate screen needed; primary representation is text `(condition not met)`, not color or a new marker.
+- **Graph as shared primitive:** PASS — current graph executor is protocol-neutral; built-ins lower into graph plans in `team-lowering.ts:77-210`.
+- **No external graph framework:** PASS — deterministic predicate evaluation remains in `team-graph.ts`, no dependency.
+- **Evidence-gated:** PASS — pair-coding skip-review/fix routing cannot be represented by static `{ from, to }` edges today (`team-types.ts:54-57`).
+- **Schema-additive:** PASS — optional `condition` defaults to omitted/current behavior.
+- **Current implementation gap:** `TeamGraphEdge` has only `from` and `to` (`team-types.ts:54-57`); `runOneNode` only checks failed upstream dependencies, not edge predicates (`team-graph.ts:290-306`).
 
 ### GA-002 — State channels / structured node output
 
@@ -143,34 +222,49 @@ Today, the debate synthesis prompt receives all generation and critique outputs 
 
 **Candidate acceptance criteria:**
 
-- `GraphNodeResult` gains an optional `channels: Record<string, string>` field. When omitted, the node's output remains a single `output` string (current behavior).
-- `TeamGraph` gains an optional `channels` field declaring the named channels and their reducers (`concat` or `last-wins`).
-- `buildNodePrompt` receives `channels` from completed upstream nodes, not just the flat `upstream` array.
+- `GraphNodeResult` gains optional structured channel output. When omitted, the node's output remains a single `output` string (current behavior).
+- `TeamGraph` gains an optional `channels` field declaring allowed channel keys, allowed writers, reducer (`concat` or `last-wins`), and output shape validation.
+- Channel keys must match `/^[a-z][a-z0-9_]{0,63}$/`; `status` and `output` are reserved and cannot be channel keys.
+- The validator rejects writes to undeclared channels, condition references to undeclared channels, duplicate channel keys, reserved channel keys, and declared channels without valid writers/reducers.
+- `buildNodePrompt` receives resolved channel state from completed upstream nodes, not just the flat `upstream` array.
 - The `concat` reducer joins channel values with `\n`. The `last-wins` reducer keeps only the most recent value.
 - Existing manifests with no `channels` behave identically to today.
-- Fitness function: arch test verifies that all channel keys in built-in manifests are non-empty strings.
+- Fitness function: arch test verifies that all channel keys in built-in manifests are non-empty strings and all declared writers resolve to graph nodes.
 
 **Design sketch:**
 
 ```typescript
-// team-types.ts — additive changes
-interface GraphNodeChannel {
+// team-types.ts — additive target shape
+interface GraphChannelDeclaration {
   key: string;                      // e.g., "artifact", "review", "critique"
+  writers: string[];                // role ids allowed to write this channel
   reducer: "concat" | "last-wins";  // how multiple writes merge
+  outputShape?: "text" | "json";    // initial validation target; extensible later
 }
 
 interface TeamGraph {
   edges: TeamGraphEdge[];
   outputs?: string[];
   reducer?: TeamGraphReducer;
-  channels?: GraphNodeChannel[];     // declared channels; optional
+  channels?: GraphChannelDeclaration[];
 }
 
 interface GraphNodeResult {
   // ...existing fields
-  channels?: Record<string, string>; // structured output per channel
+  channels?: Record<string, string>; // only declared keys from allowed writers
 }
 ```
+
+### Compliance findings
+
+- **Non-color meaning:** PASS — channels are prompt/state data, not visual-only status.
+- **Narrow width:** PASS — no overlay field is added yet; future channel summaries must truncate like `team-overlay.ts:147`.
+- **Overlay/theme/markers:** PASS — no new overlay or marker required for channel state.
+- **Graph as shared primitive:** PASS — channels extend `GraphNodeResult` and `TeamGraph`, keeping orchestration protocol-neutral.
+- **No external graph framework:** PASS — reducers are limited to `concat` and `last-wins`, implemented in the in-repo executor.
+- **Evidence-gated:** PASS — current `upstreamPackage()` concatenates all upstream prose (`team-graph.ts:198-210`), so downstream nodes cannot select structured artifact/review channels.
+- **Schema-additive:** PASS — optional channel declarations and writes preserve current `output: string` behavior when omitted.
+- **Current implementation gap:** `GraphNodeResult` has only `output: string` (`team-graph.ts:25-38`), `TeamGraph` has no channel declarations (`team-types.ts:59-63`), and `buildNodePrompt` receives only flat upstream/completed arrays (`team-graph.ts:224-231`).
 
 ### GA-003 — Interrupt points / human-in-the-loop
 
@@ -200,6 +294,19 @@ interface TeamAgentBinding {
 // If true, emit a followUp event and return partial result with status "interrupted"
 // Resume requires re-calling team_run with the graph run id and approval
 ```
+
+### Compliance findings
+
+- **Non-color meaning:** PASS — interrupted state uses text `interrupted` plus `⏸` only as a supplemental marker.
+- **Narrow width:** PASS — approval prompt is a follow-up payload; any future overlay row must truncate node output and labels.
+- **Overlay, not alternate screen:** PASS — inline follow-up approval event avoids an alternate-screen UI.
+- **Theme-aware rendering:** PASS — future overlay marker must route through theme rendering; no rendering change in this issue yet.
+- **Consistent markers:** PASS — use `⏸`, already documented in this plan and aligned with existing pi marker conventions.
+- **Graph as shared primitive:** PASS — interrupt applies at `TeamAgentBinding`/graph executor level, not protocol-specific lowering.
+- **No external graph framework:** PASS — persisted pause/resume is implemented in pi session state, not LangGraph.
+- **Evidence-gated:** PASS — current `runTeamGraph` loops through all levels and returns only after completion/cancellation (`team-graph.ts:403-452`), so review-before-fix gates cannot be represented.
+- **Schema-additive:** PASS — optional `interruptAfter` defaults to omitted/current behavior.
+- **Current implementation gap:** `GraphNodeStatus` lacks `interrupted` (`team-graph.ts:14`), `GraphRunResult` has no run `status` field (`team-graph.ts:41-47`), and `TeamAgentBinding` lacks `interruptAfter` (`team-types.ts:30-42`).
 
 ### GA-004 — Subgraph composition / nested team runs
 
@@ -232,6 +339,17 @@ interface TeamAgentBinding {
 // If present, load the team from registry, lower to graph plan, and run
 // Return the subgraph's final output as this node's output
 ```
+
+### Compliance findings
+
+- **Non-color meaning:** PASS — subteam execution changes data/execution, not color-only status.
+- **Narrow width:** PASS — no overlay field is added yet; future subteam labels must truncate like other team overlay text.
+- **Overlay/theme/markers:** PASS — no new overlay or marker required for subgraph composition.
+- **Graph as shared primitive:** PASS — subteam is a graph node execution mode, keeping parent orchestration protocol-neutral.
+- **No external graph framework:** PASS — nested runs use existing `runTeamGraph` mechanics and registry resolution.
+- **Evidence-gated:** PASS — current node execution supports only live-agent refs or `runMember` (`team-graph.ts:250-255`), so nested review/validation teams require custom lowering today.
+- **Schema-additive:** PASS — optional `subteam` defaults to omitted/current behavior.
+- **Current implementation gap:** `TeamAgentBinding` has no `subteam` or contract metadata (`team-types.ts:30-42`); `productionRunNode` has no registry-resolved nested team path (`team-graph.ts:250-267`).
 
 ## ADR Log
 
@@ -270,12 +388,83 @@ interface TeamAgentBinding {
 
 10. **Topology authoring skill is validator-driven.** The Stage 3 skill must generate, validate, repair, and explain — not just generate. Minimum viable skill includes schema targeting, validation, repair loop, and an audit/explanation summary. A large pattern library can be incremental.
 
+### ADR-002 — Compliance assessment and Navigator review (2026-05-04)
+
+**Status:** Accepted
+
+**Context:** Compliance assessment against TUI Design Guide, pi-mono TUI Philosophy, and pi-teams Architecture Principles.
+
+**Findings:**
+- All 9 compliance checkboxes PASS
+- 2 checkboxes initially marked PARTIAL/PENDING were corrected after code inspection
+- No blocking concerns identified
+
+**Navigator review:** 2026-05-04 via `team_run id=consult`
+
+**Decisions:**
+1. **Marker consistency** — Reuse `⏸` from `kanban/watcher.ts` line 191 for GA-003 interrupted state
+2. **Conditional skip representation** — Use text "(condition not met)" as primary; `⇢` symbol optional
+3. **Inline approval schema** — Document follow-up event structure with approve/reject/abort actions
+4. **Shared symbol module** — Create `status-symbols.ts` for consistent symbol usage across pi-teams
+
+**Prep work completed:**
+- `docs/teams-graph-affordances-compliance.md` created with detailed findings
+- `extensions/pi-teams/status-symbols.ts` created with shared symbol constants
+- UI specifications documented in living plan (interrupt marker, conditional skip, approval event schema)
+- Kanban board initialized with 10 tasks (T-001 through T-010)
+
+**Outcome:** Stage 1 implementation (T-001 through T-007) approved to proceed.
+
+### ADR-003 — ADR-001 target spec cleanup and Navigator review (2026-05-04)
+
+**Status:** Accepted
+
+**Context:** A follow-up review found internal contradictions between ADR-001 amendments and the earlier candidate sketches: GA-001 still described prompt/string conditions, GA-002 still described free-form channel records, Stage 2 examples still used string conditions, and Stage 3 validation still accepted prompt-string conditions.
+
+**Navigator review:** 2026-05-04 via `team_run id=consult`
+
+**Decisions:**
+1. Treat this document as the ADR-001 target spec, not a claim that the current TypeScript implementation already supports the new affordances.
+2. Replace prompt/string conditions with structured deterministic predicates.
+3. Replace free-form channels with declared channel schemas, writer constraints, reducers, and output shape validation.
+4. Add a Known Implementation Gaps table mapping ADR-001 requirements to current code status and tracking issues.
+5. Keep implementation pending until Stage 1 compiler/validator work begins.
+
+**Outcome:** Documentation is internally aligned with ADR-001 and current implementation gaps are explicit.
+
+### ADR-004 — Stage 1 manifest compiler/validator slice (2026-05-04)
+
+**Status:** Accepted
+
+**Context:** T-005 implemented the first Stage 1 compiler/validator slice before GA-001 through GA-004 executor changes.
+
+**Navigator review:** 2026-05-04 via `team_run id=consult`
+
+**Decisions:**
+1. Treat `extensions/pi-teams/team-manifest.ts` as the first-class manifest validation entrypoint.
+2. Validate `schemaVersion: 2`, manifest-level `promptContracts`, manifest-level `modelSlots`, and graph shape during registry load.
+3. Surface strict validator failures as registry warnings while preserving existing manifests.
+4. Let manifest-declared `modelSlots` drive model slot display before protocol-specific handler fallback.
+5. Require negative tests for schema, metadata, and graph validation before completing T-005.
+
+**Outcome:** T-005 passed Navigator review after negative tests were added and `npm run check` plus `npm test` passed.
+
+## Known Implementation Gaps (vs. ADR-001 Target Spec)
+
+| ADR-001 requirement | Current code status | Tracking issue |
+| --- | --- | --- |
+| Structured conditional predicates and evaluator | `TeamGraphEdge` is only `{ from, to }`; no condition schema validation or predicate evaluator exists in `extensions/pi-teams/team-types.ts` and `extensions/pi-teams/team-graph.ts`. | GA-001 |
+| Declared channel schemas and validator | `GraphNodeResult` has only `output: string`; `TeamGraph` has only `edges`, `outputs`, and `reducer`; no channel schema validator exists. | GA-002 |
+| Interrupted run status and persisted resume state | `runTeamGraph` returns only final `GraphRunResult`; node statuses do not include an interrupted run status. | GA-003 |
+| Subteam execution with contracts and namespace isolation | `productionRunNode` runs only live agents or `runMember`; no registry-resolved `subteam` path exists. | GA-004 |
+| Declarative compiler/validator | Initial manifest compiler/validator exists for schema version, prompt contracts, model slots, and graph validation. GA-001/GA-004 schemas and Stage 2 protocol extraction remain pending; `team-lowering.ts` and `protocol-contracts.ts` still contain compatibility lowering and hard-coded prompt contracts. | T-005 done; Stage 1 / Stage 2 pending |
+
 ## Implementation Plan
 
-1. **GA-001 conditional edges** — Add `condition?: string` to `TeamGraphEdge`. Update `team-graph.ts` to evaluate conditions against upstream output (lightweight model call or rule match). Update `team-lowering.ts` and `protocol-contracts.ts` if any built-in protocols want conditional edges. Add fitness function for manifest validation.
-2. **GA-002 state channels** — Add `channels?: Record<string, string>` to `GraphNodeResult` and `channels?: GraphNodeChannel[]` to `TeamGraph`. Update `upstreamPackage()` to channel-aware format. Update `buildNodePrompt` signature to receive channels. Add fitness function for manifest validation.
-3. **GA-003 interrupt points** — Add `interruptAfter?: boolean` to `TeamAgentBinding`. Update `runTeamGraph` to pause and return partial result on interrupt. Wire follow-up emission to the pi session event system. Update overlay to show interrupted state. Add integration test for interrupt/resume cycle.
-4. **GA-004 subgraph composition** — Add `subteam?: string` to `TeamAgentBinding`. Update `productionRunNode` to detect subteam references and recursively execute. Add acyclic dependency arch test. Add integration test for nested team execution.
+1. **GA-001 conditional edges** — Add a structured `condition` predicate to `TeamGraphEdge`. Update validation and `team-graph.ts` to evaluate predicates deterministically against upstream node status, output, and declared channels. Update describe output and add fitness tests for predicate schema.
+2. **GA-002 state channels** — Add declared channel schemas to `TeamGraph` and constrained channel writes to `GraphNodeResult`. Update validation, `upstreamPackage()`, and `buildNodePrompt` to use reduced channel state. Add fitness tests for channel keys, writers, reducers, and output shape.
+3. **GA-003 interrupt points** — Add `interruptAfter?: boolean` to `TeamAgentBinding`. Update `runTeamGraph` to persist interrupted state, return partial results with `status: "interrupted"`, emit the approval follow-up payload, and support approve/reject/abort resume behavior with expiry. Add integration test for interrupt/resume cycle.
+4. **GA-004 subgraph composition** — Add `subteam?: string` plus input/output contract metadata to `TeamAgentBinding`. Update execution to resolve and run subteams with namespace isolation, return the subgraph result to the parent node, and reject recursive/cyclic subteam graphs. Add acyclic dependency arch test and nested team integration test.
 
 ## Validation Plan
 
@@ -290,6 +479,20 @@ interface TeamAgentBinding {
 - 2026-05-04: Draft created from analysis of `team-types.ts`, `team-graph.ts`, `team-lowering.ts`, LangGraph API patterns, and P9 evaluation findings.
 - 2026-05-04: Added Stage 2 (declarative protocol lowering) and Stage 3 (topology authoring skill).
 - 2026-05-04: Council review via `default-debate`. Directionally approved with 10 required amendments: schema versioning, compiler/validator as Stage 1 deliverables, protocol mapping audit, phased Stage 2 migration, protocol contracts as declarative metadata, typed state channels, structured predicates for conditional edges, subgraph composition rules, interrupt semantics, validator-driven skill. All 10 amendments incorporated into the ADR log and goal/scope sections.
+- 2026-05-04: Compliance assessment completed against TUI Design Guide, pi-mono TUI Philosophy, and pi-teams Architecture Principles. All 9 checkboxes PASS.
+- 2026-05-04: Navigator review via `team_run id=consult`. Confirmed corrections, approved Stage 1 implementation to proceed.
+- 2026-05-04: Prep work completed:
+  - Created `docs/teams-graph-affordances-compliance.md` with detailed findings
+  - Created `extensions/pi-teams/status-symbols.ts` shared symbol module
+  - Documented UI specifications (interrupt marker `⏸`, conditional skip text, approval event schema)
+  - Initialized kanban board with 10 tasks (T-001 through T-010)
+- 2026-05-04: ADR-002 recorded: Compliance assessment and Navigator review decisions.
+- 2026-05-04: Navigator review via `team_run id=consult` found documentation contradictions with ADR-001. Updated GA-001 to structured deterministic predicates, GA-002 to declared channel schemas, Stage 2 examples to predicate YAML, Stage 3 validation to reject prompt-string conditions, and added Known Implementation Gaps against current code.
+- 2026-05-04: ADR-003 recorded: ADR-001 target spec cleanup and Navigator review decisions.
+- 2026-05-04: Second Navigator review confirmed the main contradictions were resolved and requested doc clarifications for operator scope, channel-key constraints, condition evaluation errors, explicit evaluator/validator gaps, and tracking the existing knip failure. Added those clarifications and opened T-011 for the unused `extensions/pi-teams/status-symbols.ts` module.
+- 2026-05-04: T-005 manifest compiler/validator slice implemented: added `validateTeamManifest`, registry parsing for manifest-level `promptContracts` and `modelSlots`, model slot display from manifests, and negative tests for schema, metadata, and graph validation. Initial Navigator review requested broader negative tests; follow-up review returned PASS. Validation: `npm run check`, `npm test`.
+
+**Next:** Continue Stage 1 with T-001 through T-004 (GA affordances), then T-006 and T-007 (tests).
 
 ---
 
@@ -373,15 +576,26 @@ graph:
 With GA-001 (conditional edges) and GA-002 (channels), this becomes even more expressive:
 
 ```yaml
+  channels:
+    - key: review_status
+      writers: [navigator_review_1]
+      reducer: last-wins
+      outputShape: text
   edges:
     - from: driver_implementation
       to: navigator_review_1
     - from: navigator_review_1
       to: driver_fix_1
-      condition: "review requests changes"
+      condition:
+        field: channels.review_status
+        op: eq
+        value: changes_requested
     - from: navigator_review_1
       to: _end
-      condition: "review approves with no changes"
+      condition:
+        field: channels.review_status
+        op: eq
+        value: approved
 ```
 
 #### 2.3 Manifest-level model slot mappings
@@ -484,7 +698,7 @@ The skill encodes the same validation that `validateTeamGraph` runs:
 - Connected DAG (every node reachable from a root).
 - At least one output node.
 - Model bindings present for every node.
-- Condition syntax (if used) is a valid prompt string.
+- Condition syntax (if used) validates against the structured predicate schema from ADR-001; prompt strings are rejected.
 - Subteam references (if used) resolve to existing team ids.
 - No cycles through subteam references.
 

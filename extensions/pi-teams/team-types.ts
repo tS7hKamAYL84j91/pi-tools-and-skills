@@ -43,6 +43,23 @@ export interface TeamAgentBinding extends GenerationConfig {
 
 export type TeamGraphDependencyPolicy = "require-ok" | "allow-failed";
 export type TeamGraphReducer = "concat";
+export type TeamPromptSlotKind = "system" | "template";
+export type TeamModelSlotKind = "member" | "synthesis" | "driver" | "navigator";
+export type TeamModelSlotCount = number | "dynamic";
+
+export interface TeamPromptContract {
+	id: string;
+	kind: TeamPromptSlotKind;
+	defaultPromptId?: string;
+	roles?: string[];
+}
+
+export interface TeamModelSlotSpec {
+	id: string;
+	kind: TeamModelSlotKind;
+	count?: TeamModelSlotCount;
+	label?: string;
+}
 
 export interface TeamLimits {
 	timeoutMs?: number;
@@ -69,6 +86,8 @@ export interface TeamSpec {
 	description?: string;
 	protocol: TeamProtocol;
 	prompts: TeamPromptRefs;
+	promptContracts?: TeamPromptContract[];
+	modelSlots?: TeamModelSlotSpec[];
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
 	graph?: TeamGraph;

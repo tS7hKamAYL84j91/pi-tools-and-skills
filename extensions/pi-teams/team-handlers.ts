@@ -8,7 +8,7 @@ import type { TeamStateManager } from "./state.js";
 import { roleBindings } from "./team-bindings.js";
 import { type GraphRunResult, runTeamGraph } from "./team-graph.js";
 import { graphPlanForSimpleProtocol } from "./team-lowering.js";
-import type { TeamModels, TeamSpec } from "./team-types.js";
+import type { TeamModelSlotSpec, TeamModels, TeamSpec } from "./team-types.js";
 
 export const TEAM_STATUS_KEY = "team";
 export interface TeamRunModels {
@@ -81,6 +81,29 @@ function memberModelSlots(args: {
 
 function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId): void {
 	if (args.runId) args.stateManager.recordPhaseStarted(args.runId, phaseId, label);
+}
+
+function currentModelForSlot(slot: TeamModelSlotSpec, models: TeamModels, index: number): string | undefined {
+	if (slot.kind === "member") return models.members?.[index];
+	return models[slot.kind];
+}
+
+function manifestModelSlots(team: TeamSpec, models: TeamModels): TeamModelSlot[] | undefined {
+	if (!team.modelSlots) return undefined;
+	const slots: TeamModelSlot[] = [];
+	for (const slot of team.modelSlots) {
+		const count = slot.count === "dynamic" ? Math.max(models.members?.length ?? 0, team.agentBindings.length, 1) : slot.count ?? 1;
+		for (let index = 0; index < count; index++) {
+			slots.push({
+				id: count === 1 ? slot.id : `${slot.id}:${index}`,
+				label: slot.label ?? (count === 1 ? slot.id : `${slot.id} ${index + 1}`),
+				current: currentModelForSlot(slot, models, index),
+				kind: slot.kind,
+				...(slot.kind === "member" ? { index } : {}),
+			});
+		}
+	}
+	return slots;
 }
 
 function graphResultText(result: GraphRunResult, outputRole: string): string {
@@ -220,6 +243,8 @@ export function getTeamHandler(team: TeamSpec): TeamHandler | undefined {
 }
 
 export function modelSlotsForTeam(team: TeamSpec, models: TeamModels): TeamModelSlot[] {
+	const manifestSlots = manifestModelSlots(team, models);
+	if (manifestSlots) return manifestSlots;
 	const handler = getTeamHandler(team);
 	if (!handler) return [];
 	return handler.modelSlots(team, models);

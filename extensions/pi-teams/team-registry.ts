@@ -4,12 +4,17 @@ import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
 import { findAgentByName, listLiveAgents } from "../../lib/agent-api.js";
 import { isLiveAgentRef, liveAgentName } from "./live-agent.js";
+import { validateTeamManifest } from "./team-manifest.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
 	SubagentSpec,
 	TeamAgentBinding,
 	TeamGraphEdge,
+	TeamModelSlotKind,
+	TeamModelSlotSpec,
 	TeamModels,
+	TeamPromptContract,
+	TeamPromptSlotKind,
 	TeamRegistry,
 	TeamRegistryOptions,
 	TeamSource,
@@ -172,7 +177,53 @@ function graphEdges(value: unknown): TeamGraphEdge[] | undefined {
 	return edges.length > 0 ? edges : undefined;
 }
 
-function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
+function promptSlotKind(value: unknown): TeamPromptSlotKind | undefined {
+	const parsed = optionalString(value);
+	return parsed === "system" || parsed === "template" ? parsed : undefined;
+}
+
+function promptContracts(value: unknown): TeamPromptContract[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const contracts = value
+		.filter(isRecord)
+		.map((entry) => {
+			const id = optionalString(entry.id);
+			const kind = promptSlotKind(entry.kind);
+			const defaultPromptId = optionalString(entry.defaultPromptId);
+			const roles = stringArray(entry.roles);
+			return id && kind ? { id, kind, ...(defaultPromptId ? { defaultPromptId } : {}), ...(roles ? { roles } : {}) } : undefined;
+		})
+		.filter((contract): contract is TeamPromptContract => contract !== undefined);
+	return contracts.length > 0 ? contracts : undefined;
+}
+
+function modelSlotKind(value: unknown): TeamModelSlotKind | undefined {
+	const parsed = optionalString(value);
+	return parsed === "member" || parsed === "synthesis" || parsed === "driver" || parsed === "navigator" ? parsed : undefined;
+}
+
+function modelSlotCount(value: unknown): TeamModelSlotSpec["count"] | undefined {
+	if (optionalString(value) === "dynamic") return "dynamic";
+	const parsed = optionalNumber(value);
+	return parsed !== undefined ? parsed : undefined;
+}
+
+function modelSlots(value: unknown): TeamModelSlotSpec[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const slots = value
+		.filter(isRecord)
+		.map((entry) => {
+			const id = optionalString(entry.id);
+			const kind = modelSlotKind(entry.kind);
+			const count = modelSlotCount(entry.count);
+			const label = optionalString(entry.label);
+			return id && kind ? { id, kind, ...(count !== undefined ? { count } : {}), ...(label ? { label } : {}) } : undefined;
+		})
+		.filter((slot): slot is TeamModelSlotSpec => slot !== undefined);
+	return slots.length > 0 ? slots : undefined;
+}
+
+function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
 	const schemaVersion = optionalNumber(frontMatter.schemaVersion);
@@ -202,6 +253,16 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		return undefined;
 	}
 	const reducer = reducerValue === "concat" ? reducerValue : undefined;
+	const contracts = promptContracts(frontMatter.promptContracts);
+	if (frontMatter.promptContracts !== undefined && !contracts) {
+		warnings.push(`${id}: promptContracts entries must include id and kind`);
+		return undefined;
+	}
+	const slots = modelSlots(frontMatter.modelSlots);
+	if (frontMatter.modelSlots !== undefined && !slots) {
+		warnings.push(`${id}: modelSlots entries must include id and kind`);
+		return undefined;
+	}
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
@@ -213,6 +274,8 @@ function toTeamSpec(descriptor: RawMarkdownDescriptor, warnings: string[], sourc
 		...(description ? { description } : {}),
 		protocol,
 		prompts: promptRefs(frontMatter.prompts),
+		...(contracts ? { promptContracts: contracts } : {}),
+		...(slots ? { modelSlots: slots } : {}),
 		agents,
 		agentBindings,
 		...(graph || outputs || reducer ? { graph: { edges: graph ?? [], ...(outputs ? { outputs } : {}), ...(reducer ? { reducer } : {}) } } : {}),
@@ -251,6 +314,11 @@ function liveAgentWarning(teamId: string, ref: string): string | undefined {
 
 function validateTeam(team: TeamSpec, subagents: Map<string, SubagentSpec>): string[] {
 	const warnings: string[] = [];
+	try {
+		validateTeamManifest(team);
+	} catch (error) {
+		warnings.push(`${team.id}: ${error instanceof Error ? error.message : String(error)}`);
+	}
 	if (team.agentBindings.length === 0) warnings.push(`${team.id}: agents must not be empty`);
 	for (const binding of team.agentBindings) {
 		if (isLiveAgentRef(binding.subagent)) {
@@ -275,7 +343,7 @@ export function loadTeamRegistry(configPath: string = DEFAULT_CONFIG_JSON, optio
 			subagents.set(spec.id, spec);
 		}
 		for (const descriptor of readMarkdownDescriptors(dirs.teams)) {
-			const team = toTeamSpec(descriptor, warnings, dirs.source);
+			const team = compileTeamManifest(descriptor, warnings, dirs.source);
 			if (team) teams.set(team.id, team);
 		}
 	}

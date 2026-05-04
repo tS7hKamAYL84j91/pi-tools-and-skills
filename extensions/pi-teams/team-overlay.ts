@@ -6,6 +6,7 @@ import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-ag
 import { Container, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
+import { STATUS_SYMBOLS } from "./status-symbols.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
 
@@ -134,7 +135,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 						// Selection marker: ">" is the standardized non-color marker across all
 						// pi-teams overlays (see ADR-001). Pickers replace pi-tui's hardcoded "→"
 						// through selectedText theme post-processing.
-						const prefix = index === selected ? "> " : "  ";
+						const prefix = index === selected ? `${STATUS_SYMBOLS.selection} ` : "  ";
 						const content = truncateToWidth(`${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(18, width - 6));
 						container.addChild(new Text(index === selected ? `${prefix}${theme.fg("accent", theme.bold(content))}` : `${prefix}${content}`, 1, 0));
 					}
