@@ -1,6 +1,6 @@
 # Cross-Extension TUI UX Update
 
-Living brief for cross-extension terminal UX consistency across `pi-tools-and-skills`. This complements the per-extension plans (`teams-ux-improvements.md`, `kanban-ux-improvements.md`, `panopticon-ux-improvements.md`, and `coas-ux-improvements.md`) and records validation evidence from `termwright`.
+Living brief for cross-extension terminal UX consistency across `pi-tools-and-skills`. This complements the per-extension plans (`teams-ux-improvements.md`, `kanban-ux-improvements.md`, and `coas-ux-improvements.md`) and records validation evidence from `termwright`, including Panopticon status/overlay findings.
 
 ## Goal
 
@@ -33,9 +33,9 @@ Out of scope:
 
 ## Verdict
 
-The TUI surface is broadly functional. The issue is not systemic rendering failure; it is cross-surface coherence drift.
+The TUI surface is broadly functional. The first consistency slice resolved the highest-risk coherence drift: selected markers, layout-critical emoji, narrow Kanban width, pending-message count format, and dense status overflow.
 
-`pi-teams` is the strongest reference implementation. Kanban and panopticon are usable, but they diverge in marker choice, glyph/status conventions, component usage, overflow handling, and search/action affordances.
+`pi-teams` remains the reference implementation. Remaining work is incremental: CoAS fallback polish, team picker width policy, and optional dense-view search/filter parity.
 
 ## Termwright Validation
 
@@ -99,8 +99,7 @@ Validated after the first implementation slices on 2026-05-04.
 Caveats:
 
 - `termwright` validation confirms the major visual/coherence findings; it does not replace code review for lifecycle cleanup or internal component focus behavior.
-- The observed `/agents` command behavior should not be over-interpreted as a panopticon overlay failure without a focused reproduction.
-- Earlier tmux captures showed `/agents` overlay rendering successfully; this update treats panopticon overlay findings as code-review plus partial terminal evidence.
+- Follow-up captures supersede the initial Panopticon ambiguity: `/agents` overlay and status widget were validated at 80×24 after the status convention slice.
 
 ## Status
 
@@ -234,6 +233,6 @@ Caveats:
 
 - 2026-05-04: Cross-extension audit synthesized from independent reviews of Teams, Kanban, Panopticon/CoAS/Matrix, plus default-debate review. Findings: TUI is functional; main issue is coherence drift.
 - 2026-05-04: `termwright` became available and was used for live validation. Teams browse/search passed. Kanban rendered at 100×30 but showed marker/glyph/component drift; Kanban failed narrow-width resilience at 80×24. Panopticon status strip rendered but overlay validation needs a focused follow-up due command/session ambiguity.
-- 2026-05-04: Implemented first consistency slice: Kanban selected marker changed to `>`, Panopticon `SelectList` selected text maps `→` to `>`, Kanban board/delete/move layout-critical emoji removed, and Kanban board column sizing now degrades to fit 80-column visible width. Validation: `npm run check`, `npm test`, and targeted Kanban render tests pass. Termwright recapture still pending.
+- 2026-05-04: Implemented first consistency slice: Kanban selected marker changed to `>`, Panopticon `SelectList` selected text maps `→` to `>`, Kanban board/delete/move layout-critical emoji removed, and Kanban board column sizing now degrades to fit 80-column visible width. Validation: `npm run check`, `npm test`, and targeted Kanban render tests passed; follow-up `termwright` recapture completed later the same day.
 - 2026-05-04: Implemented status convention slice: Panopticon overlay/status/widget/health output use ASCII status markers, compact separators, explicit `...+N` hidden-agent marker, and `msg:N` pending-message counts; Matrix status uses `matrix: on/off/err` plus `msg:N`. Validation: `npm run check` and `npm test` pass.
 - 2026-05-04: Completed termwright recapture pass. Evidence saved under `/tmp/*-new.txt`; Teams browse/search, Kanban board/move/narrow/status, Panopticon overlay/status, and Matrix footer status pass. Also shortened Kanban blocked reason in the widget to avoid 80-column wrapping and clamped Kanban modal borders to restore right-edge alignment.

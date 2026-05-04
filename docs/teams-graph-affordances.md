@@ -489,7 +489,7 @@ interface TeamAgentBinding {
 - 2026-05-04: ADR-002 recorded: Compliance assessment and Navigator review decisions.
 - 2026-05-04: Navigator review via `team_run id=consult` found documentation contradictions with ADR-001. Updated GA-001 to structured deterministic predicates, GA-002 to declared channel schemas, Stage 2 examples to predicate YAML, Stage 3 validation to reject prompt-string conditions, and added Known Implementation Gaps against current code.
 - 2026-05-04: ADR-003 recorded: ADR-001 target spec cleanup and Navigator review decisions.
-- 2026-05-04: Second Navigator review confirmed the main contradictions were resolved and requested doc clarifications for operator scope, channel-key constraints, condition evaluation errors, explicit evaluator/validator gaps, and tracking the existing knip failure. Added those clarifications and opened T-011 for the unused `extensions/pi-teams/status-symbols.ts` module.
+- 2026-05-04: Second Navigator review confirmed the main contradictions were resolved and requested doc clarifications for operator scope, channel-key constraints, condition evaluation errors, and explicit evaluator/validator gaps. Added those clarifications and tracked shared status-symbol integration as T-011.
 - 2026-05-04: T-005 manifest compiler/validator slice implemented: added `validateTeamManifest`, registry parsing for manifest-level `promptContracts` and `modelSlots`, model slot display from manifests, and negative tests for schema, metadata, and graph validation. Initial Navigator review requested broader negative tests; follow-up review returned PASS. Validation: `npm run check`, `npm test`.
 
 **Next:** Continue Stage 1 with T-001 through T-004 (GA affordances), then T-006 and T-007 (tests).

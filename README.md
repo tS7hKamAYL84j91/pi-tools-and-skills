@@ -1,16 +1,14 @@
 # pi-tools-and-skills
 
+![pi-panopticon](Gemini_Generated_Image_ybt2lgybt2lgybt2.png)
+
 Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent.
 
 ## Project intent
 
 This is a coded workbench, not a branded product page. Its job is to provide reusable pi building blocks for an experimental knowledge-worker / skeleton Chief of Staff setup.
 
-The Chief of Staff configuration itself lives in [CoAS](https://github.com/tS7hKamAYL84j91/coas). This repo stays workspace-agnostic: it supplies the harness pieces — agent orchestration, council review, project kanban, Matrix messaging, skills, prompts, and shared libraries — that any workspace can choose to load.
-
-The operating model is deliberately cheap-first: run a small/local/open-source coordinator where possible, then delegate through pi to stronger or more expensive models only when the task needs them. The Matrix bridge exists so a private phone chat can reach the local agent without exposing a public web app. The task/state layer is still experimental; kanban works today, but it may evolve or be replaced as the Chief of Staff pattern hardens.
-
-This repo is intentionally workspace-agnostic. It does not configure model choices, provider defaults, Matrix deployments, shell hooks, secrets, launchers, or project-specific state. Those belong in the workspace or infrastructure repo that uses this package.
+Tools for a personal Chief of Staff setup. Features are kept tight. `pi-teams` is currently under review: should it remain a generic DAG, or be constrained to specific built-in topologies (council, pair-coding)?
 
 ## Getting started
 

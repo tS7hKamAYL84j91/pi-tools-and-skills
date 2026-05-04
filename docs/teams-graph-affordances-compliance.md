@@ -1,74 +1,50 @@
 # Teams Graph Affordances — Compliance Assessment
 
 **Date:** 2026-05-04
-**Status:** Initial assessment complete
+**Status:** Complete — Navigator reviewed and accepted
 
-## TUI Design Guide (Toby)
-
-### Non-color meaning
-- **Finding:** PASS — Graph node statuses use text labels (`pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled`). No color-only indicators in graph execution.
-- **Code reference:** `team-graph.ts` line 14 defines `GraphNodeStatus` union. Status rendered as text in `upstreamPackage()` (line 198-210).
-
-### Narrow width
-- **Finding:** PASS — Team browser overlay truncates team info to `width - 6` chars (line 147). New manifest fields would need similar treatment if surfaced in overlay.
-- **Code reference:** `team-overlay.ts` line 147 uses `truncateToWidth()`.
-
-## pi-mono TUI Philosophy
-
-### Overlay, not alternate screen
-- **Finding:** PASS — Current implementation uses inline overlay in main screen. GA-003 (interrupt points) may require interactive approval UI — this would need alternate screen or inline picker.
-- **Action needed:** GA-003 implementation must specify overlay mode. Recommend inline confirmation for simple approve/reject.
-
-### Theme-aware rendering
-- **Finding:** PASS — All status indicators use `theme.fg()` and `theme.bg()`.
-- **Code reference:** `team-overlay.ts` imports and uses `theme` from `@mariozechner/pi-coding-agent`.
-
-### Consistent markers
-- **Finding:** PASS — Team browser uses `>` for selection (line 145). Graph status is text-only, not symbol-based. Other extensions use: `✓` success (pi-coas, pi-panopticon), `✗` failure, `⚠` warning, `⏸` pause (kanban watcher line 191), `●` running (pi-panopticon spawner line 414).
-- **Action needed:** GA-003 can reuse `⏸` from kanban for interrupted state. GA-001 conditional skips can use text "(condition not met)" rather than new symbol, or adopt `⇢` if visual distinction needed.
-- **Code reference:** `team-overlay.ts` line 145 uses `>` selection. `kanban/watcher.ts` line 191 uses `⏸` for paused state.
-
-## pi-teams Architecture Principles
-
-### Graph as shared primitive
-- **Finding:** PASS — Built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) all lower to graph plans via `graphPlanForSimpleProtocol()`. Orchestration code in `team-graph.ts` is protocol-neutral.
-
-### No external graph framework
-- **Finding:** PASS — `team-graph.ts` is self-contained DAG executor. No LangGraph or external dependencies.
-
-### Evidence-gated
-- **Finding:** PASS — Living plan includes concrete scenarios for each GA:
-  - GA-001: "route to reviewer only if the output has errors" (debate/pair-coding)
-  - GA-002: "node produces structured artifact separate from prose" (review channels)
-  - GA-003: "review before fix" (pair-coding safety gate), "human can steer mid-synthesis" (debate)
-  - GA-004: "review node might itself be a debate team" (subgraph composition)
-- **Code reference:** `docs/teams-graph-affordances.md` Issues section.
-
-### Schema-additive
-- **Finding:** PASS — All proposed changes (GA-001 through GA-004) are optional fields with undefined defaulting to current behavior.
+This assessment records the pre-implementation compliance check required by `docs/teams-graph-affordances.md` before Stage 1 schema or executor changes.
 
 ## Summary
 
 | Checkbox | Status | Notes |
-|---|---|---|
-| Non-color meaning | ✅ PASS | Text labels for graph status |
-| Narrow width | ✅ PASS | `truncateToWidth()` in team browser |
-| Overlay, not alternate screen | ✅ PASS | Inline overlay only |
-| Theme-aware rendering | ✅ PASS | Uses `theme.fg()`/`theme.bg()` |
-| Consistent markers | ✅ PASS | `>` selection, can reuse `⏸` from kanban |
-| Graph as shared primitive | ✅ PASS | Protocol-neutral executor |
-| No external graph framework | ✅ PASS | Self-contained |
-| Evidence-gated | ✅ PASS | Scenarios documented in living plan |
-| Schema-additive | ✅ PASS | All fields optional |
+| --- | --- | --- |
+| Non-color meaning | ✅ PASS | Graph status is represented with text labels and error reasons, not color alone. |
+| Narrow width | ✅ PASS | Current `/teams` overlay truncates visible team text; future surfaced graph metadata must follow the same pattern. |
+| Overlay, not alternate screen | ✅ PASS | GA-003 approval is specified as an inline follow-up event, not a new alternate-screen UI. |
+| Theme-aware rendering | ✅ PASS | Existing overlay rendering goes through the theme; future visible markers must do the same. |
+| Consistent markers | ✅ PASS | Selected rows use `>`; interrupted state should reuse `⏸` only as a supplemental marker with text. |
+| Graph as shared primitive | ✅ PASS | Built-in protocols lower to protocol-neutral graph plans; Stage 1 affordances extend that shared graph layer. |
+| No external graph framework | ✅ PASS | The plan keeps the in-repo DAG executor and adds no LangGraph dependency. |
+| Evidence-gated | ✅ PASS | Each GA issue names a concrete user-facing scenario not expressible today. |
+| Schema-additive | ✅ PASS | Proposed fields are optional and default to current behavior when omitted. |
 
-## Actions Required
+## Findings by area
 
-1. **GA-003 overlay marker** — Reuse `⏸` from `kanban/watcher.ts` line 191 for interrupted state. Add to graph node status display if surfaced in overlay.
-2. **GA-001 conditional skip representation** — Prefer text "(condition not met)" in node status; add symbol only if visual distinction proves necessary in testing.
-3. **GA-003 interrupt UI spec** — Document inline approval mechanism (follow-up event with approval payload). No alternate screen needed.
+### TUI Design Guide
 
-**Assessment corrected:** All 9 checkboxes now PASS. Implementation can proceed after Navigator confirms these corrections.
+- **Non-color meaning:** PASS — `GraphNodeStatus` uses text statuses (`pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled`) and upstream packaging includes explicit `Status:` / `Error:` labels.
+- **Narrow width:** PASS — current team overlay text uses width-aware truncation; future `team_describe` or overlay fields for predicates, channels, interrupts, or subteams must truncate similarly.
 
----
+### pi-mono TUI Philosophy
 
-**Next step:** Run `team_run` with `consult` to get Navigator's assessment of these findings before touching code.
+- **Overlay, not alternate screen:** PASS — interrupt approval is documented as an inline follow-up event with approve/reject/abort payloads.
+- **Theme-aware rendering:** PASS — no new rendering was added in the assessment slice; future visible markers must route through `theme.fg()`.
+- **Consistent markers:** PASS — use `>` for selected rows; use text labels first for graph state; `⏸` is reserved for interrupted state as a supplemental marker.
+
+### pi-teams Architecture Principles
+
+- **Graph as shared primitive:** PASS — graph affordances are specified at `TeamGraph`, `TeamGraphEdge`, `TeamAgentBinding`, `GraphNodeResult`, and `GraphRunResult` boundaries.
+- **No external graph framework:** PASS — all affordances are implementable in `team-graph.ts` with native TypeScript and existing pi APIs.
+- **Evidence-gated:** PASS — GA-001 through GA-004 each document current representational gaps and target scenarios.
+- **Schema-additive:** PASS — changes remain v2-compatible and optional.
+
+## Decisions carried into the living plan
+
+1. Reuse `⏸` for interrupted graph state, paired with the text label `interrupted`.
+2. Represent conditional skips primarily as `skipped` plus an error reason such as `(condition not met)`.
+3. Use structured deterministic predicates for conditional edges, not prompt strings or arbitrary code.
+4. Use declared typed channel schemas with writer constraints, not free-form channel records.
+5. Treat `extensions/pi-teams/team-manifest.ts` as the Stage 1 manifest validation entrypoint.
+
+Navigator review accepted these findings; implementation status and follow-up work are tracked in `docs/teams-graph-affordances.md`.
