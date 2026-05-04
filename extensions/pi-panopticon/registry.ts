@@ -16,7 +16,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
-import type { AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
+import type { AgentNameSource, AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
 import {
 	REGISTRY_DIR,
 	STALE_MS,
@@ -170,12 +170,17 @@ function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 export default class Registry implements RegistryInterface {
 	readonly selfId: string;
 	private record: AgentRecord | undefined;
+	private lastSyncedSessionName: string | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
 
-	constructor(selfId: string) {
+	constructor(
+		selfId: string,
+		private readonly getSessionName?: () => string | undefined,
+	) {
 		this.selfId = selfId;
 		this.record = undefined;
+		this.lastSyncedSessionName = undefined;
 	}
 
 	getRecord(): Readonly<AgentRecord> | undefined {
@@ -185,10 +190,13 @@ export default class Registry implements RegistryInterface {
 	register(ctx: ExtensionContext): void {
 		const cwd = process.cwd();
 
-		// Read all existing records to pick a unique name
+		// Read all existing records to pick a unique name.
 		const records = this.readAllPeers();
-		const requestedName = process.env[PANOPTICON_SPAWN_NAME_ENV];
+		const spawnName = process.env[PANOPTICON_SPAWN_NAME_ENV];
+		const sessionName = this.readSessionName();
+		const requestedName = sessionName ?? spawnName;
 		const name = pickName(cwd, records, this.selfId, requestedName);
+		this.lastSyncedSessionName = sessionName;
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
 		const visibility = process.env[PANOPTICON_VISIBILITY_ENV] === "scoped" ? "scoped" : "global";
@@ -197,6 +205,8 @@ export default class Registry implements RegistryInterface {
 		this.record = {
 			id: this.selfId,
 			name,
+			...(spawnName ? { spawn_name: spawnName } : {}),
+			name_source: this.getInitialNameSource(sessionName, spawnName),
 			pid: process.pid,
 			cwd,
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "",
@@ -268,9 +278,15 @@ export default class Registry implements RegistryInterface {
 		}
 	}
 
-	setName(name: string): void {
+	setName(name: string, source?: AgentNameSource): void {
 		if (this.record) {
 			this.record.name = name;
+			if (source) {
+				this.record.name_source = source;
+			}
+			if (source === "programmatic" || source === "user") {
+				this.lastSyncedSessionName = name;
+			}
 			this.flush();
 		}
 	}
@@ -320,6 +336,8 @@ export default class Registry implements RegistryInterface {
 	private heartbeat(): void {
 		if (!this.record) return;
 
+		this.syncSessionName();
+
 		this.record = buildRecord(
 			this.record,
 			this.record.status,
@@ -328,5 +346,32 @@ export default class Registry implements RegistryInterface {
 		);
 
 		this.flush();
+	}
+
+	private readSessionName(): string | undefined {
+		try {
+			const sessionName = this.getSessionName?.()?.trim();
+			return sessionName || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private getInitialNameSource(
+		sessionName: string | undefined,
+		spawnName: string | undefined,
+	): AgentNameSource {
+		if (sessionName) return "user";
+		if (spawnName) return "spawn";
+		return "generated";
+	}
+
+	private syncSessionName(): void {
+		if (!this.record) return;
+		const sessionName = this.readSessionName();
+		if (!sessionName || sessionName === this.lastSyncedSessionName) return;
+		this.lastSyncedSessionName = sessionName;
+		this.record.name = sessionName;
+		this.record.name_source = "user";
 	}
 }

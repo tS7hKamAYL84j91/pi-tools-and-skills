@@ -114,17 +114,17 @@ Prompt-template commands from this package:
 | `team_*`              | `team_list`, `team_describe`, `team_run`, `team_form`                 | Model-facing team workflows                              |
 | messaging             | `message_read`, `message_send`                                        | Cross-channel messaging                                  |
 
-Built-in tool names are `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`. No pi-tools model-facing tools currently collide with those built-ins.
+Pi's core model-facing tools are `read`, `bash`, `edit`, `write`. (`grep`/`find`/`ls` are subsumed by `bash`.) No pi-tools model-facing tools collide with those built-ins.
 
 ## Status
 
 | Issue                                        | Decision                         | Implementation                 | Validation                                                     | Status |
 | -------------------------------------------- | -------------------------------- | ------------------------------ | -------------------------------------------------------------- | ------ |
 | TCU-001 exact built-in command collision     | Prohibit                         | No current pi-tools collisions | Code scan + runtime inventory                                  | Pass   |
-| TCU-002 `/name` vs `/alias` semantic overlap | Remove `/alias`; sync registry from session name | Pending | Code review confirms `/alias` sets session + registry identity | Open |
-| TCU-003 command/tool naming policy           | Document predictable patterns    | Pending                        | Inventory shows several valid but undocumented patterns        | Open   |
-| TCU-004 namespace audit                      | Add scripted check               | Pending                        | Manual scan done                                               | Open   |
-| TCU-005 docs/runtime inventory drift         | Prefer source/runtime inventory  | Pending                        | `/import` docs discrepancy found                               | Open   |
+| TCU-002 `/name` vs `/alias` semantic overlap | Remove `/alias`; add `set_name`; sync registry via heartbeat | Phase 1 implemented: `/alias` removed, `set_name`/`get_name` added, deprecated alias wrappers retained, registry heartbeat sync added | ADR-002/004/005 accepted; council resolved RQ-1/2/3 | In Progress |
+| TCU-003 command/tool naming policy           | Document patterns (kebab-case slashes, snake_case tools, noun stems) | Naming policy documented in this brief and linked from `docs/README.md` | Inventory shows valid patterns; future extension docs should cross-link as they change | Pass |
+| TCU-004 namespace audit                      | Add scripted check using `builtins.json` manifest | `scripts/builtins.json`, `scripts/check-namespace.mjs`, and `npm run check:namespace` added; folded into `npm run check` | Script fails exact built-in collisions and warns on semantic keywords | Pass |
+| TCU-005 docs/runtime inventory drift         | Prefer source/runtime inventory  | Ongoing                        | `/import` docs discrepancy found                               | Open |
 
 ## Findings
 
@@ -178,7 +178,7 @@ The model-facing `set_alias` tool has the same broader behavior.
 
 **Candidate acceptance criteria:**
 
-- Extract pi built-ins from `@mariozechner/pi-coding-agent/dist/core/slash-commands.js` or a stable API if one becomes available.
+- Use the checked-in `scripts/builtins.json` manifest, updated from `@mariozechner/pi-coding-agent/dist/core/slash-commands.js` or a stable API when pi is upgraded.
 - Extract pi-tools extension commands and prompt names from this repo.
 - Fail on exact collisions with built-ins.
 - Warn on semantic overlap keywords: `name`, `alias`, `identity`, `session`, `send`, `agent`, `team`.
@@ -196,7 +196,7 @@ The model-facing `set_alias` tool has the same broader behavior.
 
 ### ADR-001 — Built-in command names are reserved
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Decision:** pi-tools extension and prompt commands must not use exact built-in pi command names.
 
@@ -204,49 +204,117 @@ The model-facing `set_alias` tool has the same broader behavior.
 
 ### ADR-002 — Built-in `/name` is the canonical human identity command
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Decision:** Remove the pi-tools `/alias` slash command. Panopticon should derive the registry name from pi's session name when available, so built-in `/name <name>` becomes the single human-facing command for naming the current agent/session.
 
-**Consequences:** Eliminates the `/name` vs `/alias` split instead of documenting around it. This is a deliberate compatibility break for `/alias`, accepted because the command duplicates and broadens a built-in concept. Model-facing naming may still need a tool for non-interactive flows, but it should be explicitly tied to session/agent naming.
+**Consequences:** Eliminates the `/name` vs `/alias` split instead of documenting around it. This is a deliberate compatibility break for `/alias`, accepted because the command duplicates and broadens a built-in concept. Model-facing naming still needs a tool for non-interactive flows — see ADR-004.
 
 ### ADR-003 — Command/tool names should share stems where it helps, not force one-to-one parity
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Decision:** Allow patterns like `/kanban` + `kanban_*` and `/teams` + `team_*`. Require descriptions to state whether a slash command is a human UI command, a model-facing tool equivalent, or both.
 
 **Consequences:** Avoids awkward command proliferation while keeping discovery predictable.
 
+### ADR-004 — Programmatic naming tool replaces `set_alias`
+
+**Status:** Accepted
+
+**Decision:** Add `set_name` as the canonical programmatic naming tool. `set_alias` becomes a deprecated compatibility wrapper that forwards to `set_name`. After a two-release deprecation window, remove `set_alias` entirely.
+
+**Consequences:** Models and RPC callers retain programmatic naming capability. Terminology aligns with built-in `/name`. The deprecation window prevents hard breakage for existing callers.
+
+### ADR-005 — `/name` overrides spawn name; spawn identity preserved in metadata
+
+**Status:** Accepted
+
+**Decision:** When a user sets `/name` or a caller invokes `set_name`, the new name becomes the active display and registry name. The original spawn name is preserved as immutable `spawn_name` metadata. Orchestration should route by stable agent/session IDs or by `spawn_name`/`role`, never by mutable display name.
+
+**Consequences:** Eliminates split-brain identity where the UI says one name and the registry another. Spawn identity is not lost — it moves to a metadata field. Clears the way for `/name` to be the single source of truth for current identity.
+
+## Resolved Questions
+
+Council debate held 2026-05-04 via `default-debate`. All three primary questions resolved.
+
+### RQ-1 — How should Panopticon detect `/name` changes?
+
+**Answer:** Heartbeat-time reconciliation via `pi.getSessionName()`.
+
+- On each Panopticon heartbeat, call `pi.getSessionName()`.
+- Compare against the last synced name.
+- If changed and valid, update the registry name.
+- If unavailable, empty, or errored, preserve the current registry name — do not blank it.
+- This is self-healing: a missed check is corrected on the next heartbeat.
+- Do not introduce a new lifecycle hook or extension event solely for name sync.
+- If a stable `sessionNameChanged` event already exists in pi, subscribe to it for lower-latency updates, but keep heartbeat reconciliation as the fallback.
+
+**Caveats:**
+- Requires `pi.getSessionName()` to be cheap and synchronous or near-synchronous.
+- Heartbeat latency (≤10s) is acceptable for name propagation; >30s may feel stale.
+
+### RQ-2 — Should `set_alias` be removed at the same time as `/alias`?
+
+**Answer:** No. Remove `/alias` immediately but keep programmatic naming via a new `set_name` tool with `set_alias` as a deprecated wrapper.
+
+- Add `set_name(name)` as the canonical programmatic tool. It sets the built-in session display name; Panopticon syncs the registry from it via heartbeat.
+- `set_alias` becomes a deprecated forwarding wrapper to `set_name`.
+- `get_alias` becomes `get_name`, reporting both session name and registry name.
+- Deprecation window: two releases / sprints, then `set_alias` is removed.
+- During transition, `set_name` / `set_alias` may dual-write (set session name + update registry directly) if immediate consistency is needed before heartbeat fires.
+
+**Rationale:** Models and RPC callers cannot invoke interactive `/name`. Removing `set_alias` with no replacement creates a functional regression. Renaming preserves programmatic capability while aligning terminology.
+
+### RQ-3 — Should `/name` override a spawn name?
+
+**Answer:** Yes. `/name` and `set_name` override the active display/registry name. The spawn name is preserved as metadata.
+
+- Name precedence: (1) explicit user/programmatic name from `/name` or `set_name`, (2) spawn-provided name, (3) generated fallback.
+- If `/name` is cleared, revert to spawn name or generated fallback, not an empty identity.
+- Spawn metadata schema: `{ id, name, spawn_name, role?, name_source? }` where `name_source` is `spawn | user | programmatic | generated`.
+- Orchestration routing must use stable IDs or `spawn_name`/`role`, never the mutable `name`.
+- If two agents receive the same `/name`, disambiguate by stable ID in the registry.
+
 ## Recommendations
 
 1. **Remove `/alias` and make `/name` drive Panopticon identity.**
    - Delete the `/alias` command registration.
-   - Sync `registry.name` from `pi.getSessionName()` whenever a session name exists.
+   - Sync `registry.name` from `pi.getSessionName()` on each Panopticon heartbeat (RQ-1).
+   - Preserve registry name on getter error or empty value.
    - Use the current fallback naming only when there is no session name.
    - Update docs/help to say: use built-in `/name <name>` to name this session/agent for Panopticon.
 
-2. **Keep or rename model-facing alias tools deliberately.**
-   - The model cannot reliably invoke built-in interactive `/name`, so a tool may still be useful.
-   - If retained, prefer `set_agent_name` or `set_session_name` semantics and treat `set_alias` as removable or compatibility-only.
-   - `get_alias` should become `get_agent_name`/`get_session_name` or clearly report session name and registry name.
+2. **Add `set_name` as the canonical programmatic naming tool; deprecate `set_alias`.**
+   - Add `set_name(name)` tool that sets the built-in session display name.
+   - `set_alias` becomes a deprecated forwarding wrapper; remove after two releases.
+   - `get_alias` becomes `get_name`, reporting session name and registry name.
+   - During transition, dual-write session name + registry if immediate consistency is needed (RQ-2).
 
-3. **Adopt a command namespace policy.**
+3. **`/name` overrides spawn name; preserve spawn identity in metadata (RQ-3).**
+   - Active display/registry name = latest `/name` or `set_name` value.
+   - Spawn name preserved as `spawn_name` metadata field.
+   - Clearing `/name` reverts to spawn name or generated fallback.
+   - Orchestration routes by stable ID or `spawn_name`/`role`, not mutable `name`.
+
+4. **Adopt a command namespace policy.**
    - Exact built-in names are reserved.
    - Semantic overlaps are allowed only with explicit descriptions and docs.
+   - Slash commands use kebab-case (`/coas-status`); model tools use snake_case (`coas_status`).
    - Prompt commands count as slash commands for collision purposes.
    - Human UI commands should use nouns (`/teams`, `/kanban`, `/agents`); model tools should use stable prefixed stems (`team_*`, `kanban_*`, `agent_*`).
 
-4. **Add a namespace audit script.**
+5. **Add a namespace audit script.**
    - Fail exact built-in collisions.
    - Warn on semantic-overlap keywords.
    - Print current inventory for review.
+   - Use a static `builtins.json` manifest checked into the repo rather than parsing pi dist at audit time.
 
-5. **Document command/tool patterns in repo docs.**
+6. **Document command/tool patterns in repo docs.**
    - Add this brief to `docs/README.md`.
    - Cross-link from extension READMEs where command/tool naming is explained.
 
-6. **Optionally report upstream docs drift.**
+7. **Optionally report upstream docs drift.**
    - `/import` is present in installed source but not in one usage table. This is not a pi-tools bug, but it affects audit accuracy.
 
 ## Validation
@@ -258,18 +326,65 @@ Performed 2026-05-04:
 - Scanned `extensions/` for `registerCommand`, `registerTool`, and `registerShortcut`.
 - Ran pi RPC `get_commands` in `/Users/jim/git/pi-tools-and-skills` to confirm runtime extension/prompt/skill commands.
 - Reviewed `extensions/pi-panopticon/alias-command.ts` to confirm `/alias` and `set_alias` set both session name and registry name.
+- Implemented Phase 1 naming changes in `pi-panopticon`: removed `/alias`, added `set_name`/`get_name`, kept deprecated `set_alias`/`get_alias` wrappers, added heartbeat sync from `pi.getSessionName()`, and preserved `spawn_name` metadata.
 - Ran `default-debate` council review before writing this brief; council agreed the main risk is semantic `/name` vs `/alias` confusion, not exact collision.
 - Updated recommendation after product decision: remove `/alias` directly and make Panopticon registry naming follow built-in `/name`.
+- Added namespace audit: `scripts/builtins.json`, `scripts/check-namespace.mjs`, `npm run check:namespace`, and `npm run check` integration.
 
 ## Open Questions
 
-- What extension event or lightweight polling point should Panopticon use to detect built-in `/name` changes? Candidate: heartbeat-time sync from `pi.getSessionName()`.
-- Should `set_alias` be removed at the same time as `/alias`, or kept temporarily because models/RPC cannot call built-in interactive `/name`?
-- If a spawned agent has an explicit spawn name and the user later sets `/name`, should `/name` always override the spawn name? Proposed: yes, because it is an explicit user action.
-- Should prompt commands be checked in CI alongside extension commands?
+- Prompt commands are now checked by `npm run check:namespace`; should user-installed package prompts be auditable through a separate runtime-only diagnostic?
 - Is there or should there be a stable pi API for built-in command inventory instead of reading `dist/core/slash-commands.js`?
+- What is Panopticon's current heartbeat interval? Is `pi.getSessionName()` cheap enough to call every heartbeat?
+- Are registry names currently used as stable lookup keys by any consumers? If so, those call sites need migration to stable IDs.
+- What exact tool name should be canonical: `set_name` or `set_session_name`?
+- How should duplicate `/name` values be displayed or disambiguated in the registry?
+
+## Implementation Plan
+
+### Phase 1 — Remove `/alias` and add `set_name` (immediate)
+
+| Step | Action | Verifies |
+| ---- | ------ | -------- |
+| 1.1 | Delete `/alias` slash command registration from `pi-panopticon` extension | `/alias` no longer appears in `get_commands` |
+| 1.2 | Add `set_name(name)` tool to panopticon extension | Tool callable by model/RPC, sets `pi.setSessionName()` |
+| 1.3 | Convert `set_alias` to a deprecated wrapper that forwards to `set_name` | Existing callers still work; deprecation notice in tool description |
+| 1.4 | Rename `get_alias` to `get_name` (keep `get_alias` as deprecated wrapper) | New tool returns session name + registry name |
+| 1.5 | Add heartbeat name-reconciliation to Panopticon heartbeat loop | Registry name syncs from `pi.getSessionName()` via diff check |
+| 1.6 | Update Panopticon registry entry schema to include `spawn_name` field | Spawn name preserved separately from active `name` |
+| 1.7 | Update docs: `/name` is canonical identity command; `set_name` is programmatic equivalent | Extension README + help text updated |
+
+### Phase 2 — Name precedence and metadata (after Phase 1)
+
+| Step | Action | Verifies |
+| ---- | ------ | -------- |
+| 2.1 | Implement name precedence: user/programmatic > spawn > generated fallback | `/name` overrides spawn name in registry; spawn name stays in metadata |
+| 2.2 | Implement clear/revert: if session name cleared, registry reverts to `spawn_name` or generated fallback | No empty-identity state possible |
+| 2.3 | Add disambiguation: if two agents share a `/name`, registry shows stable ID suffix | Registry listing shows unique identities |
+| 2.4 | Audit orchestration call sites that route by registry name — migrate to stable ID or `spawn_name`/`role` | No routing depends on mutable display name |
+
+### Phase 3 — Namespace policy and audit (after Phase 2)
+
+| Step | Action | Verifies |
+| ---- | ------ | -------- |
+| 3.1 | Create `builtins.json` manifest of pi built-in slash commands | Done: `scripts/builtins.json` is checked in and should be manually updated on pi upgrades |
+| 3.2 | Write `npm run check:namespace` audit script | Done: fails exact collisions, warns on semantic-overlap keywords, includes prompt commands |
+| 3.3 | Fold namespace check into `npm run check` | Done: CI/check path enforces exact-collision policy |
+| 3.4 | Document naming conventions (kebab-case slashes, snake_case tools, noun stems) in `docs/README.md` | Done: docs index links to this active policy brief |
+| 3.5 | Cross-link naming conventions from each extension README | Consistent per-extension docs |
+
+### Phase 4 — Remove deprecated tools (two releases after Phase 1)
+
+| Step | Action | Verifies |
+| ---- | ------ | -------- |
+| 4.1 | Remove `set_alias` deprecated wrapper | Only `set_name` remains |
+| 4.2 | Remove `get_alias` deprecated wrapper | Only `get_name` remains |
+| 4.3 | Update any documentation referencing `alias` tools | No stale references |
 
 ## Progress Log
 
 - 2026-05-04: Initial namespace investigation completed. No exact pi-tools collisions with built-in slash commands or tools found. Primary issue identified as `/name` vs `/alias` semantic overlap. Council reviewed and recommended clarifying semantics, adding a namespace policy, and adding a lightweight audit script.
 - 2026-05-04: Product decision updated: remove `/alias` directly rather than deprecating it. Panopticon should use built-in `/name` as the canonical human identity command and sync the registry name from the session name.
+- 2026-05-04: Council debate resolved three primary open questions (RQ-1 heartbeat sync, RQ-2 `set_name` + deprecated `set_alias`, RQ-3 `/name` overrides spawn name). ADR-002/003 promoted to Accepted; ADR-004/005 added. Implementation plan with four phases added.
+- 2026-05-04: Phase 1 implemented in code. `/alias` slash command was removed; `set_name`/`get_name` are canonical programmatic tools; `set_alias`/`get_alias` are deprecated wrappers; registry records now include `spawn_name`/`name_source`; heartbeat reconciles registry name from `pi.getSessionName()` while preserving the current registry name on empty/error.
+- 2026-05-04: Phase 3 namespace audit implemented. `npm run check:namespace` compares extension and prompt commands against `scripts/builtins.json`, warns on semantic-overlap keywords, prints inventory, and now runs as part of `npm run check`.

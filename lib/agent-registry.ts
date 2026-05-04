@@ -43,9 +43,15 @@ export type AgentStatus =
 
 export type AgentVisibility = "global" | "scoped";
 
+export type AgentNameSource = "spawn" | "user" | "programmatic" | "generated";
+
 export interface AgentRecord {
 	id: string;
 	name: string;
+	/** Immutable requested spawn name, when this agent was created by spawn_agent. */
+	spawn_name?: string;
+	/** Source of the active registry/display name. */
+	name_source?: AgentNameSource;
 	pid: number;
 	cwd: string;
 	model: string;

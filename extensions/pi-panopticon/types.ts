@@ -29,7 +29,7 @@ export interface Registry {
 	/** Update task string and flush. */
 	setTask(task: string): void;
 	/** Update agent name and flush. */
-	setName(name: string): void;
+	setName(name: string, source?: AgentRecord["name_source"]): void;
 	/** Update pending message count and flush. */
 	updatePendingMessages(count: number): void;
 

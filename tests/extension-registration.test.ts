@@ -187,19 +187,20 @@ describe("extension registration smoke tests", () => {
 			"agent_send",
 			"agent_status",
 			"get_alias",
+			"get_name",
 			"kill_agent",
 			"list_spawned",
 			"message_read",
 			"message_send",
 			"rpc_send",
 			"set_alias",
+			"set_name",
 			"spawn_agent",
 		]);
 		expectRegistered(registrations.commands, [
 			"agent-list-mode",
 			"agents",
 			"agents-mode",
-			"alias",
 			"send",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);

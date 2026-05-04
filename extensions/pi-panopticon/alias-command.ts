@@ -1,79 +1,118 @@
 /**
- * Alias slash command and tool registrations.
+ * Session naming tool registrations.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry } from "./types.js";
 
-function validateAlias(name: string | undefined): string | undefined {
+function validateName(name: string | undefined): string | undefined {
 	const trimmed = name?.trim();
 	if (!trimmed) {
 		return undefined;
 	}
 	if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(trimmed)) {
 		throw new Error(
-			"Alias must start with alphanumeric, then alphanumeric/hyphens/dots/underscores",
+			"Name must start with alphanumeric, then alphanumeric/hyphens/dots/underscores",
 		);
 	}
 	return trimmed;
 }
 
-export function registerAliasControls(pi: ExtensionAPI, registry: Registry): void {
-	pi.registerCommand("alias", {
-		description: "Set the current session alias. Usage: /alias <name>",
-		handler: async (args: string | undefined, ctx: ExtensionContext) => {
+function getNameDetails(pi: ExtensionAPI, registry: Registry): {
+	sessionName: string | undefined;
+	registryName: string | undefined;
+	spawnName: string | undefined;
+	nameSource: string | undefined;
+} {
+	const record = registry.getRecord();
+	return {
+		sessionName: pi.getSessionName(),
+		registryName: record?.name,
+		spawnName: record?.spawn_name,
+		nameSource: record?.name_source,
+	};
+}
+
+function formatName(details: ReturnType<typeof getNameDetails>): string {
+	return [
+		`Session name: ${details.sessionName ?? "(none)"}`,
+		`Registry name: ${details.registryName ?? "(none)"}`,
+		`Spawn name: ${details.spawnName ?? "(none)"}`,
+	].join("\n");
+}
+
+function setName(pi: ExtensionAPI, registry: Registry, name: string): void {
+	pi.setSessionName(name);
+	registry.setName(name, "programmatic");
+}
+
+export function registerNameControls(pi: ExtensionAPI, registry: Registry): void {
+	pi.registerTool({
+		name: "get_name",
+		label: "Get Name",
+		description: "Get the current agent/session name, registry name, and spawn name metadata.",
+		promptSnippet: "Get the current agent/session name",
+		parameters: Type.Object({}),
+		async execute(): Promise<ToolResult> {
+			const details = getNameDetails(pi, registry);
+			return ok(formatName(details), details);
+		},
+	});
+
+	pi.registerTool({
+		name: "set_name",
+		label: "Set Name",
+		description: "Set the session display name and update the Panopticon registry name.",
+		promptSnippet: "Set the current session/agent name",
+		parameters: Type.Object({
+			name: Type.String({ description: "Name to use for this session/agent" }),
+		}),
+		async execute(_id, params): Promise<ToolResult> {
 			try {
-				const alias = validateAlias(args);
-				if (!alias) {
-					ctx.ui.notify(
-						`Current session alias: ${pi.getSessionName() ?? "(none)"}\nRegistry name: ${registry.getRecord()?.name ?? "(none)"}`,
-						"info",
-					);
-					return;
+				const name = validateName(params.name);
+				if (!name) {
+					return fail("Name cannot be empty.", { reason: "empty_name" });
 				}
-				pi.setSessionName(alias);
-				registry.setName(alias);
-				ctx.ui.notify(`Alias set to "${alias}"`, "info");
+				setName(pi, registry, name);
+				return ok(`Name set to ${name}.`, { name });
 			} catch (err) {
-				ctx.ui.notify((err as Error).message, "warning");
+				return fail((err as Error).message, { reason: "invalid_name" });
 			}
 		},
 	});
 
 	pi.registerTool({
 		name: "get_alias",
-		label: "Get Alias",
-		description: "Get the current agent alias (session display name and registry name).",
-		promptSnippet: "Get the current agent alias",
+		label: "Get Alias (Deprecated)",
+		description: "Deprecated compatibility wrapper for get_name. Use get_name instead.",
+		promptSnippet: "Deprecated: use get_name instead of get_alias",
 		parameters: Type.Object({}),
 		async execute(): Promise<ToolResult> {
-			const alias = pi.getSessionName();
-			const registryName = registry.getRecord()?.name;
-			return ok(`Alias: ${alias ?? registryName ?? "(none)"}`, { alias, registryName });
+			const details = getNameDetails(pi, registry);
+			return ok(formatName(details), { ...details, deprecated: true });
 		},
 	});
 
 	pi.registerTool({
 		name: "set_alias",
-		label: "Set Alias",
-		description: "Set the session alias and update the agent's registered name in the panopticon registry.",
-		promptSnippet: "Set the current session alias and registry name",
+		label: "Set Alias (Deprecated)",
+		description: "Deprecated compatibility wrapper for set_name. Use set_name instead.",
+		promptSnippet: "Deprecated: use set_name instead of set_alias",
 		parameters: Type.Object({
-			name: Type.String({ description: "Alias to use for this session" }),
+			name: Type.String({ description: "Name to use for this session/agent" }),
 		}),
 		async execute(_id, params): Promise<ToolResult> {
 			try {
-				const alias = validateAlias(params.name);
-				if (!alias) {
-					return fail("Alias cannot be empty.", { reason: "empty_alias" });
+				const name = validateName(params.name);
+				if (!name) {
+					return fail("Name cannot be empty.", { reason: "empty_name" });
 				}
-				pi.setSessionName(alias);
-				registry.setName(alias);
-				return ok(`Alias set to ${alias}.`, { alias });
+				setName(pi, registry, name);
+				return ok(`Name set to ${name}.`, { name, deprecated: true });
 			} catch (err) {
-				return fail((err as Error).message, { reason: "invalid_alias" });
+				return fail((err as Error).message, { reason: "invalid_name" });
 			}
 		},
 	});

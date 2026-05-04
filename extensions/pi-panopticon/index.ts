@@ -6,7 +6,7 @@
  * - Messaging: agent_send, agent_broadcast, /send command
  * - Spawner: spawn_agent, rpc_send, list_spawned, kill_agent
  * - Peek: agent_peek tool
- * - UI: powerline widget, /agents overlay, /alias command
+ * - UI: powerline widget, /agents overlay, naming tools
  *
  * Lifecycle ordering:
  *   start:    registry.register → messaging.init → ui.start
@@ -28,7 +28,7 @@ import { registerChannel } from "../../lib/message-transport.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
-	const registry = new Registry(selfId);
+	const registry = new Registry(selfId, () => pi.getSessionName());
 	const listMode = createAgentListModeStore();
 
 	// Set up modules — registers tools/commands, returns module handles
