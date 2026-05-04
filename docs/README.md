@@ -6,6 +6,7 @@ Current docs are intentionally small. Completed design plans and migration logs 
 
 - [`kanban-extension.md`](kanban-extension.md) — current kanban extension architecture.
 - [`teams-future-improvements.md`](teams-future-improvements.md) — living teams-platform status, standing decisions, and evidence gates for future work.
+- [`teams-ux-improvements.md`](teams-ux-improvements.md) — living plan for `pi-teams` terminal UX improvements.
 
 ## Historical design notes
 
