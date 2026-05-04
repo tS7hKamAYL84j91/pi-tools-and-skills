@@ -3,6 +3,7 @@
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Container, type Component, type Focusable, Input, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import { availableLiveAgentNames } from "./live-agent.js";
+import { currentPanopticonRecord } from "./runner.js";
 import { loadTeamRegistry } from "./team-registry.js";
 
 interface TeamTargetChoice {
@@ -98,10 +99,11 @@ export async function chooseModel(ctx: ExtensionContext, label: string): Promise
 
 export async function chooseTeamTarget(ctx: ExtensionContext, label: string, fallbackId: string): Promise<TeamTargetChoice | undefined> {
 	const registry = loadTeamRegistry(undefined, { cwd: ctx.cwd });
+	const current = await currentPanopticonRecord(ctx.cwd);
 	const subagents = [...registry.subagents.values()]
 		.sort((a, b) => a.id.localeCompare(b.id))
 		.map((agent) => ({ value: `subagent:${agent.id}`, label: agent.id, description: agent.description ?? "subagent" }));
-	const liveAgents = availableLiveAgentNames()
+	const liveAgents = availableLiveAgentNames(current?.name)
 		.map((name) => ({ value: `live:agent:${name}`, label: `agent:${name}`, description: "live peer agent" }));
 	const models = modelIds(ctx)
 		.map((model) => ({ value: `model:${model}`, label: model, description: `model using new ${fallbackId} subagent` }));
