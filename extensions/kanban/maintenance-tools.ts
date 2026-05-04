@@ -19,7 +19,8 @@ export function registerMaintenanceTools(pi: ExtensionAPI): void {
 		promptSnippet: "Compact the kanban board log to reduce event count",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal): Promise<ToolResult> {
-			const { eventsBefore, eventsAfter, backupPath, tasksPreserved } = await runManualCompaction();
+			const { eventsBefore, eventsAfter, backupPath, tasksPreserved } =
+				await runManualCompaction();
 			return ok(
 				`Compacted board.log: ${eventsBefore} → ${eventsAfter} events (${tasksPreserved} tasks preserved)\nBackup: ${backupPath}`,
 				{ eventsBefore, eventsAfter, tasksPreserved, backupPath },

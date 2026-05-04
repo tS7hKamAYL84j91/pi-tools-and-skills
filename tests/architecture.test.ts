@@ -336,3 +336,60 @@ describe("module structure", () => {
 		await expect(rule).toPassAsync();
 	});
 });
+
+// ── 12. Clean Architecture (Uncle Bob) Fitness Suite ──────────────
+
+describe("Clean Architecture Fitness Functions", () => {
+	// Rule 1: The Dependency Rule (Inward Dependencies Only)
+	// Core domain (lib/) must not depend on outer layers (extensions/)
+	it("Core domain (lib/) must not depend on outer layers (extensions/)", async () => {
+		const rule = projectFiles()
+			.inFolder("lib/**")
+			.shouldNot()
+			.dependOnFiles()
+			.inFolder("extensions/**");
+
+		await expect(rule).toPassAsync();
+	});
+
+	// Rule 2: Framework Isolation
+	// The core should not depend on concrete frameworks or libraries.
+	it("Core domain (lib/) must not import from external framework packages", async () => {
+		const rule = projectFiles()
+			.inFolder("lib/**")
+			.should()
+			.adhereTo(
+				(file) => {
+					const forbiddenFrameworks = ["express", "react", "mongoose", "typeorm"];
+					const frameworkPattern = new RegExp(`from\\s+["'](${forbiddenFrameworks.join("|")})["']`, "g");
+					return !frameworkPattern.test(file.content);
+				},
+				"Core domain must not know about external frameworks like express, react, or DB ORMs",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+
+	// Rule 3: Crossing Boundaries (The DTO Rule)
+	// Outer layers (like extensions) should not pass framework-specific objects to the core.
+	// We can statically verify that the core doesn't import these types.
+	it("Core domain (lib/) must not know about framework-specific HTTP or DB structures", async () => {
+		const rule = projectFiles()
+			.inFolder("lib/**")
+			.should()
+			.adhereTo(
+				(file) => {
+					const forbiddenObjects = ["HttpRequest", "HttpResponse", "QueryBuilder", "ConnectionPool"];
+					for (const obj of forbiddenObjects) {
+						if (file.content.includes(obj)) {
+							return false;
+						}
+					}
+					return true;
+				},
+				"Core domain must communicate via simple DTOs, not framework-specific objects",
+			);
+
+		await expect(rule).toPassAsync();
+	});
+});
