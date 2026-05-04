@@ -1,10 +1,25 @@
-# Teams Simplification: Replace DAG with Direct Topologies
+# Teams Simplification: Clean Protocol Interface, Direct Topologies
 
-Living plan for removing the generic DAG executor from `extensions/pi-teams` and replacing it with direct, protocol-specific topology implementations. Inspired by the F.I.R.E. architecture review (`docs/fire-architecture-review.md`): *"If topologies are mostly static (like debate or pair-coding), strongly consider replacing the DAG engine with explicit, direct coordination functions."*
+Living plan for replacing the generic DAG executor in `extensions/pi-teams` with a clean protocol interface backed by direct topology implementations. The `TeamHandler` interface is the architecture boundary; the DAG is an unnecessary implementation detail *behind* it.
+
+Inspired by the F.I.R.E. architecture review (`docs/fire-architecture-review.md`): *"If topologies are mostly static (like debate or pair-coding), strongly consider replacing the DAG engine with explicit, direct coordination functions."*
 
 ## Goal
 
-Replace the 1,204-line DAG/lowering/handler surface (`team-graph.ts` + `team-lowering.ts` + `team-handlers.ts` + `protocol-contracts.ts` + `protocol-prompts.ts`) with direct topology implementations for `llm-council` and `pair-coding/navigator`. Keep the `TeamHandler` interface as the clean extension point. Delete the generic graph executor entirely.
+Apply clean architecture: a stable `TeamHandler` protocol interface at the boundary, with simple direct implementations behind it. Delete the generic DAG graph executor — it adds complexity without adding capability for the topologies we actually have.
+
+The contract is `TeamHandler`:
+
+```typescript
+interface TeamHandler {
+  key: string;                              // protocol identity
+  matches(team: TeamSpec): boolean;         // can this handler run this team?
+  modelSlots(team, models): TeamModelSlot[]; // what model choices does the user get?
+  run(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>; // execute the topology
+}
+```
+
+Everything behind `run()` is an implementation detail. Today that detail is 1,204 lines of generic DAG machinery. It should be ~200 lines of direct topology functions.
 
 ## FIRE Argument
 
@@ -27,7 +42,9 @@ The four real topologies are trivially simple when implemented directly:
 
 In scope:
 
-- Replace `graphHandler` and `loweredGraphHandler` with direct protocol handlers: `councilHandler` and `pairCodingHandler`.
+- Replace `graphHandler` and `loweredGraphHandler` with two direct protocol handlers:
+  - `councilHandler` — unifies `consult` (1 navigator) and `debate` (N members + critics + synthesis).
+  - `pairCodingHandler` — direct implementation of navigator brief → driver implementation → review/fix loop.
 - Delete `team-graph.ts`, `team-lowering.ts`, `protocol-contracts.ts`, and related graph types.
 - Simplify `team-types.ts` by removing `TeamGraph`, `TeamGraphEdge`, `GraphNodeResult`, `GraphValidationResult`, etc.
 - Keep the `TeamHandler` interface as the clean extension point for future topologies.
