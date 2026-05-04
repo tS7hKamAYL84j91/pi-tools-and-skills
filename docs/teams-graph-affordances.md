@@ -2,13 +2,15 @@
 
 Living plan for extending `extensions/pi-teams` graph topology affordances. Steal design patterns from LangGraph (and others) to make the `graph` protocol a real topology definition language, not just a static DAG that must be pre-unrolled by lowering.
 
+**Amended after council review on 2026-05-04.** Council approved directionally but required 10 amendments before implementation. See the ADR log for details.
+
 ## Goal
 
 Make multi-agent topology authoring fully declarative so that:
 
-1. **Stage 1** — The `graph` protocol is expressive enough to define non-trivial topologies from manifests alone (conditional edges, channels, interrupts, subgraphs).
-2. **Stage 2** — Built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) become pure data manifests, eliminating `team-lowering.ts` and `protocol-contracts.ts` as code.
-3. **Stage 3** — A pi skill can generate new topologies from natural language, producing manifests and prompt templates that the agent can immediately `team_run`.
+1. **Stage 1** — The `graph` protocol is expressive enough to define non-trivial topologies from manifests alone (conditional edges, channels, interrupts, subgraphs). Includes a manifest schema compiler and validator.
+2. **Stage 2** — Built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) become pure data manifests, eliminating `team-lowering.ts` and `protocol-contracts.ts` as code. Migration is phased: add declarative compiler alongside existing lowering, migrate one protocol at a time, run old and new in comparison, delete old lowering only after behavioral equivalence.
+3. **Stage 3** — A pi skill generates, validates, repairs, and explains new topologies from natural language. Skill is validator-driven, not just generator-driven.
 
 ## Scope
 
@@ -233,7 +235,40 @@ interface TeamAgentBinding {
 
 ## ADR Log
 
-_No ADRs yet — log decisions here after review._
+### ADR-001 — Council review amendments (2026-05-04)
+
+**Status:** Accepted
+
+**Context:** Council reviewed the three-stage plan and approved directionally but required amendments before implementation begins.
+
+**Decisions:**
+
+1. **Manifest schema versioning.** Add explicit `schemaVersion` to team manifests before Stage 2 migration. Existing `schemaVersion: 2` continues; the compiler validates against the declared version.
+
+2. **Compiler and validator are Stage 1 deliverables.** The manifest compiler (Manifest → `TeamSpec` → `GraphValidationResult`) and strict validator are first-class outputs of Stage 1, not incidental implementation details. Both must have integration tests before any Stage 2 work begins.
+
+3. **Protocol mapping audit before Stage 2.** Before deleting `team-lowering.ts`, audit each of the four built-in protocols (debate, consult, pair-coding, telephone) against GA-001–GA-004. Confirm that each protocol can be represented as a declarative manifest. If any protocol requires an affordance not yet implemented (e.g., join/fan-in semantics, loop bounds, error/fallback edges), add that affordance to Stage 1 first.
+
+4. **Phased Stage 2 migration.** Do not delete the old lowering path all at once. Migrate one protocol at a time (start with `consult` — simplest). Run old and new lowering in parallel comparison tests. Add golden topology snapshots (frozen `GraphRunResult` fixtures) for behavioral equivalence. Delete the old lowering path only after all four protocols pass golden comparison.
+
+5. **Protocol contracts survive as declarative metadata.** Do not remove `protocol-contracts.ts` outright. Move its parameter schemas and validation into declarative manifest metadata (`promptContracts` and `modelSlots` fields). The concept of "prompt slots with roles and kinds" must survive even if the TypeScript switch statement is deleted.
+
+6. **Typed state channels with declared reducers.** GA-002 channels must include a declared schema: allowed writers, reducer type, and output shape validation. Free-form `Record<string, string>` is not sufficient. The manifest declares channels; the validator enforces that writers produce keys matching declared channels.
+
+7. **Conditional edges use structured predicates, not arbitrary code.** GA-001 `condition` fields must be structured predicates (e.g., `{field: "status", op: "eq", value: "ok"}` or `{field: "output", contains: "error"}`), not arbitrary prompt strings or eval-able code. This prevents prompt injection through conditional edge evaluation.
+
+8. **Subgraph composition rules.** GA-004 (`subteam`) must include:
+   - Input/output contracts — a subteam declares what it accepts and produces.
+   - Namespace isolation — subteam state does not leak to parent graph unless explicitly declared.
+   - Cycle detection — arch test validates the team dependency graph is acyclic.
+   - Recursion is forbidden at first. If needed later, add a `maxDepth` field with a default of 1.
+
+9. **Interrupt semantics are fully specified.** GA-003 (`interruptAfter`) must define:
+   - Persisted state — interrupted graphs write state to the pi session tree.
+   - Resume payload schema — who may resume, with what payload.
+   - Timeout/cancel behavior — an interrupted graph that is never resumed eventually expires.
+
+10. **Topology authoring skill is validator-driven.** The Stage 3 skill must generate, validate, repair, and explain — not just generate. Minimum viable skill includes schema targeting, validation, repair loop, and an audit/explanation summary. A large pattern library can be incremental.
 
 ## Implementation Plan
 
@@ -253,6 +288,8 @@ _No ADRs yet — log decisions here after review._
 ## Progress Log
 
 - 2026-05-04: Draft created from analysis of `team-types.ts`, `team-graph.ts`, `team-lowering.ts`, LangGraph API patterns, and P9 evaluation findings.
+- 2026-05-04: Added Stage 2 (declarative protocol lowering) and Stage 3 (topology authoring skill).
+- 2026-05-04: Council review via `default-debate`. Directionally approved with 10 required amendments: schema versioning, compiler/validator as Stage 1 deliverables, protocol mapping audit, phased Stage 2 migration, protocol contracts as declarative metadata, typed state channels, structured predicates for conditional edges, subgraph composition rules, interrupt semantics, validator-driven skill. All 10 amendments incorporated into the ADR log and goal/scope sections.
 
 ---
 
