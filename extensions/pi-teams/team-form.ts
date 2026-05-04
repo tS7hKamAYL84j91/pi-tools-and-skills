@@ -77,6 +77,17 @@ function titleFromId(id: string): string {
 	return id.split(/[-_]/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 
+function uniqueTeamId(cwd: string, baseId: string): string {
+	const base = baseId || "team";
+	const existing = loadTeamRegistry(undefined, { cwd }).teams;
+	if (!existing.has(base)) return base;
+	for (let index = 2; index < 1000; index++) {
+		const candidate = `${base}-${index}`;
+		if (!existing.has(candidate)) return candidate;
+	}
+	throw new Error(`Could not allocate a unique team id for ${base}.`);
+}
+
 function choiceId(choice: string): string {
 	return choice.split(" — ")[0]?.trim() ?? choice.trim();
 }
@@ -404,8 +415,7 @@ export async function formTeam(
 ): Promise<string | undefined> {
 	const nameInput = await ctx.ui.input("Team name", requestedId ? titleFromId(normalizeTeamId(requestedId)) : "My Review");
 	const name = nameInput?.trim() || "My Review";
-	const rawId = requestedId ?? await ctx.ui.input("Team id (leave as generated unless you need a stable id)", normalizeTeamId(name));
-	const id = normalizeTeamId(rawId ?? name);
+	const id = requestedId ? normalizeTeamId(requestedId) : uniqueTeamId(ctx.cwd, normalizeTeamId(name));
 	if (!id) return undefined;
 	const description = await ctx.ui.input("Description (optional)", "");
 	const protocolChoice = await ctx.ui.select("Protocol", [
