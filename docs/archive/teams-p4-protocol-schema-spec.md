@@ -1,6 +1,6 @@
 # P4 Mini-Spec: Protocol-First `pi-teams` Schema Simplification
 
-> Status: historical mini-spec. Current implementation is stricter than this draft: authored team manifests require `schemaVersion: 2`, `protocol`, object role bindings, and role-level `model` fields. `engine`, `topology`, legacy top-level model fields, and compatibility barrels are removed; see `docs/teams-future-improvements-todo.md` ADR-015 and ADR-019.
+> Status: historical mini-spec. Current implementation is stricter than this draft: authored team manifests require `schemaVersion: 2`, `protocol`, object role bindings, and role-level `model` fields. `engine`, `topology`, legacy top-level model fields, and compatibility barrels are removed; see `docs/archive/teams-future-improvements-progress-log.md` ADR-015 and ADR-019.
 
 ## Goal
 
@@ -241,7 +241,7 @@ agents:
 
 Update/add focused tests in `tests/council-teams.test.ts` and related prompt/handler tests.
 
-#### `docs/teams-future-improvements-todo.md`
+#### `docs/archive/teams-future-improvements-progress-log.md`
 
 - Mark P4 spec direction.
 - Note that topology is deprecated, not deleted from read compatibility.

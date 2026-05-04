@@ -445,7 +445,7 @@ Expected registration smoke test event list should include:
 - Emit node events per graph role.
 - Keep graph executor protocol-abstract: node role/edges, not hardcoded debate/pair terms.
 
-### `docs/teams-future-improvements-todo.md`
+### `docs/archive/teams-future-improvements-progress-log.md`
 
 - Update P3 status once implemented.
 - Document migration behavior:

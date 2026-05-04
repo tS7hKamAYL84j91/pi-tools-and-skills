@@ -96,4 +96,4 @@ Prepared while Jules session `16658974696077478963` works on P1.
 - `extensions/pi-teams/provider-overrides-extension.ts`: tools propagation may need hooks loaded even when only `tools: []` is present.
 - `extensions/pi-teams/index.ts`: parent `before_provider_request` hooks do not automatically cover child `pi --print` calls.
 - `tests/council-provider-payload.test.ts`: likely merge-conflict point if P1 adds provider/tool tests there.
-- `docs/teams-future-improvements-todo.md`: high merge-conflict risk if Jules updates P1 text.
+- `docs/archive/teams-future-improvements-progress-log.md`: high merge-conflict risk if Jules updates P1 text.

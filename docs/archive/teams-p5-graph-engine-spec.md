@@ -20,7 +20,7 @@ P5 should wait on:
 - `extensions/pi-teams/team-types.ts`
 - `extensions/pi-teams/team-handlers.ts`
 - tests
-- `docs/teams-future-improvements-todo.md`
+- `docs/archive/teams-future-improvements-progress-log.md`
 
 ### Exclude
 
@@ -446,7 +446,7 @@ Graph handler should:
 
 Keep existing non-graph handlers until P4/P5 protocol lowering is explicitly implemented.
 
-### `docs/teams-future-improvements-todo.md`
+### `docs/archive/teams-future-improvements-progress-log.md`
 
 Update P5 after implementation with:
 

@@ -26,7 +26,7 @@ This is deliberately narrow. Debate still needs protocol-specific fanout/critiqu
 - `extensions/pi-teams/protocol-contracts.ts`
 - `extensions/pi-teams/config/prompts/`
 - tests for handler selection/lowering and graph prompt behavior
-- `docs/teams-future-improvements-todo.md`
+- `docs/archive/teams-future-improvements-progress-log.md`
 
 ## Non-goals
 
