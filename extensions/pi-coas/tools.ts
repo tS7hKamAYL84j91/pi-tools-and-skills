@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { ok, type ToolResult } from "../../lib/tool-result.js";
+import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary } from "./format.js";
 import { addSchedule, formatScheduleList, listSchedules, removeSchedule, runSchedule } from "./schedules.js";
@@ -29,8 +29,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		promptSnippet: "Show fast CoAS operational status",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await coasStatus(configFor(ctx));
-			return ok(commandSummary("coas-status", result), { code: result.code });
+			try {
+				const result = await coasStatus(configFor(ctx));
+				return ok(commandSummary("coas-status", result), { code: result.code });
+			} catch (error) {
+				return fail((error as Error).message);
+			}
 		},
 	});
 
@@ -41,8 +45,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		promptSnippet: "Run CoAS health diagnostics",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await coasDoctor(configFor(ctx));
-			return ok(commandSummary("coas-doctor", result), { code: result.code });
+			try {
+				const result = await coasDoctor(configFor(ctx));
+				return ok(commandSummary("coas-doctor", result), { code: result.code });
+			} catch (error) {
+				return fail((error as Error).message);
+			}
 		},
 	});
 
@@ -53,29 +61,37 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		promptSnippet: "List CoAS workspaces",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const workspaces = await listWorkspaces(configFor(ctx));
-			return ok(formatWorkspaceList(workspaces), { count: workspaces.length, workspaces });
+			try {
+				const workspaces = await listWorkspaces(configFor(ctx));
+				return ok(formatWorkspaceList(workspaces), { count: workspaces.length, workspaces });
+			} catch (error) {
+				return fail((error as Error).message);
+			}
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_workspace_read",
 		label: "CoAS Workspace Read",
-		description: "Read a CoAS workspace CONTEXT.md. Defaults to the current CoAS workspace when cwd is a real workspace.",
+		description: "Read a CoAS workspace CONTEXT.md. Defaults to the current CoAS workspace when cwd is a real workspace. Pass a workspace id, path, or COAS_WORKSPACE_ID to select a specific workspace. Raises an error if no workspace is selected and cwd is not a CoAS workspace.",
 		promptSnippet: "Read durable CoAS workspace context",
 		parameters: Type.Object({
 			workspace: Type.Optional(Type.String({ description: "Workspace id or path. Defaults to current workspace." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await readWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd);
-			return ok(result.text, { path: result.path });
+			try {
+				const result = await readWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd);
+				return ok(result.text, { path: result.path });
+			} catch (error) {
+				return fail((error as Error).message, { selector: params.workspace });
+			}
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_workspace_update",
 		label: "CoAS Workspace Update",
-		description: "Append stable, non-secret facts to a CoAS workspace CONTEXT.md using the file mutation queue.",
+		description: "Append stable, non-secret facts to a CoAS workspace CONTEXT.md using the file mutation queue. Rejects empty text. Use coas_workspace_update only for stable, useful CoAS workspace facts; never store secrets in CONTEXT.md.",
 		promptSnippet: "Append durable facts to CoAS workspace context",
 		promptGuidelines: ["Use coas_workspace_update only for stable, useful CoAS workspace facts; never store secrets in CONTEXT.md."],
 		parameters: Type.Object({
@@ -83,8 +99,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			workspace: Type.Optional(Type.String({ description: "Workspace id or path. Defaults to current workspace." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await appendWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd, params.text);
-			return ok(`Updated ${result.path}`, result);
+			try {
+				const result = await appendWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd, params.text);
+				return ok(`Updated ${result.path}`, result);
+			} catch (error) {
+				return fail((error as Error).message, { selector: params.workspace, textLength: params.text.length });
+			}
 		},
 	});
 
@@ -101,8 +121,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			dryRun: Type.Optional(Type.Boolean({ description: "Preview only. Defaults to false." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const result = await createWorkspace(configFor(ctx), params);
-			return ok(`coas workspace: ${result.dryRun ? "would create" : "ready"} ${result.workspaceId} at ${result.path}`, result);
+			try {
+				const result = await createWorkspace(configFor(ctx), params);
+				return ok(`coas workspace: ${result.dryRun ? "would create" : "ready"} ${result.workspaceId} at ${result.path}`, result);
+			} catch (error) {
+				return fail((error as Error).message, { workspace: params.workspace, room: params.room });
+			}
 		},
 	});
 
@@ -113,8 +137,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		promptSnippet: "List CoAS scheduled automations",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const schedules = await listSchedules(configFor(ctx));
-			return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules });
+			try {
+				const schedules = await listSchedules(configFor(ctx));
+				return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules });
+			} catch (error) {
+				return fail((error as Error).message);
+			}
 		},
 	});
 
@@ -132,24 +160,32 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			disabled: Type.Optional(Type.Boolean({ description: "Create disabled schedule." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const schedule = await addSchedule(configFor(ctx), params);
-			return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule });
+			try {
+				const schedule = await addSchedule(configFor(ctx), params);
+				return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule });
+			} catch (error) {
+				return fail((error as Error).message, { room: params.room, name: params.name });
+			}
 		},
 	});
 
 	pi.registerTool({
 		name: "coas_schedule_run",
 		label: "CoAS Schedule Run",
-		description: "Dry-run a CoAS scheduled task. Non-dry-run execution is disabled until a standalone TypeScript runner exists.",
+		description: "Dry-run a CoAS scheduled task. Non-dry-run execution is always disabled (returns error) until a standalone TypeScript runner exists; set dryRun=false only to confirm the policy error.",
 		promptSnippet: "Dry-run a CoAS scheduled task",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id." }),
 			dryRun: Type.Optional(Type.Boolean({ description: "Dry-run only. Defaults to true." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const dryRun = params.dryRun ?? true;
-			const result = await runSchedule(configFor(ctx), params.taskId, dryRun);
-			return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun, unsupported: !dryRun });
+			try {
+				const dryRun = params.dryRun ?? true;
+				const result = await runSchedule(configFor(ctx), params.taskId, dryRun);
+				return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun, unsupported: !dryRun });
+			} catch (error) {
+				return fail((error as Error).message, { taskId: params.taskId });
+			}
 		},
 	});
 
@@ -161,8 +197,12 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 			taskId: Type.String({ description: "Task id to remove." }),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
-			const message = await removeSchedule(configFor(ctx), params.taskId);
-			return ok(message, { code: 0, taskId: params.taskId });
+			try {
+				const message = await removeSchedule(configFor(ctx), params.taskId);
+				return ok(message, { code: 0, taskId: params.taskId });
+			} catch (error) {
+				return fail((error as Error).message, { taskId: params.taskId });
+			}
 		},
 	});
 }

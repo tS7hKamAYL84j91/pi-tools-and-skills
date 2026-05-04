@@ -56,7 +56,11 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 	const taskId = values.TASK_ID ?? basename(envPath, ".env");
 	assertSafeId("task id", taskId);
 	const cronExpr = values.CRON_EXPR ?? "";
-	validateCronExpr(cronExpr);
+	try {
+		validateCronExpr(cronExpr);
+	} catch (error) {
+		throw new Error(`schedule ${taskId} (${basename(envPath)}): ${(error as Error).message}`);
+	}
 	const promptFile = values.PROMPT_FILE ?? schedulePromptPath(config, taskId);
 	assertInside(scheduleRoot(config), promptFile);
 	const workspaceId = values.WORKSPACE_ID ?? workspaceIdFromRoom(values.ROOM_ID ?? values.ROOM_REF ?? "default");
