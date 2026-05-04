@@ -4,7 +4,7 @@
 
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
-import { deleteTeamFiles } from "./team-form.js";
+import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
@@ -66,10 +66,9 @@ function deleteTeam(ctx: ExtensionContext, team: TeamSpec): boolean {
 	}
 }
 
-interface TeamBrowserAction {
-	type: "models";
-	id: string;
-}
+type TeamBrowserAction =
+	| { type: "form" }
+	| { type: "models"; id: string };
 
 async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAction | undefined> {
 	let teams = loadTeams(ctx.cwd);
@@ -100,14 +99,14 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 				for (const line of teamDescriptionLines(ctx.cwd, detailId)) {
 					container.addChild(new Text(line, 1, 0));
 				}
-				container.addChild(new Text(theme.fg("dim", " m models · d delete · backspace list · esc close"), 1, 0));
+				container.addChild(new Text(theme.fg("dim", " f form · m models · d delete · backspace list · esc close"), 1, 0));
 			} else {
 				for (const [index, team] of teams.entries()) {
 					const prefix = index === selected ? "> " : "  ";
 					const line = `${prefix}${team.id}: ${team.name} | protocol=${team.protocol} | ${team.source}${team.description ? ` | ${team.description}` : ""}`;
 					container.addChild(new Text(index === selected ? theme.fg("accent", line) : line, 1, 0));
 				}
-				container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · m models · d delete · esc close"), 1, 0));
+				container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · f form · m models · d delete · esc close"), 1, 0));
 			}
 			container.addChild(border());
 			return container.render(width);
@@ -130,6 +129,10 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 					deletingId = undefined;
 					tui.requestRender();
 				}
+				return;
+			}
+			if (data.toLowerCase() === "f") {
+				done({ type: "form" });
 				return;
 			}
 			if (data.toLowerCase() === "m") {
@@ -185,8 +188,13 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 
 export async function openTeamBrowserOverlay(ctx: ExtensionContext): Promise<void> {
 	let action = await openTeamBrowserOnce(ctx);
-	while (action?.type === "models") {
-		await selectTeamModels(ctx, action.id);
+	while (action) {
+		if (action.type === "form") {
+			const id = await formTeam(ctx);
+			if (id) await openTeamOverlay(ctx, "Team Created", teamDescriptionLines(ctx.cwd, id));
+		} else {
+			await selectTeamModels(ctx, action.id);
+		}
 		action = await openTeamBrowserOnce(ctx);
 	}
 }
