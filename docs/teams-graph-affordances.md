@@ -4,7 +4,11 @@ Living plan for extending `extensions/pi-teams` graph topology affordances. Stea
 
 ## Goal
 
-Make the `TeamSpec` graph schema and `team-graph.ts` executor expressive enough that users can compose non-trivial multi-agent topologies from manifests, without writing TypeScript lowering code or editing the protocol-contracts switch.
+Make multi-agent topology authoring fully declarative so that:
+
+1. **Stage 1** — The `graph` protocol is expressive enough to define non-trivial topologies from manifests alone (conditional edges, channels, interrupts, subgraphs).
+2. **Stage 2** — Built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) become pure data manifests, eliminating `team-lowering.ts` and `protocol-contracts.ts` as code.
+3. **Stage 3** — A pi skill can generate new topologies from natural language, producing manifests and prompt templates that the agent can immediately `team_run`.
 
 ## Scope
 
@@ -249,3 +253,219 @@ _No ADRs yet — log decisions here after review._
 ## Progress Log
 
 - 2026-05-04: Draft created from analysis of `team-types.ts`, `team-graph.ts`, `team-lowering.ts`, LangGraph API patterns, and P9 evaluation findings.
+
+---
+
+## Stage 2 — Declarative Protocol Lowering
+
+**Prerequisite:** Stage 1 (GA-001 through GA-004) is complete.
+
+### Problem
+
+Today, adding a new topology requires writing TypeScript in two files:
+
+| File | What you write | Lines per protocol |
+|---|---|---|
+| `protocol-contracts.ts` | Prompt slot declarations | ~10-30 |
+| `team-lowering.ts` | `graphPlanFor*` function compiling protocol → graph | ~50-100 |
+| `team-handlers.ts` | Handler entry for `loweredGraphHandler.matches` + `modelSlots` | ~20-30 |
+| `config/prompts/*.md` | System prompts and templates per role | ~30-50 |
+| `config/teams/*.md` | Default team manifest | ~15 |
+
+That's ~1,280 lines of TypeScript across 5 files just to support 4 protocols. Each new protocol requires the same pattern: declare prompt slots, write a lowering function, register a handler, write prompts, write a manifest. An agent (or human) cannot author a new topology without writing TypeScript.
+
+### Goal
+
+Built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) become pure data — manifests with edges, prompt slot bindings, and model slot mappings declared entirely in YAML frontmatter. `team-lowering.ts` shrinks to zero. `protocol-contracts.ts` becomes unnecessary because the `graph` protocol self-sufficiently handles everything.
+
+### Design
+
+#### 2.1 Manifest-level prompt contracts
+
+Move prompt slot declarations from `protocol-contracts.ts` into the team manifest:
+
+```yaml
+# In a team manifest (e.g., default-debate.md)
+prompts:
+  generation.system: "debate/generation/system"
+  critique.system: "debate/critique/system"
+  synthesis.system: "debate/synthesis/system"
+  critique.template: "debate/critique/template"
+  synthesis.template: "debate/synthesis/template"
+promptContracts:
+  generation.system:
+    kind: system
+    roles: [member]
+  critique.system:
+    kind: system
+    roles: [critic]
+  synthesis.system:
+    kind: system
+    roles: [synthesis]
+  critique.template:
+    kind: template
+    roles: [critic]
+  synthesis.template:
+    kind: template
+    roles: [synthesis]
+```
+
+Resolution precedence remains: protocol default < subagent prompt < team prompt override < binding override < binding literal. The `promptContracts` section is the manifest-level equivalent of `PROTOCOL_PROMPT_CONTRACTS`.
+
+#### 2.2 Manifest-level graph plans
+
+The four built-in protocols each compile to a specific graph structure. Today `team-lowering.ts` does this in TypeScript. Instead, define the graph structure directly in the manifest:
+
+```yaml
+# debate.md — expressed as a manifest graph, not lowering code
+protocol: "graph"
+graph:
+  edges:
+    - from: generation_1
+      to: critique_1
+    - from: generation_1
+      to: critique_2
+    # ... fanout from each generation to each critique
+    - from: critique_1
+      to: synthesis
+    - from: critique_2
+      to: synthesis
+  outputs: [synthesis]
+```
+
+With GA-001 (conditional edges) and GA-002 (channels), this becomes even more expressive:
+
+```yaml
+  edges:
+    - from: driver_implementation
+      to: navigator_review_1
+    - from: navigator_review_1
+      to: driver_fix_1
+      condition: "review requests changes"
+    - from: navigator_review_1
+      to: _end
+      condition: "review approves with no changes"
+```
+
+#### 2.3 Manifest-level model slot mappings
+
+Today, `team-handlers.ts` has protocol-specific `modelSlots` functions. Move these into the manifest:
+
+```yaml
+modelSlots:
+  - id: members
+    kind: members
+    count: dynamic  # matches number of member bindings
+  - id: synthesis
+    kind: synthesis
+```
+
+The `kind` field maps to the existing slot semantics. The `team_run` tool reads these from the manifest instead of a TypeScript switch.
+
+#### 2.4 Elimination of `team-lowering.ts`
+
+Once built-in protocols are pure manifests:
+
+1. `team-lowering.ts` becomes empty. Delete it.
+2. `protocol-contracts.ts` becomes empty. Delete it.
+3. `team-handlers.ts` loses `loweredGraphHandler`. The `graphHandler` already works for manifests with `protocol: "graph"`.
+4. The `protocol` field on `TeamSpec` transitions from a TypeScript dispatch key to a manifest label. Existing `debate`, `consult`, etc. still work — their manifests now contain the full graph definition.
+5. The `graphPlanForSimpleProtocol` function disappears entirely.
+
+#### 2.5 Backward compatibility
+
+- Existing manifests that use `protocol: "debate"` continue to work if a matching built-in manifest ships with the extension. The handler dispatch checks for graph edges first; only falls back to lowering code if no graph is defined.
+- During migration (2.4), both paths coexist: manifests with graph edges use `graphHandler`; manifests without edges and a known protocol use `loweredGraphHandler`.
+- Once all four built-in protocols ship as graph manifests, the lowering path is removed.
+
+### Acceptance Criteria
+
+- [ ] All four built-in protocols (`debate`, `consult`, `pair-coding`, `telephone`) have manifest-only equivalents in `config/teams/` that produce identical graph plans.
+- [ ] Integration tests pass: running each protocol via lowering produces the same `GraphNodeResult[]` as running the manifest-only version.
+- [ ] `team-lowering.ts` and `protocol-contracts.ts` are deleted or reduced to a compatibility shim under 20 lines.
+- [ ] `team_run` with `protocol: "graph"` and a manifest containing edges/promptContracts/modelSlots works without any TypeScript lowering.
+- [ ] Arch test: graph manifests validate against the `TeamSpec` schema with no `protocol`-specific switch.
+
+---
+
+## Stage 3 — Topology Authoring Skill
+
+**Prerequisite:** Stage 2 is complete. Built-in protocols are pure manifests. `team-lowering.ts` is gone.
+
+### Problem
+
+Even with fully declarative manifests, authoring a new topology requires understanding:
+1. The `TeamSpec` schema (edges, bindings, prompt contracts, model slots).
+2. Graph validation rules (no cycles, connected DAG, at least one root and one output).
+3. Prompt template conventions (`{{prompt}}`, `{{inputs}}`, `{{role}}`).
+4. File layout conventions (`.pi/teams/*.md`, `.pi/prompts/teams/**`).
+5. The `team_run` and `team_form` tool interface.
+
+A human can learn this from docs. An agent needs a skill.
+
+### Goal
+
+A pi skill (`skills/team-topology-creator/SKILL.md`) that enables any pi agent to author a new team topology from a natural language description, producing valid manifests and prompt templates that can be immediately run with `team_run`.
+
+### Design
+
+#### 3.1 Skill description
+
+```
+team-topology-creator
+
+Create or refine pi-teams topology manifests and prompt templates from natural language descriptions.
+
+Use when a user or agent asks to create a new team topology, modify an existing one,
+or describe a multi-agent workflow pattern that doesn't match built-in protocols.
+```
+
+#### 3.2 Skill contents
+
+The skill file encodes:
+
+1. **Schema reference** — the `TeamSpec` fields, `TeamGraphEdge` schema (including `condition` from GA-001, `channels` from GA-002), and `TeamAgentBinding` schema (including `interruptAfter` from GA-003, `subteam` from GA-004).
+2. **Graph validation rules** — no cycles, connected DAG, at least one root and one output, unique role names, model bindings required for every node.
+3. **Prompt template conventions** — `{{prompt}}` for the user's original prompt, `{{inputs}}` for upstream output, `{{role}}` and `{{label}}` for the current node's identity, `{{key}}` for named channel data.
+4. **File layout** — `.pi/teams/<id>.md` for manifests, `.pi/prompts/teams/<id>/**` for prompt files.
+5. **Examples** — the four built-in protocols as reference manifests showing edges, prompt contracts, and model slots.
+6. **Authoring workflow** —
+   - Parse the user's natural language description into roles, edges, and communication patterns.
+   - Generate the manifest YAML frontmatter.
+   - Generate stub prompt templates for each role.
+   - Validate against `TeamSpec` schema and graph validation rules.
+   - Write files to the correct locations.
+   - Register with `team_run` and verify with a dry run.
+
+#### 3.3 Validation by the skill
+
+The skill encodes the same validation that `validateTeamGraph` runs:
+
+- Unique role names.
+- No self-referencing edges.
+- No duplicate edges.
+- Connected DAG (every node reachable from a root).
+- At least one output node.
+- Model bindings present for every node.
+- Condition syntax (if used) is a valid prompt string.
+- Subteam references (if used) resolve to existing team ids.
+- No cycles through subteam references.
+
+The skill runs these checks before writing files, so the agent produces valid manifests on the first attempt.
+
+#### 3.4 Interaction with `team_run` and `team_form`
+
+After the skill writes a manifest and prompts:
+
+1. The agent calls `team_run` with the new team id and a test prompt.
+2. If the graph validation fails, the error message tells the agent exactly what's wrong — the skill can self-correct.
+3. If the graph runs, the agent inspects the output and can iterate on prompt templates.
+
+### Acceptance Criteria
+
+- [ ] The skill file exists at `skills/team-topology-creator/SKILL.md` and includes schema reference, validation rules, file layout, examples, and authoring workflow.
+- [ ] An agent following the skill can create a valid 3-node linear chain topology from a natural language description (e.g., "I want a team where a drafter writes, a reviewer critiques, and a reviser improves").
+- [ ] An agent following the skill can create a valid debate topology (2 members + critic + synthesizer) from a description.
+- [ ] All generated manifests pass `validateTeamGraph`.
+- [ ] The skill does not reference `team-lowering.ts` or `protocol-contracts.ts` (those are deleted in Stage 2).
+- [ ] The skill references only manifest-level constructs: `protocol: "graph"`, edges, prompt contracts, model slots, and prompt templates.
