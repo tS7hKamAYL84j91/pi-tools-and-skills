@@ -83,7 +83,7 @@ async function pickOption(
 		}
 		container.addChild(
 			new Text(
-				theme.fg("dim", "  Type to filter · ↑/↓ navigate · enter select · esc exit"),
+				theme.fg("dim", " type to filter · ↑/↓ navigate · enter select · esc close"),
 				1,
 				0,
 			),

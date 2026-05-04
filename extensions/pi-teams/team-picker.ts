@@ -71,7 +71,7 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 				const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
 				container.addChild(border());
 				container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
-				container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ select · enter choose · esc cancel"), 1, 0));
+				container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter choose · esc close"), 1, 0));
 				container.addChild(input);
 				container.addChild(list);
 				container.addChild(border());
@@ -97,7 +97,7 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 		return component;
 	}, {
 		overlay: true,
-		overlayOptions: { width: "80%", minWidth: 70, maxHeight: "80%", anchor: "center", margin: 2 },
+		overlayOptions: { width: "80%", minWidth: 60, maxHeight: "80%", anchor: "center", margin: 2 },
 	});
 }
 

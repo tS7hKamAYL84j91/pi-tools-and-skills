@@ -146,7 +146,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 				if (searchActive) {
 					container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter details · esc close"), 1, 0));
 				} else {
-					container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · f form · m models · d delete · / filter · esc close"), 1, 0));
+					container.addChild(new Text(theme.fg("dim", " ↑/↓ navigate · enter details · f form · m models · d delete · / filter · esc close"), 1, 0));
 
 				}
 			}
