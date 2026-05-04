@@ -10,8 +10,9 @@ Current docs are intentionally small. Completed design plans and migration logs 
 - [`kanban-ux-improvements.md`](kanban-ux-improvements.md) — living plan for Kanban terminal UX improvements.
 - [`panopticon-ux-improvements.md`](panopticon-ux-improvements.md) — living plan for Panopticon terminal UX improvements.
 - [`coas-ux-improvements.md`](coas-ux-improvements.md) — living plan for CoAS command/widget UX improvements.
+- [`teams-graph-affordances.md`](teams-graph-affordances.md) — living plan for extending pi-teams graph topology affordances (conditional edges, state channels, interrupt points, subgraph composition).
 - [`tui-ux-update.md`](tui-ux-update.md) — cross-extension TUI consistency brief with `termwright` validation evidence.
-- [`tools-update.md`](tools-update.md) — command/tool namespace review covering built-in pi overlaps and pi-tools proposals.
+- [`tools-update.md`](tools-update.md) — command/tool namespace policy and audit plan covering built-in pi overlaps, slash-command naming, and model-facing tool stems.
 
 ## Historical design notes
 
