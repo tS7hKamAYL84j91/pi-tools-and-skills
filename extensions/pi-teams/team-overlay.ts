@@ -3,7 +3,7 @@
  */
 
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
+import { Container, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { loadTeamRegistry } from "./team-registry.js";
@@ -103,9 +103,11 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			} else {
 				for (const [index, team] of teams.entries()) {
 					const prefix = index === selected ? "> " : "  ";
-					const line = `${prefix}${team.id}: ${team.name} | protocol=${team.protocol} | ${team.source}${team.description ? ` | ${team.description}` : ""}`;
+					const line = truncateToWidth(`${prefix}${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(20, width - 4));
 					container.addChild(new Text(index === selected ? theme.fg("accent", line) : line, 1, 0));
 				}
+				const description = teams[selected]?.description;
+				if (description) container.addChild(new Text(theme.fg("dim", truncateToWidth(description, Math.max(20, width - 4))), 1, 0));
 				container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · f form · m models · d delete · esc close"), 1, 0));
 			}
 			container.addChild(border());

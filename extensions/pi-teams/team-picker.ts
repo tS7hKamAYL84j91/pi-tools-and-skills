@@ -16,13 +16,22 @@ function choiceId(choice: string): string {
 }
 
 function modelIds(ctx: ExtensionContext): string[] {
+	const current = ctx.model ? [`${ctx.model.provider}/${ctx.model.id}`] : [];
 	try {
-		return ctx.modelRegistry.getAvailable()
-			.map((model) => `${model.provider}/${model.id}`)
-			.sort((a, b) => a.localeCompare(b));
+		return [...new Set([
+			...current,
+			...ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`),
+		])].sort((a, b) => a.localeCompare(b));
 	} catch {
-		return [];
+		return current;
 	}
+}
+
+function findModelMatch(models: readonly string[], query: string): string | undefined {
+	const normalized = query.toLowerCase();
+	return models.find((model) => model.toLowerCase() === normalized)
+		?? models.find((model) => model.toLowerCase().endsWith(`/${normalized}`))
+		?? models.find((model) => model.toLowerCase().includes(normalized));
 }
 
 function searchableTheme(theme: ExtensionContext["ui"]["theme"]) {
@@ -35,13 +44,17 @@ function searchableTheme(theme: ExtensionContext["ui"]["theme"]) {
 	};
 }
 
-async function searchableSelect(ctx: ExtensionContext, title: string, items: SelectItem[]): Promise<SelectItem | undefined> {
+async function searchableSelect(ctx: ExtensionContext, title: string, items: SelectItem[], customPrefix?: string): Promise<SelectItem | undefined> {
 	return ctx.ui.custom<SelectItem | undefined>((tui, theme, _kb, done) => {
 		const input = new Input();
 		const list = new SelectList(items, Math.min(Math.max(items.length, 1), 12), searchableTheme(theme));
+		const customItem = (): SelectItem | undefined => {
+			const value = input.getValue().trim();
+			return customPrefix && value ? { value: `${customPrefix}${value}`, label: value } : undefined;
+		};
 		input.onEscape = () => done(undefined);
 		input.onSubmit = () => {
-			const selected = list.getSelectedItem();
+			const selected = list.getSelectedItem() ?? customItem();
 			if (selected) done(selected);
 		};
 		list.onCancel = () => done(undefined);
@@ -68,7 +81,7 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 				if (matchesKey(data, "up") || matchesKey(data, "down")) {
 					list.handleInput(data);
 				} else if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-					const selected = list.getSelectedItem();
+					const selected = list.getSelectedItem() ?? customItem();
 					if (selected) done(selected);
 				} else {
 					input.handleInput(data);
@@ -93,8 +106,13 @@ export async function chooseModel(ctx: ExtensionContext, label: string): Promise
 	const selected = await searchableSelect(ctx, label, [
 		{ value: "", label: "(none)", description: "Do not bind a model for this role" },
 		...models.map((model) => ({ value: model, label: model, description: "model" })),
-	]);
-	return selected?.value || undefined;
+	], "typed:");
+	if (!selected?.value) return undefined;
+	if (selected.value.startsWith("typed:")) {
+		const typed = selected.value.slice("typed:".length);
+		return findModelMatch(models, typed) ?? typed;
+	}
+	return selected.value;
 }
 
 export async function chooseTeamTarget(ctx: ExtensionContext, label: string, fallbackId: string): Promise<TeamTargetChoice | undefined> {
@@ -107,14 +125,20 @@ export async function chooseTeamTarget(ctx: ExtensionContext, label: string, fal
 		.map((name) => ({ value: `live:agent:${name}`, label: `agent:${name}`, description: "live peer agent" }));
 	const models = modelIds(ctx)
 		.map((model) => ({ value: `model:${model}`, label: model, description: `model using new ${fallbackId} subagent` }));
+	const allModels = modelIds(ctx);
 	const selected = await searchableSelect(ctx, label, [
 		{ value: `new:${fallbackId}`, label: fallbackId, description: "new subagent stub" },
 		...liveAgents,
 		...subagents,
 		...models,
 		{ value: "custom", label: "custom...", description: "enter a subagent id or agent:<name>" },
-	]);
+	], "typed:");
 	if (!selected) return undefined;
+	if (selected.value.startsWith("typed:")) {
+		const typed = selected.value.slice("typed:".length);
+		const model = findModelMatch(allModels, typed);
+		return model ? { subagent: fallbackId, model } : { subagent: typed };
+	}
 	if (selected.value === "custom") {
 		const entered = await ctx.ui.input(`${label} id or agent:<name>`, fallbackId);
 		const subagent = entered?.trim();
