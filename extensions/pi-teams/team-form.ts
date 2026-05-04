@@ -114,6 +114,12 @@ function protocolFromChoice(choice: string): TeamFormProtocol {
 	return choiceId(choice) as TeamFormProtocol;
 }
 
+async function chooseTargetModel(ctx: ExtensionContext, label: string, target: { subagent: string; model?: string }): Promise<string | undefined> {
+	if (target.model) return target.model;
+	if (isLiveAgentRef(target.subagent)) return undefined;
+	return chooseModel(ctx, label);
+}
+
 function quote(value: string): string {
 	return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
@@ -400,15 +406,15 @@ export async function formTeam(
 		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
 		if (!navigator) return undefined;
 		agents.push(navigator.subagent);
-		navigatorId = navigator.model ?? await chooseModel(ctx, "Navigator model");
+		navigatorId = await chooseTargetModel(ctx, "Navigator model", navigator);
 	} else if (protocol === "debate") {
 		const member = await chooseTeamTarget(ctx, "Member agent or model", subagentIdFromTeam(id, "member"));
 		if (!member) return undefined;
 		agents.push(member.subagent);
 		const critic = await chooseTeamTarget(ctx, "Critic agent or model", subagentIdFromTeam(id, "critic"));
 		if (critic) agents.push(critic.subagent);
-		memberModelIds = member.model ? [member.model] : await chooseMemberModels(ctx);
-		synthesisId = critic?.model ?? await chooseModel(ctx, "Synthesis model");
+		memberModelIds = member.model ? [member.model] : isLiveAgentRef(member.subagent) ? undefined : await chooseMemberModels(ctx);
+		synthesisId = await chooseModel(ctx, "Synthesis model");
 	} else if (protocol === "telephone") {
 		const relayCountInput = await ctx.ui.input("Relay count", "5");
 		const relayCount = Math.min(10, Math.max(2, Number(relayCountInput) || 5));
@@ -425,8 +431,8 @@ export async function formTeam(
 		const driver = await chooseTeamTarget(ctx, "Driver agent or model", subagentIdFromTeam(id, "driver"));
 		if (!driver) return undefined;
 		agents.push(navigator.subagent, driver.subagent);
-		navigatorId = navigator.model ?? await chooseModel(ctx, "Navigator model");
-		driverId = driver.model ?? await chooseModel(ctx, "Driver model");
+		navigatorId = await chooseTargetModel(ctx, "Navigator model", navigator);
+		driverId = await chooseTargetModel(ctx, "Driver model", driver);
 		const maxFixPassesInput = await ctx.ui.input("Max fix passes", "1");
 		maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 	}
