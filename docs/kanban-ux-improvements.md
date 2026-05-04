@@ -166,3 +166,6 @@ git commit -m "feat(kanban): UX improvements — overlay guards, blocked visibil
 
 - **2026-05-04** Step 1 complete: Compliance findings documented
 - **2026-05-04** Step 2 complete: Navigator review — expanded F-04/F-05 to include status messages, F-06 to include truncation
+- **2026-05-04** Steps 3–6 complete: Code fixes implemented, all tests pass (395/395), all quality gates pass
+- **2026-05-04** Step 7 complete: Committed to feature/kanban-ux (4e27fbd)
+- **2026-05-04** Step 8 complete: ADR and progress log updated
