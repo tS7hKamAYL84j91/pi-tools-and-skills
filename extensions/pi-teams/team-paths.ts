@@ -15,7 +15,7 @@ const DEFAULT_AGENT_DIRECTORY = "agents";
 const DEFAULT_PROMPT_DIRECTORY = "prompts";
 export const DEFAULT_TEAM_DIRECTORY = "teams";
 export const DEFAULT_USER_ROOT = join(homedir(), ".pi", "agent");
-export const DEFAULT_USER_TEAM_ROOT = join(DEFAULT_USER_ROOT, "teams");
+const DEFAULT_USER_TEAM_ROOT = join(DEFAULT_USER_ROOT, "teams");
 const PROJECT_SETTINGS_PATH = join(".pi", "settings.json");
 const PROJECT_TEAM_ROOT = join(".pi", "teams");
 
@@ -43,7 +43,7 @@ function configuredRoots(settingsPath: string, cwd: string): string[] | undefine
 	return roots?.map((root) => expandRoot(root, cwd));
 }
 
-export function directoriesForRoot(root: string, source: TeamDirectories["source"]): TeamDirectories {
+function directoriesForRoot(root: string, source: TeamDirectories["source"]): TeamDirectories {
 	return {
 		source,
 		root,
@@ -53,7 +53,7 @@ export function directoriesForRoot(root: string, source: TeamDirectories["source
 	};
 }
 
-export function readBuiltinTeamDirectories(configPath: string = DEFAULT_CONFIG_JSON): TeamDirectories {
+function readBuiltinTeamDirectories(configPath: string = DEFAULT_CONFIG_JSON): TeamDirectories {
 	return directoriesForRoot(dirname(configPath), "builtin");
 }
 
