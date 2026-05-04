@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import { createTeamFiles, updateTeamModels } from "../extensions/pi-teams/team-form.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
-import { ensureTeamsSettingsDefaults, ensureUserTeamDefaults } from "../extensions/pi-teams/team-defaults.js";
 import { loadTeamRegistry, requireBuiltinTeam } from "../extensions/pi-teams/team-registry.js";
 import { registerTeamTools } from "../extensions/pi-teams/team-tools.js";
 import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
@@ -408,46 +407,6 @@ describe("loadTeamRegistry", () => {
 			expect(registry.teams.get("consult")?.agents).toEqual([
 				"project_agent",
 			]);
-		});
-	});
-
-	it("adds default teams.roots to settings without overwriting existing roots", () => {
-		const root = mkdtempSync(join(tmpdir(), "team-settings-defaults-"));
-		try {
-			const settingsPath = join(root, "settings.json");
-			writeFileSync(settingsPath, JSON.stringify({ defaultModel: "x" }), "utf8");
-
-			ensureTeamsSettingsDefaults(settingsPath);
-
-			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toMatchObject({
-				defaultModel: "x",
-				teams: { roots: ["~/.pi/agent/teams"] },
-			});
-
-			writeFileSync(settingsPath, JSON.stringify({ teams: { roots: ["custom"] } }), "utf8");
-			ensureTeamsSettingsDefaults(settingsPath);
-			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toMatchObject({
-				teams: { roots: ["custom"] },
-			});
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("instantiates built-in teams into the user directory without overwriting edits", () => {
-		withTempConfig((configPath, root) => {
-			const userRoot = join(root, "user");
-			writeSubagent(root, "builtin_agent");
-			writeTeam(root, "builtin-team", "builtin_agent");
-
-			ensureUserTeamDefaults(userRoot, configPath);
-			const teamPath = join(userRoot, "teams", "builtin-team.md");
-			writeFileSync(teamPath, "custom", "utf8");
-			ensureUserTeamDefaults(userRoot, configPath);
-
-			expect(existsSync(teamPath)).toBe(true);
-			expect(existsSync(join(userRoot, "agents", "builtin_agent.md"))).toBe(true);
-			expect(readFileSync(teamPath, "utf8")).toBe("custom");
 		});
 	});
 

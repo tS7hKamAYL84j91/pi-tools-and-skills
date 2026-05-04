@@ -38,7 +38,6 @@ flowchart TD
   Types[team-types.ts] --> Registry[team-registry.ts]
   Paths[team-paths.ts] --> Registry
   Paths --> Form[team-form.ts]
-  Defaults[team-defaults.ts] --> Paths
   Tools[team-tools.ts] --> Registry
   Runtime[team-runtime.ts] --> Handlers[team-handlers.ts]
   Runtime --> State[state.ts]
@@ -56,7 +55,7 @@ flowchart TD
 - `team-types.ts` owns core team/agent/registry type definitions.
 - `team-paths.ts` owns `teams.roots` plus package, user, and project path resolution.
 - `team-registry.ts` owns descriptor loading, validation, and registry construction.
-- `team-defaults.ts` seeds user defaults from built-in descriptors.
+- Bundled defaults remain in extension config; startup does not copy them into user roots.
 - `team-handlers.ts` dispatches supported protocols and exposes model slot metadata.
 - `team-graph.ts` owns the generic DAG executor for graph-defined role workflows.
 - `team-tools.ts` contains read-only `team_list` and `team_describe` registration.

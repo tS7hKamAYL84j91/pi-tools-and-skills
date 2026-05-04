@@ -22,7 +22,7 @@ Status: implemented.
 1. [x] Extract team types into `team-types.ts`.
 2. [x] Extract shared path helpers into `team-paths.ts`.
 3. [x] Move descriptor loading and registry construction into `team-registry.ts`.
-4. [x] Move user-default seeding into `team-defaults.ts`.
+4. [x] Remove startup user-default seeding; bundled teams stay in extension config unless users explicitly create overrides.
 5. [x] Keep file mutation/create/update/delete logic in `team-form.ts`, but route path decisions through `team-paths.ts` and registry decisions through `team-registry.ts`.
 6. [x] Introduce protocol handler interfaces in `team-handlers.ts`:
    - `key`

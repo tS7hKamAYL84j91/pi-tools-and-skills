@@ -166,7 +166,7 @@ Mutating tools should write v2:
 - `team_form` creates `schemaVersion: 2`, `protocol`, no `topology`.
 - `team_models` rewrites user/project overrides as v2.
 - Do not auto-edit existing user/project files during registry load.
-- `ensureUserTeamDefaults` must continue never overwriting existing copied built-ins.
+- Do not seed or copy bundled built-ins into user team roots during extension startup.
 
 ### Existing copied built-ins
 
