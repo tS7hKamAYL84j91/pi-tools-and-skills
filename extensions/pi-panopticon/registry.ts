@@ -12,6 +12,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	readFileSync,
 	readdirSync,
+	rmSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -38,13 +39,13 @@ const HEARTBEAT_MS = 5_000;
 const ORPHAN_REAP_MS = 60_000;
 
 export const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "🟢",
-	waiting: "🟡",
-	done: "✅",
-	blocked: "🚧",
-	stalled: "🛑",
-	terminated: "⚫",
-	unknown: "⚪",
+	running: "R",
+	waiting: "W",
+	done: "D",
+	blocked: "B",
+	stalled: "S",
+	terminated: "X",
+	unknown: "?",
 };
 
 // ── Pure functions (exported for tests) ─────────────────────────
@@ -245,10 +246,17 @@ export default class Registry implements RegistryInterface {
 			this.orphanReapTimer = null;
 		}
 
-		// Delete record file
+		// Delete record file and this agent's Maildir storage. Dead-peer cleanup
+		// happens through onAgentCleanup hooks; unregister owns current-agent cleanup
+		// because messaging hooks are disposed before the registry record is removed.
 		if (this.record) {
 			try {
 				unlinkSync(join(REGISTRY_DIR, `${this.record.id}.json`));
+			} catch {
+				// already gone
+			}
+			try {
+				rmSync(join(REGISTRY_DIR, this.record.id), { recursive: true, force: true });
 			} catch {
 				// already gone
 			}

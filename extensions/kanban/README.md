@@ -85,7 +85,7 @@ Files written:
 ### Fast Path (every change)
 Updates the TUI widget immediately — no LLM involved:
 ```
-📋 WIP 2/3 | todo 4 | blocked 1 | done 12
+kanban: wip 2/3 | todo 4 | blocked 1 | done 12
   T-042 Implement OAuth (tools-worker)
   T-051 Write tests (test-runner)
 ```

@@ -8,6 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { visibleWidth } from "@mariozechner/pi-tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -286,5 +287,84 @@ describe("overlay render empty board", () => {
 		const body = lines.join("\n");
 		expect(body).not.toContain("No tasks yet");
 		expect(body).toContain("T-001");
+		expect(body).toContain("> T-001");
+		expect(body).not.toContain("▶");
+	});
+
+	it("shows done overflow count in the board header", () => {
+		const fakeTheme = {
+			fg: (_name: string, text: string) => text,
+			bold: (text: string) => text,
+		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
+
+		const visibleDoneTasks = Array.from({ length: 10 }, (_, index) => ({
+			id: `T-${String(index + 1).padStart(3, "0")}`,
+			col: "done",
+			deleted: false,
+			title: `Done ${index + 1}`,
+			priority: "low",
+			tags: "",
+			description: "",
+			agent: "lead",
+			claimed: false,
+			claimAgent: "",
+			model: "",
+			expires: "",
+			reason: "",
+			notes: [],
+			completedAt: "2026-01-01T00:00:00Z",
+			duration: "",
+			doneAgent: "lead",
+			createdAt: "2026-01-01T00:00:00Z",
+		})) as TaskState[];
+		const view = {
+			colTasks: [[], [], [], [], visibleDoneTasks],
+			activeCol: "done" as const,
+			activeRow: 0,
+			scroll: { backlog: 0, todo: 0, "in-progress": 0, blocked: 0, done: 0 },
+			statusMessage: "",
+			hiddenDoneCount: 2,
+		};
+
+		const lines = renderBoard(view, 80, fakeTheme);
+		expect(lines.join("\n")).toContain("DONE 10+2");
+	});
+
+	it("keeps board lines within an 80-column viewport", () => {
+		const fakeTheme = {
+			fg: (_name: string, text: string) => text,
+			bold: (text: string) => text,
+		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
+
+		const task = {
+			id: "T-001",
+			col: "backlog",
+			deleted: false,
+			title: "A long task title that should be clipped before borders break",
+			priority: "medium",
+			tags: "",
+			description: "",
+			agent: "lead",
+			claimed: false,
+			claimAgent: "long-agent-name",
+			model: "",
+			expires: "",
+			reason: "",
+			notes: [],
+			completedAt: "",
+			duration: "",
+			doneAgent: "",
+			createdAt: "2026-01-01T00:00:00Z",
+		} as TaskState;
+		const view = {
+			colTasks: [[task], [], [], [], []],
+			activeCol: "backlog" as const,
+			activeRow: 0,
+			scroll: { backlog: 0, todo: 0, "in-progress": 0, blocked: 0, done: 0 },
+			statusMessage: "",
+		};
+
+		const lines = renderBoard(view, 80, fakeTheme);
+		expect(lines.every((line) => visibleWidth(line) <= 80)).toBe(true);
 	});
 });

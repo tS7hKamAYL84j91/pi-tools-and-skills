@@ -17,8 +17,7 @@ import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
 import type { Registry } from "./types.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 import {
-	buildPowerlineSegments,
-	PL_SEP,
+	buildStatusSegments,
 	type ThemeColor,
 } from "./ui-format.js";
 
@@ -54,11 +53,13 @@ export async function openAgentOverlay(
 				0,
 			),
 		);
-		container.addChild(new Text(` ${buildPowerlineSegments(sorted, selfId, theme).join(theme.fg("dim", ` ${PL_SEP} `))}`, 1, 1));
+		container.addChild(new Text(` ${buildStatusSegments(sorted, selfId, theme).join(theme.fg("dim", " | "))}`, 1, 1));
 		container.addChild(new Text(theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
 		const selectList = new SelectList(items, Math.min(items.length, 12), {
+			// SelectList hardcodes a Unicode arrow; normalize it to the shared
+			// ASCII-safe selected-row marker used by Teams and Kanban.
 			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t),
+			selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
 			description: (t: string) => theme.fg("muted", t),
 			scrollInfo: (t: string) => theme.fg("dim", t),
 			noMatch: (t: string) => theme.fg("warning", t),
@@ -66,7 +67,7 @@ export async function openAgentOverlay(
 		selectList.onSelect = (item) => done(item.value);
 		selectList.onCancel = () => done(null);
 		container.addChild(selectList);
-		container.addChild(new Text(theme.fg("dim", "  ↑↓ navigate • enter view detail • esc close"), 1, 0));
+		container.addChild(new Text(theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close"), 1, 0));
 		container.addChild(border());
 
 		return {
@@ -115,7 +116,7 @@ async function showAgentDetail(
 			["Model", rec.model || "unknown"],
 			["CWD", rec.cwd],
 			["PID", String(rec.pid)],
-			["Messages", `pending: ${pending}`],
+			["Messages", `msg:${pending}`],
 			["Uptime", formatAge(rec.startedAt)],
 		];
 		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
@@ -143,7 +144,7 @@ async function showAgentDetail(
 			}
 		}
 
-		add(`\n  ${theme.fg("dim", ["esc back", ...(!isSelf ? ["m send message"] : [])].join(" • "))}`);
+		add(`\n  ${theme.fg("dim", ["esc back", ...(!isSelf ? ["m send message"] : [])].join(" · "))}`);
 		container.addChild(border());
 
 		return {

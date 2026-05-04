@@ -51,12 +51,24 @@ termwright daemon --background --socket /tmp/termwright-pi-ux.sock \
 
 Text captures were saved under `/tmp` during validation:
 
+Initial audit captures:
+
 - `/tmp/tw-teams-browse.txt`
 - `/tmp/tw-teams-search.txt`
 - `/tmp/tw-kanban-board.txt`
 - `/tmp/tw-kanban-move.txt`
 - `/tmp/tw-kanban-80.txt`
 - `/tmp/tw-agents.txt`
+
+Follow-up implementation captures:
+
+- `/tmp/tw-teams-browse-new.txt`
+- `/tmp/tw-teams-search-new.txt`
+- `/tmp/tw-kanban-board-new.txt`
+- `/tmp/tw-kanban-move-new.txt`
+- `/tmp/tw-kanban-80-new.txt`
+- `/tmp/tw-agents-80-new.txt`
+- `/tmp/tw-status-80-new.txt`
 
 ### Validation results
 
@@ -69,6 +81,21 @@ Text captures were saved under `/tmp` during validation:
 | Kanban board narrow | 80×24 | ❌ Fails narrow-width resilience | Board content overruns/clips: header truncates at `m mov`, `DONE` header clips, and right border/column alignment degrades. |
 | Panopticon status strip | 100×30 / 80×24 | ⚠️ Needs follow-up | Status strip rendered, but remains glyph-heavy and can truncate with many agents. Direct `/agents` overlay validation was inconclusive in this resumed session due command/autocomplete/runtime behavior; validate overlay separately before changing it. |
 
+### Follow-up validation results
+
+Validated after the first implementation slices on 2026-05-04.
+
+| Surface | Size | Result | Evidence |
+| --- | --- | --- | --- |
+| Teams browser/search | 100×30 | ✅ Pass | Captures still preserve `>` selection and `/` search behavior. |
+| Kanban board | 100×30 | ✅ Pass | Selected card uses `>`; board header no longer uses layout emoji; done header shows `DONE 10+3`. |
+| Kanban move-picker | 100×30 | ✅ Pass | Move-picker title is text-only, right border is visible, and only valid backlog/todo move options are shown for a backlog task. |
+| Kanban board narrow | 80×24 | ✅ Pass | Max captured line width is 77; board remains aligned; selected card uses `>`; done overflow is visible as `DONE 10+3`. |
+| Kanban status widget narrow | 80×24 | ✅ Pass | Widget uses `kanban: wip ...` text, no layout emoji, and no line wrap in the captured status area. |
+| Panopticon overlay | 80×24 | ✅ Pass | Overlay validated through `/agents` command selection; selected row uses `>`; status markers are ASCII (`W`, `R`); hints use `·`. |
+| Panopticon status widget | 80×24 | ✅ Pass | Footer uses ASCII markers and appends explicit `...+N` when hidden agents remain. |
+| Matrix status | 80×24 | ✅ Pass | Footer shows `matrix: off`; pending count convention is implemented as `msg:N` in code. |
+
 Caveats:
 
 - `termwright` validation confirms the major visual/coherence findings; it does not replace code review for lifecycle cleanup or internal component focus behavior.
@@ -79,10 +106,10 @@ Caveats:
 
 | Issue | Decision | Implementation | Validation | Status |
 | --- | --- | --- | --- | --- |
-| TUX-001 selection marker drift | Adopt `>` as shared selected-row marker | Teams done; Kanban/panopticon pending | Termwright confirms Teams `>` and Kanban `▶` | Open |
-| TUX-002 Kanban component/layout drift | Keep architecture, improve layout robustness | Pending | Termwright confirms 80×24 clipping | Open |
-| TUX-003 glyph/status convention drift | Normalize markers and fallback strategy | Pending | Termwright shows emoji/powerline-heavy status and Kanban layout glyphs | Open |
-| TUX-004 overflow and hidden data | Add explicit `+N`/overflow indicators | Pending | Code review + status strip truncation risk | Open |
+| TUX-001 selection marker drift | Adopt `>` as shared selected-row marker | Teams done; Kanban board done; panopticon overlays done | Unit tests and termwright captures confirm `>` for Teams, Kanban, and Panopticon overlays | Done |
+| TUX-002 Kanban component/layout drift | Keep architecture, improve layout robustness | Kanban board now degrades column width at 80 cols; cards and modal borders clamp to viewport | Unit coverage confirms board visible width ≤80; termwright validates 80×24 board and 100×30 move-picker | Done for width hardening; component refactor deferred |
+| TUX-003 glyph/status convention drift | Normalize markers and fallback strategy | Kanban board/delete/move/widget layout-critical emoji removed; Panopticon agent status markers and Matrix status are ASCII-safe; pending messages use `msg:N` | `npm run check`, `npm test`, and termwright status captures pass | In progress: CoAS checkmark/cross fallback remains |
+| TUX-004 overflow and hidden data | Add explicit `+N`/overflow indicators | Kanban done header shows `+N`; Panopticon status widget shows `...+N` | Unit coverage confirms Kanban done overflow; termwright confirms Kanban `DONE 10+3` and Panopticon `...+N` | In progress: team picker width policy remains |
 | TUX-005 dense-view interaction parity | Use Teams search/action affordances as precedent | Teams done; Kanban/panopticon pending | Termwright confirms Teams search works | Open |
 
 ## Issues
@@ -129,9 +156,9 @@ Caveats:
 
 **Candidate acceptance criteria:**
 
-- Pick one pending-message count format and apply it everywhere.
-- Avoid emoji for layout-critical meaning.
-- Add plain-text fallback/status summaries for powerline-heavy displays.
+- Pick one pending-message count format and apply it everywhere: `msg:N`.
+- Avoid emoji for layout-critical meaning; use short ASCII status markers where space is tight.
+- Add plain-text fallback/status summaries for dense displays.
 
 ### TUX-004 — Overflow and hidden data need explicit indicators
 
@@ -166,13 +193,13 @@ Caveats:
 
 ### ADR-001 — Use `>` as the shared selected-row marker
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Context:** Teams already standardized on `>` and `termwright` captures show it survives plain-text capture. Kanban and panopticon still use different markers.
 
 **Decision:** Adopt `>` as the selected-row marker for all extension overlays and pickers. Use color and bold only as secondary affordances.
 
-**Consequences:** Improves plain-text readability and cross-extension consistency. Panopticon may need a small `SelectList` theme adapter similar to Teams until pi-tui exposes a configurable selected prefix.
+**Consequences:** Improves plain-text readability and cross-extension consistency. Panopticon uses a small `SelectList` theme adapter similar to Teams until pi-tui exposes a configurable selected prefix.
 
 ### ADR-002 — Treat Teams as the reference TUI pattern
 
@@ -186,11 +213,11 @@ Caveats:
 
 ## Implementation Plan
 
-1. **Marker normalization** — Change Kanban selected cursor from `▶` to plain `>`; add the Teams `selectedText` replacement to panopticon `SelectList` themes.
-2. **Kanban width hardening** — Add final line clamping, min-width policy, and narrow-width `termwright` validation. Keep the controller/view split.
-3. **Glyph/status convention pass** — Pick one pending count format; document status markers; reduce layout-critical emoji; add fallback summaries for status strips.
-4. **Overflow indicators** — Add Kanban done overflow indicator and panopticon `…+N` truncation indicator.
-5. **Interaction parity** — Add Kanban search/filter and panopticon unread filter or urgency sort; normalize hint wording as part of those changes.
+1. **Marker normalization** — Done for Teams, Kanban, Panopticon agent overlay, and Panopticon list-mode overlay.
+2. **Kanban width hardening** — Done for board and modal border clamping; component refactor intentionally deferred.
+3. **Glyph/status convention pass** — Done for Kanban, Panopticon, and Matrix; CoAS fallback polish remains.
+4. **Overflow indicators** — Done for Kanban done column and Panopticon status widget; team picker width-policy cleanup remains.
+5. **Interaction parity** — Remaining reference TODO: add Kanban search/filter and Panopticon unread filter or urgency sort; normalize any remaining picker hint wording.
 
 ## Validation Plan
 
@@ -207,3 +234,6 @@ Caveats:
 
 - 2026-05-04: Cross-extension audit synthesized from independent reviews of Teams, Kanban, Panopticon/CoAS/Matrix, plus default-debate review. Findings: TUI is functional; main issue is coherence drift.
 - 2026-05-04: `termwright` became available and was used for live validation. Teams browse/search passed. Kanban rendered at 100×30 but showed marker/glyph/component drift; Kanban failed narrow-width resilience at 80×24. Panopticon status strip rendered but overlay validation needs a focused follow-up due command/session ambiguity.
+- 2026-05-04: Implemented first consistency slice: Kanban selected marker changed to `>`, Panopticon `SelectList` selected text maps `→` to `>`, Kanban board/delete/move layout-critical emoji removed, and Kanban board column sizing now degrades to fit 80-column visible width. Validation: `npm run check`, `npm test`, and targeted Kanban render tests pass. Termwright recapture still pending.
+- 2026-05-04: Implemented status convention slice: Panopticon overlay/status/widget/health output use ASCII status markers, compact separators, explicit `...+N` hidden-agent marker, and `msg:N` pending-message counts; Matrix status uses `matrix: on/off/err` plus `msg:N`. Validation: `npm run check` and `npm test` pass.
+- 2026-05-04: Completed termwright recapture pass. Evidence saved under `/tmp/*-new.txt`; Teams browse/search, Kanban board/move/narrow/status, Panopticon overlay/status, and Matrix footer status pass. Also shortened Kanban blocked reason in the widget to avoid 80-column wrapping and clamped Kanban modal borders to restore right-edge alignment.

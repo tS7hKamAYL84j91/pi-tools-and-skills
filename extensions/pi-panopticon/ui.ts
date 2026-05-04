@@ -2,7 +2,7 @@
  * UI module for pi-panopticon extension.
  *
  * Wires naming tools, list-mode controls, the agent overlay, and the compact
- * Powerline status widget. Rendering and command details live in sibling files.
+ * status widget. Rendering and command details live in sibling files.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";

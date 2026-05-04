@@ -35,13 +35,13 @@ let channelLabel = "matrix";
 
 function updateStatus(): void {
 	if (!ctx) return;
-	if (!config) { ctx.ui.setStatus("matrix", "📡 ✗"); return; }
-	if (!client) { ctx.ui.setStatus("matrix", "📡 …"); return; }
-	if (lastError) { ctx.ui.setStatus("matrix", "📡 !"); return; }
-	if (!client.isConnected()) { ctx.ui.setStatus("matrix", "📡 ✗"); return; }
+	if (!config) { ctx.ui.setStatus("matrix", "matrix: off"); return; }
+	if (!client) { ctx.ui.setStatus("matrix", "matrix: init"); return; }
+	if (lastError) { ctx.ui.setStatus("matrix", "matrix: err"); return; }
+	if (!client.isConnected()) { ctx.ui.setStatus("matrix", "matrix: off"); return; }
 	const pending = transport?.pendingCount("") ?? 0;
-	const unreadTag = pending > 0 ? ` ${pending}✉` : "";
-	ctx.ui.setStatus("matrix", `📡${unreadTag}`);
+	const unreadTag = pending > 0 ? ` msg:${pending}` : "";
+	ctx.ui.setStatus("matrix", `matrix: on${unreadTag}`);
 }
 
 // ── Extension ───────────────────────────────────────────────────

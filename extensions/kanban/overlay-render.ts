@@ -51,8 +51,9 @@ const COLUMN_LABELS: Record<Column, string> = {
 };
 
 export const DONE_LIMIT = 10;
-const MIN_COL_WIDTH = 16;
+const MIN_NARROW_COL_WIDTH = 10;
 const MAX_COL_WIDTH = 40;
+const FRAME_WIDTH = 6;
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ interface BoardView {
 	activeRow: number;
 	scroll: Record<Column, number>;
 	statusMessage: string;
+	hiddenDoneCount?: number;
 }
 
 // ── Card rendering ──────────────────────────────────────────────
@@ -120,7 +122,7 @@ function renderCard(
 	theme: Theme,
 ): string {
 	const badge = priorityBadge(task.priority, theme);
-	const cursor = isSelected ? theme.fg("accent", "▶") : " ";
+	const cursor = isSelected ? theme.fg("accent", ">") : " ";
 	const id = isSelected
 		? theme.bold(theme.fg("accent", task.id))
 		: theme.fg("text", task.id);
@@ -135,7 +137,7 @@ function renderCard(
 
 	let line = ` ${cursor} ${id} ${badge}${title}`;
 	if (agentRaw) line += theme.fg("muted", ` (${agentRaw})`);
-	return padVisible(line, colW);
+	return padVisible(truncateToWidth(line, colW, "…", true), colW);
 }
 
 // ── Board view ──────────────────────────────────────────────────
@@ -147,17 +149,18 @@ export function renderBoard(
 ): string[] {
 	const lines: string[] = [];
 
-	// Compute column width that fits the available viewport.
-	const usable = Math.max(
-		MIN_COL_WIDTH * COLUMNS.length + COLUMNS.length - 1,
-		width - 4,
+	// Compute column width that fits the viewport, degrading deliberately below
+	// the preferred width instead of letting borders overrun 80-column terminals.
+	const totalInnerBudget = Math.max(
+		MIN_NARROW_COL_WIDTH * COLUMNS.length + COLUMNS.length - 1,
+		width - FRAME_WIDTH,
+	);
+	const preferredColW = Math.floor(
+		(totalInnerBudget - (COLUMNS.length - 1)) / COLUMNS.length,
 	);
 	const colW = Math.max(
-		MIN_COL_WIDTH,
-		Math.min(
-			MAX_COL_WIDTH,
-			Math.floor((usable - (COLUMNS.length - 1)) / COLUMNS.length),
-		),
+		MIN_NARROW_COL_WIDTH,
+		Math.min(MAX_COL_WIDTH, preferredColW),
 	);
 	const totalInner = colW * COLUMNS.length + (COLUMNS.length - 1);
 
@@ -165,7 +168,7 @@ export function renderBoard(
 	const totalTasks = view.colTasks.reduce((sum, col) => sum + col.length, 0);
 
 	// Top border + header
-	const title = theme.bold(theme.fg("accent", "📋 Kanban Board"));
+	const title = theme.bold(theme.fg("accent", " Kanban Board"));
 	const hints = theme.fg(
 		"dim",
 		"← → column   ↑ ↓ row   enter detail   d delete   m move   esc/q close",
@@ -184,7 +187,11 @@ export function renderBoard(
 	for (let i = 0; i < COLUMNS.length; i++) {
 		const col = COLUMNS[i] ?? "backlog";
 		const count = (view.colTasks[i] ?? []).length;
-		const wip = col === "in-progress" ? `${count}/${WIP_LIMIT}` : `${count}`;
+		const hidden = col === "done" ? (view.hiddenDoneCount ?? 0) : 0;
+		const wip =
+			col === "in-progress"
+				? `${count}/${WIP_LIMIT}`
+				: `${count}${hidden > 0 ? `+${hidden}` : ""}`;
 		const label = `${COLUMN_LABELS[col]} ${wip}`;
 		const styled =
 			col === view.activeCol
@@ -264,7 +271,7 @@ export function renderDetail(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(40, width - 4);
+	const innerW = Math.max(20, width - 6);
 
 	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
 
@@ -369,7 +376,7 @@ export function renderConfirmDelete(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(40, width - 4);
+	const innerW = Math.max(20, width - 6);
 
 	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
 
@@ -384,7 +391,7 @@ export function renderConfirmDelete(
 		return lines;
 	}
 
-	const title = theme.bold(theme.fg("error", " ⚠ Delete Task?"));
+	const title = theme.bold(theme.fg("error", " Delete Task?"));
 	lines.push(
 		theme.fg("border", "  │ ") +
 			padVisible(title, innerW) +
@@ -431,7 +438,7 @@ export function renderMovePicker(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(40, width - 4);
+	const innerW = Math.max(20, width - 6);
 
 	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
 
@@ -446,7 +453,7 @@ export function renderMovePicker(
 		return lines;
 	}
 
-	const title = theme.bold(theme.fg("accent", " ↷ Move Task"));
+	const title = theme.bold(theme.fg("accent", " Move Task"));
 	lines.push(
 		theme.fg("border", "  │ ") +
 			padVisible(title, innerW) +

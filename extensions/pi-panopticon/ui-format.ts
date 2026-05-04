@@ -3,11 +3,11 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { AgentRecord, AgentStatus } from "./types.js";
 import { sortRecords, STATUS_SYMBOL } from "./registry.js";
 
-/** Map status → short label shown after the colon in powerline segments. */
+/** Map status → short label shown after the colon in compact segments. */
 export const STATUS_LABEL: Record<AgentStatus, string> = {
 	running: "active",
 	waiting: "idle",
@@ -31,11 +31,8 @@ const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
 	unknown: "muted",
 };
 
-export const PL_SEP = "\uE0B0";
-export const PL_SEP_THIN = "\uE0B1";
-
-/** Build Powerline segments for all agents; self is bold accent. */
-export function buildPowerlineSegments(
+/** Build status segments for all agents; self is bold accent. */
+export function buildStatusSegments(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
@@ -45,7 +42,7 @@ export function buildPowerlineSegments(
 		const label = STATUS_LABEL[rec.status];
 		const inbox =
 			(rec.pendingMessages ?? 0) > 0
-				? theme.fg("warning", `(✉${rec.pendingMessages})`)
+				? theme.fg("warning", `(msg:${rec.pendingMessages})`)
 				: "";
 		if (rec.id === selfId)
 			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inbox}`;
@@ -53,14 +50,28 @@ export function buildPowerlineSegments(
 	});
 }
 
-/** Render Powerline widget with ellipsis truncation to available width. */
-export function renderPowerlineWidget(
+/** Render compact status widget with an explicit hidden-agent indicator. */
+export function renderStatusWidget(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],
 	availableWidth: number,
 ): string[] {
-	const segs = buildPowerlineSegments(records, selfId, theme);
-	const separator = theme.fg("dim", ` ${PL_SEP_THIN} `);
-	return [truncateToWidth(segs.join(separator), availableWidth)];
+	const segs = buildStatusSegments(records, selfId, theme);
+	const separator = theme.fg("dim", " | ");
+	let line = "";
+	for (let index = 0; index < segs.length; index++) {
+		const segment = segs[index] ?? "";
+		const candidate = line ? `${line}${separator}${segment}` : segment;
+		if (visibleWidth(candidate) <= availableWidth) {
+			line = candidate;
+			continue;
+		}
+
+		const hiddenCount = segs.length - index;
+		const marker = theme.fg("dim", ` ...+${hiddenCount}`);
+		const baseWidth = Math.max(0, availableWidth - visibleWidth(marker));
+		return [truncateToWidth(`${truncateToWidth(line, baseWidth)}${marker}`, availableWidth)];
+	}
+	return [truncateToWidth(line, availableWidth)];
 }

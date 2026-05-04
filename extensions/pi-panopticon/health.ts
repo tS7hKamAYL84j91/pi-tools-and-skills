@@ -207,14 +207,14 @@ export function assessHealth(
 // ── Formatting ──────────────────────────────────────────────────
 
 const STATUS_ICON: Record<AgentHealthStatus, string> = {
-	active: "🟢",
-	stalled: "🛑",
-	sleeping: "😴",
-	terminated: "💀",
-	api_error: "⚠️",
-	blocked: "🚧",
-	waiting: "🟡",
-	unknown: "⚪",
+	active: "A",
+	stalled: "S",
+	sleeping: "Z",
+	terminated: "X",
+	api_error: "!",
+	blocked: "B",
+	waiting: "W",
+	unknown: "?",
 };
 
 function formatAge(ms: number): string {
@@ -233,7 +233,7 @@ function formatHealthTable(healths: AgentHealth[]): string {
 			`heartbeat=${formatAge(h.heartbeatAge)}`,
 			`stalls=${h.stallCycles}`,
 			`model=${h.model || "?"}`,
-			`msgs=${h.pendingMessages}`,
+			`msg:${h.pendingMessages}`,
 		];
 		return `  ${parts.join(" ")}`;
 	});

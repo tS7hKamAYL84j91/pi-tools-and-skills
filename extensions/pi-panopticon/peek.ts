@@ -57,7 +57,7 @@ export function setupPeek(
 				const listing = records.map((r) =>
 					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
 						(r.pendingMessages ?? 0) > 0
-							? ` ✉${r.pendingMessages}`
+							? ` msg:${r.pendingMessages}`
 							: ""
 					}${r.id === selfId ? " (you)" : ""}${
 						r.task ? `  "${r.task.slice(0, 50)}"` : ""

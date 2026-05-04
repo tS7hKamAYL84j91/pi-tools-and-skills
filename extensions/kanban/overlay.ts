@@ -108,13 +108,18 @@ class KanbanOverlay implements Component {
 	}
 
 	private tasksIn(col: Column): TaskState[] {
+		const out = this.allTasksIn(col);
+		if (col === "done") return out.slice(-DONE_LIMIT).reverse();
+		return out;
+	}
+
+	private allTasksIn(col: Column): TaskState[] {
 		const out: TaskState[] = [];
 		for (const tid of this.board.order) {
 			const t = this.board.tasks.get(tid);
 			if (!t || t.deleted || t.col !== col) continue;
 			out.push(t);
 		}
-		if (col === "done") return out.slice(-DONE_LIMIT).reverse();
 		return out;
 	}
 
@@ -312,6 +317,10 @@ class KanbanOverlay implements Component {
 				return renderMovePicker(this.pendingMoveTask, width, this.theme);
 			default: {
 				const colTasks = COLUMNS.map((c) => this.tasksIn(c));
+				const hiddenDoneCount = Math.max(
+					0,
+					this.allTasksIn("done").length - (colTasks[COLUMNS.indexOf("done")]?.length ?? 0),
+				);
 				// Same upper-bound used by renderBoard so the controller's scroll
 				// math stays in sync with what the view will actually display.
 				const maxRows = Math.max(8, ...colTasks.map((t) => t.length));
@@ -323,6 +332,7 @@ class KanbanOverlay implements Component {
 						activeRow: this.activeRow,
 						scroll: this.scroll,
 						statusMessage: this.statusMessage,
+						hiddenDoneCount,
 					},
 					width,
 					this.theme,

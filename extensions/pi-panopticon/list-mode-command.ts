@@ -48,10 +48,10 @@ async function openAgentListModeOverlay(
 		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
 		container.addChild(border());
 		container.addChild(new Text(theme.fg("accent", theme.bold(" Agent List Mode")) + theme.fg("dim", ` - current: ${current}`), 1, 0));
-		container.addChild(new Text(theme.fg("dim", " Type to search • enter select • esc cancel"), 1, 0));
+		container.addChild(new Text(theme.fg("dim", " Type to search · enter select · esc cancel"), 1, 0));
 		const selectList = new SelectList(MODE_ITEMS, MODE_ITEMS.length, {
 			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t),
+			selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
 			description: (t: string) => theme.fg("muted", t),
 			scrollInfo: (t: string) => theme.fg("dim", t),
 			noMatch: (t: string) => theme.fg("warning", t),

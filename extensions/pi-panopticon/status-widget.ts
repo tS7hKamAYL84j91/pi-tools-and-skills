@@ -1,12 +1,12 @@
 /**
- * Agent panopticon status and powerline widget refresh logic.
+ * Agent panopticon status widget refresh logic.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AgentListModeStore } from "./list-mode.js";
 import type { Registry } from "./types.js";
 import { filterAgentList } from "./visibility.js";
-import { renderPowerlineWidget } from "./ui-format.js";
+import { renderStatusWidget } from "./ui-format.js";
 
 export interface UIModule {
 	start(ctx: ExtensionContext): void;
@@ -20,9 +20,12 @@ function agentStatusLabel(records: ReturnType<typeof filterAgentList>, selfId: s
 	const waiting = peers.filter((r) => r.status === "waiting").length;
 	if (peers.length === 0) return "solo";
 	if (running > 0 || waiting > 0) {
-		return [[running, "▶"], [waiting, "⏸"]]
+		return [
+			[running, "active"],
+			[waiting, "idle"],
+		]
 			.filter(([n]) => n)
-			.map(([n, s]) => `${n}${s}`)
+			.map(([n, label]) => `${label}:${n}`)
 			.join(" ");
 	}
 	return `${peers.length} peer${peers.length !== 1 ? "s" : ""}`;
@@ -49,7 +52,7 @@ export function createAgentStatusWidget(
 				"agent-panopticon",
 				(_tui: unknown, theme: ExtensionContext["ui"]["theme"]) => ({
 					render(width: number): string[] {
-						return renderPowerlineWidget(records, selfId, theme, width);
+						return renderStatusWidget(records, selfId, theme, width);
 					},
 					invalidate(): void {
 						// Data refreshed every 5s via refreshWidget timer.
@@ -60,7 +63,7 @@ export function createAgentStatusWidget(
 
 			ctx.ui.setStatus(
 				"agent-panopticon",
-				ctx.ui.theme.fg("accent", `⚡${agentStatusLabel(records, selfId)}`),
+				ctx.ui.theme.fg("accent", `agents: ${agentStatusLabel(records, selfId)}`),
 			);
 		} catch {
 			ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("error", "agents: err"));

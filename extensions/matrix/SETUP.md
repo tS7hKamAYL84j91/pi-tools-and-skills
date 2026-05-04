@@ -39,7 +39,7 @@ Start pi using whatever workspace/runtime wrapper provides the configured token 
 | Symptom | Fix |
 |---------|-----|
 | `matrix: env var "NAME" is not set` | Ensure your workspace/runtime launcher or secret manager sets the env var named by `matrix.accessTokenEnv`. |
-| Status bar shows `📡 ✗` | Homeserver unreachable — verify URL, network, TLS, and bot credentials. |
-| Status bar shows `📡 !` | Client error — check pi logs for `matrix:` prefixed errors. |
+| Status bar shows `matrix: off` | Homeserver unreachable — verify URL, network, TLS, and bot credentials. |
+| Status bar shows `matrix: err` | Client error — check pi logs for `matrix:` prefixed errors. |
 | Messages not arriving | Verify `trustedSenders` includes your MXID and that the bot is in the room. |
 | Decryption errors | If `encryption: true`, wipe crypto store: `rm -rf ~/.pi/agent/matrix-crypto` and restart. |

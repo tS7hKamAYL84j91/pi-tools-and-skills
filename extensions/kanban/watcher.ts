@@ -108,14 +108,14 @@ export function buildWidgetLines(board: BoardState): string[] {
 	const latestBlocked = blockedTasks[blockedTasks.length - 1];
 	if (blocked > 0 && latestBlocked?.reason) {
 		const truncated =
-			latestBlocked.reason.length > 30
-				? `${latestBlocked.reason.slice(0, 27)}...`
+			latestBlocked.reason.length > 18
+				? `${latestBlocked.reason.slice(0, 15)}...`
 				: latestBlocked.reason;
 		blockedInfo += ` (${truncated})`;
 	}
 
 	const lines = [
-		`📋 WIP ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
+		`kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
 		...inProgress,
 	];
 	return lines;
