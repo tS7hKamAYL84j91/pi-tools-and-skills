@@ -83,7 +83,7 @@ async function pickOption(
 		}
 		container.addChild(
 			new Text(
-				theme.fg("dim", "  Type to search • ↑↓ navigate • enter select • esc exit"),
+				theme.fg("dim", "  Type to filter · ↑/↓ navigate · enter select · esc exit"),
 				1,
 				0,
 			),
@@ -96,8 +96,12 @@ async function pickOption(
 			items,
 			Math.min(items.length, 15),
 			{
+				// selectedPrefix is defined by SelectListTheme but unused by SelectList rendering
+				// (it hardcodes "→" prefix). Defined to satisfy the interface.
+				// selectedText post-processes the rendered line to replace "→" with ">"
+				// for consistent non-color selection markers (ADR-001).
 				selectedPrefix: (text: string) => theme.fg("accent", text),
-				selectedText: (text: string) => theme.fg("accent", text),
+				selectedText: (text: string) => theme.fg("accent", text.replace(/^→/, ">")),
 				description: (text: string) => theme.fg("muted", text),
 				scrollInfo: (text: string) => theme.fg("dim", text),
 				noMatch: (text: string) => theme.fg("warning", text),

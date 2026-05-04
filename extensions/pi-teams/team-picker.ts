@@ -36,8 +36,12 @@ function findModelMatch(models: readonly string[], query: string): string | unde
 
 function searchableTheme(theme: ExtensionContext["ui"]["theme"]) {
 	return {
+		// selectedPrefix is defined by SelectListTheme but unused by SelectList rendering
+		// (it hardcodes "→" prefix). Defined to satisfy the interface.
+		// selectedText post-processes the rendered line to replace "→" with ">"
+		// for consistent non-color selection markers (ADR-001).
 		selectedPrefix: (text: string) => theme.fg("accent", text),
-		selectedText: (text: string) => theme.fg("accent", text),
+		selectedText: (text: string) => theme.fg("accent", text.replace(/^→/, ">")),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("dim", text),
 		noMatch: (text: string) => theme.fg("warning", text),
@@ -67,7 +71,7 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 				const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
 				container.addChild(border());
 				container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
-				container.addChild(new Text(theme.fg("dim", " type to search · ↑/↓ select · enter choose · esc cancel"), 1, 0));
+				container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ select · enter choose · esc cancel"), 1, 0));
 				container.addChild(input);
 				container.addChild(list);
 				container.addChild(border());

@@ -3,7 +3,7 @@
  */
 
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Container, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { Container, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { loadTeamRegistry } from "./team-registry.js";
@@ -79,13 +79,32 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 	let selected = 0;
 	let detailId: string | undefined;
 	let deletingId: string | undefined;
-	const selectedTeam = () => detailId ? teams.find((team) => team.id === detailId) : teams[selected];
+	let searchActive = false;
+	const searchInput = new Input();
+
+	const displayedTeams = (): TeamSpec[] => {
+		if (!searchActive) return teams;
+		const query = searchInput.getValue().trim();
+		if (!query) return teams;
+		return fuzzyFilter(teams, query, (team) =>
+			`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`);
+	};
+
+	const selectedTeam = (): TeamSpec | undefined => {
+		if (detailId) return teams.find((team) => team.id === detailId);
+		return displayedTeams()[selected];
+	};
+
 	const reload = () => {
 		teams = loadTeams(ctx.cwd);
-		selected = Math.min(selected, Math.max(teams.length - 1, 0));
+		selected = 0;
 		detailId = undefined;
 		deletingId = undefined;
+		searchActive = false;
+		searchInput.setValue("");
+		searchInput.focused = false;
 	};
+
 	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done) => ({
 		render: (width: number) => {
 			const container = new Container();
@@ -101,14 +120,35 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 				}
 				container.addChild(new Text(theme.fg("dim", " f form · m models · d delete · backspace list · esc close"), 1, 0));
 			} else {
-				for (const [index, team] of teams.entries()) {
-					const prefix = index === selected ? "> " : "  ";
-					const line = truncateToWidth(`${prefix}${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(20, width - 4));
-					container.addChild(new Text(index === selected ? theme.fg("accent", line) : line, 1, 0));
+				const visible = displayedTeams();
+
+				if (searchActive) {
+					container.addChild(searchInput);
 				}
-				const description = teams[selected]?.description;
+
+				if (visible.length === 0) {
+					container.addChild(new Text(theme.fg("dim", " No matching teams."), 1, 0));
+				} else {
+					selected = Math.min(selected, visible.length - 1);
+					for (const [index, team] of visible.entries()) {
+						// Selection marker: ">" is the standardized non-color marker across all
+						// pi-teams overlays (see ADR-001). Pickers replace pi-tui's hardcoded "→"
+						// through selectedText theme post-processing.
+						const prefix = index === selected ? "> " : "  ";
+						const content = truncateToWidth(`${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(18, width - 6));
+						container.addChild(new Text(index === selected ? `${prefix}${theme.fg("accent", theme.bold(content))}` : `${prefix}${content}`, 1, 0));
+					}
+				}
+
+				const description = visible[selected]?.description;
 				if (description) container.addChild(new Text(theme.fg("dim", truncateToWidth(description, Math.max(20, width - 4))), 1, 0));
-				container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · f form · m models · d delete · esc close"), 1, 0));
+
+				if (searchActive) {
+					container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter details · esc close"), 1, 0));
+				} else {
+					container.addChild(new Text(theme.fg("dim", " ↑/↓ select · enter details · f form · m models · d delete · / filter · esc close"), 1, 0));
+
+				}
 			}
 			container.addChild(border());
 			return container.render(width);
@@ -116,6 +156,14 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 		invalidate: () => undefined,
 		handleInput: (data: string) => {
 			if (matchesKey(data, "escape")) {
+				if (searchActive) {
+					searchActive = false;
+					searchInput.setValue("");
+					searchInput.focused = false;
+					selected = 0;
+					tui.requestRender();
+					return;
+				}
 				done(undefined);
 				return;
 			}
@@ -131,6 +179,65 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 					deletingId = undefined;
 					tui.requestRender();
 				}
+				return;
+			}
+			if (detailId) {
+				if (matchesKey(data, "backspace") || matchesKey(data, "left")) {
+					detailId = undefined;
+					tui.requestRender();
+				} else if (data.toLowerCase() === "f") {
+					done({ type: "form" });
+				} else if (data.toLowerCase() === "m") {
+					done({ type: "models", id: detailId });
+				} else if (data.toLowerCase() === "d") {
+					const team = teams.find((entry) => entry.id === detailId);
+					if (team) {
+						if (team.source === "builtin") {
+							ctx.ui.notify("Built-in teams cannot be deleted from the overlay", "warning");
+						} else {
+							deletingId = detailId;
+							tui.requestRender();
+						}
+					}
+				}
+				return;
+			}
+
+			// Search/filter mode
+			if (searchActive) {
+				if (matchesKey(data, "up") && selected > 0) {
+					selected--;
+					tui.requestRender();
+					return;
+				}
+				if (matchesKey(data, "down")) {
+					const visible = displayedTeams();
+					if (selected < visible.length - 1) {
+						selected++;
+						tui.requestRender();
+					}
+					return;
+				}
+				if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+					const visible = displayedTeams();
+					if (visible.length > 0) {
+						detailId = visible[selected]?.id;
+						tui.requestRender();
+					}
+					return;
+				}
+				searchInput.handleInput(data);
+				selected = Math.min(selected, Math.max(displayedTeams().length - 1, 0));
+				tui.requestRender();
+				return;
+			}
+
+			// Browse mode (f/m/d are inactive during search; they type into the filter input instead)
+			if (data === "/") {
+				searchActive = true;
+				searchInput.setValue("");
+				searchInput.focused = true;
+				tui.requestRender();
 				return;
 			}
 			if (data.toLowerCase() === "f") {
@@ -154,25 +261,19 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 				tui.requestRender();
 				return;
 			}
-			if (detailId) {
-				if (matchesKey(data, "backspace") || matchesKey(data, "left")) {
-					detailId = undefined;
-					tui.requestRender();
-				}
-				return;
-			}
 			if (matchesKey(data, "up") && selected > 0) {
 				selected--;
 				tui.requestRender();
 				return;
 			}
-			if (matchesKey(data, "down") && selected < teams.length - 1) {
+			if (matchesKey(data, "down") && selected < displayedTeams().length - 1) {
 				selected++;
 				tui.requestRender();
 				return;
 			}
 			if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-				detailId = teams[selected]?.id;
+				const visible = displayedTeams();
+				detailId = visible[selected]?.id;
 				tui.requestRender();
 			}
 		},
