@@ -5,9 +5,10 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { availableLiveAgentNames, isLiveAgentRef } from "./live-agent.js";
+import { isLiveAgentRef } from "./live-agent.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
+import { chooseModel, chooseTeamTarget } from "./team-picker.js";
 import type { TeamAgentBinding, TeamGraph, TeamModels, TeamProtocol, TeamWritableSource } from "./team-types.js";
 
 const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
@@ -92,26 +93,6 @@ function choiceId(choice: string): string {
 	return choice.split(" — ")[0]?.trim() ?? choice.trim();
 }
 
-function availableModelIds(ctx: ExtensionContext): string[] {
-	try {
-		return ctx.modelRegistry.getAvailable()
-			.map((model) => `${model.provider}/${model.id}`)
-			.sort((a, b) => a.localeCompare(b));
-	} catch {
-		return [];
-	}
-}
-
-async function chooseModel(ctx: ExtensionContext, label: string): Promise<string | undefined> {
-	const models = availableModelIds(ctx);
-	if (models.length === 0) {
-		const entered = await ctx.ui.input(`${label} model id (optional)`, "");
-		return entered?.trim() || undefined;
-	}
-	const selected = await ctx.ui.select(label, ["(none)", ...models]);
-	return selected && selected !== "(none)" ? selected : undefined;
-}
-
 async function chooseMemberModels(ctx: ExtensionContext): Promise<string[]> {
 	const result: string[] = [];
 	for (let index = 1; index <= 5; index++) {
@@ -127,25 +108,6 @@ async function chooseMemberModels(ctx: ExtensionContext): Promise<string[]> {
 		}
 	}
 	return result;
-}
-
-function subagentChoices(cwd: string, fallbackId: string): string[] {
-	const registry = loadTeamRegistry(undefined, { cwd });
-	const fileBacked = [...registry.subagents.values()]
-		.sort((a, b) => a.id.localeCompare(b.id))
-		.map((agent) => `${agent.id}${agent.description ? ` — ${agent.description}` : ""}`);
-	const live = availableLiveAgentNames().map((name) => `agent:${name} — live peer`);
-	return [`${fallbackId} — new stub`, ...fileBacked, ...live, "custom..."];
-}
-
-async function chooseSubagent(ctx: ExtensionContext, label: string, fallbackId: string): Promise<string | undefined> {
-	const selected = await ctx.ui.select(label, subagentChoices(ctx.cwd, fallbackId));
-	if (!selected) return undefined;
-	if (selected === "custom...") {
-		const entered = await ctx.ui.input(`${label} id or agent:<name>`, fallbackId);
-		return entered?.trim() || undefined;
-	}
-	return choiceId(selected);
 }
 
 function protocolFromChoice(choice: string): TeamFormProtocol {
@@ -435,39 +397,36 @@ export async function formTeam(
 	let maxFixPasses: number | undefined;
 
 	if (protocol === "consult") {
-		const navigator = await chooseSubagent(ctx, "Navigator agent", subagentIdFromTeam(id, "navigator"));
+		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
 		if (!navigator) return undefined;
-		agents.push(navigator);
-		navigatorId = await chooseModel(ctx, "Navigator model");
+		agents.push(navigator.subagent);
+		navigatorId = navigator.model ?? await chooseModel(ctx, "Navigator model");
 	} else if (protocol === "debate") {
-		const member = await chooseSubagent(ctx, "Member agent", subagentIdFromTeam(id, "member"));
+		const member = await chooseTeamTarget(ctx, "Member agent or model", subagentIdFromTeam(id, "member"));
 		if (!member) return undefined;
-		agents.push(member);
-		const critic = await chooseSubagent(ctx, "Critic agent", subagentIdFromTeam(id, "critic"));
-		if (critic) agents.push(critic);
-		memberModelIds = await chooseMemberModels(ctx);
-		synthesisId = await chooseModel(ctx, "Synthesis model");
+		agents.push(member.subagent);
+		const critic = await chooseTeamTarget(ctx, "Critic agent or model", subagentIdFromTeam(id, "critic"));
+		if (critic) agents.push(critic.subagent);
+		memberModelIds = member.model ? [member.model] : await chooseMemberModels(ctx);
+		synthesisId = critic?.model ?? await chooseModel(ctx, "Synthesis model");
 	} else if (protocol === "telephone") {
 		const relayCountInput = await ctx.ui.input("Relay count", "5");
 		const relayCount = Math.min(10, Math.max(2, Number(relayCountInput) || 5));
-		for (let index = 1; index <= relayCount; index++) {
-			const relay = await chooseSubagent(ctx, `Relay ${index} agent`, subagentIdFromTeam(id, `relay_${index}`));
-			if (!relay) return undefined;
-			agents.push(relay);
-		}
 		memberModelIds = [];
 		for (let index = 1; index <= relayCount; index++) {
-			const model = await chooseModel(ctx, `Relay ${index} model`);
-			if (model) memberModelIds.push(model);
+			const relay = await chooseTeamTarget(ctx, `Relay ${index} agent or model`, subagentIdFromTeam(id, `relay_${index}`));
+			if (!relay) return undefined;
+			agents.push(relay.subagent);
+			if (relay.model) memberModelIds.push(relay.model);
 		}
 	} else if (protocol === "pair-coding") {
-		const navigator = await chooseSubagent(ctx, "Navigator agent", subagentIdFromTeam(id, "navigator"));
+		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
 		if (!navigator) return undefined;
-		const driver = await chooseSubagent(ctx, "Driver agent", subagentIdFromTeam(id, "driver"));
+		const driver = await chooseTeamTarget(ctx, "Driver agent or model", subagentIdFromTeam(id, "driver"));
 		if (!driver) return undefined;
-		agents.push(navigator, driver);
-		navigatorId = await chooseModel(ctx, "Navigator model");
-		driverId = await chooseModel(ctx, "Driver model");
+		agents.push(navigator.subagent, driver.subagent);
+		navigatorId = navigator.model ?? await chooseModel(ctx, "Navigator model");
+		driverId = driver.model ?? await chooseModel(ctx, "Driver model");
 		const maxFixPassesInput = await ctx.ui.input("Max fix passes", "1");
 		maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 	}
