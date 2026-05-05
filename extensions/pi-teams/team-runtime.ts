@@ -18,10 +18,10 @@ const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone")], { description: "Team protocol for generated team files." }),
+	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate")], { description: "Team protocol for generated team files." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids or explicit live-agent refs (agent:<registered-name>) referenced by the team." }),
 	models: Type.Optional(Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate member model IDs." })),
 		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding: default Driver model." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow default model id." })),
@@ -38,7 +38,7 @@ const TeamFormSchema = Type.Object({
 const TeamModelsSchema = Type.Object({
 	id: Type.String({ description: "Team id to update." }),
 	models: Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate member model IDs." })),
 		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
 		driver: Type.Optional(Type.String({ description: "pair-coding Driver model." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow model id." })),
@@ -52,7 +52,7 @@ const TeamDeleteSchema = Type.Object({
 });
 
 const TeamRunSchema = Type.Object({
-	id: Type.String({ description: "Team id to run, e.g. default-debate, consult, pair-coding, telephone-game." }),
+	id: Type.String({ description: "Team id to run, e.g. default-debate, consult, pair-coding." }),
 	prompt: Type.String({ description: "Task, question, or review request for the team." }),
 	files: Type.Optional(Type.Array(Type.String(), { description: "pair-coding: files to load." })),
 	specPath: Type.Optional(Type.String({ description: "pair-coding: spec path; defaults to spec.md or docs/spec.md." })),
@@ -181,7 +181,6 @@ export function registerTeamRunTool(
 			"Use team_run with id=default-debate for high-impact architecture, strategy, or research where disagreement is valuable.",
 			"Use team_run with id=consult for lightweight Navigator review.",
 			"Use team_run with id=pair-coding only when an automated Driver/Navigator implementation loop is explicitly requested.",
-			"Use chain/telephone teams for sequential relay experiments where each member rewrites and passes a message to the next.",
 		],
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {

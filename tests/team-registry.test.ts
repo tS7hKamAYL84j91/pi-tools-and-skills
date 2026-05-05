@@ -142,23 +142,23 @@ describe("loadTeamRegistry", () => {
 		).toThrow(/must use protocol consult/);
 	});
 
-	it("accepts telephone chain teams", () => {
+	it("accepts explicit-binding teams with custom protocol labels", () => {
 		withTempConfig((configPath, root) => {
-			writeSubagent(root, "telephone_relay_1");
-			writeSubagent(root, "telephone_relay_2");
+			writeSubagent(root, "custom_agent_1");
+			writeSubagent(root, "custom_agent_2");
 			writeFileSync(
-				join(root, "teams", "telephone-game.md"),
+				join(root, "teams", "custom-chain.md"),
 				[
 					"---",
 					"schemaVersion: 2",
-					'id: "telephone-game"',
-					'name: "Telephone Game"',
-										'protocol: "telephone"',
+					'id: "custom-chain"',
+					'name: "Custom Chain"',
+					'protocol: "custom-chain"',
 					"agents:",
-					'  - role: "relay_1"',
-					'    subagent: "telephone_relay_1"',
-					'  - role: "relay_2"',
-					'    subagent: "telephone_relay_2"',
+					'  - role: "agent_1"',
+					'    subagent: "custom_agent_1"',
+					'  - role: "agent_2"',
+					'    subagent: "custom_agent_2"',
 					"---",
 					"Team body.",
 				].join("\n"),
@@ -168,8 +168,8 @@ describe("loadTeamRegistry", () => {
 			const registry = loadTeamRegistry(configPath, { roots: [] });
 
 			expect(registry.warnings).toEqual([]);
-			expect(registry.teams.get("telephone-game")).toMatchObject({
-				protocol: "telephone",
+			expect(registry.teams.get("custom-chain")).toMatchObject({
+				protocol: "custom-chain",
 			});
 		});
 	});
@@ -411,6 +411,22 @@ describe("loadTeamRegistry", () => {
 				"project_agent",
 			]);
 		});
+	});
+
+	it("team_form rejects removed telephone protocol without explicit bindings", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-form-telephone-"));
+		try {
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+
+			expect(() => createTeamFiles({
+				id: "telephone-game",
+				protocol: "telephone",
+				agents: ["relay_1", "relay_2"],
+				scope: "project",
+			}, project)).toThrow("Unsupported team protocol telephone.");
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
 	});
 
 	it("team_form creates runnable debate bindings without member models", () => {

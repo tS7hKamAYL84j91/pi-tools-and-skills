@@ -23,14 +23,11 @@ flowchart TD
   Runtime --> Handler[TeamHandler boundary]
   Handler --> Council[Direct council handler\nconsult/debate]
   Handler --> Pair[Direct pair-coding handler]
-  Handler --> Telephone[Direct telephone handler]
 
   Council --> ModelNode[Model-backed role call]
   Pair --> ModelNode
-  Telephone --> ModelNode
   Council --> LiveNode[agent:<name> live-agent call]
   Pair --> LiveNode
-  Telephone --> LiveNode
   Handler --> State[pi session custom run events]
 
   State --> Inspect[team_describe / overlay inspection]
@@ -43,7 +40,7 @@ flowchart TD
 - Persist team run state in the Pi session tree as protocol-neutral custom events.
 - Accept only strict v2 authored team manifests; do not add v1 or legacy compatibility aliases.
 - Keep direct topology functions per protocol; do not reintroduce a generic DAG executor unless a concrete user-visible workflow cannot be implemented as a small direct handler.
-- Keep bundled protocol labels (`debate`, `consult`, `telephone`, `pair-coding`) as configuration vocabulary, not TypeScript architecture boundaries.
+- Keep bundled protocol labels (`debate`, `consult`, `pair-coding`) as configuration vocabulary, not TypeScript architecture boundaries.
 - Represent live peers explicitly as `agent:<registered-name>` role bindings.
 - Do not add an external graph/workflow framework unless a future spike proves it deletes meaningful code without hiding Pi-specific behavior.
 

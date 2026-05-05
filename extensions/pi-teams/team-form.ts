@@ -160,20 +160,13 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	if (args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
-	if (args.protocol === "telephone") {
-		return args.agents.map((subagent, index) => ({
-			role: "relay",
-			subagent,
-			...(models.members?.[index] ? { model: models.members[index] } : {}),
-		}));
-	}
 	return args.agents.map((subagent) => ({ role: "agent", subagent }));
 }
 
 function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormModels, allRolesAreMembers = false): TeamAgentBinding[] {
 	let memberIndex = 0;
 	return bindings.map((binding) => {
-		if (allRolesAreMembers || roleMatches(binding.role, "member") || roleMatches(binding.role, "relay")) {
+		if (allRolesAreMembers || roleMatches(binding.role, "member")) {
 			const model = models.members?.[memberIndex];
 			memberIndex++;
 			return { ...binding, ...(model ? { model } : {}) };
@@ -284,7 +277,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const supported = new Set(["consult", "pair-coding", "debate", "telephone"]);
+	const supported = new Set(["consult", "pair-coding", "debate"]);
 	if (!supported.has(input.protocol) && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	}
@@ -403,7 +396,6 @@ export async function formTeam(
 	const protocolChoice = await ctx.ui.select("Protocol", [
 		"consult — one Navigator gives focused review",
 		"debate — members critique and synthesis joins answers",
-		"telephone — sequential relay/rewrite chain",
 		"pair-coding — constrained Driver/Navigator implementation loop",
 	]);
 	if (!protocolChoice) return undefined;
@@ -429,16 +421,6 @@ export async function formTeam(
 		if (critic) agents.push(critic.subagent);
 		memberModelIds = member.model ? [member.model] : isLiveAgentRef(member.subagent) ? undefined : await chooseMemberModels(ctx);
 		synthesisId = await chooseModel(ctx, "Synthesis model");
-	} else if (protocol === "telephone") {
-		const relayCountInput = await ctx.ui.input("Relay count", "5");
-		const relayCount = Math.min(10, Math.max(2, Number(relayCountInput) || 5));
-		memberModelIds = [];
-		for (let index = 1; index <= relayCount; index++) {
-			const relay = await chooseTeamTarget(ctx, `Relay ${index} agent or model`, subagentIdFromTeam(id, `relay_${index}`));
-			if (!relay) return undefined;
-			agents.push(relay.subagent);
-			if (relay.model) memberModelIds.push(relay.model);
-		}
 	} else if (protocol === "pair-coding") {
 		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
 		if (!navigator) return undefined;

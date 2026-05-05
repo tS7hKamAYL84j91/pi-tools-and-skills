@@ -97,12 +97,12 @@ describe("TeamStateManager", () => {
 	it("reduces generic phases and nodes into records", () => {
 		const entries: CustomEntry[] = [];
 		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
-		const runId = writer.startRun({ teamId: "team", protocol: "telephone", prompt: "hello" });
-		writer.recordPhaseStarted(runId, "telephone");
+		const runId = writer.startRun({ teamId: "team", protocol: "custom-chain", prompt: "hello" });
+		writer.recordPhaseStarted(runId, "custom-chain");
 		writer.recordNodeCompleted(runId, {
-			phaseId: "telephone",
-			nodeId: "relay_1",
-			role: "relay_1",
+			phaseId: "custom-chain",
+			nodeId: "agent_1",
+			role: "agent_1",
 			model: "test/model",
 			ok: true,
 			durationMs: 3,
@@ -116,10 +116,10 @@ describe("TeamStateManager", () => {
 		expect(reader.get(runId)).toMatchObject({
 			id: runId,
 			team: "team",
-			protocol: "telephone",
+			protocol: "custom-chain",
 			status: "completed",
-			phases: ["telephone"],
-			nodes: [expect.objectContaining({ phaseId: "telephone", nodeId: "relay_1", output: "hi" })],
+			phases: ["custom-chain"],
+			nodes: [expect.objectContaining({ phaseId: "custom-chain", nodeId: "agent_1", output: "hi" })],
 			summary: "hi",
 		});
 	});

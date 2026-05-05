@@ -183,13 +183,6 @@ function councilSlots(team: TeamSpec): PromptSlot[] {
 	];
 }
 
-function telephoneSlots(): PromptSlot[] {
-	return [
-		{ id: "relay.system", kind: "template", defaultPromptId: "telephone/relay/system", roles: ["relay", "member"] },
-		{ id: "relay.template", kind: "template", defaultPromptId: "telephone/relay/template", roles: ["relay", "member"] },
-	];
-}
-
 function pairCodingSlots(): PromptSlot[] {
 	return [
 		{ id: "navigatorBrief.system", kind: "system", defaultPromptId: "pair-coding/navigator-brief/system", roles: ["navigator_brief"] },
@@ -350,59 +343,9 @@ const pairCodingHandler: TeamHandler = {
 	},
 };
 
-const telephoneHandler: TeamHandler = {
-	key: "telephone",
-	matches(team) {
-		return team.protocol === "telephone";
-	},
-	modelSlots(team, models) {
-		return memberModelSlots({
-			count: Math.max(models.members?.length ?? 0, team.agents.length, 1),
-			label: (index) => `Relay model ${index + 1}`,
-			models,
-		});
-	},
-	async run(args) {
-		const settings = resolveTeamSettings();
-		const models = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
-		const fallbackModel = models[0];
-		if (!fallbackModel) throw new Error("telephone teams need at least one member model.");
-		const chains = promptChains(args.team, telephoneSlots());
-		const parent = await currentPanopticonRecord(args.ctx.cwd);
-		const timeoutMs = args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs;
-		const maxRetries = args.params.limits?.maxRetries ?? args.team.limits.maxRetries;
-		const nodes: NodeRun[] = [];
-		let message = args.params.prompt;
-		recordPhase(args, "telephone");
-		for (const [index, source] of args.team.agentBindings.entries()) {
-			const role = source.role || `relay_${index + 1}`;
-			const binding = { ...source, role };
-			const model = modelForBinding(binding, models[index] ?? fallbackModel);
-			if (!model) throw new Error(`telephone relay "${role}" needs a model binding.`);
-			const node = await runTeamNode({
-				binding,
-				role,
-				model,
-				prompt: renderTemplate(chainText(chains, "relay.template").split("\n"), { message }),
-				systemPrompt: renderTemplate(chainText(chains, "relay.system").split("\n"), { index: String(index + 1), total: String(args.team.agentBindings.length) }),
-				ctx: args.ctx,
-				parentId: parent?.id,
-				orchestratorName: parent?.name,
-				timeoutMs,
-				maxRetries,
-			});
-			nodes.push(node);
-			recordNode(args, "telephone", node);
-			message = node.output;
-		}
-		return okText(message, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
-	},
-};
-
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	councilHandler,
 	pairCodingHandler,
-	telephoneHandler,
 ];
 
 export function getTeamHandler(team: TeamSpec): TeamHandler | undefined {
@@ -421,6 +364,5 @@ export function promptChainsForTeam(team: TeamSpec): ResolvedPromptChain[] {
 	const handler = getTeamHandler(team);
 	if (!handler) return [];
 	if (handler.key === "pair-coding") return promptChains(team, pairCodingSlots());
-	if (handler.key === "telephone") return promptChains(team, telephoneSlots());
 	return promptChains(team, councilSlots(team));
 }

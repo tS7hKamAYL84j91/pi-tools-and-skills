@@ -147,7 +147,7 @@ function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): strin
 
 function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const roleMembers = bindings
-		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
+		.filter((binding) => roleMatches(binding.role, ["member"]) && binding.model)
 		.map((binding) => binding.model as string);
 	const members = roleMembers;
 	return {

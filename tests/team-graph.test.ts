@@ -31,7 +31,9 @@ describe("direct team handlers", () => {
 		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "pair-coding" }))?.key).toBe("pair-coding");
-		expect(getTeamHandler(team({ protocol: "telephone" }))?.key).toBe("telephone");
+		expect(getTeamHandler(team({ protocol: "telephone" }))).toBeUndefined();
+		expect(modelSlotsForTeam(team({ protocol: "telephone" }), team().models)).toEqual([]);
+		expect(promptChainsForTeam(team({ protocol: "telephone" }))).toEqual([]);
 		expect(getTeamHandler(team({ protocol: "graph" }))).toBeUndefined();
 	});
 

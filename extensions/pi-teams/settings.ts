@@ -104,7 +104,7 @@ function bindingObjects(value: unknown): TeamAgentBinding[] {
 
 function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const members = bindings
-		.filter((binding) => roleMatches(binding.role, ["member", "relay"]) && binding.model)
+		.filter((binding) => roleMatches(binding.role, ["member"]) && binding.model)
 		.map((binding) => binding.model as string);
 	const synthesis = bindings.find((binding) => roleMatches(binding.role, ["synthesis"]) && binding.model)?.model;
 	const driver = bindings.find((binding) => roleMatches(binding.role, ["driver", "driver_implementation"]) && binding.model)?.model;

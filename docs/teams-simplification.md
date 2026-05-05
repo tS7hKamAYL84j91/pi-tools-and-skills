@@ -29,12 +29,11 @@ The generic DAG executor violates F.I.R.E. "Restrained" in three ways:
 2. **Lowering indirection** — `team-lowering.ts` (336 lines) compiles protocol names into graph plans. Each protocol's lowering function creates bindings, edges, and prompt builders — exactly what a direct implementation would do, but forced through a generic graph API.
 3. **Schema complexity** — `TeamGraphEdge`, `TeamGraph`, `GraphNodeResult`, `GraphNodeStatus`, `GraphValidationResult` — 6 graph-specific types in `team-types.ts`. None of these are needed if each topology is a function.
 
-The four real topologies are trivially simple when implemented directly:
+The remaining real topologies are trivially simple when implemented directly:
 
 | Protocol | Shape | DAG benefit? |
 |---|---|---|
 | `consult` | 1 node | No — just `runMember()` |
-| `telephone` | Linear chain | No — just `for...of` |
 | `debate` | Fanout + join | Minimal — `Promise.all()` twice |
 | `pair-coding` | Linear with bounded retry | No — just `for` loop with break |
 
@@ -263,7 +262,7 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 - **FIRE Fast — pass:** prompt slot lookup is a local handler operation (`extensions/pi-teams/team-handlers.ts:206-214`).
 - **FIRE Inexpensive — pass:** `protocol-contracts.ts` is absent; no centralized protocol prompt registry remains.
-- **FIRE Restrained — pass:** council, telephone, and pair-coding own their prompt slots next to their topology logic (`extensions/pi-teams/team-handlers.ts:170-203`).
+- **FIRE Restrained — pass:** council and pair-coding own their prompt slots next to their topology logic (`extensions/pi-teams/team-handlers.ts:170-203`).
 - **FIRE Elegant — pass:** prompt slot declarations and prompt consumption now live in one handler module (`extensions/pi-teams/team-handlers.ts:170-203`, `extensions/pi-teams/team-handlers.ts:238-349`).
 - **Handler interface preserved — pass:** handler-local slots do not change `TeamHandler` (`extensions/pi-teams/team-handlers.ts:64-69`).
 - **Prompt resolution unchanged — pass:** slots still resolve via `resolveSystemPrompt()` and `resolveTemplatePrompt()` (`extensions/pi-teams/team-handlers.ts:153-161`).
@@ -298,7 +297,7 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 - 2026-05-04: Navigator reviewed compliance findings and confirmed they were accurate, with three scope cautions: resolve pair-coding live-agent policy, choose runtime simplification over API-only simplification, and define a schema strategy for legacy graph fields.
 - 2026-05-04: Decision: perform runtime simplification, not API-only cleanup. Removed the generic graph executor, lowering layer, centralized protocol contracts, `TeamSpec.graph`, and binding `dependencyPolicy`.
-- 2026-05-04: Decision: keep `TeamHandler` as the extension boundary and support direct handlers for council (`consult`/`debate`/`council`), pair-coding, and telephone so existing generated protocol vocabulary remains runnable.
+- 2026-05-04: Decision: keep `TeamHandler` as the extension boundary and support direct handlers for council (`consult`/`debate`/`council`) and pair-coding.
 - 2026-05-04: Navigator reviewed implemented changes and found no concrete blocker after confirming `docs/teams-graph-affordances.md` was superseded and grep-clean for removed graph module names.
 - 2026-05-04: Refactor decision: extract shared node execution into `team-node-runner.ts` to keep `team-handlers.ts` under architecture file-size limits while preserving behavior.
 - 2026-05-04: Navigator reviewed the refactor and found no showstopper; added a follow-up direct unit test for `team-node-runner` pure helpers and superseded the graph-affordances compliance note.
