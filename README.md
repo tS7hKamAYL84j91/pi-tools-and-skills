@@ -4,11 +4,9 @@
 
 Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent.
 
-## Project intent
+Tools for a personal Chief of Staff setup.
 
-This is a coded workbench, not a branded product page. Its job is to provide reusable pi building blocks for an experimental knowledge-worker / skeleton Chief of Staff setup.
-
-Tools for a personal Chief of Staff setup. Features are kept tight. `pi-teams` is currently under review: should it remain a generic DAG, or be constrained to specific built-in topologies (council, pair-coding)?
+Usual vibe coded warning!
 
 ## Getting started
 
@@ -63,27 +61,27 @@ Add project extensions such as `kanban`, `matrix`, or `pi-coas` per workspace vi
 
 `make setup` globally enables only reusable operator extensions. Project/runtime extensions stay opt-in per workspace.
 
-| Extension | Type | What it does |
-|-----------|------|-------------|
-| **pi-panopticon** | Global | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
-| **pi-teams** | Global | Heterogeneous multi-model debate using the runtime model registry and visible config |
-| **kanban** | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer |
-| **matrix** | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools |
-| **pi-coas** | Project | CoAS status, doctor, workspace, and schedule control surface |
+| Extension         | Type    | What it does                                                                                            |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| **pi-panopticon** | Global  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
+| **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
+| **kanban**        | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
+| **matrix**        | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
+| **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
 
 Reusable skills for pi-platform tooling and compact reference guidance. Operator and methodology skills (clean-room, code-forensics, deep-research, planning, problem-crystalliser, red-team, six-thinking-hats, notebooklm, jules-delegation) live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
 
-| Skill | Purpose |
-|-------|---------|
-| **node-esm-gotchas** | Avoid common Node.js ESM and TypeScript module-resolution mistakes |
-| **pi-agent-orchestration** | Spawn, brief, monitor, message, and shut down pi worker agents |
-| **pi-extension-dev** | Build or modify pi extensions, tools, commands, hooks, and TUI widgets |
-| **pi-kanban** | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
-| **pi-model-selection** | Verify pi-visible models and route work to the right provider/model |
-| **pi-session-management** | Implement session-aware behavior, persistence, compaction, and reload-safe flows |
-| **skill-creator** | Meta-skill for creating and improving skills |
+| Skill                      | Purpose                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| **node-esm-gotchas**       | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
+| **pi-agent-orchestration** | Spawn, brief, monitor, message, and shut down pi worker agents                    |
+| **pi-extension-dev**       | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
+| **pi-kanban**              | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
+| **pi-model-selection**     | Verify pi-visible models and route work to the right provider/model               |
+| **pi-session-management**  | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
+| **skill-creator**          | Meta-skill for creating and improving skills                                      |
 
 ---
 
@@ -91,16 +89,16 @@ Reusable skills for pi-platform tooling and compact reference guidance. Operator
 
 Everything goes through `make`:
 
-| Command | What |
-|---------|------|
-| `make` / `make help` | Show available targets |
-| `make setup` | Install this checkout as a local pi package |
-| `make check` | Typecheck + Biome lint + knip + type-coverage (≥95%) |
-| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate |
-| `make test` | Run tests |
-| `make test-watch` | Run tests in watch mode |
-| `make clean-mailboxes` | Clean stale agent mailboxes |
-| `make clean-mailboxes DRY_RUN=1` | Preview stale mailbox cleanup |
+| Command                                                             | What                                                 |
+| ------------------------------------------------------------------- | ---------------------------------------------------- |
+| `make` / `make help`                                                | Show available targets                               |
+| `make setup`                                                        | Install this checkout as a local pi package          |
+| `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%) |
+| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                 |
+| `make test`                                                         | Run tests                                            |
+| `make test-watch`                                                   | Run tests in watch mode                              |
+| `make clean-mailboxes`                                              | Clean stale agent mailboxes                          |
+| `make clean-mailboxes DRY_RUN=1`                                    | Preview stale mailbox cleanup                        |
 
 ---
 
