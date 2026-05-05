@@ -292,7 +292,7 @@ describe("loadTeamRegistry", () => {
 			const team = requireTeam(registry, "review-qa");
 
 			expect(team.protocol).toBe("graph");
-			expect(registry.warnings).toContain("review-qa: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs");
+			expect(registry.warnings).toContain("review-qa: legacy workflow fields are ignored; direct team protocols no longer execute generic workflows");
 			expect(team.agentBindings.map((binding) => binding.role)).toEqual(["review", "qa"]);
 		});
 	});
@@ -718,7 +718,7 @@ describe("loadTeamRegistry", () => {
 			expect(registry.teams.has("bad-slots")).toBe(true);
 			expect(registry.teams.has("future-schema")).toBe(false);
 			expect(registry.warnings).toContain('duplicate-slots: modelSlots has duplicate id "members".');
-			expect(registry.warnings).toContain("broken-edge: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs");
+			expect(registry.warnings).toContain("broken-edge: legacy workflow fields are ignored; direct team protocols no longer execute generic workflows");
 			expect(registry.warnings).toContain("future-schema: schemaVersion 2 is required");
 		});
 	});

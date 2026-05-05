@@ -1,4 +1,4 @@
-/** Live-agent graph node execution for explicit agent:<name> bindings. */
+/** Live-agent role-node execution for explicit agent:<name> bindings. */
 
 import { randomUUID } from "node:crypto";
 import { findAgentByName, listLiveAgents, type AgentInfo } from "../../lib/agent-api.js";

@@ -241,7 +241,7 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	const maxRetries = optionalNumber(frontMatter.maxRetries);
 	if (frontMatter.edges !== undefined || frontMatter.outputs !== undefined || frontMatter.reducer !== undefined) {
-		warnings.push(`${id}: graph manifest fields are ignored; direct team protocols no longer execute generic DAGs`);
+		warnings.push(`${id}: legacy workflow fields are ignored; direct team protocols no longer execute generic workflows`);
 	}
 	return {
 		schemaVersion: 2,

@@ -8,8 +8,8 @@
  * - `⚠` warning (pi-coas)
  * - `⏸` paused/interrupted (kanban/watcher.ts line 191)
  * - `●` running (pi-panopticon/spawner.ts line 414)
- * - `⊘` skipped/dependency-failed (pi-teams graph)
- * - `⇢` conditional-skip (GA-001, optional fallback to text)
+ * - `⊘` skipped/dependency-failed
+ * - `⇢` conditional-skip
  */
 
 export const STATUS_SYMBOLS = {

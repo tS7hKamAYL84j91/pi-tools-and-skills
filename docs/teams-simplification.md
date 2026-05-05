@@ -70,22 +70,22 @@ Out of scope:
 
 ### FIRE Principles
 
-- [ ] **Fast** — direct functions are faster to compile, execute, and understand than generic graph traversal.
-- [ ] **Inexpensive** — deleting ~1,200 lines costs nothing; maintaining ~1,200 lines costs attention.
-- [ ] **Restrained** — no generic engine means no temptation to add conditional edges, state channels, or subgraph composition before they're needed.
-- [ ] **Elegant** — `runCouncil()` and `runPairCoding()` are self-explanatory; `runTeamGraph()` is not.
+- [x] **Fast** — direct functions are faster to compile, execute, and understand than generic graph traversal.
+- [x] **Inexpensive** — deleting ~1,200 lines costs nothing; maintaining ~1,200 lines costs attention.
+- [x] **Restrained** — no generic engine means no temptation to add conditional edges, state channels, or subgraph composition before they're needed.
+- [x] **Elegant** — `runCouncil()` and `runPairCoding()` are self-explanatory; `runTeamGraph()` is not.
 
 ### pi-teams Architecture Principles
 
-- [ ] **Handler interface preserved** — `TeamHandler` remains the extension point.
-- [ ] **Prompt resolution unchanged** — protocol prompt slots still resolve with the same precedence chain.
-- [ ] **Live-agent support preserved** — `runLiveAgentNode()` still works for `agent:<name>` bindings.
-- [ ] **Session events preserved** — `TeamStateManager.recordNodeCompleted()` still records per-node results.
-- [ ] **No `protocol: "graph"` requirement** — user-defined graphs don't exist yet, so removing them is not a regression.
+- [x] **Handler interface preserved** — `TeamHandler` remains the extension point.
+- [x] **Prompt resolution unchanged** — protocol prompt slots still resolve with the same precedence chain.
+- [x] **Live-agent support preserved** — `runLiveAgentNode()` still works for `agent:<name>` bindings.
+- [x] **Session events preserved** — `TeamStateManager.recordNodeCompleted()` still records per-node results.
+- [x] **No `protocol: "graph"` requirement** — user-defined graphs don't exist yet, so removing them is not a regression.
 
 ### How to run the assessment
 
-1. Read `team-handlers.ts`, `team-graph.ts`, `team-lowering.ts`, `runner.ts`, and `live-agent.ts`.
+1. Read `team-handlers.ts`, `runner.ts`, `live-agent.ts`, and verify `team-graph.ts`/`team-lowering.ts`/`protocol-contracts.ts` are absent.
 2. Check every checkbox above.
 3. Record **pass** or **fail + specific line/behavior** in a finding under the relevant issue.
 
@@ -142,15 +142,15 @@ That's three sequential steps with two `Promise.all()` calls. No topological sor
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** `consult` and `debate` still lower through `graphPlanForSimpleProtocol()` and execute via `runTeamGraph()` (`extensions/pi-teams/team-handlers.ts:168-212`), so direct protocol execution is not implemented.
-- **FIRE Inexpensive — fail:** council behavior is split across `loweredGraphHandler`, `graphPlanForDebate()`, `graphPlanForConsult()`, and the generic graph executor (`extensions/pi-teams/team-handlers.ts:168-234`, `extensions/pi-teams/team-lowering.ts:77-185`, `extensions/pi-teams/team-graph.ts:403-452`).
-- **FIRE Restrained — fail:** debate creates graph bindings and edges before execution (`extensions/pi-teams/team-lowering.ts:87-115`), retaining the generic DAG abstraction.
-- **FIRE Elegant — fail:** no `councilHandler` exists; handler registration includes only `graphHandler` and `loweredGraphHandler` (`extensions/pi-teams/team-handlers.ts:236-239`).
-- **Handler interface preserved — pass:** `TeamHandler` remains the boundary with `key`, `matches`, `modelSlots`, and `run` (`extensions/pi-teams/team-handlers.ts:57-62`).
-- **Prompt resolution unchanged — fail for target state:** prompt resolution works today, but through centralized `protocol-contracts.ts` and lowering (`extensions/pi-teams/protocol-contracts.ts:26-83`, `extensions/pi-teams/team-lowering.ts:58-60`), not inline in the council handler.
-- **Live-agent support preserved — pass current behavior:** graph execution delegates live-agent refs to `runLiveAgentNode()` (`extensions/pi-teams/team-graph.ts:250-253`; implementation at `extensions/pi-teams/live-agent.ts:173-210`).
-- **Session events preserved — pass current behavior:** lowered runs record per-node completions after graph execution (`extensions/pi-teams/team-handlers.ts:213-227`).
-- **No `protocol: "graph"` requirement — fail:** explicit graph protocol is still matched and executed (`extensions/pi-teams/team-handlers.ts:124-165`).
+- **FIRE Fast — pass:** `councilHandler` dispatches `consult` directly to `runConsult()` and `debate`/`council` to `runDebate()` without graph traversal (`extensions/pi-teams/team-handlers.ts:217-235`).
+- **FIRE Inexpensive — pass:** council behavior is localized to `runConsult()`/`runDebate()` plus shared node helpers (`extensions/pi-teams/team-handlers.ts:238-297`, `extensions/pi-teams/team-node-runner.ts:48-107`).
+- **FIRE Restrained — pass:** debate uses two `Promise.all()` fanouts and one synthesis call, not bindings/edges/lowering (`extensions/pi-teams/team-handlers.ts:276-293`).
+- **FIRE Elegant — pass:** handler registration names `councilHandler` directly and no graph-backed handler is registered (`extensions/pi-teams/team-handlers.ts:402-406`).
+- **Handler interface preserved — pass:** `TeamHandler` remains the boundary with `key`, `matches`, `modelSlots`, and `run` (`extensions/pi-teams/team-handlers.ts:64-69`).
+- **Prompt resolution unchanged — pass:** council prompt slots are declared inline and still resolve through `resolveSystemPrompt()`/`resolveTemplatePrompt()` (`extensions/pi-teams/team-handlers.ts:170-183`, `extensions/pi-teams/team-handlers.ts:153-161`).
+- **Live-agent support preserved — pass:** council nodes delegate through `runTeamNode()`, which calls `runLiveAgentNode()` for `agent:<name>` bindings (`extensions/pi-teams/team-node-runner.ts:84-95`, `extensions/pi-teams/live-agent.ts:173-210`).
+- **Session events preserved — pass:** every council node is recorded via `recordNode()` and `TeamStateManager.recordNodeCompleted()` (`extensions/pi-teams/team-handlers.ts:100-111`, `extensions/pi-teams/team-handlers.ts:259`, `extensions/pi-teams/team-handlers.ts:282-294`).
+- **No `protocol: "graph"` requirement — pass:** `councilHandler.matches()` accepts only `council`, `consult`, and `debate` (`extensions/pi-teams/team-handlers.ts:219-221`).
 
 ### TS-002 — Implement `pairCodingHandler` (replaces pair-coding lowered graph)
 
@@ -177,15 +177,15 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** `pair-coding` still lowers to a graph plan, then executes through `runTeamGraph()` (`extensions/pi-teams/team-handlers.ts:168-212`).
-- **FIRE Inexpensive — fail:** pair-coding loop semantics are encoded as generated graph nodes (`navigator_review_N`, `driver_fix_N`) in lowering (`extensions/pi-teams/team-lowering.ts:123-160`).
-- **FIRE Restrained — fail:** direct bounded retry/fix loop does not exist; current lowering unrolls `maxFixPasses` into a flat chain (`extensions/pi-teams/team-lowering.ts:136-148`).
-- **FIRE Elegant — fail:** no `pairCodingHandler` exists; handler registration includes only graph-backed handlers (`extensions/pi-teams/team-handlers.ts:236-239`).
-- **Handler interface preserved — pass:** `TeamHandler` remains intact (`extensions/pi-teams/team-handlers.ts:57-62`).
-- **Prompt resolution unchanged — fail for target state:** prompt slots resolve through centralized `PROTOCOL_PROMPT_CONTRACTS` (`extensions/pi-teams/protocol-contracts.ts:38-47`) instead of inline handler declarations.
-- **Live-agent support preserved — fail against acceptance criteria:** pair-coding currently rejects `agent:` model overrides for driver/navigator (`extensions/pi-teams/team-lowering.ts:51-55`, `extensions/pi-teams/team-lowering.ts:128-131`), while the new acceptance criteria require live-agent bindings for both roles.
-- **Session events preserved — pass current behavior:** per-node completion records are emitted after graph execution (`extensions/pi-teams/team-handlers.ts:213-227`).
-- **No `protocol: "graph"` requirement — fail:** the graph handler remains registered (`extensions/pi-teams/team-handlers.ts:124-165`, `extensions/pi-teams/team-handlers.ts:236-239`).
+- **FIRE Fast — pass:** `pairCodingHandler` matches `pair-coding` and runs the topology directly (`extensions/pi-teams/team-handlers.ts:306-350`).
+- **FIRE Inexpensive — pass:** loop state is plain local variables plus one bounded `for` loop, not generated plan nodes (`extensions/pi-teams/team-handlers.ts:331-349`).
+- **FIRE Restrained — pass:** review/fix control flow exits on failed review or approval via `changesRequested()` (`extensions/pi-teams/team-handlers.ts:299-304`, `extensions/pi-teams/team-handlers.ts:340-345`).
+- **FIRE Elegant — pass:** brief, implementation, review, and fix steps are visible in the handler body (`extensions/pi-teams/team-handlers.ts:333-345`).
+- **Handler interface preserved — pass:** `TeamHandler` remains intact (`extensions/pi-teams/team-handlers.ts:64-69`).
+- **Prompt resolution unchanged — pass:** pair-coding slots are declared inline and resolved through the shared prompt resolver (`extensions/pi-teams/team-handlers.ts:193-203`, `extensions/pi-teams/team-handlers.ts:153-161`).
+- **Live-agent support preserved — pass:** driver and navigator bindings use `modelForBinding()`/`runTeamNode()`, preserving `agent:<name>` support (`extensions/pi-teams/team-handlers.ts:319-324`, `extensions/pi-teams/team-node-runner.ts:20-22`, `extensions/pi-teams/team-node-runner.ts:84-95`).
+- **Session events preserved — pass:** each pair-coding step records node completion (`extensions/pi-teams/team-handlers.ts:334-347`).
+- **No `protocol: "graph"` requirement — pass:** only `pair-coding` matches this handler (`extensions/pi-teams/team-handlers.ts:307-310`).
 
 ### TS-003 — Delete DAG executor and lowering
 
@@ -207,15 +207,15 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** `runTeamGraph()` still performs graph validation and level execution (`extensions/pi-teams/team-graph.ts:403-452`).
-- **FIRE Inexpensive — fail:** `team-graph.ts`, `team-lowering.ts`, and `protocol-contracts.ts` remain in place and imported (`extensions/pi-teams/team-handlers.ts:9-10`, `extensions/pi-teams/team-lowering.ts:7`, `extensions/pi-teams/team-graph.ts:11`).
-- **FIRE Restrained — fail:** graph validation, dependency policy, retry, timeout, and concurrency machinery are still active (`extensions/pi-teams/team-graph.ts:164-195`, `extensions/pi-teams/team-graph.ts:275-367`, `extensions/pi-teams/team-graph.ts:369-400`).
-- **FIRE Elegant — fail:** built-in protocols still route through the lowering indirection (`extensions/pi-teams/team-handlers.ts:199-212`).
-- **Handler interface preserved — pass:** deleting graph-backed handlers can retain `TeamHandler` unchanged (`extensions/pi-teams/team-handlers.ts:57-62`).
-- **Prompt resolution unchanged — pass current behavior:** prompt resolver primitives are independent of the graph (`extensions/pi-teams/prompt-resolver.ts:35-115`); only the centralized protocol contract layer must move.
-- **Live-agent support preserved — pass current behavior:** `runLiveAgentNode()` is a reusable primitive outside the graph module (`extensions/pi-teams/live-agent.ts:173-210`).
-- **Session events preserved — pass current behavior:** state recording currently happens at the handler layer, not inside `team-graph.ts` (`extensions/pi-teams/team-handlers.ts:213-227`).
-- **No `protocol: "graph"` requirement — fail:** `graphHandler.matches()` still supports `team.protocol === "graph"` and graph edges (`extensions/pi-teams/team-handlers.ts:124-128`).
+- **FIRE Fast — pass:** no `runTeamGraph()` implementation remains under `extensions/pi-teams`.
+- **FIRE Inexpensive — pass:** `team-graph.ts`, `team-lowering.ts`, and `protocol-contracts.ts` are absent; `team-handlers.ts` imports only direct helpers (`extensions/pi-teams/team-handlers.ts:6-15`).
+- **FIRE Restrained — pass:** retry/timeout live in the small role-node primitive rather than a generic dependency engine (`extensions/pi-teams/team-node-runner.ts:48-81`).
+- **FIRE Elegant — pass:** registered handlers are direct topology handlers only (`extensions/pi-teams/team-handlers.ts:402-406`).
+- **Handler interface preserved — pass:** `TeamHandler` is unchanged as the extension boundary (`extensions/pi-teams/team-handlers.ts:64-69`).
+- **Prompt resolution unchanged — pass:** resolver primitives remain independent of execution topology (`extensions/pi-teams/team-handlers.ts:153-161`, `extensions/pi-teams/prompt-resolver.ts`).
+- **Live-agent support preserved — pass:** `runLiveAgentNode()` remains a reusable primitive (`extensions/pi-teams/live-agent.ts:173-210`).
+- **Session events preserved — pass:** state recording happens at the handler layer through `recordNode()` (`extensions/pi-teams/team-handlers.ts:100-111`).
+- **No `protocol: "graph"` requirement — pass:** architecture tests forbid imports from removed graph/lowering/contract modules (`tests/architecture.test.ts:233-238`).
 
 ### TS-004 — Simplify `team-types.ts`
 
@@ -235,15 +235,15 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** graph-specific schema still feeds execution (`TeamSpec.graph` at `extensions/pi-teams/team-types.ts:82-95`; consumed by `extensions/pi-teams/team-graph.ts:90-91`, `extensions/pi-teams/team-graph.ts:178-190`).
-- **FIRE Inexpensive — fail:** unused-in-target graph types remain in the core schema (`extensions/pi-teams/team-types.ts:44-45`, `extensions/pi-teams/team-types.ts:71-80`).
-- **FIRE Restrained — fail:** `TeamAgentBinding.dependencyPolicy` keeps graph dependency semantics in the general binding shape (`extensions/pi-teams/team-types.ts:30-42`; consumed at `extensions/pi-teams/team-graph.ts:293-295`).
-- **FIRE Elegant — fail:** direct protocols still have to carry graph-capable manifest shape via `TeamSpec.graph` (`extensions/pi-teams/team-types.ts:82-95`).
-- **Handler interface preserved — pass:** graph type removal does not require changing `TeamHandler` (`extensions/pi-teams/team-handlers.ts:57-62`).
-- **Prompt resolution unchanged — pass:** `TeamSpec.prompts` remains in the target schema and currently exists at `extensions/pi-teams/team-types.ts:88`.
-- **Live-agent support preserved — pass:** live-agent logic depends on `TeamAgentBinding.subagent`, not graph schema (`extensions/pi-teams/live-agent.ts:173-210`).
-- **Session events preserved — pass:** node completion event shape is independent of `TeamSpec.graph` (`extensions/pi-teams/team-handlers.ts:213-227`).
-- **No `protocol: "graph"` requirement — fail:** schema still includes `graph?: TeamGraph` (`extensions/pi-teams/team-types.ts:93`) and the graph handler still consumes it (`extensions/pi-teams/team-handlers.ts:124-128`).
+- **FIRE Fast — pass:** `TeamSpec` no longer includes `graph`, so graph schema cannot feed execution (`extensions/pi-teams/team-types.ts:68-83`).
+- **FIRE Inexpensive — pass:** `TeamGraphEdge`, `TeamGraph`, and reducer/result graph types are absent from `team-types.ts` (`extensions/pi-teams/team-types.ts:1-95`).
+- **FIRE Restrained — pass:** `TeamAgentBinding` retains node-relevant execution fields but no dependency policy (`extensions/pi-teams/team-types.ts:30-41`).
+- **FIRE Elegant — pass:** direct protocols carry only protocol, prompts, model slots, agents, models, limits, source, and path (`extensions/pi-teams/team-types.ts:68-83`).
+- **Handler interface preserved — pass:** schema simplification did not change `TeamHandler` (`extensions/pi-teams/team-handlers.ts:64-69`).
+- **Prompt resolution unchanged — pass:** `TeamSpec.prompts` remains preserved (`extensions/pi-teams/team-types.ts:73-76`).
+- **Live-agent support preserved — pass:** live-agent logic depends on `TeamAgentBinding.subagent`, not removed schema fields (`extensions/pi-teams/live-agent.ts:173-210`).
+- **Session events preserved — pass:** node completion recording is independent of removed schema fields (`extensions/pi-teams/team-handlers.ts:100-111`).
+- **No `protocol: "graph"` requirement — pass:** legacy workflow fields are ignored with a warning during registry load, not executed (`extensions/pi-teams/team-registry.ts:243-244`).
 
 ### TS-005 — Migrate prompt contracts into handlers
 
@@ -261,15 +261,15 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** centralized prompt contract lookup runs during graph execution/lowering (`extensions/pi-teams/team-lowering.ts:58-60`, `extensions/pi-teams/team-graph.ts:410-416`).
-- **FIRE Inexpensive — fail:** `protocol-contracts.ts` remains a protocol registry to maintain in addition to handlers (`extensions/pi-teams/protocol-contracts.ts:26-55`).
-- **FIRE Restrained — fail:** prompt slot knowledge is centralized for protocols that should own their own slots (`extensions/pi-teams/protocol-contracts.ts:26-55`).
-- **FIRE Elegant — fail:** prompt slot declarations are separated from the topology code that consumes them (`extensions/pi-teams/team-lowering.ts:77-160`, `extensions/pi-teams/protocol-contracts.ts:26-55`).
-- **Handler interface preserved — pass:** moving prompt slot declarations into handlers does not change `TeamHandler` (`extensions/pi-teams/team-handlers.ts:57-62`).
-- **Prompt resolution unchanged — pass:** `resolveSystemPrompt()` and `resolveTemplatePrompt()` already provide protocol-agnostic prompt resolution (`extensions/pi-teams/prompt-resolver.ts:44-115`).
-- **Live-agent support preserved — pass:** live-agent execution is independent of prompt contract storage (`extensions/pi-teams/live-agent.ts:173-210`).
-- **Session events preserved — pass:** session event recording is independent of prompt contract storage (`extensions/pi-teams/team-handlers.ts:213-227`).
-- **No `protocol: "graph"` requirement — fail:** `PROTOCOL_PROMPT_CONTRACTS` still contains a `graph` contract (`extensions/pi-teams/protocol-contracts.ts:52-54`).
+- **FIRE Fast — pass:** prompt slot lookup is a local handler operation (`extensions/pi-teams/team-handlers.ts:206-214`).
+- **FIRE Inexpensive — pass:** `protocol-contracts.ts` is absent; no centralized protocol prompt registry remains.
+- **FIRE Restrained — pass:** council, telephone, and pair-coding own their prompt slots next to their topology logic (`extensions/pi-teams/team-handlers.ts:170-203`).
+- **FIRE Elegant — pass:** prompt slot declarations and prompt consumption now live in one handler module (`extensions/pi-teams/team-handlers.ts:170-203`, `extensions/pi-teams/team-handlers.ts:238-349`).
+- **Handler interface preserved — pass:** handler-local slots do not change `TeamHandler` (`extensions/pi-teams/team-handlers.ts:64-69`).
+- **Prompt resolution unchanged — pass:** slots still resolve via `resolveSystemPrompt()` and `resolveTemplatePrompt()` (`extensions/pi-teams/team-handlers.ts:153-161`).
+- **Live-agent support preserved — pass:** live-agent execution is independent of prompt slot declaration storage (`extensions/pi-teams/live-agent.ts:173-210`).
+- **Session events preserved — pass:** session event recording is independent of prompt slot declaration storage (`extensions/pi-teams/team-handlers.ts:100-111`).
+- **No `protocol: "graph"` requirement — pass:** there is no centralized graph prompt contract and no `PROTOCOL_PROMPT_CONTRACTS` dictionary.
 
 ### TS-006 — Update graph affordances plan
 
@@ -284,15 +284,15 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 
 ### Compliance findings
 
-- **FIRE Fast — fail:** `docs/teams-graph-affordances.md` still describes staged graph-executor improvements instead of direct topologies.
-- **FIRE Inexpensive — fail:** retaining the graph affordances plan would keep future maintenance pressure on a component targeted for deletion.
-- **FIRE Restrained — fail:** the graph affordances plan encourages Stage 2/3 DAG features that this simplification explicitly rejects.
-- **FIRE Elegant — fail:** documentation currently points in two architectural directions: direct topology simplification here and graph expansion in `docs/teams-graph-affordances.md`.
+- **FIRE Fast — pass:** `docs/teams-graph-affordances.md` now contains only a supersession notice pointing to direct topology handlers.
+- **FIRE Inexpensive — pass:** future maintenance is directed to small direct handlers, not an executor expansion plan.
+- **FIRE Restrained — pass:** GA-001 through GA-004 and Stage 2/3 expansion are explicitly superseded (`docs/teams-graph-affordances.md`).
+- **FIRE Elegant — pass:** `docs/teams-future-improvements.md` and this plan now share one architecture direction.
 - **Handler interface preserved — pass:** doc update only; no code boundary impact.
 - **Prompt resolution unchanged — pass:** doc update only.
 - **Live-agent support preserved — pass:** doc update only.
 - **Session events preserved — pass:** doc update only.
-- **No `protocol: "graph"` requirement — fail:** the graph affordances plan still treats graph teams as a supported future surface.
+- **No `protocol: "graph"` requirement — pass:** standing decisions say not to reintroduce a generic executor unless concrete workflow evidence demands it (`docs/teams-future-improvements.md`).
 
 ## ADR Log
 
@@ -302,6 +302,7 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 - 2026-05-04: Navigator reviewed implemented changes and found no concrete blocker after confirming `docs/teams-graph-affordances.md` was superseded and grep-clean for removed graph module names.
 - 2026-05-04: Refactor decision: extract shared node execution into `team-node-runner.ts` to keep `team-handlers.ts` under architecture file-size limits while preserving behavior.
 - 2026-05-04: Navigator reviewed the refactor and found no showstopper; added a follow-up direct unit test for `team-node-runner` pure helpers and superseded the graph-affordances compliance note.
+- 2026-05-05: Final validation rerun after wording/doc cleanup: `npm run check` and `npm test` passed; no runtime graph/lowering/contract imports found.
 
 ## Implementation Plan
 
@@ -327,3 +328,4 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 - 2026-05-04: Implemented direct handlers, removed the generic DAG executor/lowering/contracts, simplified team schema, updated registry/form/describe flows, and added architecture coverage to prevent re-importing removed modules. Validation: `npm run check` and `npm test` green.
 - 2026-05-04: Superseded `docs/teams-graph-affordances.md`, updated `docs/teams-future-improvements.md` architecture/standing decisions, and superseded `docs/teams-graph-affordances-compliance.md`.
 - 2026-05-04: Refactor pass extracted `team-node-runner.ts`, added focused helper tests, confirmed Knip zero findings, architecture tests green, and full validation green.
+- 2026-05-05: Rechecked the implementation against the simplification plan, reran `npm run check` and `npm test` successfully, and confirmed remaining changes are wording/docs cleanup plus deletion of the obsolete graph-node prompt asset.

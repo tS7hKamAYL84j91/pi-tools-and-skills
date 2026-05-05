@@ -18,7 +18,7 @@ const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone")], { description: "Team protocol for generated team files. Author graph teams manually when edge policy is needed." }),
+	protocol: Type.Union([Type.Literal("consult"), Type.Literal("pair-coding"), Type.Literal("debate"), Type.Literal("telephone")], { description: "Team protocol for generated team files." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids or explicit live-agent refs (agent:<registered-name>) referenced by the team." }),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate/chain member model IDs." })),
@@ -29,7 +29,7 @@ const TeamFormSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
-		maxRetries: Type.Optional(Type.Number({ description: "Bounded graph node retries after child-call failure." })),
+		maxRetries: Type.Optional(Type.Number({ description: "Bounded team node retries after child-call failure." })),
 	})),
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Where to write the team. Defaults to user." })),
 	overwrite: Type.Optional(Type.Boolean({ description: "Replace an existing team file." })),
@@ -65,7 +65,7 @@ const TeamRunSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		maxFixPasses: Type.Optional(Type.Number({ description: "pair-coding: fix passes." })),
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
-		maxRetries: Type.Optional(Type.Number({ description: "Bounded graph node retries after child-call failure." })),
+		maxRetries: Type.Optional(Type.Number({ description: "Bounded team node retries after child-call failure." })),
 	})),
 });
 
