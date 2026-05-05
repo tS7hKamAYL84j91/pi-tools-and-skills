@@ -38,6 +38,7 @@ export interface TeamRunInput {
 	specPath?: string;
 	models?: TeamRunModels;
 	limits?: TeamRunLimits;
+	async?: boolean;
 }
 
 export interface TeamModelSlot {

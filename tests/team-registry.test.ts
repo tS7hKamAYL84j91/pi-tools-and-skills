@@ -413,6 +413,27 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
+	it("team_form writes project teams to the default project root so they are immediately discoverable", () => {
+		const project = mkdtempSync(join(tmpdir(), "team-form-project-root-"));
+		try {
+			writeFileSync(join(project, "package.json"), "{}", "utf8");
+
+			const result = createTeamFiles({
+				id: "project-consult",
+				protocol: "consult",
+				agents: ["project_navigator"],
+				scope: "project",
+			}, project);
+			const registry = loadTeamRegistry(undefined, { cwd: project });
+
+			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "project-consult.md"));
+			expect(registry.teams.get("project-consult")?.source).toBe("project");
+			expect(registry.warnings.filter((warning) => warning.startsWith("project-consult:"))).toEqual([]);
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
+	});
+
 	it("team_form rejects removed telephone protocol without explicit bindings", () => {
 		const project = mkdtempSync(join(tmpdir(), "team-form-telephone-"));
 		try {

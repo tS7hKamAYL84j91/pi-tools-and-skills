@@ -7,11 +7,9 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { isLiveAgentRef } from "./live-agent.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
-import { DEFAULT_TEAM_DIRECTORY, DEFAULT_USER_ROOT, dirsForTeamScope } from "./team-paths.js";
+import { dirsForTeamScope } from "./team-paths.js";
 import { chooseModel, chooseTeamTarget } from "./team-picker.js";
 import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamSpec, TeamWritableSource } from "./team-types.js";
-
-const USER_TEAM_DIR = join(DEFAULT_USER_ROOT, "teams", DEFAULT_TEAM_DIRECTORY);
 
 export type TeamFormScope = TeamWritableSource;
 export type TeamFormProtocol = TeamProtocol;
@@ -433,6 +431,7 @@ export async function formTeam(
 		maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 	}
 
+	const teamPath = join(dirsForTeamScope("user", ctx.cwd).teams, `${id}.md`);
 	const result = createTeamFiles({
 		id,
 		name,
@@ -448,8 +447,8 @@ export async function formTeam(
 		limits: {
 			...(Number.isFinite(maxFixPasses) ? { maxFixPasses } : {}),
 		},
-		overwrite: existsSync(join(USER_TEAM_DIR, `${id}.md`))
-			? await ctx.ui.confirm("Overwrite team?", `${join(USER_TEAM_DIR, `${id}.md`)} already exists. Replace it?`)
+		overwrite: existsSync(teamPath)
+			? await ctx.ui.confirm("Overwrite team?", `${teamPath} already exists. Replace it?`)
 			: false,
 	}, ctx.cwd);
 	ctx.ui.notify(`Team "${id}" written to ${result.teamPath}`, "info");

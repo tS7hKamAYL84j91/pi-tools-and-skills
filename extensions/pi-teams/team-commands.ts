@@ -30,7 +30,7 @@ export function registerTeamCommands(
 	registration: TeamRunRegistration,
 ): void {
 	pi.registerCommand("teams", {
-		description: "Browse, describe, form, configure models, delete, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|run [id] [prompt]]",
+		description: "Browse, describe, form, configure models, delete, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|run [id] [prompt]|async [id] [prompt]]",
 		handler: async (rawArgs, ctx) => {
 			const trimmed = rawArgs.trim();
 			if (!trimmed || trimmed === "list") {
@@ -60,13 +60,28 @@ export function registerTeamCommands(
 				await deleteSelectedTeam(ctx, rest[0]);
 				return;
 			}
-			const parsed = parseRunArgs(command === "run" ? rest.join(" ") : trimmed);
+			const isAsyncRun = command === "async";
+			const parsed = parseRunArgs(command === "run" || isAsyncRun ? rest.join(" ") : trimmed);
 			const id = parsed?.id ?? await pickTeamId(ctx);
 			if (!id) return;
 			const promptInput = parsed?.prompt || await ctx.ui.editor("Team prompt", "");
 			const prompt = promptInput?.trim() ?? "";
 			if (!prompt) return;
 			await ctx.waitForIdle();
+			if (isAsyncRun) {
+				void runTeam({
+					params: { id, prompt },
+					ctx,
+					stateManager: registration.stateManager,
+				}).then((result) => {
+					const text = result.content.map((entry) => entry.text).join("\n");
+					pi.sendUserMessage(`[Team "${id}" async result]\n\n${text}`, { deliverAs: "followUp" });
+				}).catch((error: unknown) => {
+					pi.sendUserMessage(`[Team "${id}" async failed]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
+				});
+				ctx.ui.notify(`Team "${id}" started asynchronously`, "info");
+				return;
+			}
 			const result = await runTeam({
 				params: { id, prompt },
 				ctx,

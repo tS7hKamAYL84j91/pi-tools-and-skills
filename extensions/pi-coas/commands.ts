@@ -2,7 +2,8 @@
  * CoAS extension slash commands.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary, widgetLines } from "./format.js";
 import { cronDisabled, formatScheduleList, listSchedules, renderCrontab } from "./schedules.js";
@@ -10,8 +11,34 @@ import { coasDoctor, coasStatus } from "./status.js";
 import { formatWorkspaceList, listWorkspaces } from "./workspaces.js";
 
 async function showText(ctx: ExtensionCommandContext, title: string, text: string, level: "info" | "warning" | "error" = "info"): Promise<void> {
-	ctx.ui.setWidget("coas", [title, ...widgetLines(text)]);
 	ctx.ui.notify(title, level);
+	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+		const container = new Container();
+		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
+		container.addChild(border());
+		container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
+		for (const line of widgetLines(text, 20)) {
+			container.addChild(new Text(line, 1, 0));
+		}
+		container.addChild(new Text(theme.fg("dim", " esc close"), 1, 0));
+		container.addChild(border());
+		return {
+			render: (width: number) => container.render(width),
+			invalidate: () => container.invalidate(),
+			handleInput: (data: string) => {
+				if (matchesKey(data, "escape")) done();
+			},
+		};
+	}, {
+		overlay: true,
+		overlayOptions: {
+			width: "70%",
+			minWidth: 60,
+			maxHeight: "80%",
+			anchor: "center",
+			margin: 2,
+		},
+	});
 }
 
 async function confirmCron(ctx: ExtensionCommandContext, action: string): Promise<boolean> {
@@ -36,8 +63,7 @@ export function registerCoasCommands(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			const result = await coasDoctor(resolveCoasConfig(ctx.cwd));
 			const level = result.code === 0 ? "info" : result.code === 1 ? "warning" : "error";
-			ctx.ui.setWidget("coas", ["CoAS doctor", ...widgetLines(commandSummary("coas-doctor", result))]);
-			ctx.ui.notify(`CoAS doctor exit=${result.code}`, level);
+			await showText(ctx, `CoAS doctor exit=${result.code}`, commandSummary("coas-doctor", result), level);
 		},
 	});
 

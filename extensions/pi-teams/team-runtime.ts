@@ -56,6 +56,7 @@ const TeamRunSchema = Type.Object({
 	prompt: Type.String({ description: "Task, question, or review request for the team." }),
 	files: Type.Optional(Type.Array(Type.String(), { description: "pair-coding: files to load." })),
 	specPath: Type.Optional(Type.String({ description: "pair-coding: spec path; defaults to spec.md or docs/spec.md." })),
+	async: Type.Optional(Type.Boolean({ description: "Return immediately and deliver the team result as a follow-up message." })),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate: override member model IDs." })),
 		synthesis: Type.Optional(Type.String({ description: "debate: override synthesis model ID." })),
@@ -184,6 +185,18 @@ export function registerTeamRunTool(
 		],
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {
+			if (params.async) {
+				void runTeam({ params: { ...params, async: undefined }, ctx, stateManager: registration.stateManager })
+					.then((result) => {
+						const text = result.content.map((entry) => entry.text).join("\n");
+						pi.sendUserMessage(`[Team "${params.id}" async result]\n\n${text}`, { deliverAs: "followUp" });
+					})
+					.catch((error: unknown) => {
+						pi.sendUserMessage(`[Team "${params.id}" async failed]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
+					})
+					.finally(() => ctx.ui.setStatus(TEAM_STATUS_KEY, "teams: ready"));
+				return okText(`Team "${params.id}" started asynchronously. Result will arrive as a follow-up message.`, { team: params.id, async: true });
+			}
 			try {
 				return await runTeam({ params, ctx, stateManager: registration.stateManager });
 			} finally {

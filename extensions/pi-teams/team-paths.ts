@@ -13,8 +13,8 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
 const DEFAULT_AGENT_DIRECTORY = "agents";
 const DEFAULT_PROMPT_DIRECTORY = "prompts";
-export const DEFAULT_TEAM_DIRECTORY = "teams";
-export const DEFAULT_USER_ROOT = join(homedir(), ".pi", "agent");
+const DEFAULT_TEAM_DIRECTORY = "teams";
+const DEFAULT_USER_ROOT = join(homedir(), ".pi", "agent");
 const DEFAULT_USER_TEAM_ROOT = join(DEFAULT_USER_ROOT, "teams");
 const PROJECT_SETTINGS_PATH = join(".pi", "settings.json");
 const PROJECT_TEAM_ROOT = join(".pi", "teams");
@@ -82,13 +82,18 @@ export function teamDirectories(
 	const userRoots = configuredRoots(options.settingsPath ?? PI_SETTINGS_PATH, cwd) ?? [DEFAULT_USER_TEAM_ROOT];
 	for (const root of userRoots) dirs.push(directoriesForRoot(root, "user"));
 	const projectRoot = findProjectRoot(cwd);
-	const projectRoots = configuredRoots(join(projectRoot, PROJECT_SETTINGS_PATH), projectRoot) ?? [];
+	const projectRoots = configuredRoots(join(projectRoot, PROJECT_SETTINGS_PATH), projectRoot) ?? [join(projectRoot, PROJECT_TEAM_ROOT)];
 	for (const root of projectRoots) dirs.push(directoriesForRoot(root, "project"));
 	return dirs;
 }
 
 export function dirsForTeamScope(scope: TeamWritableSource, cwd: string): { teams: string; agents: string; prompts: string } {
-	const root = scope === "project" ? join(findProjectRoot(cwd), PROJECT_TEAM_ROOT) : DEFAULT_USER_TEAM_ROOT;
+	const projectRoot = findProjectRoot(cwd);
+	const configured = scope === "project"
+		? configuredRoots(join(projectRoot, PROJECT_SETTINGS_PATH), projectRoot)
+		: configuredRoots(PI_SETTINGS_PATH, cwd);
+	const fallback = scope === "project" ? join(projectRoot, PROJECT_TEAM_ROOT) : DEFAULT_USER_TEAM_ROOT;
+	const root = configured?.[0] ?? fallback;
 	const dirs = directoriesForRoot(root, scope);
 	return { teams: dirs.teams, agents: dirs.agents, prompts: dirs.prompts };
 }
