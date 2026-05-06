@@ -3,7 +3,7 @@
  */
 
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Container, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { STATUS_SYMBOLS } from "./status-symbols.js";
@@ -81,6 +81,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 	let detailId: string | undefined;
 	let deletingId: string | undefined;
 	let searchActive = false;
+	let focused = false;
 	const searchInput = new Input();
 
 	const displayedTeams = (): TeamSpec[] => {
@@ -106,7 +107,14 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 		searchInput.focused = false;
 	};
 
-	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done) => ({
+	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done): Component & Focusable => ({
+		get focused(): boolean {
+			return focused;
+		},
+		set focused(value: boolean) {
+			focused = value;
+			searchInput.focused = value && searchActive;
+		},
 		render: (width: number) => {
 			const container = new Container();
 			const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
@@ -154,7 +162,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			container.addChild(border());
 			return container.render(width);
 		},
-		invalidate: () => undefined,
+		invalidate: () => searchInput.invalidate(),
 		handleInput: (data: string) => {
 			if (matchesKey(data, "escape")) {
 				if (searchActive) {
@@ -237,7 +245,7 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			if (data === "/") {
 				searchActive = true;
 				searchInput.setValue("");
-				searchInput.focused = true;
+				searchInput.focused = focused;
 				tui.requestRender();
 				return;
 			}

@@ -78,6 +78,15 @@ export async function openAgentOverlay(
 				tui.requestRender();
 			},
 		};
+	}, {
+		overlay: true,
+		overlayOptions: {
+			width: "70%",
+			minWidth: 60,
+			maxHeight: "80%",
+			anchor: "center",
+			margin: 2,
+		},
 	});
 
 	if (!selected) return;
@@ -159,5 +168,14 @@ async function showAgentDetail(
 				}
 			},
 		};
+	}, {
+		overlay: true,
+		overlayOptions: {
+			width: "70%",
+			minWidth: 60,
+			maxHeight: "80%",
+			anchor: "center",
+			margin: 2,
+		},
 	});
 }

@@ -68,6 +68,15 @@ async function openAgentListModeOverlay(
 				tui.requestRender();
 			},
 		};
+	}, {
+		overlay: true,
+		overlayOptions: {
+			width: "70%",
+			minWidth: 60,
+			maxHeight: "80%",
+			anchor: "center",
+			margin: 2,
+		},
 	});
 	if (!selected) return;
 	const result = setAgentListMode(selected, registry, listMode);

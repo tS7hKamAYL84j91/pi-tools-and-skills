@@ -5,6 +5,8 @@
 import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	Container,
+	type Component,
+	type Focusable,
 	fuzzyFilter,
 	Input,
 	SelectList,
@@ -116,7 +118,13 @@ async function pickOption(
 		container.addChild(selectList);
 		container.addChild(border());
 
-		return {
+		const component: Component & Focusable = {
+			get focused(): boolean {
+				return search.focused;
+			},
+			set focused(value: boolean) {
+				search.focused = value;
+			},
 			render: (width: number) => container.render(width),
 			invalidate: () => container.invalidate(),
 			handleInput: (data: string) => {
@@ -134,6 +142,7 @@ async function pickOption(
 				tui.requestRender();
 			},
 		};
+		return component;
 	}, {
 		overlay: true,
 		overlayOptions: {

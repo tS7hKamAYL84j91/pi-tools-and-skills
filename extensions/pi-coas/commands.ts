@@ -47,7 +47,7 @@ export function registerCoasCommands(pi: ExtensionAPI, scheduler: CoasInternalSc
 	pi.registerCommand("coas-status", {
 		description: "Show fast CoAS operational status",
 		handler: async (_args, ctx) => {
-			const result = await coasStatus(resolveCoasConfig(ctx.cwd));
+			const result = await coasStatus(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
 			await showText(ctx, "CoAS status", commandSummary("coas-status", result));
 		},
 	});
@@ -55,7 +55,7 @@ export function registerCoasCommands(pi: ExtensionAPI, scheduler: CoasInternalSc
 	pi.registerCommand("coas-doctor", {
 		description: "Run CoAS diagnostics",
 		handler: async (_args, ctx) => {
-			const result = await coasDoctor(resolveCoasConfig(ctx.cwd));
+			const result = await coasDoctor(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
 			const level = result.code === 0 ? "info" : result.code === 1 ? "warning" : "error";
 			await showText(ctx, `CoAS doctor exit=${result.code}`, commandSummary("coas-doctor", result), level);
 		},
