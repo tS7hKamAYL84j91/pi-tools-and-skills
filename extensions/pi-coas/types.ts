@@ -64,6 +64,14 @@ export interface ScheduleAddInput {
 	disabled?: boolean;
 }
 
+export interface SchedulerSnapshot {
+	running: boolean;
+	enabledSchedules: number;
+	activeRuns: number;
+	startedAt?: string;
+	lastError?: string;
+}
+
 export interface DoctorCheck {
 	level: "ok" | "warn" | "critical";
 	message: string;

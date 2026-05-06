@@ -8,12 +8,22 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { setupSpawner } from "../extensions/pi-panopticon/spawner.js";
-import { formatEvent, recentOutputFromEvents } from "../lib/spawn-events.js";
-import { buildArgList } from "../lib/spawn-service.js";
+import { formatCompletionSignal } from "../lib/completion-signal.js";
+import {
+	formatEvent,
+	hasCompletionSignal,
+	recentOutputFromEvents,
+} from "../lib/spawn-events.js";
+import { buildArgList, type SpawnedAgent } from "../lib/spawn-service.js";
 
 interface RegisteredTool {
 	name: string;
 	prepareArguments?: (args: unknown) => unknown;
+}
+
+function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
+	// Tests only exercise name and recentEvents in hasCompletionSignal.
+	return { name: "worker", recentEvents } as SpawnedAgent;
 }
 
 function getSpawnAgentPrepareArguments(): (args: unknown) => unknown {
@@ -167,6 +177,51 @@ describe("recentOutputFromEvents", () => {
 		// Should have exactly 5 agent_start markers
 		const count = (out.match(/▶ agent started/g) ?? []).length;
 		expect(count).toBe(5);
+	});
+});
+
+// ── hasCompletionSignal ───────────────────────────────────────
+
+describe("hasCompletionSignal", () => {
+	it("detects structured completion in agent_send start events", () => {
+		const signal = formatCompletionSignal({
+			version: 1,
+			taskId: "T-001",
+			status: "done",
+			summary: "complete",
+			artifacts: [],
+		});
+		const agent = createSpawnedAgent([
+			JSON.stringify({
+				type: "tool_execution_start",
+				toolName: "agent_send",
+				args: { message: signal },
+			}),
+		]);
+		const signalledAgents = new Set<string>();
+
+		expect(hasCompletionSignal(agent, signalledAgents)).toBe(true);
+		expect(signalledAgents.has("worker")).toBe(true);
+	});
+
+	it("detects legacy completion in agent_send result text", () => {
+		const agent = createSpawnedAgent([
+			JSON.stringify({
+				type: "tool_execution_end",
+				result: { content: [{ text: "DONE T-002 — shipped" }] },
+			}),
+		]);
+
+		expect(hasCompletionSignal(agent, new Set<string>())).toBe(true);
+	});
+
+	it("ignores unrelated and malformed events", () => {
+		const agent = createSpawnedAgent([
+			"not json DONE T-003 — no structured event",
+			JSON.stringify({ type: "message_update", text: "DONE T-004 — no send" }),
+		]);
+
+		expect(hasCompletionSignal(agent, new Set<string>())).toBe(false);
 	});
 });
 

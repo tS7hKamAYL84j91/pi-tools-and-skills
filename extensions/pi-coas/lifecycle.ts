@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { resolveCoasConfig } from "./config.js";
 import { pathInside, workspaceRoot } from "./store.js";
+import type { CoasInternalScheduler } from "./scheduler.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
 function updateStatus(ctx: ExtensionContext): void {
@@ -34,12 +35,14 @@ function contextInstruction(ctx: ExtensionContext): string | undefined {
 	].join("\n");
 }
 
-export function registerCoasLifecycle(pi: ExtensionAPI): void {
+export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
 	pi.on("session_start", async (_event, ctx) => {
 		updateStatus(ctx);
+		scheduler.start(resolveCoasConfig(ctx.cwd));
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		scheduler.stop();
 		ctx.ui.setStatus("coas", undefined);
 	});
 

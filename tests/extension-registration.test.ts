@@ -162,9 +162,8 @@ describe("extension registration smoke tests", () => {
 			"coas_workspace_update",
 		]);
 		expectRegistered(registrations.commands, [
-			"coas-cron-install",
-			"coas-cron-uninstall",
 			"coas-doctor",
+			"coas-scheduler",
 			"coas-schedules",
 			"coas-status",
 			"coas-workspaces",

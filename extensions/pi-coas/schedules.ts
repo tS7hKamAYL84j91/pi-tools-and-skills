@@ -1,9 +1,8 @@
 /**
  * TypeScript CoAS schedule registry.
  *
- * This intentionally manages schedule metadata only. It does not execute stored
- * prompts or arbitrary shell commands; execution requires a future standalone
- * runner with its own security review.
+ * This manages schedule metadata. Runtime execution is owned by the pi-hosted
+ * internal scheduler while a pi session is alive.
  */
 
 import { existsSync } from "node:fs";
@@ -179,7 +178,7 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 				`session-dir: ${sessionDir}`,
 				`lock: ${lockPath}`,
 				`log: ${logFile}`,
-				"command: unsupported in TypeScript extension (dry-run only)",
+				"runner: pi-hosted internal scheduler",
 				"prompt:",
 				...prompt.split("\n").filter((line) => line.length > 0).map((line) => `  ${line}`),
 			].join("\n"),
@@ -190,26 +189,18 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 	return {
 		code: 1,
 		stdout: "",
-		stderr: "coas-schedule: execution is disabled in the TypeScript extension; use dry-run until a standalone runner is implemented",
+		stderr: "coas-schedule: direct execution is disabled; enabled schedules run through the pi-hosted internal scheduler",
 	};
 }
 
-export async function renderCrontab(config: CoasConfig): Promise<CommandResult> {
+export async function renderInternalSchedulePlan(config: CoasConfig): Promise<CommandResult> {
 	const schedules = (await listSchedules(config)).filter((schedule) => schedule.enabled);
 	const body = schedules.length > 0
-		? schedules.map((schedule) => `# ${schedule.cronExpr} ${schedule.taskId} (execution disabled: no standalone TypeScript runner)`).join("\n")
-		: "# no enabled CoAS schedules";
+		? schedules.map((schedule) => `${schedule.cronExpr} ${schedule.taskId} -> pi internal scheduler`).join("\n")
+		: "no enabled CoAS schedules";
 	return {
 		code: 0,
 		stderr: "",
-		stdout: ["# BEGIN COAS SCHEDULES", body, "# END COAS SCHEDULES"].join("\n"),
-	};
-}
-
-export function cronDisabled(action: "install-cron" | "uninstall-cron"): CommandResult {
-	return {
-		code: 1,
-		stdout: "",
-		stderr: `coas-schedule ${action}: disabled in pi-coas TypeScript runtime until a standalone runner is implemented`,
+		stdout: ["CoAS internal scheduler plan", "============================", body].join("\n"),
 	};
 }

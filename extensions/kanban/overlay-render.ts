@@ -101,6 +101,49 @@ function wrap(text: string, width: number): string[] {
 	return out.length > 0 ? out : [""];
 }
 
+function frameTop(innerW: number, theme: Theme): string {
+	return theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`);
+}
+
+function frameMiddle(innerW: number, theme: Theme): string {
+	return theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`);
+}
+
+function frameBottom(innerW: number, theme: Theme): string {
+	return theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`);
+}
+
+function modalLine(content: string, innerW: number, theme: Theme): string {
+	return (
+		theme.fg("border", "  │ ") +
+		padVisible(content, innerW) +
+		theme.fg("border", " │")
+	);
+}
+
+function modalTruncatedLine(content: string, innerW: number, theme: Theme): string {
+	return (
+		theme.fg("border", "  │ ") +
+		truncateToWidth(padVisible(content, innerW), innerW, "…", true) +
+		theme.fg("border", " │")
+	);
+}
+
+function noSelectionLines(innerW: number, theme: Theme): string[] {
+	return [
+		modalLine(theme.fg("muted", " No task selected — press esc to return."), innerW, theme),
+		frameBottom(innerW, theme),
+	];
+}
+
+function modalInnerWidth(width: number): number {
+	return Math.max(20, width - FRAME_WIDTH);
+}
+
+function taskDisplayTitle(task: TaskState): string {
+	return stripDangerousEscapes(task.title || task.id);
+}
+
 // ── View model ──────────────────────────────────────────────────
 
 /** Snapshot of mutable controller state needed by the renderers. */
@@ -126,7 +169,7 @@ function renderCard(
 	const id = isSelected
 		? theme.bold(theme.fg("accent", task.id))
 		: theme.fg("text", task.id);
-	const titleRaw = stripDangerousEscapes(task.title || task.id);
+	const titleRaw = taskDisplayTitle(task);
 	const agentRaw = stripDangerousEscapes(task.claimAgent || "");
 
 	// Reserve space for " cursor id badge " plus optional " (agent)".
@@ -173,14 +216,10 @@ export function renderBoard(
 		"dim",
 		"← → column   ↑ ↓ row   enter detail   d delete   m move   esc/q close",
 	);
-	lines.push(theme.fg("border", `  ╭${"─".repeat(totalInner + 2)}╮`));
+	lines.push(frameTop(totalInner, theme));
 	const headerRow = padVisible(`${title}   ${hints}`, totalInner);
-	lines.push(
-		theme.fg("border", "  │ ") +
-			truncateToWidth(headerRow, totalInner, "…", true) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ├${"─".repeat(totalInner + 2)}┤`));
+	lines.push(modalTruncatedLine(headerRow, totalInner, theme));
+	lines.push(frameMiddle(totalInner, theme));
 
 	// Column headers
 	const headerParts: string[] = [];
@@ -199,12 +238,8 @@ export function renderBoard(
 				: theme.fg("dim", label);
 		headerParts.push(padVisible(` ${styled}`, colW));
 	}
-	lines.push(
-		theme.fg("border", "  │ ") +
-			headerParts.join(theme.fg("border", "│")) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ├${"─".repeat(totalInner + 2)}┤`));
+	lines.push(modalLine(headerParts.join(theme.fg("border", "│")), totalInner, theme));
+	lines.push(frameMiddle(totalInner, theme));
 
 	// Empty board state
 	if (totalTasks === 0) {
@@ -212,11 +247,7 @@ export function renderBoard(
 			"muted",
 			" No tasks yet. Use kanban_create to add a task.",
 		);
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(emptyMsg, totalInner) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalLine(emptyMsg, totalInner, theme));
 	} else {
 		// Body rows
 		const maxRows = Math.max(8, ...view.colTasks.map((t) => t.length));
@@ -235,29 +266,16 @@ export function renderBoard(
 					col === view.activeCol && row + offset === view.activeRow;
 				rowParts.push(renderCard(task, colW, isSelected, theme));
 			}
-			lines.push(
-				theme.fg("border", "  │ ") +
-					rowParts.join(theme.fg("border", "│")) +
-					theme.fg("border", " │"),
-			);
+			lines.push(modalLine(rowParts.join(theme.fg("border", "│")), totalInner, theme));
 		}
 	}
 
-	lines.push(theme.fg("border", `  ╰${"─".repeat(totalInner + 2)}╯`));
+	lines.push(frameBottom(totalInner, theme));
 
 	// Status message (transient)
 	if (view.statusMessage) {
 		const statusLine = theme.fg("warning", ` ${view.statusMessage}`);
-		lines.push(
-			theme.fg("border", "  │ ") +
-				truncateToWidth(
-					padVisible(statusLine, totalInner),
-					totalInner,
-					"…",
-					true,
-				) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalTruncatedLine(statusLine, totalInner, theme));
 	}
 
 	return lines;
@@ -271,28 +289,18 @@ export function renderDetail(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(20, width - 6);
+	const innerW = modalInnerWidth(width);
 
-	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
+	lines.push(frameTop(innerW, theme));
 
 	if (!task) {
-		const msg = theme.fg("muted", " No task selected — press esc to return.");
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(msg, innerW) +
-				theme.fg("border", " │"),
-		);
-		lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+		lines.push(...noSelectionLines(innerW, theme));
 		return lines;
 	}
 
-	const headerInner = `${theme.bold(theme.fg("accent", task.id))} ${priorityBadge(task.priority, theme)} ${theme.bold(stripDangerousEscapes(task.title || task.id))}`;
-	lines.push(
-		theme.fg("border", "  │ ") +
-			truncateToWidth(padVisible(headerInner, innerW), innerW, "…", true) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
+	const headerInner = `${theme.bold(theme.fg("accent", task.id))} ${priorityBadge(task.priority, theme)} ${theme.bold(taskDisplayTitle(task))}`;
+	lines.push(modalTruncatedLine(headerInner, innerW, theme));
+	lines.push(frameMiddle(innerW, theme));
 
 	const meta: [string, string][] = [
 		["Column", task.col],
@@ -308,63 +316,31 @@ export function renderDetail(
 
 	for (const [key, value] of meta) {
 		const row = ` ${theme.fg("dim", key.padEnd(13))} ${theme.fg("text", value)}`;
-		lines.push(
-			theme.fg("border", "  │ ") +
-				truncateToWidth(padVisible(row, innerW), innerW, "…", true) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalTruncatedLine(row, innerW, theme));
 	}
 
 	if (task.description) {
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible("", innerW) +
-				theme.fg("border", " │"),
-		);
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(` ${theme.fg("dim", "Description")}`, innerW) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalLine("", innerW, theme));
+		lines.push(modalLine(` ${theme.fg("dim", "Description")}`, innerW, theme));
 		for (const chunk of wrap(task.description, innerW - 2)) {
-			lines.push(
-				theme.fg("border", "  │ ") +
-					padVisible(`  ${theme.fg("text", chunk)}`, innerW) +
-					theme.fg("border", " │"),
-			);
+			lines.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 		}
 	}
 
 	if (task.notes.length > 0) {
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible("", innerW) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalLine("", innerW, theme));
 		const noteHeader = ` ${theme.fg("dim", `Notes (${task.notes.length})`)}`;
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(noteHeader, innerW) +
-				theme.fg("border", " │"),
-		);
+		lines.push(modalLine(noteHeader, innerW, theme));
 		for (const note of task.notes.slice(-5)) {
 			for (const chunk of wrap(`- ${note}`, innerW - 4)) {
-				lines.push(
-					theme.fg("border", "  │ ") +
-						padVisible(`  ${theme.fg("text", chunk)}`, innerW) +
-						theme.fg("border", " │"),
-				);
+				lines.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 			}
 		}
 	}
 
-	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(theme.fg("dim", " esc/← back to board"), innerW) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+	lines.push(frameMiddle(innerW, theme));
+	lines.push(modalLine(theme.fg("dim", " esc/← back to board"), innerW, theme));
+	lines.push(frameBottom(innerW, theme));
 	return lines;
 }
 
@@ -376,56 +352,29 @@ export function renderConfirmDelete(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(20, width - 6);
+	const innerW = modalInnerWidth(width);
 
-	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
+	lines.push(frameTop(innerW, theme));
 
 	if (!task) {
-		const msg = theme.fg("muted", " No task selected — press esc to return.");
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(msg, innerW) +
-				theme.fg("border", " │"),
-		);
-		lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+		lines.push(...noSelectionLines(innerW, theme));
 		return lines;
 	}
 
 	const title = theme.bold(theme.fg("error", " Delete Task?"));
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(title, innerW) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
+	lines.push(modalLine(title, innerW, theme));
+	lines.push(frameMiddle(innerW, theme));
 
-	const taskInfo = ` ${task.id} ${stripDangerousEscapes(task.title || task.id)}`;
-	lines.push(
-		theme.fg("border", "  │ ") +
-			truncateToWidth(
-				padVisible(theme.fg("text", taskInfo), innerW),
-				innerW,
-				"…",
-				true,
-			) +
-			theme.fg("border", " │"),
-	);
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible("", innerW) +
-			theme.fg("border", " │"),
-	);
+	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)}`;
+	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
+	lines.push(modalLine("", innerW, theme));
 
 	const prompt = theme.fg(
 		"warning",
 		"  Press 'y' to delete, 'n' or esc to cancel",
 	);
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(prompt, innerW) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+	lines.push(modalLine(prompt, innerW, theme));
+	lines.push(frameBottom(innerW, theme));
 
 	return lines;
 }
@@ -438,45 +387,21 @@ export function renderMovePicker(
 	theme: Theme,
 ): string[] {
 	const lines: string[] = [];
-	const innerW = Math.max(20, width - 6);
+	const innerW = modalInnerWidth(width);
 
-	lines.push(theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`));
+	lines.push(frameTop(innerW, theme));
 
 	if (!task) {
-		const msg = theme.fg("muted", " No task selected — press esc to return.");
-		lines.push(
-			theme.fg("border", "  │ ") +
-				padVisible(msg, innerW) +
-				theme.fg("border", " │"),
-		);
-		lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+		lines.push(...noSelectionLines(innerW, theme));
 		return lines;
 	}
 
 	const title = theme.bold(theme.fg("accent", " Move Task"));
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(title, innerW) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`));
+	lines.push(modalLine(title, innerW, theme));
+	lines.push(frameMiddle(innerW, theme));
 
-	const taskInfo = ` ${task.id} ${stripDangerousEscapes(task.title || task.id)} (currently: ${task.col})`;
-	lines.push(
-		theme.fg("border", "  │ ") +
-			truncateToWidth(
-				padVisible(theme.fg("text", taskInfo), innerW),
-				innerW,
-				"…",
-				true,
-			) +
-			theme.fg("border", " │"),
-	);
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible("", innerW) +
-			theme.fg("border", " │"),
-	);
+	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)} (currently: ${task.col})`;	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
+	lines.push(modalLine("", innerW, theme));
 
 	const backlogOption =
 		task.col === "backlog"
@@ -487,19 +412,11 @@ export function renderMovePicker(
 			? theme.fg("dim", "[2] todo (current)")
 			: theme.fg("text", "[2] todo");
 	const options = `  ${backlogOption}   ${todoOption}`;
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(options, innerW) +
-			theme.fg("border", " │"),
-	);
+	lines.push(modalLine(options, innerW, theme));
 
 	const prompt = theme.fg("warning", "  Press 1 or 2 to move, esc to cancel");
-	lines.push(
-		theme.fg("border", "  │ ") +
-			padVisible(prompt, innerW) +
-			theme.fg("border", " │"),
-	);
-	lines.push(theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`));
+	lines.push(modalLine(prompt, innerW, theme));
+	lines.push(frameBottom(innerW, theme));
 
 	return lines;
 }

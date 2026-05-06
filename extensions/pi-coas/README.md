@@ -4,8 +4,8 @@ TypeScript-native pi control surface for CoAS workspace, schedule, status, and
 health state under `${COAS_HOME:-~/.coas}`.
 
 This extension does **not** depend on a sibling `~/git/coas` checkout and does
-not shell out to CoAS scripts. Matrix room bootstrap and arbitrary scheduled
-execution remain out of scope until they have a standalone reviewed runner.
+not shell out to CoAS scripts. Schedules are run by an in-process pi-hosted
+scheduler while pi is open; no user crontab is read or modified.
 
 ## Tools
 
@@ -18,9 +18,9 @@ execution remain out of scope until they have a standalone reviewed runner.
 | `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md` |
 | `coas_workspace_create` | Create a workspace record without Matrix room creation |
 | `coas_schedule_list` | List file-backed schedules |
-| `coas_schedule_add` | Add a file-backed schedule, without installing cron |
-| `coas_schedule_run` | Dry-run by default; non-dry-run execution is disabled for safety |
-| `coas_schedule_remove` | Remove a schedule file pair |
+| `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler |
+| `coas_schedule_run` | Dry-run a schedule; enabled schedules run through the internal scheduler |
+| `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler |
 
 ## Commands
 
@@ -28,8 +28,7 @@ execution remain out of scope until they have a standalone reviewed runner.
 - `/coas-doctor`
 - `/coas-workspaces`
 - `/coas-schedules`
-- `/coas-cron-install` — command exists but reports disabled until a standalone runner exists
-- `/coas-cron-uninstall` — command exists but reports disabled until a standalone runner exists
+- `/coas-scheduler` — show and reconcile the in-process scheduler
 
 ## Configuration
 
@@ -51,8 +50,8 @@ Optional `.pi/settings.json` override:
 
 ## Safety
 
-- No model-callable tool can install cron or execute arbitrary schedule payloads.
-- Cron commands are human-triggered and currently disabled rather than pretending to be safe.
+- No model-callable tool can install cron or modify host scheduler state.
+- The internal scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
 - Workspace reads/writes are confined to `${COAS_HOME}/workspaces` unless the target already has `.coas/workspace.env` metadata.
 - Workspace context updates use pi's file mutation queue and reject symlinked `CONTEXT.md` files.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.

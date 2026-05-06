@@ -15,7 +15,7 @@ The main risk is **custom framework growth**:
 
 *   **`pi-teams`:** The DAG executor risks becoming a brittle workflow engine.
 *   **File Concurrency:** Multiple writers require strict lock discipline, adding complexity.
-*   **`pi-coas`:** Must remain a thin `cron` wrapper, not a custom scheduling engine.
+*   **`pi-coas`:** Must keep its internal scheduler minimal: schedule files plus one pi-hosted timer loop, with no external crontab reconciliation.
 *   **`matrix`:** Justified for human interaction, but too heavy for local agent-to-agent comms.
 
 ## 3. Recommendations
@@ -23,5 +23,5 @@ The main risk is **custom framework growth**:
 1.  **Constrain `pi-teams`:** Define a minimal DAG contract. Prefer direct coordination functions (`run_debate()`) over a complex engine unless dynamic topologies are strictly required.
 2.  **Keep Kanban dumb:** Stick to the event-sourced log and deterministic state reconstruction. **No SQLite.**
 3.  **Keep `pi-panopticon` boring:** Only track agent existence and heartbeats. No historical metrics.
-4.  **Limit `pi-coas`:** Delegate scheduling to OS tools (`cron`/`systemd`).
+4.  **Limit `pi-coas`:** Run schedules only inside pi with a small timer loop; do not grow into a general external scheduler.
 5.  **Enforce Boundaries:** Prevent extensions from coupling. Add explicit "What this does NOT do" to every README.

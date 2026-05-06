@@ -2,7 +2,7 @@
  * CoAS extension output formatting and truncation helpers.
  */
 
-import type { CommandResult, TruncatedText } from "./types.js";
+import type { CommandResult, SchedulerSnapshot, TruncatedText } from "./types.js";
 
 const MAX_BYTES = 50 * 1024;
 const MAX_LINES = 2000;
@@ -45,6 +45,18 @@ export function shortCommandSummary(name: string, result: CommandResult, maxLine
 	const selected = lines.slice(0, maxLines);
 	if (lines.length > maxLines) selected.push("...");
 	return `${name} exit=${result.code}\n${selected.join("\n")}`;
+}
+
+export function renderSchedulerSnapshot(snapshot: SchedulerSnapshot): string {
+	return [
+		"CoAS internal scheduler",
+		"=======================",
+		`running           ${snapshot.running ? "yes" : "no"}`,
+		`enabled schedules ${snapshot.enabledSchedules}`,
+		`active runs       ${snapshot.activeRuns}`,
+		`started at        ${snapshot.startedAt ?? "-"}`,
+		`last error        ${snapshot.lastError ?? "none"}`,
+	].join("\n");
 }
 
 export function widgetLines(text: string, limit = 12): string[] {

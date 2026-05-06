@@ -1,6 +1,10 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { shortCommandSummary, truncateText } from "../extensions/pi-coas/format.js";
+import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../extensions/pi-coas/format.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../extensions/pi-coas/store.js";
+import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../extensions/pi-coas/scheduler.js";
 import { validateCronExpr, formatScheduleList } from "../extensions/pi-coas/schedules.js";
 import { ok, fail } from "../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../extensions/pi-coas/types.js";
@@ -106,6 +110,19 @@ describe("format", () => {
 		});
 	});
 
+	describe("renderSchedulerSnapshot", () => {
+		it("summarizes internal scheduler state", () => {
+			const rendered = renderSchedulerSnapshot({
+				running: true,
+				enabledSchedules: 2,
+				activeRuns: 1,
+				startedAt: "2026-01-01T00:00:00Z",
+			});
+			expect(rendered).toContain("running           yes");
+			expect(rendered).toContain("enabled schedules 2");
+		});
+	});
+
 	describe("truncateText", () => {
 		it("reports lines limit hit", () => {
 			const long = `${"line\n".repeat(2001)}`;
@@ -145,6 +162,111 @@ describe("schedules", () => {
 
 		it("rejects expressions with more than five fields", () => {
 			expect(() => validateCronExpr("0 9 * * 1 extra")).toThrow(/five fields/);
+		});
+	});
+
+	describe("internal scheduler helpers", () => {
+		const mondayNine = new Date("2026-01-05T09:00:00");
+
+		it("matches exact due minute", () => {
+			expect(scheduleMatchesDate("0 9 * * 1", mondayNine)).toBe(true);
+		});
+
+		it("does not match outside due minute", () => {
+			expect(scheduleMatchesDate("30 9 * * 1", mondayNine)).toBe(false);
+		});
+
+		it("supports stepped minute fields", () => {
+			expect(scheduleMatchesDate("*/15 9 * * 1", mondayNine)).toBe(true);
+		});
+
+		it("treats both 0 and 7 as Sunday", () => {
+			const sunday = new Date("2026-01-04T09:00:00");
+			expect(scheduleMatchesDate("0 9 * * 0", sunday)).toBe(true);
+			expect(scheduleMatchesDate("0 9 * * 7", sunday)).toBe(true);
+		});
+
+		it("renders scheduled prompts with metadata", () => {
+			const prompt = renderScheduledPrompt({
+				taskId: "daily-check",
+				taskName: "Daily Check",
+				roomId: "general",
+				workspaceId: "room-general",
+				cronExpr: "0 9 * * 1",
+				enabled: true,
+				promptFile: "/tmp/daily-check.prompt",
+				prompt: "Summarize the workspace.",
+			});
+			expect(prompt).toContain("Daily Check");
+			expect(prompt).toContain("room-general");
+			expect(prompt).toContain("Summarize the workspace.");
+		});
+	});
+
+	describe("CoasInternalScheduler", () => {
+		it("clears runtime state on stop", () => {
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			scheduler.start({ coasHome: join(tmpdir(), "missing-coas-home") });
+
+			scheduler.stop();
+
+			expect(scheduler.snapshot()).toEqual({
+				running: false,
+				enabledSchedules: 0,
+				activeRuns: 0,
+				startedAt: undefined,
+				lastError: undefined,
+			});
+		});
+
+		it("records reconcile errors instead of silently hiding them", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-bad-schedule-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(join(schedulesDir, "bad.env"), "TASK_ID=bad\nCRON_EXPR=not-enough\nPROMPT_FILE=bad.prompt\nWORKSPACE_ID=room-a\n");
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+
+				expect(scheduler.snapshot().enabledSchedules).toBe(0);
+				expect(scheduler.snapshot().lastError).toContain("Cron expression must have exactly five fields");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+
+		it("records malformed schedule expressions during ticks", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-invalid-field-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			const promptPath = join(schedulesDir, "bad.prompt");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(promptPath, "Do work.\n");
+			await writeFile(join(schedulesDir, "bad.env"), [
+				"TASK_ID=bad",
+				"TASK_NAME=Bad",
+				"ROOM_ID=general",
+				"WORKSPACE_ID=room-a",
+				"CRON_EXPR=99 9 * * 1",
+				`PROMPT_FILE=${promptPath}`,
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+
+				expect(scheduler.snapshot().lastError).toContain("invalid schedule bad");
+				expect(scheduler.snapshot().lastError).toContain("minute field is invalid");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
 		});
 	});
 

@@ -20,7 +20,7 @@ import {
 	scheduleLogRoot,
 	workspaceRoot,
 } from "./store.js";
-import type { CoasConfig, CommandResult, DoctorCheck } from "./types.js";
+import type { CoasConfig, CommandResult, DoctorCheck, SchedulerSnapshot } from "./types.js";
 
 function statusLine(label: string, value: string | number): string {
 	return `${label.padEnd(18)} ${value}`;
@@ -54,7 +54,7 @@ async function lastScheduleSignal(config: CoasConfig): Promise<string> {
 	return `see ${latest}`;
 }
 
-export async function coasStatus(config: CoasConfig): Promise<CommandResult> {
+export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapshot): Promise<CommandResult> {
 	const schedules = await listSchedules(config).catch(() => []);
 	const lines = [
 		"CoAS status",
@@ -62,6 +62,8 @@ export async function coasStatus(config: CoasConfig): Promise<CommandResult> {
 		statusLine("data root", config.coasHome),
 		statusLine("workspaces", await countDirectories(workspaceRoot(config))),
 		statusLine("enabled schedules", schedules.filter((schedule) => schedule.enabled).length),
+		statusLine("scheduler", scheduler?.running ? "running" : "stopped"),
+		statusLine("active runs", scheduler?.activeRuns ?? 0),
 		statusLine("last schedule", await lastScheduleSignal(config)),
 		statusLine("logs", existsSync(logRoot(config)) ? logRoot(config) : "none"),
 		statusLine("doctor", "run: /coas-doctor"),
@@ -198,14 +200,20 @@ async function checkDisk(config: CoasConfig): Promise<DoctorCheck[]> {
 	}
 }
 
-export async function coasDoctor(config: CoasConfig): Promise<CommandResult> {
+function checkScheduler(snapshot?: SchedulerSnapshot): DoctorCheck[] {
+	if (!snapshot) return [{ level: "warn", message: "internal scheduler: status unavailable" }];
+	if (snapshot.lastError) return [{ level: "warn", message: `internal scheduler error: ${snapshot.lastError}` }];
+	return [{ level: snapshot.running ? "ok" : "warn", message: `internal scheduler: ${snapshot.running ? "running" : "stopped"}, ${snapshot.enabledSchedules} enabled schedule(s)` }];
+}
+
+export async function coasDoctor(config: CoasConfig, scheduler?: SchedulerSnapshot): Promise<CommandResult> {
 	const checks = [
 		await checkCommand("pi", true),
 		await checkCommand("docker"),
-		await checkCommand("crontab"),
 		...(await checkDisk(config)),
 		...(await checkWorkspaceRegistry(config)),
 		...(await checkSchedules(config)),
+		...checkScheduler(scheduler),
 		...(await checkRecentScheduleFailures(config)),
 		...(await checkScheduleLocks(config)),
 	];

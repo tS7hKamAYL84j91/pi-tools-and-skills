@@ -87,8 +87,7 @@ Runtime `get_commands` plus code scan found these pi-tools extension commands:
 | `/coas-doctor`         | CoAS       | Run CoAS diagnostics                |
 | `/coas-workspaces`     | CoAS       | List CoAS workspaces                |
 | `/coas-schedules`      | CoAS       | List CoAS schedules                 |
-| `/coas-cron-install`   | CoAS       | Explain disabled cron install       |
-| `/coas-cron-uninstall` | CoAS       | Explain disabled cron uninstall     |
+| `/coas-scheduler`      | CoAS       | Show/reconcile internal scheduler   |
 | `/send`                | Panopticon | Send message to a named agent       |
 | `/alias`               | Panopticon | Set session alias and registry name — **remove; use built-in `/name` plus registry sync** |
 | `/agent-list-mode`     | Panopticon | Choose list/widget visibility mode  |

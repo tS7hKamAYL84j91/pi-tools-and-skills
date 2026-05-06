@@ -45,6 +45,11 @@ export interface CompletionSignal {
 
 const SIGNAL_OPEN = "<completion-signal>";
 const SIGNAL_CLOSE = "</completion-signal>";
+const STATUS_BY_LABEL: Record<string, CompletionStatus> = {
+	done: "done",
+	blocked: "blocked",
+	failed: "failed",
+};
 
 /**
  * Format a completion signal as a message body suitable for agent_send.
@@ -70,42 +75,43 @@ export function formatCompletionSignal(signal: CompletionSignal): string {
  * Also handles legacy informal signals ("DONE T-NNN — summary")
  * by extracting what it can into the structured format.
  */
-export function parseCompletionSignal(text: string): CompletionSignal | undefined {
-	// Try structured signal first
+function parseStructuredSignal(text: string): CompletionSignal | undefined {
 	const tagStart = text.indexOf(SIGNAL_OPEN);
 	const tagEnd = text.indexOf(SIGNAL_CLOSE);
-	if (tagStart >= 0 && tagEnd > tagStart) {
-		const jsonStr = text.slice(tagStart + SIGNAL_OPEN.length, tagEnd).trim();
-		try {
-			const parsed = JSON.parse(jsonStr) as CompletionSignal;
-			if (parsed.version === 1 && parsed.taskId && parsed.status && parsed.summary) {
-				return parsed;
-			}
-		} catch {
-			// Malformed JSON — fall through to legacy parsing
+	if (tagStart < 0 || tagEnd <= tagStart) {
+		return undefined;
+	}
+
+	const jsonStr = text.slice(tagStart + SIGNAL_OPEN.length, tagEnd).trim();
+	try {
+		const parsed = JSON.parse(jsonStr) as CompletionSignal;
+		if (parsed.version === 1 && parsed.taskId && parsed.status && parsed.summary) {
+			return parsed;
 		}
+	} catch {
+		// Malformed JSON — caller can fall through to legacy parsing.
 	}
-
-	// Legacy informal signal: "DONE T-NNN — summary" or "BLOCKED T-NNN — reason"
-	const legacyMatch = text.match(/^(DONE|BLOCKED|FAILED)\s+(T-\d+)\s*[-—]\s*(.+)/i);
-	if (legacyMatch) {
-		const statusMap: Record<string, CompletionStatus> = {
-			done: "done",
-			blocked: "blocked",
-			failed: "failed",
-		};
-		const status = statusMap[legacyMatch[1]?.toLowerCase() ?? ""] ?? "done";
-		const taskId = legacyMatch[2] ?? "";
-		const summary = legacyMatch[3]?.trim() ?? "";
-		return {
-			version: 1,
-			taskId,
-			status,
-			summary,
-			artifacts: [],
-			...(status !== "done" ? { reason: summary } : {}),
-		};
-	}
-
 	return undefined;
+}
+
+function parseLegacySignal(text: string): CompletionSignal | undefined {
+	const legacyMatch = text.match(/^(DONE|BLOCKED|FAILED)\s+(T-\d+)\s*[-—]\s*(.+)/i);
+	if (!legacyMatch) {
+		return undefined;
+	}
+
+	const status = STATUS_BY_LABEL[legacyMatch[1]?.toLowerCase() ?? ""] ?? "done";
+	const summary = legacyMatch[3]?.trim() ?? "";
+	return {
+		version: 1,
+		taskId: legacyMatch[2] ?? "",
+		status,
+		summary,
+		artifacts: [],
+		...(status !== "done" ? { reason: summary } : {}),
+	};
+}
+
+export function parseCompletionSignal(text: string): CompletionSignal | undefined {
+	return parseStructuredSignal(text) ?? parseLegacySignal(text);
 }

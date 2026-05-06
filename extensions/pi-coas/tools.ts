@@ -7,6 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary } from "./format.js";
+import type { CoasInternalScheduler } from "./scheduler.js";
 import { addSchedule, formatScheduleList, listSchedules, removeSchedule, runSchedule } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import {
@@ -21,7 +22,7 @@ function configFor(ctx: ExtensionContext): ReturnType<typeof resolveCoasConfig> 
 	return resolveCoasConfig(ctx.cwd);
 }
 
-export function registerCoasTools(pi: ExtensionAPI): void {
+export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
 	pi.registerTool({
 		name: "coas_status",
 		label: "CoAS Status",
@@ -30,7 +31,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await coasStatus(configFor(ctx));
+				const result = await coasStatus(configFor(ctx), scheduler.snapshot());
 				return ok(commandSummary("coas-status", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -46,7 +47,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await coasDoctor(configFor(ctx));
+				const result = await coasDoctor(configFor(ctx), scheduler.snapshot());
 				return ok(commandSummary("coas-doctor", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -139,7 +140,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
 				const schedules = await listSchedules(configFor(ctx));
-				return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules });
+				return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message);
 			}
@@ -149,20 +150,22 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_schedule_add",
 		label: "CoAS Schedule Add",
-		description: "Add a file-backed CoAS schedule. This writes schedule files only; it does not install cron.",
-		promptSnippet: "Add a CoAS scheduled automation without installing cron",
+		description: "Add a file-backed CoAS schedule and reconcile the pi-hosted internal scheduler.",
+		promptSnippet: "Add a CoAS scheduled automation to the internal scheduler",
 		parameters: Type.Object({
 			room: Type.String({ description: "Target room or room alias/reference." }),
 			name: Type.String({ description: "Task name." }),
-			cron: Type.String({ description: "Five-field cron expression." }),
+			cron: Type.String({ description: "Five-field schedule expression." }),
 			prompt: Type.String({ description: "Prompt to run on schedule." }),
 			workspace: Type.Optional(Type.String({ description: "Workspace id/name." })),
 			disabled: Type.Optional(Type.Boolean({ description: "Create disabled schedule." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const schedule = await addSchedule(configFor(ctx), params);
-				return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule });
+				const config = configFor(ctx);
+				const schedule = await addSchedule(config, params);
+				await scheduler.reconcile(config);
+				return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message, { room: params.room, name: params.name });
 			}
@@ -172,7 +175,7 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_schedule_run",
 		label: "CoAS Schedule Run",
-		description: "Dry-run a CoAS scheduled task. Non-dry-run execution is always disabled (returns error) until a standalone TypeScript runner exists; set dryRun=false only to confirm the policy error.",
+		description: "Dry-run a CoAS scheduled task. Enabled schedules run automatically through the pi-hosted internal scheduler while pi is open.",
 		promptSnippet: "Dry-run a CoAS scheduled task",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id." }),
@@ -192,14 +195,16 @@ export function registerCoasTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "coas_schedule_remove",
 		label: "CoAS Schedule Remove",
-		description: "Remove a CoAS schedule by task id. Does not edit user crontab.",
+		description: "Remove a CoAS schedule by task id and reconcile the internal scheduler.",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id to remove." }),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const message = await removeSchedule(configFor(ctx), params.taskId);
-				return ok(message, { code: 0, taskId: params.taskId });
+				const config = configFor(ctx);
+				const message = await removeSchedule(config, params.taskId);
+				await scheduler.reconcile(config);
+				return ok(message, { code: 0, taskId: params.taskId, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message, { taskId: params.taskId });
 			}

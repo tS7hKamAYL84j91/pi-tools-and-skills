@@ -6,7 +6,9 @@ import { DynamicBorder, type ExtensionAPI, type ExtensionCommandContext } from "
 import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary, widgetLines } from "./format.js";
-import { cronDisabled, formatScheduleList, listSchedules, renderCrontab } from "./schedules.js";
+import { renderSchedulerSnapshot } from "./format.js";
+import type { CoasInternalScheduler } from "./scheduler.js";
+import { formatScheduleList, listSchedules, renderInternalSchedulePlan } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import { formatWorkspaceList, listWorkspaces } from "./workspaces.js";
 
@@ -41,15 +43,7 @@ async function showText(ctx: ExtensionCommandContext, title: string, text: strin
 	});
 }
 
-async function confirmCron(ctx: ExtensionCommandContext, action: string): Promise<boolean> {
-	if (!ctx.hasUI) return false;
-	return ctx.ui.confirm(
-		`CoAS ${action}`,
-		`CoAS ${action} is disabled in the TypeScript extension until a standalone runner exists. Show the disabled-result message?`,
-	);
-}
-
-export function registerCoasCommands(pi: ExtensionAPI): void {
+export function registerCoasCommands(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
 	pi.registerCommand("coas-status", {
 		description: "Show fast CoAS operational status",
 		handler: async (_args, ctx) => {
@@ -76,35 +70,20 @@ export function registerCoasCommands(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("coas-schedules", {
-		description: "List CoAS schedules",
+		description: "List CoAS schedules and internal scheduler state",
 		handler: async (_args, ctx) => {
-			const schedules = await listSchedules(resolveCoasConfig(ctx.cwd));
-			const rendered = await renderCrontab(resolveCoasConfig(ctx.cwd));
-			await showText(ctx, "CoAS schedules", `${formatScheduleList(schedules)}\n\n${commandSummary("coas-schedule render-crontab", rendered)}`);
+			const config = resolveCoasConfig(ctx.cwd);
+			const schedules = await listSchedules(config);
+			const rendered = await renderInternalSchedulePlan(config);
+			await showText(ctx, "CoAS schedules", `${formatScheduleList(schedules)}\n\n${renderSchedulerSnapshot(scheduler.snapshot())}\n\n${commandSummary("coas-schedule internal-plan", rendered)}`);
 		},
 	});
 
-	pi.registerCommand("coas-cron-install", {
-		description: "Explain why CoAS cron install is disabled in the TypeScript runtime",
+	pi.registerCommand("coas-scheduler", {
+		description: "Show and reconcile the CoAS internal scheduler",
 		handler: async (_args, ctx) => {
-			if (!await confirmCron(ctx, "install-cron")) {
-				ctx.ui.notify("CoAS cron install cancelled", "info");
-				return;
-			}
-			const result = cronDisabled("install-cron");
-			await showText(ctx, "CoAS cron install disabled", commandSummary("coas-schedule install-cron", result), "warning");
-		},
-	});
-
-	pi.registerCommand("coas-cron-uninstall", {
-		description: "Explain why CoAS cron uninstall is disabled in the TypeScript runtime",
-		handler: async (_args, ctx) => {
-			if (!await confirmCron(ctx, "uninstall-cron")) {
-				ctx.ui.notify("CoAS cron uninstall cancelled", "info");
-				return;
-			}
-			const result = cronDisabled("uninstall-cron");
-			await showText(ctx, "CoAS cron uninstall disabled", commandSummary("coas-schedule uninstall-cron", result), "warning");
+			await scheduler.reconcile(resolveCoasConfig(ctx.cwd));
+			await showText(ctx, "CoAS scheduler", renderSchedulerSnapshot(scheduler.snapshot()));
 		},
 	});
 }

@@ -8,10 +8,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { registerCoasCommands } from "./commands.js";
 import { registerCoasLifecycle } from "./lifecycle.js";
+import { CoasInternalScheduler } from "./scheduler.js";
 import { registerCoasTools } from "./tools.js";
 
 export default function (pi: ExtensionAPI) {
-	registerCoasLifecycle(pi);
-	registerCoasTools(pi);
-	registerCoasCommands(pi);
+	const scheduler = new CoasInternalScheduler(pi);
+	registerCoasLifecycle(pi, scheduler);
+	registerCoasTools(pi, scheduler);
+	registerCoasCommands(pi, scheduler);
 }

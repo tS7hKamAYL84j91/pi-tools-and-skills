@@ -10,6 +10,23 @@ import type { SpawnedAgent } from "./spawn-service.js";
 
 type Evt = Record<string, unknown>;
 
+function parseEvent(line: string): Evt | undefined {
+	try {
+		return JSON.parse(line) as Evt;
+	} catch {
+		return undefined;
+	}
+}
+
+function lineMightContainSignal(line: string): boolean {
+	return (
+		line.includes("DONE ") ||
+		line.includes("BLOCKED ") ||
+		line.includes("FAILED ") ||
+		line.includes("<completion-signal>")
+	);
+}
+
 const EVENT_FORMATTERS: Record<string, (e: Evt) => string> = {
 	message_update: (e) => {
 		const d = e.assistantMessageEvent as Evt | undefined;
@@ -31,13 +48,12 @@ const EVENT_FORMATTERS: Record<string, (e: Evt) => string> = {
 
 /** Format a single JSONL event line into a compact human-readable string. */
 export function formatEvent(line: string): string {
-	try {
-		const evt = JSON.parse(line) as Evt;
-		const fmt = EVENT_FORMATTERS[String(evt.type ?? "?")];
-		return fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`;
-	} catch {
+	const evt = parseEvent(line);
+	if (!evt) {
 		return line.slice(0, 120);
 	}
+	const fmt = EVENT_FORMATTERS[String(evt.type ?? "?")];
+	return fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`;
 }
 
 /** Format the last `lines` events from an array into readable output. */
@@ -46,47 +62,43 @@ export function recentOutputFromEvents(events: string[], lines = 20): string {
 	return events.slice(-lines).map(formatEvent).filter(Boolean).join("");
 }
 
+function toolResultText(evt: Evt): string | undefined {
+	const result = evt.result as Evt | undefined;
+	const content = result?.content as Array<{ text?: string }> | undefined;
+	return content?.[0]?.text;
+}
+
+function agentSendMessage(evt: Evt): string | undefined {
+	const args = evt.args as Evt | undefined;
+	return args?.message as string | undefined;
+}
+
+function eventCompletionText(evt: Evt): string | undefined {
+	if (evt.type === "tool_execution_end") {
+		return toolResultText(evt);
+	}
+	if (evt.type === "tool_execution_start" && evt.toolName === "agent_send") {
+		return agentSendMessage(evt);
+	}
+	return undefined;
+}
+
+function eventHasCompletionSignal(line: string): boolean {
+	if (!lineMightContainSignal(line)) {
+		return false;
+	}
+	const evt = parseEvent(line);
+	const text = evt ? eventCompletionText(evt) : undefined;
+	return Boolean(text && parseCompletionSignal(text));
+}
+
 /** Scan agent events for any completion signal (structured or legacy). */
 export function hasCompletionSignal(
 	agent: SpawnedAgent,
 	signalledAgents: Set<string>,
 ): boolean {
 	if (signalledAgents.has(agent.name)) return true;
-	for (const line of agent.recentEvents) {
-		if (
-			line.includes("DONE ") ||
-			line.includes("BLOCKED ") ||
-			line.includes("FAILED ") ||
-			line.includes("<completion-signal>")
-		) {
-			try {
-				const evt = JSON.parse(line) as Record<string, unknown>;
-				if (evt.type === "tool_execution_end") {
-					const result = evt.result as Record<string, unknown> | undefined;
-					const content = result?.content as
-						| Array<{ text?: string }>
-						| undefined;
-					const text = content?.[0]?.text;
-					if (text && parseCompletionSignal(text)) {
-						signalledAgents.add(agent.name);
-						return true;
-					}
-				}
-				if (
-					evt.type === "tool_execution_start" &&
-					evt.toolName === "agent_send"
-				) {
-					const args = evt.args as Record<string, unknown> | undefined;
-					const msg = args?.message as string | undefined;
-					if (msg && parseCompletionSignal(msg)) {
-						signalledAgents.add(agent.name);
-						return true;
-					}
-				}
-			} catch {
-				/* not JSON */
-			}
-		}
-	}
-	return false;
+	if (!agent.recentEvents.some(eventHasCompletionSignal)) return false;
+	signalledAgents.add(agent.name);
+	return true;
 }

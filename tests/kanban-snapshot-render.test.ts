@@ -16,13 +16,23 @@ import {
 	parseBoard,
 	type TaskState,
 } from "../extensions/kanban/board.js";
-import { renderBoard } from "../extensions/kanban/overlay-render.js";
+import {
+	renderBoard,
+	renderConfirmDelete,
+	renderDetail,
+	renderMovePicker,
+} from "../extensions/kanban/overlay-render.js";
 import {
 	generateSnapshot,
 	generateSnapshotSummary,
 	generateTaskDetail,
 } from "../extensions/kanban/snapshot.js";
 import { buildWidgetLines } from "../extensions/kanban/watcher.js";
+
+const fakeTheme = {
+	fg: (_name: string, text: string) => text,
+	bold: (text: string) => text,
+} as unknown as import("@mariozechner/pi-coding-agent").Theme;
 
 describe("snapshot renderers", () => {
 	let tmpDir: string;
@@ -225,15 +235,63 @@ describe("widget builder", () => {
 	});
 });
 
+describe("overlay modal renderers", () => {
+	const task = {
+		id: "T-101",
+		col: "todo",
+		deleted: false,
+		title: "Modal task",
+		priority: "high",
+		tags: "ui",
+		description: "Keep modal behaviour stable while renderer internals change.",
+		agent: "lead",
+		claimed: true,
+		claimAgent: "worker-1",
+		model: "",
+		expires: "2026-01-01T02:00:00Z",
+		reason: "",
+		notes: ["first note", "second note"],
+		completedAt: "",
+		duration: "",
+		doneAgent: "",
+		createdAt: "2026-01-01T00:00:00Z",
+	} as TaskState;
+
+	it("renders detail metadata and notes", () => {
+		const body = renderDetail(task, 80, fakeTheme).join("\n");
+
+		expect(body).toContain("T-101");
+		expect(body).toContain("Modal task");
+		expect(body).toContain("worker-1");
+		expect(body).toContain("Notes (2)");
+		expect(body).toContain("second note");
+	});
+
+	it("renders no-selection state consistently", () => {
+		const detail = renderDetail(undefined, 80, fakeTheme).join("\n");
+		const confirm = renderConfirmDelete(null, 80, fakeTheme).join("\n");
+		const move = renderMovePicker(null, 80, fakeTheme).join("\n");
+
+		expect(detail).toContain("No task selected");
+		expect(confirm).toContain("No task selected");
+		expect(move).toContain("No task selected");
+	});
+
+	it("renders destructive and move prompts", () => {
+		const confirm = renderConfirmDelete(task, 80, fakeTheme).join("\n");
+		const move = renderMovePicker(task, 80, fakeTheme).join("\n");
+
+		expect(confirm).toContain("Delete Task?");
+		expect(confirm).toContain("Press 'y' to delete");
+		expect(move).toContain("Move Task");
+		expect(move).toContain("[2] todo (current)");
+	});
+});
+
 describe("overlay render empty board", () => {
 	const emptyColTasks = [[], [], [], [], []] as TaskState[][];
 
 	it("shows empty state message when no tasks", () => {
-		const fakeTheme = {
-			fg: (_name: string, text: string) => text,
-			bold: (text: string) => text,
-		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
-
 		const view = {
 			colTasks: emptyColTasks,
 			activeCol: "backlog" as const,
@@ -249,11 +307,6 @@ describe("overlay render empty board", () => {
 	});
 
 	it("does not show empty state when tasks exist", () => {
-		const fakeTheme = {
-			fg: (_name: string, text: string) => text,
-			bold: (text: string) => text,
-		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
-
 		const task = {
 			id: "T-001",
 			col: "backlog",
@@ -292,11 +345,6 @@ describe("overlay render empty board", () => {
 	});
 
 	it("shows done overflow count in the board header", () => {
-		const fakeTheme = {
-			fg: (_name: string, text: string) => text,
-			bold: (text: string) => text,
-		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
-
 		const visibleDoneTasks = Array.from({ length: 10 }, (_, index) => ({
 			id: `T-${String(index + 1).padStart(3, "0")}`,
 			col: "done",
@@ -331,11 +379,6 @@ describe("overlay render empty board", () => {
 	});
 
 	it("keeps board lines within an 80-column viewport", () => {
-		const fakeTheme = {
-			fg: (_name: string, text: string) => text,
-			bold: (text: string) => text,
-		} as unknown as import("@mariozechner/pi-coding-agent").Theme;
-
 		const task = {
 			id: "T-001",
 			col: "backlog",
