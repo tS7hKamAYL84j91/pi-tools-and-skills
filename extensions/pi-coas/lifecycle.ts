@@ -9,6 +9,10 @@ import { pathInside, workspaceRoot } from "./store.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
+export function formatCoasStatusSlot(workspace?: string): string {
+	return workspace ? `coas: ${workspace}` : "coas: on ✓";
+}
+
 function updateStatus(ctx: ExtensionContext): void {
 	const config = resolveCoasConfig(ctx.cwd);
 	const workspace = currentWorkspaceLabel(ctx.cwd);
@@ -16,7 +20,7 @@ function updateStatus(ctx: ExtensionContext): void {
 		ctx.ui.setStatus("coas", undefined);
 		return;
 	}
-	ctx.ui.setStatus("coas", workspace ? `CoAS ${workspace}` : "CoAS ✓");
+	ctx.ui.setStatus("coas", formatCoasStatusSlot(workspace));
 }
 
 function contextInstruction(ctx: ExtensionContext): string | undefined {

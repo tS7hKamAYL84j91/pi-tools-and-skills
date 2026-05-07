@@ -39,12 +39,12 @@ function createTeamRoot(root: string): void {
 
 function writeDefaultDebate(root: string, members: string[], synthesis: string): void {
 	writeFileSync(
-		join(root, "teams", "default-debate.md"),
+		join(root, "teams", "llm-council.md"),
 		[
 			"---",
 			'schemaVersion: 2',
-			'id: "default-debate"',
-			'name: "Default Debate"',
+			'id: "llm-council"',
+			'name: "LLM Council"',
 			'description: "Architecture review"',
 			'protocol: "debate"',
 			"agents:",
@@ -86,23 +86,24 @@ function writeConsult(root: string, navigator: string): void {
 }
 
 describe("DEFAULT_MEMBER_CANDIDATES", () => {
-	it("comes from the built-in default-debate team", () => {
+	it("comes from the built-in llm-council team", () => {
 		expect(DEFAULT_MEMBER_CANDIDATES).toEqual([
-			"openai-codex/gpt-5.5",
-			"google-gemini-cli/gemini-3.1-pro-preview",
+			"ollama/deepseek-v4-pro:cloud",
 			"ollama/qwen3.5:cloud",
-			"ollama/glm-5.1:cloud",
+			"ollama/kimi-k2.6:cloud",
+			"ollama/minimax-m2.7:cloud",
 		]);
 	});
 });
 
 describe("DEFAULT_SYNTHESIS_CANDIDATES", () => {
-	it("comes from the built-in default-debate team", () => {
+	it("comes from the built-in llm-council team", () => {
 		expect(DEFAULT_SYNTHESIS_CANDIDATES).toEqual([
 			"openai-codex/gpt-5.5",
-			"google-gemini-cli/gemini-3.1-pro-preview",
+			"ollama/deepseek-v4-pro:cloud",
 			"ollama/qwen3.5:cloud",
-			"ollama/glm-5.1:cloud",
+			"ollama/kimi-k2.6:cloud",
+			"ollama/minimax-m2.7:cloud",
 		]);
 	});
 });

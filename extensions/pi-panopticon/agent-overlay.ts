@@ -2,8 +2,7 @@
  * Agent panopticon overlay and detail view.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext, type Theme } from "@mariozechner/pi-coding-agent";
 import {
 	Container,
 	Text,
@@ -11,15 +10,126 @@ import {
 	type SelectItem,
 	matchesKey,
 } from "@mariozechner/pi-tui";
-import { readSessionLog } from "../../lib/session-log.js";
+import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
 import type { AgentListModeStore } from "./list-mode.js";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
-import type { Registry } from "./types.js";
+import type { AgentRecord, Registry } from "./types.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 import {
 	buildStatusSegments,
 	type ThemeColor,
 } from "./ui-format.js";
+
+function agentSelectItems(records: readonly AgentRecord[], selfId: string): SelectItem[] {
+	return records.map((rec) => ({
+		value: rec.name,
+		label: `${STATUS_SYMBOL[rec.status]} ${rec.name}${rec.id === selfId ? " (you)" : ""}`,
+		description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
+	}));
+}
+
+interface RenderAgentListOverlayArgs {
+	records: AgentRecord[];
+	selfId: string;
+	theme: Theme;
+	width: number;
+}
+
+function createAgentListView(args: Omit<RenderAgentListOverlayArgs, "width">): { container: Container; selectList: SelectList } {
+	const container = new Container();
+	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
+	const selectList = new SelectList(agentSelectItems(args.records, args.selfId), Math.min(args.records.length, 12), {
+		// SelectList hardcodes a Unicode arrow; normalize it to the shared
+		// ASCII-safe selected-row marker used by Teams and Kanban.
+		selectedPrefix: (t: string) => args.theme.fg("accent", t),
+		selectedText: (t: string) => args.theme.fg("accent", t.replace(/^→/, ">")),
+		description: (t: string) => args.theme.fg("muted", t),
+		scrollInfo: (t: string) => args.theme.fg("dim", t),
+		noMatch: (t: string) => args.theme.fg("warning", t),
+	});
+
+	container.addChild(border());
+	container.addChild(
+		new Text(
+			args.theme.fg("accent", args.theme.bold(" Agent Panopticon")) +
+				args.theme.fg("dim", ` - ${args.records.length} agent${args.records.length !== 1 ? "s" : ""}`),
+			1,
+			0,
+		),
+	);
+	container.addChild(new Text(` ${buildStatusSegments(args.records, args.selfId, args.theme).join(args.theme.fg("dim", " | "))}`, 1, 1));
+	container.addChild(new Text(args.theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
+	container.addChild(selectList);
+	container.addChild(new Text(args.theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close"), 1, 0));
+	container.addChild(border());
+	return { container, selectList };
+}
+
+export function renderAgentListOverlay(args: RenderAgentListOverlayArgs): string[] {
+	return createAgentListView(args).container.render(args.width);
+}
+
+interface RenderAgentDetailOverlayArgs {
+	record: AgentRecord;
+	selfId: string;
+	sessionEvents: SessionEvent[];
+	theme: Theme;
+	width: number;
+}
+
+export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): string[] {
+	const container = new Container();
+	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
+	const add = (s: string) => container.addChild(new Text(s, 1, 0));
+	const row = (label: string, value: string) =>
+		add(`  ${args.theme.fg("dim", label.padEnd(12))} ${args.theme.fg("text", value)}`);
+	const isSelf = args.record.id === args.selfId;
+
+	container.addChild(border());
+	add(`  ${STATUS_SYMBOL[args.record.status]} ${args.theme.fg("accent", args.theme.bold(args.record.name))}${isSelf ? args.theme.fg("dim", " (you)") : ""}  ${args.theme.fg("muted", args.record.status)}`);
+
+	const pending = args.record.pendingMessages ?? 0;
+	const details: [string, string][] = [
+		["Model", args.record.model || "unknown"],
+		["CWD", args.record.cwd],
+		["PID", String(args.record.pid)],
+		["Messages", `msg:${pending}`],
+		["Uptime", formatAge(args.record.startedAt)],
+	];
+	if (args.record.task) details.push(["Task", args.record.task.slice(0, 60)]);
+	for (const [label, value] of details) row(label, value);
+
+	add(`\n  ${args.theme.fg("accent", args.theme.bold("Recent Activity"))} ${args.theme.fg("dim", `(${args.sessionEvents.length} events)`)}`);
+	if (args.sessionEvents.length === 0) {
+		add(`  ${args.theme.fg("dim", "(no activity recorded)")}`);
+	} else {
+		const visibleEvents = args.sessionEvents.slice(-15);
+		const hiddenCount = args.sessionEvents.length - visibleEvents.length;
+		if (hiddenCount > 0) {
+			add(`  ${args.theme.fg("dim", `... ${hiddenCount} earlier event${hiddenCount === 1 ? "" : "s"} omitted`)}`);
+		}
+		for (const entry of visibleEvents) {
+			const ts = new Date(entry.ts).toISOString().slice(11, 19);
+			const event = String(entry.event ?? "?");
+			const col: ThemeColor = event.includes("error")
+				? "error"
+				: event.includes("start")
+					? "success"
+					: event.includes("end")
+						? "warning"
+						: "dim";
+			const extra = Object.entries(entry)
+				.filter(([k]) => k !== "ts" && k !== "event")
+				.map(([k, v]) => `${k}=${String(v).slice(0, 60)}`)
+				.join(" ");
+			add(`  ${args.theme.fg("dim", ts)} ${args.theme.fg(col, event)}${extra ? args.theme.fg("muted", ` ${extra}`) : ""}`);
+		}
+	}
+
+	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["m send message"] : [])].join(" · "))}`);
+	container.addChild(border());
+	return container.render(args.width);
+}
 
 export async function openAgentOverlay(
 	ctx: ExtensionContext,
@@ -35,40 +145,15 @@ export async function openAgentOverlay(
 	}
 
 	const sorted = sortRecords(records, selfId);
-	const items: SelectItem[] = sorted.map((rec) => ({
-		value: rec.name,
-		label: `${STATUS_SYMBOL[rec.status]} ${rec.name}${rec.id === selfId ? " (you)" : ""}`,
-		description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
-	}));
 
 	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-		const container = new Container();
-		container.addChild(border());
-		container.addChild(
-			new Text(
-				theme.fg("accent", theme.bold(" Agent Panopticon")) +
-					theme.fg("dim", ` - ${records.length} agent${records.length !== 1 ? "s" : ""}`),
-				1,
-				0,
-			),
-		);
-		container.addChild(new Text(` ${buildStatusSegments(sorted, selfId, theme).join(theme.fg("dim", " | "))}`, 1, 1));
-		container.addChild(new Text(theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
-		const selectList = new SelectList(items, Math.min(items.length, 12), {
-			// SelectList hardcodes a Unicode arrow; normalize it to the shared
-			// ASCII-safe selected-row marker used by Teams and Kanban.
-			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
-			description: (t: string) => theme.fg("muted", t),
-			scrollInfo: (t: string) => theme.fg("dim", t),
-			noMatch: (t: string) => theme.fg("warning", t),
+		const { container, selectList } = createAgentListView({
+			records: sorted,
+			selfId,
+			theme,
 		});
 		selectList.onSelect = (item) => done(item.value);
 		selectList.onCancel = () => done(null);
-		container.addChild(selectList);
-		container.addChild(new Text(theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close"), 1, 0));
-		container.addChild(border());
 
 		return {
 			render: (w: number) => container.render(w),
@@ -111,54 +196,15 @@ async function showAgentDetail(
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
 
 	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
-		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-		const container = new Container();
-		const add = (s: string) => container.addChild(new Text(s, 1, 0));
-		const row = (label: string, value: string) =>
-			add(`  ${theme.fg("dim", label.padEnd(12))} ${theme.fg("text", value)}`);
-
-		container.addChild(border());
-		add(`  ${STATUS_SYMBOL[rec.status]} ${theme.fg("accent", theme.bold(rec.name))}${isSelf ? theme.fg("dim", " (you)") : ""}  ${theme.fg("muted", rec.status)}`);
-
-		const pending = rec.pendingMessages ?? 0;
-		const details: [string, string][] = [
-			["Model", rec.model || "unknown"],
-			["CWD", rec.cwd],
-			["PID", String(rec.pid)],
-			["Messages", `msg:${pending}`],
-			["Uptime", formatAge(rec.startedAt)],
-		];
-		if (rec.task) details.push(["Task", rec.task.slice(0, 60)]);
-		for (const [label, value] of details) row(label, value);
-
-		add(`\n  ${theme.fg("accent", theme.bold("Recent Activity"))} ${theme.fg("dim", `(${sessionEvents.length} events)`)}`);
-		if (sessionEvents.length === 0) {
-			add(`  ${theme.fg("dim", "(no activity recorded)")}`);
-		} else {
-			for (const entry of sessionEvents.slice(-15)) {
-				const ts = new Date(entry.ts).toISOString().slice(11, 19);
-				const event = String(entry.event ?? "?");
-				const col: ThemeColor = event.includes("error")
-					? "error"
-					: event.includes("start")
-						? "success"
-						: event.includes("end")
-							? "warning"
-							: "dim";
-				const extra = Object.entries(entry)
-					.filter(([k]) => k !== "ts" && k !== "event")
-					.map(([k, v]) => `${k}=${String(v).slice(0, 60)}`)
-					.join(" ");
-				add(`  ${theme.fg("dim", ts)} ${theme.fg(col, event)}${extra ? theme.fg("muted", ` ${extra}`) : ""}`);
-			}
-		}
-
-		add(`\n  ${theme.fg("dim", ["esc back", ...(!isSelf ? ["m send message"] : [])].join(" · "))}`);
-		container.addChild(border());
-
 		return {
-			render: (w: number) => container.render(w),
-			invalidate: () => container.invalidate(),
+			render: (w: number) => renderAgentDetailOverlay({
+				record: rec,
+				selfId,
+				sessionEvents,
+				theme,
+				width: w,
+			}),
+			invalidate: () => undefined,
 			handleInput: (data: string) => {
 				if (matchesKey(data, "escape")) {
 					done();

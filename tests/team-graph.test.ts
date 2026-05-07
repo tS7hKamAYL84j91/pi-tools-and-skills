@@ -30,24 +30,19 @@ describe("direct team handlers", () => {
 		expect(getTeamHandler(team({ protocol: "consult", models: { navigator: "test/nav" } }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
-		expect(getTeamHandler(team({ protocol: "pair-coding" }))?.key).toBe("pair-coding");
 		expect(getTeamHandler(team({ protocol: "telephone" }))).toBeUndefined();
 		expect(modelSlotsForTeam(team({ protocol: "telephone" }), team().models)).toEqual([]);
 		expect(promptChainsForTeam(team({ protocol: "telephone" }))).toEqual([]);
 		expect(getTeamHandler(team({ protocol: "graph" }))).toBeUndefined();
 	});
 
-	it("reports debate, consult, and pair-coding model slots without graph lowering", () => {
+	it("reports debate and consult model slots without graph lowering", () => {
 		expect(modelSlotsForTeam(team(), team().models)).toEqual([
 			{ id: "member:0", label: "Member model 1", current: "test/a", kind: "member", index: 0 },
 			{ id: "member:1", label: "Member model 2", current: "test/b", kind: "member", index: 1 },
 			{ id: "synthesis", label: "Synthesis model", current: "test/synthesis", kind: "synthesis" },
 		]);
 		expect(modelSlotsForTeam(team({ protocol: "consult", models: { navigator: "test/nav" } }), { navigator: "test/nav" })).toEqual([
-			{ id: "navigator", label: "Navigator model", current: "test/nav", kind: "navigator" },
-		]);
-		expect(modelSlotsForTeam(team({ protocol: "pair-coding", models: { driver: "test/driver", navigator: "test/nav" } }), { driver: "test/driver", navigator: "test/nav" })).toEqual([
-			{ id: "driver", label: "Driver model", current: "test/driver", kind: "driver" },
 			{ id: "navigator", label: "Navigator model", current: "test/nav", kind: "navigator" },
 		]);
 	});
@@ -63,16 +58,6 @@ describe("direct team handlers", () => {
 		expect(promptChainsForTeam(team({ protocol: "consult", models: { navigator: "test/nav" } })).map((chain) => chain.slot)).toEqual([
 			"navigator.system",
 			"navigator.template",
-		]);
-		expect(promptChainsForTeam(team({ protocol: "pair-coding" })).map((chain) => chain.slot)).toEqual([
-			"navigatorBrief.system",
-			"driverImplementation.system",
-			"navigatorReview.system",
-			"driverFix.system",
-			"navigatorBrief.template",
-			"driverImplementation.template",
-			"navigatorReview.template",
-			"driverFix.template",
 		]);
 	});
 });

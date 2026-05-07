@@ -148,13 +148,6 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 			...criticSubagents.map((subagent) => ({ role: "critic", subagent })),
 		];
 	}
-	if (args.protocol === "pair-coding") {
-		return args.agents.map((subagent) => {
-			const role = subagent.includes("driver") ? "driver" : "navigator";
-			const model = role === "driver" ? models.driver : models.navigator;
-			return { role, subagent, ...(model ? { model } : {}) };
-		});
-	}
 	if (args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
@@ -275,7 +268,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const supported = new Set(["consult", "pair-coding", "debate"]);
+	const supported = new Set(["consult", "debate"]);
 	if (!supported.has(input.protocol) && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	}
@@ -394,7 +387,6 @@ export async function formTeam(
 	const protocolChoice = await ctx.ui.select("Protocol", [
 		"consult — one Navigator gives focused review",
 		"debate — members critique and synthesis joins answers",
-		"pair-coding — constrained Driver/Navigator implementation loop",
 	]);
 	if (!protocolChoice) return undefined;
 	const protocol = protocolFromChoice(protocolChoice);
@@ -402,9 +394,7 @@ export async function formTeam(
 	const agents: string[] = [];
 	let memberModelIds: string[] | undefined;
 	let synthesisId: string | undefined;
-	let driverId: string | undefined;
 	let navigatorId: string | undefined;
-	let maxFixPasses: number | undefined;
 
 	if (protocol === "consult") {
 		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
@@ -419,16 +409,6 @@ export async function formTeam(
 		if (critic) agents.push(critic.subagent);
 		memberModelIds = member.model ? [member.model] : isLiveAgentRef(member.subagent) ? undefined : await chooseMemberModels(ctx);
 		synthesisId = await chooseModel(ctx, "Synthesis model");
-	} else if (protocol === "pair-coding") {
-		const navigator = await chooseTeamTarget(ctx, "Navigator agent or model", subagentIdFromTeam(id, "navigator"));
-		if (!navigator) return undefined;
-		const driver = await chooseTeamTarget(ctx, "Driver agent or model", subagentIdFromTeam(id, "driver"));
-		if (!driver) return undefined;
-		agents.push(navigator.subagent, driver.subagent);
-		navigatorId = await chooseTargetModel(ctx, "Navigator model", navigator);
-		driverId = await chooseTargetModel(ctx, "Driver model", driver);
-		const maxFixPassesInput = await ctx.ui.input("Max fix passes", "1");
-		maxFixPasses = maxFixPassesInput ? Number(maxFixPassesInput) : undefined;
 	}
 
 	const teamPath = join(dirsForTeamScope("user", ctx.cwd).teams, `${id}.md`);
@@ -441,11 +421,7 @@ export async function formTeam(
 		models: {
 			...(memberModelIds && memberModelIds.length > 0 ? { members: memberModelIds } : {}),
 			...(synthesisId ? { synthesis: synthesisId } : {}),
-			...(driverId ? { driver: driverId } : {}),
 			...(navigatorId ? { navigator: navigatorId } : {}),
-		},
-		limits: {
-			...(Number.isFinite(maxFixPasses) ? { maxFixPasses } : {}),
 		},
 		overwrite: existsSync(teamPath)
 			? await ctx.ui.confirm("Overwrite team?", `${teamPath} already exists. Replace it?`)

@@ -25,12 +25,12 @@ function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultSynthes
 	try {
 		writeFileSync(file, JSON.stringify({ teams: { roots: [root] } }));
 		writeFileSync(
-			join(root, "teams", "default-debate.md"),
+			join(root, "teams", "llm-council.md"),
 			[
 				"---",
 				"schemaVersion: 2",
-				'id: "default-debate"',
-				'name: "Default Debate"',
+				'id: "llm-council"',
+				'name: "LLM Council"',
 				'protocol: "debate"',
 				"agents:",
 				...members.flatMap((model, index) => [

@@ -3,16 +3,15 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { loadTeamContext } from "./context-loader.js";
 import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
-import { formatProtocolContext, renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
+import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { resolveSystemPrompt, resolveTemplatePrompt, type PromptCatalog, type ResolvedPromptChain } from "./prompt-resolver.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { bindingForRole, roleBindings } from "./team-bindings.js";
-import { modelForBinding, nodeDetails, type NodeRun, participantsFromRuns, runTeamNode } from "./team-node-runner.js";
+import { nodeDetails, type NodeRun, participantsFromRuns, runTeamNode } from "./team-node-runner.js";
 import type { TeamAgentBinding, TeamModelSlotSpec, TeamModels, TeamPromptRefs, TeamSpec } from "./team-types.js";
 import type { TeamParticipant } from "./types.js";
 
@@ -184,18 +183,7 @@ function councilSlots(team: TeamSpec): PromptSlot[] {
 	];
 }
 
-function pairCodingSlots(): PromptSlot[] {
-	return [
-		{ id: "navigatorBrief.system", kind: "system", defaultPromptId: "pair-coding/navigator-brief/system", roles: ["navigator_brief"] },
-		{ id: "driverImplementation.system", kind: "system", defaultPromptId: "pair-coding/driver-implementation/system", roles: ["driver_implementation"] },
-		{ id: "navigatorReview.system", kind: "system", defaultPromptId: "pair-coding/navigator-review/system", roles: ["navigator_review"] },
-		{ id: "driverFix.system", kind: "system", defaultPromptId: "pair-coding/driver-fix/system", roles: ["driver_fix"] },
-		{ id: "navigatorBrief.template", kind: "template", defaultPromptId: "pair-coding/navigator-brief/template", roles: ["navigator_brief"] },
-		{ id: "driverImplementation.template", kind: "template", defaultPromptId: "pair-coding/driver-implementation/template", roles: ["driver_implementation"] },
-		{ id: "navigatorReview.template", kind: "template", defaultPromptId: "pair-coding/navigator-review/template", roles: ["navigator_review"] },
-		{ id: "driverFix.template", kind: "template", defaultPromptId: "pair-coding/driver-fix/template", roles: ["driver_fix"] },
-	];
-}
+
 
 function promptChains(team: TeamSpec, slots: readonly PromptSlot[]): ResolvedPromptChain[] {
 	const catalog = resolveTeamSettings().prompts;
@@ -290,63 +278,8 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	return okText(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
 }
 
-function changesRequested(review: string): boolean {
-	const normalized = review.toLowerCase();
-	const approval = /\b(approved|looks correct|is correct|no changes|no fixes|lgtm)\b/.test(normalized);
-	const defect = /\b(change|fix|defect|issue|bug|missing|required|should|must)\b/.test(normalized);
-	return defect || !approval;
-}
-
-const pairCodingHandler: TeamHandler = {
-	key: "pair-coding",
-	matches(team) {
-		return team.protocol === "pair-coding";
-	},
-	modelSlots(_team, models) {
-		return [
-			{ id: "driver", label: "Driver model", current: models.driver, kind: "driver" },
-			{ id: "navigator", label: "Navigator model", current: models.navigator, kind: "navigator" },
-		];
-	},
-	async run(args) {
-		const settings = resolveTeamSettings();
-		const navBrief = requireBinding(args.team, ["navigator_brief", "navigator"]);
-		const driverImpl = requireBinding(args.team, ["driver_implementation", "driver"]);
-		const navReview = bindingForRole(args.team.agentBindings, ["navigator_review", "navigator"]) ?? navBrief;
-		const driverFix = bindingForRole(args.team.agentBindings, ["driver_fix", "driver"]) ?? driverImpl;
-		const driver = args.params.models?.driver ?? modelForBinding(driverImpl, args.team.models.driver ?? settings.defaultMembers[0]);
-		const navigator = args.params.models?.navigator ?? modelForBinding(navBrief, args.team.models.navigator ?? settings.defaultSynthesis);
-		if (!driver || !navigator) throw new Error("pair-coding needs driver and navigator models.");
-		const context = formatProtocolContext(loadTeamContext({ cwd: args.ctx.cwd, specPath: args.params.specPath, files: args.params.files }));
-		const chains = promptChains(args.team, pairCodingSlots());
-		const parent = await currentPanopticonRecord(args.ctx.cwd);
-		const timeoutMs = args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs;
-		const maxRetries = args.params.limits?.maxRetries ?? args.team.limits.maxRetries;
-		const nodes: NodeRun[] = [];
-		recordPhase(args, "pair-coding");
-		const brief = await runTeamNode({ binding: { ...navBrief, role: "navigator_brief" }, role: "navigator_brief", model: navigator, prompt: renderTemplate(chainText(chains, "navigatorBrief.template").split("\n"), { context, prompt: args.params.prompt }), systemPrompt: chainText(chains, "navigatorBrief.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs, maxRetries });
-		nodes.push(brief);
-		recordNode(args, "pair-coding", brief);
-		let artifact = (await runTeamNode({ binding: { ...driverImpl, role: "driver_implementation" }, role: "driver_implementation", model: driver, prompt: renderTemplate(chainText(chains, "driverImplementation.template").split("\n"), { context, prompt: args.params.prompt, navigatorBrief: brief.output }), systemPrompt: chainText(chains, "driverImplementation.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs, maxRetries }));
-		nodes.push(artifact);
-		recordNode(args, "pair-coding", artifact);
-		const maxFixPasses = Math.max(0, args.params.limits?.maxFixPasses ?? args.team.limits.maxFixPasses ?? 1);
-		for (let pass = 1; pass <= maxFixPasses; pass++) {
-			const review = await runTeamNode({ binding: { ...navReview, role: `navigator_review_${pass}` }, role: `navigator_review_${pass}`, model: navigator, prompt: renderTemplate(chainText(chains, "navigatorReview.template").split("\n"), { context, prompt: args.params.prompt, driverArtifact: artifact.output }), systemPrompt: chainText(chains, "navigatorReview.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs, maxRetries });
-			nodes.push(review);
-			recordNode(args, "pair-coding", review);
-			if (!review.ok || !changesRequested(review.output)) break;
-			artifact = await runTeamNode({ binding: { ...driverFix, role: `driver_fix_${pass}` }, role: `driver_fix_${pass}`, model: driver, prompt: renderTemplate(chainText(chains, "driverFix.template").split("\n"), { prompt: args.params.prompt, driverArtifact: artifact.output, navigatorReview: review.output }), systemPrompt: chainText(chains, "driverFix.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs, maxRetries });
-			nodes.push(artifact);
-			recordNode(args, "pair-coding", artifact);
-		}
-		return okText(artifact.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
-	},
-};
-
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	councilHandler,
-	pairCodingHandler,
 ];
 
 export function getTeamHandler(team: TeamSpec): TeamHandler | undefined {
@@ -364,6 +297,5 @@ export function modelSlotsForTeam(team: TeamSpec, models: TeamModels): TeamModel
 export function promptChainsForTeam(team: TeamSpec): ResolvedPromptChain[] {
 	const handler = getTeamHandler(team);
 	if (!handler) return [];
-	if (handler.key === "pair-coding") return promptChains(team, pairCodingSlots());
 	return promptChains(team, councilSlots(team));
 }

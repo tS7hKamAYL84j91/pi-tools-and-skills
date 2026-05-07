@@ -332,13 +332,3 @@ export function loadTeamRegistry(configPath: string = DEFAULT_CONFIG_JSON, optio
 export function loadBuiltinTeamIds(configPath: string = DEFAULT_CONFIG_JSON): Set<string> {
 	return new Set(loadTeamRegistry(configPath, { roots: [] }).teams.keys());
 }
-
-export function requireBuiltinTeam(id: string, expected: { protocol: string }): TeamSpec {
-	const registry = loadTeamRegistry(undefined, { roots: [] });
-	const team = registry.teams.get(id);
-	if (!team) throw new Error(`Required built-in team "${id}" is missing. Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
-	if (team.protocol !== expected.protocol) throw new Error(`Team "${id}" must use protocol ${expected.protocol}; got ${team.protocol}.`);
-	const teamWarnings = registry.warnings.filter((warning) => warning.startsWith(`${id}:`));
-	if (teamWarnings.length > 0) throw new Error(`Team "${id}" is invalid:\n${teamWarnings.join("\n")}`);
-	return team;
-}

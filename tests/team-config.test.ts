@@ -101,23 +101,19 @@ describe("visible team config", () => {
 	it("uses a minimal team-root config and loads defaults from team files", () => {
 		const visible = readVisibleConfig();
 		const generationPrompt = readMarkdownPrompt(AGENTS_DIR, "debate-generation-member.md");
-		const navigatorBriefPrompt = readMarkdownPrompt(AGENTS_DIR, "pair-coding-navigator-brief.md");
 		const resolved = resolveTeamSettings(NO_SETTINGS, CONFIG_PATH);
 
 		expect(visible).toEqual({ schemaVersion: 1, layout: "teams-root" });
 		expect(resolved.defaultMembers).toEqual([
-			"openai-codex/gpt-5.5",
-			"google-gemini-cli/gemini-3.1-pro-preview",
+			"ollama/deepseek-v4-pro:cloud",
 			"ollama/qwen3.5:cloud",
-			"ollama/glm-5.1:cloud",
+			"ollama/kimi-k2.6:cloud",
+			"ollama/minimax-m2.7:cloud",
 		]);
 		expect(resolved.defaultSynthesis).toBe("openai-codex/gpt-5.5");
 		expect(resolved.defaultConsult?.navigator).toBe("ollama/qwen3.5:cloud");
 		expect(generationPrompt.id).toBe("debate/generation/system");
-		expect(navigatorBriefPrompt.id).toBe("pair-coding/navigator-brief/system");
 		expect(resolved.prompts["debate/generation/system"]).toEqual(generationPrompt.lines);
-		expect(resolved.prompts["pair-coding/navigator-brief/system"]).toEqual(navigatorBriefPrompt.lines);
-		expect(resolved.prompts["pair-coding/navigator-brief/template"]).toContain("");
 	});
 
 	it("exposes configured workflows as teams without session bootstrap", async () => {
@@ -134,8 +130,7 @@ describe("visible team config", () => {
 			contextFor(settings.defaultMembers),
 		);
 
-		expect(result.content[0]?.text).toContain("default-debate");
+		expect(result.content[0]?.text).toContain("llm-council");
 		expect(result.content[0]?.text).toContain("consult");
-		expect(result.content[0]?.text).toContain("pair-coding");
 	});
 });

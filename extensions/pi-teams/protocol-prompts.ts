@@ -1,6 +1,6 @@
 /** Runtime prompt packaging helpers for protocol phases. */
 
-import type { LoadedFile, TeamContext } from "./context-loader.js";
+
 import { renderTemplate } from "./prompt-renderer.js";
 import type { TeamParticipant, ModelRun } from "./types.js";
 
@@ -55,22 +55,4 @@ export function renderJoinedSynthesisPrompt(args: {
 	});
 }
 
-export function formatProtocolContext(ctx: TeamContext): string {
-	const sections: string[] = [];
-	sections.push(`Project root: ${ctx.projectRoot}`);
-	if (ctx.instructions) {
-		sections.push("--- Project instructions (AGENTS.md) ---", ctx.instructions);
-	}
-	if (ctx.spec) {
-		sections.push("--- Spec ---", ctx.spec);
-	}
-	if (ctx.files.length > 0) {
-		sections.push("--- Loaded files ---");
-		for (const file of ctx.files) sections.push(formatFile(file));
-	}
-	return sections.join("\n\n");
-}
 
-function formatFile(file: LoadedFile): string {
-	return `### ${file.path}\n\n\`\`\`\n${file.content}\n\`\`\``;
-}

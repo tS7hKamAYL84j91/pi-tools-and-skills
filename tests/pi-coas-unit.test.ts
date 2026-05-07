@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../extensions/pi-coas/format.js";
+import { formatCoasStatusSlot } from "../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../extensions/pi-coas/scheduler.js";
 import { validateCronExpr, formatScheduleList } from "../extensions/pi-coas/schedules.js";
@@ -91,6 +92,18 @@ describe("store", () => {
 
 		it("skips lines without equals", () => {
 			expect(parseEnv("NOEQUALS\nKEY=val")).toEqual({ KEY: "val" });
+		});
+	});
+});
+
+describe("lifecycle", () => {
+	describe("formatCoasStatusSlot", () => {
+		it("uses extension-prefixed status text", () => {
+			expect(formatCoasStatusSlot()).toBe("coas: on ✓");
+		});
+
+		it("keeps workspace context after the extension prefix", () => {
+			expect(formatCoasStatusSlot("room-general")).toBe("coas: room-general");
 		});
 	});
 });

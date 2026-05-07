@@ -2,7 +2,7 @@
  * Team TUI overlay helpers.
  */
 
-import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext, type Theme } from "@mariozechner/pi-coding-agent";
 import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
@@ -71,6 +71,90 @@ type TeamBrowserAction =
 	| { type: "form" }
 	| { type: "models"; id: string };
 
+const MAX_READ_ONLY_DETAIL_LINES = 15;
+
+function readOnlyDetailLines(lines: readonly string[]): string[] {
+	if (lines.length <= MAX_READ_ONLY_DETAIL_LINES) return [...lines];
+	const visibleCount = MAX_READ_ONLY_DETAIL_LINES - 1;
+	const hiddenCount = lines.length - visibleCount;
+	return [
+		...lines.slice(0, visibleCount),
+		`... ${hiddenCount} more line${hiddenCount === 1 ? "" : "s"}`,
+	];
+}
+
+interface RenderTeamBrowserArgs {
+	teams: TeamSpec[];
+	selected: number;
+	theme: Theme;
+	width: number;
+	detailLines?: string[];
+	deletingId?: string;
+	searchActive?: boolean;
+	searchInput?: Component;
+	query?: string;
+}
+
+export function renderTeamBrowserOverlay(args: RenderTeamBrowserArgs): string[] {
+	const container = new Container();
+	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
+	container.addChild(border());
+	container.addChild(new Text(args.theme.fg("accent", args.theme.bold(args.detailLines ? " Team Detail" : " Teams")), 1, 0));
+	if (args.deletingId) {
+		container.addChild(new Text(`Delete team "${args.deletingId}"?`, 1, 0));
+		container.addChild(new Text(args.theme.fg("dim", " y confirm · n cancel · esc close"), 1, 0));
+	} else if (args.detailLines) {
+		for (const line of readOnlyDetailLines(args.detailLines)) {
+			container.addChild(new Text(line, 1, 0));
+		}
+		container.addChild(new Text(args.theme.fg("dim", " f form · m models · d delete · backspace back · esc close"), 1, 0));
+	} else {
+		const visible = args.searchActive && args.query
+			? fuzzyFilter(args.teams, args.query.trim(), (team) =>
+				`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`)
+			: args.teams;
+		const selected = Math.min(args.selected, Math.max(visible.length - 1, 0));
+
+		if (args.searchActive && args.searchInput) {
+			container.addChild(args.searchInput);
+		}
+
+		if (visible.length === 0) {
+			container.addChild(new Text(args.theme.fg("dim", " No matching teams."), 1, 0));
+		} else {
+			for (const [index, team] of visible.entries()) {
+				const prefix = index === selected ? `${STATUS_SYMBOLS.selection} ` : "  ";
+				const content = truncateToWidth(`${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(18, args.width - 6));
+				container.addChild(new Text(index === selected ? `${prefix}${args.theme.fg("accent", args.theme.bold(content))}` : `${prefix}${content}`, 1, 0));
+			}
+		}
+
+		const description = visible[selected]?.description;
+		if (description) container.addChild(new Text(args.theme.fg("dim", truncateToWidth(description, Math.max(20, args.width - 4))), 1, 0));
+
+		if (args.searchActive) {
+			container.addChild(new Text(args.theme.fg("dim", " type to filter · ↑/↓ navigate · enter detail · esc close"), 1, 0));
+		} else {
+			container.addChild(new Text(args.theme.fg("dim", " ↑/↓ navigate · enter detail · f form · m models · d delete · / filter · esc close"), 1, 0));
+		}
+	}
+	container.addChild(border());
+	return container.render(args.width);
+}
+
+export function renderTeamOverlay(title: string, lines: string[], theme: Theme, width: number): string[] {
+	const container = new Container();
+	const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
+	container.addChild(border());
+	container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
+	for (const line of readOnlyDetailLines(lines)) {
+		container.addChild(new Text(line, 1, 0));
+	}
+	container.addChild(new Text(theme.fg("dim", " esc close"), 1, 0));
+	container.addChild(border());
+	return container.render(width);
+}
+
 async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAction | undefined> {
 	let teams = loadTeams(ctx.cwd);
 	if (teams.length === 0) {
@@ -115,53 +199,17 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			focused = value;
 			searchInput.focused = value && searchActive;
 		},
-		render: (width: number) => {
-			const container = new Container();
-			const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-			container.addChild(border());
-			container.addChild(new Text(theme.fg("accent", theme.bold(detailId ? " Team Detail" : " Teams")), 1, 0));
-			if (deletingId) {
-				container.addChild(new Text(`Delete team "${deletingId}"?`, 1, 0));
-				container.addChild(new Text(theme.fg("dim", " y delete · n cancel · esc close"), 1, 0));
-			} else if (detailId) {
-				for (const line of teamDescriptionLines(ctx.cwd, detailId)) {
-					container.addChild(new Text(line, 1, 0));
-				}
-				container.addChild(new Text(theme.fg("dim", " f form · m models · d delete · backspace list · esc close"), 1, 0));
-			} else {
-				const visible = displayedTeams();
-
-				if (searchActive) {
-					container.addChild(searchInput);
-				}
-
-				if (visible.length === 0) {
-					container.addChild(new Text(theme.fg("dim", " No matching teams."), 1, 0));
-				} else {
-					selected = Math.min(selected, visible.length - 1);
-					for (const [index, team] of visible.entries()) {
-						// Selection marker: ">" is the standardized non-color marker across all
-						// pi-teams overlays (see ADR-001). Pickers replace pi-tui's hardcoded "→"
-						// through selectedText theme post-processing.
-						const prefix = index === selected ? `${STATUS_SYMBOLS.selection} ` : "  ";
-						const content = truncateToWidth(`${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(18, width - 6));
-						container.addChild(new Text(index === selected ? `${prefix}${theme.fg("accent", theme.bold(content))}` : `${prefix}${content}`, 1, 0));
-					}
-				}
-
-				const description = visible[selected]?.description;
-				if (description) container.addChild(new Text(theme.fg("dim", truncateToWidth(description, Math.max(20, width - 4))), 1, 0));
-
-				if (searchActive) {
-					container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter details · esc close"), 1, 0));
-				} else {
-					container.addChild(new Text(theme.fg("dim", " ↑/↓ navigate · enter details · f form · m models · d delete · / filter · esc close"), 1, 0));
-
-				}
-			}
-			container.addChild(border());
-			return container.render(width);
-		},
+		render: (width: number) => renderTeamBrowserOverlay({
+			teams,
+			selected,
+			theme,
+			width,
+			...(detailId ? { detailLines: teamDescriptionLines(ctx.cwd, detailId) } : {}),
+			...(deletingId ? { deletingId } : {}),
+			searchActive,
+			searchInput,
+			query: searchInput.getValue(),
+		}),
 		invalidate: () => searchInput.invalidate(),
 		handleInput: (data: string) => {
 			if (matchesKey(data, "escape")) {
@@ -316,24 +364,13 @@ export async function openTeamOverlay(
 	title: string,
 	lines: string[],
 ): Promise<void> {
-	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
-		const container = new Container();
-		const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-		container.addChild(border());
-		container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
-		for (const line of lines) {
-			container.addChild(new Text(line, 1, 0));
-		}
-		container.addChild(new Text(theme.fg("dim", " esc close"), 1, 0));
-		container.addChild(border());
-		return {
-			render: (width: number) => container.render(width),
-			invalidate: () => container.invalidate(),
-			handleInput: (data: string) => {
-				if (matchesKey(data, "escape")) done();
-			},
-		};
-	}, {
+	await ctx.ui.custom<void>((_tui, theme, _kb, done) => ({
+		render: (width: number) => renderTeamOverlay(title, lines, theme, width),
+		invalidate: () => undefined,
+		handleInput: (data: string) => {
+			if (matchesKey(data, "escape")) done();
+		},
+	}), {
 		overlay: true,
 		overlayOptions: {
 			width: "70%",

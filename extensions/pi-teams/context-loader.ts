@@ -26,6 +26,7 @@ const SECRET_PATTERNS = [
 	/\.key$/,
 ];
 
+/** @public */
 export interface LoadedEntry {
 	path: string;
 	bytes: number;
@@ -33,11 +34,13 @@ export interface LoadedEntry {
 	truncated?: boolean;
 }
 
+/** @public */
 export interface LoadedFile {
 	path: string;
 	content: string;
 }
 
+/** @public */
 export interface TeamContext {
 	projectRoot: string;
 	instructions?: string;

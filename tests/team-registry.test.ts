@@ -12,7 +12,7 @@ import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../extension
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
 import { validateTeamManifest } from "../extensions/pi-teams/team-manifest.js";
 import { modelSlotsForTeam } from "../extensions/pi-teams/team-handlers.js";
-import { loadTeamRegistry, requireBuiltinTeam } from "../extensions/pi-teams/team-registry.js";
+import { loadTeamRegistry } from "../extensions/pi-teams/team-registry.js";
 import { registerTeamTools } from "../extensions/pi-teams/team-tools.js";
 import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
 import type { ToolResult } from "../lib/tool-result.js";
@@ -109,11 +109,10 @@ describe("loadTeamRegistry", () => {
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"consult",
-			"default-debate",
-			"pair-coding",
+			"llm-council",
 		]);
 		expect(registry.warnings).toEqual([]);
-		const defaultDebate = requireTeam(registry, "default-debate");
+		const defaultDebate = requireTeam(registry, "llm-council");
 		expect(defaultDebate).toMatchObject({
 			protocol: "debate",
 		});
@@ -122,24 +121,6 @@ describe("loadTeamRegistry", () => {
 		expect(requireTeam(registry, "consult").agents).toEqual([
 			"consult_navigator",
 		]);
-		expect(requireTeam(registry, "pair-coding").limits.maxFixPasses).toBe(1);
-		expect(requireTeam(registry, "pair-coding").models).toMatchObject({
-			driver: "openai-codex/gpt-5.5",
-			navigator: "ollama/glm-5.1:cloud",
-		});
-	});
-
-	it("requires built-in teams by protocol", () => {
-		const team = requireBuiltinTeam("pair-coding", {
-			protocol: "pair-coding",
-		});
-
-		expect(team.id).toBe("pair-coding");
-		expect(() =>
-			requireBuiltinTeam("pair-coding", {
-				protocol: "consult",
-			}),
-		).toThrow(/must use protocol consult/);
 	});
 
 	it("accepts explicit-binding teams with custom protocol labels", () => {
@@ -777,7 +758,7 @@ describe("team tools", () => {
 			{ cwd: process.cwd() },
 		);
 
-		expect(result.content[0]?.text).toContain("default-debate");
+		expect(result.content[0]?.text).toContain("llm-council");
 		expect(result.details.teams).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: "consult", protocol: "consult" }),
@@ -842,7 +823,7 @@ describe("team tools", () => {
 		await expect(
 			remove.execute(
 				"test",
-				{ id: "default-debate" },
+				{ id: "llm-council" },
 				undefined,
 				undefined,
 				{ cwd: process.cwd() },
@@ -910,6 +891,6 @@ describe("team tools", () => {
 				undefined,
 				{ cwd: process.cwd(), ui: { setStatus: () => undefined } },
 			),
-		).rejects.toThrow(/No team "missing".*consult.*default-debate.*pair-coding/s);
+		).rejects.toThrow(/No team "missing".*consult.*llm-council/s);
 	});
 });
