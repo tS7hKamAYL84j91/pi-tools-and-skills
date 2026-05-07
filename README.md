@@ -81,6 +81,7 @@ Reusable skills for pi-platform tooling and compact reference guidance. Operator
 | **pi-kanban**              | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
 | **pi-model-selection**     | Verify pi-visible models and route work to the right provider/model               |
 | **pi-session-management**  | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
+| **pi-team-consultation**   | Route review and decisions through `navigator` or `llm-council` teams             |
 | **skill-creator**          | Meta-skill for creating and improving skills                                      |
 
 ---

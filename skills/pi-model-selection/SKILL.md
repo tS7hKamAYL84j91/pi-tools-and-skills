@@ -33,6 +33,25 @@ description: Verify pi-visible models first and route requests efficiently; do n
 - Need direct Anthropic, not OpenRouter:
   prefer `anthropic/{{model-id}}` if `pi --list-models anthropic` shows it
 
+## Team role model routing
+
+When configuring models for `llm-council` or other debate teams, route by role:
+
+| Role | Model characteristic | Example |
+|------|---------------------|---------|
+| **member** (debate) | Strong reasoning, capable of disagreement. Multiple members should use diverse models for productive tension. | `anthropic/claude-opus-4-6`, `openai-codex/gpt-5.5`, `google-gemini-cli/gemini-2.5-pro` |
+| **synthesis** | High meta-reasoning, able to weigh conflicting arguments and identify consensus. | `anthropic/claude-opus-4-6` |
+| **navigator** | Fast, skeptical, focused — enough intelligence for correctness checks, not overkill for small reviews. | `anthropic/claude-sonnet-4-6`, `openai-codex/gpt-5.5` |
+
+Rules:
+- Use distinct models for debate members — three instances of the same model produce groupthink, not debate.
+- The synthesis model must be at least as capable as the strongest member model.
+- Navigator should be a fast model; don't burn expensive tokens on lightweight reviews.
+- Verify all chosen models are visible with `pi --list-models` before writing team config.
+- Avoid outdated "chairman" terminology; pi-teams uses `member` and `synthesis` roles.
+
+Configure team models with `team_models` or `team_run` with `models` override:
+
 ## Gotchas
 
 - `spawn_agent` can accept a model string that is syntactically valid but still fail operationally if the chosen route is wrong or unaffordable
