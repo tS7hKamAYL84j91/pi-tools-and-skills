@@ -115,7 +115,7 @@ export function buildWidgetLines(board: BoardState): string[] {
 	}
 
 	const lines = [
-		`kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
+		`pi-kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
 		...inProgress,
 	];
 	return lines;
@@ -154,11 +154,11 @@ export function setupWatcher(pi: ExtensionAPI): void {
 			const hash = lines.join("\n");
 			if (hash !== state.lastWidgetHash) {
 				state.lastWidgetHash = hash;
-				ctx.ui.setWidget("kanban", lines);
+				ctx.ui.setWidget("pi-kanban", lines);
 			}
 
 			// Status bar
-			ctx.ui.setStatus("kanban", buildStatusText(board));
+			ctx.ui.setStatus("pi-kanban", buildStatusText(board));
 
 			// Slow path: check for actionable events
 			const newLines = detectNewEvents(state.lastEventCount);
@@ -187,7 +187,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		// Gate: max consecutive without human input
 		if (state.consecutiveAutoInjects >= MAX_CONSECUTIVE_INJECTS) {
 			ctx.ui.setStatus(
-				"kanban",
+				"pi-kanban",
 				"⏸ Auto-follow-up paused — type anything to resume",
 			);
 			return;

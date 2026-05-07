@@ -26,7 +26,9 @@ export const PRIORITY_ORDER: Record<string, number> = {
 function findKanbanDir(): string | null {
 	const env = process.env.KANBAN_DIR;
 	if (env && existsSync(env)) return env;
-	const cwdFallback = join(process.cwd(), "kanban");
+	const legacyFallback = join(process.cwd(), "kanban");
+	if (existsSync(legacyFallback)) return legacyFallback;
+	const cwdFallback = join(process.cwd(), "pi-kanban");
 	return existsSync(cwdFallback) ? cwdFallback : null;
 }
 

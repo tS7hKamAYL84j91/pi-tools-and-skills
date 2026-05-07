@@ -17,8 +17,8 @@ OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
     "pi-teams",
     "council",
-    "kanban",
-    "matrix",
+    "pi-kanban",
+    "pi-matrix",
     "pi-coas",
 ]
 

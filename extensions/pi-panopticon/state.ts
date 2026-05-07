@@ -61,7 +61,7 @@ function getLinkedPaths(ctx: ExtensionContext): OperationalWorkspaceState["linke
 		linkedPaths.journalDir = journalDir;
 	}
 	// Optional tracker snapshot link for state metadata only, not operational guidance.
-	const kanbanSnapshot = join(cwd, "kanban", "snapshot.md");
+	const kanbanSnapshot = join(cwd, "pi-kanban", "snapshot.md");
 	if (existsSync(kanbanSnapshot)) {
 		linkedPaths.kanbanSnapshot = kanbanSnapshot;
 	}

@@ -15,19 +15,19 @@ import {
 	type BoardState,
 	parseBoard,
 	type TaskState,
-} from "../extensions/kanban/board.js";
+} from "../extensions/pi-kanban/board.js";
 import {
 	renderBoard,
 	renderConfirmDelete,
 	renderDetail,
 	renderMovePicker,
-} from "../extensions/kanban/overlay-render.js";
+} from "../extensions/pi-kanban/overlay-render.js";
 import {
 	generateSnapshot,
 	generateSnapshotSummary,
 	generateTaskDetail,
-} from "../extensions/kanban/snapshot.js";
-import { buildWidgetLines } from "../extensions/kanban/watcher.js";
+} from "../extensions/pi-kanban/snapshot.js";
+import { buildWidgetLines } from "../extensions/pi-kanban/watcher.js";
 
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,

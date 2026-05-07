@@ -85,7 +85,7 @@ Files written:
 ### Fast Path (every change)
 Updates the TUI widget immediately — no LLM involved:
 ```
-kanban: wip 2/3 | todo 4 | blocked 1 | done 12
+pi-kanban: wip 2/3 | todo 4 | blocked 1 | done 12
   T-042 Implement OAuth (tools-worker)
   T-051 Write tests (test-runner)
 ```
@@ -199,7 +199,7 @@ created: 2026-04-09T15:00:00Z
 ## File Layout
 
 ```
-project-extensions/kanban/
+project-extensions/pi-kanban/
   board.ts       Types (TaskState, BoardState), path helpers, parseBoard(), logAppend(), task file I/O
   index.ts       Tools + auto-compaction (runCompaction, compactIfNeeded)
   snapshot.ts    generateSnapshotSummary(), generateTaskDetail(), generateSnapshot() — pure functions, no side effects

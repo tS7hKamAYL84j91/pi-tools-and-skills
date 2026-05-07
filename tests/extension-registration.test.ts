@@ -9,8 +9,8 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import teamExtension from "../extensions/pi-teams/index.js";
-import kanbanExtension from "../extensions/kanban/index.js";
-import matrixExtension from "../extensions/matrix/index.js";
+import kanbanExtension from "../extensions/pi-kanban/index.js";
+import matrixExtension from "../extensions/pi-matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
 

@@ -13,39 +13,38 @@ Progress markers:
 
 ## 1. Extension rename for naming consistency
 
+Status: `[x]` Done — renamed, all tests pass
+
 Renaming `kanban` → `pi-kanban` and `matrix` → `pi-matrix` to match the
 `pi-*` prefix convention used by `pi-coas`, `pi-panopticon`, and `pi-teams`.
 
-### Scope
+### Completed changes
 
-| Change | From | To | Risk |
-|--------|------|-----|------|
-| Directory | `extensions/kanban/` | `extensions/pi-kanban/` | Medium — many imports |
-| Directory | `extensions/matrix/` | `extensions/pi-matrix/` | Medium — many imports |
-| Tool prefix | `kanban_*` | `kanban_*` or `pi_kanban_*` | Low — keep `kanban_` for model tools |
-| Tool prefix | `matrix_*` | `matrix_*` or `pi_matrix_*` | Low — keep `matrix_` for model tools |
-| Slash command | `/kanban` | `/kanban` or `/pi-kanban` | Medium — decide on command rename |
-| Slash command | `/matrix` | `/matrix` or `/pi-matrix` | Medium — decide on command rename |
-| Status slot | `kanban:` | `pi-kanban:` | Low |
-| Status slot | `matrix:` | `pi-matrix:` | Low |
-| Config dir | `~/.kanban` | `~/.pi-kanban` | Low |
-| Config dir | `.matrix` | `.pi-matrix` | Low |
-| Tests | `tests/kanban-*.test.ts` | `tests/pi-kanban-*.test.ts` | Medium |
-| Tests | `tests/matrix-*.test.ts` | `tests/pi-matrix-*.test.ts` | Medium |
-| Docs | `docs/kanban-extension.md` | `docs/pi-kanban-extension.md` | Low |
-
-### Decisions needed
-
-1. **Command names:** Rename `/kanban` → `/pi-kanban` and `/matrix` → `/pi-matrix`, or keep old names for backward compat?
-   - Recommendation: keep `/kanban` and `/matrix` as aliases; status slot and config dirs use `pi-*` names.
-2. **Model tool prefixes:** Keep `kanban_claim` or rename to `pi_kanban_claim`?
-   - Recommendation: keep `kanban_` prefix — model tools don't need `pi_` prefix since they're already namespaced by the tool system.
-3. **Config dir migration:** If existing `~/.kanban` exists, auto-migrate or require manual rename?
-   - Recommendation: auto-migrate on first load with a warning.
+| Change | From | To | Status |
+|--------|------|-----|--------|
+| Directory | `extensions/kanban/` | `extensions/pi-kanban/` | ✅ |
+| Directory | `extensions/matrix/` | `extensions/pi-matrix/` | ✅ |
+| Tool prefix | `kanban_*` | kept `kanban_*` | ✅ |
+| Tool prefix | `matrix_*` | kept `matrix_*` | ✅ |
+| Slash command | `/kanban` | kept `/kanban` | ✅ |
+| Slash command | `/matrix` | kept `/matrix` | ✅ |
+| Status slot | `kanban:` | `pi-kanban:` | ✅ |
+| Status slot | `matrix:` | `pi-matrix:` | ✅ |
+| Board dir fallback | `kanban/` | `pi-kanban/` (with legacy check) | ✅ |
+| Config key | `matrix` | `pi-matrix` | ✅ |
+| Tests | `kanban-*.test.ts` | `pi-kanban-*.test.ts` | ✅ |
+| Tests | `matrix-*.test.ts` | `pi-matrix-*.test.ts` | ✅ |
+| Package script | `OWNED_EXTENSION_DIRS` | updated | ✅ |
 
 ### Validation
 
-- `npm run check` (typecheck, lint, knip, type-coverage)
+- `npm run check` (typecheck, lint, knip, type-coverage) — ✅
+- `npm test` (40 files, 465 tests) — ✅
+- `npm run check:namespace` — ✅ no collisions introduced
+
+> Keep `/kanban` and `/matrix` commands for backward compat.
+> Model tool prefixes (`kanban_*`, `matrix_*`) unchanged.
+> Legacy board dir `kanban/` checked before `pi-kanban/` fallback.
 - `npm test`
 - `npm run check:namespace` — verify no command collisions introduced
 - Manual: `/kanban`, `/matrix`, and all tools still work with aliases

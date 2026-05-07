@@ -23,7 +23,7 @@ interface RawMatrixSettings {
 }
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
-	const value = readPiSettingsKey("matrix", path);
+	const value = readPiSettingsKey("pi-matrix", path);
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as RawMatrixSettings)
 		: null;

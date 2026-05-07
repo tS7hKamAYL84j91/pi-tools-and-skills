@@ -267,7 +267,7 @@ function countFuncParams(content: string, maxParams: number): boolean {
 function allowsParameterException(path: string): boolean {
 	// applyEvent() consumes one parsed log event: task, event, agent, timestamp,
 	// and key/value payload. This is legacy event-sourcing core, not new API shape.
-	return path.endsWith("extensions/kanban/board.ts");
+	return path.endsWith("extensions/pi-kanban/board.ts");
 }
 
 describe("function parameters", () => {

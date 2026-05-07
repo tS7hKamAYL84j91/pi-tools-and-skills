@@ -17,8 +17,8 @@ Add the extension and Matrix settings to that workspace's `.pi/settings.json`:
 
 ```json
 {
-  "extensions": ["/absolute/path/to/pi-tools-and-skills/extensions/matrix"],
-  "matrix": {
+  "extensions": ["/absolute/path/to/pi-tools-and-skills/extensions/pi-matrix"],
+  "pi-matrix": {
     "homeserver": "https://matrix.example.net",
     "userId": "@agent-bot:matrix.example.net",
     "roomId": "!roomid:matrix.example.net",

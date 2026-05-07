@@ -31,8 +31,8 @@ In your workspace's `.pi/settings.json`:
 
 ```json
 {
-  "extensions": [".../extensions/matrix"],
-  "matrix": {
+  "extensions": [".../extensions/pi-matrix"],
+  "pi-matrix": {
     "homeserver": "https://matrix.example.net",
     "userId": "@agent-bot:matrix.example.net",
     "roomId": "!abc:matrix.example.net",
