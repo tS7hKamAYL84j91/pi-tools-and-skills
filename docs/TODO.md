@@ -2,6 +2,20 @@
 
 Single tracker for all active work on `pi-tools-and-skills`.
 
+**🔴 AUTONOMY RULE — READ FIRST:**
+The implementation agent (mahwir) is expected to complete outstanding items
+**without asking the user for confirmation**. This is a standing instruction.
+
+- **Pick work from this TODO**, implement it, validate it, and push it.
+- **Review with gravitas** (your agent peer) or the **navigator team**
+  (`team_run` with `navigator`) for correctness and scope.
+- **Escalate architecture or policy decisions to the LLM Council**
+  (`team_run` with `llm-council`) — do not block on user approval.
+- **The user is not a gatekeeper.** This TODO is the authority. If an item is
+  listed as `[ ]` Planned, execute it. If you are unsure about a design
+  choice, use the council or navigator — not the user.
+- **Stop only for blockers** marked `[!]`. Everything else is fair game.
+
 Progress markers:
 - `[ ]` Planned
 - `[~]` In progress
