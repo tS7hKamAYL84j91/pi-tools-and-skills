@@ -66,7 +66,7 @@ function writeDefaultDebate(root: string, members: string[], synthesis: string):
 
 function writeConsult(root: string, navigator: string): void {
 	writeFileSync(
-		join(root, "teams", "consult.md"),
+		join(root, "teams", "navigator.md"),
 		[
 			"---",
 			'schemaVersion: 2',
@@ -161,7 +161,7 @@ describe("resolveTeamSettings", () => {
 				createTeamRoot(first);
 				createTeamRoot(second);
 				writeFileSync(
-					join(first, "prompts", "consult.md"),
+					join(first, "prompts", "navigator.md"),
 					[
 						"---",
 						'id: "consult/navigator/system"',
@@ -170,7 +170,7 @@ describe("resolveTeamSettings", () => {
 					].join("\n"),
 				);
 				writeFileSync(
-					join(second, "prompts", "consult.md"),
+					join(second, "prompts", "navigator.md"),
 					[
 						"---",
 						'id: "consult/navigator/system"',

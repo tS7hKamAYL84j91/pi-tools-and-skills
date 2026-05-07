@@ -407,7 +407,7 @@ describe("loadTeamRegistry", () => {
 			}, project);
 			const registry = loadTeamRegistry(undefined, { cwd: project });
 
-			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "project-consult.md"));
+			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "project-navigator.md"));
 			expect(registry.teams.get("project-consult")?.source).toBe("project");
 			expect(registry.warnings.filter((warning) => warning.startsWith("project-consult:"))).toEqual([]);
 		} finally {

@@ -1,7 +1,7 @@
 ---
 schemaVersion: 2
-id: "consult"
-name: "Consult"
+id: "navigator"
+name: "Navigator"
 description: "Lightweight Navigator consultation for focused review and design feedback."
 protocol: "consult"
 prompts:
