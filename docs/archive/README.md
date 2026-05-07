@@ -1,31 +1,15 @@
 # Archived Design Docs
 
-These files are historical planning records, completed mini-specs, superseded proposals, or progress logs. They are retained for decision history and migration context, not as current implementation guidance.
+Historical planning records, completed mini-specs, superseded proposals, and
+progress logs have been deleted from the working tree. They are retained in git
+history for decision archaeology.
 
+To browse archived docs by commit:
+
+```bash
+git log --all --oneline --name-only -- docs/archive/ | head -40
+git show <commit>:docs/archive/<file>
+```
+
+Canonical Architecture Decision Records (ADRs) live in [`../adr/`](../adr/).
 For current docs, see [`../README.md`](../README.md).
-
-## Archived files
-
-- `ask-council-spec.md` — draft council/pair tool design superseded by teams.
-- `council-pair-prompt-review.md` — prompt review superseded by teams migration.
-- `extension-refactor-plan.md` — historical extension refactor snapshot.
-- `fire-tools-pruning-proposal.md` — implemented tool-surface pruning proposal.
-- `subagent-system-prompts-plan.md` — completed subagent prompt migration plan.
-- `teams-future-improvements-progress-log.md` — previous long teams remediation ADR/progress log.
-- `teams-migration-plan.md` — completed teams migration plan.
-- `teams-p1-execution-config-review.md` — completed P1 review checklist.
-- `teams-prompt-contract-spec.md` — completed P2 prompt contract mini-spec.
-- `teams-p3-session-state-spec.md` — completed P3 session-state mini-spec.
-- `teams-p4-protocol-schema-spec.md` — historical P4 protocol schema mini-spec.
-- `teams-p5-graph-engine-spec.md` — completed P5 graph engine mini-spec.
-- `teams-p5-protocol-lowering-slice.md` — completed protocol-lowering slice.
-- `teams-p8-live-agent-spec.md` — implemented live-agent bindings spec.
-- `teams-p9-langgraph-evaluation.md` — completed LangGraph do-not-migrate evaluation.
-- `teams-platform-migration-research.md` — historical teams-platform research.
-- `teams-refactoring-todo.md` — completed teams refactoring checklist.
-- `teams-ux-improvements.md` — completed `pi-teams` TUI UX review (UX-001/002/003/004). ADRs extracted to `../adr/007-008`.
-- `teams-graph-affordances.md` — superseded by `teams-simplification.md`; graph executor removed.
-- `teams-graph-affordances-compliance.md` — superseded compliance assessment for the removed graph affordances plan.
-- `coas-ux-improvements.md` — completed CoAS UX review (findings F1–F7). ADRs extracted to `../adr/001-003`.
-- `kanban-ux-improvements.md` — completed Kanban UX review (findings F1–F10). ADR extracted to `../adr/004`.
-- `tui-affordance-review.md` — completed cross-extension TUI affordance review. Findings 1–7 addressed; ADRs extracted to `../adr/005-013`.

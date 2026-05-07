@@ -9,11 +9,11 @@ Current docs are intentionally small. Completed design plans and migration logs 
 - [`kanban-extension.md`](kanban-extension.md) — current kanban extension architecture.
 - [`teams-future-improvements.md`](teams-future-improvements.md) — living teams-platform status, standing decisions, and evidence gates for future work.
 - [`teams-simplification.md`](teams-simplification.md) — living plan to replace the DAG executor with direct topology implementations (council).
-- [`teams-graph-affordances.md`](teams-graph-affordances.md) — **superseded by teams-simplification.md** — see `archive/teams-graph-affordances.md`.
-- [`teams-graph-affordances-compliance.md`](teams-graph-affordances-compliance.md) — **superseded** — see `archive/teams-graph-affordances-compliance.md`.
+- [`teams-graph-affordances.md`](teams-graph-affordances.md) — **superseded by teams-simplification.md** — see `git log --all --oneline -- docs/archive/teams-graph-affordances.md`.
+- [`teams-graph-affordances-compliance.md`](teams-graph-affordances-compliance.md) — **superseded** — see `git log --all --oneline -- docs/archive/teams-graph-affordances-compliance.md`.
 - [`tui-ux-update.md`](tui-ux-update.md) — cross-extension TUI consistency brief with `termwright` validation evidence, including Panopticon status/overlay findings.
 - [`tools-update.md`](tools-update.md) — command/tool namespace policy and audit plan covering built-in pi overlaps, slash-command naming, and model-facing tool stems.
 
 ## Historical design notes
 
-- [`archive/`](archive/) — completed or superseded specs, reviews, proposals, and progress logs retained for decision history only.
+- [`archive/`](archive/) — pointer to git history for completed or superseded specs, reviews, proposals, and progress logs.

@@ -1,6 +1,6 @@
 # Teams Future Improvements
 
-Living summary for `extensions/pi-teams`. Historical implementation plans and progress logs live in `docs/archive/`.
+Living summary for `extensions/pi-teams`. Historical implementation plans and progress logs are in git history (`git log --all --oneline -- docs/archive/`).
 
 ## Current status
 
@@ -55,4 +55,4 @@ Only consider new teams-platform work when one of these is true:
 
 ## Historical records
 
-See `docs/archive/` for completed planning records, mini-specs, review notes, and the previous long progress log.
+See `git log --all --oneline -- docs/archive/` for completed planning records, mini-specs, review notes, and the previous long progress log.
