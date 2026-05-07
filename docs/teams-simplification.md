@@ -306,7 +306,7 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 ## Implementation Plan
 
 1. **TS-001 `councilHandler`** — Write `councilHandler` implementing `matches`, `modelSlots`, and `run` for the council topology (consult + debate). Inline prompt resolution. Add integration tests. Register in handler list.
-2. **TS-002 `pairCodingHandler`** — Write `pairCodingHandler` implementing `matches`, `modelSlots`, and `run` for the pair-coding topology with a real review/fix loop. Inline prompt resolution. Add integration tests. Register in handler list.
+2. **TS-002 direct topology handlers** — Write focused handlers for council (`consult`/`debate`) topologies with real review loops. Inline prompt resolution. Add integration tests. Register in handler list.
 3. **TS-003 delete DAG** — Remove `team-graph.ts`, `team-lowering.ts`, `protocol-contracts.ts`. Remove `graphHandler` and `loweredGraphHandler` from `team-handlers.ts`. Add arch test.
 4. **TS-004 simplify types** — Remove graph fields from `TeamSpec`, remove graph types, update manifests.
 5. **TS-005 migrate prompt contracts** — Move prompt slot declarations into handlers. Remove `protocol-contracts.ts` if not already deleted in TS-003.
@@ -317,7 +317,7 @@ Today this is compiled into a flat graph by `graphPlanForPairCoding`, which unro
 - `npm run check` — typecheck, lint, knip, type-coverage pass.
 - `npm test` — all existing tests pass plus new handler integration tests.
 - Arch tests: no `team-graph` or `team-lowering` imports in `pi-teams`.
-- Behavioral equivalence: council output matches debate output for same inputs. Pair-coding output matches for same inputs.
+- Behavioral equivalence: council output matches debate output for same inputs.
 - Manual validation: `team_run` with each protocol from a pi session.
 
 ## Progress Log

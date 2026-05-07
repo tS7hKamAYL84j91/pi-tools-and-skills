@@ -23,6 +23,9 @@ For current docs, see [`../README.md`](../README.md).
 - `teams-p9-langgraph-evaluation.md` — completed LangGraph do-not-migrate evaluation.
 - `teams-platform-migration-research.md` — historical teams-platform research.
 - `teams-refactoring-todo.md` — completed teams refactoring checklist.
+- `teams-ux-improvements.md` — completed `pi-teams` TUI UX review (UX-001/002/003/004). ADRs extracted to `../adr/007-008`.
+- `teams-graph-affordances.md` — superseded by `teams-simplification.md`; graph executor removed.
+- `teams-graph-affordances-compliance.md` — superseded compliance assessment for the removed graph affordances plan.
 - `coas-ux-improvements.md` — completed CoAS UX review (findings F1–F7). ADRs extracted to `../adr/001-003`.
 - `kanban-ux-improvements.md` — completed Kanban UX review (findings F1–F10). ADR extracted to `../adr/004`.
 - `tui-affordance-review.md` — completed cross-extension TUI affordance review. Findings 1–7 addressed; ADRs extracted to `../adr/005-013`.
