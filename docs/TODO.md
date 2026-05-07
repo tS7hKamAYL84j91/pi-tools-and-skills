@@ -110,7 +110,7 @@ function demands them. See `docs/teams-platform.md` for evidence-gate criteria.
 
 | Area | Item | Gate |
 |------|------|------|
-| Teams platform | New topology handler | User workflow cannot fit council/pair-coding |
+| Teams platform | New topology handler | User workflow cannot fit council |
 | Teams platform | Live-agent lifecycle control | Session event model insufficient |
 | Teams platform | External graph/workflow framework | Spike proves code reduction |
 | CoAS scheduler | External schedule execution | Operational need outside pi |
