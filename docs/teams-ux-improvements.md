@@ -201,25 +201,10 @@ After recording findings, follow this sequence:
 
 ## ADR Log
 
-### ADR-001 — Selection state must not rely on color alone
+Extracted to canonical ADR files:
 
-**Status:** Accepted (amended after co-pilot review)
-
-**Context:** Terminal color palettes vary by theme, terminal, SSH/tmux mediation, and screenshot tooling. The teams UI currently uses accent color heavily for selected rows.
-
-**Decision:** Standardize on `>` as the non-color selection marker across all pi-teams overlays. In the team browser, the `>` prefix is rendered as plain text before accent-colored bold content. In picker overlays (model picker, target picker), the `selectedText` theme function post-processes pi-tui's hardcoded `→ ` prefix, replacing it with `> ` via `text.replace(/^→/, ">")`. Bold styling added to the browser's selected row content for an additional non-color cue. This approach avoids modifying pi-tui while achieving consistent markers.
-
-**Consequences:** `>` is visible in plain text captures, is ASCII-safe for OCR, and is consistent with pi's own `config-selector`. Slightly reduces horizontal space (2 chars prefix). The `selectedText` post-processing is a lightweight workaround; if pi-tui makes the prefix configurable, the `replace` can be removed. `bold` on selected content is an additional non-color affordance that degrades gracefully in terminals that don't support bold.
-
-### ADR-002 — Add toggle search mode to browser
-
-**Status:** Accepted
-
-**Context:** `team-picker.ts` and `team-models.ts` use Input + SelectList for searchable pickers. The team browser overlays browse/select/actions in one view, so converting it entirely to a SelectList would lose action affordances (form, models, delete).
-
-**Decision:** Add a `/` key to toggle a search/filter mode inside the browser overlay. In search mode, an Input component filters teams via `fuzzyFilter` on id/name/protocol/source/description. Navigation keys go to the list, other keys go to the input. Escape clears the filter and exits search mode. In browse mode, all original keybindings (↑/↓/enter/f/m/d) are preserved.
-
-**Consequences:** Backward-compatible — browse mode behavior is unchanged. Search mode gives fuzzy filtering without conflicting with action keys since f/m/d only work outside search. Uses `Input` and `fuzzyFilter` from pi-tui, no new UI framework.
+- `docs/adr/007-selection-state-non-color.md` — Selection marker `>` across all overlays.
+- `docs/adr/008-browser-toggle-search.md` — `/` toggles search/filter mode in browser overlay.
 
 ## Implementation Plan
 
@@ -244,9 +229,9 @@ After recording findings, follow this sequence:
    - Detail and delete flows unaffected by search state.
 
 4. **Review and refactor** — Done
-   - Co-pilot reviewed: accepted `→` deviation with TODO, removed `selectedPrefix` dead config, confirmed browse keys are properly silent in search mode.
-   - ADR-001 follow-up: standardized `>` marker across all overlays via `selectedText` post-processing; no longer a deviation.
-   - Refactor pass per `prompts/refactor.md`: ADR-001 comments reference the standardization, dead `selectedPrefix` config documented, browse-key behavior in search mode documented. All checks green.
+   - Co-pilot reviewed: accepted `→` deviation pending standardization, removed `selectedPrefix` dead config, confirmed browse keys are properly silent in search mode.
+   - ADR-001 follow-up: standardized `>` marker across all overlays via `selectedText` post-processing.
+   - Refactor pass per `prompts/refactor.md`: comments reference the standardization, dead `selectedPrefix` config documented, browse-key behavior in search mode documented. All checks green.
 
 5. **Compliance assessment** ✅
    - Assessed all three overlays against TUI Design Guide and pi-mono TUI Philosophy.

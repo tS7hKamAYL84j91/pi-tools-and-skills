@@ -4,12 +4,11 @@ Current docs are intentionally small. Completed design plans and migration logs 
 
 ## Active references
 
+- [`adr/`](adr/) — canonical Architecture Decision Records (ADRs 001–013).
 - [`fire-architecture-review.md`](fire-architecture-review.md) — review of the architecture against Dan Ward's F.I.R.E. principles.
 - [`kanban-extension.md`](kanban-extension.md) — current kanban extension architecture.
 - [`teams-future-improvements.md`](teams-future-improvements.md) — living teams-platform status, standing decisions, and evidence gates for future work.
 - [`teams-ux-improvements.md`](teams-ux-improvements.md) — living plan for `pi-teams` terminal UX improvements.
-- [`kanban-ux-improvements.md`](kanban-ux-improvements.md) — living plan for Kanban terminal UX improvements.
-- [`coas-ux-improvements.md`](coas-ux-improvements.md) — living plan for CoAS command/widget UX improvements.
 - [`teams-simplification.md`](teams-simplification.md) — living plan to replace the DAG executor with direct topology implementations (council, pair-coding).
 - [`teams-graph-affordances.md`](teams-graph-affordances.md) — **superseded by teams-simplification.md** — archived plan for extending the now-removed DAG executor.
 - [`teams-graph-affordances-compliance.md`](teams-graph-affordances-compliance.md) — completed compliance assessment for the graph affordances plan.

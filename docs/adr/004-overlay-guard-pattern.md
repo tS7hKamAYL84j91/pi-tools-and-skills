@@ -1,4 +1,4 @@
-# ADR 001: Overlay Guard Pattern for Restricted Actions
+# ADR 004: Overlay Guard Pattern for Restricted Actions
 
 ## Status
 

@@ -300,97 +300,28 @@ Exceptions:
 1. ✅ Pass scheduler snapshots into `/coas-status` and `/coas-doctor`.
 2. ✅ Add or verify `Focusable` propagation in Teams overlays that own an `Input`.
 3. ✅ Make Panopticon list/detail UIs true overlays, with layout regression review.
-4. Add narrow-width/snapshot render tests for non-Kanban overlays, starting with Teams and Panopticon.
-5. Standardize status slot language incrementally.
+4. ✅ Add narrow-width/snapshot render tests for non-Kanban overlays, starting with Teams and Panopticon.
+5. ✅ Standardize status slot language incrementally.
 6. ✅ Add a lightweight TUI affordance checklist to future overlay PRs.
-7. Add a slash-command exact-match regression check for `/agents` vs `/agents-mode` / `/agent-list-mode`.
+7. ✅ Add a slash-command exact-match regression check for `/agents` vs `/agents-mode` / `/agent-list-mode`.
 
-## Implementation todo
+## Completed work
 
-Use this as the working checklist for the next implementation pass. Mark progress directly in this section as each item moves from planned to in progress to done.
+All priority recommendations were implemented and reviewed by `gravitas` in commit `11436c9` (2026-05-07):
 
-Progress markers:
+| # | Item | Status |
+|---|------|--------|
+| 1 | Pass scheduler snapshots into `/coas-status` and `/coas-doctor` | ✅ |
+| 2 | Add or verify `Focusable` propagation in Teams overlays | ✅ |
+| 3 | Make Panopticon list/detail UIs true overlays | ✅ |
+| 4 | Add narrow-width render tests for Teams/Panopticon | ✅ |
+| 5 | Standardize status slot language incrementally | ✅ |
+| 6 | Add TUI affordance checklist to future overlay PRs | ✅ |
+| 7 | Slash-command exact-match regression check | ✅ |
 
-- `[ ]` Planned.
-- `[~]` In progress.
-- `[R]` Ready for `gravitas` review.
-- `[x]` Done, refactored, reviewed, and validated.
-- `[!]` Blocked; include the blocker and next decision needed.
+> Historical implementation notes: each todo item cycled through `[~]` → `[R]` → `[x]` with dated validation logs. These details have been removed to keep the review focused on living guidance. See git history (`git log --oneline --grep="11436c9"`) for full traceability.
 
-Todo items:
-
-1. `[R]` Add narrow-width render or snapshot tests for `pi-teams` overlays.
-   - 2026-05-07: Scope is pure render coverage for browser, filter mode, and detail output at 80 and 60 columns; no production UI behavior change intended.
-   - 2026-05-07: Added pure pi-teams overlay render helpers and width-bound tests for browser, filter, and detail surfaces at 80/60 columns. Focused validation passed: `npm test -- tests/pi-teams-overlay-render.test.ts tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts` (4 files, 48 tests). `npm run check` passed. Full `npm test` is blocked by existing `tests/soak.test.ts` thresholds (delivery 88% < 90%, failure 12% >= 10%). Ready for `gravitas` review.
-   - Cover browser, filter mode, and detail view at 80x24 and 60x20 where practical.
-   - Assert that help text is intentionally wrapped or truncated, not accidentally overflowing.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-2. `[R]` Add narrow-width render or snapshot tests for `pi-panopticon` overlays.
-   - 2026-05-07: Scope is pure render coverage for Agent Panopticon list and detail surfaces at 80 and 60 columns, including long recent activity; no production UI behavior change intended beyond extracting render helpers.
-   - 2026-05-07: Added pure pi-panopticon overlay render helpers and width-bound tests for Agent Panopticon list/detail surfaces at 80/60 columns. Focused validation passed: `npm test -- tests/pi-panopticon-overlay-render.test.ts` (1 file, 4 tests) and `npm test -- tests/pi-panopticon-overlay-render.test.ts tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts` (4 files, 46 tests). `npm run check` is blocked by existing `pi-teams/team-handlers.ts` unused imports. Full `npm test` is blocked by existing team config expectation drift (`default-debate`/`pair-coding` missing, `llm-council` present). Requested `gravitas` review.
-   - Cover Agent Panopticon list and detail views at 80x24 and 60x20 where practical.
-   - Include long recent-activity content to document current truncation or scroll behavior.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-3. `[R]` Add slash-command exact-match regression coverage for Panopticon-related commands.
-   - 2026-05-07: Scope is extension-level exact command parsing/handler coverage for `/agents`, `/agents-mode`, and `/agent-list-mode`; no production UI behavior change intended.
-   - 2026-05-07: Added `tests/pi-panopticon-command-resolution.test.ts`. Focused validation passed: `npm test -- tests/pi-panopticon-command-resolution.test.ts` (1 file, 3 tests) and `npm test -- tests/pi-panopticon-command-resolution.test.ts tests/pi-panopticon-overlay-render.test.ts tests/extension-registration.test.ts tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts` (6 files, 54 tests). `npm run typecheck` remains blocked by existing unrelated unused imports in `extensions/pi-teams/team-handlers.ts`. Requested `gravitas` review.
-   - Verify `/agents` resolves to Agent Panopticon on exact enter.
-   - Verify `/agents-mode` and `/agent-list-mode` still resolve to the intended list-mode chooser path.
-   - If the slash-command harness cannot cover this directly, add a documented manual regression script using termwright.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-4. `[R]` Standardize status slot language incrementally.
-   - 2026-05-07: Scope is the CoAS status slot only; inventory found Matrix/Panopticon/Teams/Kanban already use `<extension>:` text or intentionally empty Kanban status.
-   - 2026-05-07: Changed CoAS status text from `CoAS ✓` / `CoAS <workspace>` to `coas: on ✓` / `coas: <workspace>` and added unit coverage. Focused validation passed: `npm test -- tests/pi-coas-unit.test.ts tests/pi-coas-format.test.ts` (2 files, 51 tests). `npm run typecheck` is blocked by existing unrelated unused imports in `extensions/pi-teams/team-handlers.ts`. Requested `gravitas` review.
-   - Inventory current status strings and tests before changing user-visible text.
-   - Prefer `<extension>: <state> [count/details]`, for example `coas: on ✓`.
-   - Update tests and migration notes if any scripts or snapshots consume the old strings.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-5. `[R]` Decide long read-only overlay policy for Teams and Panopticon.
-   - 2026-05-07: Scope is explicit truncation for long Teams and Panopticon read-only detail content with visible `...`; no scrolling controls in this pass.
-   - 2026-05-07: Added explicit `...` truncation indicators for long Teams detail overlays and Panopticon recent activity, with focused width-bound coverage. Focused validation passed: `npm test -- tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts` (2 files, 12 tests), `npm test -- tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts` (5 files, 54 tests), and `npx biome lint extensions/pi-teams/team-overlay.ts extensions/pi-panopticon/agent-overlay.ts tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts`. `npm run typecheck` remains blocked by existing unrelated unused imports in `extensions/pi-teams/team-handlers.ts`. Requested `gravitas` review.
-   - Choose explicit truncation with `...` or scrolling with visible `↑/↓ scroll · esc close` hints.
-   - Keep the decision local to each extension unless repeated implementation work justifies sharing helpers.
-   - Add tests or termwright evidence for the chosen behavior.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-6. `[R]` Normalize key hint wording opportunistically.
-   - 2026-05-07: Scope is small wording cleanup on Teams/Panopticon overlays already covered by focused render tests; avoid broad Kanban/CoAS churn.
-   - 2026-05-07: Normalized Teams browser/detail/delete hints and Panopticon detail/list-mode hints without changing interaction behavior. Focused validation passed: `npm test -- tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts tests/pi-panopticon-command-resolution.test.ts` (3 files, 15 tests), `npm test -- tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts tests/pi-panopticon-command-resolution.test.ts tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts` (6 files, 57 tests), and `npx biome lint extensions/pi-teams/team-overlay.ts extensions/pi-panopticon/agent-overlay.ts extensions/pi-panopticon/list-mode-command.ts tests/pi-teams-overlay-render.test.ts tests/pi-panopticon-overlay-render.test.ts`. `npm run typecheck` remains blocked by existing unrelated unused imports in `extensions/pi-teams/protocol-prompts.ts`. Requested `gravitas` review.
-   - Use `esc close` for overlays, `esc cancel` for destructive or confirmation flows, and `esc back` only when returning to a prior view.
-   - Avoid broad string churn unless a touched surface already needs tests.
-   - After the first passing implementation, do a cleanup/refactor pass before requesting review.
-   - Request `gravitas` review before marking done.
-
-## Agent work instructions
-
-An implementation agent should work through the todo list in order unless blocked. For each todo item:
-
-1. Change the marker from `[ ]` to `[~]` before starting and add a short dated note under the item with the intended scope.
-2. Implement the smallest useful change and run focused validation for that item.
-3. Do a refactor pass immediately after the first passing implementation:
-   - remove duplication introduced during the change;
-   - simplify names and boundaries;
-   - keep extension vertical slices independent;
-   - avoid adding shared UI abstractions unless at least two call sites clearly need them.
-4. Run the relevant focused tests again after refactoring.
-5. Change the marker to `[R]` and ask `gravitas` for review, including changed files, validation output, and any termwright captures or snapshots.
-6. Address `gravitas` feedback with another focused implementation/refactor/validation loop.
-7. Change the marker to `[x]` only after implementation, refactor, validation, and `gravitas` review are complete.
-8. If blocked, change the marker to `[!]`, record the blocker directly under the item, and stop rather than broadening scope.
-
-Recommended validation rhythm:
-
-```bash
-npm test -- tests/architecture.test.ts tests/kanban-snapshot-render.test.ts tests/pi-coas-format.test.ts
-npm run check
-npm test
-```
-
-Use narrower focused commands while iterating, but run the full check suite before considering the todo item complete.
+> **Note:** This document was active during the implementation pass. The kanban/coas UX reviews contain additional concrete findings not all reflected here; see `docs/archive/` for those originals.
 
 ## PR checklist for future overlays
 

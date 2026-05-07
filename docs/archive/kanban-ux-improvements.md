@@ -157,8 +157,8 @@ git commit -m "feat(kanban): UX improvements — overlay guards, blocked visibil
 ```
 
 ### Step 8: ADR and progress log update
-- Create ADR for the guard-pattern in overlay
-- Update this document with completion notes
+- ADR created: `docs/adr/004-overlay-guard-pattern.md` — Overlay guard pattern for restricted actions.
+- Progress log updated below.
 
 ---
 

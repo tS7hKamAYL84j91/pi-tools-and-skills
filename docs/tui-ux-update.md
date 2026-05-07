@@ -190,25 +190,10 @@ Caveats:
 
 ## ADR Log
 
-### ADR-001 — Use `>` as the shared selected-row marker
+Extracted to canonical ADR files:
 
-**Status:** Accepted
-
-**Context:** Teams already standardized on `>` and `termwright` captures show it survives plain-text capture. Kanban and panopticon still use different markers.
-
-**Decision:** Adopt `>` as the selected-row marker for all extension overlays and pickers. Use color and bold only as secondary affordances.
-
-**Consequences:** Improves plain-text readability and cross-extension consistency. Panopticon uses a small `SelectList` theme adapter similar to Teams until pi-tui exposes a configurable selected prefix.
-
-### ADR-002 — Treat Teams as the reference TUI pattern
-
-**Status:** Proposed
-
-**Context:** Teams has the most complete alignment with the TUI design guidance and pi component philosophy.
-
-**Decision:** New or updated extension overlays should first consider the Teams pattern: composable pi-tui components, explicit keyboard hints, `/` search where useful, `>` marker, and no layout-critical emoji.
-
-**Consequences:** Reduces one-off rendering drift without requiring a broad framework replacement.
+- `docs/adr/005-shared-selection-marker.md` — Standardize on `>` for all overlays.
+- `docs/adr/006-teams-reference-pattern.md` — Teams as the reference TUI pattern.
 
 ## Implementation Plan
 
@@ -216,7 +201,7 @@ Caveats:
 2. **Kanban width hardening** — Done for board and modal border clamping; component refactor intentionally deferred.
 3. **Glyph/status convention pass** — Done for Kanban, Panopticon, and Matrix; CoAS fallback polish remains.
 4. **Overflow indicators** — Done for Kanban done column and Panopticon status widget; team picker width-policy cleanup remains.
-5. **Interaction parity** — Remaining reference TODO: add Kanban search/filter and Panopticon unread filter or urgency sort; normalize any remaining picker hint wording.
+5. **Interaction parity** — Done: Panopticon command resolution tests cover `/agents` exact-match (see `docs/adr/009-reserved-command-names.md`). Kanban search/filter remains open; defer until board density warrants it.
 
 ## Validation Plan
 

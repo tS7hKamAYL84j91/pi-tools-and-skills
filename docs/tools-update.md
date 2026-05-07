@@ -193,45 +193,13 @@ The model-facing `set_alias` tool has the same broader behavior.
 
 ## ADR Log
 
-### ADR-001 — Built-in command names are reserved
+Extracted to canonical ADR files:
 
-**Status:** Accepted
-
-**Decision:** pi-tools extension and prompt commands must not use exact built-in pi command names.
-
-**Consequences:** Prevents autocomplete filtering/suffix surprises and keeps built-in mental models intact.
-
-### ADR-002 — Built-in `/name` is the canonical human identity command
-
-**Status:** Accepted
-
-**Decision:** Remove the pi-tools `/alias` slash command. Panopticon should derive the registry name from pi's session name when available, so built-in `/name <name>` becomes the single human-facing command for naming the current agent/session.
-
-**Consequences:** Eliminates the `/name` vs `/alias` split instead of documenting around it. This is a deliberate compatibility break for `/alias`, accepted because the command duplicates and broadens a built-in concept. Model-facing naming still needs a tool for non-interactive flows — see ADR-004.
-
-### ADR-003 — Command/tool names should share stems where it helps, not force one-to-one parity
-
-**Status:** Accepted
-
-**Decision:** Allow patterns like `/kanban` + `kanban_*` and `/teams` + `team_*`. Require descriptions to state whether a slash command is a human UI command, a model-facing tool equivalent, or both.
-
-**Consequences:** Avoids awkward command proliferation while keeping discovery predictable.
-
-### ADR-004 — Programmatic naming tool replaces `set_alias`
-
-**Status:** Accepted
-
-**Decision:** Add `set_name` as the canonical programmatic naming tool. `set_alias` becomes a deprecated compatibility wrapper that forwards to `set_name`. After a two-release deprecation window, remove `set_alias` entirely.
-
-**Consequences:** Models and RPC callers retain programmatic naming capability. Terminology aligns with built-in `/name`. The deprecation window prevents hard breakage for existing callers.
-
-### ADR-005 — `/name` overrides spawn name; spawn identity preserved in metadata
-
-**Status:** Accepted
-
-**Decision:** When a user sets `/name` or a caller invokes `set_name`, the new name becomes the active display and registry name. The original spawn name is preserved as immutable `spawn_name` metadata. Orchestration should route by stable agent/session IDs or by `spawn_name`/`role`, never by mutable display name.
-
-**Consequences:** Eliminates split-brain identity where the UI says one name and the registry another. Spawn identity is not lost — it moves to a metadata field. Clears the way for `/name` to be the single source of truth for current identity.
+- `docs/adr/009-reserved-command-names.md` — Extension commands must not collide with built-in pi commands.
+- `docs/adr/010-name-canonical-identity.md` — `/name` as the single human-facing identity command.
+- `docs/adr/011-command-stem-parity.md` — Command/tool names may share stems without forcing one-to-one parity.
+- `docs/adr/012-programmatic-naming-tool.md` — `set_name` replaces deprecated `set_alias`.
+- `docs/adr/013-name-overrides-spawn.md` — Mutable display name vs immutable `spawn_name` metadata.
 
 ## Resolved Questions
 
