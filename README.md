@@ -1,6 +1,6 @@
 # pi-tools-and-skills
 
-![pi-panopticon](Gemini_Generated_Image_ybt2lgybt2lgybt2.png)
+![pi-panopticon](docs/images/pi-panopticon.png)
 
 Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent.
 

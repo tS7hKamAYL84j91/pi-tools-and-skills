@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,11 +11,7 @@ import {
 } from "../extensions/pi-teams/settings.js";
 
 function withTempDir(fn: (dir: string) => void) {
-	const dir = join(
-		tmpdir(),
-		`team-test-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-	);
-	mkdirSync(dir, { recursive: true });
+	const dir = mkdtempSync(join(tmpdir(), "team-test-"));
 	try {
 		fn(dir);
 	} finally {

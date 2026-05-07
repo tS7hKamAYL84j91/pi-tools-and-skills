@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -14,7 +14,7 @@ import {
 } from "../extensions/pi-teams/members.js";
 
 function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultSynthesis?: string }, fn: (settingsPath: string) => T): T {
-	const dir = join(tmpdir(), `team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const dir = mkdtempSync(join(tmpdir(), "team-test-"));
 	const root = join(dir, "team-root");
 	mkdirSync(join(root, "teams"), { recursive: true });
 	mkdirSync(join(root, "agents"), { recursive: true });
