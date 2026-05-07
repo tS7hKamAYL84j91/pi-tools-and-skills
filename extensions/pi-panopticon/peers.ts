@@ -8,6 +8,7 @@
 import type { AgentRecord } from "./types.js";
 import { ok } from "./types.js";
 import type { Registry } from "./types.js";
+import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
 import { visibleRecords } from "./visibility.js";
 
 /** Get the current agent's display name. */
@@ -17,20 +18,20 @@ export function getSelfName(registry: Registry): string {
 
 /** Resolve a peer agent by name (case-insensitive, excludes self). */
 export function resolvePeer(registry: Registry, name: string): AgentRecord | undefined {
-	const lower = name.toLowerCase();
 	const self = registry.getRecord();
-	return visibleRecords(self, registry.readAllPeers()).find(
-		(r) => r.name.toLowerCase() === lower && (!self || r.id !== self.id),
+	const records = visibleRecords(self, registry.readAllPeers()).filter(
+		(record) => !self || record.id !== self.id,
 	);
+	return findAgentByDisplayName(records, name);
 }
 
 /** Comma-separated list of known peer names (excludes self). */
 export function peerNames(registry: Registry): string {
 	const self = registry.getRecord();
-	return visibleRecords(self, registry.readAllPeers())
-		.filter((r) => !self || r.id !== self.id)
-		.map((r) => r.name)
-		.join(", ") || "(none)";
+	const records = visibleRecords(self, registry.readAllPeers()).filter(
+		(record) => !self || record.id !== self.id,
+	);
+	return records.map((record) => agentDisplayName(record, records)).join(", ") || "(none)";
 }
 
 /** Standard "not found" tool result with peer listing. */

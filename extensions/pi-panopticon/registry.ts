@@ -121,6 +121,25 @@ export function pickName(
 	return `${base}-${selfId.slice(0, 6)}`;
 }
 
+interface PickActiveNameInput {
+	cwd: string;
+	records: AgentRecord[];
+	selfId: string;
+	sessionName?: string;
+	spawnName?: string;
+}
+
+/** Resolve active name by precedence: session/programmatic > spawn > generated. */
+export function pickActiveName(input: PickActiveNameInput): { name: string; source: AgentNameSource } {
+	if (input.sessionName) {
+		return { name: input.sessionName, source: "user" };
+	}
+	if (input.spawnName) {
+		return { name: pickName(input.cwd, input.records, input.selfId, input.spawnName), source: "spawn" };
+	}
+	return { name: pickName(input.cwd, input.records, input.selfId), source: "generated" };
+}
+
 /**
  * Sort records: self first, then by startedAt.
  * @internal exported for tests
@@ -195,8 +214,7 @@ export default class Registry implements RegistryInterface {
 		const records = this.readAllPeers();
 		const spawnName = process.env[PANOPTICON_SPAWN_NAME_ENV];
 		const sessionName = this.readSessionName();
-		const requestedName = sessionName ?? spawnName;
-		const name = pickName(cwd, records, this.selfId, requestedName);
+		const { name, source } = pickActiveName({ cwd, records, selfId: this.selfId, sessionName, spawnName });
 		this.lastSyncedSessionName = sessionName;
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
@@ -207,7 +225,7 @@ export default class Registry implements RegistryInterface {
 			id: this.selfId,
 			name,
 			...(spawnName ? { spawn_name: spawnName } : {}),
-			name_source: this.getInitialNameSource(sessionName, spawnName),
+			name_source: source,
 			pid: process.pid,
 			cwd,
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "",
@@ -365,21 +383,27 @@ export default class Registry implements RegistryInterface {
 		}
 	}
 
-	private getInitialNameSource(
-		sessionName: string | undefined,
-		spawnName: string | undefined,
-	): AgentNameSource {
-		if (sessionName) return "user";
-		if (spawnName) return "spawn";
-		return "generated";
-	}
-
 	private syncSessionName(): void {
 		if (!this.record) return;
 		const sessionName = this.readSessionName();
-		if (!sessionName || sessionName === this.lastSyncedSessionName) return;
-		this.lastSyncedSessionName = sessionName;
-		this.record.name = sessionName;
-		this.record.name_source = "user";
+		if (sessionName === this.lastSyncedSessionName) return;
+
+		const records = this.readAllPeers();
+		if (sessionName) {
+			this.lastSyncedSessionName = sessionName;
+			this.record.name = sessionName;
+			this.record.name_source = "user";
+			return;
+		}
+
+		this.lastSyncedSessionName = undefined;
+		const { name, source } = pickActiveName({
+			cwd: this.record.cwd,
+			records,
+			selfId: this.selfId,
+			spawnName: this.record.spawn_name,
+		});
+		this.record.name = name;
+		this.record.name_source = source;
 	}
 }

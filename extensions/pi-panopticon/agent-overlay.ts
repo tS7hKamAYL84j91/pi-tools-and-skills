@@ -14,6 +14,7 @@ import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
 import type { AgentListModeStore } from "./list-mode.js";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
 import type { AgentRecord, Registry } from "./types.js";
+import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 import {
 	buildStatusSegments,
@@ -22,8 +23,8 @@ import {
 
 function agentSelectItems(records: readonly AgentRecord[], selfId: string): SelectItem[] {
 	return records.map((rec) => ({
-		value: rec.name,
-		label: `${STATUS_SYMBOL[rec.status]} ${rec.name}${rec.id === selfId ? " (you)" : ""}`,
+		value: agentDisplayName(rec, records),
+		label: `${STATUS_SYMBOL[rec.status]} ${agentDisplayName(rec, records)}${rec.id === selfId ? " (you)" : ""}`,
 		description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
 	}));
 }
@@ -186,7 +187,7 @@ async function showAgentDetail(
 ): Promise<void> {
 	const self = registry.getRecord();
 	const records = visibleRecords(self, registry.readAllPeers());
-	const rec = records.find((r) => r.name.toLowerCase() === agentName.toLowerCase());
+	const rec = findAgentByDisplayName(records, agentName);
 	if (!rec) {
 		ctx.ui.notify(`Agent "${agentName}" not found`, "warning");
 		return;
@@ -210,7 +211,7 @@ async function showAgentDetail(
 					done();
 				} else if (!isSelf && (data === "m" || data === "M")) {
 					done();
-					ctx.ui.setEditorText(`/send ${rec.name} `);
+					ctx.ui.setEditorText(`/send ${agentDisplayName(rec, records)} `);
 				}
 			},
 		};

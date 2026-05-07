@@ -28,7 +28,7 @@ vi.mock("node:fs", () => ({
 
 import * as nodefs from "node:fs";
 import { isPidAlive } from "../lib/agent-registry.js";
-import { findAgentByName, sendAgentMessage } from "../lib/agent-api.js";
+import { findAgentByName, listLiveAgents, sendAgentMessage } from "../lib/agent-api.js";
 
 const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
 const mockExistsSync = nodefs.existsSync as ReturnType<typeof vi.fn>;
@@ -89,6 +89,30 @@ describe("findAgentByName", () => {
 		const info = findAgentByName("test-worker");
 		expect(info?.heartbeatAge).toBeGreaterThanOrEqual(0);
 		expect(info?.heartbeatAge).toBeLessThan(60_000);
+	});
+
+	it("resolves duplicated names by stable display suffix only", () => {
+		mockReaddirSync.mockReturnValue(["abc12345.json", "def67890.json"]);
+		mockReadFileSync
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "abc12345", name: "worker" }))
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "def67890", name: "worker" }));
+
+		expect(findAgentByName("worker")).toBeNull();
+		mockReadFileSync
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "abc12345", name: "worker" }))
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "def67890", name: "worker" }));
+		expect(findAgentByName("worker#def678")?.id).toBe("def67890");
+	});
+});
+
+describe("listLiveAgents", () => {
+	it("uses stable display suffixes for duplicated registry names", () => {
+		mockReaddirSync.mockReturnValue(["abc12345.json", "def67890.json"]);
+		mockReadFileSync
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "abc12345", name: "worker" }))
+			.mockReturnValueOnce(JSON.stringify({ ...JSON.parse(AGENT_JSON), id: "def67890", name: "worker" }));
+
+		expect(listLiveAgents().map((agent) => agent.name)).toEqual(["worker#abc123", "worker#def678"]);
 	});
 });
 

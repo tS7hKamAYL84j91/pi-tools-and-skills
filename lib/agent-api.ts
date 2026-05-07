@@ -20,6 +20,7 @@ import {
 	isPidAlive,
 	type AgentRecord,
 } from "./agent-registry.js";
+import { agentDisplayName, findAgentByDisplayName } from "./agent-names.js";
 import { getMaildirTransport } from "./transports/maildir.js";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -27,7 +28,10 @@ import { getMaildirTransport } from "./transports/maildir.js";
 /** Summary of an agent's liveness and health. */
 export interface AgentInfo {
 	id: string;
+	/** Human-visible selector; duplicate registry names include a stable id suffix. */
 	name: string;
+	/** Raw mutable registry name. */
+	registryName: string;
 	pid: number;
 	alive: boolean;
 	heartbeatAge: number;
@@ -43,34 +47,13 @@ export interface AgentInfo {
  * own agent name, since an agent including itself in a council would deadlock.
  */
 export function listLiveAgents(excludeName?: string): AgentInfo[] {
-	try {
-		if (!existsSync(REGISTRY_DIR)) return [];
-		const exclude = excludeName?.toLowerCase();
-		const out: AgentInfo[] = [];
-		for (const f of readdirSync(REGISTRY_DIR)) {
-			if (!f.endsWith(".json")) continue;
-			try {
-				const rec: AgentRecord = JSON.parse(
-					readFileSync(join(REGISTRY_DIR, f), "utf-8"),
-				);
-				if (!rec.name) continue;
-				if (exclude && rec.name.toLowerCase() === exclude) continue;
-				if (!isPidAlive(rec.pid)) continue;
-				out.push({
-					id: rec.id,
-					name: rec.name,
-					pid: rec.pid,
-					alive: true,
-					heartbeatAge: Date.now() - rec.heartbeat,
-					model: rec.model,
-					status: rec.status,
-				});
-			} catch { /* skip corrupt file */ }
-		}
-		return out;
-	} catch {
-		return [];
-	}
+	const records = readLiveAgentRecords();
+	const exclude = excludeName?.toLowerCase();
+	const visibleRecords = records.filter((record) => {
+		const displayName = agentDisplayName(record, records).toLowerCase();
+		return !exclude || (record.name.toLowerCase() !== exclude && displayName !== exclude);
+	});
+	return visibleRecords.map((record) => toAgentInfo(record, records, true));
 }
 
 /**
@@ -78,30 +61,56 @@ export function listLiveAgents(excludeName?: string): AgentInfo[] {
  * Returns agent info with liveness check, or null if not found.
  */
 export function findAgentByName(name: string): AgentInfo | null {
+	const records = readRegistryRecords();
+	const rec = findAgentByDisplayName(records, name);
+	if (!rec) {
+		return null;
+	}
+	return toAgentInfo(rec, records, isPidAlive(rec.pid));
+}
+
+function readRegistryRecords(): AgentRecord[] {
 	try {
-		if (!existsSync(REGISTRY_DIR)) return null;
-		const lower = name.toLowerCase();
-		for (const f of readdirSync(REGISTRY_DIR)) {
-			if (!f.endsWith(".json")) continue;
+		if (!existsSync(REGISTRY_DIR)) {
+			return [];
+		}
+		const records: AgentRecord[] = [];
+		for (const file of readdirSync(REGISTRY_DIR)) {
+			if (!file.endsWith(".json")) {
+				continue;
+			}
 			try {
 				const rec: AgentRecord = JSON.parse(
-					readFileSync(join(REGISTRY_DIR, f), "utf-8"),
+					readFileSync(join(REGISTRY_DIR, file), "utf-8"),
 				);
-				if (rec.name?.toLowerCase() !== lower) continue;
-				const alive = isPidAlive(rec.pid);
-				return {
-					id: rec.id,
-					name: rec.name,
-					pid: rec.pid,
-					alive,
-					heartbeatAge: Date.now() - rec.heartbeat,
-					model: rec.model,
-					status: alive ? rec.status : "terminated",
-				};
-			} catch { /* skip corrupt file */ }
+				if (rec.name) {
+					records.push(rec);
+				}
+			} catch {
+				// Skip corrupt records.
+			}
 		}
-	} catch { /* registry dir unreadable */ }
-	return null;
+		return records;
+	} catch {
+		return [];
+	}
+}
+
+function readLiveAgentRecords(): AgentRecord[] {
+	return readRegistryRecords().filter((record) => isPidAlive(record.pid));
+}
+
+function toAgentInfo(record: AgentRecord, records: readonly AgentRecord[], alive: boolean): AgentInfo {
+	return {
+		id: record.id,
+		name: agentDisplayName(record, records),
+		registryName: record.name,
+		pid: record.pid,
+		alive,
+		heartbeatAge: Date.now() - record.heartbeat,
+		model: record.model,
+		status: alive ? record.status : "terminated",
+	};
 }
 
 // ── Commands ────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
 	formatAge,
 	nameTaken,
 	pickName,
+	pickActiveName,
 	sortRecords,
 } from "../extensions/pi-panopticon/registry.js";
 import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
@@ -139,6 +140,31 @@ describe("pickName", () => {
 	it("appends -2 when requested name is taken", () => {
 		const records = [makeRecord({ id: "other", name: "custom-agent" })];
 		expect(pickName("/home/user/myproject", records, "self", "custom-agent")).toBe("custom-agent-2");
+	});
+});
+
+// ── pickActiveName ──────────────────────────────────────────────
+
+describe("pickActiveName", () => {
+	it("prefers session names over spawn names", () => {
+		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self", sessionName: "user-name", spawnName: "spawned" })).toEqual({
+			name: "user-name",
+			source: "user",
+		});
+	});
+
+	it("falls back to spawn name when session name is cleared", () => {
+		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self", spawnName: "spawned" })).toEqual({
+			name: "spawned",
+			source: "spawn",
+		});
+	});
+
+	it("falls back to a generated cwd name without session or spawn names", () => {
+		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self" })).toEqual({
+			name: "proj",
+			source: "generated",
+		});
 	});
 });
 

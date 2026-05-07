@@ -74,6 +74,16 @@ describe("resolvePeer", () => {
 		const reg = makeRegistry(makeRecord({ id: "self" }), []);
 		expect(resolvePeer(reg, "nobody")).toBeUndefined();
 	});
+
+	it("requires stable suffix when peer names are duplicated", () => {
+		const self = makeRecord({ id: "self", name: "me" });
+		const first = makeRecord({ id: "abc12345", name: "worker" });
+		const second = makeRecord({ id: "def67890", name: "worker" });
+		const reg = makeRegistry(self, [self, first, second]);
+
+		expect(resolvePeer(reg, "worker")).toBeUndefined();
+		expect(resolvePeer(reg, "worker#def678")?.id).toBe("def67890");
+	});
 });
 
 describe("peerNames", () => {
@@ -84,6 +94,15 @@ describe("peerNames", () => {
 		const reg = makeRegistry(self, [self, a, b]);
 
 		expect(peerNames(reg)).toBe("alice, bob");
+	});
+
+	it("adds stable suffixes to duplicated peer names", () => {
+		const self = makeRecord({ id: "self", name: "me" });
+		const a = makeRecord({ id: "abc12345", name: "worker" });
+		const b = makeRecord({ id: "def67890", name: "worker" });
+		const reg = makeRegistry(self, [self, a, b]);
+
+		expect(peerNames(reg)).toBe("worker#abc123, worker#def678");
 	});
 
 	it("returns '(none)' when no peers", () => {

@@ -111,8 +111,8 @@ teams: ready
 |-------|------|--------|
 | 1 | Remove `/alias`, add `set_name`, heartbeat sync | ✅ Done |
 | 1 | Registry schema includes `spawn_name` | ✅ Done |
-| 2 | Name precedence and revert logic | **Open** |
-| 2 | Orchestration call-site audit (route by stable ID) | **Open** |
+| 2 | Name precedence and revert logic | ✅ Done — session/programmatic > spawn > generated; clearing session reverts to spawn/generated |
+| 2 | Orchestration call-site audit (route by stable ID) | ✅ Done — duplicate display names use stable `#id6` selectors; raw duplicates are ambiguous |
 | 3 | Namespace audit (`npm run check:namespace`) | ✅ Done |
 | 3 | Document naming conventions | ✅ Done |
 | 4 | Remove deprecated `set_alias`/`get_alias` wrappers | **Scheduled** — two releases after Phase 1 |

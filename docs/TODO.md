@@ -95,7 +95,7 @@ Renaming `kanban` → `pi-kanban` and `matrix` → `pi-matrix` to match the
 
 ## 2. Tools namespace — Phase 2: name precedence and revert logic
 
-Status: `[ ]` Planned
+Status: `[x]` Done — 2026-05-07 mahwir implemented precedence/revert, duplicate-name display suffixes, and routing audit; gravitas approved; `npm run check` and `npm test` pass.
 
 | Step | Description | Risk |
 |------|-------------|------|
@@ -122,7 +122,7 @@ Status: `[ ]` Planned — scheduled for two releases after Phase 1
 | 4.2 | Remove `get_alias` deprecated wrapper |
 | 4.3 | Update any documentation referencing alias tools |
 
-Blocked by: Phase 2 completion and a deprecation window.
+Blocked by: deprecation window.
 
 ---
 

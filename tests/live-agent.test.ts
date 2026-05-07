@@ -32,6 +32,7 @@ function agent(overrides: Partial<AgentInfo> = {}): AgentInfo {
 	return {
 		id: "peer-1",
 		name: "reviewer",
+		registryName: "reviewer",
 		pid: 123,
 		alive: true,
 		heartbeatAge: 5,

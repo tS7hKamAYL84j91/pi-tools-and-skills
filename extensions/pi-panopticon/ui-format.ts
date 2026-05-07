@@ -5,6 +5,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { AgentRecord, AgentStatus } from "./types.js";
+import { agentDisplayName } from "./display-name.js";
 import { sortRecords, STATUS_SYMBOL } from "./registry.js";
 
 /** Map status → short label shown after the colon in compact segments. */
@@ -40,13 +41,14 @@ export function buildStatusSegments(
 	return sortRecords(records, selfId).map((rec) => {
 		const sym = STATUS_SYMBOL[rec.status];
 		const label = STATUS_LABEL[rec.status];
+		const name = agentDisplayName(rec, records);
 		const inbox =
 			(rec.pendingMessages ?? 0) > 0
 				? theme.fg("warning", `(msg:${rec.pendingMessages})`)
 				: "";
 		if (rec.id === selfId)
-			return `${sym} ${theme.fg("accent", theme.bold(rec.name))}${theme.fg("dim", `:${label}`)}${inbox}`;
-		return `${sym} ${theme.fg(STATUS_COLOR[rec.status], rec.name)}${theme.fg("dim", `:${label}`)}${inbox}`;
+			return `${sym} ${theme.fg("accent", theme.bold(name))}${theme.fg("dim", `:${label}`)}${inbox}`;
+		return `${sym} ${theme.fg(STATUS_COLOR[rec.status], name)}${theme.fg("dim", `:${label}`)}${inbox}`;
 	});
 }
 

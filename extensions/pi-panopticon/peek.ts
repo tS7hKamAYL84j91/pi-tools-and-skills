@@ -12,6 +12,7 @@ import { ok } from "./types.js";
 import type { Registry } from "./types.js";
 import type { AgentListModeStore } from "./list-mode.js";
 import { formatAge, STATUS_SYMBOL } from "./registry.js";
+import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 
 // ── Setup ───────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ export function setupPeek(
 					return ok("No agents registered.", { agents: [] });
 
 				const listing = records.map((r) =>
-					`  ${STATUS_SYMBOL[r.status]} ${r.name.padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
+					`  ${STATUS_SYMBOL[r.status]} ${agentDisplayName(r, records).padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
 						(r.pendingMessages ?? 0) > 0
 							? ` msg:${r.pendingMessages}`
 							: ""
@@ -68,7 +69,9 @@ export function setupPeek(
 					`${records.length} registered agent(s):\n${listing.join("\n")}\n\nUse agent_peek with an agent name to read their activity.\nUse agent_send to message a peer.`,
 					{
 						agents: records.map((r) => ({
-							name: r.name,
+							name: agentDisplayName(r, records),
+							registryName: r.name,
+							id: r.id,
 							pid: r.pid,
 							cwd: r.cwd,
 							status: r.status,
@@ -83,15 +86,11 @@ export function setupPeek(
 				);
 			}
 
-			// Resolve target by name
-			const lower = params.target.replace(/^@/, "").toLowerCase();
-			const peer = records.find(
-				(r) => r.name.toLowerCase() === lower && r.id !== selfId,
-			);
+			// Resolve target by display label, or by raw name when unique.
+			const peerRecords = records.filter((r) => r.id !== selfId);
+			const peer = findAgentByDisplayName(peerRecords, params.target);
 			if (!peer) {
-				const names = records
-					.filter((r) => r.id !== selfId)
-					.map((r) => r.name);
+				const names = peerRecords.map((r) => agentDisplayName(r, peerRecords));
 				return ok(
 					`No agent named "${params.target}". Known peers: ${
 						names.length ? names.join(", ") : "(none)"
@@ -115,9 +114,10 @@ export function setupPeek(
 				params.lines ?? 50,
 			);
 			return ok(
-				`Agent "${peer.name}" activity (last ${sessionEvents.length} events):\n\n${formatSessionLog(sessionEvents)}`,
+				`Agent "${agentDisplayName(peer, peerRecords)}" activity (last ${sessionEvents.length} events):\n\n${formatSessionLog(sessionEvents)}`,
 				{
-					target: peer.name,
+					target: agentDisplayName(peer, peerRecords),
+					registryName: peer.name,
 					transport: "session",
 					events: sessionEvents.length,
 				},
