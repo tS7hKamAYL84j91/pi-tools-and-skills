@@ -87,9 +87,6 @@ Renaming `kanban` → `pi-kanban` and `matrix` → `pi-matrix` to match the
 > Keep `/kanban` and `/matrix` commands for backward compat.
 > Model tool prefixes (`kanban_*`, `matrix_*`) unchanged.
 > Legacy board dir `kanban/` checked before `pi-kanban/` fallback.
-- `npm test`
-- `npm run check:namespace` — verify no command collisions introduced
-- Manual: `/kanban`, `/matrix`, and all tools still work with aliases
 
 ---
 

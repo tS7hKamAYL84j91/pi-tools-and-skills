@@ -40,8 +40,6 @@ flowchart TD
 - Keep bundled protocol labels (`debate`, `consult`) as
   configuration vocabulary, not TypeScript architecture boundaries.
 - Represent live peers explicitly as `agent:<registered-name>` role bindings.
-- Do not add an external graph/workflow framework unless a future spike proves
-  it deletes meaningful code without hiding Pi-specific behavior.
 
 ## Evidence-gated future work
 
@@ -50,10 +48,8 @@ Only consider new teams-platform work when one of these is true:
 1. A user-facing workflow cannot be represented with current v2 manifests, role
    bindings, prompt refs, limits, and direct protocol handlers.
 2. A fitness function or validation test exposes a recurring architecture smell.
-3. A proposed dependency or abstraction demonstrably removes more code and risk
-   than it adds.
-4. Operational needs require richer live-agent lifecycle control or durable state
-  that cannot fit the current session event model.
+3. Operational needs require richer live-agent lifecycle control or durable state
+   that cannot fit the current session event model.
 
 ## Completed work
 

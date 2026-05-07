@@ -51,7 +51,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Add project extensions such as `kanban`, `matrix`, or `pi-coas` per workspace via that workspace's `.pi/settings.json`.
+Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per workspace via that workspace's `.pi/settings.json`.
 
 ---
 
@@ -65,8 +65,8 @@ Add project extensions such as `kanban`, `matrix`, or `pi-coas` per workspace vi
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | **pi-panopticon** | Global  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
-| **kanban**        | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
-| **matrix**        | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
+| **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
+| **pi-matrix**     | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
@@ -107,9 +107,9 @@ Everything goes through `make`:
 ```text
 extensions/           Extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
-  pi-teams/       Global — multi-model deliberation from runtime model registry
-  kanban/               Project — event-sourced task board + TUI overlay
-  matrix/               Project — phone ↔ agent bridge via Matrix
+  pi-teams/            Global — multi-model deliberation from runtime model registry
+  pi-kanban/           Project — event-sourced task board + TUI overlay
+  pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills and compact reference guidance
@@ -118,7 +118,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (panopticon, pi-teams) are installed by `make setup` through this repo's local pi package entry. Project extensions (kanban, matrix, pi-coas) are added per-workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 

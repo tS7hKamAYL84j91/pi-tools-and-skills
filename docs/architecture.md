@@ -37,8 +37,9 @@ The main risk is **custom framework growth**:
    engine unless dynamic topologies are strictly required. ✅ Done — DAG removed.
 2. **Keep Kanban dumb:** Stick to the event-sourced log and deterministic state
    reconstruction. **No SQLite.**
-3. **Keep `pi-panopticon` boring:** Only track agent existence and heartbeats.
-   No historical metrics.
+3. **Keep `pi-panopticon` boring:** Track agent existence, heartbeats, and
+   recent operational summaries from existing state only. No long-term metrics
+   store.
 4. **Limit `pi-coas`:** Run schedules only inside pi with a small timer loop.
 5. **Enforce Boundaries:** Prevent extensions from coupling. Add explicit
    "What this does NOT do" to every README.
@@ -57,14 +58,14 @@ flowchart TD
   Tools --> Board[board.ts event-sourced board model]
   Watcher --> Board
   Overlay --> Board
-  Board --> Log[(kanban/board.log)]
-  Board --> Tasks[(kanban/tasks/T-NNN.md)]
+  Board --> Log[(pi-kanban/board.log)]
+  Board --> Tasks[(pi-kanban/tasks/T-NNN.md)]
 
   Tools --> Snapshot[snapshot.ts renderers]
   Snapshot --> Compact[Compact summary\nIDs + short status only]
   Snapshot --> TaskDetail[Single-card detail\nrequested by task_id]
   Snapshot --> Full[Full board detail\nrequested by detail=full]
-  Snapshot --> SnapshotFile[(kanban/snapshot.md\nfull board)]
+  Snapshot --> SnapshotFile[(pi-kanban/snapshot.md\nfull board)]
 
   Watcher --> Injection[followUp message\ncompact guidance only]
   Injection --> Pi
