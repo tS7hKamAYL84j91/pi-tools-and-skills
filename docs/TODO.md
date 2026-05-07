@@ -11,6 +11,34 @@ Progress markers:
 
 ---
 
+## How to use this TODO
+
+An implementation agent must follow this workflow for every item:
+
+1. **Claim an item** — change its marker from `[ ]` to `[~]` and add a dated
+   note with intended scope.
+2. **Implement the smallest useful change** — run focused validation:
+   ```bash
+   npm run check   # typecheck → lint → knip → type-coverage
+   npm test        # vitest
+   ```
+3. **Do a refactor pass** — remove duplication, simplify names, keep vertical
+   slices independent. Run focused tests again.
+4. **Review with `gravitas`** — send a review request including changed files,
+   validation output, and decisions made. Address feedback in a focused loop.
+5. **Design decisions** — any new architecture or policy decision must be:
+   - Reviewed by `team_run` with `llm-council` for high-impact or contentious
+     choices.
+   - Written as a new ADR in `docs/adr/` with status, context, decision,
+     consequences format.
+   - Referenced from this TODO and any affected living docs.
+6. **Update this file** — change marker to `[R]` when ready for review, then
+   `[x]` only after gravitas approval and full validation pass.
+7. **If blocked** — change marker to `[!]`, record blocker and next decision
+   needed, then stop rather than broadening scope.
+
+---
+
 ## 1. Extension rename for naming consistency
 
 Status: `[x]` Done — renamed, all tests pass
