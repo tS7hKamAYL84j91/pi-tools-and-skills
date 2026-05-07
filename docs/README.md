@@ -1,19 +1,22 @@
 # Docs
 
-Current docs are intentionally small. Completed design plans and migration logs are archived so they do not look like active implementation guidance.
+## Architecture Decision Records
 
-## Active references
+[`adr/`](adr/) — canonical ADRs 001–013.
 
-- [`adr/`](adr/) — canonical Architecture Decision Records (ADRs 001–013).
-- [`fire-architecture-review.md`](fire-architecture-review.md) — review of the architecture against Dan Ward's F.I.R.E. principles.
-- [`kanban-extension.md`](kanban-extension.md) — current kanban extension architecture.
-- [`teams-future-improvements.md`](teams-future-improvements.md) — living teams-platform status, standing decisions, and evidence gates for future work.
-- [`teams-simplification.md`](teams-simplification.md) — living plan to replace the DAG executor with direct topology implementations (council).
-- [`teams-graph-affordances.md`](teams-graph-affordances.md) — **superseded by teams-simplification.md** — see `git log --all --oneline -- docs/archive/teams-graph-affordances.md`.
-- [`teams-graph-affordances-compliance.md`](teams-graph-affordances-compliance.md) — **superseded** — see `git log --all --oneline -- docs/archive/teams-graph-affordances-compliance.md`.
-- [`tui-ux-update.md`](tui-ux-update.md) — cross-extension TUI consistency brief with `termwright` validation evidence, including Panopticon status/overlay findings.
-- [`tools-update.md`](tools-update.md) — command/tool namespace policy and audit plan covering built-in pi overlaps, slash-command naming, and model-facing tool stems.
+## Active reference
 
-## Historical design notes
+- [`architecture.md`](architecture.md) — F.I.R.E. review, kanban architecture, CoAS scheduler design.
+- [`teams-platform.md`](teams-platform.md) — teams extension: standing decisions, evidence-gated future work, completed simplification summary.
+- [`ux-tools-policy.md`](ux-tools-policy.md) — TUI consistency rules and command/tool namespace policy.
+- [`TODO.md`](TODO.md) — single remaining-work tracker, including extension rename plan.
 
-- [`archive/`](archive/) — pointer to git history for completed or superseded specs, reviews, proposals, and progress logs.
+## Historical records
+
+[`archive/`](archive/) — pointer to git history. Completed work, superseded plans, and review docs are retained in git; removed from the working tree to avoid stale guidance.
+
+To browse historical docs:
+```bash
+git log --all --oneline --name-only -- docs/archive/ | head -40
+git show <commit>:docs/archive/<file>
+```
