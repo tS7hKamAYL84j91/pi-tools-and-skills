@@ -22,11 +22,14 @@ import {
 } from "./ui-format.js";
 
 function agentSelectItems(records: readonly AgentRecord[], selfId: string): SelectItem[] {
-	return records.map((rec) => ({
-		value: agentDisplayName(rec, records),
-		label: `${STATUS_SYMBOL[rec.status]} ${agentDisplayName(rec, records)}${rec.id === selfId ? " (you)" : ""}`,
-		description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
-	}));
+	return records.map((rec) => {
+		const displayName = agentDisplayName(rec, records);
+		return {
+			value: displayName,
+			label: `${STATUS_SYMBOL[rec.status]} ${displayName}${rec.id === selfId ? " (you)" : ""}`,
+			description: `${rec.status} │ ${rec.model || "?"} │ up ${formatAge(rec.startedAt)}${rec.task ? ` │ ${rec.task.slice(0, 50)}` : ""}`,
+		};
+	});
 }
 
 interface RenderAgentListOverlayArgs {
@@ -91,6 +94,50 @@ interface RenderAgentDetailOverlayArgs {
 	width: number;
 }
 
+function agentDetailRows(record: AgentRecord): [string, string][] {
+	const rows: [string, string][] = [
+		["Model", record.model || "unknown"],
+		["CWD", record.cwd],
+		["PID", String(record.pid)],
+		["Messages", `msg:${record.pendingMessages ?? 0}`],
+		["Uptime", formatAge(record.startedAt)],
+	];
+	if (record.task) {
+		rows.push(["Task", record.task.slice(0, 60)]);
+	}
+	return rows;
+}
+
+function activityColor(event: string): ThemeColor {
+	if (event.includes("error")) {
+		return "error";
+	}
+	if (event.includes("start")) {
+		return "success";
+	}
+	if (event.includes("end")) {
+		return "warning";
+	}
+	return "dim";
+}
+
+function activityExtra(entry: SessionEvent): string {
+	return Object.entries(entry)
+		.filter(([key]) => key !== "ts" && key !== "event")
+		.map(([key, value]) => `${key}=${String(value).slice(0, 60)}`)
+		.join(" ");
+}
+
+interface ActivityWindow {
+	visibleEvents: SessionEvent[];
+	hiddenCount: number;
+}
+
+function activityWindow(events: readonly SessionEvent[]): ActivityWindow {
+	const visibleEvents = events.slice(-15);
+	return { visibleEvents, hiddenCount: events.length - visibleEvents.length };
+}
+
 export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): string[] {
 	const container = new Container();
 	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
@@ -102,41 +149,23 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 	container.addChild(border());
 	add(`  ${STATUS_SYMBOL[args.record.status]} ${args.theme.fg("accent", args.theme.bold(args.record.name))}${isSelf ? args.theme.fg("dim", " (you)") : ""}  ${args.theme.fg("muted", args.record.status)}`);
 
-	const pending = args.record.pendingMessages ?? 0;
-	const details: [string, string][] = [
-		["Model", args.record.model || "unknown"],
-		["CWD", args.record.cwd],
-		["PID", String(args.record.pid)],
-		["Messages", `msg:${pending}`],
-		["Uptime", formatAge(args.record.startedAt)],
-	];
-	if (args.record.task) details.push(["Task", args.record.task.slice(0, 60)]);
-	for (const [label, value] of details) row(label, value);
+	for (const [label, value] of agentDetailRows(args.record)) {
+		row(label, value);
+	}
 
 	add(`\n  ${args.theme.fg("accent", args.theme.bold("Recent Activity"))} ${args.theme.fg("dim", `(${args.sessionEvents.length} events)`)}`);
 	if (args.sessionEvents.length === 0) {
 		add(`  ${args.theme.fg("dim", "(no activity recorded)")}`);
 	} else {
-		const visibleEvents = args.sessionEvents.slice(-15);
-		const hiddenCount = args.sessionEvents.length - visibleEvents.length;
+		const { visibleEvents, hiddenCount } = activityWindow(args.sessionEvents);
 		if (hiddenCount > 0) {
 			add(`  ${args.theme.fg("dim", `... ${hiddenCount} earlier event${hiddenCount === 1 ? "" : "s"} omitted`)}`);
 		}
 		for (const entry of visibleEvents) {
 			const ts = new Date(entry.ts).toISOString().slice(11, 19);
 			const event = String(entry.event ?? "?");
-			const col: ThemeColor = event.includes("error")
-				? "error"
-				: event.includes("start")
-					? "success"
-					: event.includes("end")
-						? "warning"
-						: "dim";
-			const extra = Object.entries(entry)
-				.filter(([k]) => k !== "ts" && k !== "event")
-				.map(([k, v]) => `${k}=${String(v).slice(0, 60)}`)
-				.join(" ");
-			add(`  ${args.theme.fg("dim", ts)} ${args.theme.fg(col, event)}${extra ? args.theme.fg("muted", ` ${extra}`) : ""}`);
+			const extra = activityExtra(entry);
+			add(`  ${args.theme.fg("dim", ts)} ${args.theme.fg(activityColor(event), event)}${extra ? args.theme.fg("muted", ` ${extra}`) : ""}`);
 		}
 	}
 
