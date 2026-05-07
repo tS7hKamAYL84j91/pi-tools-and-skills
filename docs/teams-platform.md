@@ -16,12 +16,9 @@ flowchart TD
 
   Runtime --> Handler[TeamHandler boundary]
   Handler --> Council[Direct council handler\nconsult/debate]
-  Handler --> Pair[Direct pair-coding handler]
 
   Council --> ModelNode[Model-backed role call]
-  Pair --> ModelNode
   Council --> LiveNode[agent:<name> live-agent call]
-  Pair --> LiveNode
   Handler --> State[pi session custom run events]
 
   State --> Inspect[team_describe / overlay inspection]
@@ -40,7 +37,7 @@ flowchart TD
 - Keep direct topology functions per protocol; do not reintroduce a generic DAG
   executor unless a concrete user-visible workflow cannot be implemented as a
   small direct handler.
-- Keep bundled protocol labels (`debate`, `consult`, `pair-coding`) as
+- Keep bundled protocol labels (`debate`, `consult`) as
   configuration vocabulary, not TypeScript architecture boundaries.
 - Represent live peers explicitly as `agent:<registered-name>` role bindings.
 - Do not add an external graph/workflow framework unless a future spike proves
@@ -56,20 +53,22 @@ Only consider new teams-platform work when one of these is true:
 3. A proposed dependency or abstraction demonstrably removes more code and risk
    than it adds.
 4. Operational needs require richer live-agent lifecycle control or durable state
-   that cannot fit the current session event model.
+  that cannot fit the current session event model.
 
 ## Completed work
 
 | Item | Status | Ref |
 |------|--------|-----|
 | Direct council handler (`consult`/`debate`) | ✅ Done | `team-handlers.ts` |
-| Direct pair-coding handler | ✅ Done | `team-handlers.ts` |
 | Delete DAG executor (`team-graph.ts`) | ✅ Done | arch tests |
 | Delete lowering layer (`team-lowering.ts`) | ✅ Done | arch tests |
 | Delete protocol contracts (`protocol-contracts.ts`) | ✅ Done | — |
 | Simplify `team-types.ts` (remove graph schema) | ✅ Done | registry tests |
 | Migrate prompt contracts into handlers | ✅ Done | prompt-chain tests |
 | Extract `team-node-runner.ts` shared helpers | ✅ Done | unit tests |
+| Remove pair-coding topology | ✅ Done | `11436c9` |
+| Rename default-debate → llm-council | ✅ Done | `11436c9` |
+| Rename consult → navigator | ✅ Done | `f5a8ad3` |
 | Supersede graph-affordances docs | ✅ Done | archive |
 
 Historical planning records are in git history:
