@@ -36,10 +36,23 @@ interface RenderAgentListOverlayArgs {
 	width: number;
 }
 
+/** @internal Sort agent overlays with self first, then unread-message urgency. */
+export function sortAgentOverlayRecords(
+	records: readonly AgentRecord[],
+	selfId: string,
+): AgentRecord[] {
+	return sortRecords([...records], selfId).sort((a, b) => {
+		if (a.id === selfId) return -1;
+		if (b.id === selfId) return 1;
+		return (b.pendingMessages ?? 0) - (a.pendingMessages ?? 0);
+	});
+}
+
 function createAgentListView(args: Omit<RenderAgentListOverlayArgs, "width">): { container: Container; selectList: SelectList } {
 	const container = new Container();
+	const sortedRecords = sortAgentOverlayRecords(args.records, args.selfId);
 	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
-	const selectList = new SelectList(agentSelectItems(args.records, args.selfId), Math.min(args.records.length, 12), {
+	const selectList = new SelectList(agentSelectItems(sortedRecords, args.selfId), Math.min(sortedRecords.length, 12), {
 		// SelectList hardcodes a Unicode arrow; normalize it to the shared
 		// ASCII-safe selected-row marker used by Teams and Kanban.
 		selectedPrefix: (t: string) => args.theme.fg("accent", t),
@@ -61,7 +74,7 @@ function createAgentListView(args: Omit<RenderAgentListOverlayArgs, "width">): {
 	container.addChild(new Text(` ${buildStatusSegments(args.records, args.selfId, args.theme).join(args.theme.fg("dim", " | "))}`, 1, 1));
 	container.addChild(new Text(args.theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
 	container.addChild(selectList);
-	container.addChild(new Text(args.theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close"), 1, 0));
+	container.addChild(new Text(args.theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close · unread first"), 1, 0));
 	container.addChild(border());
 	return { container, selectList };
 }
@@ -145,11 +158,9 @@ export async function openAgentOverlay(
 		return;
 	}
 
-	const sorted = sortRecords(records, selfId);
-
 	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const { container, selectList } = createAgentListView({
-			records: sorted,
+			records,
 			selfId,
 			theme,
 		});

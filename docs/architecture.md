@@ -52,7 +52,7 @@ flowchart TD
   User[Human / orchestrator] --> Pi[pi agent session]
   Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
   Pi --> Watcher[board.log watcher]
-  Pi --> Overlay[/kanban TUI overlay]
+  Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
 
   Tools --> Board[board.ts event-sourced board model]
   Watcher --> Board

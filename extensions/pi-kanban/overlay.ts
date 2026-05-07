@@ -37,7 +37,7 @@ const DEBOUNCE_MS = 150;
 /** Hardcoded agent label written to board.log when the overlay mutates state. */
 const OVERLAY_AGENT = "lead";
 
-type Mode = "board" | "detail" | "confirm-delete" | "move-picker";
+type Mode = "board" | "detail" | "confirm-delete" | "move-picker" | "search";
 
 class KanbanOverlay implements Component {
 	private board: BoardState;
@@ -52,6 +52,7 @@ class KanbanOverlay implements Component {
 	};
 	private mode: Mode = "board";
 	private statusMessage = "";
+	private filterQuery = "";
 	private pendingDeleteTask: TaskState | null = null;
 	private pendingMoveTask: TaskState | null = null;
 	private watcher: FSWatcher | null = null;
@@ -108,9 +109,21 @@ class KanbanOverlay implements Component {
 	}
 
 	private tasksIn(col: Column): TaskState[] {
-		const out = this.allTasksIn(col);
+		const out = this.filteredTasksIn(col);
 		if (col === "done") return out.slice(-DONE_LIMIT).reverse();
 		return out;
+	}
+
+	private filteredTasksIn(col: Column): TaskState[] {
+		const tasks = this.allTasksIn(col);
+		const query = this.filterQuery.trim().toLowerCase();
+		if (!query) return tasks;
+		return tasks.filter((task) => this.taskMatchesFilter(task, query));
+	}
+
+	private taskMatchesFilter(task: TaskState, query: string): boolean {
+		return [task.id, task.title, task.claimAgent, task.agent]
+			.some((value) => value.toLowerCase().includes(query));
 	}
 
 	private allTasksIn(col: Column): TaskState[] {
@@ -129,9 +142,27 @@ class KanbanOverlay implements Component {
 
 	private clampSelection(): void {
 		const tasks = this.tasksIn(this.activeColumn());
+		if (tasks.length === 0) {
+			this.activeRow = 0;
+			return;
+		}
 		if (this.activeRow >= tasks.length) {
 			this.activeRow = Math.max(0, tasks.length - 1);
 		}
+	}
+
+	private clampFilteredSelection(): void {
+		if (this.tasksIn(this.activeColumn()).length > 0) {
+			this.clampSelection();
+			return;
+		}
+		const nextColumnIndex = COLUMNS.findIndex(
+			(col) => this.tasksIn(col).length > 0,
+		);
+		if (nextColumnIndex >= 0) {
+			this.activeColIdx = nextColumnIndex;
+		}
+		this.activeRow = 0;
 	}
 
 	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
@@ -161,6 +192,9 @@ class KanbanOverlay implements Component {
 				return;
 			case "move-picker":
 				this.handleMovePickerInput(data);
+				return;
+			case "search":
+				this.handleSearchInput(data);
 				return;
 			default:
 				this.handleBoardInput(data);
@@ -210,9 +244,40 @@ class KanbanOverlay implements Component {
 		else if (matchesKey(data, "2")) void this.executeMove("todo");
 	}
 
+	private handleSearchInput(data: string): void {
+		if (matchesKey(data, "escape")) {
+			this.filterQuery = "";
+			this.mode = "board";
+			this.statusMessage = "";
+			this.clampFilteredSelection();
+			return;
+		}
+		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+			this.mode = "board";
+			this.statusMessage = "";
+			this.clampFilteredSelection();
+			return;
+		}
+		if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
+			this.filterQuery = this.filterQuery.slice(0, -1);
+			this.clampFilteredSelection();
+			return;
+		}
+		if (data.length === 1 && data >= " ") {
+			this.filterQuery += data;
+			this.clampFilteredSelection();
+		}
+	}
+
 	private handleBoardInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
 			this.done(null);
+			return;
+		}
+
+		if (matchesKey(data, "/")) {
+			this.mode = "search";
+			this.statusMessage = "";
 			return;
 		}
 
@@ -317,9 +382,10 @@ class KanbanOverlay implements Component {
 				return renderMovePicker(this.pendingMoveTask, width, this.theme);
 			default: {
 				const colTasks = COLUMNS.map((c) => this.tasksIn(c));
+				const visibleDoneCount = colTasks[COLUMNS.indexOf("done")]?.length ?? 0;
 				const hiddenDoneCount = Math.max(
 					0,
-					this.allTasksIn("done").length - (colTasks[COLUMNS.indexOf("done")]?.length ?? 0),
+					this.filteredTasksIn("done").length - visibleDoneCount,
 				);
 				// Same upper-bound used by renderBoard so the controller's scroll
 				// math stays in sync with what the view will actually display.
@@ -332,6 +398,8 @@ class KanbanOverlay implements Component {
 						activeRow: this.activeRow,
 						scroll: this.scroll,
 						statusMessage: this.statusMessage,
+						filterQuery: this.filterQuery,
+						isFiltering: this.mode === "search",
 						hiddenDoneCount,
 					},
 					width,

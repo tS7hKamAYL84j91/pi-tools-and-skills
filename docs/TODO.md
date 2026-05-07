@@ -128,13 +128,13 @@ Blocked by: deprecation window.
 
 ## 4. TUI — Dense-view interaction parity (TUX-005)
 
-Status: `[ ]` Planned — deferred
+Status: `[x]` Done — 2026-05-07 mahwir added Kanban `/` filtering, Panopticon unread urgency sort, audited hint wording, passed review with gravitas, and `npm run check`/`npm test` passed.
 
-| Surface | Action | Priority |
-|---------|--------|----------|
-| Kanban board | Add `/` search/filter by task id/title/agent, or document why not | Medium |
-| Panopticon overlay | Add unread-message filtering or urgency sort | Low |
-| All overlays | Normalize any remaining picker hint wording drift | Low |
+| Surface | Action | Priority | Status |
+|---------|--------|----------|--------|
+| Kanban board | Add `/` search/filter by task id/title/agent | Medium | ✅ Done |
+| Panopticon overlay | Add unread-message urgency sort | Low | ✅ Done |
+| All overlays | Normalize any remaining picker hint wording drift | Low | ✅ Done — hints audited; Panopticon now advertises unread-first ordering |
 
 ### References
 

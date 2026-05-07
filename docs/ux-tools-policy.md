@@ -69,7 +69,7 @@ teams: ready
 | TUX-002 | Kanban width/layout drift | ✅ Done — board clamps to 80 cols |
 | TUX-003 | Glyph/status convention | ✅ Done — ASCII markers, `msg:N` counts |
 | TUX-004 | Overflow indicators | ✅ Done — `...+N` on hidden agents, `DONE N+M` |
-| TUX-005 | Dense-view interaction parity | **Open** — Kanban search/filter deferred; Panopticon urgency sort deferred |
+| TUX-005 | Dense-view interaction parity | ✅ Done — Kanban `/` filter; Panopticon unread urgency sort; picker hints audited |
 
 ### References
 

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
 	renderAgentDetailOverlay,
 	renderAgentListOverlay,
+	sortAgentOverlayRecords,
 } from "../extensions/pi-panopticon/agent-overlay.js";
 import type { AgentRecord } from "../extensions/pi-panopticon/types.js";
 import type { SessionEvent } from "../lib/session-log.js";
@@ -68,8 +69,9 @@ describe("pi-panopticon overlay renderers", () => {
 			const body = lines.join("\n");
 			expect(body).toContain("Agent Panopticon");
 			expect(body).toContain("> R self (you)");
-			expect(body).toContain("enter detail");
+				expect(body).toContain("enter detail");
 			expect(body).toContain("esc close");
+			expect(body).toContain("unread first");
 			expectWidthBounded(lines, width);
 		});
 
@@ -94,4 +96,18 @@ describe("pi-panopticon overlay renderers", () => {
 			expectWidthBounded(lines, width);
 		});
 	}
+
+	it("sorts unread-message agents ahead of other peers while keeping self first", () => {
+		const ordered = sortAgentOverlayRecords([
+			record("worker-two"),
+			record("self", { status: "running" }),
+			record("worker-one", { pendingMessages: 2 }),
+		], "self");
+
+		expect(ordered.map((entry) => entry.id)).toEqual([
+			"self",
+			"worker-one",
+			"worker-two",
+		]);
+	});
 });

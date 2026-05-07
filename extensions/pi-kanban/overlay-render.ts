@@ -153,6 +153,8 @@ interface BoardView {
 	activeRow: number;
 	scroll: Record<Column, number>;
 	statusMessage: string;
+	filterQuery?: string;
+	isFiltering?: boolean;
 	hiddenDoneCount?: number;
 }
 
@@ -214,11 +216,18 @@ export function renderBoard(
 	const title = theme.bold(theme.fg("accent", " Kanban Board"));
 	const hints = theme.fg(
 		"dim",
-		"← → column   ↑ ↓ row   enter detail   d delete   m move   esc/q close",
+		"← → column   ↑ ↓ row   / filter   enter detail   d delete   m move   esc/q close",
 	);
 	lines.push(frameTop(totalInner, theme));
 	const headerRow = padVisible(`${title}   ${hints}`, totalInner);
 	lines.push(modalTruncatedLine(headerRow, totalInner, theme));
+	if (view.filterQuery || view.isFiltering) {
+		const marker = view.isFiltering ? "Filter:" : "Filtered:";
+		const query = view.filterQuery || "";
+		const filterHint = query || "(type task id, title, or agent)";
+		const filterLine = `${theme.fg("dim", ` ${marker}`)} ${theme.fg("text", filterHint)}`;
+		lines.push(modalTruncatedLine(filterLine, totalInner, theme));
+	}
 	lines.push(frameMiddle(totalInner, theme));
 
 	// Column headers
@@ -243,11 +252,11 @@ export function renderBoard(
 
 	// Empty board state
 	if (totalTasks === 0) {
-		const emptyMsg = theme.fg(
-			"muted",
-			" No tasks yet. Use kanban_create to add a task.",
-		);
-		lines.push(modalLine(emptyMsg, totalInner, theme));
+		const emptyText = view.filterQuery
+			? ` No matching tasks for "${view.filterQuery}".`
+			: " No tasks yet. Use kanban_create to add a task.";
+		const emptyMsg = theme.fg("muted", emptyText);
+		lines.push(modalTruncatedLine(emptyMsg, totalInner, theme));
 	} else {
 		// Body rows
 		const maxRows = Math.max(8, ...view.colTasks.map((t) => t.length));

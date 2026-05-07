@@ -344,6 +344,24 @@ describe("overlay render empty board", () => {
 		expect(body).not.toContain("▶");
 	});
 
+	it("renders filter prompt and no-match state", () => {
+		const view = {
+			colTasks: emptyColTasks,
+			activeCol: "backlog" as const,
+			activeRow: 0,
+			scroll: { backlog: 0, todo: 0, "in-progress": 0, blocked: 0, done: 0 },
+			statusMessage: "",
+			filterQuery: "worker",
+			isFiltering: true,
+		};
+
+		const body = renderBoard(view, 120, fakeTheme).join("\n");
+		expect(body).toContain("Filter:");
+		expect(body).toContain("worker");
+		expect(body).toContain("No matching tasks for \"worker\"");
+		expect(body).not.toContain("No tasks yet");
+	});
+
 	it("shows done overflow count in the board header", () => {
 		const visibleDoneTasks = Array.from({ length: 10 }, (_, index) => ({
 			id: `T-${String(index + 1).padStart(3, "0")}`,
