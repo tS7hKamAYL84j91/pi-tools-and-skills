@@ -108,8 +108,8 @@ describe("loadTeamRegistry", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
-			"consult",
 			"llm-council",
+			"navigator",
 		]);
 		expect(registry.warnings).toEqual([]);
 		const defaultDebate = requireTeam(registry, "llm-council");
@@ -118,7 +118,7 @@ describe("loadTeamRegistry", () => {
 		});
 		expect(defaultDebate.agentBindings.filter((binding) => binding.role === "member")).toHaveLength(4);
 		expect(defaultDebate.agentBindings.filter((binding) => binding.subagent === "debate_generation_member")).toHaveLength(4);
-		expect(requireTeam(registry, "consult").agents).toEqual([
+		expect(requireTeam(registry, "navigator").agents).toEqual([
 			"consult_navigator",
 		]);
 	});
@@ -382,13 +382,13 @@ describe("loadTeamRegistry", () => {
 			writeSubagent(userRoot, "user_agent");
 			writeTeam(userRoot, "user-team", "user_agent");
 			writeSubagent(join(project, ".pi", "teams"), "project_agent");
-			writeTeam(join(project, ".pi", "teams"), "consult", "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "navigator", "project_agent");
 
 			const registry = loadTeamRegistry(configPath, { settingsPath: join(root, "settings.json"), cwd: project });
 
 			expect(registry.teams.get("user-team")?.source).toBe("user");
-			expect(registry.teams.get("consult")?.source).toBe("project");
-			expect(registry.teams.get("consult")?.agents).toEqual([
+			expect(registry.teams.get("navigator")?.source).toBe("project");
+			expect(registry.teams.get("navigator")?.agents).toEqual([
 				"project_agent",
 			]);
 		});
@@ -407,7 +407,7 @@ describe("loadTeamRegistry", () => {
 			}, project);
 			const registry = loadTeamRegistry(undefined, { cwd: project });
 
-			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "project-navigator.md"));
+			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "project-consult.md"));
 			expect(registry.teams.get("project-consult")?.source).toBe("project");
 			expect(registry.warnings.filter((warning) => warning.startsWith("project-consult:"))).toEqual([]);
 		} finally {
@@ -761,7 +761,7 @@ describe("team tools", () => {
 		expect(result.content[0]?.text).toContain("llm-council");
 		expect(result.details.teams).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ id: "consult", protocol: "consult" }),
+				expect.objectContaining({ id: "navigator", protocol: "consult" }),
 			]),
 		);
 	});
@@ -774,7 +774,7 @@ describe("team tools", () => {
 
 		const result = await describeTeam.execute(
 			"test",
-			{ id: "consult" },
+			{ id: "navigator" },
 			undefined,
 			undefined,
 			{ cwd: process.cwd() },
@@ -839,7 +839,7 @@ describe("team tools", () => {
 			mkdirSync(join(project, ".pi", "teams", "teams"), { recursive: true });
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 			writeSubagent(join(project, ".pi", "teams"), "project_agent");
-			writeTeam(join(project, ".pi", "teams"), "consult", "project_agent");
+			writeTeam(join(project, ".pi", "teams"), "navigator", "project_agent");
 			const { api, tools } = createFakeApi();
 			registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 			const remove = tools.get("team_delete");
@@ -847,14 +847,14 @@ describe("team tools", () => {
 
 			await remove.execute(
 				"test",
-				{ id: "consult", scope: "project" },
+				{ id: "navigator", scope: "project" },
 				undefined,
 				undefined,
 				{ cwd: project },
 			);
 
 			const registry = loadTeamRegistry(CONFIG_PATH, { roots: [], cwd: project });
-			expect(registry.teams.get("consult")?.source).toBe("builtin");
+			expect(registry.teams.get("navigator")?.source).toBe("builtin");
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -891,6 +891,6 @@ describe("team tools", () => {
 				undefined,
 				{ cwd: process.cwd(), ui: { setStatus: () => undefined } },
 			),
-		).rejects.toThrow(/No team "missing".*consult.*llm-council/s);
+		).rejects.toThrow(/No team "missing".*llm-council.*navigator/s);
 	});
 });

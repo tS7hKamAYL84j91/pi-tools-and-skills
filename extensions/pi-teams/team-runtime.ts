@@ -174,7 +174,7 @@ export function registerTeamRunTool(
 		promptSnippet: "Run a declarative team by id",
 		promptGuidelines: [
 			"Use team_run with id=llm-council for high-impact architecture, strategy, or research where disagreement is valuable.",
-			"Use team_run with id=consult for lightweight Navigator review.",
+			"Use team_run with id=navigator for lightweight Navigator review.",
 
 		],
 		parameters: TeamRunSchema,

@@ -70,7 +70,7 @@ function writeConsult(root: string, navigator: string): void {
 		[
 			"---",
 			'schemaVersion: 2',
-			'id: "consult"',
+			'id: "navigator"',
 			'name: "Consult"',
 			'description: "Navigator review"',
 			'protocol: "consult"',

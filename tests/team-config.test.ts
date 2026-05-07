@@ -131,6 +131,6 @@ describe("visible team config", () => {
 		);
 
 		expect(result.content[0]?.text).toContain("llm-council");
-		expect(result.content[0]?.text).toContain("consult");
+		expect(result.content[0]?.text).toContain("navigator");
 	});
 });
