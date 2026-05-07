@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { registerAgentsCommand } from "./agents-command.js";
-import { registerNameControls } from "./alias-command.js";
+import { registerNameControls } from "./name-controls.js";
 import type { AgentListModeStore } from "./list-mode.js";
 import { registerAgentListModeControls } from "./list-mode-command.js";
 import { createAgentStatusWidget, type UIModule } from "./status-widget.js";

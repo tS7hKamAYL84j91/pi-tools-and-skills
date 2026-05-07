@@ -115,4 +115,4 @@ teams: ready
 | 2 | Orchestration call-site audit (route by stable ID) | ✅ Done — duplicate display names use stable `#id6` selectors; raw duplicates are ambiguous |
 | 3 | Namespace audit (`npm run check:namespace`) | ✅ Done |
 | 3 | Document naming conventions | ✅ Done |
-| 4 | Remove deprecated `set_alias`/`get_alias` wrappers | **Scheduled** — two releases after Phase 1 |
+| 4 | Remove deprecated `set_alias`/`get_alias` wrappers | ✅ Done — wrappers removed after deprecation window; use `set_name`/`get_name` |

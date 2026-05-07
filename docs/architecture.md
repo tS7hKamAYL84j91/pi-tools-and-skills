@@ -84,6 +84,27 @@ flowchart TD
 
 ---
 
+## Panopticon Naming Controls
+
+```mermaid
+flowchart TD
+  Caller[Model / RPC caller] --> GetName[get_name tool]
+  Caller --> SetName[set_name tool]
+  SetName --> Session[Pi session display name]
+  SetName --> Registry[Panopticon registry record]
+  Registry --> Display[Agent lists and peer routing]
+  GetName --> Details[Session, registry, and spawn-name metadata]
+```
+
+### Context policy
+
+- `set_name` and `get_name` are the only model-visible naming tools.
+- Deprecated `set_alias` and `get_alias` wrappers are removed after their
+  deprecation window.
+- Registry routing remains based on stable peer IDs; display names are UI labels.
+
+---
+
 ## CoAS Internal Scheduler
 
 ### Goal

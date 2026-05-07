@@ -12,20 +12,21 @@ terminology no longer aligns with the canonical `/name`.
 
 ## Decision
 
-- Add `set_name` as the canonical programmatic naming tool.
-- `set_alias` becomes a deprecated compatibility wrapper that forwards to
-  `set_name`.
-- `get_alias` becomes `get_name`, reporting both session name and registry name.
-- Deprecation window: two releases / sprints, then `set_alias` is removed.
+- Add `set_name` as the canonical programmatic naming tool and replacement for
+  `set_alias`.
+- Add `get_name` as the replacement for `get_alias`, reporting session name,
+  registry name, and spawn-name metadata.
+- After the two-release deprecation window, remove the deprecated `set_alias`
+  and `get_alias` compatibility wrappers.
 
 ## Consequences
 
 - Models and RPC callers retain programmatic naming capability.
 - Terminology aligns with built-in `/name`.
-- The deprecation window prevents hard breakage for existing callers.
-- During transition, `set_name` / `set_alias` may dual-write (set session name +
-  update registry directly) if immediate consistency is needed before heartbeat
-  fires.
+- The completed deprecation window avoided immediate hard breakage for existing
+  callers while giving them time to migrate.
+- `set_name` may dual-write (set session name + update registry directly) when
+  immediate consistency is needed before heartbeat fires.
 
 ## Related
 

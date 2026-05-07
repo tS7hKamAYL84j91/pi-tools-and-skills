@@ -114,15 +114,15 @@ Status: `[x]` Done — 2026-05-07 mahwir implemented precedence/revert, duplicat
 
 ## 3. Tools namespace — Phase 4: remove deprecated wrappers
 
-Status: `[ ]` Planned — scheduled for two releases after Phase 1
+Status: `[x]` Done — 2026-05-07 mahwir removed deprecated alias tool wrappers, updated references/tests, passed gravitas review, and `npm run check`/`npm test` passed.
 
 | Step | Description |
 |------|-------------|
-| 4.1 | Remove `set_alias` deprecated wrapper |
-| 4.2 | Remove `get_alias` deprecated wrapper |
-| 4.3 | Update any documentation referencing alias tools |
+| 4.1 | Remove `set_alias` deprecated wrapper | ✅ Done |
+| 4.2 | Remove `get_alias` deprecated wrapper | ✅ Done |
+| 4.3 | Update any documentation referencing alias tools | ✅ Done |
 
-Blocked by: deprecation window.
+Validation: `npm run check` ✅; `npm test` ✅; gravitas review ✅.
 
 ---
 

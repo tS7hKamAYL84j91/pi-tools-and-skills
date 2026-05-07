@@ -82,38 +82,4 @@ export function registerNameControls(pi: ExtensionAPI, registry: Registry): void
 			}
 		},
 	});
-
-	pi.registerTool({
-		name: "get_alias",
-		label: "Get Alias (Deprecated)",
-		description: "Deprecated compatibility wrapper for get_name. Use get_name instead.",
-		promptSnippet: "Deprecated: use get_name instead of get_alias",
-		parameters: Type.Object({}),
-		async execute(): Promise<ToolResult> {
-			const details = getNameDetails(pi, registry);
-			return ok(formatName(details), { ...details, deprecated: true });
-		},
-	});
-
-	pi.registerTool({
-		name: "set_alias",
-		label: "Set Alias (Deprecated)",
-		description: "Deprecated compatibility wrapper for set_name. Use set_name instead.",
-		promptSnippet: "Deprecated: use set_name instead of set_alias",
-		parameters: Type.Object({
-			name: Type.String({ description: "Name to use for this session/agent" }),
-		}),
-		async execute(_id, params): Promise<ToolResult> {
-			try {
-				const name = validateName(params.name);
-				if (!name) {
-					return fail("Name cannot be empty.", { reason: "empty_name" });
-				}
-				setName(pi, registry, name);
-				return ok(`Name set to ${name}.`, { name, deprecated: true });
-			} catch (err) {
-				return fail((err as Error).message, { reason: "invalid_name" });
-			}
-		},
-	});
 }

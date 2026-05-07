@@ -63,13 +63,9 @@ describe("name tools", () => {
 		expect((result as { isError?: boolean }).isError).toBeFalsy();
 	});
 
-	it("set_alias remains a deprecated wrapper for set_name", async () => {
-		const tool = tools.get("set_alias");
-		if (!tool) throw new Error("set_alias not registered");
-		const result = await tool.execute("id", { name: "chief" });
-		expect(sessionName).toBe("chief");
-		expect(registry.setName).toHaveBeenCalledWith("chief", "programmatic");
-		expect((result as { details?: { deprecated?: boolean } }).details?.deprecated).toBe(true);
+	it("does not register deprecated alias tool wrappers", () => {
+		expect(tools.has("set_alias")).toBe(false);
+		expect(tools.has("get_alias")).toBe(false);
 	});
 
 	it("get_name reports current session, registry, and spawn names", async () => {
@@ -81,16 +77,6 @@ describe("name tools", () => {
 		expect(text).toContain("chief");
 		expect(text).toContain("registry-name");
 		expect(text).toContain("spawned-name");
-	});
-
-	it("get_alias remains a deprecated wrapper for get_name", async () => {
-		sessionName = "chief";
-		const tool = tools.get("get_alias");
-		if (!tool) throw new Error("get_alias not registered");
-		const result = await tool.execute("id", {});
-		const text = (result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
-		expect(text).toContain("chief");
-		expect((result as { details?: { deprecated?: boolean } }).details?.deprecated).toBe(true);
 	});
 
 	it("does not register the removed /alias command", () => {
