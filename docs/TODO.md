@@ -151,12 +151,8 @@ function demands them. See `docs/teams-platform.md` for evidence-gate criteria.
 
 | Area | Item | Gate |
 |------|------|------|
-| Teams platform | New topology handler | User workflow cannot fit council |
 | Teams platform | Live-agent lifecycle control | Session event model insufficient |
-| Teams platform | External graph/workflow framework | Spike proves code reduction |
-| CoAS scheduler | External schedule execution | Operational need outside pi |
-| Panopticon | Historical metrics | User-visible gap |
-| Kanban | SQLite backend | FIRE review says No |
+| Panopticon | Operational metrics | Need to answer concrete coordination questions such as who is stuck, erroring, or carrying unread backlog; compute from existing registry/session state, no long-term metrics store |
 
 ---
 
