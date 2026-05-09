@@ -7,18 +7,41 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { setupReconciler } from "../extensions/pi-panopticon/reconciler.js";
+import type { AgentRecord } from "../lib/agent-registry.js";
+import { findAgentByName } from "../lib/agent-api.js";
+import {
+	checkAgentHealth,
+	checkStaleActivity,
+	setupReconciler,
+} from "../extensions/pi-panopticon/reconciler.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 import type { OperationalStateStore } from "../extensions/pi-panopticon/state.js";
 
-vi.mock("../../lib/agent-api.js", () => ({
+vi.mock("../lib/agent-api.js", () => ({
 	findAgentByName: vi.fn(() => null),
 }));
 
-function makeRegistry(): Registry {
+const mockFindAgentByName = vi.mocked(findAgentByName);
+
+function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
+	return {
+		id: "peer-id",
+		name: "peer",
+		pid: 123,
+		cwd: "/tmp",
+		model: "x",
+		startedAt: 1,
+		heartbeat: Date.now(),
+		status: "waiting",
+		pendingMessages: 0,
+		...overrides,
+	};
+}
+
+function makeRegistry(records: AgentRecord[] = []): Registry {
 	return {
 		selfId: "self-id",
-		getRecord: vi.fn(() => ({ id: "self-id", name: "test", pid: 1, cwd: "/tmp", model: "x", startedAt: 1, heartbeat: Date.now(), status: "waiting" as const })),
+		getRecord: vi.fn(() => makeRecord({ id: "self-id", name: "self", pid: 1 })),
 		register: vi.fn(),
 		unregister: vi.fn(),
 		setStatus: vi.fn(),
@@ -26,14 +49,23 @@ function makeRegistry(): Registry {
 		setTask: vi.fn(),
 		setName: vi.fn(),
 		updatePendingMessages: vi.fn(),
-		readAllPeers: vi.fn(() => []),
+		readAllPeers: vi.fn(() => records),
 		flush: vi.fn(),
 	};
 }
 
-function makeStateStore(): OperationalStateStore {
+function makeStateStore(lastActiveAt?: number): OperationalStateStore {
 	return {
-		getState: vi.fn(() => undefined),
+		getState: vi.fn(() => lastActiveAt == null ? undefined : {
+			version: 1,
+			workspaceId: "local:interactive",
+			sourceChannel: "local",
+			humanIdentity: "interactive",
+			lastActiveAt,
+			linkedPaths: { cwd: "/tmp" },
+			pendingFollowUps: [],
+			resume: { reason: "startup" },
+		}),
 		restore: vi.fn(),
 		recordInput: vi.fn(),
 	} as unknown as OperationalStateStore;
@@ -48,11 +80,110 @@ function makeMockCtx() {
 	};
 }
 
+describe("reconciler findings", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-05-09T00:00:00Z"));
+		mockFindAgentByName.mockReset();
+	});
+
+	it("suppresses stale activity when peers are idle and freshly heartbeating", () => {
+		const peer = makeRecord({ status: "waiting", heartbeat: Date.now() - 10_000 });
+		mockFindAgentByName.mockReturnValue({
+			id: peer.id,
+			name: peer.name,
+			registryName: peer.name,
+			pid: peer.pid,
+			alive: true,
+			heartbeatAge: 10_000,
+			model: peer.model,
+			status: "waiting",
+		});
+
+		const findings = checkStaleActivity(
+			makeStateStore(Date.now() - 31 * 60_000),
+			makeRegistry([peer]),
+			"self-id",
+		);
+
+		expect(findings).toEqual([]);
+	});
+
+	it("does not alert on one stale sample when confirmation is fresh", () => {
+		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 10 * 60_000 });
+		mockFindAgentByName.mockReturnValue({
+			id: peer.id,
+			name: peer.name,
+			registryName: peer.name,
+			pid: peer.pid,
+			alive: true,
+			heartbeatAge: 5_000,
+			model: peer.model,
+			status: "running",
+		});
+
+		const findings = checkAgentHealth(makeRegistry([peer]), "self-id");
+
+		expect(findings.map((finding) => finding.heuristic)).not.toContain("stale-worker");
+	});
+
+	it("keeps actionable alerts for pending messages, blocked agents, stalls, and silent termination", () => {
+		const pending = makeRecord({ id: "pending", name: "pending", pendingMessages: 2 });
+		const blocked = makeRecord({ id: "blocked", name: "blocked", status: "blocked" });
+		const stale = makeRecord({ id: "stale", name: "stale", status: "running" });
+		const stalled = makeRecord({ id: "stalled", name: "stalled", status: "stalled" });
+		const dead = makeRecord({ id: "dead", name: "dead", status: "running" });
+		mockFindAgentByName.mockImplementation((name) => ({
+			id: name,
+			name,
+			registryName: name,
+			pid: 123,
+			alive: name !== "dead",
+			heartbeatAge: name === "stale" ? 10 * 60_000 : 5_000,
+			model: "x",
+			status: name === "blocked" || name === "stalled" ? name : "running",
+		}));
+
+		const findings = checkAgentHealth(
+			makeRegistry([pending, blocked, stale, stalled, dead]),
+			"self-id",
+		);
+
+		expect(findings.map((finding) => finding.heuristic)).toEqual([
+			"pending-messages",
+			"blocked-agent",
+			"stale-worker",
+			"stale-worker",
+			"silent-done",
+		]);
+		expect(findings.every((finding) => finding.level === "actionable")).toBe(true);
+	});
+
+	it("does not treat a done agent exit as silent termination", () => {
+		const done = makeRecord({ id: "done", name: "done", status: "done" });
+		mockFindAgentByName.mockReturnValue({
+			id: done.id,
+			name: done.name,
+			registryName: done.name,
+			pid: done.pid,
+			alive: false,
+			heartbeatAge: 5_000,
+			model: done.model,
+			status: "terminated",
+		});
+
+		const findings = checkAgentHealth(makeRegistry([done]), "self-id");
+
+		expect(findings).toEqual([]);
+	});
+});
+
 describe("reconciler lifecycle", () => {
 	let pi: { sendUserMessage: ReturnType<typeof vi.fn>; appendEntry: ReturnType<typeof vi.fn> };
 
 	beforeEach(() => {
 		vi.useFakeTimers();
+		mockFindAgentByName.mockReset();
 		pi = { sendUserMessage: vi.fn(), appendEntry: vi.fn() };
 	});
 

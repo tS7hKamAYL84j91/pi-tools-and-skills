@@ -52,7 +52,7 @@ Do not use this skill for simple single-agent tasks.
      - `waiting`: idle
      - `blocked`: self-reported blocker
      - `stalled`: heartbeat alive but no progress across repeated checks
-   - A `waiting` agent with a fresh heartbeat (<60s) is idle, not stalled. Reconciliation alerts for stale activity during long idle periods are expected; one status check is enough.
+   - A `waiting` agent with a fresh heartbeat (<60s) is idle, not stalled. Current reconciliation suppresses stale-activity noise when all peers are healthy and have no pending messages.
    - For stall detection, call `agent_status` 2–3 times over time. If status stays unchanged or becomes `stalled`/`blocked`, nudge with `agent_send` before escalating.
 
 6. **Intervene when needed**
@@ -110,18 +110,21 @@ Common mistakes seen in sessions:
 
 ## Reconciliation alert handling
 
-Pi's reconciler emits three alert types. Not all require action:
+Pi's reconciler now suppresses idle noise and emits follow-ups only for findings
+that likely need intervention:
 
 | Alert | Meaning | Action |
 |-------|---------|--------|
-| `stale-worker` | Agent heartbeat >10m stale. PID may be dead. | Check with `agent_status`. If terminated, note the failure. If alive but stale, nudge with `agent_send`. |
-| `stale-activity` | No workspace activity for 30m+. Expected during idle periods. | Do **one** `agent_status` check. If all peers are `waiting` with fresh heartbeats, no action needed. Do not poll repeatedly. |
-| `silent-done` | Agent PID terminated but registry still shows status. | Run `agent_status` to reconcile. The registry will update automatically. |
+| `pending-messages` | A peer has unread inbound messages. | Read or route messages only if this agent owns that channel. |
+| `blocked-agent` | Agent self-reports blocked. | Inspect with `agent_status`/`agent_peek`, then nudge with `agent_send` if needed. |
+| `stale-worker` | A stale heartbeat or stalled status was confirmed by a fresh status read. | Check with `agent_status`. If still stale or stalled, nudge with `agent_send`. |
+| `silent-done` | Agent PID terminated before registry status became `done`/`terminated`. | Inspect output and reconcile or restart the work. |
+| `stale-activity` | No workspace activity for 30m+ and at least one peer is not operationally quiet. | Do one `agent_status` check; do not poll repeatedly. |
 
 Rules:
 - Never run `git status` or `git diff` just because a reconciliation alert fired.
-- One `agent_status` check is enough to triage a `stale-activity` alert.
-- A `stale-worker` alert for an agent with a live heartbeat and `waiting` status is benign — the heartbeat takes precedence over the alert.
+- Do not expect stale-activity alerts during healthy idle periods; waiting/running peers with fresh heartbeats and no pending messages are suppressed.
+- A single stale registry sample is not enough for `stale-worker`; the reconciler confirms before notifying.
 - Do not poll `message_read` in response to reconciliation alerts.
 
 ## Agent failure & recovery

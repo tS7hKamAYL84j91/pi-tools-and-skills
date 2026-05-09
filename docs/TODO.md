@@ -141,6 +141,51 @@ Status: `[x]` Done — 2026-05-07 mahwir added Kanban `/` filtering, Panopticon 
 
 ---
 
+## 5. Panopticon — Reconciliation alert noise reduction
+
+Status: `[x]` Done — 2026-05-09 mahwir implemented sparse/actionable reconciliation alerts, gravitas approved, and `npm run check`/`npm test` passed.
+
+Repeated reconciliation alerts currently consume tokens during idle periods even
+when agents are healthy. `agent_status` often shows agents as `waiting` or
+`active` with fresh heartbeats and no pending messages, so follow-up chat turns
+add no operational value.
+
+### Goal
+
+Make reconciliation alerts actionable and sparse: suppress or batch idle/fresh
+heartbeat checks, and only interrupt the conversation for states that likely
+need intervention.
+
+### Planned changes
+
+| Step | Description | Risk |
+|------|-------------|------|
+| 5.1 | Classify reconciliation findings into actionable vs informational | ✅ Done |
+| 5.2 | Suppress repeated `stale-activity` alerts when all agents are `waiting` or non-stalled `active` with fresh heartbeats and no messages pending | ✅ Done |
+| 5.3 | Confirm stale heartbeat findings with a fresh, non-blocking registry/status read before notifying | ✅ Done |
+| 5.4 | Keep alerts for `blocked`, true `stalled`, terminated-without-DONE, and pending messages | ✅ Done |
+| 5.5 | Add tests for idle suppression, stale-worker confirmation, and actionable alerts | ✅ Done |
+| 5.6 | Update Panopticon/orchestration docs and skills with the final policy | ✅ Done |
+
+### Acceptance criteria
+
+- Idle or long-running healthy agents with fresh heartbeats do not trigger
+  repeated user-visible reconciliation messages.
+- One stale registry sample is not enough to notify if a follow-up status read
+  shows a fresh heartbeat.
+- Actionable conditions still notify promptly: pending messages, blocked agents,
+  true stalls, and silent termination.
+- `npm run check` and `npm test` pass.
+
+### References
+
+- `skills/pi-agent-orchestration/SKILL.md`
+- `extensions/pi-panopticon/health.ts`
+- `extensions/pi-panopticon/registry.ts`
+- `docs/adr/014-panopticon-reconciliation-alert-policy.md`
+
+---
+
 ## Backlog (evidence-gated)
 
 These items only activate when a concrete user-visible gap or failing fitness

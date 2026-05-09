@@ -85,7 +85,7 @@ flowchart TD
 
 ---
 
-## Panopticon Naming Controls
+## Panopticon Controls
 
 ```mermaid
 flowchart TD
@@ -95,6 +95,12 @@ flowchart TD
   SetName --> Registry[Panopticon registry record]
   Registry --> Display[Agent lists and peer routing]
   GetName --> Details[Session, registry, and spawn-name metadata]
+
+  Registry --> Reconciler[Reconciliation loop]
+  State[Operational workspace state] --> Reconciler
+  Reconciler --> Classifier[Actionable vs informational findings]
+  Classifier -->|pending / blocked / confirmed stale / silent termination| FollowUp[followUp message]
+  Classifier -->|idle healthy peers| Suppress[Suppress idle noise]
 ```
 
 ### Context policy
@@ -103,6 +109,9 @@ flowchart TD
 - Deprecated `set_alias` and `get_alias` wrappers are removed after their
   deprecation window.
 - Registry routing remains based on stable peer IDs; display names are UI labels.
+- Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
+  require a fresh confirmation read, and idle stale-activity checks are
+  suppressed when peers are healthy and have no pending messages (ADR 014).
 
 ---
 

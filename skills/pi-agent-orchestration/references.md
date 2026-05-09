@@ -31,6 +31,8 @@
 - Stall detection (call agent_status repeatedly — counter increments each call, stalled at 3+):
   `agent_status` → wait 30s → `agent_status` → wait 30s → `agent_status`
 
+- Reconciliation alerts are sparse: healthy waiting/running peers with fresh heartbeats and no pending messages are suppressed; act on `pending-messages`, `blocked-agent`, `stale-worker`, and `silent-done`.
+
 - Brief classification drives auto-routing:
   `brief.classification`: `sequential` (code), `parallelisable` (research), `high-entropy-search`, `tool-heavy`
 
