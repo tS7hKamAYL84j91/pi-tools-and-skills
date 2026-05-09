@@ -45,7 +45,9 @@ WIP limit: **3** in-progress tasks (configurable via `KANBAN_WIP_LIMIT` env var)
 
 The extension locates the kanban directory by checking, in order:
 1. `KANBAN_DIR` environment variable
-2. `<cwd>/kanban/`
+2. `<cwd>/pi-kanban/`
+
+The legacy unprefixed `<cwd>/kanban/` fallback has been removed.
 
 Files written:
 - `board.log` — event log (source of truth)
@@ -150,9 +152,9 @@ Full detail remains available on demand:
 - `kanban_snapshot({ "detail": "full" })` — returns the full board, including descriptions and notes.
 - `kanban_snapshot({ "task_id": "T-NNN" })` — returns full detail for one card.
 - `/kanban` — opens the full live TUI overlay.
-- `kanban/tasks/T-NNN.md` — per-task markdown file for direct reads.
+- `pi-kanban/tasks/T-NNN.md` — per-task markdown file for direct reads.
 
-`kanban/snapshot.md` retains the full five-column Markdown board:
+`pi-kanban/snapshot.md` retains the full five-column Markdown board:
 
 ```markdown
 # Kanban — Snapshot
@@ -171,7 +173,7 @@ Notes and descriptions appear only in explicit detail views or the written snaps
 
 ## Task Files
 
-Each new ticket gets a persistent markdown file at `kanban/tasks/T-NNN.md` with YAML frontmatter and a notes section. This supplements board.log (which remains the source of truth) with a per-task document suitable for extended context.
+Each new ticket gets a persistent markdown file at `pi-kanban/tasks/T-NNN.md` with YAML frontmatter and a notes section. This supplements board.log (which remains the source of truth) with a per-task document suitable for extended context.
 
 **Created by:** `kanban_create`
 **Updated by:** `kanban_edit` (appends notes or rewrites frontmatter)

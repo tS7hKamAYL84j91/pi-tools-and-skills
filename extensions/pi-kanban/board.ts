@@ -26,8 +26,6 @@ export const PRIORITY_ORDER: Record<string, number> = {
 function findKanbanDir(): string | null {
 	const env = process.env.KANBAN_DIR;
 	if (env && existsSync(env)) return env;
-	const legacyFallback = join(process.cwd(), "kanban");
-	if (existsSync(legacyFallback)) return legacyFallback;
 	const cwdFallback = join(process.cwd(), "pi-kanban");
 	return existsSync(cwdFallback) ? cwdFallback : null;
 }
@@ -36,7 +34,7 @@ function kanbanDir(): string {
 	const dir = findKanbanDir();
 	if (!dir)
 		throw new Error(
-			"Kanban directory not found. Set KANBAN_DIR or create a 'kanban' directory in the current working directory.",
+			"Kanban directory not found. Set KANBAN_DIR or create a 'pi-kanban' directory in the current working directory.",
 		);
 	return dir;
 }

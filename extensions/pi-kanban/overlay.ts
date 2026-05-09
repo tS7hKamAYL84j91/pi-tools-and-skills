@@ -421,7 +421,7 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 		board = await parseBoard();
 	} catch {
 		ctx.ui.notify(
-			"Kanban board not available — set KANBAN_DIR or create a 'kanban' directory",
+			"Kanban board not available — set KANBAN_DIR or create a 'pi-kanban' directory",
 			"warning",
 		);
 		return;

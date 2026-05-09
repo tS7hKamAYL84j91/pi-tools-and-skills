@@ -72,7 +72,7 @@ Renaming `kanban` → `pi-kanban` and `matrix` → `pi-matrix` to match the
 | Slash command | `/matrix` | kept `/matrix` | ✅ |
 | Status slot | `kanban:` | `pi-kanban:` | ✅ |
 | Status slot | `matrix:` | `pi-matrix:` | ✅ |
-| Board dir fallback | `kanban/` | `pi-kanban/` (with legacy check) | ✅ |
+| Board dir fallback | `kanban/` legacy check | strict `pi-kanban/` | ✅ |
 | Config key | `matrix` | `pi-matrix` | ✅ |
 | Tests | `kanban-*.test.ts` | `pi-kanban-*.test.ts` | ✅ |
 | Tests | `matrix-*.test.ts` | `pi-matrix-*.test.ts` | ✅ |
@@ -86,7 +86,7 @@ Renaming `kanban` → `pi-kanban` and `matrix` → `pi-matrix` to match the
 
 > Keep `/kanban` and `/matrix` commands for backward compat.
 > Model tool prefixes (`kanban_*`, `matrix_*`) unchanged.
-> Legacy board dir `kanban/` checked before `pi-kanban/` fallback.
+> Legacy board dir `kanban/` fallback removed in item 7; strict `pi-kanban/` is now the baseline.
 
 ---
 
@@ -213,7 +213,7 @@ Refresh the architecture docs to reflect the completed state of recent refactors
 
 ## 7. Remove legacy `kanban/` directory fallback
 
-Status: `[ ]` Planned
+Status: `[x]` Done — 2026-05-09 mahwir removed legacy unprefixed Kanban directory resolution, updated user-facing path text/docs, added regression tests, gravitas approved, and `npm run check`/`npm test` pass.
 
 With the extension rename to `pi-kanban` complete and stabilized, the backward-compatibility fallback checking for the old `kanban/` directory can be removed to enforce strict restraint.
 
@@ -225,8 +225,8 @@ Simplify the Kanban directory resolution logic by strictly using `pi-kanban/`.
 
 | Step | Description | Risk |
 |------|-------------|------|
-| 7.1 | Remove the legacy fallback directory check in `extensions/pi-kanban/` (e.g., in board/watcher initialization). | Low |
-| 7.2 | Update or remove any tests asserting the legacy fallback behavior. | Low |
+| 7.1 | Remove the legacy fallback directory check in `extensions/pi-kanban/` (e.g., in board/watcher initialization). | ✅ Done |
+| 7.2 | Update or remove any tests asserting the legacy fallback behavior. | ✅ Done |
 
 ### Acceptance criteria
 
