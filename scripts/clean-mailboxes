@@ -20,7 +20,8 @@ if [[ ! -d "$AGENTS_DIR" ]]; then
 fi
 
 removed=0
-kept=0
+kept_artifacts=0
+live_pids=""
 
 # Clean up mailbox directories: {pid}-{session}/
 for entry in "$AGENTS_DIR"/*/; do
@@ -29,7 +30,9 @@ for entry in "$AGENTS_DIR"/*/; do
   pid=$(echo "$name" | cut -d- -f1)
 
   if kill -0 "$pid" 2>/dev/null; then
-    kept=$((kept + 1))
+    kept_artifacts=$((kept_artifacts + 1))
+    live_pids="${live_pids}${pid}
+"
   else
     if $DRY_RUN; then
       echo "would remove dir:  $entry"
@@ -49,7 +52,9 @@ for ext in json sock; do
     pid=$(echo "$name" | cut -d- -f1)
 
     if kill -0 "$pid" 2>/dev/null; then
-      kept=$((kept + 1))
+      kept_artifacts=$((kept_artifacts + 1))
+      live_pids="${live_pids}${pid}
+"
     else
       if $DRY_RUN; then
         echo "would remove file: $file"
@@ -62,5 +67,11 @@ for ext in json sock; do
   done
 done
 
+live_agents=$(printf "%s" "$live_pids" | awk 'NF && !seen[$0]++ {count++} END {print count + 0}')
+removed_label="Removed artifacts"
+if $DRY_RUN; then
+  removed_label="Would remove artifacts"
+fi
+
 echo
-echo "Done. Removed: $removed | Kept (live): $kept"
+echo "Done. $removed_label: $removed | Kept live artifacts: $kept_artifacts | Live agents: $live_agents"
