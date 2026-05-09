@@ -94,6 +94,7 @@ Everything goes through `make`:
 | ------------------------------------------------------------------- | ---------------------------------------------------- |
 | `make` / `make help`                                                | Show available targets                               |
 | `make setup`                                                        | Install this checkout as a local pi package          |
+| `make setup-clean`                                                  | Remove this checkout's pi package registration       |
 | `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%) |
 | `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                 |
 | `make test`                                                         | Run tests                                            |
@@ -130,6 +131,7 @@ make lint         # run one quality gate
 make test         # run tests
 make test-watch   # run tests in watch mode
 make setup        # register pi package
+make setup-clean  # remove pi package registration
 ```
 
 Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENTS.md](AGENTS.md) for coding standards.
