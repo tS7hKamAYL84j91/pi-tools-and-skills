@@ -16,6 +16,7 @@ import {
 } from "../extensions/pi-panopticon/reconciler.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 import type { OperationalStateStore } from "../extensions/pi-panopticon/state.js";
+import { makeAgentInfo, mockFindAgentStates } from "./helpers/agent-api-mock.js";
 
 vi.mock("../lib/agent-api.js", () => ({
 	findAgentByName: vi.fn(() => null),
@@ -89,16 +90,7 @@ describe("reconciler findings", () => {
 
 	it("suppresses stale activity when peers are idle and freshly heartbeating", () => {
 		const peer = makeRecord({ status: "waiting", heartbeat: Date.now() - 10_000 });
-		mockFindAgentByName.mockReturnValue({
-			id: peer.id,
-			name: peer.name,
-			registryName: peer.name,
-			pid: peer.pid,
-			alive: true,
-			heartbeatAge: 10_000,
-			model: peer.model,
-			status: "waiting",
-		});
+		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, { heartbeatAge: 10_000 }));
 
 		const findings = checkStaleActivity(
 			makeStateStore(Date.now() - 31 * 60_000),
@@ -111,16 +103,7 @@ describe("reconciler findings", () => {
 
 	it("does not alert on one stale sample when confirmation is fresh", () => {
 		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 10 * 60_000 });
-		mockFindAgentByName.mockReturnValue({
-			id: peer.id,
-			name: peer.name,
-			registryName: peer.name,
-			pid: peer.pid,
-			alive: true,
-			heartbeatAge: 5_000,
-			model: peer.model,
-			status: "running",
-		});
+		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, { heartbeatAge: 5_000 }));
 
 		const findings = checkAgentHealth(makeRegistry([peer]), "self-id");
 
@@ -133,16 +116,13 @@ describe("reconciler findings", () => {
 		const stale = makeRecord({ id: "stale", name: "stale", status: "running" });
 		const stalled = makeRecord({ id: "stalled", name: "stalled", status: "stalled" });
 		const dead = makeRecord({ id: "dead", name: "dead", status: "running" });
-		mockFindAgentByName.mockImplementation((name) => ({
-			id: name,
-			name,
-			registryName: name,
-			pid: 123,
-			alive: name !== "dead",
-			heartbeatAge: name === "stale" ? 10 * 60_000 : 5_000,
-			model: "x",
-			status: name === "blocked" || name === "stalled" ? name : "running",
-		}));
+		mockFindAgentStates(mockFindAgentByName, [pending, blocked, stale, stalled, dead], {
+			pending: { status: "running", heartbeatAge: 5_000 },
+			blocked: { status: "blocked", heartbeatAge: 5_000 },
+			stale: { status: "running", heartbeatAge: 10 * 60_000 },
+			stalled: { status: "stalled", heartbeatAge: 5_000 },
+			dead: { status: "running", alive: false, heartbeatAge: 5_000 },
+		});
 
 		const findings = checkAgentHealth(
 			makeRegistry([pending, blocked, stale, stalled, dead]),
@@ -161,16 +141,11 @@ describe("reconciler findings", () => {
 
 	it("does not treat a done agent exit as silent termination", () => {
 		const done = makeRecord({ id: "done", name: "done", status: "done" });
-		mockFindAgentByName.mockReturnValue({
-			id: done.id,
-			name: done.name,
-			registryName: done.name,
-			pid: done.pid,
+		mockFindAgentByName.mockReturnValue(makeAgentInfo(done, {
 			alive: false,
 			heartbeatAge: 5_000,
-			model: done.model,
 			status: "terminated",
-		});
+		}));
 
 		const findings = checkAgentHealth(makeRegistry([done]), "self-id");
 
