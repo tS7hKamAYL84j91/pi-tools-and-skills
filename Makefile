@@ -7,6 +7,7 @@ SHELL := /bin/bash
 
 ROOT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 NPM ?= npm
+GITLEAKS ?= gitleaks
 DRY_RUN ?= 0
 
 CLEAN_MAILBOXES_ARGS :=
@@ -14,7 +15,7 @@ ifneq ($(filter 1 true yes,$(DRY_RUN)),)
 CLEAN_MAILBOXES_ARGS := --dry-run
 endif
 
-.PHONY: help setup setup-clean check typecheck lint knip type-coverage test test-watch clean-mailboxes
+.PHONY: help setup setup-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch clean-mailboxes
 
 ##@ General
 help: ## Show available make targets
@@ -28,6 +29,8 @@ setup-clean: ## Remove this checkout's pi package registration
 	"$(ROOT_DIR)/scripts/setup-pi-clean"
 
 ##@ Quality
+doctor: check test secret-scan ## Run checks, tests, and secret scans
+
 check: ## Run typecheck, lint, knip, and type-coverage
 	$(NPM) run check
 
@@ -42,6 +45,11 @@ knip: ## Check for unused files, exports, and dependencies
 
 type-coverage: ## Check TypeScript type coverage
 	$(NPM) run type-coverage
+
+secret-scan: ## Scan git history and working tree for secrets with gitleaks
+	@command -v "$(GITLEAKS)" >/dev/null 2>&1 || { echo "Error: gitleaks not found. Install it with: brew install gitleaks"; exit 127; }
+	$(GITLEAKS) detect --source "$(ROOT_DIR)" --redact --no-banner --verbose
+	$(GITLEAKS) dir "$(ROOT_DIR)" --redact --no-banner --verbose
 
 ##@ Tests
 test: ## Run tests

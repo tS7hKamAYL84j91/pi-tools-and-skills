@@ -95,8 +95,10 @@ Everything goes through `make`:
 | `make` / `make help`                                                | Show available targets                               |
 | `make setup`                                                        | Install this checkout as a local pi package          |
 | `make setup-clean`                                                  | Remove this checkout's pi package registration       |
+| `make doctor`                                                       | Run checks, tests, and gitleaks secret scans         |
 | `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%) |
 | `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                 |
+| `make secret-scan`                                                  | Scan git history and working tree with gitleaks      |
 | `make test`                                                         | Run tests                                            |
 | `make test-watch`                                                   | Run tests in watch mode                              |
 | `make clean-mailboxes`                                              | Clean stale agent mailboxes                          |
@@ -126,10 +128,12 @@ Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` th
 
 ```bash
 make help         # list all targets
+make doctor       # check + test + gitleaks secret scans
 make check        # typecheck → biome lint → knip → type-coverage (≥95%)
 make lint         # run one quality gate
 make test         # run tests
 make test-watch   # run tests in watch mode
+make secret-scan  # scan git history and working tree with gitleaks
 make setup        # register pi package
 make setup-clean  # remove pi package registration
 ```
