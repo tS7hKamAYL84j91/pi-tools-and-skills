@@ -186,6 +186,55 @@ need intervention.
 
 ---
 
+## 6. Update F.I.R.E. Architecture Review in Docs
+
+Status: `[x]` Done — 2026-05-09 mahwir refreshed `docs/architecture.md` F.I.R.E. baseline for completed `pi-teams`, alias-wrapper removal, Panopticon ADR 014, and `pi-matrix` IPC-boundary guidance; gravitas approved; `npm run check` and `npm test` pass.
+
+The F.I.R.E. review section in `docs/architecture.md` was dated 2026-05-04 and listed several completed items as ongoing risks or mitigations (e.g., `pi-teams` DAG).
+
+### Goal
+
+Refresh the architecture docs to reflect the completed state of recent refactors, cementing the new baseline.
+
+### Planned changes
+
+| Step | Description | Risk |
+|------|-------------|------|
+| 6.1 | Update F.I.R.E. review date to current. | ✅ Done |
+| 6.2 | Move `pi-teams` DAG removal from mitigation to established baseline. | ✅ Done |
+| 6.3 | Add Panopticon noise reduction (ADR 014) as a token-cost mitigation under "Inexpensive". | ✅ Done |
+| 6.4 | Note the completed removal of alias tools. | ✅ Done |
+
+### Acceptance criteria
+
+- `docs/architecture.md` accurately reflects the current F.I.R.E. state of the codebase.
+
+---
+
+## 7. Remove legacy `kanban/` directory fallback
+
+Status: `[ ]` Planned
+
+With the extension rename to `pi-kanban` complete and stabilized, the backward-compatibility fallback checking for the old `kanban/` directory can be removed to enforce strict restraint.
+
+### Goal
+
+Simplify the Kanban directory resolution logic by strictly using `pi-kanban/`.
+
+### Planned changes
+
+| Step | Description | Risk |
+|------|-------------|------|
+| 7.1 | Remove the legacy fallback directory check in `extensions/pi-kanban/` (e.g., in board/watcher initialization). | Low |
+| 7.2 | Update or remove any tests asserting the legacy fallback behavior. | Low |
+
+### Acceptance criteria
+
+- Kanban extension strictly uses `pi-kanban/` without checking for the un-prefixed directory.
+- `npm run check` and `npm test` pass.
+
+---
+
 ## Backlog (evidence-gated)
 
 These items only activate when a concrete user-visible gap or failing fitness

@@ -6,7 +6,7 @@ Short reference docs for `pi-tools-and-skills` architecture decisions and extens
 
 ## F.I.R.E. Review
 
-**Date:** 2026-05-04
+**Date:** 2026-05-09
 
 Reviewing the codebase against Dan Ward's F.I.R.E. principles (Fast, Inexpensive,
 Restrained, Elegant).
@@ -17,31 +17,36 @@ Restrained, Elegant).
   infrastructure.
 - **Restrained & Elegant:** Extension boundaries are tight. Kanban uses a simple
   append-only log.
+- **Restrained `pi-teams`:** Team execution now uses direct protocol handlers;
+  the generic DAG executor and lowering layers are removed from the baseline.
+- **Sparse Panopticon alerts:** Reconciliation follow-ups only interrupt for
+  actionable states, reducing idle token cost (ADR 014).
 
 ### Risk Areas
 
 The main risk is **custom framework growth**:
 
-- `pi-teams`: The DAG executor risks becoming a brittle workflow engine.
-  *Mitigation: direct topology handlers replaced generic executor (see Teams
-  Platform section).*
 - **File Concurrency:** Multiple writers require strict lock discipline.
 - `pi-coas`: Must keep its internal scheduler minimal — schedule files plus one
   pi-hosted timer loop, no external crontab reconciliation.
-- `matrix`: Justified for human interaction, but too heavy for local agent-to-agent
-  comms.
+- `pi-matrix`: Justified for human interaction, but too heavy for local
+  agent-to-agent comms. Keep local peer routing on IPC-backed channels such as
+  `agent_send`, spawned-agent RPC, and `pi-teams` live-agent bindings.
 
 ### Recommendations
 
-1. **Constrain `pi-teams`:** Prefer direct coordination functions over a complex
-   engine unless dynamic topologies are strictly required. ✅ Done — DAG removed.
+1. **Keep `pi-teams` direct:** Prefer direct coordination functions over a
+   complex engine unless dynamic topologies are strictly required. ✅ Baseline —
+   DAG removed.
 2. **Keep Kanban dumb:** Stick to the event-sourced log and deterministic state
    reconstruction. **No SQLite.**
 3. **Keep `pi-panopticon` boring:** Track agent existence, heartbeats, and
    recent operational summaries from existing state only. No long-term metrics
-   store.
-4. **Limit `pi-coas`:** Run schedules only inside pi with a small timer loop.
-5. **Enforce Boundaries:** Prevent extensions from coupling. Add explicit
+   store. ✅ ADR 014 suppresses idle reconciliation noise.
+4. **Keep naming tools canonical:** `set_name` and `get_name` are the only
+   naming tools; deprecated alias wrappers are removed.
+5. **Limit `pi-coas`:** Run schedules only inside pi with a small timer loop.
+6. **Enforce Boundaries:** Prevent extensions from coupling. Add explicit
    "What this does NOT do" to every README.
 
 ---
@@ -106,7 +111,7 @@ flowchart TD
 ### Context policy
 
 - `set_name` and `get_name` are the only model-visible naming tools.
-- Deprecated `set_alias` and `get_alias` wrappers are removed after their
+- Deprecated `set_alias` and `get_alias` wrappers have been removed after their
   deprecation window.
 - Registry routing remains based on stable peer IDs; display names are UI labels.
 - Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
