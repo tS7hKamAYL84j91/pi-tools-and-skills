@@ -8,8 +8,8 @@ export interface MatrixConfig {
 	homeserver: string;
 	/** Bot's full MXID */
 	userId: string;
-	/** Primary room for replies */
-	roomId: string;
+	/** Optional primary room for replies. If unset, replies go to the latest inbound DM/room. */
+	roomId?: string;
 	/** Bearer access token (resolved from env at runtime) */
 	accessToken: string;
 	/** Filesystem path for sync state storage */

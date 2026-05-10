@@ -103,7 +103,7 @@ export class MatrixBridgeClient {
 
 		// Accept invites to the configured room and DMs from trusted senders.
 		this.client.on("room.invite", async (roomId: string, event: AnyClient) => {
-			if (roomId === this.config.roomId) {
+			if (this.config.roomId && roomId === this.config.roomId) {
 				await this.client.joinRoom(roomId);
 				return;
 			}
@@ -151,11 +151,13 @@ export class MatrixBridgeClient {
 			}
 		});
 
-		// Ensure we've joined the configured room
-		try {
-			await this.client.joinRoom(this.config.roomId);
-		} catch {
-			/* non-fatal — invite may arrive later */
+		// Ensure we've joined the configured room when one is configured.
+		if (this.config.roomId) {
+			try {
+				await this.client.joinRoom(this.config.roomId);
+			} catch {
+				/* non-fatal — invite may arrive later */
+			}
 		}
 
 		await this.client.start();
@@ -164,8 +166,16 @@ export class MatrixBridgeClient {
 
 	/** Send a text message to the configured room. */
 	async send(text: string): Promise<{ eventId: string }> {
+		if (!this.config.roomId) {
+			throw new Error("Matrix room is not configured yet; send the bot a DM first.");
+		}
+		return this.sendTo(this.config.roomId, text);
+	}
+
+	/** Send a text message to an explicit Matrix room. */
+	async sendTo(roomId: string, text: string): Promise<{ eventId: string }> {
 		if (!this.client) throw new Error("Matrix client is not started");
-		const eventId = await this.client.sendText(this.config.roomId, text);
+		const eventId = await this.client.sendText(roomId, text);
 		return { eventId };
 	}
 

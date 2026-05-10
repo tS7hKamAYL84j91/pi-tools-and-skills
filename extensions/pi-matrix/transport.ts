@@ -21,6 +21,7 @@ export class MatrixTransport implements MessageTransport {
 	private buffer: InboundMessage[] = [];
 	private channelLabel: string;
 	private client: MatrixBridgeClient;
+	private lastInboundRoomId: string | null = null;
 
 	constructor(client: MatrixBridgeClient, channelLabel = "matrix") {
 		this.client = client;
@@ -29,6 +30,7 @@ export class MatrixTransport implements MessageTransport {
 
 	/** Push a Matrix inbound message into the buffer. Called from the sync loop handler. */
 	pushInbound(msg: MatrixInboundMessage): void {
+		this.lastInboundRoomId = msg.roomId;
 		if (this.buffer.length >= MAX_BUFFER) this.buffer.shift();
 		this.buffer.push({
 			id: msg.eventId,
@@ -40,7 +42,9 @@ export class MatrixTransport implements MessageTransport {
 
 	async send(_peer: AgentRecord, _from: string, message: string): Promise<DeliveryResult> {
 		try {
-			const { eventId } = await this.client.send(message);
+			const { eventId } = this.lastInboundRoomId
+				? await this.client.sendTo(this.lastInboundRoomId, message)
+				: await this.client.send(message);
 			return { accepted: true, immediate: true, reference: eventId };
 		} catch (err) {
 			return { accepted: false, immediate: false, error: err instanceof Error ? err.message : String(err) };

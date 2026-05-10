@@ -46,7 +46,7 @@ export function loadMatrixConfig(
 
 	const homeserver = requireString(raw.homeserver, "matrix.homeserver");
 	const userId = requireString(raw.userId, "matrix.userId");
-	const roomId = requireString(raw.roomId, "matrix.roomId");
+	const roomId = optionalString(raw.roomId);
 	const accessTokenEnv = requireString(
 		raw.accessTokenEnv,
 		"matrix.accessTokenEnv",
@@ -57,9 +57,9 @@ export function loadMatrixConfig(
 			`matrix.userId must be a Matrix MXID (e.g. "@agent-bot:matrix.org"); got "${userId}"`,
 		);
 	}
-	if (!roomId.startsWith("!") || !roomId.includes(":")) {
+	if (roomId && !roomId.startsWith("!")) {
 		throw new Error(
-			`matrix.roomId must be a Matrix room ID (e.g. "!abc:matrix.org"); got "${roomId}"`,
+			`matrix.roomId must be a Matrix room ID (e.g. "!abc" or "!abc:matrix.org"); got "${roomId}"`,
 		);
 	}
 
