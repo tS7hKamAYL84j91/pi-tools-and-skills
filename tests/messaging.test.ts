@@ -359,6 +359,32 @@ describe("inbox draining", () => {
 		expect(sendTransport.prune).toHaveBeenCalled();
 	});
 
+	it("message_read includes attachment metadata", async () => {
+		sendTransport.receive.mockReturnValue([
+			{
+				id: "004.json",
+				from: "matrix:jim",
+				text: "see attached",
+				ts: 4,
+				attachments: [{
+					kind: "image",
+					filename: "photo.png",
+					mimeType: "image/png",
+					sizeBytes: 123,
+					localPath: "/tmp/photo.png",
+					mxcUrl: "mxc://matrix.org/photo",
+					eventId: "$event/photo",
+				}],
+			},
+		]);
+		const result = await executeTool("message_read", {});
+		const text = getText(result);
+		expect(text).toContain("attachment:image");
+		expect(text).toContain("photo.png");
+		expect(text).toContain("/tmp/photo.png");
+		expect(text).toContain("mxc://matrix.org/photo");
+	});
+
 	it("drainAll dumps messages directly for shutdown", () => {
 		sendTransport.receive.mockReturnValue([
 			{ id: "003.json", from: "charlie", text: "bye", ts: 3 },

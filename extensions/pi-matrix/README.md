@@ -2,12 +2,14 @@
 
 Phone ↔ agent messaging via Matrix.
 
-The user types in a Matrix client → message arrives via `MatrixTransport` → panopticon pokes "N new messages" → agent calls `message_read` → replies via `message_send`.
+The user types or attaches files in a Matrix client → message arrives via `MatrixTransport` → panopticon pokes "N new messages" → agent calls `message_read` → replies via `message_send`.
 
 ## Architecture
 
 ```text
 Matrix client → Homeserver → Bot (matrix-bot-sdk)
+                              ↓
+              text/media filter + safe attachment cache
                               ↓
                    MatrixTransport.pushInbound()
                               ↓
@@ -19,7 +21,8 @@ Matrix client → Homeserver → Bot (matrix-bot-sdk)
 | File | Purpose |
 |------|---------|
 | `index.ts` | Extension entry — lifecycle, channel registration, status bar, `/matrix` command |
-| `client.ts` | matrix-bot-sdk wrapper — sync loop, message filtering, reconnection |
+| `client.ts` | matrix-bot-sdk wrapper — sync loop, message/media filtering, reconnection |
+| `attachments.ts` | Attachment MIME/size gates, MXC download, encrypted-media helper use, cache writes |
 | `transport.ts` | `MessageTransport` implementation — buffers inbound, wraps send |
 | `config.ts` | Config loader — reads `.pi/settings.json`, reads the configured token env var |
 | `types.ts` | `MatrixConfig` interface |
@@ -38,7 +41,10 @@ In your workspace's `.pi/settings.json`:
     "roomId": "!abc:matrix.example.net",
     "accessTokenEnv": "MATRIX_BOT_TOKEN",
     "trustedSenders": ["@user:matrix.example.net"],
-    "channelLabel": "matrix"
+    "channelLabel": "matrix",
+    "attachmentCachePath": "~/.pi/agent/matrix-attachments",
+    "maxAttachmentBytes": 26214400,
+    "allowedMimePrefixes": ["image/", "application/pdf", "text/", "audio/", "video/"]
   }
 }
 ```
@@ -52,11 +58,31 @@ In your workspace's `.pi/settings.json`:
 | `trustedSenders` | no | `[]` (all) | MXIDs allowed to message the bot |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |
 | `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path |
+| `attachmentCachePath` | no | `~/.pi/agent/matrix-attachments` | Local cache for downloaded attachments |
+| `maxAttachmentBytes` | no | `26214400` | Per-attachment download/write limit |
+| `allowedMimePrefixes` | no | images, PDFs, text, audio, video | MIME classes allowed for download. Entries ending in `/` match prefixes (for example `image/`); concrete entries match exactly (for example `application/pdf`). Empty array disables MIME filtering. |
 
 ## Room scope
 
 The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary.
 
+## Attachments
+
+Supported Matrix media message types: `m.image`, `m.file`, `m.audio`, and `m.video`.
+
+When a trusted sender sends an image, PDF, or other allowed file, `message_read` includes metadata and a local path, for example:
+
+```text
+[22:10:00] [matrix:matrix:jim] see attached
+  - attachment:image filename="photo.png" mime="image/png" size=12345 path="/home/me/.pi/agent/matrix-attachments/.../photo.png" mxc="mxc://example/media" event="$event"
+```
+
+Use the built-in `read` tool on the local path to inspect images or text/PDF files when needed.
+
 ## Security model
 
-Matrix messages are external input. This extension filters senders, wraps inbound messages before putting them in model context, and leaves homeserver deployment, TLS, E2EE, and token storage to the workspace/infrastructure that uses it. This package does not create accounts, mint tokens, write secrets, or install shell environment hooks.
+Matrix messages and attachments are external input. This extension filters senders, wraps inbound messages before putting them in model context, stores attachments as inert files, and never executes or parses them automatically. Keep `trustedSenders`, `maxAttachmentBytes`, and `allowedMimePrefixes` restrictive for shared rooms.
+
+Encrypted room events require matrix-bot-sdk crypto configuration before the SDK can emit decrypted `m.room.message` events. Encrypted media blobs (`content.file`) are currently deferred because matrix-bot-sdk `decryptMedia()` downloads the encrypted blob before callers can enforce this extension's size limit; `message_read` surfaces an attachment error with the MXC/event metadata instead of silently dropping it.
+
+This package leaves homeserver deployment, TLS, E2EE device setup, token storage, and cache cleanup policy to the workspace/infrastructure that uses it. It does not create accounts, mint tokens, write secrets, or install shell environment hooks.

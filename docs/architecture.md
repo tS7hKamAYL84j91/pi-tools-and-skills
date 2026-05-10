@@ -120,6 +120,35 @@ flowchart TD
 
 ---
 
+## Matrix Attachment Ingestion
+
+```mermaid
+flowchart TD
+  Human[Human Matrix client] --> HS[Homeserver media repository]
+  HS --> SDK[matrix-bot-sdk sync loop]
+  SDK --> Matrix[pi-matrix MatrixBridgeClient]
+  Matrix --> Filter[trusted sender + msgtype filter]
+  Filter --> Text[m.text / m.notice / m.emote]
+  Filter --> Media[m.image / m.file / m.audio / m.video]
+  Media --> Gates[MIME allowlist + maxAttachmentBytes]
+  Gates --> Download[Matrix media API stream]
+  Gates --> Deferred[encrypted blob deferred]
+  Download --> Cache[(attachmentCachePath)]
+  Text --> Transport[MatrixTransport]
+  Cache --> Transport
+  Transport --> Panopticon[pi-panopticon message_read]
+  Panopticon --> Agent[Agent reads local paths explicitly]
+```
+
+### Context policy
+
+- Matrix attachments are external input and are not executed or parsed automatically.
+- `message_read` includes filename, MIME, size, local path, MXC URL, room, and event metadata.
+- Workers use built-in `read` on local image/PDF/file paths only when the task requires it.
+- Encrypted media blobs are deferred because the SDK decrypt helper does not expose a bounded download path; a visible attachment error is surfaced.
+
+---
+
 ## CoAS Internal Scheduler
 
 ### Goal

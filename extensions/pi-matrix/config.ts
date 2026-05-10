@@ -11,6 +11,9 @@ import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { MatrixConfig } from "./types.js";
 
 const DEFAULT_STORAGE_PATH = join(homedir(), ".pi", "agent", "matrix-sync");
+const DEFAULT_ATTACHMENT_CACHE_PATH = join(homedir(), ".pi", "agent", "matrix-attachments");
+const DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const DEFAULT_ALLOWED_MIME_PREFIXES = ["image/", "application/pdf", "text/", "audio/", "video/"];
 
 interface RawMatrixSettings {
 	homeserver?: unknown;
@@ -18,6 +21,9 @@ interface RawMatrixSettings {
 	roomId?: unknown;
 	accessTokenEnv?: unknown;
 	storagePath?: unknown;
+	attachmentCachePath?: unknown;
+	maxAttachmentBytes?: unknown;
+	allowedMimePrefixes?: unknown;
 	channelLabel?: unknown;
 	trustedSenders?: unknown;
 }
@@ -74,6 +80,17 @@ export function loadMatrixConfig(
 	const storagePath = expandHome(
 		optionalString(raw.storagePath) ?? DEFAULT_STORAGE_PATH,
 	);
+	const attachmentCachePath = expandHome(
+		optionalString(raw.attachmentCachePath) ?? DEFAULT_ATTACHMENT_CACHE_PATH,
+	);
+	const maxAttachmentBytes = raw.maxAttachmentBytes === undefined
+		? DEFAULT_MAX_ATTACHMENT_BYTES
+		: requirePositiveInteger(raw.maxAttachmentBytes, "matrix.maxAttachmentBytes");
+	const allowedMimePrefixes = Array.isArray(raw.allowedMimePrefixes)
+		? (raw.allowedMimePrefixes as unknown[]).filter(
+				(s): s is string => typeof s === "string" && s.length > 0,
+			)
+		: DEFAULT_ALLOWED_MIME_PREFIXES;
 	const channelLabel = optionalString(raw.channelLabel) ?? "matrix";
 	const trustedSenders = Array.isArray(raw.trustedSenders)
 		? (raw.trustedSenders as unknown[]).filter(
@@ -87,6 +104,9 @@ export function loadMatrixConfig(
 		roomId,
 		accessToken,
 		storagePath,
+		attachmentCachePath,
+		maxAttachmentBytes,
+		allowedMimePrefixes,
 		channelLabel,
 		trustedSenders,
 	};
@@ -103,6 +123,15 @@ function requireString(value: unknown, fieldName: string): string {
 
 function optionalString(value: unknown): string | undefined {
 	if (typeof value !== "string" || value.length === 0) return undefined;
+	return value;
+}
+
+function requirePositiveInteger(value: unknown, fieldName: string): number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+		throw new Error(
+			`matrix config: ${fieldName} must be a positive integer when provided`,
+		);
+	}
 	return value;
 }
 

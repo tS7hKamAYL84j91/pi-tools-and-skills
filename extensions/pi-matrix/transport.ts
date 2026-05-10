@@ -37,6 +37,7 @@ export class MatrixTransport implements MessageTransport {
 			from: `${this.channelLabel}:${mxidLocalpart(msg.senderMxid)}`,
 			text: msg.body,
 			ts: msg.timestampMs,
+			attachments: msg.attachments,
 		});
 	}
 

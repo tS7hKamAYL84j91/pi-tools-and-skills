@@ -19,7 +19,7 @@ import { Type } from "@sinclair/typebox";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
-import type { InboundMessage, MessageTransport } from "../../lib/message-transport.js";
+import type { InboundAttachment, InboundMessage, MessageTransport } from "../../lib/message-transport.js";
 import { getChannels, onChannelNotify } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
 import { ok, fail } from "./types.js";
@@ -28,8 +28,50 @@ import { visibleRecords } from "./visibility.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
 
+interface ChannelMessage extends InboundMessage {
+	channel: string;
+}
+
 function truncate(s: string, max = 200): string {
 	return s.length <= max ? s : `${s.slice(0, max)}\u2026`;
+}
+
+function formatAttachment(a: InboundAttachment): string {
+	const fields = [
+		`attachment:${a.kind}`,
+		`filename=${JSON.stringify(a.filename)}`,
+		a.mimeType ? `mime=${JSON.stringify(a.mimeType)}` : undefined,
+		a.sizeBytes !== undefined ? `size=${a.sizeBytes}` : undefined,
+		a.localPath ? `path=${JSON.stringify(a.localPath)}` : undefined,
+		a.mxcUrl ? `mxc=${JSON.stringify(a.mxcUrl)}` : undefined,
+		`event=${JSON.stringify(a.eventId)}`,
+		a.roomId ? `room=${JSON.stringify(a.roomId)}` : undefined,
+		a.encrypted ? "encrypted=true" : undefined,
+		a.error ? `error=${JSON.stringify(a.error)}` : undefined,
+	].filter((field): field is string => field !== undefined);
+	return `  - ${fields.join(" ")}`;
+}
+
+function formatChannelMessage(m: ChannelMessage): string {
+	const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
+	const firstLine = `[${time}] [${m.channel}:${m.from}] ${m.text}`;
+	const attachments = m.attachments?.map(formatAttachment) ?? [];
+	return attachments.length > 0 ? `${firstLine}\n${attachments.join("\n")}` : firstLine;
+}
+
+function messageDetails(messages: ChannelMessage[]): Record<string, unknown> {
+	return {
+		count: messages.length,
+		channels: [...new Set(messages.map((m) => m.channel))],
+		messages: messages.map((m) => ({
+			channel: m.channel,
+			id: m.id,
+			from: m.from,
+			text: m.text,
+			ts: m.ts,
+			attachments: m.attachments ?? [],
+		})),
+	};
 }
 
 // ── Config ──────────────────────────────────────────────────────
@@ -106,10 +148,6 @@ export function createMessaging(config: MessagingConfig) {
 
 		// ── Drain all channels ─────────────────────────────────
 
-		interface ChannelMessage extends InboundMessage {
-			channel: string;
-		}
-
 		function drainAllChannels(): ChannelMessage[] {
 			const record = registry.getRecord();
 			if (!record) return [];
@@ -156,13 +194,10 @@ export function createMessaging(config: MessagingConfig) {
 				if (messages.length === 0) {
 					return ok("No unread messages.", { count: 0, messages: [] });
 				}
-				const lines = messages.map((m) => {
-					const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
-					return `[${time}] [${m.channel}:${m.from}] ${m.text}`;
-				});
+				const lines = messages.map(formatChannelMessage);
 				return ok(
 					`<external-messages>\n${lines.join("\n")}\n</external-messages>`,
-					{ count: messages.length, channels: [...new Set(messages.map((m) => m.channel))] },
+					messageDetails(messages),
 				);
 			},
 		});
@@ -339,10 +374,7 @@ export function createMessaging(config: MessagingConfig) {
 			drainAll() {
 				const messages = drainAllChannels();
 				if (messages.length > 0) {
-					const lines = messages.map((m) => {
-						const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
-						return `[${time}] [${m.channel}:${m.from}] ${m.text}`;
-					});
+					const lines = messages.map(formatChannelMessage);
 					try {
 						pi.sendUserMessage(
 							`<external-messages>\n${lines.join("\n")}\n</external-messages>`,

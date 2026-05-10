@@ -25,6 +25,22 @@ export interface DeliveryResult {
 	error?: string;
 }
 
+/** Downloaded or skipped attachment metadata carried by inbound messages. */
+export interface InboundAttachment {
+	kind: "image" | "file" | "audio" | "video";
+	filename: string;
+	mimeType?: string;
+	sizeBytes?: number;
+	localPath?: string;
+	mxcUrl?: string;
+	eventId: string;
+	roomId?: string;
+	senderMxid?: string;
+	timestampMs?: number;
+	encrypted?: boolean;
+	error?: string;
+}
+
 /** A message waiting to be consumed on the receive side. */
 export interface InboundMessage {
 	/** Opaque identifier — pass back to `ack()` after processing. */
@@ -32,6 +48,7 @@ export interface InboundMessage {
 	from: string;
 	text: string;
 	ts: number;
+	attachments?: InboundAttachment[];
 }
 
 // ── The interface ───────────────────────────────────────────────

@@ -25,7 +25,10 @@ Add the extension and Matrix settings to that workspace's `.pi/settings.json`:
     "accessTokenEnv": "MATRIX_BOT_TOKEN",
     "trustedSenders": ["@user:matrix.example.net"],
     "encryption": false,
-    "channelLabel": "matrix"
+    "channelLabel": "matrix",
+    "attachmentCachePath": "~/.pi/agent/matrix-attachments",
+    "maxAttachmentBytes": 26214400,
+    "allowedMimePrefixes": ["image/", "application/pdf", "text/", "audio/", "video/"]
   }
 }
 ```
@@ -33,6 +36,15 @@ Add the extension and Matrix settings to that workspace's `.pi/settings.json`:
 ## 3. Start pi from your runtime launcher
 
 Start pi using whatever workspace/runtime wrapper provides the configured token environment variable. This package intentionally does not prescribe that mechanism.
+
+## Sending images and PDFs to CoAS/pi
+
+1. Send the image, PDF, audio/video, or file in the Matrix room from a trusted MXID.
+2. Wait for pi to report `N new messages`.
+3. The agent calls `message_read`; attachment records include filename, MIME, size, MXC URL, event id, and local cache path.
+4. The agent can call `read` on image/PDF/text paths when inspection is needed.
+
+Attachments are cached locally and are not auto-executed. Remove old files from `attachmentCachePath` according to your workspace retention policy.
 
 ## Troubleshooting
 
@@ -42,4 +54,7 @@ Start pi using whatever workspace/runtime wrapper provides the configured token 
 | Status bar shows `matrix: off` | Homeserver unreachable — verify URL, network, TLS, and bot credentials. |
 | Status bar shows `matrix: err` | Client error — check pi logs for `matrix:` prefixed errors. |
 | Messages not arriving | Verify `trustedSenders` includes your MXID and that the bot is in the room. |
-| Decryption errors | If `encryption: true`, wipe crypto store: `rm -rf ~/.pi/agent/matrix-crypto` and restart. |
+| Attachment shows `MIME type not allowed` | Add a narrow MIME prefix/class to `allowedMimePrefixes` or send a supported file type. |
+| Attachment shows `maxAttachmentBytes` | Raise the per-attachment limit only if the room and sender are trusted. |
+| Encrypted attachment has no local path | Current behavior deliberately defers encrypted media blob downloads because the SDK helper cannot enforce this extension's size limit before buffering. Metadata is still shown. |
+| Decryption errors | If E2EE is configured, wipe the crypto store used by that workspace and restart. |

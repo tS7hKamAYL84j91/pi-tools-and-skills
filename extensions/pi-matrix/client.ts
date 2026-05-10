@@ -4,12 +4,15 @@
  * Wraps a MatrixClient instance for headless bot use:
  *   - Accepts room invites from trusted senders
  *   - Filters own messages to prevent send/receive loops
- *   - Surfaces m.room.message events to a user-supplied handler
+ *   - Surfaces text and media m.room.message events to a user-supplied handler
  *
  * Reconnection is handled by matrix-bot-sdk's internal sync loop.
  */
 
 import { mkdirSync } from "node:fs";
+import type { InboundAttachment } from "../../lib/message-transport.js";
+import { extractMatrixAttachment, isMatrixMediaMsgtype } from "./attachments.js";
+import type { MatrixDownloadClient, MatrixRoomMessageEvent } from "./attachments.js";
 // biome-ignore lint/suspicious/noExplicitAny: matrix-bot-sdk types resolved at runtime
 type AnyClient = any;
 
@@ -23,6 +26,7 @@ export interface InboundMessage {
 	body: string;
 	eventId: string;
 	timestampMs: number;
+	attachments?: InboundAttachment[];
 }
 
 type InboundHandler = (msg: InboundMessage) => void | Promise<void>;
@@ -123,27 +127,8 @@ export class MatrixBridgeClient {
 
 		// Listen to ALL rooms on this private homeserver. Trusted sender filter applies.
 		this.client.on("room.message", async (roomId: string, event: AnyClient) => {
-			if (event?.sender === this.config.userId) return;
-			const trusted = this.config.trustedSenders;
-			if (trusted.length > 0 && !trusted.includes(event?.sender)) return;
-			const content = event?.content;
-			if (
-				!content ||
-				content.msgtype !== "m.text" ||
-				typeof content.body !== "string"
-			)
-				return;
-
-			const msg: InboundMessage = {
-				roomId,
-				senderMxid: event.sender,
-				body: content.body,
-				eventId: event.event_id,
-				timestampMs:
-					typeof event.origin_server_ts === "number"
-						? event.origin_server_ts
-						: Date.now(),
-			};
+			const msg = await this.buildInboundMessage(roomId, event as MatrixRoomMessageEvent);
+			if (!msg) return;
 			try {
 				await this.onInbound?.(msg);
 			} catch {
@@ -162,6 +147,39 @@ export class MatrixBridgeClient {
 
 		await this.client.start();
 		this.connected = true;
+	}
+
+	async buildInboundMessage(roomId: string, event: MatrixRoomMessageEvent): Promise<InboundMessage | null> {
+		if (event.sender === this.config.userId) return null;
+		const trusted = this.config.trustedSenders;
+		if (!event.sender || (trusted.length > 0 && !trusted.includes(event.sender))) return null;
+
+		const content = event.content;
+		const msgtype = content?.msgtype;
+		if (!content || !msgtype) return null;
+
+		const isTextLike = msgtype === "m.text" || msgtype === "m.notice" || msgtype === "m.emote";
+		const attachments = isMatrixMediaMsgtype(msgtype)
+			? [await extractMatrixAttachment(this.config, this.client as MatrixDownloadClient, roomId, event)]
+					.filter((attachment): attachment is InboundAttachment => attachment !== null)
+			: [];
+		if (!isTextLike && attachments.length === 0) return null;
+
+		const body = typeof content.body === "string" && content.body.length > 0
+			? content.body
+			: attachments.length > 0
+				? `[${msgtype} attachment]`
+				: "";
+		if (!body && attachments.length === 0) return null;
+
+		return {
+			roomId,
+			senderMxid: event.sender,
+			body,
+			eventId: event.event_id ?? `${roomId}-${Date.now()}`,
+			timestampMs: event.origin_server_ts ?? Date.now(),
+			attachments: attachments.length > 0 ? attachments : undefined,
+		};
 	}
 
 	/** Send a text message to the configured room. */
