@@ -71,18 +71,18 @@ Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per worksp
 
 ### Skills
 
-Reusable skills for pi-platform tooling and compact reference guidance. Operator and methodology skills (clean-room, code-forensics, deep-research, planning, problem-crystalliser, red-team, six-thinking-hats, notebooklm, jules-delegation) live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
+Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Operator and methodology skills (clean-room, code-forensics, deep-research, planning, problem-crystalliser, red-team, six-thinking-hats, notebooklm, jules-delegation) live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
 
-| Skill                      | Purpose                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------- |
-| **node-esm-gotchas**       | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
-| **pi-agent-orchestration** | Spawn, brief, monitor, message, and shut down pi worker agents                    |
-| **pi-extension-dev**       | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
-| **pi-kanban**              | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
-| **pi-model-selection**     | Verify pi-visible models and route work to the right provider/model               |
-| **pi-session-management**  | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
-| **pi-team-consultation**   | Route review and decisions through `navigator` or `llm-council` teams             |
-| **skill-creator**          | Meta-skill for creating and improving skills                                      |
+| Skill                      | Bundle          | Purpose                                                                           |
+| -------------------------- | --------------- | --------------------------------------------------------------------------------- |
+| **node-esm-gotchas**       | shared          | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
+| **pi-agent-orchestration** | pi-panopticon   | Spawn, brief, monitor, message, and shut down pi worker agents                    |
+| **pi-extension-dev**       | shared          | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
+| **pi-kanban**              | pi-kanban       | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
+| **pi-model-selection**     | shared          | Verify pi-visible models and route work to the right provider/model               |
+| **pi-session-management**  | shared          | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
+| **pi-team-consultation**   | pi-teams        | Route review and decisions through `navigator` or `llm-council` teams             |
+| **skill-creator**          | shared          | Meta-skill for creating and improving skills                                      |
 
 ---
 

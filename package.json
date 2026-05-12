@@ -41,7 +41,10 @@
       "./extensions"
     ],
     "skills": [
-      "./skills"
+      "./skills",
+      "./extensions/pi-kanban/skills",
+      "./extensions/pi-panopticon/skills",
+      "./extensions/pi-teams/skills"
     ],
     "prompts": [
       "./prompts"

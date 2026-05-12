@@ -179,7 +179,7 @@ need intervention.
 
 ### References
 
-- `skills/pi-agent-orchestration/SKILL.md`
+- `extensions/pi-panopticon/skills/pi-agent-orchestration/SKILL.md`
 - `extensions/pi-panopticon/health.ts`
 - `extensions/pi-panopticon/registry.ts`
 - `docs/adr/014-panopticon-reconciliation-alert-policy.md`
