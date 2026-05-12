@@ -37,9 +37,6 @@
     "LICENSE"
   ],
   "pi": {
-    "extensions": [
-      "./extensions"
-    ],
     "skills": [
       "./skills",
       "./extensions/pi-kanban/skills",
