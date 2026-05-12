@@ -6,21 +6,18 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { registerAgentsCommand } from "./agents-command.js";
 import { registerNameControls } from "./name-controls.js";
-import type { AgentListModeStore } from "./list-mode.js";
 import { registerAgentListModeControls } from "./list-mode-command.js";
 import { createAgentStatusWidget, type UIModule } from "./status-widget.js";
-import type { Registry } from "./types.js";
 
 export function setupUI(
 	pi: ExtensionAPI,
-	registry: Registry,
-	selfId: string,
-	listMode: AgentListModeStore,
+	deps: AgentOverlayDeps,
 ): UIModule {
-	registerNameControls(pi, registry);
-	registerAgentListModeControls(pi, registry, listMode);
-	registerAgentsCommand(pi, registry, selfId, listMode);
-	return createAgentStatusWidget(registry, selfId, listMode);
+	registerNameControls(pi, deps.registry);
+	registerAgentListModeControls(pi, deps.registry, deps.listMode);
+	registerAgentsCommand(pi, deps);
+	return createAgentStatusWidget(deps.registry, deps.selfId, deps.listMode);
 }

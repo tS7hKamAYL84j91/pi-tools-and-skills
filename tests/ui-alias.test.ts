@@ -51,7 +51,12 @@ describe("name tools", () => {
 			}),
 			getSessionName: vi.fn(() => sessionName),
 		};
-		setupUI(pi as never, registry, "self-id", createAgentListModeStore());
+		setupUI(pi as never, {
+			selfId: "self-id",
+			registry,
+			listMode: createAgentListModeStore(),
+			sendAgentMessage: async () => ({ accepted: true }),
+		});
 	});
 
 	it("set_name updates session name and registry name", async () => {

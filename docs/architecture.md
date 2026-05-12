@@ -99,6 +99,9 @@ flowchart TD
   SetName --> Session[Pi session display name]
   SetName --> Registry[Panopticon registry record]
   Registry --> Display[Agent lists and peer routing]
+  Display --> AgentsOverlay[/agents overlay\nstatus, detail, direct messaging]
+  AgentsOverlay --> Maildir[Agent transport\nMaildir channel]
+  Maildir --> Peers[Peer / spawned agents]
   GetName --> Details[Session, registry, and spawn-name metadata]
 
   Registry --> Reconciler[Reconciliation loop]
@@ -114,6 +117,7 @@ flowchart TD
 - Deprecated `set_alias` and `get_alias` wrappers have been removed after their
   deprecation window.
 - Registry routing remains based on stable peer IDs; display names are UI labels.
+- `/agents` can send direct human-authored messages through the same agent transport as `agent_send`; replies still arrive through normal unread-message handling.
 - Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
   require a fresh confirmation read, and idle stale-activity checks are
   suppressed when peers are healthy and have no pending messages (ADR 014).

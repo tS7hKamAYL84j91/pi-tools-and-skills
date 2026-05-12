@@ -20,6 +20,8 @@ import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
 import { setupHealth } from "./health.js";
 import { createAgentListModeStore } from "./list-mode.js";
+import type { AgentMessageSender } from "./agent-overlay-types.js";
+import { getSelfName } from "./peers.js";
 import { setupUI } from "./ui.js";
 import { OperationalStateStore } from "./state.js";
 import { setupReconciler } from "./reconciler.js";
@@ -36,6 +38,14 @@ export default function (pi: ExtensionAPI) {
 	const reconciler = setupReconciler(pi, registry, selfId, operationalState);
 	const maildir = getMaildirTransport();
 	registerChannel("agent", maildir);
+	const sendAgentMessage: AgentMessageSender = async (peer, message) => {
+		const result = await maildir.send(peer, getSelfName(registry), message);
+		return {
+			accepted: result.accepted,
+			...(result.error ? { error: result.error } : {}),
+			...(result.reference ? { reference: result.reference } : {}),
+		};
+	};
 	const messaging = createMessaging({
 		send: maildir,
 		broadcast: maildir,
@@ -44,7 +54,7 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
-	const ui = setupUI(pi, registry, selfId, listMode);
+	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage });
 
 	// ── Lifecycle: start ────────────────────────────────────────
 

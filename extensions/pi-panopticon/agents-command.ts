@@ -3,42 +3,39 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { AgentListModeStore } from "./list-mode.js";
-import { sortRecords, STATUS_SYMBOL } from "./registry.js";
-import type { Registry } from "./types.js";
-import { filterAgentList } from "./visibility.js";
 import { openAgentOverlay } from "./agent-overlay.js";
+import type { AgentOverlayDeps } from "./agent-overlay-types.js";
+import { sortRecords, STATUS_SYMBOL } from "./registry.js";
+import { filterAgentList } from "./visibility.js";
 import { STATUS_LABEL } from "./ui-format.js";
 
 export function registerAgentsCommand(
 	pi: ExtensionAPI,
-	registry: Registry,
-	selfId: string,
-	listMode: AgentListModeStore,
+	deps: AgentOverlayDeps,
 ): void {
 	pi.registerCommand("agents", {
 		description: "Show compact status bar for all agents, then open detail overlay",
 		handler: async (_args, ctx) => {
-			const self = registry.getRecord();
-			const records = filterAgentList(self, registry.readAllPeers(), listMode.get(self));
+			const self = deps.registry.getRecord();
+			const records = filterAgentList(self, deps.registry.readAllPeers(), deps.listMode.get(self));
 			if (records.length === 0) {
 				ctx.ui.notify("No agents registered", "info");
 				return;
 			}
 			ctx.ui.notify(
-				sortRecords(records, selfId)
+				sortRecords(records, deps.selfId)
 					.map((r) => `${STATUS_SYMBOL[r.status]} ${r.name}:${STATUS_LABEL[r.status]}`)
 					.join(" | "),
 				"info",
 			);
-			await openAgentOverlay(ctx, selfId, registry, listMode);
+			await openAgentOverlay(ctx, deps);
 		},
 	});
 
 	pi.registerShortcut("ctrl+shift+o", {
 		description: "Open agent panopticon overlay",
 		handler: async (ctx) => {
-			await openAgentOverlay(ctx, selfId, registry, listMode);
+			await openAgentOverlay(ctx, deps);
 		},
 	});
 }

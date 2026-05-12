@@ -111,7 +111,12 @@ describe("pi-panopticon slash command resolution", () => {
 		const listMode = createAgentListModeStore();
 		const api = createCommandApi(commands);
 		registerAgentListModeControls(api, registry, listMode);
-		registerAgentsCommand(api, registry, self.id, listMode);
+		registerAgentsCommand(api, {
+			selfId: self.id,
+			registry,
+			listMode,
+			sendAgentMessage: async () => ({ accepted: true }),
+		});
 		const ui: CapturedUi = { notifications: [], overlays: [] };
 		return { commands, ui, ctx: createContext(ui) };
 	}

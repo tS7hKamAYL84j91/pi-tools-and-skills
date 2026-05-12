@@ -11,9 +11,10 @@ import {
 	matchesKey,
 } from "@mariozechner/pi-tui";
 import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
-import type { AgentListModeStore } from "./list-mode.js";
+import { openAgentMessageOverlay } from "./agent-message-overlay.js";
+import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
-import type { AgentRecord, Registry } from "./types.js";
+import type { AgentRecord } from "./types.js";
 import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 import {
@@ -169,19 +170,17 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 		}
 	}
 
-	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["m send message"] : [])].join(" · "))}`);
+	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["c direct message", "m send message"] : [])].join(" · "))}`);
 	container.addChild(border());
 	return container.render(args.width);
 }
 
 export async function openAgentOverlay(
 	ctx: ExtensionContext,
-	selfId: string,
-	registry: Registry,
-	listMode: AgentListModeStore,
+	deps: AgentOverlayDeps,
 ): Promise<void> {
-	const self = registry.getRecord();
-	const records = filterAgentList(self, registry.readAllPeers(), listMode.get(self));
+	const self = deps.registry.getRecord();
+	const records = filterAgentList(self, deps.registry.readAllPeers(), deps.listMode.get(self));
 	if (records.length === 0) {
 		ctx.ui.notify("No agents registered", "info");
 		return;
@@ -190,7 +189,7 @@ export async function openAgentOverlay(
 	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
 		const { container, selectList } = createAgentListView({
 			records,
-			selfId,
+			selfId: deps.selfId,
 			theme,
 		});
 		selectList.onSelect = (item) => done(item.value);
@@ -216,31 +215,31 @@ export async function openAgentOverlay(
 	});
 
 	if (!selected) return;
-	await showAgentDetail(ctx, selfId, selected, registry);
+	await showAgentDetail(ctx, selected, deps);
 }
 
 async function showAgentDetail(
 	ctx: ExtensionContext,
-	selfId: string,
 	agentName: string,
-	registry: Registry,
+	deps: AgentOverlayDeps,
 ): Promise<void> {
-	const self = registry.getRecord();
-	const records = visibleRecords(self, registry.readAllPeers());
+	const self = deps.registry.getRecord();
+	const records = visibleRecords(self, deps.registry.readAllPeers());
 	const rec = findAgentByDisplayName(records, agentName);
 	if (!rec) {
 		ctx.ui.notify(`Agent "${agentName}" not found`, "warning");
 		return;
 	}
 
-	const isSelf = rec.id === selfId;
+	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
+	let action: "message" | "compose" | undefined;
 
 	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
 		return {
 			render: (w: number) => renderAgentDetailOverlay({
 				record: rec,
-				selfId,
+				selfId: deps.selfId,
 				sessionEvents,
 				theme,
 				width: w,
@@ -249,9 +248,12 @@ async function showAgentDetail(
 			handleInput: (data: string) => {
 				if (matchesKey(data, "escape")) {
 					done();
-				} else if (!isSelf && (data === "m" || data === "M")) {
+				} else if (!isSelf && (data === "c" || data === "C")) {
+					action = "message";
 					done();
-					ctx.ui.setEditorText(`/send ${agentDisplayName(rec, records)} `);
+				} else if (!isSelf && (data === "m" || data === "M")) {
+					action = "compose";
+					done();
 				}
 			},
 		};
@@ -265,4 +267,10 @@ async function showAgentDetail(
 			margin: 2,
 		},
 	});
+
+	if (action === "compose") {
+		ctx.ui.setEditorText(`/send ${agentDisplayName(rec, records)} `);
+	} else if (action === "message") {
+		await openAgentMessageOverlay(ctx, agentName, rec, deps);
+	}
 }

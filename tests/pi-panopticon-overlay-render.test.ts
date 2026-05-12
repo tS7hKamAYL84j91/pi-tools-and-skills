@@ -5,6 +5,7 @@
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { describe, expect, it } from "vitest";
 
+import { renderAgentMessageOverlay } from "../extensions/pi-panopticon/agent-message-overlay.js";
 import {
 	renderAgentDetailOverlay,
 	renderAgentListOverlay,
@@ -69,7 +70,7 @@ describe("pi-panopticon overlay renderers", () => {
 			const body = lines.join("\n");
 			expect(body).toContain("Agent Panopticon");
 			expect(body).toContain("> R self (you)");
-				expect(body).toContain("enter detail");
+			expect(body).toContain("enter detail");
 			expect(body).toContain("esc close");
 			expect(body).toContain("unread first");
 			expectWidthBounded(lines, width);
@@ -92,7 +93,32 @@ describe("pi-panopticon overlay renderers", () => {
 			expect(body).toContain("Recent Activity");
 			expect(body).toContain("(20 events)");
 			expect(body).toContain("... 5 earlier events omitted");
+			expect(body).toContain("c direct message");
 			expect(body).toContain("m send message");
+			expectWidthBounded(lines, width);
+		});
+
+		it(`renders agent direct-message status within ${width} columns`, () => {
+			const workerOne = records[1];
+			if (!workerOne) throw new Error("missing worker fixture");
+			const lines = renderAgentMessageOverlay({
+				record: workerOne,
+				entries: [
+					{ kind: "you", text: "Please summarize your current state and tell me if you are blocked on anything before continuing." },
+					{ kind: "system", text: "sent (1234-message-reference-with-a-long-name.json)" },
+					{ kind: "error", text: "Agent \"worker-one\" is no longer visible." },
+				],
+				sending: false,
+				theme: fakeTheme,
+				width,
+			});
+
+			const body = lines.join("\n");
+			expect(body).toContain("Message worker-one");
+			expect(body).toContain("Replies arrive through normal");
+			expect(body).toContain("unread messages");
+			expect(body).toContain("error:");
+			expect(body).toContain("enter send");
 			expectWidthBounded(lines, width);
 		});
 	}
