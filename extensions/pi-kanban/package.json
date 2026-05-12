@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./index.ts"],
+    "skills": ["./skills"]
   }
 }
