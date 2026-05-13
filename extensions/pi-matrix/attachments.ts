@@ -224,4 +224,3 @@ function matrixMediaDownloadUrl(homeserver: string, mxcUrl: string): string {
 	const baseUrl = homeserver.replace(/\/+$/, "");
 	return `${baseUrl}/_matrix/client/v1/media/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}?allow_remote=true`;
 }
-
