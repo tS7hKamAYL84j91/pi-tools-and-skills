@@ -95,6 +95,8 @@ describe("pi-panopticon overlay renderers", () => {
 			expect(body).toContain("... 5 earlier events omitted");
 			expect(body).toContain("c direct message");
 			expect(body).toContain("m send message");
+			expect(body).toContain("s stop");
+			expect(body).toContain("k kill");
 			expectWidthBounded(lines, width);
 		});
 

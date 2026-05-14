@@ -99,9 +99,11 @@ flowchart TD
   SetName --> Session[Pi session display name]
   SetName --> Registry[Panopticon registry record]
   Registry --> Display[Agent lists and peer routing]
-  Display --> AgentsOverlay[/agents overlay\nstatus, detail, direct messaging]
+  Display --> AgentsOverlay[/agents overlay\nstatus, detail, direct messaging, stop/kill]
   AgentsOverlay --> Maildir[Agent transport\nMaildir channel]
+  AgentsOverlay --> Signals[Process signals\nSIGTERM / SIGKILL]
   Maildir --> Peers[Peer / spawned agents]
+  Signals --> Peers
   GetName --> Details[Session, registry, and spawn-name metadata]
 
   Registry --> Reconciler[Reconciliation loop]
@@ -118,6 +120,7 @@ flowchart TD
   deprecation window.
 - Registry routing remains based on stable peer IDs; display names are UI labels.
 - `/agents` can send direct human-authored messages through the same agent transport as `agent_send`; replies still arrive through normal unread-message handling.
+- `/agents` detail view can stop visible peer agents with SIGTERM or force-kill with SIGKILL after confirmation; it refuses to target the current agent.
 - Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
   require a fresh confirmation read, and idle stale-activity checks are
   suppressed when peers are healthy and have no pending messages (ADR 014).

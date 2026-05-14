@@ -56,6 +56,7 @@ describe("name tools", () => {
 			registry,
 			listMode: createAgentListModeStore(),
 			sendAgentMessage: async () => ({ accepted: true }),
+			stopAgent: async () => ({ accepted: true }),
 		});
 	});
 

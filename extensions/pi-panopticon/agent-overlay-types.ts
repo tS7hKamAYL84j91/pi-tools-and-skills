@@ -16,9 +16,22 @@ export type AgentMessageSender = (
 	message: string,
 ) => Promise<AgentMessageDelivery>;
 
+export interface AgentStopDelivery {
+	accepted: boolean;
+	error?: string;
+	method?: "SIGTERM" | "SIGKILL";
+	pid?: number;
+}
+
+export type AgentStopper = (
+	record: AgentRecord,
+	force?: boolean,
+) => Promise<AgentStopDelivery>;
+
 export interface AgentOverlayDeps {
 	selfId: string;
 	registry: Registry;
 	listMode: AgentListModeStore;
 	sendAgentMessage: AgentMessageSender;
+	stopAgent: AgentStopper;
 }

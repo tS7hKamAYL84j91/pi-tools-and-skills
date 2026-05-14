@@ -170,7 +170,7 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 		}
 	}
 
-	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["c direct message", "m send message"] : [])].join(" · "))}`);
+	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["c direct message", "m send message", "s stop", "k kill"] : [])].join(" · "))}`);
 	container.addChild(border());
 	return container.render(args.width);
 }
@@ -218,6 +218,60 @@ export async function openAgentOverlay(
 	await showAgentDetail(ctx, selected, deps);
 }
 
+async function confirmAgentStop(
+	ctx: ExtensionContext,
+	record: AgentRecord,
+	force: boolean,
+): Promise<boolean> {
+	return ctx.ui.custom<boolean>((_tui, theme, _kb, done) => {
+		const action = force ? "KILL" : "stop";
+		return {
+			render: (w: number) => {
+				const container = new Container();
+				const border = () => new DynamicBorder((s: string) => theme.fg(force ? "error" : "warning", s));
+				container.addChild(border());
+				container.addChild(new Text(`  ${theme.fg(force ? "error" : "warning", theme.bold(`Confirm ${action} agent`))}`, 1, 0));
+				container.addChild(new Text(`  ${record.name} (pid ${record.pid})`, 1, 0));
+				container.addChild(new Text(`  ${theme.fg("dim", "y confirm · esc/n cancel")}`, 1, 0));
+				container.addChild(border());
+				return container.render(w);
+			},
+			invalidate: () => undefined,
+			handleInput: (data: string) => {
+				if (data === "y" || data === "Y") {
+					done(true);
+				} else if (data === "n" || data === "N" || matchesKey(data, "escape")) {
+					done(false);
+				}
+			},
+		};
+	}, {
+		overlay: true,
+		overlayOptions: {
+			width: "50%",
+			minWidth: 40,
+			maxHeight: "40%",
+			anchor: "center",
+			margin: 2,
+		},
+	});
+}
+
+async function confirmAndStopAgent(
+	ctx: ExtensionContext,
+	record: AgentRecord,
+	deps: AgentOverlayDeps,
+	force: boolean,
+): Promise<void> {
+	if (!(await confirmAgentStop(ctx, record, force))) return;
+	const result = await deps.stopAgent(record, force);
+	if (result.accepted) {
+		ctx.ui.notify(`Sent ${result.method ?? (force ? "SIGKILL" : "SIGTERM")} to ${record.name} (pid ${result.pid ?? record.pid})`, "info");
+	} else {
+		ctx.ui.notify(result.error ?? `Failed to stop ${record.name}`, "error");
+	}
+}
+
 async function showAgentDetail(
 	ctx: ExtensionContext,
 	agentName: string,
@@ -233,7 +287,7 @@ async function showAgentDetail(
 
 	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
-	let action: "message" | "compose" | undefined;
+	let action: "message" | "compose" | "stop" | "kill" | undefined;
 
 	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
 		return {
@@ -254,6 +308,12 @@ async function showAgentDetail(
 				} else if (!isSelf && (data === "m" || data === "M")) {
 					action = "compose";
 					done();
+				} else if (!isSelf && (data === "s" || data === "S")) {
+					action = "stop";
+					done();
+				} else if (!isSelf && (data === "k" || data === "K")) {
+					action = "kill";
+					done();
 				}
 			},
 		};
@@ -272,5 +332,7 @@ async function showAgentDetail(
 		ctx.ui.setEditorText(`/send ${agentDisplayName(rec, records)} `);
 	} else if (action === "message") {
 		await openAgentMessageOverlay(ctx, agentName, rec, deps);
+	} else if (action === "stop" || action === "kill") {
+		await confirmAndStopAgent(ctx, rec, deps, action === "kill");
 	}
 }

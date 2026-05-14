@@ -20,13 +20,14 @@ import { setupSpawner } from "./spawner.js";
 import { setupPeek } from "./peek.js";
 import { setupHealth } from "./health.js";
 import { createAgentListModeStore } from "./list-mode.js";
-import type { AgentMessageSender } from "./agent-overlay-types.js";
+import type { AgentMessageSender, AgentStopper } from "./agent-overlay-types.js";
 import { getSelfName } from "./peers.js";
 import { setupUI } from "./ui.js";
 import { OperationalStateStore } from "./state.js";
 import { setupReconciler } from "./reconciler.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import { registerChannel } from "../../lib/message-transport.js";
+import { stopPeerAgent } from "./agent-stop.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -46,6 +47,7 @@ export default function (pi: ExtensionAPI) {
 			...(result.reference ? { reference: result.reference } : {}),
 		};
 	};
+	const stopAgent: AgentStopper = async (peer, force) => stopPeerAgent(peer, selfId, force ?? false);
 	const messaging = createMessaging({
 		send: maildir,
 		broadcast: maildir,
@@ -54,7 +56,7 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
-	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage });
+	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage, stopAgent });
 
 	// ── Lifecycle: start ────────────────────────────────────────
 
