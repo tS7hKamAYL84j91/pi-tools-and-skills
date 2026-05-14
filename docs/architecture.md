@@ -124,6 +124,27 @@ flowchart TD
 
 ---
 
+## Matrix Outbound Rich Text
+
+```mermaid
+flowchart TD
+  Agent[Agent plain Markdown reply] --> Formatter[pi-matrix Markdown formatter]
+  Formatter --> Html[Matrix-safe HTML fragment]
+  Formatter --> Plain[Plain-text fallback]
+  Html --> Content[m.text content\nformat=org.matrix.custom.html]
+  Plain --> Content
+  Content --> SDK[matrix-bot-sdk sendMessage]
+  SDK --> Client[Matrix client rendering]
+```
+
+### Context policy
+
+- Outbound formatting is intentionally local and dependency-free.
+- Raw HTML is escaped except simple `<u>...</u>` underline tags needed by Matrix rich text.
+- Plain-text fallback strips Markdown markers and uses readable Unicode symbols for bullets, quotes, and horizontal rules.
+
+---
+
 ## Matrix Attachment Ingestion
 
 ```mermaid

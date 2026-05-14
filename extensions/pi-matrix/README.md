@@ -66,6 +66,21 @@ In your workspace's `.pi/settings.json`:
 
 The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary.
 
+## Outbound rich-text formatting
+
+Outbound Matrix replies are sent as standard Matrix custom-HTML messages:
+
+```json
+{
+  "msgtype": "m.text",
+  "body": "plain-text fallback",
+  "format": "org.matrix.custom.html",
+  "formatted_body": "<p>HTML fragment</p>"
+}
+```
+
+The formatter accepts a Markdown subset and emits both a Matrix-safe HTML fragment and a readable plain-text fallback. Supported input includes `**bold**`, `*italic*`, `<u>underline</u>`, `~~strikethrough~~`, inline code, fenced code blocks, `#`/`##`/`###` headings, unordered lists (`-` or `*`), ordered lists (`1.`), horizontal rules (`---`), and blockquotes (`>`). Raw HTML is escaped except simple underline tags; plain-text fallback strips Markdown markers and uses readable symbols such as `•` for bullets, `›` for quotes, and `──────────` for rules.
+
 ## Attachments
 
 Supported Matrix media message types: `m.image`, `m.file`, `m.audio`, and `m.video`.

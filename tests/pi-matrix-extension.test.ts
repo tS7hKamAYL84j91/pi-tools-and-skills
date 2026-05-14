@@ -17,6 +17,11 @@ import { join } from "node:path";
 import { mxidLocalpart } from "../extensions/pi-matrix/bridge.js";
 import { extractMatrixAttachment } from "../extensions/pi-matrix/attachments.js";
 import { MatrixBridgeClient } from "../extensions/pi-matrix/client.js";
+import {
+	markdownToMatrixContent,
+	markdownToMatrixHtml,
+	markdownToMatrixPlainText,
+} from "../extensions/pi-matrix/markdown.js";
 import { MatrixTransport } from "../extensions/pi-matrix/transport.js";
 import type { MatrixConfig } from "../extensions/pi-matrix/types.js";
 import type { MatrixDownloadClient } from "../extensions/pi-matrix/attachments.js";
@@ -385,6 +390,68 @@ describe("Matrix attachment extraction", () => {
 
 		expect(attachment?.localPath).toBeUndefined();
 		expect(attachment?.error).toContain("Encrypted Matrix media download is deferred");
+	});
+});
+
+// ── outbound formatting ───────────────────────────────────────
+
+describe("Matrix outbound formatting", () => {
+	it("converts Markdown blocks and inline styles to Matrix HTML", () => {
+		const markdown = [
+			"# Title **bold**",
+			"",
+			"Paragraph with *italic*, <u>under</u>, ~~gone~~, and `x < y`.",
+			"- one",
+			"* two",
+			"1. first",
+			"2. second",
+			"> quoted **text**",
+			"---",
+			"```",
+			"const value = \"<safe>\";",
+			"```",
+		].join("\n");
+
+		expect(markdownToMatrixHtml(markdown)).toBe(
+			'<h1>Title <strong>bold</strong></h1><p>Paragraph with <em>italic</em>, <u>under</u>, <del>gone</del>, and <code>x &lt; y</code>.</p><ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol><blockquote>quoted <strong>text</strong></blockquote><hr /><pre><code>const value = &quot;&lt;safe&gt;&quot;;</code></pre>',
+		);
+	});
+
+	it("builds a clean plain-text fallback", () => {
+		expect(markdownToMatrixPlainText("## Work\n- **done**\n1. `next`\n> note\n---")).toBe(
+			"Work\n• done\n1. next\n› note\n──────────",
+		);
+	});
+
+	it("escapes raw HTML while allowing simple underline tags", () => {
+		expect(markdownToMatrixHtml("**<tag>** & <u>ok</u>")).toBe(
+			"<p><strong>&lt;tag&gt;</strong> &amp; <u>ok</u></p>",
+		);
+	});
+
+	it("returns standard Matrix custom HTML content", () => {
+		expect(markdownToMatrixContent("**hello**")).toEqual({
+			msgtype: "m.text",
+			body: "hello",
+			format: "org.matrix.custom.html",
+			formatted_body: "<p><strong>hello</strong></p>",
+		});
+	});
+
+	it("sends Matrix messages with formatted HTML payloads", async () => {
+		const bridgeClient = new MatrixBridgeClient(makeAttachmentConfig("/tmp"));
+		const sendMessage = vi.fn(async () => "$event/formatted");
+		(bridgeClient as unknown as { client: { sendMessage: typeof sendMessage } }).client = { sendMessage };
+
+		const result = await bridgeClient.sendTo("!room:matrix.org", "**hello**");
+
+		expect(result.eventId).toBe("$event/formatted");
+		expect(sendMessage).toHaveBeenCalledWith("!room:matrix.org", {
+			msgtype: "m.text",
+			body: "hello",
+			format: "org.matrix.custom.html",
+			formatted_body: "<p><strong>hello</strong></p>",
+		});
 	});
 });
 

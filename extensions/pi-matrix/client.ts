@@ -13,6 +13,7 @@ import { mkdirSync } from "node:fs";
 import type { InboundAttachment } from "../../lib/message-transport.js";
 import { extractMatrixAttachment, isMatrixMediaMsgtype } from "./attachments.js";
 import type { MatrixDownloadClient, MatrixRoomMessageEvent } from "./attachments.js";
+import { markdownToMatrixContent } from "./markdown.js";
 // biome-ignore lint/suspicious/noExplicitAny: matrix-bot-sdk types resolved at runtime
 type AnyClient = any;
 
@@ -193,7 +194,7 @@ export class MatrixBridgeClient {
 	/** Send a text message to an explicit Matrix room. */
 	async sendTo(roomId: string, text: string): Promise<{ eventId: string }> {
 		if (!this.client) throw new Error("Matrix client is not started");
-		const eventId = await this.client.sendText(roomId, text);
+		const eventId = await this.client.sendMessage(roomId, markdownToMatrixContent(text));
 		return { eventId };
 	}
 
