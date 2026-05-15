@@ -67,6 +67,7 @@ Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per worksp
 | **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
 | **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-matrix**     | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
+| **pi-gmail**      | Project | Read-only Gmail metadata/snippet search and fetch tools                                                 |
 | **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
@@ -114,6 +115,7 @@ extensions/           Extensions:
   pi-teams/            Global — multi-model deliberation from runtime model registry
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
+  pi-gmail/            Project — read-only Gmail metadata/snippet tools
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills and compact reference guidance
@@ -122,7 +124,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-gmail`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
@@ -142,7 +144,7 @@ Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ t
 
 ## Security
 
-The design assumes a **trusted host**. External input (Matrix messages, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Matrix deployment assumptions belong in the workspace or infrastructure repo, not here.
+The design assumes a **trusted host**. External input (Matrix messages, Gmail snippets, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Matrix and Gmail credential deployment assumptions belong in the workspace or infrastructure repo, not here.
 
 ## License
 
