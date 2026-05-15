@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { REGISTRY_DIR, isPidAlive } from "../../lib/agent-registry.js";

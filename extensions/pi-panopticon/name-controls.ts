@@ -2,7 +2,7 @@
  * Session naming tool registrations.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry } from "./types.js";

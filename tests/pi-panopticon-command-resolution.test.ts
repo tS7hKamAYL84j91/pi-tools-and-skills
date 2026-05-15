@@ -2,7 +2,7 @@
  * Exact slash-command regression coverage for related Panopticon commands.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import { registerAgentsCommand } from "../extensions/pi-panopticon/agents-command.js";

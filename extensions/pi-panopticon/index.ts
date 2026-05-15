@@ -13,7 +13,7 @@
  *   shutdown: spawner.shutdownAll → messaging.drainAll → ui.stop → registry.unregister
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import Registry from "./registry.js";
 import { createMessaging } from "./messaging.js";
 import { setupSpawner } from "./spawner.js";

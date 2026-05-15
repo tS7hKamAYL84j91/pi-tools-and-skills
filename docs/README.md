@@ -2,12 +2,11 @@
 
 ## Architecture Decision Records
 
-[`adr/`](adr/) — canonical ADRs 001–017.
+[`adr/`](adr/) — canonical ADRs 001–016.
 
 ## Active reference
 
 - [`architecture.md`](architecture.md) — F.I.R.E. review, kanban architecture, CoAS scheduler design.
-- [`pi-gmail.md`](pi-gmail.md) — read-only Gmail metadata/snippet tools, credential inputs, and safety boundary.
 - [`teams-platform.md`](teams-platform.md) — teams extension: standing decisions, evidence-gated future work, completed simplification summary.
 - [`ux-tools-policy.md`](ux-tools-policy.md) — TUI consistency rules and command/tool namespace policy.
 - [`TODO.md`](TODO.md) — single remaining-work tracker and evidence-gated backlog.

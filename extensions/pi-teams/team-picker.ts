@@ -1,7 +1,7 @@
 /** Searchable team form pickers for models, subagents, and live agents. */
 
-import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Container, type Component, type Focusable, Input, matchesKey, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
+import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Container, type Component, type Focusable, Input, matchesKey, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
 import { availableLiveAgentNames } from "./live-agent.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { loadTeamRegistry } from "./team-registry.js";

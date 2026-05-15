@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appendFile, chmod, mkdir, readdir, readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
 	assertInside,
 	assertSafeId,

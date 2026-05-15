@@ -2,7 +2,7 @@
  * Agent panopticon status widget refresh logic.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentListModeStore } from "./list-mode.js";
 import type { Registry } from "./types.js";
 import { filterAgentList } from "./visibility.js";

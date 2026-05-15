@@ -2,14 +2,14 @@
  * Agent panopticon overlay and detail view.
  */
 
-import { DynamicBorder, type ExtensionContext, type Theme } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	Text,
 	SelectList,
 	type SelectItem,
 	matchesKey,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
 import { openAgentMessageOverlay } from "./agent-message-overlay.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";

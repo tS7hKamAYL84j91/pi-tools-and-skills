@@ -18,7 +18,7 @@
  *   - Only fires when ctx.isIdle()
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { OperationalStateStore } from "./state.js";
 import type { Registry } from "./types.js";
 import type { AgentRecord } from "../../lib/agent-registry.js";

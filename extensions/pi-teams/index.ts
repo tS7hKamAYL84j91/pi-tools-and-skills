@@ -2,7 +2,7 @@
  * Pi LLM Teams extension — declarative team specs for team work.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { omitEmptyTools } from "./provider-payload.js";
 import { TeamStateManager } from "./state.js";
 import { registerTeamCommands } from "./team-commands.js";

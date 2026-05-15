@@ -6,7 +6,7 @@
  * sibling modules; this file preserves activation order only.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerBoardTools } from "./board-tools.js";
 import { registerClaimTools } from "./claim-tools.js";
 import { registerMaintenanceTools } from "./maintenance-tools.js";

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import teamExtension from "../extensions/pi-teams/index.js";
 import kanbanExtension from "../extensions/pi-kanban/index.js";
 import matrixExtension from "../extensions/pi-matrix/index.js";

@@ -26,7 +26,7 @@ vi.mock("../lib/message-transport.js", async (importOriginal) => {
 	};
 });
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as registry from "../lib/agent-registry.js";
 import { createMessaging } from "../extensions/pi-panopticon/messaging.js";
 import type { MessageTransport, DeliveryResult } from "../lib/message-transport.js";

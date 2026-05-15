@@ -5,7 +5,7 @@
  * Only the extracted helpers and lightweight registration wiring are tested here;
  * the tool execute paths rely on integration with the ExtensionAPI.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { setupSpawner } from "../extensions/pi-panopticon/spawner.js";
 import { formatCompletionSignal } from "../lib/completion-signal.js";

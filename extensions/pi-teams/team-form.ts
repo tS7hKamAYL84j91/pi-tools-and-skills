@@ -2,7 +2,7 @@
  * Team creation helpers for TUI commands and model-callable tools.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isLiveAgentRef } from "./live-agent.js";

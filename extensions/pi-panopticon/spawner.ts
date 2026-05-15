@@ -10,7 +10,7 @@
  *    - Maildir    (from any peer, via agent_send)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import {
 	mkdirSync,

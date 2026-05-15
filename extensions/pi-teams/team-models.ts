@@ -2,7 +2,7 @@
  * Interactive model binding selection for teams.
  */
 
-import { DynamicBorder, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	type Component,
@@ -12,7 +12,7 @@ import {
 	SelectList,
 	type SelectItem,
 	Text,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { providerOf, snapshotAvailableModels } from "./members.js";
 import { type TeamFormModels, updateTeamModels } from "./team-form.js";
 import { modelSlotsForTeam, type TeamModelSlot } from "./team-handlers.js";

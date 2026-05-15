@@ -13,7 +13,7 @@
  * - /matrix status command
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 
 import { registerChannel, unregisterChannel, notifyChannel } from "../../lib/message-transport.js";

@@ -9,7 +9,7 @@
  *   of "members are real" should be stable.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	DEFAULT_SYNTHESIS_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,

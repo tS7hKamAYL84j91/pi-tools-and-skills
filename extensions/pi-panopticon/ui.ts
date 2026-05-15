@@ -5,7 +5,7 @@
  * status widget. Rendering and command details live in sibling files.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { registerAgentsCommand } from "./agents-command.js";
 import { registerNameControls } from "./name-controls.js";

@@ -8,7 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -32,7 +32,7 @@ import { buildWidgetLines } from "../extensions/pi-kanban/watcher.js";
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
-} as unknown as import("@mariozechner/pi-coding-agent").Theme;
+} as unknown as import("@earendil-works/pi-coding-agent").Theme;
 
 describe("snapshot renderers", () => {
 	let tmpDir: string;

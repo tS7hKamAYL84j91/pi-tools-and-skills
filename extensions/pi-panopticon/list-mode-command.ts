@@ -2,9 +2,9 @@
  * Agent list-mode tool and command registrations.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, SelectList, Text, type SelectItem } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { Container, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
 import { ok, fail, type ToolResult } from "./types.js";
 import type { Registry } from "./types.js";
 import type { AgentListModeStore } from "./list-mode.js";

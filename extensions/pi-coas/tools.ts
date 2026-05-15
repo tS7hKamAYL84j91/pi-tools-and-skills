@@ -2,7 +2,7 @@
  * CoAS extension model-callable tools.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfig } from "./config.js";

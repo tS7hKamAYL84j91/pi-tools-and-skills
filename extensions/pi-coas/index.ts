@@ -5,7 +5,7 @@
  * tools without depending on a sibling CoAS checkout.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCoasCommands } from "./commands.js";
 import { registerCoasLifecycle } from "./lifecycle.js";
 import { CoasInternalScheduler } from "./scheduler.js";

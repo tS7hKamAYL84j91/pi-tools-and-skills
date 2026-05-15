@@ -2,7 +2,7 @@
  * Read-only declarative team discovery tools.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatPromptChains } from "./prompt-resolver.js";
 import { promptChainsForTeam } from "./team-handlers.js";

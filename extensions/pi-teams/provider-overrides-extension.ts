@@ -1,6 +1,6 @@
 /** Provider payload override hook for one-shot child team model calls. */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mergeGenerationParameters } from "./provider-payload.js";
 import type { GenerationParameterValue } from "./types.js";
 

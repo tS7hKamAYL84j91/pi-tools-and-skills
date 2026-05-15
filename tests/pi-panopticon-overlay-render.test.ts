@@ -2,7 +2,7 @@
  * Narrow-width render coverage for pi-panopticon overlays.
  */
 
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import { renderAgentMessageOverlay } from "../extensions/pi-panopticon/agent-message-overlay.js";
@@ -17,7 +17,7 @@ import type { SessionEvent } from "../lib/session-log.js";
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
-} as unknown as import("@mariozechner/pi-coding-agent").Theme;
+} as unknown as import("@earendil-works/pi-coding-agent").Theme;
 
 function record(id: string, overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {

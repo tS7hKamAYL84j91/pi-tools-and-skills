@@ -8,7 +8,7 @@ export type { AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
 export { ok, fail, type ToolResult } from "../../lib/tool-result.js";
 
 import type { AgentRecord, AgentStatus } from "../../lib/agent-registry.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── Registry interface ──────────────────────────────────────────
 

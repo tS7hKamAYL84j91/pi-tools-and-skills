@@ -1,6 +1,6 @@
 /** Shared direct team role-node execution primitive. */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isLiveAgentRef, liveAgentModel, runLiveAgentNode } from "./live-agent.js";
 import { runMember } from "./runner.js";
 import type { TeamAgentBinding } from "./team-types.js";

@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { appendFile, chmod, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
 	assertInside,
 	assertNoSymlinkComponents,

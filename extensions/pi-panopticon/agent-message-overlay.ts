@@ -2,7 +2,7 @@
  * Direct-message overlay for panopticon peer agents.
  */
 
-import { DynamicBorder, type ExtensionContext, type Theme } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	type Component,
@@ -10,7 +10,7 @@ import {
 	Input,
 	matchesKey,
 	Text,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { findAgentByDisplayName } from "./display-name.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import type { AgentRecord } from "./types.js";

@@ -2,7 +2,7 @@
  * Agent list overlay command and shortcut registrations.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { openAgentOverlay } from "./agent-overlay.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { sortRecords, STATUS_SYMBOL } from "./registry.js";

@@ -2,8 +2,8 @@
  * Shared pi-panopticon UI formatting helpers.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "./types.js";
 import { agentDisplayName } from "./display-name.js";
 import { sortRecords, STATUS_SYMBOL } from "./registry.js";

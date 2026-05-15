@@ -6,7 +6,7 @@
  * messages. It never reads or writes user crontab.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFile, chmod, mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";

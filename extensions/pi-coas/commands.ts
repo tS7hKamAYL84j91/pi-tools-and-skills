@@ -2,8 +2,8 @@
  * CoAS extension slash commands.
  */
 
-import { DynamicBorder, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { Container, matchesKey, Text } from "@mariozechner/pi-tui";
+import { DynamicBorder, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Container, matchesKey, Text } from "@earendil-works/pi-tui";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary, widgetLines } from "./format.js";
 import { renderSchedulerSnapshot } from "./format.js";

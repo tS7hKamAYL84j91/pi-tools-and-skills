@@ -2,7 +2,7 @@
  * Protocol-specific team execution handlers and model slot metadata.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
 import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { renderTemplate } from "./prompt-renderer.js";

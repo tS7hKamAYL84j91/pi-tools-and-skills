@@ -2,8 +2,8 @@
  * Team TUI overlay helpers.
  */
 
-import { DynamicBorder, type ExtensionContext, type Theme } from "@mariozechner/pi-coding-agent";
-import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { STATUS_SYMBOLS } from "./status-symbols.js";

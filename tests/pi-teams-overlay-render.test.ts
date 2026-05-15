@@ -2,7 +2,7 @@
  * Narrow-width render coverage for pi-teams overlays.
  */
 
-import { Input, visibleWidth } from "@mariozechner/pi-tui";
+import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -14,7 +14,7 @@ import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
-} as unknown as import("@mariozechner/pi-coding-agent").Theme;
+} as unknown as import("@earendil-works/pi-coding-agent").Theme;
 
 function team(id: string, overrides: Partial<TeamSpec> = {}): TeamSpec {
 	return {

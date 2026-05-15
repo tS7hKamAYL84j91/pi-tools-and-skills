@@ -2,7 +2,7 @@
  * Kanban claim and assignment tool registrations.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import {

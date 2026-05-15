@@ -5,7 +5,7 @@
  * No lifecycle management — just the tool definition and execution.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 import { ok } from "./types.js";
