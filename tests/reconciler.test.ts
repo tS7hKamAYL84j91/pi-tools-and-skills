@@ -110,7 +110,7 @@ describe("reconciler findings", () => {
 		expect(findings.map((finding) => finding.heuristic)).not.toContain("stale-worker");
 	});
 
-	it("keeps actionable alerts for pending messages, blocked agents, stalls, and silent termination", () => {
+	it("keeps actionable alerts for pending messages, blocked agents, explicit stalls, and silent termination", () => {
 		const pending = makeRecord({ id: "pending", name: "pending", pendingMessages: 2 });
 		const blocked = makeRecord({ id: "blocked", name: "blocked", status: "blocked" });
 		const stale = makeRecord({ id: "stale", name: "stale", status: "running" });
@@ -133,10 +133,39 @@ describe("reconciler findings", () => {
 			"pending-messages",
 			"blocked-agent",
 			"stale-worker",
-			"stale-worker",
 			"silent-done",
 		]);
 		expect(findings.every((finding) => finding.level === "actionable")).toBe(true);
+	});
+
+	it("does not alert on heartbeat age alone after confirmation", () => {
+		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 16 * 60_000 });
+		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, {
+			alive: true,
+			heartbeatAge: 16 * 60_000,
+			status: "running",
+		}));
+
+		const findings = checkAgentHealth(makeRegistry([peer]), "self-id");
+
+		expect(findings).toEqual([]);
+	});
+
+	it("suppresses stale activity when peers only have stale heartbeats", () => {
+		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 16 * 60_000 });
+		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, {
+			alive: true,
+			heartbeatAge: 16 * 60_000,
+			status: "running",
+		}));
+
+		const findings = checkStaleActivity(
+			makeStateStore(Date.now() - 52 * 60_000),
+			makeRegistry([peer]),
+			"self-id",
+		);
+
+		expect(findings).toEqual([]);
 	});
 
 	it("does not treat a done agent exit as silent termination", () => {

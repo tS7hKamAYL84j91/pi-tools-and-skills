@@ -32,7 +32,6 @@ const HEURISTIC_COOLDOWN_MS = 10 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 2;
 const STALE_ACTIVITY_MS = 30 * 60_000;
 const FRESH_HEARTBEAT_MS = 60_000;
-const STALE_WORKER_MS = 5 * 60_000;
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -120,7 +119,7 @@ function actionableAgentFindings(peer: RegistryPeer, confirmed: ConfirmedPeerSta
 		});
 	}
 
-	if (confirmed.confirmed && confirmed.alive && (confirmed.status === "stalled" || confirmed.heartbeatAge > STALE_WORKER_MS)) {
+	if (confirmed.confirmed && confirmed.alive && confirmed.status === "stalled") {
 		findings.push({
 			heuristic: "stale-worker",
 			summary: `Agent "${confirmed.name}" is stalled after confirmation; heartbeat age is ${Math.round(confirmed.heartbeatAge / 60_000)}m.`,
@@ -136,8 +135,9 @@ function isOperationallyQuiet(peer: RegistryPeer, confirmed: ConfirmedPeerState)
 	if (peer.status === "blocked" || confirmed.status === "blocked") return false;
 	if (!confirmed.confirmed) return true;
 	if (!confirmed.alive) return peer.status === "done" || peer.status === "terminated";
-	if (confirmed.heartbeatAge > FRESH_HEARTBEAT_MS) return false;
-	return confirmed.status === "waiting" || confirmed.status === "running" || confirmed.status === "done";
+	if (confirmed.status === "stalled") return false;
+	if (confirmed.status === "waiting" || confirmed.status === "running" || confirmed.status === "done") return true;
+	return confirmed.heartbeatAge <= FRESH_HEARTBEAT_MS;
 }
 
 export function checkAgentHealth(registry: Registry, selfId: string): Finding[] {
