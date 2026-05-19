@@ -65,7 +65,7 @@ prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
 echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-teams"
+echo  "    extensions: pi-panopticon, pi-teams, pi-goal"
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
 echo  "    models:     unchanged"

@@ -11,6 +11,7 @@ from typing import Any
 PACKAGE_EXTENSIONS = [
     "extensions/pi-panopticon/**",
     "extensions/pi-teams/**",
+    "extensions/pi-goal/**",
 ]
 
 OWNED_EXTENSION_DIRS = [

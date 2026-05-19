@@ -34,7 +34,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-teams`. It does not alter runtime/project settings.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-teams`, and `pi-goal`. It does not alter runtime/project settings.
 
 ### 2. Set up
 
@@ -59,16 +59,16 @@ Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per worksp
 
 ### Extensions
 
-`make setup` globally enables only reusable operator extensions. Project/runtime extensions stay opt-in per workspace.
+`make setup` globally enables reusable operator extensions. Project/runtime extensions stay opt-in per workspace.
 
 | Extension         | Type    | What it does                                                                                            |
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | **pi-panopticon** | Global  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
+| **pi-goal**       | Global  | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
 | **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-matrix**     | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
-| **pi-goal**       | Project | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
 
 ### Skills
 
@@ -113,10 +113,10 @@ Everything goes through `make`:
 extensions/           Extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
   pi-teams/            Global — multi-model deliberation from runtime model registry
+  pi-goal/              Global — bounded /goal workflow and completion audit
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
-  pi-goal/              Project — bounded /goal workflow and completion audit
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)
@@ -124,7 +124,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`, `pi-goal`) are added per-workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-teams`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 
