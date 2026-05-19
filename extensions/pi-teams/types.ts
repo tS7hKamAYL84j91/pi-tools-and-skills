@@ -1,6 +1,6 @@
 /** Shared runtime types for team protocol execution and persistence. */
 
-export type RunStatus = "pending" | "running" | "completed" | "failed";
+export type RunStatus = "pending" | "running" | "stopping" | "stopped" | "completed" | "failed";
 
 /** @public */
 export type GenerationParameterValue = string | number | boolean;
@@ -57,4 +57,5 @@ export interface TeamRunRecord {
 	nodes: TeamRunNodeRecord[];
 	summary?: string;
 	error?: string;
+	stopReason?: string;
 }

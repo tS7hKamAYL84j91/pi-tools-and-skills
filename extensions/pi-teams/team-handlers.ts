@@ -60,6 +60,7 @@ interface TeamHandlerRunArgs {
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
 	runId?: string;
+	signal?: AbortSignal;
 }
 
 interface TeamHandler {
@@ -243,6 +244,18 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 	return okText(node.output, { team: args.team.id, ok: node.ok, nodes: nodeDetails([node]) });
 }
 
+function stopRequested(args: TeamHandlerRunArgs): boolean {
+	return args.runId !== undefined && args.stateManager.isStopRequested(args.runId);
+}
+
+function stopReason(args: TeamHandlerRunArgs): string {
+	return args.runId ? args.stateManager.stopReason(args.runId) ?? "stop requested" : "stop requested";
+}
+
+function stoppedResult(args: TeamHandlerRunArgs, nodes: readonly NodeRun[]): TeamHandlerResult {
+	return okText(`Team run stopped: ${stopReason(args)}`, { team: args.team.id, ok: false, stopped: true, reason: stopReason(args), nodes: nodeDetails(nodes) });
+}
+
 function boundedLoopCount(value: number | undefined): number {
 	if (value === undefined || !Number.isFinite(value)) return 2;
 	return Math.max(1, Math.min(Math.trunc(value), 5));
@@ -300,6 +313,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 	let nextPrompt = `Original research request:\n${args.params.prompt}\n\nPlan and execute the first evidence-gathering pass. Emit a compact checklist, candidate claims, and explicit source bindings. Treat generated summaries as leads only.`;
 	let verifierOutput = "";
 	for (let loop = 1; loop <= maxLoops; loop++) {
+		if (stopRequested(args)) return stoppedResult(args, nodes);
 		const phaseId = `research_loop_${loop}`;
 		recordPhase(args, phaseId, `Research loop ${loop}/${maxLoops}`);
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: explorer ${loop}/${maxLoops}`);
@@ -310,6 +324,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 			prompt: nextPrompt,
 			systemPrompt: chainText(chains, "generation.system"),
 			ctx: args.ctx,
+			signal: args.signal,
 			parentId: parent?.id,
 			orchestratorName: parent?.name,
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
@@ -318,6 +333,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		recordNode(args, phaseId, explorer);
 		nodes.push(explorer);
 		if (!explorer.ok) return okText(explorer.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		if (stopRequested(args)) return stoppedResult(args, nodes);
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: verifier ${loop}/${maxLoops}`);
 		const verifierPrompt = `Original research request:\n${args.params.prompt}\n\nExplorer output:\n${explorer.output}\n\nAct as Evidence Auditor and Gap Detector. Reject unsupported claims, require source bindings, and emit targeted follow-up queries for remaining critical gaps. If no critical gaps remain, include the exact marker VERIFIED_COMPLETE and list the verified facts only.`;
 		const verifier = await runTeamNode({
@@ -327,6 +343,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 			prompt: verifierPrompt,
 			systemPrompt: chainText(chains, "critique.system"),
 			ctx: args.ctx,
+			signal: args.signal,
 			parentId: parent?.id,
 			orchestratorName: parent?.name,
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
@@ -336,9 +353,11 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		nodes.push(verifier);
 		verifierOutput = verifier.output;
 		if (!verifier.ok) return okText(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		if (stopRequested(args)) return stoppedResult(args, nodes);
 		if (verifier.output.includes("VERIFIED_COMPLETE")) break;
 		nextPrompt = `Original research request:\n${args.params.prompt}\n\nPrevious Explorer output:\n${explorer.output}\n\nVerifier gap report:\n${verifier.output}\n\nRun targeted follow-up only for the cited gaps. Preserve existing verified evidence and add new source bindings.`;
 	}
+	if (stopRequested(args)) return stoppedResult(args, nodes);
 	recordPhase(args, "research_synthesis", "Research synthesis");
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: synthesis`);
 	const synthesisPrompt = `Original research request:\n${args.params.prompt}\n\nVerifier-approved facts and caveats:\n${verifierOutput}\n\nWrite the final answer from verified facts only. Separate verified facts, inferences, recommendations, risks, and open questions. Include citations/source IDs for substantive claims and disclose unresolved gaps.`;
@@ -349,6 +368,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		prompt: synthesisPrompt,
 		systemPrompt: chainText(chains, "synthesis.system"),
 		ctx: args.ctx,
+		signal: args.signal,
 		parentId: parent?.id,
 		orchestratorName: parent?.name,
 		timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,

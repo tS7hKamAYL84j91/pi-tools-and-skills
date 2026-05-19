@@ -195,6 +195,101 @@ describe("TeamStateManager", () => {
 		expect(reader.get(runId)?.team).toBe("team");
 	});
 
+	it("requestStop records stopping state and aborts registered controllers", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		const controller = new AbortController();
+		writer.registerAbortController(runId, controller);
+
+		const accepted = writer.requestStop(runId, "human stop");
+
+		expect(accepted).toBe(true);
+		expect(controller.signal.aborted).toBe(true);
+		expect(writer.get(runId)).toMatchObject({ status: "stopping", stopReason: "human stop" });
+		expect(writer.isStopRequested(runId)).toBe(true);
+		expect(entries.at(-1)?.data).toMatchObject({ kind: "stop_requested", reason: "human stop" });
+	});
+
+	it("requestStop aborts controllers registered after a stop request", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.requestStop(runId, "pre-start stop");
+		const controller = new AbortController();
+
+		writer.registerAbortController(runId, controller);
+
+		expect(controller.signal.aborted).toBe(true);
+	});
+
+	it("requestStop is idempotent and preserves the original reason", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(writer.requestStop(runId, "first reason")).toBe(true);
+		expect(writer.requestStop(runId, "second reason")).toBe(true);
+
+		expect(writer.stopReason(runId)).toBe("first reason");
+		expect(entries.filter((entry) => (entry.data as { kind?: string }).kind === "stop_requested")).toHaveLength(1);
+	});
+
+	it("terminal stop clears stop request and records stopped status", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.requestStop(runId, "human stop");
+
+		writer.recordRunStopped(runId, 10, "human stop", "stopped by user");
+
+		expect(writer.isStopRequested(runId)).toBe(false);
+		expect(writer.get(runId)).toMatchObject({ status: "stopped", stopReason: "human stop", summary: "stopped by user" });
+	});
+
+	it("rehydration lets terminal stopped events win over stop_requested", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.requestStop(runId, "human stop");
+		writer.recordRunStopped(runId, 10, "human stop");
+		const reader = new TeamStateManager();
+
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.isStopRequested(runId)).toBe(false);
+		expect(reader.get(runId)).toMatchObject({ status: "stopped", stopReason: "human stop" });
+	});
+
+	it("failed terminal event clears stale stopReason", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.requestStop(runId, "human stop");
+
+		writer.recordRunFailed(runId, "provider failed after stop");
+
+		expect(writer.get(runId)).toMatchObject({ status: "failed", error: "provider failed after stop" });
+		expect(writer.get(runId)?.stopReason).toBeUndefined();
+	});
+
+	it("requestStop rejects terminal records", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.rehydrateFromSession({ getBranch: () => entries });
+		writer.recordRunCompleted(runId, 1, "done");
+
+		expect(writer.requestStop(runId, "too late")).toBe(false);
+		expect(writer.get(runId)).toMatchObject({ status: "completed" });
+	});
+
 	it("markFailed appends a failure event for an active record", () => {
 		const entries: CustomEntry[] = [];
 		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });

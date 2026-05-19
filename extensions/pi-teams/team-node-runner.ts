@@ -52,6 +52,7 @@ export async function runTeamNode(args: {
 	prompt: string;
 	systemPrompt: string;
 	ctx: ExtensionContext;
+	signal?: AbortSignal;
 	parentId?: string;
 	orchestratorName?: string;
 	timeoutMs?: number;
@@ -64,18 +65,21 @@ export async function runTeamNode(args: {
 		const timeout = args.timeoutMs ? setTimeout(() => controller.abort(), args.timeoutMs) : undefined;
 		const onParentAbort = () => controller.abort();
 		args.ctx.signal?.addEventListener("abort", onParentAbort, { once: true });
+		args.signal?.addEventListener("abort", onParentAbort, { once: true });
+		if (args.ctx.signal?.aborted || args.signal?.aborted) controller.abort();
 		try {
 			const run = await runRoleCall({ ...args, signal: controller.signal });
 			const error = controller.signal.aborted && !args.ctx.signal?.aborted ? "timeout" : run.error;
-			if (!run.ok && error !== "timeout" && !args.ctx.signal?.aborted && attempt <= retries) continue;
+			if (!run.ok && error !== "timeout" && !args.ctx.signal?.aborted && !args.signal?.aborted && attempt <= retries) continue;
 			return nodeRunFromModelRun({ args, run, startedAt, attempts: attempt, error });
 		} catch (error) {
 			const message = controller.signal.aborted && !args.ctx.signal?.aborted ? "timeout" : error instanceof Error ? error.message : String(error);
-			if (message !== "timeout" && !args.ctx.signal?.aborted && attempt <= retries) continue;
+			if (message !== "timeout" && !args.ctx.signal?.aborted && !args.signal?.aborted && attempt <= retries) continue;
 			return failedNodeRun(args, startedAt, attempt, message);
 		} finally {
 			if (timeout) clearTimeout(timeout);
 			args.ctx.signal?.removeEventListener("abort", onParentAbort);
+			args.signal?.removeEventListener("abort", onParentAbort);
 		}
 	}
 	throw new Error("unreachable team node retry state.");

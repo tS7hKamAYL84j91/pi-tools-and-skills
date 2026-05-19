@@ -58,9 +58,15 @@ Explorer -> Verifier/EAM + Gap Detector -> targeted Explorer follow-up -> Synthe
 - Verifier output containing `VERIFIED_COMPLETE` stops loop iteration early.
 - Run progress is persisted through existing session custom events and surfaced
   via `team_runs`.
-- `team_stop` records a stop/failure request in session state. It is a smallest
-  safe control surface; already-running child model calls still stop only at
-  normal cancellation/runtime boundaries.
+- `team_stop` records a `stop_requested` event and shows the run as `stopping`
+  until the protocol reaches a safe boundary and records terminal `stopped`.
+- The `research` handler checks stop state before each Explorer, Verifier,
+  follow-up loop, and Synthesis call. A stop request prevents any new phase or
+  model call after the current boundary.
+- One-shot model-backed team nodes run through a child `pi --print` subprocess;
+  `team_stop` aborts that subprocess with SIGTERM through the node AbortSignal.
+  Live-agent bindings still rely on the live-agent transport/runtime honoring
+  the same AbortSignal and may only stop at normal cancellation boundaries.
 
 ## Evidence-gated future work
 

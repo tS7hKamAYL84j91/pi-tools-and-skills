@@ -899,8 +899,10 @@ describe("team tools", () => {
 
 		await stop.execute("test", { runId, reason: "bounded test stop" }, undefined, undefined, { cwd: process.cwd() });
 		const stopResult = await peek.execute("test", {}, undefined, undefined, { cwd: process.cwd() });
-		expect(stopResult.content[0]?.text).toContain("failed");
-		expect(stopResult.content[0]?.text).toContain("bounded test stop");
+		expect(stopResult.content[0]?.text).toContain("stopping");
+		expect(stopResult.details.runs).toEqual([
+			expect.objectContaining({ status: "stopping", stopReason: "bounded test stop" }),
+		]);
 	});
 
 	it("team_run rejects unknown team ids with a clear list", async () => {

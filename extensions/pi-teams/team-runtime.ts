@@ -102,6 +102,8 @@ export async function runTeam(args: {
 	}
 	const startedAt = Date.now();
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
+	const controller = new AbortController();
+	args.stateManager.registerAbortController(runId, controller);
 	try {
 		const result = await handler.run({
 			team,
@@ -109,9 +111,15 @@ export async function runTeam(args: {
 			ctx: args.ctx,
 			stateManager: args.stateManager,
 			runId,
+			signal: controller.signal,
 		});
 		const text = result.content[0]?.text;
-		args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
+		if (args.stateManager.isStopRequested(runId) || result.details.stopped === true) {
+			const reason = typeof result.details.reason === "string" ? result.details.reason : args.stateManager.stopReason(runId) ?? "stop requested";
+			args.stateManager.recordRunStopped(runId, Date.now() - startedAt, reason, text);
+		} else {
+			args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
+		}
 		return result;
 	} catch (error) {
 		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
@@ -167,13 +175,14 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 	pi.registerTool({
 		name: "team_stop",
 		label: "Team Stop",
-		description: "Mark a team run stopped/failed in session state. This is a progress/control surface; in-flight child calls may only stop at normal cancellation boundaries.",
-		promptSnippet: "Mark a team run stopped in session state",
+		description: "Request a team run stop. Active pi subprocess child calls receive SIGTERM via AbortSignal; other protocols stop at safe phase boundaries.",
+		promptSnippet: "Request a team run stop and mark it stopping",
 		parameters: TeamStopSchema,
 		async execute(_id, params: { runId: string; reason?: string }) {
 			const reason = params.reason ?? "stop requested";
-			stateManager.markFailed(params.runId, reason);
-			return okText(`Team run ${params.runId} marked stopped: ${reason}`, { runId: params.runId, reason });
+			const accepted = stateManager.requestStop(params.runId, reason);
+			if (!accepted) throw new Error(`No active team run ${params.runId}`);
+			return okText(`Team run ${params.runId} stopping: ${reason}`, { runId: params.runId, reason, status: "stopping" });
 		},
 	});
 }

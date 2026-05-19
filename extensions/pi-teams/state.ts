@@ -13,6 +13,8 @@ export type TeamRunEventKind =
 	| "run_started"
 	| "phase_started"
 	| "node_completed"
+	| "stop_requested"
+	| "run_stopped"
 	| "run_completed"
 	| "run_failed"
 	| "run_tombstoned";
@@ -59,6 +61,20 @@ export interface TeamRunNodeCompletedEvent extends TeamRunEventBase {
 }
 
 /** @public */
+export interface TeamRunStopRequestedEvent extends TeamRunEventBase {
+	kind: "stop_requested";
+	reason: string;
+}
+
+/** @public */
+export interface TeamRunStoppedEvent extends TeamRunEventBase {
+	kind: "run_stopped";
+	reason: string;
+	durationMs: number;
+	summary?: string;
+}
+
+/** @public */
 export interface TeamRunCompletedEvent extends TeamRunEventBase {
 	kind: "run_completed";
 	ok: true;
@@ -84,6 +100,8 @@ export type TeamRunEvent =
 	| TeamRunStartedEvent
 	| TeamRunPhaseStartedEvent
 	| TeamRunNodeCompletedEvent
+	| TeamRunStopRequestedEvent
+	| TeamRunStoppedEvent
 	| TeamRunCompletedEvent
 	| TeamRunFailedEvent
 	| TeamRunTombstonedEvent;
@@ -135,7 +153,7 @@ function boundedOutput(output: string): Pick<TeamRunNodeCompletedEvent, "output"
 }
 
 function isRunEvent(value: unknown): value is TeamRunEvent {
-	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === 1 && typeof (value as { kind?: unknown }).kind === "string";
+	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === 1 && typeof (value as { kind?: unknown }).kind === "string" && typeof (value as { runId?: unknown }).runId === "string";
 }
 
 function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {
@@ -174,12 +192,22 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 		if (!record.phases.includes(event.phaseId)) record.phases.push(event.phaseId);
 	} else if (event.kind === "node_completed") {
 		record.nodes.push(nodeRecord(event));
+	} else if (event.kind === "stop_requested") {
+		record.status = "stopping";
+		record.stopReason = event.reason;
+	} else if (event.kind === "run_stopped") {
+		record.status = "stopped";
+		record.stopReason = event.reason;
+		record.completedAt = event.timestamp;
+		if (event.summary) record.summary = event.summary;
 	} else if (event.kind === "run_completed") {
 		record.status = "completed";
+		delete record.stopReason;
 		record.completedAt = event.timestamp;
 		if (event.summary) record.summary = event.summary;
 	} else if (event.kind === "run_failed") {
 		record.status = "failed";
+		delete record.stopReason;
 		record.error = event.error;
 		record.completedAt = event.timestamp;
 	} else if (event.kind === "run_tombstoned") {
@@ -196,6 +224,8 @@ function reduceEvents(events: readonly TeamRunEvent[]): Map<string, TeamRunRecor
 export class TeamStateManager {
 	private readonly sequenceByRun = new Map<string, number>();
 	private readonly sessionRecords = new Map<string, TeamRunRecord>();
+	private readonly stopReasons = new Map<string, string>();
+	private readonly abortControllers = new Map<string, AbortController>();
 	private sessionHydrated = false;
 
 	constructor(private readonly options: TeamStateManagerOptions = {}) {}
@@ -220,6 +250,7 @@ export class TeamStateManager {
 
 	startRun(args: StartRunArgs): string {
 		const runId = generateId();
+		this.stopReasons.delete(runId);
 		this.appendEvent({
 			kind: "run_started",
 			runId,
@@ -251,11 +282,21 @@ export class TeamStateManager {
 	}
 
 	recordRunCompleted(runId: string, durationMs: number, summary?: string): void {
+		this.abortControllers.delete(runId);
+		this.stopReasons.delete(runId);
 		this.appendEvent({ kind: "run_completed", runId, ok: true, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
 	}
 
 	recordRunFailed(runId: string, error: string): void {
+		this.abortControllers.delete(runId);
+		this.stopReasons.delete(runId);
 		this.appendEvent({ kind: "run_failed", runId, ok: false, error });
+	}
+
+	recordRunStopped(runId: string, durationMs: number, reason: string, summary?: string): void {
+		this.abortControllers.delete(runId);
+		this.stopReasons.delete(runId);
+		this.appendEvent({ kind: "run_stopped", runId, reason, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
 	}
 
 	rehydrateFromSession(sessionManager: SessionManagerLike): void {
@@ -265,7 +306,12 @@ export class TeamStateManager {
 		this.sessionHydrated = true;
 		for (const [id, record] of reduceEvents(events)) this.sessionRecords.set(id, record);
 		this.sequenceByRun.clear();
-		for (const event of events) this.sequenceByRun.set(event.runId, Math.max(this.sequenceByRun.get(event.runId) ?? 0, event.seq));
+		this.stopReasons.clear();
+		for (const event of events) {
+			this.sequenceByRun.set(event.runId, Math.max(this.sequenceByRun.get(event.runId) ?? 0, event.seq));
+			if (event.kind === "stop_requested") this.stopReasons.set(event.runId, event.reason);
+			if (event.kind === "run_completed" || event.kind === "run_failed" || event.kind === "run_stopped" || event.kind === "run_tombstoned") this.stopReasons.delete(event.runId);
+		}
 	}
 
 	get(id: string): TeamRunRecord | undefined {
@@ -277,6 +323,8 @@ export class TeamStateManager {
 	}
 
 	remove(id: string): void {
+		this.abortControllers.delete(id);
+		this.stopReasons.delete(id);
 		this.appendEvent({ kind: "run_tombstoned", runId: id });
 		this.sessionRecords.delete(id);
 	}
@@ -286,6 +334,32 @@ export class TeamStateManager {
 			if (record.status === "completed" || record.status === "failed") return false;
 			return !isPidAlive(record.orchestratorPid);
 		});
+	}
+
+	registerAbortController(id: string, controller: AbortController): void {
+		this.abortControllers.set(id, controller);
+		if (this.isStopRequested(id)) controller.abort();
+	}
+
+	requestStop(id: string, reason: string): boolean {
+		const record = this.get(id);
+		if (!record || record.status === "completed" || record.status === "failed" || record.status === "stopped") return false;
+		const existing = this.stopReasons.get(id);
+		const finalReason = existing ?? reason;
+		if (!existing) {
+			this.stopReasons.set(id, finalReason);
+			this.appendEvent({ kind: "stop_requested", runId: id, reason: finalReason });
+		}
+		this.abortControllers.get(id)?.abort();
+		return true;
+	}
+
+	isStopRequested(id: string): boolean {
+		return this.stopReasons.has(id);
+	}
+
+	stopReason(id: string): string | undefined {
+		return this.stopReasons.get(id);
 	}
 
 	markFailed(id: string, reason: string): void {
