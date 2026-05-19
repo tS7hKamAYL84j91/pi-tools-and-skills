@@ -28,6 +28,7 @@ export interface TeamRunLimits {
 	maxFixPasses?: number;
 	timeoutMs?: number;
 	maxRetries?: number;
+	maxLoops?: number;
 }
 
 export interface TeamRunInput {
@@ -242,6 +243,11 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 	return okText(node.output, { team: args.team.id, ok: node.ok, nodes: nodeDetails([node]) });
 }
 
+function boundedLoopCount(value: number | undefined): number {
+	if (value === undefined || !Number.isFinite(value)) return 2;
+	return Math.max(1, Math.min(Math.trunc(value), 5));
+}
+
 async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const settings = resolveTeamSettings();
 	const memberModels = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
@@ -278,8 +284,101 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	return okText(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
 }
 
+async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
+	const settings = resolveTeamSettings();
+	const explorerModel = args.params.models?.members?.[0] ?? args.team.models.members?.[0] ?? settings.defaultMembers[0];
+	const verifierModel = args.params.models?.members?.[1] ?? args.team.models.members?.[1] ?? args.team.models.synthesis ?? settings.defaultMembers[1] ?? explorerModel;
+	const synthesisModel = args.params.models?.synthesis ?? args.team.models.synthesis ?? settings.defaultSynthesis ?? explorerModel;
+	if (!explorerModel || !verifierModel || !synthesisModel) throw new Error("research teams need explorer, verifier, and synthesis models.");
+	const maxLoops = boundedLoopCount(args.params.limits?.maxLoops ?? args.team.limits.maxLoops);
+	const chains = promptChains(args.team, councilSlots(args.team));
+	const parent = await currentPanopticonRecord(args.ctx.cwd);
+	const explorerSource = bindingForRole(args.team.agentBindings, ["explorer", "member"]) ?? requireBinding(args.team, ["explorer", "member"]);
+	const verifierSource = bindingForRole(args.team.agentBindings, ["verifier", "critic"]) ?? requireBinding(args.team, ["verifier", "critic"]);
+	const synthesisSource = bindingForRole(args.team.agentBindings, ["synthesis"]) ?? requireBinding(args.team, ["synthesis"]);
+	const nodes: NodeRun[] = [];
+	let nextPrompt = `Original research request:\n${args.params.prompt}\n\nPlan and execute the first evidence-gathering pass. Emit a compact checklist, candidate claims, and explicit source bindings. Treat generated summaries as leads only.`;
+	let verifierOutput = "";
+	for (let loop = 1; loop <= maxLoops; loop++) {
+		const phaseId = `research_loop_${loop}`;
+		recordPhase(args, phaseId, `Research loop ${loop}/${maxLoops}`);
+		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: explorer ${loop}/${maxLoops}`);
+		const explorer = await runTeamNode({
+			binding: { ...explorerSource, role: `explorer_${loop}`, label: explorerSource.label ?? `Explorer ${loop}` },
+			role: `explorer_${loop}`,
+			model: explorerModel,
+			prompt: nextPrompt,
+			systemPrompt: chainText(chains, "generation.system"),
+			ctx: args.ctx,
+			parentId: parent?.id,
+			orchestratorName: parent?.name,
+			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
+		});
+		recordNode(args, phaseId, explorer);
+		nodes.push(explorer);
+		if (!explorer.ok) return okText(explorer.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: verifier ${loop}/${maxLoops}`);
+		const verifierPrompt = `Original research request:\n${args.params.prompt}\n\nExplorer output:\n${explorer.output}\n\nAct as Evidence Auditor and Gap Detector. Reject unsupported claims, require source bindings, and emit targeted follow-up queries for remaining critical gaps. If no critical gaps remain, include the exact marker VERIFIED_COMPLETE and list the verified facts only.`;
+		const verifier = await runTeamNode({
+			binding: { ...verifierSource, role: `verifier_${loop}`, label: verifierSource.label ?? `Verifier ${loop}` },
+			role: `verifier_${loop}`,
+			model: verifierModel,
+			prompt: verifierPrompt,
+			systemPrompt: chainText(chains, "critique.system"),
+			ctx: args.ctx,
+			parentId: parent?.id,
+			orchestratorName: parent?.name,
+			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+			maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
+		});
+		recordNode(args, phaseId, verifier);
+		nodes.push(verifier);
+		verifierOutput = verifier.output;
+		if (!verifier.ok) return okText(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		if (verifier.output.includes("VERIFIED_COMPLETE")) break;
+		nextPrompt = `Original research request:\n${args.params.prompt}\n\nPrevious Explorer output:\n${explorer.output}\n\nVerifier gap report:\n${verifier.output}\n\nRun targeted follow-up only for the cited gaps. Preserve existing verified evidence and add new source bindings.`;
+	}
+	recordPhase(args, "research_synthesis", "Research synthesis");
+	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: synthesis`);
+	const synthesisPrompt = `Original research request:\n${args.params.prompt}\n\nVerifier-approved facts and caveats:\n${verifierOutput}\n\nWrite the final answer from verified facts only. Separate verified facts, inferences, recommendations, risks, and open questions. Include citations/source IDs for substantive claims and disclose unresolved gaps.`;
+	const synthesis = await runTeamNode({
+		binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" },
+		role: "synthesis",
+		model: synthesisModel,
+		prompt: synthesisPrompt,
+		systemPrompt: chainText(chains, "synthesis.system"),
+		ctx: args.ctx,
+		parentId: parent?.id,
+		orchestratorName: parent?.name,
+		timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
+		maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
+	});
+	recordNode(args, "research_synthesis", synthesis);
+	nodes.push(synthesis);
+	return okText(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), maxLoops, nodes: nodeDetails(nodes) });
+}
+
+const researchHandler: TeamHandler = {
+	key: "research",
+	matches(team) {
+		return team.protocol === "research";
+	},
+	modelSlots(_team, models) {
+		return [
+			{ id: "explorer", label: "Explorer model", current: models.members?.[0], kind: "member", index: 0 },
+			{ id: "verifier", label: "Verifier model", current: models.members?.[1] ?? models.synthesis, kind: "member", index: 1 },
+			{ id: "synthesis", label: "Synthesis model", current: models.synthesis, kind: "synthesis" },
+		];
+	},
+	async run(args) {
+		return runResearch(args);
+	},
+};
+
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	councilHandler,
+	researchHandler,
 ];
 
 export function getTeamHandler(team: TeamSpec): TeamHandler | undefined {

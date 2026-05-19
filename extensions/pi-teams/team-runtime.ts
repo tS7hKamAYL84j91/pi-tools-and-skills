@@ -18,7 +18,7 @@ const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	protocol: Type.Union([Type.Literal("consult"), Type.Literal("debate")], { description: "Team protocol for generated team files." }),
+	protocol: Type.Union([Type.Literal("consult"), Type.Literal("debate"), Type.Literal("research")], { description: "Team protocol for generated team files." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids or explicit live-agent refs (agent:<registered-name>) referenced by the team." }),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate member model IDs." })),
@@ -28,6 +28,7 @@ const TeamFormSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
 		maxRetries: Type.Optional(Type.Number({ description: "Bounded team node retries after child-call failure." })),
+		maxLoops: Type.Optional(Type.Number({ description: "Maximum research feedback loops for protocol=research. Default 2, capped at 5." })),
 	})),
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Where to write the team. Defaults to user." })),
 	overwrite: Type.Optional(Type.Boolean({ description: "Replace an existing team file." })),
@@ -48,19 +49,25 @@ const TeamDeleteSchema = Type.Object({
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Delete from a specific scope. Defaults to the active user/project team." })),
 });
 
+const TeamStopSchema = Type.Object({
+	runId: Type.String({ description: "Team run id to mark stopped/failed." }),
+	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
+});
+
 const TeamRunSchema = Type.Object({
-	id: Type.String({ description: "Team id to run, e.g. llm-council, consult." }),
+	id: Type.String({ description: "Team id to run, e.g. llm-council, navigator, deep-research." }),
 	prompt: Type.String({ description: "Task, question, or review request for the team." }),
 
 	async: Type.Optional(Type.Boolean({ description: "Return immediately and deliver the team result as a follow-up message." })),
 	models: Type.Optional(Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "debate: override member model IDs." })),
-		synthesis: Type.Optional(Type.String({ description: "debate: override synthesis model ID." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate/research member model IDs." })),
+		synthesis: Type.Optional(Type.String({ description: "debate/research synthesis model ID." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow override model id." })),
 	})),
 	limits: Type.Optional(Type.Object({
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
 		maxRetries: Type.Optional(Type.Number({ description: "Bounded team node retries after child-call failure." })),
+		maxLoops: Type.Optional(Type.Number({ description: "Maximum research feedback loops for protocol=research. Default 2, capped at 5." })),
 	})),
 });
 
@@ -144,6 +151,33 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 	});
 }
 
+function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManager): void {
+	pi.registerTool({
+		name: "team_runs",
+		label: "Team Runs",
+		description: "Peek current team run progress from session state.",
+		promptSnippet: "Peek current team run progress",
+		parameters: Type.Object({}),
+		async execute() {
+			const runs = stateManager.list();
+			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length}${run.error ? ` error=${run.error}` : ""}`);
+			return okText(lines.length ? lines.join("\n") : "No team runs in current session state.", { runs });
+		},
+	});
+	pi.registerTool({
+		name: "team_stop",
+		label: "Team Stop",
+		description: "Mark a team run stopped/failed in session state. This is a progress/control surface; in-flight child calls may only stop at normal cancellation boundaries.",
+		promptSnippet: "Mark a team run stopped in session state",
+		parameters: TeamStopSchema,
+		async execute(_id, params: { runId: string; reason?: string }) {
+			const reason = params.reason ?? "stop requested";
+			stateManager.markFailed(params.runId, reason);
+			return okText(`Team run ${params.runId} marked stopped: ${reason}`, { runId: params.runId, reason });
+		},
+	});
+}
+
 function registerTeamDeleteTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "team_delete",
@@ -167,13 +201,15 @@ export function registerTeamRunTool(
 	registerTeamFormTool(pi);
 	registerTeamModelsTool(pi);
 	registerTeamDeleteTool(pi);
+	registerTeamControlTools(pi, registration.stateManager);
 	pi.registerTool({
 		name: "team_run",
 		label: "Run Team",
 		description: "Run a declarative team by id. Use team_list first if you do not know the team id.",
 		promptSnippet: "Run a declarative team by id",
 		promptGuidelines: [
-			"Use team_run with id=llm-council for high-impact architecture, strategy, or research where disagreement is valuable.",
+			"Use team_run with id=llm-council for high-impact architecture or strategy where disagreement is valuable.",
+			"Use team_run with id=deep-research for research that needs Explorer -> Verifier gap feedback -> Synthesis.",
 			"Use team_run with id=navigator for lightweight Navigator review.",
 
 		],

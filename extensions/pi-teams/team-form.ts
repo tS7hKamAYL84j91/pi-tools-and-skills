@@ -21,6 +21,7 @@ export interface TeamFormLimits {
 	timeoutMs?: number;
 	maxConcurrency?: number;
 	maxRetries?: number;
+	maxLoops?: number;
 }
 
 export interface TeamFormInput {
@@ -151,6 +152,16 @@ function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	if (args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
+	if (args.protocol === "research") {
+		const explorer = args.agents[0] ?? subagentIdFromTeam(args.id, "explorer");
+		const verifier = args.agents[1] ?? subagentIdFromTeam(args.id, "verifier");
+		const synthesis = args.agents[2] ?? subagentIdFromTeam(args.id, "synthesis");
+		return [
+			{ role: "explorer", subagent: explorer, ...(models.members?.[0] ? { model: models.members[0] } : {}) },
+			{ role: "verifier", subagent: verifier, ...(models.members?.[1] ? { model: models.members[1] } : {}) },
+			{ role: "synthesis", subagent: synthesis, ...(models.synthesis ? { model: models.synthesis } : {}) },
+		];
+	}
 	return args.agents.map((subagent) => ({ role: "agent", subagent }));
 }
 
@@ -260,6 +271,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 		...(args.limits?.timeoutMs !== undefined ? [`timeoutMs: ${args.limits.timeoutMs}`] : []),
 		...(args.limits?.maxConcurrency !== undefined ? [`maxConcurrency: ${args.limits.maxConcurrency}`] : []),
 		...(args.limits?.maxRetries !== undefined ? [`maxRetries: ${args.limits.maxRetries}`] : []),
+		...(args.limits?.maxLoops !== undefined ? [`maxLoops: ${args.limits.maxLoops}`] : []),
 		"---",
 		"",
 		`${args.name} team.`,
@@ -268,7 +280,7 @@ function teamFileContent(args: TeamFormInput & { id: string; name: string }): st
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const supported = new Set(["consult", "debate"]);
+	const supported = new Set(["consult", "debate", "research"]);
 	if (!supported.has(input.protocol) && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	}

@@ -28,7 +28,7 @@ interface RegisteredTool {
 	name: string;
 	execute: (
 		id: string,
-		params: { id?: string; prompt?: string; scope?: "user" | "project" },
+		params: { id?: string; prompt?: string; scope?: "user" | "project"; runId?: string; reason?: string },
 		signal?: AbortSignal,
 		onUpdate?: unknown,
 		ctx?: unknown,
@@ -108,10 +108,14 @@ describe("loadTeamRegistry", () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
+			"deep-research",
 			"llm-council",
 			"navigator",
 		]);
 		expect(registry.warnings).toEqual([]);
+		const deepResearch = requireTeam(registry, "deep-research");
+		expect(deepResearch.protocol).toBe("research");
+		expect(deepResearch.limits.maxLoops).toBe(2);
 		const defaultDebate = requireTeam(registry, "llm-council");
 		expect(defaultDebate).toMatchObject({
 			protocol: "debate",
@@ -875,6 +879,28 @@ describe("team tools", () => {
 				{ cwd: process.cwd() },
 			),
 		).rejects.toThrow(/No team "missing-team"/);
+	});
+
+	it("team_runs peeks progress and team_stop records a stop", async () => {
+		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
+		const runId = stateManager.startRun({ teamId: "deep-research", protocol: "research", prompt: "test" });
+		stateManager.recordPhaseStarted(runId, "research_loop_1", "Research loop 1/2");
+		stateManager.rehydrateFromSession({ getEntries: () => entries });
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager });
+		const peek = tools.get("team_runs");
+		const stop = tools.get("team_stop");
+		if (!peek || !stop) throw new Error("team control tools missing");
+
+		const peekResult = await peek.execute("test", {}, undefined, undefined, { cwd: process.cwd() });
+		expect(peekResult.content[0]?.text).toContain(runId);
+		expect(peekResult.content[0]?.text).toContain("research");
+
+		await stop.execute("test", { runId, reason: "bounded test stop" }, undefined, undefined, { cwd: process.cwd() });
+		const stopResult = await peek.execute("test", {}, undefined, undefined, { cwd: process.cwd() });
+		expect(stopResult.content[0]?.text).toContain("failed");
+		expect(stopResult.content[0]?.text).toContain("bounded test stop");
 	});
 
 	it("team_run rejects unknown team ids with a clear list", async () => {

@@ -30,6 +30,7 @@ describe("direct team handlers", () => {
 		expect(getTeamHandler(team({ protocol: "consult", models: { navigator: "test/nav" } }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
+		expect(getTeamHandler(team({ protocol: "research" }))?.key).toBe("research");
 		expect(getTeamHandler(team({ protocol: "telephone" }))).toBeUndefined();
 		expect(modelSlotsForTeam(team({ protocol: "telephone" }), team().models)).toEqual([]);
 		expect(promptChainsForTeam(team({ protocol: "telephone" }))).toEqual([]);
@@ -44,6 +45,11 @@ describe("direct team handlers", () => {
 		]);
 		expect(modelSlotsForTeam(team({ protocol: "consult", models: { navigator: "test/nav" } }), { navigator: "test/nav" })).toEqual([
 			{ id: "navigator", label: "Navigator model", current: "test/nav", kind: "navigator" },
+		]);
+		expect(modelSlotsForTeam(team({ protocol: "research" }), team().models)).toEqual([
+			{ id: "explorer", label: "Explorer model", current: "test/a", kind: "member", index: 0 },
+			{ id: "verifier", label: "Verifier model", current: "test/b", kind: "member", index: 1 },
+			{ id: "synthesis", label: "Synthesis model", current: "test/synthesis", kind: "synthesis" },
 		]);
 	});
 

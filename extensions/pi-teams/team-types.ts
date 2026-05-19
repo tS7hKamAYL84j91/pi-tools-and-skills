@@ -63,6 +63,7 @@ export interface TeamLimits {
 	maxFixPasses?: number;
 	maxConcurrency?: number;
 	maxRetries?: number;
+	maxLoops?: number;
 }
 
 export interface TeamSpec {

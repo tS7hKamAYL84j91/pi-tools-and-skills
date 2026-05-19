@@ -16,9 +16,12 @@ flowchart TD
 
   Runtime --> Handler[TeamHandler boundary]
   Handler --> Council[Direct council handler\nconsult/debate]
+  Handler --> Research[Direct research handler\nExplorer/Verifier feedback loops]
 
   Council --> ModelNode[Model-backed role call]
+  Research --> ModelNode
   Council --> LiveNode[agent:<name> live-agent call]
+  Research --> LiveNode
   Handler --> State[pi session custom run events]
 
   State --> Inspect[team_describe / overlay inspection]
@@ -36,10 +39,28 @@ flowchart TD
   compatibility aliases.
 - Keep direct topology functions per protocol; do not reintroduce a generic DAG
   executor unless a concrete user-visible workflow cannot be implemented as a
-  small direct handler.
-- Keep bundled protocol labels (`debate`, `consult`) as
+  small direct handler. The `research` protocol is implemented as a bounded
+  direct handler, not a generic graph runtime.
+- Keep bundled protocol labels (`debate`, `consult`, `research`) as
   configuration vocabulary, not TypeScript architecture boundaries.
 - Represent live peers explicitly as `agent:<registered-name>` role bindings.
+
+## Research protocol
+
+`deep-research` uses protocol `research`, a bounded direct loop:
+
+```text
+Explorer -> Verifier/EAM + Gap Detector -> targeted Explorer follow-up -> Synthesis
+```
+
+- `limits.maxLoops` controls Explorer/Verifier feedback loops. Default is 2;
+  runtime overrides are capped at 5.
+- Verifier output containing `VERIFIED_COMPLETE` stops loop iteration early.
+- Run progress is persisted through existing session custom events and surfaced
+  via `team_runs`.
+- `team_stop` records a stop/failure request in session state. It is a smallest
+  safe control surface; already-running child model calls still stop only at
+  normal cancellation/runtime boundaries.
 
 ## Evidence-gated future work
 

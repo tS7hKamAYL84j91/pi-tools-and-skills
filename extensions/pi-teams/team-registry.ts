@@ -147,7 +147,7 @@ function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): strin
 
 function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const roleMembers = bindings
-		.filter((binding) => roleMatches(binding.role, ["member"]) && binding.model)
+		.filter((binding) => roleMatches(binding.role, ["member", "explorer", "verifier"]) && binding.model)
 		.map((binding) => binding.model as string);
 	const members = roleMembers;
 	return {
@@ -240,6 +240,7 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
 	const maxRetries = optionalNumber(frontMatter.maxRetries);
+	const maxLoops = optionalNumber(frontMatter.maxLoops);
 	if (frontMatter.edges !== undefined || frontMatter.outputs !== undefined || frontMatter.reducer !== undefined) {
 		warnings.push(`${id}: legacy workflow fields are ignored; direct team protocols no longer execute generic workflows`);
 	}
@@ -260,6 +261,7 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 			...(maxFixPasses !== undefined ? { maxFixPasses } : {}),
 			...(optionalNumber(frontMatter.maxConcurrency) !== undefined ? { maxConcurrency: optionalNumber(frontMatter.maxConcurrency) } : {}),
 			...(maxRetries !== undefined ? { maxRetries } : {}),
+			...(maxLoops !== undefined ? { maxLoops } : {}),
 		},
 		source,
 		path: descriptor.path,
