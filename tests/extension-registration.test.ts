@@ -13,6 +13,7 @@ import kanbanExtension from "../extensions/pi-kanban/index.js";
 import matrixExtension from "../extensions/pi-matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
+import goalExtension from "../extensions/pi-goal/index.js";
 
 interface NamedRegistration {
 	name: string;
@@ -33,6 +34,7 @@ interface FakeExtensionApi {
 	registerFlag: (name: string, definition: unknown) => void;
 	on: (event: string, handler: unknown) => void;
 	getFlag: (name: string) => unknown;
+	sendMessage: (message: unknown, options?: unknown) => void;
 	sendUserMessage: (message: string, options?: unknown) => void;
 }
 
@@ -65,6 +67,9 @@ function createFakeApi(): {
 		},
 		getFlag() {
 			return undefined;
+		},
+		sendMessage() {
+			// Registration tests do not execute handlers.
 		},
 		sendUserMessage() {
 			// Registration tests do not execute handlers.
@@ -173,6 +178,23 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.events, [
 			"before_agent_start",
 			"session_shutdown",
+			"session_start",
+		]);
+	});
+
+	it("pi-goal registers its command, tools, and lifecycle hooks", () => {
+		const { api, registrations } = createFakeApi();
+
+		goalExtension(api);
+
+		expectRegistered(registrations.tools, [
+			"goal_complete",
+			"goal_get",
+		]);
+		expectRegistered(registrations.commands, ["goal"]);
+		expectRegistered(registrations.events, [
+			"agent_end",
+			"before_agent_start",
 			"session_start",
 		]);
 	});

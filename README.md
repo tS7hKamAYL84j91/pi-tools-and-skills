@@ -68,6 +68,7 @@ Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per worksp
 | **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-matrix**     | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
+| **pi-goal**       | Project | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
 
 ### Skills
 
@@ -115,6 +116,7 @@ extensions/           Extensions:
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
+  pi-goal/              Project — bounded /goal workflow and completion audit
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)
@@ -122,7 +124,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-teams`) are installed by `make setup` through this repo's local pi package entry. Project extensions (`pi-kanban`, `pi-matrix`, `pi-coas`, `pi-goal`) are added per-workspace in `.pi/settings.json`.
 
 ## Development
 

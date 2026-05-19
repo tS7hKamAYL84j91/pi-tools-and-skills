@@ -177,6 +177,36 @@ flowchart TD
 
 ---
 
+## Goal Workflow Extension
+
+```mermaid
+flowchart TD
+  User[Human / root agent] --> Command[/goal command]
+  Agent[Active agent turn] --> Tools[goal_get / goal_complete]
+  Command --> State[(.pi-goal/goal.json)]
+  Command --> Summary[(.pi-goal/GOAL.md)]
+  Command --> Todo[(.pi-goal/TODO.md)]
+  Command --> Runner[Bounded run loop]
+  Runner --> Fresh[Fresh pi session per turn]
+  Fresh --> Agent
+  Agent --> Tools
+  Tools --> State
+  Tools --> Summary
+  Agent --> Transcript[(.pi-goal/runs/YYYY/MM/DD/*)]
+  State --> Context[before_agent_start goal context]
+  Context --> Agent
+  State --> UI[status/widget progress]
+```
+
+### Context policy
+
+- `.pi-goal/` is project-local runtime state and is automatically added to `.git/info/exclude` when possible.
+- `/goal` bounds autonomous progress by turn budget; `/goal stop` requests graceful stopping at safe turn boundaries.
+- `goal_complete` is root-owned and requires concrete evidence after re-reading source requirements and checking validation state.
+- Goal text and source files are treated as untrusted input; current repository/filesystem state remains authoritative.
+
+---
+
 ## CoAS Internal Scheduler
 
 ### Goal

@@ -20,6 +20,7 @@ OWNED_EXTENSION_DIRS = [
     "pi-kanban",
     "pi-matrix",
     "pi-coas",
+    "pi-goal",
 ]
 
 
