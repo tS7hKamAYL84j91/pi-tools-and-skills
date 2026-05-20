@@ -91,6 +91,20 @@ export function createFileGoal(cwd: string, inputPath: string): GoalState {
 	return newGoal(`Complete the work described by ${sourcePath}`, sourcePath);
 }
 
+export async function createFileTodoGoal(cwd: string, inputPath: string): Promise<GoalState> {
+	const sourcePath = normalizeProjectPath(cwd, inputPath);
+	const content = (await readFile(join(cwd, sourcePath), "utf8")).trim();
+	if (!content) {
+		throw new Error(`Goal source file is empty: ${inputPath}`);
+	}
+	const objective = `Complete the work described by ${sourcePath}\n\n${content}`;
+	const paths = goalPaths(cwd);
+	await mkdir(paths.dir, { recursive: true });
+	await writeFile(paths.todoPath, renderTodoMarkdown(objective), "utf8");
+	await ensureRuntimeIgnored(cwd);
+	return newGoal(`Complete the work described by ${sourcePath}`, relative(cwd, paths.todoPath));
+}
+
 export async function createTextGoal(cwd: string, objective: string): Promise<GoalState> {
 	const cleaned = objective.trim();
 	if (!cleaned) {

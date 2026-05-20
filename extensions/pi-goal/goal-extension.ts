@@ -7,6 +7,7 @@ import { continuationPrompt, goalContextMessage, kickoffPrompt } from "./prompts
 import {
 	clearGoal,
 	createFileGoal,
+	createFileTodoGoal,
 	createTextGoal,
 	loadGoal,
 	renderGoalSummary,
@@ -132,12 +133,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			if (parsed.action === "file") {
 				const file = parseFileGoal(parsed.rest);
 				if (!file.path) {
-					ctx.ui.notify("Usage: /goal file <path> [--until-complete]", "warning");
+					ctx.ui.notify("Usage: /goal file <path> [goal start|--until-complete]", "warning");
 					return;
 				}
-				const state = createFileGoal(ctx.cwd, file.path);
-				const next = file.untilComplete ? startRun(state, UNTIL_COMPLETE_TURNS) : state;
 				if (file.untilComplete && !(await startAllowed(ctx))) return;
+				const state = file.untilComplete
+					? await createFileTodoGoal(ctx.cwd, file.path)
+					: createFileGoal(ctx.cwd, file.path);
+				const next = file.untilComplete ? startRun(state, UNTIL_COMPLETE_TURNS) : state;
 				runtime.stopRequested = false;
 				await saveGoal(ctx.cwd, next);
 				showGoal(next);
@@ -386,8 +389,8 @@ function parseCommand(args: string): ParsedCommand {
 }
 
 function parseFileGoal(args: string): FileGoalArgs {
-	const untilComplete = /(?:^|\s)--until-complete(?:\s|$)/.test(args);
-	const path = args.replace(/(?:^|\s)--until-complete(?:\s|$)/g, " ").trim();
+	const untilComplete = /(?:^|\s)(?:--until-complete|(?:goal\s+)?start)(?:\s|$)/.test(args);
+	const path = args.replace(/(?:^|\s)(?:--until-complete|(?:goal\s+)?start)(?:\s|$)/g, " ").trim();
 	return { path, untilComplete };
 }
 

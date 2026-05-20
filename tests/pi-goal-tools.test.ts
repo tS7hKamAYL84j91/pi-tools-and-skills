@@ -1,7 +1,7 @@
 /**
  * Direct behavior tests for the pi-goal extension.
  */
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -66,6 +66,24 @@ describe("pi-goal extension", () => {
 
 		expect(pi.commands.has("goal")).toBe(true);
 		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete"]);
+	});
+
+	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		await writeFile(join(tempDir, "goal.txt"), "Ship the requested file-backed goal flow.", "utf8");
+
+		await runGoalCommand(pi, "file goal.txt goal start", ctx);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as {
+			runActive: boolean;
+			turnBudget: number;
+			sourcePath: string;
+		};
+		const todo = await readFile(join(tempDir, ".pi-goal", "TODO.md"), "utf8");
+		expect(persisted).toMatchObject({ runActive: true, turnBudget: 20, sourcePath: ".pi-goal/TODO.md" });
+		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
 
 	it("/goal stop requests a graceful stop without clearing run state immediately", async () => {
