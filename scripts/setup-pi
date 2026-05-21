@@ -19,13 +19,17 @@ dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
 usage() {
 	cat <<'HELP'
-Usage: setup-pi
+Usage: setup-pi [package-name]
 
-Registers this checkout as a pi package.
+Registers this checkout as a pi package. With package-name, registers one
+user-installable extension package globally (pi-goal, pi-matrix, pi-panopticon,
+pi-teams). Project-only packages such as pi-kanban and pi-coas must be enabled
+per workspace instead.
 Runtime setup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
 
+PACKAGE_NAME=""
 for arg in "$@"; do
 	case "$arg" in
 		-h|--help)
@@ -33,9 +37,12 @@ for arg in "$@"; do
 			exit 0
 			;;
 		*)
-			red "Error: Unknown argument: $arg"
-			usage
-			exit 1
+			if [[ -n "$PACKAGE_NAME" ]]; then
+				red "Error: Unknown argument: $arg"
+				usage
+				exit 1
+			fi
+			PACKAGE_NAME="$arg"
 			;;
 	esac
 done
@@ -53,19 +60,34 @@ SKILLS_DIR="$PI_TOOLS_DIR/skills"
 EXTENSIONS_DIR="$PI_TOOLS_DIR/extensions"
 PROMPTS_DIR="$PI_TOOLS_DIR/prompts"
 
-python3 "$SCRIPT_DIR/pi-package-settings.py" register \
-	"$SETTINGS_JSON" \
-	"$PI_TOOLS_DIR" \
-	"$SKILLS_DIR" \
-	"$EXTENSIONS_DIR" \
-	"$PROMPTS_DIR"
+if [[ -n "$PACKAGE_NAME" ]]; then
+	python3 "$SCRIPT_DIR/pi-package-settings.py" register-package \
+		"$SETTINGS_JSON" \
+		"$PI_TOOLS_DIR" \
+		"$SKILLS_DIR" \
+		"$EXTENSIONS_DIR" \
+		"$PROMPTS_DIR" \
+		"$PACKAGE_NAME"
+else
+	python3 "$SCRIPT_DIR/pi-package-settings.py" register \
+		"$SETTINGS_JSON" \
+		"$PI_TOOLS_DIR" \
+		"$SKILLS_DIR" \
+		"$EXTENSIONS_DIR" \
+		"$PROMPTS_DIR"
+fi
 
 skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
 prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
-echo  "    package:    $PI_TOOLS_DIR"
-echo  "    extensions: pi-panopticon, pi-teams, pi-goal"
+if [[ -n "$PACKAGE_NAME" ]]; then
+	echo  "    package:    $PI_TOOLS_DIR/extensions/$PACKAGE_NAME"
+	echo  "    extensions: from package manifest"
+else
+	echo  "    package:    $PI_TOOLS_DIR"
+	echo  "    extensions: pi-panopticon, pi-teams, pi-goal"
+fi
 echo  "    skills:     $skill_count via package"
 echo  "    prompts:    $prompt_count via package"
 echo  "    models:     unchanged"

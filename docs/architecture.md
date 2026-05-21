@@ -51,6 +51,24 @@ The main risk is **custom framework growth**:
 
 ---
 
+## Package Setup Boundary
+
+```mermaid
+flowchart TD
+  Make[Make setup targets] --> Setup[scripts/setup-pi]
+  Setup --> Settings[~/.pi/agent/settings.json]
+  Setup --> RootPackage[pi-tools-and-skills package\nfiltered global extensions]
+  Setup --> UserPackage[Individual user packages\npi-goal/pi-matrix/pi-panopticon/pi-teams]
+  Setup -. rejects .-> ProjectOnly[Project-only packages\npi-kanban/pi-coas]
+  ProjectOnly --> Workspace[Workspace .pi/settings.json]
+```
+
+- `make setup` registers the repo package with the global operator extension allowlist.
+- `make setup-package PACKAGE=<name>` registers only user-installable extension packages.
+- `pi-kanban` and `pi-coas` remain project-only and must be enabled by the workspace that owns their state.
+
+---
+
 ## Kanban Extension
 
 ```mermaid

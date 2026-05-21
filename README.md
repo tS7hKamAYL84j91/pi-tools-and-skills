@@ -34,13 +34,14 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-teams`, and `pi-goal`. It does not alter runtime/project settings.
+The package manifest exposes `extensions/`, `skills`, and `prompts` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-teams`, and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-panopticon`, or `pi-teams`). It does not alter runtime/project settings.
 
 ### 2. Set up
 
 ```bash
-make help   # show targets
-make setup  # register extensions, skills, prompts
+make help                            # show targets
+make setup                           # register extensions, skills, prompts
+make setup-package PACKAGE=pi-matrix # register one user-installable package globally
 ```
 
 ### 3. Run pi
@@ -51,7 +52,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per workspace via that workspace's `.pi/settings.json`.
+Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via that workspace's `.pi/settings.json`; they are intentionally rejected by global individual package setup.
 
 ---
 
@@ -66,8 +67,8 @@ Add project extensions such as `pi-kanban`, `pi-matrix`, or `pi-coas` per worksp
 | **pi-panopticon** | Global  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
 | **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
 | **pi-goal**       | Global  | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
+| **pi-matrix**     | User    | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
-| **pi-matrix**     | Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
@@ -95,7 +96,9 @@ Everything goes through `make`:
 | ------------------------------------------------------------------- | ---------------------------------------------------- |
 | `make` / `make help`                                                | Show available targets                               |
 | `make setup`                                                        | Install this checkout as a local pi package          |
+| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-panopticon`, `pi-teams`) |
 | `make setup-clean`                                                  | Remove this checkout's pi package registration       |
+| `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                 |
 | `make doctor`                                                       | Run checks, tests, and gitleaks secret scans         |
 | `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%) |
 | `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                 |

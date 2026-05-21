@@ -41,8 +41,35 @@ function hasPython3(): boolean {
 	return result.status === 0;
 }
 
-function runSettingsHelper(action: "register" | "clean"): void {
+type SettingsAction = "register" | "clean" | "register-package" | "clean-package";
+
+function runSettingsHelper(action: SettingsAction, packageName?: string): void {
+	const args = [
+		SETTINGS_SCRIPT,
+		action,
+		settingsPath,
+		packageDir,
+		skillsDir,
+		extensionsDir,
+		promptsDir,
+	];
+	if (packageName !== undefined) {
+		args.push(packageName);
+	}
 	const result = spawnSync(
+		"python3",
+		args,
+		{ encoding: "utf8" },
+	);
+	if (result.status !== 0) {
+		throw new Error(
+			`pi-package-settings.py ${action} failed: ${result.stderr}`,
+		);
+	}
+}
+
+function runSettingsHelperResult(action: "register-package" | "clean-package", packageName: string) {
+	return spawnSync(
 		"python3",
 		[
 			SETTINGS_SCRIPT,
@@ -52,14 +79,10 @@ function runSettingsHelper(action: "register" | "clean"): void {
 			skillsDir,
 			extensionsDir,
 			promptsDir,
+			packageName,
 		],
 		{ encoding: "utf8" },
 	);
-	if (result.status !== 0) {
-		throw new Error(
-			`pi-package-settings.py ${action} failed: ${result.stderr}`,
-		);
-	}
 }
 
 function readSettings(): PiSettings {
@@ -92,6 +115,39 @@ describeIfPython("setup-pi package wiring", () => {
 			source: packageDir,
 			extensions: GLOBAL_EXTENSION_ALLOWLIST,
 		});
+	});
+
+	it("registers an individual user-installable package globally", () => {
+		runSettingsHelper("register-package", "pi-matrix");
+
+		const settings = readSettings();
+		expect(settings.extensions).toBeUndefined();
+		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
+	});
+
+	it("rejects project-only packages for global individual install", () => {
+		const result = runSettingsHelperResult("register-package", "pi-kanban");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("pi-kanban is project-specific");
+	});
+
+	it("cleans an individual user-installable package registration", () => {
+		writeFileSync(
+			settingsPath,
+			JSON.stringify(
+				{
+					packages: [{ source: join(packageDir, "extensions", "pi-goal") }, { source: "/external/package" }],
+				},
+				null,
+				2,
+			),
+		);
+
+		runSettingsHelper("clean-package", "pi-goal");
+
+		const settings = readSettings();
+		expect(settings.packages).toEqual([{ source: "/external/package" }]);
 	});
 
 	it("cleans legacy direct registrations for owned extensions", () => {

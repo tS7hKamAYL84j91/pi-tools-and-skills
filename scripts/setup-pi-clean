@@ -18,13 +18,15 @@ dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
 usage() {
 	cat <<'HELP'
-Usage: setup-pi-clean
+Usage: setup-pi-clean [package-name]
 
-Removes pi-tools-and-skills package and legacy direct registrations.
+Removes pi-tools-and-skills package and legacy direct registrations. With
+package-name, removes one user-installable extension package registration.
 Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
 
+PACKAGE_NAME=""
 for arg in "$@"; do
 	case "$arg" in
 		-h|--help)
@@ -32,9 +34,12 @@ for arg in "$@"; do
 			exit 0
 			;;
 		*)
-			red "Error: Unknown argument: $arg"
-			usage
-			exit 1
+			if [[ -n "$PACKAGE_NAME" ]]; then
+				red "Error: Unknown argument: $arg"
+				usage
+				exit 1
+			fi
+			PACKAGE_NAME="$arg"
 			;;
 	esac
 done
@@ -51,12 +56,22 @@ if [[ ! -f "$SETTINGS_JSON" ]]; then
 	exit 0
 fi
 
-python3 "$SCRIPT_DIR/pi-package-settings.py" clean \
-	"$SETTINGS_JSON" \
-	"$PI_TOOLS_DIR" \
-	"$PI_TOOLS_DIR/skills" \
-	"$PI_TOOLS_DIR/extensions" \
-	"$PI_TOOLS_DIR/prompts"
+if [[ -n "$PACKAGE_NAME" ]]; then
+	python3 "$SCRIPT_DIR/pi-package-settings.py" clean-package \
+		"$SETTINGS_JSON" \
+		"$PI_TOOLS_DIR" \
+		"$PI_TOOLS_DIR/skills" \
+		"$PI_TOOLS_DIR/extensions" \
+		"$PI_TOOLS_DIR/prompts" \
+		"$PACKAGE_NAME"
+else
+	python3 "$SCRIPT_DIR/pi-package-settings.py" clean \
+		"$SETTINGS_JSON" \
+		"$PI_TOOLS_DIR" \
+		"$PI_TOOLS_DIR/skills" \
+		"$PI_TOOLS_DIR/extensions" \
+		"$PI_TOOLS_DIR/prompts"
+fi
 
 green "  Cleaned $SETTINGS_JSON"
 dim "  Runtime settings were left untouched."

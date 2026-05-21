@@ -15,7 +15,7 @@ ifneq ($(filter 1 true yes,$(DRY_RUN)),)
 CLEAN_MAILBOXES_ARGS := --dry-run
 endif
 
-.PHONY: help setup setup-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch clean-mailboxes
+.PHONY: help setup setup-package setup-clean setup-package-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch clean-mailboxes
 
 ##@ General
 help: ## Show available make targets
@@ -25,8 +25,16 @@ help: ## Show available make targets
 setup: ## Register this checkout as a local pi package
 	"$(ROOT_DIR)/scripts/setup-pi"
 
+setup-package: ## Register one user-installable package globally (PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-teams)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-teams"; exit 2; }
+	"$(ROOT_DIR)/scripts/setup-pi" "$$PACKAGE"
+
 setup-clean: ## Remove this checkout's pi package registration
 	"$(ROOT_DIR)/scripts/setup-pi-clean"
+
+setup-package-clean: ## Remove one user-installable package registration (PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-teams)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-teams"; exit 2; }
+	"$(ROOT_DIR)/scripts/setup-pi-clean" "$$PACKAGE"
 
 ##@ Quality
 doctor: check test secret-scan ## Run checks, tests, and secret scans

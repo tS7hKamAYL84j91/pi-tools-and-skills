@@ -14,6 +14,18 @@ PACKAGE_EXTENSIONS = [
     "extensions/pi-goal/**",
 ]
 
+USER_INSTALLABLE_PACKAGES = {
+    "pi-goal",
+    "pi-matrix",
+    "pi-panopticon",
+    "pi-teams",
+}
+
+PROJECT_ONLY_PACKAGES = {
+    "pi-coas",
+    "pi-kanban",
+}
+
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
     "pi-teams",
@@ -104,19 +116,51 @@ def owned_extension_paths(ext_dir: str) -> set[str]:
     return paths
 
 
+def ensure_package_entry(settings: dict[str, Any], source: str, extensions: list[str] | None = None) -> None:
+    settings.setdefault("packages", [])
+    if not isinstance(settings["packages"], list):
+        settings["packages"] = []
+    sources = package_sources(source)
+    settings["packages"] = [
+        entry
+        for entry in settings["packages"]
+        if (entry.get("source") if isinstance(entry, dict) else entry) not in sources
+    ]
+    entry: dict[str, Any] = {"source": source}
+    if extensions is not None:
+        entry["extensions"] = extensions
+    settings["packages"].append(entry)
+
+
+def package_path(package_dir: str, package_name: str) -> str:
+    if package_name in PROJECT_ONLY_PACKAGES:
+        raise ValueError(f"{package_name} is project-specific and must be enabled per workspace, not globally")
+    if package_name not in USER_INSTALLABLE_PACKAGES:
+        allowed = ", ".join(sorted(USER_INSTALLABLE_PACKAGES))
+        raise ValueError(f"Unknown or non-user-installable package: {package_name}. Allowed: {allowed}")
+    return os.path.join(package_dir, "extensions", package_name)
+
+
 def register(args: list[str]) -> None:
     settings_path, package_dir, skills_dir, ext_dir, prompts_dir = args
     settings = load_settings(settings_path)
 
     remove_owned_package_entries(settings, package_dir)
-    settings.setdefault("packages", [])
-    if not isinstance(settings["packages"], list):
-        settings["packages"] = []
-    settings["packages"].append({"source": package_dir, "extensions": PACKAGE_EXTENSIONS})
+    ensure_package_entry(settings, package_dir, PACKAGE_EXTENSIONS)
 
     remove_listed(settings, "skills", {skills_dir, legacy_path(skills_dir)})
     remove_listed(settings, "prompts", {prompts_dir, legacy_path(prompts_dir)})
     remove_listed(settings, "extensions", owned_extension_paths(ext_dir))
+    save_settings(settings_path, settings)
+
+
+def register_package(args: list[str]) -> None:
+    settings_path, package_dir, _skills_dir, ext_dir, _prompts_dir, package_name = args
+    settings = load_settings(settings_path)
+    source = package_path(package_dir, package_name)
+    remove_listed(settings, "extensions", {source, legacy_path(source)})
+    remove_listed(settings, "extensions", {os.path.join(ext_dir, package_name), legacy_path(os.path.join(ext_dir, package_name))})
+    ensure_package_entry(settings, source)
     save_settings(settings_path, settings)
 
 
@@ -132,20 +176,41 @@ def clean(args: list[str]) -> None:
     print(f"  Removed packages: {removed_packages}")
 
 
+def clean_package(args: list[str]) -> None:
+    settings_path, package_dir, _skills_dir, _ext_dir, _prompts_dir, package_name = args
+    settings = load_settings(settings_path)
+    source = package_path(package_dir, package_name)
+    removed_packages = remove_owned_package_entries(settings, source)
+    save_settings(settings_path, settings)
+    print(f"  Removed packages: {removed_packages}")
+
+
 def main() -> int:
-    if len(sys.argv) != 7 or sys.argv[1] not in {"register", "clean"}:
-        print(
-            "Usage: pi-package-settings.py register|clean SETTINGS PACKAGE SKILLS EXTENSIONS PROMPTS",
-            file=sys.stderr,
-        )
-        return 2
-    action = sys.argv[1]
-    args = sys.argv[2:]
-    if action == "register":
-        register(args)
-    else:
-        clean(args)
-    return 0
+    action = sys.argv[1] if len(sys.argv) > 1 else ""
+    if action in {"register", "clean"} and len(sys.argv) == 7:
+        args = sys.argv[2:]
+        if action == "register":
+            register(args)
+        else:
+            clean(args)
+        return 0
+    if action in {"register-package", "clean-package"} and len(sys.argv) == 8:
+        args = sys.argv[2:]
+        try:
+            if action == "register-package":
+                register_package(args)
+            else:
+                clean_package(args)
+        except ValueError as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
+        return 0
+    print(
+        "Usage: pi-package-settings.py register|clean SETTINGS PACKAGE SKILLS EXTENSIONS PROMPTS\n"
+        "       pi-package-settings.py register-package|clean-package SETTINGS PACKAGE SKILLS EXTENSIONS PROMPTS NAME",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":
