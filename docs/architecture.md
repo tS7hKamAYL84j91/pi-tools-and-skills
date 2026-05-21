@@ -263,7 +263,7 @@ C4Component
 
 - `pi-coas` starts/stops an internal scheduler on session lifecycle.
 - Schedule add/remove reconciles in-memory timers.
-- `/coas-schedules`, `coas_status`, and `coas_doctor` report internal scheduler
+- `/coas-schedules`, `coas_status`, `coas_doctor`, and the compact TUI status field report internal scheduler
   state instead of crontab state.
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
 - Tests cover due-time matching and schedule prompt rendering.

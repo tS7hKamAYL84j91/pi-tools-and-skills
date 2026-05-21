@@ -105,6 +105,25 @@ describe("lifecycle", () => {
 		it("keeps workspace context after the extension prefix", () => {
 			expect(formatCoasStatusSlot("room-general")).toBe("coas: room-general");
 		});
+
+		it("includes scheduler health and active run counts when available", () => {
+			expect(formatCoasStatusSlot("exec-office", {
+				running: true,
+				enabledSchedules: 3,
+				activeRuns: 1,
+				startedAt: "2026-01-01T00:00:00Z",
+			})).toBe("coas: exec-office ✓ sch 3/1");
+		});
+
+		it("marks scheduler errors without using personality metaphors", () => {
+			expect(formatCoasStatusSlot(undefined, {
+				running: true,
+				enabledSchedules: 0,
+				activeRuns: 0,
+				startedAt: "2026-01-01T00:00:00Z",
+				lastError: "boom",
+			})).toBe("coas: on ⚠");
+		});
 	});
 });
 

@@ -7,20 +7,25 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { resolveCoasConfig } from "./config.js";
 import { pathInside, workspaceRoot } from "./store.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
+import type { SchedulerSnapshot } from "./types.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
-export function formatCoasStatusSlot(workspace?: string): string {
-	return workspace ? `coas: ${workspace}` : "coas: on ✓";
+export function formatCoasStatusSlot(workspace?: string, scheduler?: SchedulerSnapshot): string {
+	const scope = workspace ?? "on";
+	if (!scheduler) return workspace ? `coas: ${scope}` : "coas: on ✓";
+	const health = scheduler.lastError ? "⚠" : scheduler.running ? "✓" : "idle";
+	const scheduleText = scheduler.enabledSchedules > 0 ? ` sch ${scheduler.enabledSchedules}/${scheduler.activeRuns}` : "";
+	return `coas: ${scope} ${health}${scheduleText}`;
 }
 
-function updateStatus(ctx: ExtensionContext): void {
+function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): void {
 	const config = resolveCoasConfig(ctx.cwd);
 	const workspace = currentWorkspaceLabel(ctx.cwd);
 	if (!workspace && !existsSync(config.coasHome)) {
 		ctx.ui.setStatus("coas", undefined);
 		return;
 	}
-	ctx.ui.setStatus("coas", formatCoasStatusSlot(workspace));
+	ctx.ui.setStatus("coas", formatCoasStatusSlot(workspace, scheduler.snapshot()));
 }
 
 function contextInstruction(ctx: ExtensionContext): string | undefined {
@@ -41,8 +46,8 @@ function contextInstruction(ctx: ExtensionContext): string | undefined {
 
 export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
 	pi.on("session_start", async (_event, ctx) => {
-		updateStatus(ctx);
 		scheduler.start(resolveCoasConfig(ctx.cwd));
+		updateStatus(ctx, scheduler);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
@@ -51,7 +56,7 @@ export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalS
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		updateStatus(ctx);
+		updateStatus(ctx, scheduler);
 		const instruction = contextInstruction(ctx);
 		if (!instruction) return undefined;
 		return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };

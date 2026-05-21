@@ -22,6 +22,16 @@ scheduler while pi is open; no user crontab is read or modified.
 | `coas_schedule_run` | Dry-run a schedule; enabled schedules run through the internal scheduler |
 | `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler |
 
+## TUI Status
+
+When CoAS context exists, the status bar shows a compact operational field:
+
+```text
+coas: <workspace|on> <✓|idle|⚠> [sch enabled/active]
+```
+
+This is intentionally operational state only: workspace/scheduler health, enabled schedules, and active runs.
+
 ## Commands
 
 - `/coas-status`
