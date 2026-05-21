@@ -86,7 +86,7 @@ describe("pi-goal extension", () => {
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
 
-	it("/goal stop requests a graceful stop without clearing run state immediately", async () => {
+	it("/goal stop shuts down the active run immediately", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
@@ -96,12 +96,31 @@ describe("pi-goal extension", () => {
 		await runGoalCommand(pi, "stop", ctx);
 
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as { runActive: boolean };
-		expect(persisted.runActive).toBe(true);
+		expect(persisted.runActive).toBe(false);
 		expect(ctx.ui.notifications).toContainEqual({
-			message: "Goal run will stop after the current turn.",
+			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run --turns N to continue.",
 			level: "info",
 		});
-		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "goal", value: "goal: active 0/3 stopping" });
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "goal", value: "goal: active" });
+	});
+
+	it("/goal stop resolves a waiting goal loop", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		let resolveNewSession: ((value: { cancelled: boolean }) => void) | undefined;
+		ctx.newSession = () => new Promise((resolve) => {
+			resolveNewSession = resolve;
+		});
+
+		const runPromise = runGoalCommand(pi, "goal test loop shutdown", ctx);
+		await waitFor(() => resolveNewSession !== undefined);
+		await runGoalCommand(pi, "stop", ctx);
+		resolveNewSession?.({ cancelled: false });
+		await runPromise;
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
+		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 0 });
 	});
 });
 
@@ -164,6 +183,14 @@ async function runGoalCommand(pi: FakePi, args: string, ctx: FakeCommandContext)
 	const command = pi.commands.get("goal");
 	expect(command).toBeDefined();
 	await command?.handler(args, ctx);
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+	for (let i = 0; i < 20; i++) {
+		if (predicate()) return;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+	throw new Error("Timed out waiting for condition");
 }
 
 function toolNames(tools: unknown[]): string[] {

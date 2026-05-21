@@ -216,9 +216,15 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("No active goal run is in progress.", "info");
 					return;
 				}
+				const stopped = updateGoal(state, { runActive: false });
+				await saveGoal(ctx.cwd, stopped);
+				const resolve = runtime.resolve;
+				runtime.resolve = null;
 				runtime.stopRequested = true;
-				await refreshUi(ctx, state);
-				ctx.ui.notify("Goal run will stop after the current turn.", "info");
+				if (resolve) resolve([]);
+				runtime.stopRequested = false;
+				await refreshUi(ctx, stopped);
+				ctx.ui.notify(goalStoppedMessage(stopped), "info");
 				return;
 			}
 
