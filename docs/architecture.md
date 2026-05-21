@@ -77,6 +77,7 @@ flowchart TD
   Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
   Pi --> Watcher[board.log watcher]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
+  Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
   Tools --> Board[board.ts event-sourced board model]
   Watcher --> Board
@@ -102,6 +103,7 @@ flowchart TD
 - LLM-visible surface unified around `kanban_claim` (pick/claim/reassign) and
   `kanban_edit` (metadata/notes).
 - Watcher injects guidance only; does not inject board contents.
+- `/kanban` uses pi's active TUI theme with a restrained `KANBAN_BOARD_THEME` semantic remap (`default`, `focus`, `mono`).
 - `kanban_snapshot` defaults to compact output: counts, card IDs, short
   titles/owners, no descriptions or notes.
 - Full board and single-card details are explicit on-demand views.

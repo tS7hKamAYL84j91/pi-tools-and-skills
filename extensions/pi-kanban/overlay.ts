@@ -31,6 +31,7 @@ import {
 	renderDetail,
 	renderMovePicker,
 } from "./overlay-render.js";
+import { applyKanbanTheme, kanbanThemeHelp, kanbanThemeName } from "./theme.js";
 
 const DEBOUNCE_MS = 150;
 
@@ -65,6 +66,7 @@ class KanbanOverlay implements Component {
 		private done: (result: null) => void,
 	) {
 		this.board = initialBoard;
+		this.theme = applyKanbanTheme(theme);
 		this.startWatcher();
 	}
 
@@ -427,6 +429,7 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 		return;
 	}
 
+	ctx.ui.notify(`Kanban board theme: ${kanbanThemeName()} (${kanbanThemeHelp()})`, "info");
 	await ctx.ui.custom<null>(
 		(tui, theme, _kb, done) => new KanbanOverlay(tui, theme, board, done),
 		{

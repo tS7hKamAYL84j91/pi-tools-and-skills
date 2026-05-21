@@ -80,6 +80,22 @@ Files written:
 
 `kanban_claim` without `task_id` selects by: `critical → high → medium → low`, then by lowest T-NNN number within the same priority.
 
+## Board Themes
+
+The `/kanban` overlay follows pi's active TUI theme by default. Set `KANBAN_BOARD_THEME` for a small board-specific remap:
+
+| Value | Behavior |
+| ----- | -------- |
+| `default` | Use pi theme colors unchanged |
+| `focus` | Stronger active-column/border emphasis for projection or busy boards |
+| `mono` | Reduce semantic colors to text/dim for low-color terminals |
+
+Example:
+
+```bash
+KANBAN_BOARD_THEME=focus pi
+```
+
 ## Watcher
 
 `watcher.ts` watches `board.log` for filesystem changes and runs two paths:

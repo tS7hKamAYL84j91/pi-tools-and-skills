@@ -22,6 +22,7 @@ import {
 	renderDetail,
 	renderMovePicker,
 } from "../extensions/pi-kanban/overlay-render.js";
+import { applyKanbanTheme, kanbanThemeHelp } from "../extensions/pi-kanban/theme.js";
 import {
 	generateSnapshot,
 	generateSnapshotSummary,
@@ -33,6 +34,29 @@ const fakeTheme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
 } as unknown as import("@earendil-works/pi-coding-agent").Theme;
+
+const recordingTheme = {
+	fg: (name: string, text: string) => `<${name}>${text}</${name}>`,
+	bold: (text: string) => `**${text}**`,
+} as unknown as import("@earendil-works/pi-coding-agent").Theme;
+
+describe("kanban board themes", () => {
+	it("maps focus theme accents onto warning/border emphasis", () => {
+		const themed = applyKanbanTheme(recordingTheme, "focus");
+
+		expect(themed.fg("accent", "active")).toBe("<warning>active</warning>");
+		expect(themed.fg("border", "|")).toBe("<accent>|</accent>");
+	});
+
+	it("maps mono theme semantic colors to text and dim only", () => {
+		const themed = applyKanbanTheme(recordingTheme, "mono");
+
+		expect(themed.fg("error", "!!")).toBe("<text>!!</text>");
+		expect(themed.fg("warning", "!")).toBe("<text>!</text>");
+		expect(themed.fg("border", "|")).toBe("<dim>|</dim>");
+		expect(kanbanThemeHelp()).toBe("KANBAN_BOARD_THEME=default|focus|mono");
+	});
+});
 
 describe("snapshot renderers", () => {
 	let tmpDir: string;
