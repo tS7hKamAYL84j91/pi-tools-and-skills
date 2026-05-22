@@ -1,7 +1,7 @@
 /** Explicit local session spooling runner behind the T-490 manifest gate. */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import { readSessionHookState } from "./session-hook-installer.js";
 import { spoolSessionEntries, type SessionSpoolResult } from "./session-spool.js";
 
@@ -35,13 +35,6 @@ function parseJsonl(content: string): unknown[] {
 	return entries;
 }
 
-async function atomicWrite(path: string, content: string): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
-	await writeFile(tmpPath, content, "utf8");
-	await rename(tmpPath, path);
-}
-
 /** Run explicit local spooling once. No background hook or default path. */
 export async function runSessionSpoolOnce(options: SessionSpoolRunnerOptions): Promise<SessionSpoolRunnerResult> {
 	if (!options.registryDir) throw new Error("registryDir is required");
@@ -63,7 +56,5 @@ export async function runSessionSpoolOnce(options: SessionSpoolRunnerOptions): P
 		maxEvents,
 	});
 	if (!result.sessionFile) throw new Error("spool did not produce a session file");
-	const sessionContent = await readFile(result.sessionFile, "utf8");
-	await atomicWrite(result.sessionFile, sessionContent);
 	return { ...result, manifestFound: true, sourceFile, prunedFiles: 0 };
 }

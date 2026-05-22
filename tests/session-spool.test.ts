@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -37,6 +37,24 @@ describe("session log spooling", () => {
 			expect.objectContaining({ event: "message", role: "user", text: "message: review safe fixture" }),
 			expect.objectContaining({ event: "tool_call", tool: "read" }),
 		]);
+	});
+
+	it("does not leave temp files after successful atomic writes", async () => {
+		const registryDir = mkdtempSync(join(tmpdir(), "session-spool-atomic-"));
+
+		const result = await spoolSessionEntries({
+			enabled: true,
+			registryDir,
+			agentId: "atomic",
+			name: "Atomic",
+			cwd: "/repo",
+			entries: [{ message: { role: "user", content: [{ type: "text", text: "hello" }] } }],
+		});
+
+		expect(existsSync(result.registryPath ?? "")).toBe(true);
+		expect(existsSync(result.sessionFile ?? "")).toBe(true);
+		expect(existsSync(`${result.registryPath}.tmp`)).toBe(false);
+		expect(existsSync(`${result.sessionFile}.tmp`)).toBe(false);
 	});
 
 	it("applies allow-list, redaction, retention, and missing-field tolerance", async () => {

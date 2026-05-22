@@ -34,6 +34,7 @@ Prerequisites:
 - `sourceFile` must be absolute.
 - Reads JSONL best-effort; malformed lines become omitted unknown events.
 - Writes redacted, bounded Panopticon-compatible output through `spoolSessionEntries`.
+- T-497 clarified write semantics: bounded output files are written by temp-file + rename where the local filesystem supports it. Failures are propagated and best-effort temp cleanup is attempted; there is no multi-file transaction across session JSONL and registry JSON.
 - Uses manifest retention as the default max events for the single current `session.jsonl` output.
 
 ## Local private input posture
@@ -46,6 +47,7 @@ Per T-489, local private pi harness logs may be unredacted local input. This run
 - Malformed source lines are tolerated and omitted rather than aborting the run.
 - The manifest uninstall path remains `node scripts/session-spool-hook.mjs uninstall --registry-dir ...`.
 - No default hooks or background jobs are installed, so rollback is manifest removal plus deletion of explicit local registry artifacts if desired.
+- Session and registry files are individually atomic where rename is supported, but the pair is not transactional; readers must tolerate one file being newer than the other after interruption.
 - T-496 removed speculative rotated-file pruning. The runner currently writes one bounded `session.jsonl`; there are no rotated `session-N.jsonl` files to prune.
 
 ## Promotion gates

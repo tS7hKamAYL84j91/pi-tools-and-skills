@@ -1,7 +1,7 @@
 /** Opt-in session export spooling into Panopticon-compatible fixture records. */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { AgentRecord } from "./agent-registry.js";
 import { sessionEntriesToJournal, type JournalEvent } from "./session-journal.js";
 
@@ -40,6 +40,18 @@ function boundedEvents(events: readonly JournalEvent[], maxEvents: number): Jour
 	return events.slice(-limit);
 }
 
+async function atomicWriteFile(path: string, content: string): Promise<void> {
+	await mkdir(dirname(path), { recursive: true });
+	const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+	try {
+		await writeFile(tmpPath, content, "utf8");
+		await rename(tmpPath, path);
+	} catch (error) {
+		await rm(tmpPath, { force: true }).catch(() => {});
+		throw error;
+	}
+}
+
 function toSessionJsonlEvent(event: JournalEvent): Record<string, unknown> {
 	const timestamp = event.timestamp ?? Date.now();
 	if (event.type === "tool_call") {
@@ -70,7 +82,7 @@ export async function spoolSessionEntries(options: SessionSpoolOptions): Promise
 	const registryPath = join(options.registryDir, `${agentId}.json`);
 	await mkdir(agentDir, { recursive: true });
 	const jsonl = `${events.map((event) => JSON.stringify(toSessionJsonlEvent(event))).join("\n")}\n`;
-	await writeFile(sessionFile, jsonl, "utf8");
+	await atomicWriteFile(sessionFile, jsonl);
 	const record: AgentRecord = {
 		id: agentId,
 		name: safeName(options.name),
@@ -84,6 +96,6 @@ export async function spoolSessionEntries(options: SessionSpoolOptions): Promise
 		visibility: "scoped",
 		sessionFile,
 	};
-	await writeFile(registryPath, JSON.stringify(record, null, 2), "utf8");
+	await atomicWriteFile(registryPath, `${JSON.stringify(record, null, 2)}\n`);
 	return { spooled: true, agentId, registryPath, sessionFile, eventsWritten: events.length, omitted: journal.omitted + (journal.events.length - events.length) };
 }
