@@ -67,6 +67,16 @@ PASS. The reviewed code preserves the intended safety posture:
 - no external providers/network export;
 - approval gates default-disabled and not globally mandatory.
 
+## Recurrence recommendation
+
+Make this review recurring, but lightweight:
+
+- **Cadence:** monthly, or after any batch of 5+ production-code commits touching `lib/`, `extensions/`, or `scripts/`.
+- **Trigger/scope:** review the diff since the previous review tag/report; focus on Clean Architecture, KISS, YAGNI, DRY, and safety/control posture for newly added production code.
+- **Mechanism:** use a **kanban template** plus repo-level checklist first. Do not create a CoAS schedule yet; a schedule is useful only after the checklist stabilizes and the team wants automated reminders.
+- **Checklist location suggestion:** future follow-up may add `docs/checklists/code-principles-review.md` and a kanban template task titled “Clean Architecture/KISS/YAGNI/DRY review”.
+- **No implementation in T-494:** this report records the recommendation only; no schedule/config was added.
+
 ## ADR recommendations
 
 No new ADR is required for this review-only artifact. ADR recommendations:
