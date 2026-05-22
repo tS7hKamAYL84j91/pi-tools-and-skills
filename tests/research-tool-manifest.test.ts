@@ -22,11 +22,32 @@ describe("research tool manifests", () => {
 		expect(tools.map((tool) => tool.name)).toEqual(["arxiv_search", "fetch_content", "github_search", "semantic_scholar_search", "web_read"]);
 		expect(tools[0]?.inputs[0]).toMatchObject({ name: "query", type: "string", required: true });
 		expect(tools[0]?.artifactPersistence).toMatchObject({ persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId" });
+		expect(tools[0]?.resultSemantics).toMatchObject({ statusField: "status", artifactWriteStatusField: "artifactWriteStatus" });
 		expect(tools.at(-1)?.safety.join(" ")).toContain("No live network call");
 	});
 
-	it("accepts a valid minimal local manifest", () => {
-		expect(() => validateResearchToolManifest(valid())).not.toThrow();
+	it("accepts valid success, partial, failure, and empty result semantics metadata", () => {
+		const outputs = [
+			{ name: "status", type: "string" as const, description: "One of success, partial, failure, or empty." },
+			{ name: "results", type: "array" as const, description: "Synthetic results; empty when status is empty." },
+			{ name: "sourceId", type: "string" as const, description: "Required for success and partial results." },
+			{ name: "errorCategory", type: "string" as const, description: "Set for partial or failure results." },
+			{ name: "errorMessage", type: "string" as const, description: "Bounded error summary." },
+			{ name: "retryable", type: "boolean" as const, description: "Whether retry is useful." },
+			{ name: "artifactWriteStatus", type: "string" as const, description: "Artifact write expectation." },
+		];
+		expect(() => validateResearchToolManifest(valid({
+			outputs,
+			artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["results", "sourceId"] },
+			resultSemantics: {
+				statusField: "status",
+				errorCategoryField: "errorCategory",
+				errorMessageField: "errorMessage",
+				retryableField: "retryable",
+				artifactWriteStatusField: "artifactWriteStatus",
+				sourceIdRequiredStatuses: ["success", "partial"],
+			},
+		}))).not.toThrow();
 	});
 
 	it("rejects invalid or missing fields", () => {
@@ -38,6 +59,12 @@ describe("research tool manifests", () => {
 		expect(() => validateResearchToolManifest(valid({ artifactPersistence: { persistToWorkspace: true } }))).toThrow(/artifactPath/);
 		expect(() => validateResearchToolManifest(valid({ artifactPersistence: { sourceIdField: "missing" } }))).toThrow(/sourceIdField/);
 		expect(() => validateResearchToolManifest(valid({ artifactPersistence: { provenanceFields: ["missing"] } }))).toThrow(/provenanceFields/);
+		expect(() => validateResearchToolManifest(valid({ resultSemantics: { statusField: "missing" } }))).toThrow(/statusField/);
+		expect(() => validateResearchToolManifest(valid({
+			artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json" },
+			resultSemantics: { statusField: "results" },
+		}))).toThrow(/artifactWriteStatusField/);
+		expect(() => validateResearchToolManifest(valid({ resultSemantics: { statusField: "results", sourceIdRequiredStatuses: ["success"] } }))).toThrow(/sourceIdRequiredStatuses/);
 	});
 
 	it("rejects duplicate discovered names", () => {

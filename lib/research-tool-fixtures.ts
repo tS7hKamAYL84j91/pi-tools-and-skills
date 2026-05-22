@@ -1,6 +1,25 @@
 /** Synthetic local research-tool manifest fixtures. No live API wiring. */
 
-import type { ResearchToolManifestEntry } from "./research-tool-manifest.js";
+import type { ResearchToolField, ResearchToolManifestEntry, ResearchToolResultSemantics } from "./research-tool-manifest.js";
+
+const SEARCH_RESULT_FIELDS: ResearchToolField[] = [
+	{ name: "status", type: "string", description: "One of success, partial, failure, or empty." },
+	{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
+	{ name: "sourceId", type: "string", description: "Stable source identifier namespace for persisted paper metadata." },
+	{ name: "errorCategory", type: "string", description: "User/tool-visible error category when status is partial or failure." },
+	{ name: "errorMessage", type: "string", description: "Bounded user/tool-visible error summary." },
+	{ name: "retryable", type: "boolean", description: "Whether retry may resolve a partial or failed result." },
+	{ name: "artifactWriteStatus", type: "string", description: "Expected artifact persistence outcome for this result." },
+];
+
+const PERSISTED_RESULT_SEMANTICS: ResearchToolResultSemantics = {
+	statusField: "status",
+	errorCategoryField: "errorCategory",
+	errorMessageField: "errorMessage",
+	retryableField: "retryable",
+	artifactWriteStatusField: "artifactWriteStatus",
+	sourceIdRequiredStatuses: ["success", "partial"],
+};
 
 /** @public */
 export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
@@ -11,11 +30,9 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 		inputs: [
 			{ name: "query", type: "string", required: true, description: "Academic search query." },
 		],
-		outputs: [
-			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
-			{ name: "sourceId", type: "string", description: "Stable source identifier namespace for persisted paper metadata." },
-		],
+		outputs: SEARCH_RESULT_FIELDS,
 		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["papers", "sourceId"] },
+		resultSemantics: PERSISTED_RESULT_SEMANTICS,
 		safety: ["No arXiv API call is implemented by this fixture.", "Future implementation must persist source identifiers when used for evidence."],
 		invocationNotes: ["Use for discovery only; verify primary text before citing."],
 		tags: ["academic", "search", "read-only"],
@@ -28,10 +45,16 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 			{ name: "source", type: "string", required: true, description: "Approved URL or source identifier." },
 		],
 		outputs: [
+			{ name: "status", type: "string", description: "One of success, partial, failure, or empty." },
 			{ name: "content", type: "string", description: "Bounded extracted primary text." },
 			{ name: "sourceId", type: "string", description: "Stable source identifier for claim binding." },
+			{ name: "errorCategory", type: "string", description: "User/tool-visible error category when status is partial or failure." },
+			{ name: "errorMessage", type: "string", description: "Bounded user/tool-visible error summary." },
+			{ name: "retryable", type: "boolean", description: "Whether retry may resolve a partial or failed result." },
+			{ name: "artifactWriteStatus", type: "string", description: "Expected artifact persistence outcome for this result." },
 		],
 		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["sourceId"] },
+		resultSemantics: PERSISTED_RESULT_SEMANTICS,
 		safety: ["No live fetch is implemented by this fixture.", "Future implementation must bound bytes and treat content as untrusted input."],
 		invocationNotes: ["Use after discovery to verify primary text and preserve citation bindings."],
 		tags: ["content", "read-only"],
@@ -43,11 +66,9 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 		inputs: [
 			{ name: "query", type: "string", required: true, description: "Academic search query." },
 		],
-		outputs: [
-			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
-			{ name: "sourceId", type: "string", description: "Stable source identifier namespace for persisted paper metadata." },
-		],
+		outputs: SEARCH_RESULT_FIELDS,
 		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["papers", "sourceId"] },
+		resultSemantics: PERSISTED_RESULT_SEMANTICS,
 		safety: ["No Semantic Scholar API call or credential use is implemented by this fixture.", "Future implementation must respect provider rate limits and persist source identifiers."],
 		invocationNotes: ["Use for discovery only; verify primary text before citing."],
 		tags: ["academic", "search", "read-only"],

@@ -20,6 +20,19 @@ export interface ResearchArtifactPersistence {
 }
 
 /** @public */
+export type ResearchToolResultStatus = "success" | "partial" | "failure" | "empty";
+
+/** @public */
+export interface ResearchToolResultSemantics {
+	statusField: string;
+	errorCategoryField?: string;
+	errorMessageField?: string;
+	retryableField?: string;
+	artifactWriteStatusField?: string;
+	sourceIdRequiredStatuses?: ResearchToolResultStatus[];
+}
+
+/** @public */
 export interface ResearchToolManifestEntry {
 	schemaVersion: typeof RESEARCH_TOOL_MANIFEST_SCHEMA_VERSION;
 	name: string;
@@ -29,6 +42,7 @@ export interface ResearchToolManifestEntry {
 	safety: string[];
 	invocationNotes: string[];
 	artifactPersistence?: ResearchArtifactPersistence;
+	resultSemantics?: ResearchToolResultSemantics;
 	tags?: string[];
 }
 
@@ -46,19 +60,40 @@ function fieldNames(fields: readonly ResearchToolField[]): Set<string> {
 	return new Set(fields.map((field) => field.name));
 }
 
+function assertOutputReference(outputs: ReadonlySet<string>, field: string, label: string): void {
+	assertNonEmpty(field, label);
+	if (!outputs.has(field)) throw new Error(`${label} must reference an output field`);
+}
+
 function validateArtifactPersistence(entry: ResearchToolManifestEntry): void {
 	const artifact = entry.artifactPersistence;
 	if (artifact === undefined) return;
 	if (artifact.persistToWorkspace === true) assertNonEmpty(artifact.artifactPath ?? "", "artifactPersistence.artifactPath");
 	if (artifact.artifactPath !== undefined) assertNonEmpty(artifact.artifactPath, "artifactPersistence.artifactPath");
 	const outputs = fieldNames(entry.outputs);
-	if (artifact.sourceIdField !== undefined) {
-		assertNonEmpty(artifact.sourceIdField, "artifactPersistence.sourceIdField");
-		if (!outputs.has(artifact.sourceIdField)) throw new Error("artifactPersistence.sourceIdField must reference an output field");
-	}
+	if (artifact.sourceIdField !== undefined) assertOutputReference(outputs, artifact.sourceIdField, "artifactPersistence.sourceIdField");
 	for (const [index, field] of (artifact.provenanceFields ?? []).entries()) {
-		assertNonEmpty(field, `artifactPersistence.provenanceFields[${index}]`);
-		if (!outputs.has(field)) throw new Error(`artifactPersistence.provenanceFields[${index}] must reference an output field`);
+		assertOutputReference(outputs, field, `artifactPersistence.provenanceFields[${index}]`);
+	}
+}
+
+function validateResultSemantics(entry: ResearchToolManifestEntry): void {
+	const result = entry.resultSemantics;
+	if (result === undefined) return;
+	const outputs = fieldNames(entry.outputs);
+	assertOutputReference(outputs, result.statusField, "resultSemantics.statusField");
+	if (result.errorCategoryField !== undefined) assertOutputReference(outputs, result.errorCategoryField, "resultSemantics.errorCategoryField");
+	if (result.errorMessageField !== undefined) assertOutputReference(outputs, result.errorMessageField, "resultSemantics.errorMessageField");
+	if (result.retryableField !== undefined) assertOutputReference(outputs, result.retryableField, "resultSemantics.retryableField");
+	if (result.artifactWriteStatusField !== undefined) assertOutputReference(outputs, result.artifactWriteStatusField, "resultSemantics.artifactWriteStatusField");
+	if (entry.artifactPersistence?.persistToWorkspace === true && result.artifactWriteStatusField === undefined) {
+		throw new Error("resultSemantics.artifactWriteStatusField is required when artifact persistence is expected");
+	}
+	for (const [index, status] of (result.sourceIdRequiredStatuses ?? []).entries()) {
+		if (!["success", "partial", "failure", "empty"].includes(status)) throw new Error(`resultSemantics.sourceIdRequiredStatuses[${index}] is unsupported`);
+	}
+	if ((result.sourceIdRequiredStatuses?.length ?? 0) > 0 && entry.artifactPersistence?.sourceIdField === undefined) {
+		throw new Error("resultSemantics.sourceIdRequiredStatuses requires artifactPersistence.sourceIdField");
 	}
 }
 
@@ -77,6 +112,7 @@ export function validateResearchToolManifest(entry: ResearchToolManifestEntry): 
 	for (const [index, item] of entry.safety.entries()) assertNonEmpty(item, `safety[${index}]`);
 	for (const [index, item] of entry.invocationNotes.entries()) assertNonEmpty(item, `invocationNotes[${index}]`);
 	validateArtifactPersistence(entry);
+	validateResultSemantics(entry);
 }
 
 /** Return validated manifests sorted by name for deterministic discovery. */

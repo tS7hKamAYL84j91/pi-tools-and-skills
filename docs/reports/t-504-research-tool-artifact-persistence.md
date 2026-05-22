@@ -41,7 +41,7 @@ Deep-research protocol policy remains in `pi-teams`; verifier/synthesis behavior
 Before migration/promotion:
 
 - define runtime artifact write/readback semantics;
-- define error/output behavior for failed or partial persistence;
+- promote T-505 error/output metadata into runtime behavior only after design review;
 - decide whether artifact metadata becomes a public plugin contract;
 - review any network-backed or credential-backed implementation separately.
 
