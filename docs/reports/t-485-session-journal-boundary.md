@@ -37,6 +37,14 @@ Unknown records are represented as omitted timeline entries. Missing fields are 
 
 Recommended next step: keep journals in a separate read-only episodic store first. Do not feed them into role memory until a later decision validates retrieval, retention, deletion, and user-visible controls. If adopted later, role memory should consume only approved local-private or redacted journal summaries according to the chosen boundary; raw session exports must not be committed, pushed, shared, or sent to external providers without approval.
 
+## Internal adapter contract tests
+
+T-500 added internal guardrail tests for the current session-entry -> journal ->
+Panopticon-compatible spool adapters. These tests pin redaction, bounded summaries,
+and local claim-check metadata handling before any future promotion. They are not
+a public schema commitment and do not enable hooks, external export, or memory
+retrieval.
+
 ## ADR disposition
 
 `adr_deferred_rationale`: ADR is deferred because this is a non-runtime POC utility and report, not an adopted durable pi session export boundary. ADR becomes required when a tool/command/lifecycle hook reads real session files, persists journal artifacts, exposes unredacted logs beyond a local private harness, or feeds journals into memory/retrieval.

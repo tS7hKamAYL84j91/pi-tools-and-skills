@@ -50,6 +50,13 @@ Per T-489, local private pi harness logs may be unredacted local input. This run
 - Session and registry files are individually atomic where rename is supported, but the pair is not transactional; readers must tolerate one file being newer than the other after interruption.
 - T-496 removed speculative rotated-file pruning. The runner currently writes one bounded `session.jsonl`; there are no rotated `session-N.jsonl` files to prune.
 
+## Internal adapter contract tests
+
+T-500 added guardrail tests across the journal and spooling adapters. They verify
+that redaction and bounded-output behavior survive conversion into
+Panopticon-compatible session JSONL. These tests are internal safety rails only;
+they do not promote session events to a public durable API.
+
 ## Promotion gates
 
 Before promotion beyond POC:
