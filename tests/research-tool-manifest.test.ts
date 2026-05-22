@@ -19,9 +19,9 @@ describe("research tool manifests", () => {
 	it("validates bundled fixture definitions", () => {
 		const tools = discoverResearchTools(RESEARCH_TOOL_FIXTURES);
 
-		expect(tools.map((tool) => tool.name)).toEqual(["github_search", "web_read"]);
+		expect(tools.map((tool) => tool.name)).toEqual(["arxiv_search", "fetch_content", "github_search", "semantic_scholar_search", "web_read"]);
 		expect(tools[0]?.inputs[0]).toMatchObject({ name: "query", type: "string", required: true });
-		expect(tools[1]?.safety.join(" ")).toContain("No live network call");
+		expect(tools.at(-1)?.safety.join(" ")).toContain("No live network call");
 	});
 
 	it("accepts a valid minimal local manifest", () => {

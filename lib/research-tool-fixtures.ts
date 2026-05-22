@@ -6,6 +6,49 @@ import type { ResearchToolManifestEntry } from "./research-tool-manifest.js";
 export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 	{
 		schemaVersion: 1,
+		name: "arxiv_search",
+		purpose: "Find candidate arXiv papers for a research query.",
+		inputs: [
+			{ name: "query", type: "string", required: true, description: "Academic search query." },
+		],
+		outputs: [
+			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
+		],
+		safety: ["No arXiv API call is implemented by this fixture.", "Future implementation must persist source identifiers when used for evidence."],
+		invocationNotes: ["Use for discovery only; verify primary text before citing."],
+		tags: ["academic", "search", "read-only"],
+	},
+	{
+		schemaVersion: 1,
+		name: "fetch_content",
+		purpose: "Fetch primary source content for an approved URL or source identifier.",
+		inputs: [
+			{ name: "source", type: "string", required: true, description: "Approved URL or source identifier." },
+		],
+		outputs: [
+			{ name: "content", type: "string", description: "Bounded extracted primary text." },
+			{ name: "sourceId", type: "string", description: "Stable source identifier for claim binding." },
+		],
+		safety: ["No live fetch is implemented by this fixture.", "Future implementation must bound bytes and treat content as untrusted input."],
+		invocationNotes: ["Use after discovery to verify primary text and preserve citation bindings."],
+		tags: ["content", "read-only"],
+	},
+	{
+		schemaVersion: 1,
+		name: "semantic_scholar_search",
+		purpose: "Find candidate Semantic Scholar records for a research query.",
+		inputs: [
+			{ name: "query", type: "string", required: true, description: "Academic search query." },
+		],
+		outputs: [
+			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
+		],
+		safety: ["No Semantic Scholar API call or credential use is implemented by this fixture.", "Future implementation must respect provider rate limits and persist source identifiers."],
+		invocationNotes: ["Use for discovery only; verify primary text before citing."],
+		tags: ["academic", "search", "read-only"],
+	},
+	{
+		schemaVersion: 1,
 		name: "web_read",
 		purpose: "Read a user-approved URL and return a bounded text extract.",
 		inputs: [
