@@ -14,7 +14,7 @@ Recommendation: **not ready for migration/deletion**. The manifest shape is usef
 |---|---|---|---|---|---|
 | `extensions/pi-teams/config/agents/deep-research-explorer.md` | Break prompt into verifiable checklist | model instruction, no tool manifest | Not a tool; workflow/prompt behavior | Should remain in team prompt/protocol, not tool manifest | Keep in team/subagent descriptor. |
 | `deep-research-explorer.md` | Gather evidence with `arxiv_search`, `semantic_scholar_search`, `fetch_content` | implicit tool names | Added metadata fixtures for `arxiv_search`, `semantic_scholar_search`, `fetch_content` | Metadata only; no invocation, auth, rate limits, or persistence | Future T-195 design must bind actual implementations to these names. |
-| `deep-research-explorer.md` | Optional `pi-research` tools with `persistToWorkspace: true` | workspace persistence to `sources/manifest.json` | Current manifest has outputs/safety but no persistence flag or artifact contract | Missing explicit `persistToWorkspace`/artifact output semantics | Add artifact/persistence metadata before replacing prompt-only guidance. |
+| `deep-research-explorer.md` | Optional `pi-research` tools with `persistToWorkspace: true` | workspace persistence to `sources/manifest.json` | T-504 adds local `artifactPersistence` metadata with `persistToWorkspace`, `artifactPath`, `sourceIdField`, and provenance fields | Metadata only; no runtime persistence or artifact write semantics | Define runtime artifact write/read behavior before replacing prompt-only guidance. |
 | `deep-research-explorer.md` | `web_search` / `fetch_content` findings and URLs recorded | implicit search/read behavior | `web_read` fixture partially maps URL read; no `web_search` fixture yet | Search vs read are distinct; search result ranking/error behavior not represented | Add `web_search` metadata only when a local/non-live fixture is needed. |
 | `deep-research-verifier.md` | Cross-reference Explorer findings with `sources/manifest.json` | reads workspace artifact | Not represented as a research tool | Manifest lacks artifact dependency/claim-check input metadata | Add artifact dependency field or keep as team protocol behavior. |
 | `deep-research-verifier.md` | Reject generated summaries; require primary text/sourceId/URL | safety/evidence policy | safety constraints can express policy | Not machine-enforced by manifest | Future evaluator/gate needed before migration. |
@@ -33,7 +33,7 @@ The manifest fields map well for **discoverability**:
 
 The manifest does **not** yet cover full migration requirements:
 
-- workspace persistence (`persistToWorkspace`, `sources/manifest.json`);
+- runtime workspace persistence behavior for `artifactPersistence` metadata;
 - error taxonomy and retry/rate-limit behavior;
 - source trust/citation quality levels;
 - live provider availability/credentials;
@@ -59,7 +59,7 @@ All fixtures explicitly state that no live API/network/credential behavior is im
 
 **Not ready for T-195 deletion/migration.** Proceed in small gates:
 
-1. Add a manifest field/design note for artifact persistence and source identifiers.
+1. Define runtime artifact persistence and readback semantics for T-504 metadata.
 2. Add local fixture metadata for `web_search` if current prompts keep referencing it.
 3. Define error/output semantics for failed searches, empty results, rate limits, and malformed source content.
 4. Only then consider a local tool registry adapter that maps manifest entries to real implementations.

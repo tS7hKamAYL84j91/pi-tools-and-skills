@@ -13,7 +13,9 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 		],
 		outputs: [
 			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
+			{ name: "sourceId", type: "string", description: "Stable source identifier namespace for persisted paper metadata." },
 		],
+		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["papers", "sourceId"] },
 		safety: ["No arXiv API call is implemented by this fixture.", "Future implementation must persist source identifiers when used for evidence."],
 		invocationNotes: ["Use for discovery only; verify primary text before citing."],
 		tags: ["academic", "search", "read-only"],
@@ -29,6 +31,7 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 			{ name: "content", type: "string", description: "Bounded extracted primary text." },
 			{ name: "sourceId", type: "string", description: "Stable source identifier for claim binding." },
 		],
+		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["sourceId"] },
 		safety: ["No live fetch is implemented by this fixture.", "Future implementation must bound bytes and treat content as untrusted input."],
 		invocationNotes: ["Use after discovery to verify primary text and preserve citation bindings."],
 		tags: ["content", "read-only"],
@@ -42,7 +45,9 @@ export const RESEARCH_TOOL_FIXTURES: readonly ResearchToolManifestEntry[] = [
 		],
 		outputs: [
 			{ name: "papers", type: "array", description: "Bounded list of candidate paper metadata and source IDs." },
+			{ name: "sourceId", type: "string", description: "Stable source identifier namespace for persisted paper metadata." },
 		],
+		artifactPersistence: { persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId", provenanceFields: ["papers", "sourceId"] },
 		safety: ["No Semantic Scholar API call or credential use is implemented by this fixture.", "Future implementation must respect provider rate limits and persist source identifiers."],
 		invocationNotes: ["Use for discovery only; verify primary text before citing."],
 		tags: ["academic", "search", "read-only"],

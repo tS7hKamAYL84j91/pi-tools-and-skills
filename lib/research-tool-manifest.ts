@@ -12,6 +12,14 @@ export interface ResearchToolField {
 }
 
 /** @public */
+export interface ResearchArtifactPersistence {
+	persistToWorkspace?: boolean;
+	artifactPath?: string;
+	sourceIdField?: string;
+	provenanceFields?: string[];
+}
+
+/** @public */
 export interface ResearchToolManifestEntry {
 	schemaVersion: typeof RESEARCH_TOOL_MANIFEST_SCHEMA_VERSION;
 	name: string;
@@ -20,6 +28,7 @@ export interface ResearchToolManifestEntry {
 	outputs: ResearchToolField[];
 	safety: string[];
 	invocationNotes: string[];
+	artifactPersistence?: ResearchArtifactPersistence;
 	tags?: string[];
 }
 
@@ -31,6 +40,26 @@ function validateField(field: ResearchToolField, label: string): void {
 	assertNonEmpty(field.name, `${label}.name`);
 	assertNonEmpty(field.description, `${label}.description`);
 	if (!["string", "number", "boolean", "object", "array"].includes(field.type)) throw new Error(`${label}.type is unsupported`);
+}
+
+function fieldNames(fields: readonly ResearchToolField[]): Set<string> {
+	return new Set(fields.map((field) => field.name));
+}
+
+function validateArtifactPersistence(entry: ResearchToolManifestEntry): void {
+	const artifact = entry.artifactPersistence;
+	if (artifact === undefined) return;
+	if (artifact.persistToWorkspace === true) assertNonEmpty(artifact.artifactPath ?? "", "artifactPersistence.artifactPath");
+	if (artifact.artifactPath !== undefined) assertNonEmpty(artifact.artifactPath, "artifactPersistence.artifactPath");
+	const outputs = fieldNames(entry.outputs);
+	if (artifact.sourceIdField !== undefined) {
+		assertNonEmpty(artifact.sourceIdField, "artifactPersistence.sourceIdField");
+		if (!outputs.has(artifact.sourceIdField)) throw new Error("artifactPersistence.sourceIdField must reference an output field");
+	}
+	for (const [index, field] of (artifact.provenanceFields ?? []).entries()) {
+		assertNonEmpty(field, `artifactPersistence.provenanceFields[${index}]`);
+		if (!outputs.has(field)) throw new Error(`artifactPersistence.provenanceFields[${index}] must reference an output field`);
+	}
 }
 
 /** Validate one research tool manifest entry. */
@@ -47,6 +76,7 @@ export function validateResearchToolManifest(entry: ResearchToolManifestEntry): 
 	for (const [index, field] of entry.outputs.entries()) validateField(field, `outputs[${index}]`);
 	for (const [index, item] of entry.safety.entries()) assertNonEmpty(item, `safety[${index}]`);
 	for (const [index, item] of entry.invocationNotes.entries()) assertNonEmpty(item, `invocationNotes[${index}]`);
+	validateArtifactPersistence(entry);
 }
 
 /** Return validated manifests sorted by name for deterministic discovery. */

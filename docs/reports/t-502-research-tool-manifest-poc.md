@@ -23,14 +23,18 @@ Each entry includes:
 - `outputs[]`: `name`, `type`, optional `required`, `description`
 - `safety[]`
 - `invocationNotes[]`
+- optional `artifactPersistence`: `persistToWorkspace`, `artifactPath`, `sourceIdField`, `provenanceFields[]`
 - optional `tags[]`
 
 Fixture entries:
 
-- `web_read` — metadata-only read of a user-approved URL.
+- `arxiv_search` — metadata-only academic search with `sourceId` persistence metadata.
+- `fetch_content` — metadata-only primary content fetch with `sourceId` persistence metadata.
 - `github_search` — metadata-only public repository search.
+- `semantic_scholar_search` — metadata-only academic search with `sourceId` persistence metadata.
+- `web_read` — metadata-only read of a user-approved URL.
 
-Both fixtures explicitly state that no live network/API/credential behavior is implemented.
+All fixtures explicitly state that no live network/API/credential behavior is implemented. T-504 adds persistence metadata only; it does not persist artifacts at runtime.
 
 ## Relationship to T-195
 
