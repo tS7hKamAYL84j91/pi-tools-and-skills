@@ -33,7 +33,7 @@ describe("session spool runner", () => {
 
 		const result = await runSessionSpoolOnce({ registryDir: dir, sourceFile: source, agentId: "claude-local", name: "Claude Local", cwd: dir });
 
-		expect(result).toMatchObject({ spooled: true, manifestFound: true, eventsWritten: 2 });
+		expect(result).toMatchObject({ spooled: true, manifestFound: true, eventsWritten: 2, prunedFiles: 0 });
 		const output = readFileSync(result.sessionFile ?? "", "utf8");
 		expect(output).not.toContain(email);
 		expect(output).toContain("rawPayload=[OMITTED]");

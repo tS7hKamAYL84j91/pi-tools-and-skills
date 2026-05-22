@@ -34,7 +34,7 @@ Prerequisites:
 - `sourceFile` must be absolute.
 - Reads JSONL best-effort; malformed lines become omitted unknown events.
 - Writes redacted, bounded Panopticon-compatible output through `spoolSessionEntries`.
-- Uses manifest retention as the default max events.
+- Uses manifest retention as the default max events for the single current `session.jsonl` output.
 
 ## Local private input posture
 
@@ -46,6 +46,7 @@ Per T-489, local private pi harness logs may be unredacted local input. This run
 - Malformed source lines are tolerated and omitted rather than aborting the run.
 - The manifest uninstall path remains `node scripts/session-spool-hook.mjs uninstall --registry-dir ...`.
 - No default hooks or background jobs are installed, so rollback is manifest removal plus deletion of explicit local registry artifacts if desired.
+- T-496 removed speculative rotated-file pruning. The runner currently writes one bounded `session.jsonl`; there are no rotated `session-N.jsonl` files to prune.
 
 ## Promotion gates
 
@@ -53,5 +54,5 @@ Before promotion beyond POC:
 
 - Add a dedicated CLI wrapper if needed by the real harness.
 - Define exact source lifecycle for pi vs Claude Code.
-- Add pruning tests against real rotated output names if retention expands beyond a single session file.
+- Add pruning behavior only if real rotated output names are introduced.
 - Re-review unredacted output separately if ever proposed.

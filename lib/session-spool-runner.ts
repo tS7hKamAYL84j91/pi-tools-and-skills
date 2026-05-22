@@ -1,7 +1,7 @@
 /** Explicit local session spooling runner behind the T-490 manifest gate. */
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { readSessionHookState } from "./session-hook-installer.js";
 import { spoolSessionEntries, type SessionSpoolResult } from "./session-spool.js";
 
@@ -42,23 +42,6 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 	await rename(tmpPath, path);
 }
 
-async function pruneSessionFiles(agentDir: string, keep: number): Promise<number> {
-	let pruned = 0;
-	const keepFiles = new Set(["session.jsonl"]);
-	for (let index = keep; index < 100; index++) keepFiles.add(`session-${index}.jsonl`);
-	try {
-		for (let index = 0; index < Math.max(0, 100 - keep); index++) {
-			const stale = join(agentDir, `session-${index}.jsonl`);
-			await rm(stale, { force: true });
-			pruned++;
-		}
-	} catch {
-		// Best effort; exact count is not safety critical.
-	}
-	void keepFiles;
-	return pruned;
-}
-
 /** Run explicit local spooling once. No background hook or default path. */
 export async function runSessionSpoolOnce(options: SessionSpoolRunnerOptions): Promise<SessionSpoolRunnerResult> {
 	if (!options.registryDir) throw new Error("registryDir is required");
@@ -82,6 +65,5 @@ export async function runSessionSpoolOnce(options: SessionSpoolRunnerOptions): P
 	if (!result.sessionFile) throw new Error("spool did not produce a session file");
 	const sessionContent = await readFile(result.sessionFile, "utf8");
 	await atomicWrite(result.sessionFile, sessionContent);
-	const prunedFiles = await pruneSessionFiles(dirname(result.sessionFile), Math.min(maxEvents, manifest.retentionEvents));
-	return { ...result, manifestFound: true, sourceFile, prunedFiles };
+	return { ...result, manifestFound: true, sourceFile, prunedFiles: 0 };
 }
