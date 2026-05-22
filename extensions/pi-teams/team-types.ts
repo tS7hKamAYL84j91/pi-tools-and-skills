@@ -58,6 +58,12 @@ export interface TeamModelSlotSpec {
 	label?: string;
 }
 
+export interface TeamApprovalConfig {
+	enabled?: boolean;
+	owner?: string;
+	source?: "human" | "orchestrator" | "policy";
+}
+
 export interface TeamLimits {
 	timeoutMs?: number;
 	maxFixPasses?: number;
@@ -79,6 +85,7 @@ export interface TeamSpec {
 	agentBindings: TeamAgentBinding[];
 	models: TeamModels;
 	limits: TeamLimits;
+	approval?: TeamApprovalConfig;
 	source: TeamSource;
 	path: string;
 }

@@ -45,6 +45,35 @@ flowchart TD
   configuration vocabulary, not TypeScript architecture boundaries.
 - Represent live peers explicitly as `agent:<registered-name>` role bindings.
 
+## Configuration and model validation contract
+
+Precedence is explicit and narrow:
+
+1. Built-in extension config is the baseline.
+2. User `.pi` settings may add `teams.roots`.
+3. Project/workspace settings may add later roots for that workspace.
+4. Later roots override earlier prompt/team defaults when ids collide.
+5. Team manifest config overrides defaults for that team.
+6. Runtime `team_run` parameters override team manifest models/limits for that run only.
+7. Handler fallbacks are documented safety fallbacks, not hidden provider discovery:
+   debate synthesis may fall back to the first member model; research verifier
+   and synthesis may fall back to explorer only when no explicit model exists.
+
+Config-time validation checks manifest shape, supported enum values, non-empty
+required fields, approval-gate opt-in shape, and model-id syntax (`provider/model`).
+It does not prove that a provider/model is currently installed or available;
+provider availability remains a runtime model-call failure surfaced by the node
+runner.
+
+Configs without explicit `.pi`-backed roots continue to use bundled defaults.
+Migration is additive: create a `.pi/settings.json` or project settings entry with
+`teams.roots`, then move authored v2 team manifests into that root. Legacy v1 or
+implicit graph config is not migrated automatically.
+
+Approval gates from T-308 are default-disabled. A team may declare `approval` only
+as explicit opt-in metadata; this cleanup does not make gates globally mandatory
+or wire them into default team execution.
+
 ## Research protocol
 
 `deep-research` uses protocol `research`, a bounded direct loop:
