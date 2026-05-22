@@ -46,7 +46,7 @@ function detailKindToObservable(kind: TeamRunDetailKind): TeamObservabilityEvent
 function approvalStatus(data: Record<string, unknown> | undefined): TeamObservabilityEventKind | undefined {
 	const status = data?.approval;
 	if (status === "required" || status === "requires_approval") return "approval_required";
-	if (status === "approved" || status === "rejected") return "approval_result";
+	if (status === "approved" || status === "rejected" || status === "expired") return "approval_result";
 	return undefined;
 }
 
