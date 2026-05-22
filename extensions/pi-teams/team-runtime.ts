@@ -168,7 +168,7 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		parameters: Type.Object({}),
 		async execute() {
 			const runs = stateManager.list();
-			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length}${run.error ? ` error=${run.error}` : ""}`);
+			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`);
 			return okText(lines.length ? lines.join("\n") : "No team runs in current session state.", { runs });
 		},
 	});

@@ -31,6 +31,19 @@ export interface ModelRun {
 	error?: string;
 }
 
+export type TeamRunDetailKind = "trace" | "handoff" | "fallback" | "artifact" | "error";
+
+export interface TeamRunDetailRecord {
+	kind: TeamRunDetailKind;
+	phaseId?: string;
+	nodeId?: string;
+	message: string;
+	data?: Record<string, unknown>;
+	artifactUri?: string;
+	error?: string;
+	timestamp: number;
+}
+
 export interface TeamRunNodeRecord {
 	phaseId: string;
 	nodeId: string;
@@ -55,6 +68,7 @@ export interface TeamRunRecord {
 	orchestratorPid: number;
 	phases: string[];
 	nodes: TeamRunNodeRecord[];
+	details: TeamRunDetailRecord[];
 	summary?: string;
 	error?: string;
 	stopReason?: string;

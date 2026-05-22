@@ -2,10 +2,14 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { isPidAlive } from "../../lib/agent-registry.js";
-import type { TeamParticipant, TeamRunNodeRecord, TeamRunRecord } from "./types.js";
+import type { TeamParticipant, TeamRunDetailKind, TeamRunDetailRecord, TeamRunNodeRecord, TeamRunRecord } from "./types.js";
 
 /** @public */
 export const TEAM_RUN_CUSTOM_TYPE = "pi-teams:run";
+/** @public */
+export const TEAM_RUN_EVENT_SCHEMA_VERSION = 1;
+/** @public */
+export const TEAM_RUN_RECORD_VERSION = 1;
 const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 
 /** @public */
@@ -13,6 +17,7 @@ export type TeamRunEventKind =
 	| "run_started"
 	| "phase_started"
 	| "node_completed"
+	| "run_detail"
 	| "stop_requested"
 	| "run_stopped"
 	| "run_completed"
@@ -20,7 +25,7 @@ export type TeamRunEventKind =
 	| "run_tombstoned";
 
 interface TeamRunEventBase {
-	schemaVersion: 1;
+	schemaVersion: typeof TEAM_RUN_EVENT_SCHEMA_VERSION;
 	kind: TeamRunEventKind;
 	runId: string;
 	seq: number;
@@ -57,6 +62,18 @@ export interface TeamRunNodeCompletedEvent extends TeamRunEventBase {
 	outputChars: number;
 	outputSha256: string;
 	outputTruncated: boolean;
+	error?: string;
+}
+
+/** @public */
+export interface TeamRunDetailEvent extends TeamRunEventBase {
+	kind: "run_detail";
+	detailKind: TeamRunDetailKind;
+	phaseId?: string;
+	nodeId?: string;
+	message: string;
+	data?: Record<string, unknown>;
+	artifactUri?: string;
 	error?: string;
 }
 
@@ -100,6 +117,7 @@ export type TeamRunEvent =
 	| TeamRunStartedEvent
 	| TeamRunPhaseStartedEvent
 	| TeamRunNodeCompletedEvent
+	| TeamRunDetailEvent
 	| TeamRunStopRequestedEvent
 	| TeamRunStoppedEvent
 	| TeamRunCompletedEvent
@@ -128,6 +146,16 @@ interface RecordNodeArgs {
 	error?: string;
 }
 
+interface RecordDetailArgs {
+	kind: TeamRunDetailKind;
+	phaseId?: string;
+	nodeId?: string;
+	message: string;
+	data?: Record<string, unknown>;
+	artifactUri?: string;
+	error?: string;
+}
+
 interface SessionEntryLike {
 	type: string;
 	customType?: string;
@@ -153,7 +181,7 @@ function boundedOutput(output: string): Pick<TeamRunNodeCompletedEvent, "output"
 }
 
 function isRunEvent(value: unknown): value is TeamRunEvent {
-	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === 1 && typeof (value as { kind?: unknown }).kind === "string" && typeof (value as { runId?: unknown }).runId === "string";
+	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === TEAM_RUN_EVENT_SCHEMA_VERSION && typeof (value as { kind?: unknown }).kind === "string" && typeof (value as { runId?: unknown }).runId === "string";
 }
 
 function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {
@@ -169,10 +197,23 @@ function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {
 	};
 }
 
+function detailRecord(event: TeamRunDetailEvent): TeamRunDetailRecord {
+	return {
+		kind: event.detailKind,
+		...(event.phaseId ? { phaseId: event.phaseId } : {}),
+		...(event.nodeId ? { nodeId: event.nodeId } : {}),
+		message: event.message,
+		...(event.data ? { data: event.data } : {}),
+		...(event.artifactUri ? { artifactUri: event.artifactUri } : {}),
+		...(event.error ? { error: event.error } : {}),
+		timestamp: event.timestamp,
+	};
+}
+
 function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): void {
 	if (event.kind === "run_started") {
 		records.set(event.runId, {
-			version: 1,
+			version: TEAM_RUN_RECORD_VERSION,
 			id: event.runId,
 			team: event.teamId,
 			protocol: event.protocol,
@@ -182,6 +223,7 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 			orchestratorPid: event.orchestratorPid,
 			phases: [],
 			nodes: [],
+			details: [],
 		});
 		return;
 	}
@@ -192,6 +234,9 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 		if (!record.phases.includes(event.phaseId)) record.phases.push(event.phaseId);
 	} else if (event.kind === "node_completed") {
 		record.nodes.push(nodeRecord(event));
+		if (!event.ok && event.error) record.details.push(detailRecord({ ...event, kind: "run_detail", detailKind: "error", message: event.error }));
+	} else if (event.kind === "run_detail") {
+		record.details.push(detailRecord(event));
 	} else if (event.kind === "stop_requested") {
 		record.status = "stopping";
 		record.stopReason = event.reason;
@@ -239,7 +284,7 @@ export class TeamStateManager {
 	private appendEvent(event: Record<string, unknown> & { kind: TeamRunEventKind; runId: string }): void {
 		const full = {
 			...event,
-			schemaVersion: 1 as const,
+			schemaVersion: TEAM_RUN_EVENT_SCHEMA_VERSION,
 			seq: this.nextSeq(event.runId),
 			timestamp: Date.now(),
 			orchestratorPid: process.pid,
@@ -277,6 +322,20 @@ export class TeamStateManager {
 			ok: args.ok,
 			durationMs: args.durationMs,
 			...boundedOutput(args.output),
+			...(args.error ? { error: args.error } : {}),
+		});
+	}
+
+	recordDetail(runId: string, args: RecordDetailArgs): void {
+		this.appendEvent({
+			kind: "run_detail",
+			runId,
+			detailKind: args.kind,
+			message: args.message,
+			...(args.phaseId ? { phaseId: args.phaseId } : {}),
+			...(args.nodeId ? { nodeId: args.nodeId } : {}),
+			...(args.data ? { data: args.data } : {}),
+			...(args.artifactUri ? { artifactUri: args.artifactUri } : {}),
 			...(args.error ? { error: args.error } : {}),
 		});
 	}

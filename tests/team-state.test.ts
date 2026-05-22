@@ -94,6 +94,57 @@ describe("TeamStateManager", () => {
 		expect(nodeEvent.outputTruncated).toBe(true);
 	});
 
+	it("records structured run detail events", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+
+		writer.recordDetail(runId, {
+			kind: "handoff",
+			phaseId: "research_loop_1",
+			message: "verifier gaps handed to explorer",
+			data: { loop: 1 },
+			artifactUri: "session://team-runs/run/details/1",
+		});
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(entries.at(-1)?.data).toMatchObject({ kind: "run_detail", detailKind: "handoff", schemaVersion: 1 });
+		expect(reader.get(runId)?.details).toEqual([
+			expect.objectContaining({
+				kind: "handoff",
+				phaseId: "research_loop_1",
+				message: "verifier gaps handed to explorer",
+				data: { loop: 1 },
+				artifactUri: "session://team-runs/run/details/1",
+			}),
+		]);
+	});
+
+	it("projects failed node errors into detail records", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "debate", prompt: "x" });
+		writer.recordNodeCompleted(runId, {
+			phaseId: "debate",
+			nodeId: "critic",
+			role: "critic",
+			model: "test/model",
+			ok: false,
+			durationMs: 1,
+			output: "failed",
+			error: "provider timeout",
+		});
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.get(runId)?.details).toEqual([
+			expect.objectContaining({ kind: "error", phaseId: "debate", nodeId: "critic", message: "provider timeout" }),
+		]);
+	});
+
 	it("reduces generic phases and nodes into records", () => {
 		const entries: CustomEntry[] = [];
 		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });

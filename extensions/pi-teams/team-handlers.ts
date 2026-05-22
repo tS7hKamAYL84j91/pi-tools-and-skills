@@ -99,6 +99,10 @@ function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId)
 	if (args.runId) args.stateManager.recordPhaseStarted(args.runId, phaseId, label);
 }
 
+function recordDetail(args: TeamHandlerRunArgs, kind: "trace" | "handoff" | "fallback" | "artifact" | "error", message: string, data?: Record<string, unknown>): void {
+	if (args.runId) args.stateManager.recordDetail(args.runId, { kind, message, ...(data ? { data } : {}) });
+}
+
 function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: NodeRun): void {
 	if (!args.runId) return;
 	args.stateManager.recordNodeCompleted(args.runId, {
@@ -223,6 +227,7 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 	const settings = resolveTeamSettings();
 	const binding = requireBinding(args.team, ["navigator"]);
 	const model = args.params.models?.navigator ?? args.team.models.navigator ?? (isLiveAgentRef(binding.subagent) ? liveAgentModel(binding.subagent) : settings.defaultConsult?.navigator);
+	recordDetail(args, "trace", "consult navigator selected", { role: binding.role, model });
 	if (!model) throw new Error("consult teams need a navigator model or live-agent binding.");
 	const chains = promptChains(args.team, councilSlots(args.team));
 	const parent = await currentPanopticonRecord(args.ctx.cwd);
@@ -265,7 +270,9 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const settings = resolveTeamSettings();
 	const memberModels = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
 	if (memberModels.length === 0) throw new Error("debate teams need at least one member model.");
-	const synthesisModel = args.params.models?.synthesis ?? args.team.models.synthesis ?? settings.defaultSynthesis ?? memberModels[0];
+	const explicitSynthesis = args.params.models?.synthesis ?? args.team.models.synthesis ?? settings.defaultSynthesis;
+	const synthesisModel = explicitSynthesis ?? memberModels[0];
+	if (!explicitSynthesis && synthesisModel) recordDetail(args, "fallback", "debate synthesis model fell back to first member model", { model: synthesisModel });
 	if (!synthesisModel) throw new Error("debate teams need a synthesis model.");
 	const chains = promptChains(args.team, councilSlots(args.team));
 	const parent = await currentPanopticonRecord(args.ctx.cwd);
@@ -290,6 +297,7 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 		return runTeamNode({ binding, role: binding.role, model, prompt, systemPrompt: chainText(chains, "critique.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
 	for (const node of critiques) recordNode(args, "debate", node);
+	recordDetail(args, "handoff", "debate generation and critique outputs handed to synthesis", { generation: generation.length, critiques: critiques.length });
 	const synthesisPrompt = renderJoinedSynthesisPrompt({ originalPrompt: args.params.prompt, generation: okGeneration, critiques: participantsFromRuns(critiques.filter((node) => node.ok)), members, template: chainText(chains, "synthesis.template").split("\n") });
 	const synthesis = await runTeamNode({ binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" }, role: "synthesis", model: synthesisModel, prompt: synthesisPrompt, systemPrompt: chainText(chains, "synthesis.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	recordNode(args, "debate", synthesis);
@@ -300,8 +308,12 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const settings = resolveTeamSettings();
 	const explorerModel = args.params.models?.members?.[0] ?? args.team.models.members?.[0] ?? settings.defaultMembers[0];
-	const verifierModel = args.params.models?.members?.[1] ?? args.team.models.members?.[1] ?? args.team.models.synthesis ?? settings.defaultMembers[1] ?? explorerModel;
-	const synthesisModel = args.params.models?.synthesis ?? args.team.models.synthesis ?? settings.defaultSynthesis ?? explorerModel;
+	const explicitVerifier = args.params.models?.members?.[1] ?? args.team.models.members?.[1] ?? args.team.models.synthesis ?? settings.defaultMembers[1];
+	const verifierModel = explicitVerifier ?? explorerModel;
+	const explicitSynthesis = args.params.models?.synthesis ?? args.team.models.synthesis ?? settings.defaultSynthesis;
+	const synthesisModel = explicitSynthesis ?? explorerModel;
+	if (!explicitVerifier && verifierModel) recordDetail(args, "fallback", "research verifier model fell back to explorer model", { model: verifierModel });
+	if (!explicitSynthesis && synthesisModel) recordDetail(args, "fallback", "research synthesis model fell back to explorer model", { model: synthesisModel });
 	if (!explorerModel || !verifierModel || !synthesisModel) throw new Error("research teams need explorer, verifier, and synthesis models.");
 	const maxLoops = boundedLoopCount(args.params.limits?.maxLoops ?? args.team.limits.maxLoops);
 	const chains = promptChains(args.team, councilSlots(args.team));
@@ -354,7 +366,11 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		verifierOutput = verifier.output;
 		if (!verifier.ok) return okText(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
 		if (stopRequested(args)) return stoppedResult(args, nodes);
-		if (verifier.output.includes("VERIFIED_COMPLETE")) break;
+		if (verifier.output.includes("VERIFIED_COMPLETE")) {
+			recordDetail(args, "trace", "research verifier marked evidence complete", { loop });
+			break;
+		}
+		recordDetail(args, "handoff", "research verifier gaps handed to next explorer pass", { loop });
 		nextPrompt = `Original research request:\n${args.params.prompt}\n\nPrevious Explorer output:\n${explorer.output}\n\nVerifier gap report:\n${verifier.output}\n\nRun targeted follow-up only for the cited gaps. Preserve existing verified evidence and add new source bindings.`;
 	}
 	if (stopRequested(args)) return stoppedResult(args, nodes);
