@@ -23,7 +23,7 @@ Artifacts:
    ```bash
    npx tsx lib/session-spool-runner-cli.ts \
      --registry-dir /absolute/local/registry \
-     --source-file /absolute/local/session.jsonl \
+     --source-file relative/path/under-pi-session-root.jsonl \
      --agent-id claude-local \
      --name "Claude Local" \
      --cwd "$PWD" \
@@ -39,7 +39,8 @@ No step installs a real hook or background process.
 ## Approved behavior
 
 - Explicit one-shot local invocation only.
-- Absolute source file and explicit local registry dir.
+- Source file resolved under canonical `~/.pi/agent/sessions/` by default, or under explicit synthetic `--source-root` for tests.
+- Explicit local registry dir.
 - Installed manifest gate required.
 - Redacted, bounded Panopticon-compatible output.
 - Local private pi harness logs may be unredacted input under T-489 while they remain local.
@@ -48,6 +49,7 @@ No step installs a real hook or background process.
 
 - Default/global hook installation.
 - Background/daemon execution.
+- Mutating, pruning, or committing live private logs.
 - Reading live private logs in tests or committed fixtures.
 - Network/shared output or external provider export.
 - Unredacted output in Panopticon/cross-agent surfaces.

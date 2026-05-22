@@ -22,6 +22,18 @@ retention, visibility, and activation gates.
 A real session-spooling hook may be implemented only as an explicit local opt-in
 integration. No global/default hook is adopted by this ADR.
 
+T-506 addendum: the canonical source root for approved local pi session-log
+spooling is now the real pi session directory:
+
+```text
+~/.pi/agent/sessions/
+```
+
+The earlier isolated-source POC framing is superseded for this path. The runner
+may accept a relative source path resolved inside that root, or an explicit test
+source root for synthetic fixtures. It must not mutate, rewrite, prune, or
+otherwise manage canonical session logs.
+
 ### Hook source of truth
 
 The hook source of truth is a local manifest in the explicit registry directory:
@@ -34,7 +46,9 @@ The manifest records version, hook name, registry dir, retention cap, install
 time, and posture. Future real hook code must treat this manifest as advisory
 local state, not as permission to read or export arbitrary logs. The invoking
 process must still pass the concrete session source path or parsed event stream
-explicitly.
+explicitly. For the approved local pi path, relative source paths are resolved
+under `~/.pi/agent/sessions/` unless a test-only/synthetic `sourceRoot` is
+provided.
 
 ### Invocation lifecycle
 
@@ -63,8 +77,9 @@ must not include raw private payloads.
 
 Local private pi harness/session logs may be read unredacted by a local-only hook
 runner on the same machine. This is trusted personal software. The allowed input
-boundary does not imply permission to share, commit, push, or externally process
-those logs.
+boundary does not imply permission to share, commit, push, externally process, or
+cross-agent expose raw logs. Canonical logs under `~/.pi/agent/sessions/` remain
+source-of-truth input only; derived output must be separate.
 
 ### Output boundary
 

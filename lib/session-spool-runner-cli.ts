@@ -6,6 +6,7 @@ import { runSessionSpoolOnce } from "./session-spool-runner.js";
 interface CliArgs {
 	registryDir?: string;
 	sourceFile?: string;
+	sourceRoot?: string;
 	agentId?: string;
 	name?: string;
 	cwd?: string;
@@ -14,7 +15,7 @@ interface CliArgs {
 
 function usage(): string {
 	return [
-		"Usage: npx tsx lib/session-spool-runner-cli.ts --registry-dir <absolute-dir> --source-file <absolute-jsonl> --agent-id <id> --name <display-name> --cwd <cwd> [--max-events N]",
+		"Usage: npx tsx lib/session-spool-runner-cli.ts --registry-dir <absolute-dir> --source-file <relative-or-absolute-jsonl> --agent-id <id> --name <display-name> --cwd <cwd> [--source-root <dir>] [--max-events N]",
 		"",
 		"Explicit local POC only. Requires an installed session-spool-hook manifest; no default/background hook is enabled.",
 	].join("\n");
@@ -30,6 +31,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
 		index++;
 		if (flag === "--registry-dir") args.registryDir = value;
 		else if (flag === "--source-file") args.sourceFile = value;
+		else if (flag === "--source-root") args.sourceRoot = value;
 		else if (flag === "--agent-id") args.agentId = value;
 		else if (flag === "--name") args.name = value;
 		else if (flag === "--cwd") args.cwd = value;
@@ -45,6 +47,7 @@ export async function runSessionSpoolRunnerCli(argv: readonly string[]): Promise
 	return runSessionSpoolOnce({
 		registryDir: args.registryDir,
 		sourceFile: args.sourceFile,
+		...(args.sourceRoot !== undefined ? { sourceRoot: args.sourceRoot } : {}),
 		agentId: args.agentId,
 		name: args.name,
 		cwd: args.cwd,

@@ -7,6 +7,8 @@ ADR: `docs/adr/017-session-spooling-hook-lifecycle.md`
 
 T-492 implements a real local one-shot runner behind the T-490 manifest gate. It is explicit invocation only: no default enablement, no background process, no real hook install, and no network/shared output.
 
+T-506 updates the source posture: the canonical/default source root for approved local pi session spooling is `~/.pi/agent/sessions/`. The runner reads from that root by default and keeps derived output in the configured registry directory.
+
 Artifacts:
 
 - `lib/session-spool-runner.ts` — `runSessionSpoolOnce(...)` one-shot runner.
@@ -24,14 +26,15 @@ npx tsx -e 'import { runSessionSpoolOnce } from "./lib/session-spool-runner.ts";
 Prerequisites:
 
 1. Install the local manifest with `node scripts/session-spool-hook.mjs install --registry-dir /absolute/local/registry`.
-2. Provide an explicit absolute `sourceFile` path.
+2. Provide an explicit `sourceFile` path. Relative paths resolve under `~/.pi/agent/sessions/`; tests may pass an explicit synthetic `sourceRoot`.
 3. Keep source and output local unless a separate approval allows broader exposure.
 
 ## Boundary
 
 - Requires explicit `registryDir`, `sourceFile`, `agentId`, `name`, and `cwd`.
 - Requires the T-490 manifest in the registry dir.
-- `sourceFile` must be absolute.
+- Default source root is `~/.pi/agent/sessions/`; `sourceFile` must resolve inside the selected source root.
+- The runner never mutates, rewrites, prunes, or deletes canonical session logs.
 - Reads JSONL best-effort; malformed lines become omitted unknown events.
 - Writes redacted, bounded Panopticon-compatible output through `spoolSessionEntries`.
 - T-497 clarified write semantics: bounded output files are written by temp-file + rename where the local filesystem supports it. Failures are propagated and best-effort temp cleanup is attempted; there is no multi-file transaction across session JSONL and registry JSON.
@@ -43,7 +46,7 @@ Per T-489, local private pi harness logs may be unredacted local input. This run
 
 ## Failure and rollback
 
-- Missing manifest or non-absolute source fails before writing output.
+- Missing manifest or source paths outside the source root fail before writing output.
 - Malformed source lines are tolerated and omitted rather than aborting the run.
 - The manifest uninstall path remains `node scripts/session-spool-hook.mjs uninstall --registry-dir ...`.
 - No default hooks or background jobs are installed, so rollback is manifest removal plus deletion of explicit local registry artifacts if desired.

@@ -17,8 +17,8 @@ describe("session spool runner", () => {
 		const dir = mkdtempSync(join(tmpdir(), "session-runner-gate-"));
 		const source = sourceFile(dir, []);
 
-		await expect(runSessionSpoolOnce({ registryDir: dir, sourceFile: "relative.jsonl", agentId: "a", name: "A", cwd: dir })).rejects.toThrow(/absolute/);
-		await expect(runSessionSpoolOnce({ registryDir: dir, sourceFile: source, agentId: "a", name: "A", cwd: dir })).rejects.toThrow(/manifest/);
+		await expect(runSessionSpoolOnce({ registryDir: dir, sourceFile: "../outside.jsonl", sourceRoot: dir, agentId: "a", name: "A", cwd: dir })).rejects.toThrow(/sourceFile must stay inside sourceRoot/);
+		await expect(runSessionSpoolOnce({ registryDir: dir, sourceFile: source, sourceRoot: dir, agentId: "a", name: "A", cwd: dir })).rejects.toThrow(/manifest/);
 	});
 
 	it("spools redacted bounded output readable by Panopticon session parser", async () => {
@@ -31,13 +31,15 @@ describe("session spool runner", () => {
 			{ message: { role: "assistant", timestamp: 3, content: [{ type: "text", text: "last event" }] } },
 		]);
 
-		const result = await runSessionSpoolOnce({ registryDir: dir, sourceFile: source, agentId: "claude-local", name: "Claude Local", cwd: dir });
+		const before = readFileSync(source, "utf8");
+		const result = await runSessionSpoolOnce({ registryDir: dir, sourceFile: "source.jsonl", sourceRoot: dir, agentId: "claude-local", name: "Claude Local", cwd: dir });
 
 		expect(result).toMatchObject({ spooled: true, manifestFound: true, eventsWritten: 2, prunedFiles: 0 });
 		const output = readFileSync(result.sessionFile ?? "", "utf8");
 		expect(output).not.toContain(email);
 		expect(output).toContain("rawPayload=[OMITTED]");
 		expect(readSessionLog(result.sessionFile ?? "", 10)).toHaveLength(2);
+		expect(readFileSync(source, "utf8")).toBe(before);
 	});
 
 	it("handles malformed source lines and uninstall rollback", async () => {
@@ -46,7 +48,7 @@ describe("session spool runner", () => {
 		const path = join(dir, "source.jsonl");
 		writeFileSync(path, "{not-json}\n", "utf8");
 
-		const result = await runSessionSpoolOnce({ registryDir: dir, sourceFile: path, agentId: "bad", name: "Bad", cwd: dir });
+		const result = await runSessionSpoolOnce({ registryDir: dir, sourceFile: path, sourceRoot: dir, agentId: "bad", name: "Bad", cwd: dir });
 
 		expect(result.omitted).toBeGreaterThan(0);
 		expect(existsSync(result.registryPath ?? "")).toBe(true);

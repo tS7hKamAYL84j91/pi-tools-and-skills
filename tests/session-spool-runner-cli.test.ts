@@ -11,7 +11,7 @@ describe("session spool runner CLI", () => {
 		const dir = mkdtempSync(join(tmpdir(), "session-runner-cli-missing-"));
 		const source = join(dir, "source.jsonl");
 		writeFileSync(source, "", "utf8");
-		await expect(runSessionSpoolRunnerCli(["--registry-dir", dir, "--source-file", source, "--agent-id", "a", "--name", "A", "--cwd", dir])).rejects.toThrow(/manifest/);
+		await expect(runSessionSpoolRunnerCli(["--registry-dir", dir, "--source-root", dir, "--source-file", "source.jsonl", "--agent-id", "a", "--name", "A", "--cwd", dir])).rejects.toThrow(/manifest/);
 	});
 
 	it("invokes the runner explicitly", async () => {
@@ -21,7 +21,7 @@ describe("session spool runner CLI", () => {
 		writeFileSync(source, `${JSON.stringify({ message: { role: "user", content: [{ type: "text", text: "hello cli" }] } })}\n`, "utf8");
 		await manageSessionSpoolHook("install", { registryDir });
 
-		const result = await runSessionSpoolRunnerCli(["--registry-dir", registryDir, "--source-file", source, "--agent-id", "cli", "--name", "CLI", "--cwd", dir, "--max-events", "1"]);
+		const result = await runSessionSpoolRunnerCli(["--registry-dir", registryDir, "--source-root", dir, "--source-file", "source.jsonl", "--agent-id", "cli", "--name", "CLI", "--cwd", dir, "--max-events", "1"]);
 
 		expect(result).toMatchObject({ spooled: true, manifestFound: true, eventsWritten: 1 });
 	});
