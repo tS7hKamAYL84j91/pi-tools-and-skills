@@ -62,6 +62,11 @@ export async function validateSessionHookConfig(config: SessionHookConfig): Prom
 	return { registryDir, hookPath, retentionEvents, hookName: config.hookName ?? "session-spool-local" };
 }
 
+export async function readSessionHookState(registryDir: string): Promise<SessionHookState | undefined> {
+	const resolved = await validateSessionHookConfig({ registryDir });
+	return readState(resolved.hookPath);
+}
+
 async function readState(hookPath: string): Promise<SessionHookState | undefined> {
 	try {
 		return JSON.parse(await readFile(hookPath, "utf8")) as SessionHookState;
