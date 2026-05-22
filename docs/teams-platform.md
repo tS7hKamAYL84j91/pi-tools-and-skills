@@ -87,9 +87,13 @@ Stable record fields:
 - `details[]`: structured operational details with `kind` (`trace`, `handoff`,
   `fallback`, `artifact`, `error`), optional `phaseId`/`nodeId`, `message`,
   optional `data`, optional `artifactUri`, optional `error`, and `timestamp`.
+  Handler-emitted v1 details include `phaseId`/`nodeId` when the detail maps to
+  a known phase or node; broader run-scope details may use contextual `data`.
 
 Claim-check/artifact pointers should use `details[].artifactUri`; large node
 outputs continue to be bounded and hash-addressed in node completion events.
+`artifact` is reserved for claim-check records; current built-in handlers do
+not emit artifact details unless an artifact URI is available.
 
 ## Evidence-gated future work
 

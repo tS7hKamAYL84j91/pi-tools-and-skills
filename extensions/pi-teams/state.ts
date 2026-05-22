@@ -180,8 +180,15 @@ function boundedOutput(output: string): Pick<TeamRunNodeCompletedEvent, "output"
 	};
 }
 
+function isTeamRunDetailKind(value: unknown): value is TeamRunDetailKind {
+	return value === "trace" || value === "handoff" || value === "fallback" || value === "artifact" || value === "error";
+}
+
 function isRunEvent(value: unknown): value is TeamRunEvent {
-	return value !== null && typeof value === "object" && (value as { schemaVersion?: unknown }).schemaVersion === TEAM_RUN_EVENT_SCHEMA_VERSION && typeof (value as { kind?: unknown }).kind === "string" && typeof (value as { runId?: unknown }).runId === "string";
+	if (value === null || typeof value !== "object") return false;
+	const event = value as { schemaVersion?: unknown; kind?: unknown; runId?: unknown; detailKind?: unknown };
+	if (event.schemaVersion !== TEAM_RUN_EVENT_SCHEMA_VERSION || typeof event.kind !== "string" || typeof event.runId !== "string") return false;
+	return event.kind !== "run_detail" || isTeamRunDetailKind(event.detailKind);
 }
 
 function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {

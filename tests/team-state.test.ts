@@ -235,6 +235,27 @@ describe("TeamStateManager", () => {
 		expect(reader.list()).toEqual([]);
 	});
 
+	it("ignores malformed run_detail entries without a valid detailKind", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		entries.push({
+			type: "custom",
+			customType: TEAM_RUN_CUSTOM_TYPE,
+			data: { schemaVersion: 1, kind: "run_detail", runId, seq: 2, timestamp: Date.now(), orchestratorPid: process.pid, message: "missing detailKind" },
+		});
+		entries.push({
+			type: "custom",
+			customType: TEAM_RUN_CUSTOM_TYPE,
+			data: { schemaVersion: 1, kind: "run_detail", detailKind: "bogus", runId, seq: 3, timestamp: Date.now(), orchestratorPid: process.pid, message: "bad detailKind" },
+		});
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.get(runId)?.details).toEqual([]);
+	});
+
 	it("uses getEntries when getBranch is unavailable", () => {
 		const entries: CustomEntry[] = [];
 		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });

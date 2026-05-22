@@ -92,6 +92,20 @@ async function runResearchWithStop(stopRole?: string) {
 }
 
 describe("research protocol stop boundaries", () => {
+	it("records handler-emitted detail events in the final run record", async () => {
+		await runResearchWithStop();
+
+		expect(activeStateManager.get(activeRunId)?.details).toContainEqual(
+			expect.objectContaining({
+				kind: "handoff",
+				phaseId: "research_loop_1",
+				nodeId: "explorer_2",
+				message: "research verifier gaps handed to next explorer pass",
+				data: { loop: 1 },
+			}),
+		);
+	});
+
 	it("stops before starting when a stop is already requested", async () => {
 		callRoles.length = 0;
 		activeEntries = [];
