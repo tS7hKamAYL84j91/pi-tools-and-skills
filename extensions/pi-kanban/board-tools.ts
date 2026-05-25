@@ -24,6 +24,102 @@ import {
 	generateTaskDetail,
 } from "./snapshot.js";
 
+async function executeSnapshot(
+	detail?: string,
+	task_id?: string,
+): Promise<ToolResult> {
+	const board = await parseBoard();
+	const snapshot = generateSnapshot(board);
+	const view = task_id ? "task" : (detail ?? "compact");
+	let returnedView: string;
+	if (task_id) {
+		returnedView = generateTaskDetail(board, task_id);
+	} else if (view === "full") {
+		returnedView = snapshot;
+	} else {
+		returnedView = generateSnapshotSummary(board);
+	}
+	const sp = snapshotPath();
+	await writeFileAtomic(sp, snapshot);
+	await logAppend(
+		`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
+	);
+	// Auto-compaction checkpoint: snapshot is the natural housekeeping moment
+	const compactResult = await compactIfNeeded(
+		board,
+		board.totalEvents,
+		"snapshot",
+	);
+	const compactNote = compactResult.ran
+		? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
+		: "";
+	return ok(
+		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nReturned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
+		{
+			snapshotPath: sp,
+			totalEvents: board.totalEvents,
+			autoCompacted: compactResult.ran,
+			view,
+		},
+	);
+}
+
+async function executeUnblock(
+	task_id: string,
+	agent: string,
+	reason?: string,
+): Promise<ToolResult> {
+	const resolvedReason = reason ?? "";
+	const task = await getTask(task_id);
+	if (task.col !== "blocked")
+		throw new Error(
+			`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
+		);
+	const ts = nowZ();
+	await logAppend(
+		`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${resolvedReason}"`,
+	);
+	await logAppend(
+		`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`,
+	);
+	return ok(`Unblocked ${task_id}, moved to todo`, {
+		task_id,
+		agent,
+		reason: resolvedReason,
+	});
+}
+
+async function executeMove(
+	task_id: string,
+	agent: string,
+	to: string,
+): Promise<ToolResult> {
+	const { from, to: toCol } = await moveTask(
+		task_id,
+		agent,
+		to as "backlog" | "todo",
+	);
+	return ok(`Moved ${task_id} from ${from} to ${toCol}`, {
+		task_id,
+		agent,
+		from,
+		to: toCol,
+	});
+}
+
+async function executeDelete(
+	task_id: string,
+	agent: string,
+	reason?: string,
+): Promise<ToolResult> {
+	const resolvedReason = reason ?? "";
+	const { previousCol } = await deleteTask(task_id, agent, resolvedReason);
+	return ok(
+		`Deleted ${task_id} (was in '${previousCol}')${resolvedReason ? `: ${resolvedReason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
+		{ task_id, agent, reason: resolvedReason, previousCol },
+	);
+}
+
 export function registerBoardTools(pi: ExtensionAPI): void {
 	// ── kanban_snapshot ─────────────────────────────────────────
 	pi.registerTool({
@@ -45,40 +141,7 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			task_id: Type.Optional(TASK_ID_SCHEMA),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			const board = await parseBoard();
-			const snapshot = generateSnapshot(board);
-			const view = params.task_id ? "task" : (params.detail ?? "compact");
-			let returnedView: string;
-			if (params.task_id) {
-				returnedView = generateTaskDetail(board, params.task_id);
-			} else if (view === "full") {
-				returnedView = snapshot;
-			} else {
-				returnedView = generateSnapshotSummary(board);
-			}
-			const sp = snapshotPath();
-			await writeFileAtomic(sp, snapshot);
-			await logAppend(
-				`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
-			);
-			// Auto-compaction checkpoint: snapshot is the natural housekeeping moment
-			const compactResult = await compactIfNeeded(
-				board,
-				board.totalEvents,
-				"snapshot",
-			);
-			const compactNote = compactResult.ran
-				? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
-				: "";
-			return ok(
-				`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nReturned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
-				{
-					snapshotPath: sp,
-					totalEvents: board.totalEvents,
-					autoCompacted: compactResult.ran,
-					view,
-				},
-			);
+			return executeSnapshot(params.detail, params.task_id);
 		},
 	});
 
@@ -100,25 +163,7 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent } = params;
-			const reason = params.reason ?? "";
-			const task = await getTask(task_id);
-			if (task.col !== "blocked")
-				throw new Error(
-					`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
-				);
-			const ts = nowZ();
-			await logAppend(
-				`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${reason}"`,
-			);
-			await logAppend(
-				`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`,
-			);
-			return ok(`Unblocked ${task_id}, moved to todo`, {
-				task_id,
-				agent,
-				reason,
-			});
+			return executeUnblock(params.task_id, params.agent, params.reason);
 		},
 	});
 
@@ -138,18 +183,7 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent, to } = params;
-			const { from, to: toCol } = await moveTask(
-				task_id,
-				agent,
-				to as "backlog" | "todo",
-			);
-			return ok(`Moved ${task_id} from ${from} to ${toCol}`, {
-				task_id,
-				agent,
-				from,
-				to: toCol,
-			});
+			return executeMove(params.task_id, params.agent, params.to);
 		},
 	});
 
@@ -178,13 +212,7 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent } = params;
-			const reason = params.reason ?? "";
-			const { previousCol } = await deleteTask(task_id, agent, reason);
-			return ok(
-				`Deleted ${task_id} (was in '${previousCol}')${reason ? `: ${reason}` : ""}.\nThe task will no longer appear in kanban_snapshot.`,
-				{ task_id, agent, reason, previousCol },
-			);
+			return executeDelete(params.task_id, params.agent, params.reason);
 		},
 	});
 }
