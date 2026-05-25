@@ -7,6 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, watch, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import { REGISTRY_DIR, STALE_MS, ensureRegistryDir, type AgentRecord } from "../../../../lib/agent-registry.js";
@@ -69,7 +70,7 @@ const agentId = `${parentPid}-${Date.now().toString(36)}`;
 
 // ── Pick unique name ────────────────────────────────────────────
 
-function pickName(): string {
+async function pickName(): Promise<string> {
   ensureRegistryDir();
   const envName = process.env["AGENT_NAME"];
   if (envName) return envName;
@@ -78,13 +79,18 @@ function pickName(): string {
 
   const takenNames = new Set<string>();
   try {
-    for (const f of readdirSync(REGISTRY_DIR)) {
-      if (!f.endsWith(".json")) continue;
-      try {
-        const rec: AgentRecord = JSON.parse(readFileSync(join(REGISTRY_DIR, f), "utf-8"));
-        if (rec.name) takenNames.add(rec.name.toLowerCase());
-      } catch { /* skip */ }
-    }
+    const files = await readdir(REGISTRY_DIR);
+    // Use Promise.all for parallel async reads to maximize I/O throughput
+    // and minimize wall-clock execution time.
+    await Promise.all(
+      files.map(async (f) => {
+        if (!f.endsWith(".json")) return;
+        try {
+          const rec: AgentRecord = JSON.parse(await readFile(join(REGISTRY_DIR, f), "utf-8"));
+          if (rec.name) takenNames.add(rec.name.toLowerCase());
+        } catch { /* skip */ }
+      })
+    );
   } catch { /* empty registry */ }
 
   if (!takenNames.has(base.toLowerCase())) return base;
@@ -95,7 +101,7 @@ function pickName(): string {
   return `${base}-${agentId.slice(0, 6)}`;
 }
 
-const agentName = pickName();
+const agentName = await pickName();
 
 // ── Create Maildir inbox ────────────────────────────────────────
 
