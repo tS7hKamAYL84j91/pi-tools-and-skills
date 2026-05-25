@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 export const PI_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
@@ -22,6 +22,7 @@ export function readPiSettingsKey(
 	path: string = PI_SETTINGS_PATH,
 ): unknown {
 	try {
+		if (basename(path) !== "settings.json") return undefined;
 		if (!existsSync(path)) return undefined;
 		const raw = readFileSync(path, "utf-8");
 		const parsed = JSON.parse(raw) as Record<string, unknown>;
