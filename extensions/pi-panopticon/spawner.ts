@@ -13,6 +13,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
@@ -151,12 +152,13 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 
 			if (params.systemPrompt) {
 				tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
+				chmodSync(tempDir, 0o700);
 				const promptPath = join(tempDir, "system-prompt.md");
 				await writeFileAtomic(promptPath, params.systemPrompt, { mode: 0o600 });
 				args.push("--append-system-prompt", promptPath);
 			}
 
-			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true });
+			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true, mode: 0o700 });
 
 			const agent = spawnChild({
 				name: params.name,
