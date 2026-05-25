@@ -9,7 +9,8 @@
  * Read-only — does not modify registry or reap dead agents.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { REGISTRY_DIR, isPidAlive, STALE_MS, type AgentRecord } from "../../../../lib/agent-registry.js";
 import { readSessionLog, formatSessionLog } from "../../../../lib/session-log.js";
@@ -26,18 +27,27 @@ function formatAge(startedAt: number): string {
   return secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
 }
 
-function readLiveRecords(): AgentRecord[] {
+async function readLiveRecords(): Promise<AgentRecord[]> {
   const now = Date.now();
   const records: AgentRecord[] = [];
   try {
-    for (const f of readdirSync(REGISTRY_DIR)) {
-      if (!f.endsWith(".json")) continue;
+    const files = await readdir(REGISTRY_DIR);
+    const parsePromises = files.map(async (f) => {
+      if (!f.endsWith(".json")) return null;
       try {
-        const rec: AgentRecord = JSON.parse(readFileSync(join(REGISTRY_DIR, f), "utf-8"));
-        if (!isPidAlive(rec.pid)) continue;
+        const content = await readFile(join(REGISTRY_DIR, f), "utf-8");
+        const rec: AgentRecord = JSON.parse(content);
+        if (!isPidAlive(rec.pid)) return null;
         if (now - rec.heartbeat > STALE_MS) rec.status = "stalled";
-        records.push(rec);
-      } catch { /* skip corrupt */ }
+        return rec;
+      } catch {
+        return null; /* skip corrupt */
+      }
+    });
+
+    const results = await Promise.all(parsePromises);
+    for (const r of results) {
+      if (r) records.push(r);
     }
   } catch { /* empty registry */ }
   return records.sort((a, b) => a.startedAt - b.startedAt);
@@ -47,7 +57,7 @@ function readLiveRecords(): AgentRecord[] {
 
 const target = process.argv[2];
 const lineCount = Number(process.argv[3]) || 50;
-const records = readLiveRecords();
+const records = await readLiveRecords();
 
 if (!target) {
   // List all agents
