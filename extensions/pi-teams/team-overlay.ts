@@ -155,186 +155,220 @@ export function renderTeamOverlay(title: string, lines: string[], theme: Theme, 
 	return container.render(width);
 }
 
+class TeamBrowserState {
+	teams: TeamSpec[];
+	selected = 0;
+	detailId: string | undefined;
+	deletingId: string | undefined;
+	searchActive = false;
+	focused = false;
+	searchInput = new Input();
+
+	constructor(
+		private ctx: ExtensionContext,
+		private tui: { requestRender: () => void },
+		private done: (action: TeamBrowserAction | undefined) => void,
+	) {
+		this.teams = loadTeams(ctx.cwd);
+	}
+
+	get displayedTeams(): TeamSpec[] {
+		if (!this.searchActive) return this.teams;
+		const query = this.searchInput.getValue().trim();
+		if (!query) return this.teams;
+		return fuzzyFilter(this.teams, query, (team) =>
+			`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`);
+	}
+
+	get selectedTeam(): TeamSpec | undefined {
+		if (this.detailId) return this.teams.find((team) => team.id === this.detailId);
+		return this.displayedTeams[this.selected];
+	}
+
+	reload() {
+		this.teams = loadTeams(this.ctx.cwd);
+		this.selected = 0;
+		this.detailId = undefined;
+		this.deletingId = undefined;
+		this.searchActive = false;
+		this.searchInput.setValue("");
+		this.searchInput.focused = false;
+	}
+
+	private handleEscape() {
+		if (this.searchActive) {
+			this.searchActive = false;
+			this.searchInput.setValue("");
+			this.searchInput.focused = false;
+			this.selected = 0;
+			this.tui.requestRender();
+			return;
+		}
+		this.done(undefined);
+	}
+
+	private handleDeleteConfirmation(data: string) {
+		if (data.toLowerCase() === "y") {
+			const team = this.teams.find((entry) => entry.id === this.deletingId);
+			if (team && deleteTeam(this.ctx, team)) this.reload();
+			else this.deletingId = undefined;
+			this.tui.requestRender();
+			return;
+		}
+		if (data.toLowerCase() === "n") {
+			this.deletingId = undefined;
+			this.tui.requestRender();
+		}
+	}
+
+	private handleDetailMode(data: string) {
+		if (matchesKey(data, "backspace") || matchesKey(data, "left")) {
+			this.detailId = undefined;
+			this.tui.requestRender();
+		} else if (data.toLowerCase() === "f") {
+			this.done({ type: "form" });
+		} else if (data.toLowerCase() === "m") {
+			if (this.detailId) this.done({ type: "models", id: this.detailId });
+		} else if (data.toLowerCase() === "d") {
+			const team = this.teams.find((entry) => entry.id === this.detailId);
+			if (team) {
+				if (team.source === "builtin") {
+					this.ctx.ui.notify("Built-in teams cannot be deleted from the overlay", "warning");
+				} else {
+					this.deletingId = this.detailId;
+					this.tui.requestRender();
+				}
+			}
+		}
+	}
+
+	private handleSearchMode(data: string) {
+		if (matchesKey(data, "up") && this.selected > 0) {
+			this.selected--;
+			this.tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "down")) {
+			const visible = this.displayedTeams;
+			if (this.selected < visible.length - 1) {
+				this.selected++;
+				this.tui.requestRender();
+			}
+			return;
+		}
+		if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+			const visible = this.displayedTeams;
+			if (visible.length > 0) {
+				this.detailId = visible[this.selected]?.id;
+				this.tui.requestRender();
+			}
+			return;
+		}
+		this.searchInput.handleInput(data);
+		this.selected = Math.min(this.selected, Math.max(this.displayedTeams.length - 1, 0));
+		this.tui.requestRender();
+	}
+
+	private handleBrowseMode(data: string) {
+		if (data === "/") {
+			this.searchActive = true;
+			this.searchInput.setValue("");
+			this.searchInput.focused = this.focused;
+			this.tui.requestRender();
+			return;
+		}
+		if (data.toLowerCase() === "f") {
+			this.done({ type: "form" });
+			return;
+		}
+		if (data.toLowerCase() === "m") {
+			const team = this.selectedTeam;
+			if (!team) return;
+			this.done({ type: "models", id: team.id });
+			return;
+		}
+		if (data.toLowerCase() === "d") {
+			const team = this.selectedTeam;
+			if (!team) return;
+			if (team.source === "builtin") {
+				this.ctx.ui.notify("Built-in teams cannot be deleted from the overlay", "warning");
+				return;
+			}
+			this.deletingId = team.id;
+			this.tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "up") && this.selected > 0) {
+			this.selected--;
+			this.tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "down") && this.selected < this.displayedTeams.length - 1) {
+			this.selected++;
+			this.tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+			const visible = this.displayedTeams;
+			this.detailId = visible[this.selected]?.id;
+			this.tui.requestRender();
+		}
+	}
+
+	handleInput(data: string) {
+		if (matchesKey(data, "escape")) {
+			this.handleEscape();
+			return;
+		}
+		if (this.deletingId) {
+			this.handleDeleteConfirmation(data);
+			return;
+		}
+		if (this.detailId) {
+			this.handleDetailMode(data);
+			return;
+		}
+		if (this.searchActive) {
+			this.handleSearchMode(data);
+			return;
+		}
+		this.handleBrowseMode(data);
+	}
+}
+
 async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAction | undefined> {
-	let teams = loadTeams(ctx.cwd);
+	const teams = loadTeams(ctx.cwd);
 	if (teams.length === 0) {
 		await openTeamOverlay(ctx, "Teams", ["No teams found."]);
 		return undefined;
 	}
-	let selected = 0;
-	let detailId: string | undefined;
-	let deletingId: string | undefined;
-	let searchActive = false;
-	let focused = false;
-	const searchInput = new Input();
 
-	const displayedTeams = (): TeamSpec[] => {
-		if (!searchActive) return teams;
-		const query = searchInput.getValue().trim();
-		if (!query) return teams;
-		return fuzzyFilter(teams, query, (team) =>
-			`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`);
-	};
+	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done): Component & Focusable => {
+		const state = new TeamBrowserState(ctx, tui, done);
 
-	const selectedTeam = (): TeamSpec | undefined => {
-		if (detailId) return teams.find((team) => team.id === detailId);
-		return displayedTeams()[selected];
-	};
-
-	const reload = () => {
-		teams = loadTeams(ctx.cwd);
-		selected = 0;
-		detailId = undefined;
-		deletingId = undefined;
-		searchActive = false;
-		searchInput.setValue("");
-		searchInput.focused = false;
-	};
-
-	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done): Component & Focusable => ({
-		get focused(): boolean {
-			return focused;
-		},
-		set focused(value: boolean) {
-			focused = value;
-			searchInput.focused = value && searchActive;
-		},
-		render: (width: number) => renderTeamBrowserOverlay({
-			teams,
-			selected,
-			theme,
-			width,
-			...(detailId ? { detailLines: teamDescriptionLines(ctx.cwd, detailId) } : {}),
-			...(deletingId ? { deletingId } : {}),
-			searchActive,
-			searchInput,
-			query: searchInput.getValue(),
-		}),
-		invalidate: () => searchInput.invalidate(),
-		handleInput: (data: string) => {
-			if (matchesKey(data, "escape")) {
-				if (searchActive) {
-					searchActive = false;
-					searchInput.setValue("");
-					searchInput.focused = false;
-					selected = 0;
-					tui.requestRender();
-					return;
-				}
-				done(undefined);
-				return;
-			}
-			if (deletingId) {
-				if (data.toLowerCase() === "y") {
-					const team = teams.find((entry) => entry.id === deletingId);
-					if (team && deleteTeam(ctx, team)) reload();
-					else deletingId = undefined;
-					tui.requestRender();
-					return;
-				}
-				if (data.toLowerCase() === "n") {
-					deletingId = undefined;
-					tui.requestRender();
-				}
-				return;
-			}
-			if (detailId) {
-				if (matchesKey(data, "backspace") || matchesKey(data, "left")) {
-					detailId = undefined;
-					tui.requestRender();
-				} else if (data.toLowerCase() === "f") {
-					done({ type: "form" });
-				} else if (data.toLowerCase() === "m") {
-					done({ type: "models", id: detailId });
-				} else if (data.toLowerCase() === "d") {
-					const team = teams.find((entry) => entry.id === detailId);
-					if (team) {
-						if (team.source === "builtin") {
-							ctx.ui.notify("Built-in teams cannot be deleted from the overlay", "warning");
-						} else {
-							deletingId = detailId;
-							tui.requestRender();
-						}
-					}
-				}
-				return;
-			}
-
-			// Search/filter mode
-			if (searchActive) {
-				if (matchesKey(data, "up") && selected > 0) {
-					selected--;
-					tui.requestRender();
-					return;
-				}
-				if (matchesKey(data, "down")) {
-					const visible = displayedTeams();
-					if (selected < visible.length - 1) {
-						selected++;
-						tui.requestRender();
-					}
-					return;
-				}
-				if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-					const visible = displayedTeams();
-					if (visible.length > 0) {
-						detailId = visible[selected]?.id;
-						tui.requestRender();
-					}
-					return;
-				}
-				searchInput.handleInput(data);
-				selected = Math.min(selected, Math.max(displayedTeams().length - 1, 0));
-				tui.requestRender();
-				return;
-			}
-
-			// Browse mode (f/m/d are inactive during search; they type into the filter input instead)
-			if (data === "/") {
-				searchActive = true;
-				searchInput.setValue("");
-				searchInput.focused = focused;
-				tui.requestRender();
-				return;
-			}
-			if (data.toLowerCase() === "f") {
-				done({ type: "form" });
-				return;
-			}
-			if (data.toLowerCase() === "m") {
-				const team = selectedTeam();
-				if (!team) return;
-				done({ type: "models", id: team.id });
-				return;
-			}
-			if (data.toLowerCase() === "d") {
-				const team = selectedTeam();
-				if (!team) return;
-				if (team.source === "builtin") {
-					ctx.ui.notify("Built-in teams cannot be deleted from the overlay", "warning");
-					return;
-				}
-				deletingId = team.id;
-				tui.requestRender();
-				return;
-			}
-			if (matchesKey(data, "up") && selected > 0) {
-				selected--;
-				tui.requestRender();
-				return;
-			}
-			if (matchesKey(data, "down") && selected < displayedTeams().length - 1) {
-				selected++;
-				tui.requestRender();
-				return;
-			}
-			if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-				const visible = displayedTeams();
-				detailId = visible[selected]?.id;
-				tui.requestRender();
-			}
-		},
-	}), {
+		return {
+			get focused(): boolean {
+				return state.focused;
+			},
+			set focused(value: boolean) {
+				state.focused = value;
+				state.searchInput.focused = value && state.searchActive;
+			},
+			render: (width: number) => renderTeamBrowserOverlay({
+				teams: state.teams,
+				selected: state.selected,
+				theme,
+				width,
+				...(state.detailId ? { detailLines: teamDescriptionLines(ctx.cwd, state.detailId) } : {}),
+				...(state.deletingId ? { deletingId: state.deletingId } : {}),
+				searchActive: state.searchActive,
+				searchInput: state.searchInput,
+				query: state.searchInput.getValue(),
+			}),
+			invalidate: () => state.searchInput.invalidate(),
+			handleInput: (data: string) => state.handleInput(data),
+		};
+	}, {
 		overlay: true,
 		overlayOptions: {
 			width: "70%",
