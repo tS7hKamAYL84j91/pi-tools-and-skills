@@ -1,42 +1,86 @@
-import { describe, expect, it } from "vitest";
-import { agentDisplayName } from "../lib/agent-names.js";
 import type { AgentRecord } from "../lib/agent-registry.js";
+import { agentDisplayName, findAgentByDisplayName } from "../lib/agent-names.js";
+import { describe, expect, it } from "vitest";
+
+function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
+	return {
+		id: "default-id-12345",
+		name: "test-agent",
+		pid: 12345,
+		cwd: "/tmp/test",
+		model: "anthropic/claude",
+		startedAt: Date.now() - 60_000,
+		heartbeat: Date.now(),
+		status: "waiting",
+		...overrides,
+	};
+}
 
 describe("agentDisplayName", () => {
-	const mockAgent = (id: string, name: string): AgentRecord =>
-		({
-			id,
-			name,
-			pid: 1,
-			cwd: "/",
-			model: "mock-model",
-			startedAt: 0,
-		}) as AgentRecord;
-
-	it("Unique agent name returns just the name", () => {
-		const agent1 = mockAgent("12345678", "Alice");
-		const agent2 = mockAgent("87654321", "Bob");
-		const records = [agent1, agent2];
-
-		expect(agentDisplayName(agent1, records)).toBe("Alice");
-		expect(agentDisplayName(agent2, records)).toBe("Bob");
+	it("returns plain name when agent name is unique", () => {
+		const record = makeRecord({ id: "abc-123", name: "Alice" });
+		const records = [record, makeRecord({ id: "def-456", name: "Bob" })];
+		expect(agentDisplayName(record, records)).toBe("Alice");
 	});
 
-	it("Duplicate agent names return the name appended with a # and the first 6 characters of the id", () => {
-		const agent1 = mockAgent("12345678", "Alice");
-		const agent2 = mockAgent("abcdefgh", "Alice");
-		const records = [agent1, agent2];
-
-		expect(agentDisplayName(agent1, records)).toBe("Alice#123456");
-		expect(agentDisplayName(agent2, records)).toBe("Alice#abcdef");
+	it("returns plain name when agent is the only one in records", () => {
+		const record = makeRecord({ id: "abc-123", name: "Alice" });
+		expect(agentDisplayName(record, [record])).toBe("Alice");
 	});
 
-	it("Case-insensitive duplicate agent names are also treated as duplicates", () => {
-		const agent1 = mockAgent("12345678", "Alice");
-		const agent2 = mockAgent("abcdefgh", "ALICE");
-		const records = [agent1, agent2];
+	it("appends # and first 6 characters of id when agent name is duplicated", () => {
+		const record1 = makeRecord({ id: "abcdefghi", name: "Alice" });
+		const record2 = makeRecord({ id: "123456789", name: "alice" });
+		const records = [record1, record2];
 
-		expect(agentDisplayName(agent1, records)).toBe("Alice#123456");
-		expect(agentDisplayName(agent2, records)).toBe("ALICE#abcdef");
+		expect(agentDisplayName(record1, records)).toBe("Alice#abcdef");
+		expect(agentDisplayName(record2, records)).toBe("alice#123456");
+	});
+
+	it("preserves original name casing for duplicate display labels", () => {
+		const record1 = makeRecord({ id: "12345678", name: "Alice" });
+		const record2 = makeRecord({ id: "abcdefgh", name: "ALICE" });
+		const records = [record1, record2];
+
+		expect(agentDisplayName(record1, records)).toBe("Alice#123456");
+		expect(agentDisplayName(record2, records)).toBe("ALICE#abcdef");
+	});
+});
+
+describe("findAgentByDisplayName", () => {
+	it("returns undefined for empty or whitespace-only target", () => {
+		const records = [makeRecord({ id: "abc-123", name: "Alice" })];
+		expect(findAgentByDisplayName(records, "")).toBeUndefined();
+		expect(findAgentByDisplayName(records, "   ")).toBeUndefined();
+		expect(findAgentByDisplayName(records, "@")).toBeUndefined();
+	});
+
+	it("returns agent by unique name", () => {
+		const record1 = makeRecord({ id: "abc-123", name: "Alice" });
+		const record2 = makeRecord({ id: "def-456", name: "Bob" });
+		const records = [record1, record2];
+
+		expect(findAgentByDisplayName(records, "Alice")).toBe(record1);
+		expect(findAgentByDisplayName(records, "alice")).toBe(record1);
+		expect(findAgentByDisplayName(records, "  Alice  ")).toBe(record1);
+		expect(findAgentByDisplayName(records, "@alice")).toBe(record1);
+	});
+
+	it("returns agent by display label when name is duplicated", () => {
+		const record1 = makeRecord({ id: "abcdefghi", name: "Alice" });
+		const record2 = makeRecord({ id: "123456789", name: "alice" });
+		const records = [record1, record2];
+
+		expect(findAgentByDisplayName(records, "Alice#abcdef")).toBe(record1);
+		expect(findAgentByDisplayName(records, "alice#abcdef")).toBe(record1);
+		expect(findAgentByDisplayName(records, "alice#123456")).toBe(record2);
+	});
+
+	it("returns undefined when resolving a duplicated name without id suffix", () => {
+		const record1 = makeRecord({ id: "abcdefghi", name: "Alice" });
+		const record2 = makeRecord({ id: "123456789", name: "alice" });
+		const records = [record1, record2];
+
+		expect(findAgentByDisplayName(records, "Alice")).toBeUndefined();
 	});
 });
