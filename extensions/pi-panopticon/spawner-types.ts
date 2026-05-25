@@ -2,7 +2,9 @@
  * Types and interfaces for agent spawner.
  */
 
+import type { SpawnedAgent } from "../../lib/spawn-service.js";
 import type { TaskBrief } from "../../lib/task-brief.js";
+import type { Registry } from "./types.js";
 
 export interface ResultEnvelope {
 	tool: string;
@@ -22,4 +24,10 @@ export interface SpawnAgentParams {
 	tools?: string[];
 	systemPrompt?: string;
 	sessionDir?: string;
+}
+
+export interface SpawnerContext {
+	agents: Map<string, SpawnedAgent>;
+	registry: Registry;
+	onAgentExit: (agent: SpawnedAgent) => void;
 }
