@@ -1,0 +1,41 @@
+--- tests/soak.test.ts
++++ tests/soak.test.ts
+@@ -198,13 +198,13 @@
+		metrics.durationMs = metrics.endTime - metrics.startTime;
+
+		// Calculate final metrics
++		metrics.messagesReceived = messages.filter((m) => m.receivedAt).length;
++		metrics.messagesFailed = messages.filter((m) => m.failed).length;
+		metrics.deliveryRate = messages.length > 0 ? (metrics.messagesReceived / messages.length) * 100 : 0;
+		const latencies = messages.filter((m) => m.latencyMs !== undefined).map((m) => m.latencyMs ?? 0);
+		metrics.avgLatencyMs = latencies.length > 0 ? latencies.reduce((a, b) => a + b) / latencies.length : 0;
+		metrics.minLatencyMs = latencies.length > 0 ? Math.min(...latencies) : 0;
+		metrics.maxLatencyMs = latencies.length > 0 ? Math.max(...latencies) : 0;
+-		metrics.messagesReceived = messages.filter((m) => m.receivedAt).length;
+-		metrics.messagesFailed = messages.filter((m) => m.failed).length;
+
+		// Verify registry
+		const integrity = verifyRegistryIntegrity(agents);
+@@ -229,6 +229,10 @@
+			}
+		}
+		console.log("───────────────────────────────────────────────\n");
++
++		// Clean up
++		messages = [];
++		agents = [];
+	});
+
+	it("spawns N agents", () => {
+@@ -332,10 +336,7 @@
+		// For now, just verify we can clean up
+
+-		messages = [];
+-		agents = [];
+-
+-		expect(messages).toHaveLength(0);
+-		expect(agents).toHaveLength(0);
++		// Cleanup happens in afterAll
++		expect(true).toBe(true);
+	});
+ });

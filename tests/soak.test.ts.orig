@@ -137,10 +137,7 @@ function simulateSendMessage(
 /**
  * Check registry consistency: all records valid, IDs unique, no corrupted JSON.
  */
-function verifyRegistryIntegrity(agents: AgentRecord[]): {
-	valid: boolean;
-	errors: string[];
-} {
+function verifyRegistryIntegrity(agents: AgentRecord[]): { valid: boolean; errors: string[] } {
 	const errors: string[] = [];
 	const ids = new Set<string>();
 
@@ -193,9 +190,7 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 
 	beforeAll(() => {
 		metrics.startTime = Date.now();
-		console.log(
-			`\n🚀 Starting soak test: ${NUM_AGENTS} agents, ${NUM_MESSAGES} messages\n`,
-		);
+		console.log(`\n🚀 Starting soak test: ${NUM_AGENTS} agents, ${NUM_MESSAGES} messages\n`);
 	});
 
 	afterAll(() => {
@@ -203,21 +198,13 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 		metrics.durationMs = metrics.endTime - metrics.startTime;
 
 		// Calculate final metrics
-		metrics.messagesReceived = messages.filter((m) => m.receivedAt).length;
-		metrics.messagesFailed = messages.filter((m) => m.failed).length;
-		metrics.deliveryRate =
-			messages.length > 0
-				? (metrics.messagesReceived / messages.length) * 100
-				: 0;
-		const latencies = messages
-			.filter((m) => m.latencyMs !== undefined)
-			.map((m) => m.latencyMs ?? 0);
-		metrics.avgLatencyMs =
-			latencies.length > 0
-				? latencies.reduce((a, b) => a + b) / latencies.length
-				: 0;
+		metrics.deliveryRate = messages.length > 0 ? (metrics.messagesReceived / messages.length) * 100 : 0;
+		const latencies = messages.filter((m) => m.latencyMs !== undefined).map((m) => m.latencyMs ?? 0);
+		metrics.avgLatencyMs = latencies.length > 0 ? latencies.reduce((a, b) => a + b) / latencies.length : 0;
 		metrics.minLatencyMs = latencies.length > 0 ? Math.min(...latencies) : 0;
 		metrics.maxLatencyMs = latencies.length > 0 ? Math.max(...latencies) : 0;
+		metrics.messagesReceived = messages.filter((m) => m.receivedAt).length;
+		metrics.messagesFailed = messages.filter((m) => m.failed).length;
 
 		// Verify registry
 		const integrity = verifyRegistryIntegrity(agents);
@@ -231,17 +218,11 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 		console.log(`  Agents spawned:        ${metrics.agentsSpawned}`);
 		console.log(`  Agents alive:          ${metrics.agentsAlive}`);
 		console.log(`  Messages sent:         ${metrics.messagesSent}`);
-		console.log(
-			`  Messages received:     ${metrics.messagesReceived}/${messages.length}`,
-		);
+		console.log(`  Messages received:     ${metrics.messagesReceived}/${messages.length}`);
 		console.log(`  Delivery rate:         ${metrics.deliveryRate.toFixed(1)}%`);
-		console.log(
-			`  Latency (avg/min/max): ${metrics.avgLatencyMs.toFixed(1)}ms / ${metrics.minLatencyMs.toFixed(1)}ms / ${metrics.maxLatencyMs.toFixed(1)}ms`,
-		);
+		console.log(`  Latency (avg/min/max): ${metrics.avgLatencyMs.toFixed(1)}ms / ${metrics.minLatencyMs.toFixed(1)}ms / ${metrics.maxLatencyMs.toFixed(1)}ms`);
 		console.log(`  Failed messages:       ${metrics.messagesFailed}`);
-		console.log(
-			`  Registry integrity:    ${metrics.registryIntegrity ? "✅ PASS" : "❌ FAIL"}`,
-		);
+		console.log(`  Registry integrity:    ${metrics.registryIntegrity ? "✅ PASS" : "❌ FAIL"}`);
 		if (metrics.errors.length > 0) {
 			console.log(`  Errors:`);
 			for (const error of metrics.errors) {
@@ -249,16 +230,10 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 			}
 		}
 		console.log("───────────────────────────────────────────────\n");
-
-		// Clean up
-		messages = [];
-		agents = [];
 	});
 
 	it("spawns N agents", () => {
-		agents = Array.from({ length: NUM_AGENTS }, (_, i) =>
-			createMockAgent(`agent-${i + 1}`),
-		);
+		agents = Array.from({ length: NUM_AGENTS }, (_, i) => createMockAgent(`agent-${i + 1}`));
 		metrics.agentsSpawned = agents.length;
 		metrics.agentsAlive = agents.length;
 
@@ -357,8 +332,11 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 
 		// For now, just verify we can clean up
 
-		// Cleanup happens in afterAll
-		expect(true).toBe(true);
+		messages = [];
+		agents = [];
+
+		expect(messages).toHaveLength(0);
+		expect(agents).toHaveLength(0);
 	});
 });
 
@@ -371,9 +349,7 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 async function runSoakTest(): Promise<void> {
 	console.log("Running standalone soak test...");
 
-	const agents = Array.from({ length: NUM_AGENTS }, (_, i) =>
-		createMockAgent(`agent-${i + 1}`),
-	);
+	const agents = Array.from({ length: NUM_AGENTS }, (_, i) => createMockAgent(`agent-${i + 1}`));
 	const messages: MessageRecord[] = [];
 	const startTime = Date.now();
 
@@ -399,9 +375,7 @@ async function runSoakTest(): Promise<void> {
 	console.log(`\nStandalone Soak Test Results:`);
 	console.log(`  Agents: ${agents.length}`);
 	console.log(`  Messages: ${messages.length}`);
-	console.log(
-		`  Delivered: ${delivered}/${messages.length} (${((delivered / messages.length) * 100).toFixed(1)}%)`,
-	);
+	console.log(`  Delivered: ${delivered}/${messages.length} (${((delivered / messages.length) * 100).toFixed(1)}%)`);
 	console.log(`  Failed: ${failed}`);
 	console.log(`  Duration: ${endTime - startTime}ms`);
 }
