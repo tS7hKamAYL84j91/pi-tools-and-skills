@@ -51,7 +51,7 @@ async function openAgentListModeOverlay(
 		container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter select · esc cancel"), 1, 0));
 		const selectList = new SelectList(MODE_ITEMS, MODE_ITEMS.length, {
 			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
+			selectedText: (t: string) => theme.fg("accent", t.replace("→ ", "> ")),
 			description: (t: string) => theme.fg("muted", t),
 			scrollInfo: (t: string) => theme.fg("dim", t),
 			noMatch: (t: string) => theme.fg("warning", t),

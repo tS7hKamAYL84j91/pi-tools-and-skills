@@ -60,7 +60,7 @@ function createAgentListView(args: Omit<RenderAgentListOverlayArgs, "width">): {
 		// SelectList hardcodes a Unicode arrow; normalize it to the shared
 		// ASCII-safe selected-row marker used by Teams and Kanban.
 		selectedPrefix: (t: string) => args.theme.fg("accent", t),
-		selectedText: (t: string) => args.theme.fg("accent", t.replace(/^→/, ">")),
+		selectedText: (t: string) => args.theme.fg("accent", t.replace("→ ", "> ")),
 		description: (t: string) => args.theme.fg("muted", t),
 		scrollInfo: (t: string) => args.theme.fg("dim", t),
 		noMatch: (t: string) => args.theme.fg("warning", t),

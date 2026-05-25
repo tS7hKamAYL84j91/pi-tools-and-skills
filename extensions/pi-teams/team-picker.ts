@@ -41,7 +41,7 @@ function searchableTheme(theme: ExtensionContext["ui"]["theme"]) {
 		// selectedText post-processes the rendered line to replace "→" with ">"
 		// for consistent non-color selection markers (ADR-001).
 		selectedPrefix: (text: string) => theme.fg("accent", text),
-		selectedText: (text: string) => theme.fg("accent", text.replace(/^→/, ">")),
+		selectedText: (text: string) => theme.fg("accent", text.replace("→ ", "> ")),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("dim", text),
 		noMatch: (text: string) => theme.fg("warning", text),
