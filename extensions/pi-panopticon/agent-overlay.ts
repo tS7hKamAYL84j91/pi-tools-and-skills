@@ -100,7 +100,7 @@ function agentSelectListTheme(theme: Theme): ConstructorParameters<typeof Select
 		// SelectList hardcodes a Unicode arrow; normalize it to the shared
 		// ASCII-safe selected-row marker used by Teams and Kanban.
 		selectedPrefix: (t: string) => theme.fg("accent", t),
-		selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
+		selectedText: (t: string) => theme.fg("accent", t.replace(/^→\s?/, "> ")),
 		description: (t: string) => theme.fg("muted", t),
 		scrollInfo: (t: string) => theme.fg("dim", t),
 		noMatch: (t: string) => theme.fg("warning", t),
