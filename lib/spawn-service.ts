@@ -7,7 +7,7 @@
  */
 
 import type { ChildProcess } from "node:child_process";
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -15,16 +15,24 @@ import { dirname, join } from "node:path";
 
 // ── PI binary resolution ────────────────────────────────────────
 
-/** Locate the pi CLI: bundled with the current node binary, then `which pi`, else literal "pi". */
+/** Locate the pi CLI: bundled with the current node binary, then check safe path directories, else literal "pi". */
 export function resolvePiBinary(): string {
 	const candidate = join(dirname(process.execPath), "pi");
 	if (existsSync(candidate)) return candidate;
-	try {
-		const resolved = execSync("which pi", { encoding: "utf-8" }).trim();
-		if (resolved && existsSync(resolved)) return resolved;
-	} catch {
-		/* not found */
+
+	const allowedDirs = [
+		"/usr/local/bin",
+		"/usr/bin",
+		"/bin",
+		"/opt/homebrew/bin",
+		join(homedir(), ".local", "bin")
+	];
+
+	for (const dir of allowedDirs) {
+		const resolved = join(dir, "pi");
+		if (existsSync(resolved)) return resolved;
 	}
+
 	return "pi";
 }
 
