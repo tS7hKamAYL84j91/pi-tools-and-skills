@@ -31,6 +31,7 @@ import * as registry from "../lib/agent-registry.js";
 import { createMessaging } from "../extensions/pi-panopticon/messaging.js";
 import type { MessageTransport, DeliveryResult } from "../lib/message-transport.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
+import type { AgentRecord } from "../lib/agent-registry.js";
 
 
 
@@ -90,10 +91,10 @@ function makeMockTransport(): MessageTransport & {
 
 // ── Fixtures ────────────────────────────────────────────────────
 
-const SELF = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_A = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_B = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
-const PEER_C = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" as const };
+const SELF: AgentRecord = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
+const PEER_A: AgentRecord = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
+const PEER_B: AgentRecord = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
+const PEER_C: AgentRecord = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
 
 // ── Mock Registry ───────────────────────────────────────────────
 
