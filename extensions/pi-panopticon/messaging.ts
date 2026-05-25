@@ -16,21 +16,16 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { watch, type FSWatcher } from "node:fs";
-import { join } from "node:path";
-import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
-import type { InboundAttachment, InboundMessage, MessageTransport } from "../../lib/message-transport.js";
+import { onAgentCleanup } from "../../lib/agent-registry.js";
+import type { InboundAttachment } from "../../lib/message-transport.js";
 import { getChannels, onChannelNotify } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
 import { ok, fail } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
 import { visibleRecords } from "./visibility.js";
+import { MessagingCore, type ChannelMessage } from "./messaging-core.js";
 
 // ── Pure helpers ────────────────────────────────────────────────
-
-interface ChannelMessage extends InboundMessage {
-	channel: string;
-}
 
 function truncate(s: string, max = 200): string {
 	return s.length <= max ? s : `${s.slice(0, max)}\u2026`;
@@ -76,14 +71,7 @@ function messageDetails(messages: ChannelMessage[]): Record<string, unknown> {
 
 // ── Config ──────────────────────────────────────────────────────
 
-interface MessagingConfig {
-	/** Transport for point-to-point sends (agent_send, /send). */
-	send: MessageTransport;
-	/** Transport for broadcast (agent_broadcast). */
-	broadcast: MessageTransport;
-	/** Called for each inbound agent-channel message (e.g. completion-signal parsing). */
-	onMessage?: (text: string) => void;
-}
+import type { MessagingConfig } from "./messaging-config.js";
 
 // ── Messaging Module ────────────────────────────────────────────
 
@@ -102,76 +90,8 @@ interface MessagingModule {
 
 export function createMessaging(config: MessagingConfig) {
 	return function setup(pi: ExtensionAPI, registry: Registry): MessagingModule {
-		let extensionCtx: ExtensionContext | null = null;
-		let pokeTimeout: ReturnType<typeof setTimeout> | null = null;
 		let disposeCleanupHook: (() => void) | null = null;
-		let inboxWatcher: FSWatcher | null = null;
-
-		// ── Poke logic (debounced, idle-gated) ─────────────────
-
-		function totalPending(): number {
-			const record = registry.getRecord();
-			if (!record) return 0;
-			let count = 0;
-			for (const [, transport] of getChannels()) {
-				count += transport.pendingCount(record.id);
-			}
-			return count;
-		}
-
-		function schedulePoke(): void {
-			if (pokeTimeout) return;
-			pokeTimeout = setTimeout(() => {
-				pokeTimeout = null;
-				const count = totalPending();
-				if (count === 0) return;
-				if (!extensionCtx?.isIdle()) {
-					schedulePoke();
-					return;
-				}
-				pi.sendUserMessage(
-					`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
-					{ deliverAs: "followUp" },
-				);
-			}, 2000);
-		}
-
-		function pokeNow(): void {
-			const count = totalPending();
-			if (count === 0) return;
-			if (pokeTimeout) { clearTimeout(pokeTimeout); pokeTimeout = null; }
-			pi.sendUserMessage(
-				`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
-				{ deliverAs: "followUp" },
-			);
-		}
-
-		// ── Drain all channels ─────────────────────────────────
-
-		function drainAllChannels(): ChannelMessage[] {
-			const record = registry.getRecord();
-			if (!record) return [];
-			const all: ChannelMessage[] = [];
-			for (const [name, transport] of getChannels()) {
-				const pending = transport.receive(record.id);
-				for (const msg of pending) {
-					all.push({ ...msg, channel: name });
-					if (name === "agent") config.onMessage?.(msg.text);
-					transport.ack(record.id, msg.id);
-				}
-				if (pending.length > 0) transport.prune(record.id);
-			}
-			return all;
-		}
-
-		function updatePendingCount(): void {
-			const record = registry.getRecord();
-			if (!record) return;
-			const count = totalPending();
-			if (record.pendingMessages !== count) {
-				registry.updatePendingMessages(count);
-			}
-		}
+		const core = new MessagingCore(pi, registry, config);
 
 		// ── message_read tool ──────────────────────────────────
 
@@ -189,8 +109,8 @@ export function createMessaging(config: MessagingConfig) {
 			],
 			parameters: Type.Object({}),
 			async execute() {
-				const messages = drainAllChannels();
-				updatePendingCount();
+				const messages = core.drainAllChannels();
+				core.updatePendingCount();
 				if (messages.length === 0) {
 					return ok("No unread messages.", { count: 0, messages: [] });
 				}
@@ -347,32 +267,27 @@ export function createMessaging(config: MessagingConfig) {
 
 		const module: MessagingModule = {
 			init(ctx) {
-				extensionCtx = ctx;
+				core.setContext(ctx);
 				const record = registry.getRecord();
 				if (!record) return;
 				config.send.init(record.id);
-				updatePendingCount();
+				core.updatePendingCount();
 				// Drain any messages already pending at startup
-				if (totalPending() > 0) pokeNow();
+				if (core.totalPending() > 0) core.pokeNow();
 				// Register as the channel notification handler — any channel
 				// (Matrix, future channels) calls notifyChannel() to trigger poke
-				onChannelNotify(() => schedulePoke());
+				onChannelNotify(() => core.schedulePoke());
 				// Register transport cleanup for dead-agent reaping
 				disposeCleanupHook?.();
 				disposeCleanupHook = onAgentCleanup((agentId) => config.send.cleanup(agentId));
 				// Watch Maildir inbox for new messages — triggers debounced poke
-				inboxWatcher?.close();
-				try {
-					const newDir = join(REGISTRY_DIR, record.id, "inbox", "new");
-					inboxWatcher = watch(newDir, () => schedulePoke());
-					inboxWatcher.unref();
-				} catch { /* best-effort: dir may not exist yet */ }
+				core.startWatcher();
 			},
 			pokePending() {
-				pokeNow();
+				core.pokeNow();
 			},
 			drainAll() {
-				const messages = drainAllChannels();
+				const messages = core.drainAllChannels();
 				if (messages.length > 0) {
 					const lines = messages.map(formatChannelMessage);
 					try {
@@ -382,12 +297,10 @@ export function createMessaging(config: MessagingConfig) {
 						);
 					} catch { /* shutdown — best-effort */ }
 				}
-				updatePendingCount();
+				core.updatePendingCount();
 			},
 			dispose() {
-				if (pokeTimeout) { clearTimeout(pokeTimeout); pokeTimeout = null; }
-				inboxWatcher?.close();
-				inboxWatcher = null;
+				core.dispose();
 				disposeCleanupHook?.();
 				disposeCleanupHook = null;
 			},
