@@ -20,8 +20,7 @@ import {
 import { compactIfNeeded } from "./compaction.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 
-export function registerTaskTools(pi: ExtensionAPI): void {
-	// ── kanban_create ───────────────────────────────────────────
+function registerKanbanCreate(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_create",
 		label: "Kanban Create",
@@ -87,8 +86,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			});
 		},
 	});
+}
 
-	// ── kanban_complete ─────────────────────────────────────────
+function registerKanbanComplete(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_complete",
 		label: "Kanban Complete",
@@ -131,8 +131,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			});
 		},
 	});
+}
 
-	// ── kanban_block ────────────────────────────────────────────
+function registerKanbanBlock(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_block",
 		label: "Kanban Block",
@@ -163,103 +164,104 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});
+}
 
-	// ── Unified Update Logic ────────────────────────────────────
+// ── Unified Update Logic ────────────────────────────────────
 
-	async function performEdit(
-		task_id: string,
-		agent: string,
-		options: {
-			title?: string;
-			priority?: string;
-			tags?: string;
-			description?: string;
-			note?: string;
-		},
-	): Promise<ToolResult> {
-		validateTaskId(task_id);
-		const { title, priority, tags, description, note } = options;
-		if (!title && !priority && !tags && !description && !note) {
-			throw new Error(
-				"At least one of title, priority, tags, description, or note must be provided",
-			);
+async function performEdit(
+	task_id: string,
+	agent: string,
+	options: {
+		title?: string;
+		priority?: string;
+		tags?: string;
+		description?: string;
+		note?: string;
+	},
+): Promise<ToolResult> {
+	validateTaskId(task_id);
+	const { title, priority, tags, description, note } = options;
+	if (!title && !priority && !tags && !description && !note) {
+		throw new Error(
+			"At least one of title, priority, tags, description, or note must be provided",
+		);
+	}
+
+	const task = await getTask(task_id);
+	const hasMetadataEdits = title || priority || tags || description;
+
+	if (hasMetadataEdits && !["backlog", "todo"].includes(task.col)) {
+		throw new Error(
+			`Task ${task_id} is in '${task.col}' column. Metadata edits (title/priority/tags/description) are only allowed for tasks in backlog or todo. Use notes (note=...) for in-progress, blocked, or done tasks.`,
+		);
+	}
+
+	const changes: string[] = [];
+	const changed: Record<string, string> = {};
+
+	// 1. Handle Metadata Edits
+	if (hasMetadataEdits) {
+		if (title && title !== task.title) {
+			changes.push(`title="${escapeLogValue(title)}"`);
+			changed.title = title;
+		}
+		if (priority && priority !== task.priority) {
+			changes.push(`priority="${priority}"`);
+			changed.priority = priority;
+		}
+		if (tags && tags !== task.tags) {
+			changes.push(`tags="${escapeLogValue(tags)}"`);
+			changed.tags = tags;
+		}
+		if (description && description !== task.description) {
+			changes.push(`description="${escapeLogValue(description)}"`);
+			changed.description = description;
 		}
 
-		const task = await getTask(task_id);
-		const hasMetadataEdits = title || priority || tags || description;
-
-		if (hasMetadataEdits && !["backlog", "todo"].includes(task.col)) {
-			throw new Error(
-				`Task ${task_id} is in '${task.col}' column. Metadata edits (title/priority/tags/description) are only allowed for tasks in backlog or todo. Use notes (note=...) for in-progress, blocked, or done tasks.`,
-			);
-		}
-
-		const changes: string[] = [];
-		const changed: Record<string, string> = {};
-
-		// 1. Handle Metadata Edits
-		if (hasMetadataEdits) {
-			if (title && title !== task.title) {
-				changes.push(`title="${escapeLogValue(title)}"`);
-				changed.title = title;
-			}
-			if (priority && priority !== task.priority) {
-				changes.push(`priority="${priority}"`);
-				changed.priority = priority;
-			}
-			if (tags && tags !== task.tags) {
-				changes.push(`tags="${escapeLogValue(tags)}"`);
-				changed.tags = tags;
-			}
-			if (description && description !== task.description) {
-				changes.push(`description="${escapeLogValue(description)}"`);
-				changed.description = description;
-			}
-
-			if (changes.length > 0) {
-				await logAppend(
-					`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`,
-				);
-				const updatedTask = await getTask(task_id);
-				await rewriteTaskFile(task_id, {
-					title: updatedTask.title,
-					description: updatedTask.description,
-					priority: updatedTask.priority,
-					tags: updatedTask.tags,
-					agent: updatedTask.agent,
-				});
-			}
-		}
-
-		// 2. Handle Note
-		if (note) {
+		if (changes.length > 0) {
 			await logAppend(
-				`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(note)}"`,
+				`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`,
 			);
-			await appendTaskNote(task_id, agent, note);
-			changed.note = note;
-		}
-
-		if (changes.length === 0 && !note) {
-			return ok(`No changes needed for ${task_id} (values already match)`, {
-				task_id,
-				agent,
-				changed: {},
+			const updatedTask = await getTask(task_id);
+			await rewriteTaskFile(task_id, {
+				title: updatedTask.title,
+				description: updatedTask.description,
+				priority: updatedTask.priority,
+				tags: updatedTask.tags,
+				agent: updatedTask.agent,
 			});
 		}
+	}
 
-		const msgParts = [];
-		if (changes.length > 0) msgParts.push(`Edited ${changes.join(", ")}`);
-		if (note) msgParts.push("Added note");
+	// 2. Handle Note
+	if (note) {
+		await logAppend(
+			`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(note)}"`,
+		);
+		await appendTaskNote(task_id, agent, note);
+		changed.note = note;
+	}
 
-		return ok(`${msgParts.join(" and ")} for ${task_id}`, {
+	if (changes.length === 0 && !note) {
+		return ok(`No changes needed for ${task_id} (values already match)`, {
 			task_id,
 			agent,
-			changed,
+			changed: {},
 		});
 	}
 
-	// ── kanban_edit (Unified) ───────────────────────────────────
+	const msgParts = [];
+	if (changes.length > 0) msgParts.push(`Edited ${changes.join(", ")}`);
+	if (note) msgParts.push("Added note");
+
+	return ok(`${msgParts.join(" and ")} for ${task_id}`, {
+		task_id,
+		agent,
+		changed,
+	});
+}
+
+function registerKanbanEdit(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_edit",
 		label: "Kanban Edit",
@@ -296,4 +298,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			return performEdit(params.task_id, params.agent, params);
 		},
 	});
+}
+
+export function registerTaskTools(pi: ExtensionAPI): void {
+	registerKanbanCreate(pi);
+	registerKanbanComplete(pi);
+	registerKanbanBlock(pi);
+	registerKanbanEdit(pi);
 }
