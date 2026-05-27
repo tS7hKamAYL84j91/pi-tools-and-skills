@@ -197,6 +197,30 @@ flowchart TD
 
 ---
 
+## Research Tool Metadata Boundary
+
+```mermaid
+flowchart TD
+  DeepResearch[pi-teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
+  PromptTools --> Manifest[lib/research-tool-fixtures.ts\nmetadata-only registered fixtures]
+  Manifest --> Discovery[discoverResearchTools\nread-only validation + sorting]
+  Manifest -. declares only .-> Artifacts[sources/manifest.json\nsourceId + provenance metadata]
+  Discovery --> Tests[research-tool-manifest tests]
+
+  Manifest -. no runtime .-> NoNetwork[No live network/API calls]
+  Manifest -. no runtime .-> NoCreds[No credentials]
+  Manifest -. no runtime .-> NoWrites[No artifact writes]
+```
+
+### Context policy
+
+- Research-tool registration is local metadata only; it is not a public plugin contract.
+- Deep-research workflow policy stays in `pi-teams` prompts and protocol handlers.
+- Source IDs, provenance fields, artifact paths, and result semantics are declared for compatibility checks before any provider/runtime promotion.
+- Runtime providers, credential handling, extension loading changes, and durable artifact persistence require separate approval/ADR.
+
+---
+
 ## Goal Workflow Extension
 
 ```mermaid

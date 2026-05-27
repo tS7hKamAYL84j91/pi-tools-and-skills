@@ -21,9 +21,10 @@ Completed POCs provide a local/internal metadata basis:
 
 Current deep-research prompts still reference implicit tools
 `arxiv_search`, `semantic_scholar_search`, `fetch_content`, and `web_search`.
-The manifest POC includes metadata fixtures for the first three and `web_read`,
-but no runtime implementation, network/API provider, credential flow, extension
-loading change, public plugin contract, or runtime artifact persistence.
+T-553 adds metadata-only registered fixtures for those prompt names plus
+`github_search` and `web_read`, but no runtime implementation, network/API
+provider, credential flow, extension loading change, public plugin contract, or
+runtime artifact persistence.
 
 ## Target minimal migration shape
 
@@ -57,6 +58,8 @@ Scope: accept this T-195A scope and keep broad T-195 deferred.
 Scope: add missing metadata-only fixtures required by current prompts, especially
 `web_search` if prompts keep naming it. No invocation.
 
+T-553 status: done for metadata-only fixtures and compatibility tests.
+
 - Maps from: T-502 fixtures and T-503 `web_search` gap.
 - Owner: pi-tools maintainer.
 - Tests/checks: `tests/research-tool-manifest.test.ts`, `npm run check`,
@@ -68,6 +71,9 @@ Scope: add missing metadata-only fixtures required by current prompts, especiall
 Scope: add a local read-only discovery command/helper if needed to show
 registered research tools and declared persistence/result semantics.
 
+T-553 status: limited to existing local `discoverResearchTools` validation helper;
+no user-facing command or runtime surface was added.
+
 - Maps from: T-502 discovery helper.
 - Owner: pi-tools maintainer.
 - Tests/checks: unit tests for sorting/validation/readback; docs smoke.
@@ -77,6 +83,9 @@ registered research tools and declared persistence/result semantics.
 
 Scope: define a concrete serialized result envelope and artifact read/write
 expectations without implementing writes.
+
+T-553 status: metadata declarations and tests only; serialized runtime envelope
+and artifact writes remain deferred gates.
 
 - Maps from: T-504 `artifactPersistence` and T-505 `resultSemantics`.
 - Owner: pi-tools maintainer plus Navigator/council if broad.

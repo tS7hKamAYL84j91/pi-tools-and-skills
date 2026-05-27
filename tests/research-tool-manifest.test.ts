@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { RESEARCH_TOOL_FIXTURES } from "../lib/research-tool-fixtures.js";
 import { discoverResearchTools, validateResearchToolManifest, type ResearchToolManifestEntry } from "../lib/research-tool-manifest.js";
@@ -19,11 +20,34 @@ describe("research tool manifests", () => {
 	it("validates bundled fixture definitions", () => {
 		const tools = discoverResearchTools(RESEARCH_TOOL_FIXTURES);
 
-		expect(tools.map((tool) => tool.name)).toEqual(["arxiv_search", "fetch_content", "github_search", "semantic_scholar_search", "web_read"]);
+		expect(tools.map((tool) => tool.name)).toEqual(["arxiv_search", "fetch_content", "github_search", "semantic_scholar_search", "web_read", "web_search"]);
 		expect(tools[0]?.inputs[0]).toMatchObject({ name: "query", type: "string", required: true });
 		expect(tools[0]?.artifactPersistence).toMatchObject({ persistToWorkspace: true, artifactPath: "sources/manifest.json", sourceIdField: "sourceId" });
 		expect(tools[0]?.resultSemantics).toMatchObject({ statusField: "status", artifactWriteStatusField: "artifactWriteStatus" });
-		expect(tools.at(-1)?.safety.join(" ")).toContain("No live network call");
+		expect(tools.at(-1)?.safety.join(" ")).toContain("No live web search");
+	});
+
+	it("keeps current deep-research explorer tool names registered as metadata-only fixtures", () => {
+		const explorerPrompt = readFileSync("extensions/pi-teams/config/agents/deep-research-explorer.md", "utf8");
+		const registeredNames = new Set(discoverResearchTools(RESEARCH_TOOL_FIXTURES).map((tool) => tool.name));
+		const promptToolNames = Array.from(explorerPrompt.matchAll(/`([a-z][a-z0-9_]+)`/g)).flatMap((match) => {
+			const name = match[1];
+			return name !== undefined && (name.endsWith("_search") || name === "fetch_content") ? [name] : [];
+		});
+
+		expect(promptToolNames).toEqual(expect.arrayContaining(["arxiv_search", "semantic_scholar_search", "fetch_content", "web_search"]));
+		for (const name of promptToolNames) {
+			expect(registeredNames.has(name)).toBe(true);
+		}
+	});
+
+	it("declares source identifiers, provenance, and result semantics for bundled discovery fixtures", () => {
+		for (const tool of discoverResearchTools(RESEARCH_TOOL_FIXTURES)) {
+			expect(tool.artifactPersistence?.sourceIdField).toBe("sourceId");
+			expect(tool.artifactPersistence?.provenanceFields).toContain("sourceId");
+			expect(tool.resultSemantics?.statusField).toBe("status");
+			expect(tool.outputs.map((output) => output.name)).toContain("sourceId");
+		}
 	});
 
 	it("accepts valid success, partial, failure, and empty result semantics metadata", () => {
