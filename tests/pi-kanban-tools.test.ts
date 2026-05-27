@@ -346,6 +346,42 @@ describe("kanban_complete", () => {
 	});
 });
 
+describe("scheduler-safe kanban surface", () => {
+	it("supports compact read, one-task claim, progress note, and guarded repeat claim", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-043",
+			agent: "lead",
+			title: "Scheduled pickup",
+			priority: "high",
+		});
+		await callTool(tools, "kanban_move", {
+			task_id: "T-043",
+			agent: "lead",
+			to: "todo",
+		});
+
+		const snapshot = await callTool(tools, "kanban_snapshot", {});
+		expect(snapshot.isError).toBeFalsy();
+		expect(snapshot.content[0]?.text).toContain("Compact Summary");
+		expect(snapshot.content[0]?.text).toContain("T-043");
+
+		const claim = await callTool(tools, "kanban_claim", { agent: "coas-scheduler" });
+		expect(claim.details).toMatchObject({ result: "CLAIMED", claimed: true, task_id: "T-043" });
+
+		const note = await callTool(tools, "kanban_edit", {
+			task_id: "T-043",
+			agent: "coas-scheduler",
+			note: "scheduled pickup started",
+		});
+		expect(note.details.changed).toEqual({ note: "scheduled pickup started" });
+
+		const repeatPick = await callTool(tools, "kanban_claim", {
+			agent: "coas-scheduler",
+		});
+		expect(repeatPick.details).toMatchObject({ result: "NO_TASK_AVAILABLE", claimed: false });
+	});
+});
+
 describe("kanban_claim without task_id", () => {
 	it("picks the highest-priority todo task", async () => {
 		await callTool(tools, "kanban_create", {

@@ -58,6 +58,21 @@ Files written:
 
 ## Tools Reference
 
+### Scheduler-safe surface
+
+External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a board API, but `pi-kanban` does not own the cadence or policy that decides when to call them.
+
+| Scheduler need | Tool surface | Safe behavior |
+|---|---|---|
+| Inspect board, backlog, todo, WIP, blocked, done | `kanban_snapshot` default compact view | Read-oriented summary plus `snapshot.md`; no recurring loop is started. |
+| Inspect one card or full board when explicitly needed | `kanban_snapshot task_id="T-NNN"` or `detail="full"` | Gradual disclosure keeps default context small. |
+| Start one authorized task | `kanban_claim agent=... task_id?` | With no `task_id`, picks highest-priority todo; returns `NO_TASK_AVAILABLE`, `WRONG_COLUMN`, `TASK_NOT_FOUND`, or `WIP_LIMIT_REACHED` without mutating on those failures. |
+| Record progress | `kanban_edit note=...` | Notes can be appended to any task; metadata edits remain limited to backlog/todo. |
+| Block or complete work | `kanban_block`, `kanban_complete` | Require in-progress tasks and record auditable events. |
+| Move planning items | `kanban_move` | Only backlog ↔ todo; no scheduler policy is embedded. |
+
+Schedulers should treat `details.result` from `kanban_claim` as the idempotency/error signal and should not retry blindly when WIP or column guards reject a claim.
+
 ### Task Management
 
 | Tool              | Parameters                                      | Notes                                          |
