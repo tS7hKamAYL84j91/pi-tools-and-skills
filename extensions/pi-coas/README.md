@@ -7,6 +7,11 @@ This extension does **not** depend on a sibling `~/git/coas` checkout and does
 not shell out to CoAS scripts. Schedules are run by an in-process pi-hosted
 scheduler while pi is open; no user crontab is read or modified.
 
+`pi-coas` owns recurring operational scheduling and policy, including WIP pick
+routines, morning briefs, state capture, and recurring reviews. Those schedules
+may instruct use of `kanban_*` tools, but cron/cadence/policy ownership stays in
+CoAS rather than `pi-kanban`.
+
 ## Tools
 
 | Tool | Purpose |
@@ -62,6 +67,7 @@ Optional `.pi/settings.json` override:
 
 - No model-callable tool can install cron or modify host scheduler state.
 - The internal scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
+- CoAS schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
 - Workspace reads/writes are confined to `${COAS_HOME}/workspaces` unless the target already has `.coas/workspace.env` metadata.
 - Workspace context updates use pi's file mutation queue and reject symlinked `CONTEXT.md` files.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.

@@ -74,8 +74,9 @@ flowchart TD
 ```mermaid
 flowchart TD
   User[Human / orchestrator] --> Pi[pi agent session]
+  CoAS[pi-coas scheduler\nrecurring operational policy owner] -->|scheduled prompt may call kanban_* tools| Pi
   Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
-  Pi --> Watcher[board.log watcher]
+  Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
   Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
@@ -107,6 +108,8 @@ flowchart TD
 - `kanban_snapshot` defaults to compact output: counts, card IDs, short
   titles/owners, no descriptions or notes.
 - Full board and single-card details are explicit on-demand views.
+- Recurring schedules, cron-like cadence, morning briefs, state capture, recurring reviews, and CoAS operational policy belong to `pi-coas`, not `pi-kanban`.
+- `pi-kanban` watcher follow-ups are event-driven board-change notifications, not a scheduler.
 
 ---
 
@@ -256,7 +259,9 @@ flowchart TD
 ### Goal
 Replace crontab-oriented CoAS scheduling with a pi-hosted internal scheduler.
 Schedule files remain the desired state; active in-memory timers become runtime
-reality while pi is open.
+reality while pi is open. CoAS owns recurring operational policy over other
+extension surfaces, including scheduled prompts that may use `kanban_*` tools for
+WIP pick routines, morning briefs, state capture, and recurring reviews.
 
 ### Constraints
 
@@ -276,11 +281,13 @@ C4Component
     Component(files, "Schedule files", "~/.coas/schedules", "Desired schedule state")
     Component(scheduler, "Internal scheduler", "Timer loop", "Reconciles enabled schedules and queues due prompts")
     Component(agent, "Pi agent turn", "LLM runtime", "Executes scheduled prompt as normal user message")
+    Component(kanban, "pi-kanban tools", "Board surface", "Reusable board state/actions; no recurring schedule ownership")
     Rel(pi, coas, "loads")
     Rel(coas, files, "reads/writes")
     Rel(coas, scheduler, "starts/stops/reconciles")
     Rel(scheduler, files, "polls desired state")
     Rel(scheduler, agent, "sendUserMessage")
+    Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
 ```
 
 ### Acceptance criteria
@@ -291,3 +298,4 @@ C4Component
   state instead of crontab state.
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
 - Tests cover due-time matching and schedule prompt rendering.
+- CoAS remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.

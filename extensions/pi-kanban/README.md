@@ -2,6 +2,8 @@
 
 A pi extension that turns an append-only `board.log` into a kanban board with 10 model-visible tools, an auto-refreshing TUI widget, log compaction, and gradual-disclosure snapshots.
 
+`pi-kanban` is a reusable board/tooling/event surface. It does not own cron, recurring schedules, morning briefs, state capture cadence, recurring reviews, or CoAS operational policy; those belong in `pi-coas` schedules that may call `kanban_*` tools.
+
 ## Board Model
 
 ### Event Sourcing
@@ -109,6 +111,8 @@ pi-kanban: wip 2/3 | todo 4 | blocked 1 | done 12
 ```
 
 The status bar is intentionally left empty because the widget already shows the WIP/todo/blocked/done breakdown.
+
+This watcher is event-driven board-change notification only. It is not a recurring scheduler and must not grow cron or business-policy ownership.
 
 ### Slow Path (external board change + idle + cooldown)
 Injects a `followUp` message to the LLM orchestrator:
