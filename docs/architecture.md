@@ -200,27 +200,31 @@ flowchart TD
 
 ---
 
-## Research Tool Metadata Boundary
+## Research Tool Boundary
 
 ```mermaid
 flowchart TD
   DeepResearch[pi-teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
-  PromptTools --> Manifest[lib/research-tool-fixtures.ts\nmetadata-only registered fixtures]
+  PromptTools --> Registered[pi-research-tools\nregistered dry-run tools]
+  PromptTools --> Manifest[lib/research-tool-fixtures.ts\nmetadata fixtures]
   Manifest --> Discovery[discoverResearchTools\nread-only validation + sorting]
+  Registered --> Json[Typed params + JSON output\nempty dry-run envelopes]
   Manifest -. declares only .-> Artifacts[sources/manifest.json\nsourceId + provenance metadata]
   Discovery --> Tests[research-tool-manifest tests]
+  Registered --> RuntimeTests[research-tools extension tests]
 
-  Manifest -. no runtime .-> NoNetwork[No live network/API calls]
-  Manifest -. no runtime .-> NoCreds[No credentials]
-  Manifest -. no runtime .-> NoWrites[No artifact writes]
+  Registered -. no runtime .-> NoNetwork[No live network/API calls]
+  Registered -. no runtime .-> NoCreds[No credentials]
+  Registered -. no runtime .-> NoWrites[No artifact writes]
 ```
 
 ### Context policy
 
-- Research-tool registration is local metadata only; it is not a public plugin contract.
+- Research-tool metadata remains the source for compatibility checks and future provider design.
+- `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only.
 - Deep-research workflow policy stays in `pi-teams` prompts and protocol handlers.
-- Source IDs, provenance fields, artifact paths, and result semantics are declared for compatibility checks before any provider/runtime promotion.
-- Runtime providers, credential handling, extension loading changes, and durable artifact persistence require separate approval/ADR.
+- Source IDs, provenance fields, artifact paths, and result semantics are declared before any provider/runtime promotion.
+- Runtime providers, credential handling, extension loading changes, durable artifact persistence, and deletion of old research behavior require separate approval/ADR.
 
 ---
 

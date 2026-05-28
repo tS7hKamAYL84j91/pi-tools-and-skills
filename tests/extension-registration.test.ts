@@ -14,6 +14,7 @@ import matrixExtension from "../extensions/pi-matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
 import panopticonExtension from "../extensions/pi-panopticon/index.js";
 import goalExtension from "../extensions/pi-goal/index.js";
+import researchToolsExtension from "../extensions/pi-research-tools/index.js";
 
 interface NamedRegistration {
 	name: string;
@@ -135,6 +136,22 @@ describe("extension registration smoke tests", () => {
 			"session_shutdown",
 			"session_start",
 		]);
+	});
+
+	it("research tools registers its safe dry-run tools", () => {
+		const { api, registrations } = createFakeApi();
+
+		researchToolsExtension(api);
+
+		expectRegistered(registrations.tools, [
+			"arxiv_search",
+			"github_search",
+			"semantic_scholar",
+			"semantic_scholar_search",
+			"web_read",
+		]);
+		expectRegistered(registrations.commands, []);
+		expectRegistered(registrations.events, []);
 	});
 
 	it("matrix registers its command and lifecycle hooks", () => {

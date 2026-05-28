@@ -23,7 +23,7 @@ Usage: setup-pi [package-name]
 
 Registers this checkout as a pi package. With package-name, registers one
 user-installable extension package globally (pi-goal, pi-matrix, pi-panopticon,
-pi-teams). Project-only packages such as pi-kanban and pi-coas must be enabled
+pi-research-tools, pi-teams). Project-only packages such as pi-kanban and pi-coas must be enabled
 per workspace instead.
 Runtime setup belongs in the workspace or infrastructure repo that uses it.
 HELP

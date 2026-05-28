@@ -18,6 +18,7 @@ USER_INSTALLABLE_PACKAGES = {
     "pi-goal",
     "pi-matrix",
     "pi-panopticon",
+    "pi-research-tools",
     "pi-teams",
 }
 
@@ -34,6 +35,7 @@ OWNED_EXTENSION_DIRS = [
     "pi-matrix",
     "pi-coas",
     "pi-goal",
+    "pi-research-tools",
 ]
 
 

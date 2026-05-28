@@ -125,6 +125,13 @@ describeIfPython("setup-pi package wiring", () => {
 		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
 	});
 
+	it("allows pi-research-tools as an individual user-installable package", () => {
+		runSettingsHelper("register-package", "pi-research-tools");
+
+		const settings = readSettings();
+		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-research-tools") }]);
+	});
+
 	it("rejects project-only packages for global individual install", () => {
 		const result = runSettingsHelperResult("register-package", "pi-kanban");
 
@@ -159,6 +166,7 @@ describeIfPython("setup-pi package wiring", () => {
 						join(extensionsDir, "pi-panopticon"),
 						join(extensionsDir, "pi-kanban"),
 						join(extensionsDir, "pi-coas"),
+						join(extensionsDir, "pi-research-tools"),
 						"/external/extension",
 					],
 					packages: [
