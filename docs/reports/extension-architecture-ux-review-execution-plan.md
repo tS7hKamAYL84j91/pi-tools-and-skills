@@ -135,9 +135,26 @@ Potential later items:
 - incremental conversion of predictable guard failures to structured `fail(...)` or code-bearing details;
 - concurrency/locking audit for kanban compaction and Matrix attachment writes.
 
+## Execution status
+
+Completed on 2026-05-28:
+
+- Phase A documentation baseline is in place: every `extensions/pi-*` package has a README with the canonical `## What this does NOT do` boundary heading, including `pi-panopticon` and `pi-teams`.
+- `docs/ux-tools-policy.md` documents compact-default tool output, explicit detail/full expansion, durable `details`, and structured guard-result conventions.
+- Phase B guardrail exists in `tests/test-quality.test.ts`: shipped extensions must have README boundary documentation.
+- Phase C `/goal` UX cleanup is implemented: `/goal` and `/goal help` show command help, unknown option-style commands show help without creating a goal, and `/goal clear` explains that local `.pi-goal/` state/run artifacts are removed.
+- Panopticon canonical tool families are documented in `extensions/pi-panopticon/README.md`; no public commands were renamed or removed.
+
+Validation evidence:
+
+- `npm run test -- --run tests/test-quality.test.ts tests/pi-goal-tools.test.ts` passed: 2 files, 13 tests.
+- `npm run check` passed: namespace, typecheck, lint, knip, and type-coverage at 99.27%.
+- `npm test` passed: 62 files, 612 tests.
+- Navigator review approved the docs/status-only completion change and flagged no blockers after final re-read audit.
+
 ## Recommended next action
 
-Start with Phase A + Phase B, then Phase C for `/goal` help/clear cleanup. These directly address the highest-confidence findings, are low risk, preserve public behavior, and create durable guardrails for future extension work.
+The original Phase A through Phase C backlog is complete. Treat Phase D/E items as separate follow-up work requiring approval because they involve public command compatibility or runtime polish beyond this execution plan.
 
 ## Blockers / non-goals
 
