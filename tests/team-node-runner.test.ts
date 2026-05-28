@@ -36,4 +36,8 @@ describe("team-node-runner pure helpers", () => {
 		expect(modelForBinding({ role: "member", subagent: "member_agent", model: "test/binding" }, "test/fallback")).toBe("test/binding");
 		expect(modelForBinding({ role: "member", subagent: "member_agent" }, "test/fallback")).toBe("test/fallback");
 	});
+
+	it("does not fall back to model-backed defaults for live-agent refs", () => {
+		expect(modelForBinding({ role: "member", subagent: "agent:missing-peer" }, "test/fallback")).toBe("agent:missing-peer");
+	});
 });

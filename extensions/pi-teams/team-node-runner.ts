@@ -18,7 +18,7 @@ export interface NodeRun {
 }
 
 export function modelForBinding(binding: TeamAgentBinding, fallback?: string): string | undefined {
-	if (isLiveAgentRef(binding.subagent)) return liveAgentModel(binding.subagent) ?? binding.model ?? fallback ?? binding.subagent;
+	if (isLiveAgentRef(binding.subagent)) return liveAgentModel(binding.subagent) ?? binding.model ?? binding.subagent;
 	return binding.model ?? fallback;
 }
 
