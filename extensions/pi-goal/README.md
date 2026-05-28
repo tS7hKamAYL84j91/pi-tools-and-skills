@@ -4,11 +4,12 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 
 ## Commands
 
+- `/goal` or `/goal help` — show available commands.
 - `/goal <text>` — create a project goal from text and start a bounded run.
 - `/goal file <path> [goal start|--until-complete]` — use an existing project file as the goal source; with `goal start`/`--until-complete`, create `.pi-goal/TODO.md` from the file and start a 20-turn run.
 - `/goal status` — show the current goal state.
 - `/goal run [--turns N|--until-complete]` — continue an active or paused goal.
-- `/goal pause`, `/goal resume`, `/goal stop`, `/goal clear` — manage goal lifecycle. `/goal stop` immediately marks the bounded run idle and unblocks the goal loop so no further automatic turns are scheduled.
+- `/goal pause`, `/goal resume`, `/goal stop`, `/goal clear` — manage goal lifecycle. `/goal stop` immediately marks the bounded run idle and unblocks the goal loop so no further automatic turns are scheduled. `/goal clear` removes `.pi-goal/` local state and run artifacts for the current workspace.
 
 ## Tools
 
@@ -25,7 +26,7 @@ The extension writes project-local state under `.pi-goal/` and adds that directo
 
 Runtime state and run transcripts under `.pi-goal/` are local operational artifacts, not source-controlled package content.
 
-## What this does not do
+## What this does NOT do
 
 - Does not replace project task boards or kanban systems.
 - Does not mark goals complete automatically; the root agent must call `goal_complete` with concrete evidence.

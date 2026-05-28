@@ -100,4 +100,12 @@ Matrix messages and attachments are external input. This extension filters sende
 
 Encrypted room events require matrix-bot-sdk crypto configuration before the SDK can emit decrypted `m.room.message` events. Encrypted media blobs (`content.file`) are currently deferred because matrix-bot-sdk `decryptMedia()` downloads the encrypted blob before callers can enforce this extension's size limit; `message_read` surfaces an attachment error with the MXC/event metadata instead of silently dropping it.
 
-This package leaves homeserver deployment, TLS, E2EE device setup, token storage, and cache cleanup policy to the workspace/infrastructure that uses it. It does not create accounts, mint tokens, write secrets, or install shell environment hooks.
+## What this does NOT do
+
+- Does not deploy or configure a Matrix homeserver.
+- Does not create accounts, mint tokens, write secrets, or install shell environment hooks.
+- Does not parse or execute attachments automatically.
+- Does not bypass `trustedSenders`, MIME, or size gates.
+- Does not own TLS, E2EE device setup, token storage, or cache cleanup policy.
+
+This package leaves homeserver deployment, TLS, E2EE device setup, token storage, and cache cleanup policy to the workspace/infrastructure that uses it.

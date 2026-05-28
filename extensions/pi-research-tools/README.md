@@ -23,6 +23,12 @@ This first T-195 slice is deliberately safe and additive:
 
 `persistToWorkspace` only records intent in the dry-run envelope. It does not write `sources/manifest.json`.
 
-## Boundaries
+## What this does NOT do
+
+- Does not perform live provider, network, or API calls.
+- Does not read credentials or keychains.
+- Does not write `sources/manifest.json` or any other artifact.
+- Does not delete or replace existing deep-research prompt behavior.
+- Does not enable provider-backed behavior without a separate approved gate.
 
 Future work needs separate approval before adding live providers, credentials, rate-limit handling, runtime artifact persistence, or deleting/replacing existing deep-research behavior.

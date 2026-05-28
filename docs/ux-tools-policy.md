@@ -90,6 +90,16 @@ teams: ready
 - **Stems:** commands and tools may share stems without forcing one-to-one parity
   (e.g. `/teams` + `team_describe`, `team_run`)
 
+### Tool disclosure and result conventions
+
+- Default tool output should be compact and safe for model context.
+- Provide explicit expansion parameters such as `task_id`, `id`, `detail="full"`, or `full=true` for larger views.
+- Keep human-readable `content` concise; put durable machine-checkable state in `details`.
+- Expected guard failures should prefer structured result codes/details over ambiguous prose.
+- Use thrown errors for invalid inputs or exceptional failures; use code-bearing details for normal empty/no-op/guard outcomes.
+
+Reference pattern: `kanban_snapshot` returns compact board state by default and requires `task_id` or `detail="full"` for expanded context.
+
 ### Policy
 
 - Extension commands must not collide with built-in pi commands (exact match).

@@ -20,7 +20,16 @@ import {
 
 const DEFAULT_TURNS = 3;
 const UNTIL_COMPLETE_TURNS = 20;
-const KNOWN_ACTIONS = new Set(["show", "status", "file", "pause", "resume", "clear", "run", "stop"]);
+const GOAL_HELP_COMMANDS = [
+	"/goal help — show this command summary",
+	"/goal status — show the current goal",
+	"/goal <text> — create a text goal and start a bounded run",
+	"/goal file <path> [goal start|--until-complete] — create a file-backed goal",
+	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
+	"/goal pause | resume | stop — manage the current goal run",
+	"/goal clear — remove .pi-goal/ state and local run artifacts for this workspace",
+] as const;
+const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "pause", "resume", "clear", "run", "stop"]);
 const GOAL_RUNTIME_KEY = Symbol.for("pi-goal.runtime");
 
 export default function goalExtension(pi: ExtensionAPI): void {
@@ -50,6 +59,18 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				content: renderGoalSummary(state),
 				display: true,
 				details: state,
+			},
+			{ triggerTurn: false },
+		);
+	}
+
+	function showGoalHelp(): void {
+		pi.sendMessage(
+			{
+				customType: "pi-goal-help",
+				content: goalHelpText(),
+				display: true,
+				details: { commands: GOAL_HELP_COMMANDS },
 			},
 			{ triggerTurn: false },
 		);
@@ -118,11 +139,18 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		description: "Manage a bounded project goal",
 		handler: async (args, ctx) => {
 			const parsed = parseCommand(args);
+			if (parsed.action === "help") {
+				showGoalHelp();
+				await refreshUi(ctx);
+				return;
+			}
+
 			if (parsed.action === "show" || parsed.action === "status") {
 				const state = await loadGoal(ctx.cwd);
 				if (!state) {
-					ctx.ui.notify("No active pi goal. Use /goal file <path>.", "info");
+					ctx.ui.notify("No active pi goal. Use /goal help to see available commands.", "info");
 					await refreshUi(ctx, null);
+					showGoalHelp();
 					return;
 				}
 				showGoal(state);
@@ -190,7 +218,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				runtime.stopRequested = false;
 				await clearGoal(ctx.cwd);
 				await refreshUi(ctx, null);
-				ctx.ui.notify("Goal cleared.", "info");
+				ctx.ui.notify("Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
 				return;
 			}
 
@@ -228,7 +256,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
-			ctx.ui.notify("Usage: /goal <goal>, /goal file <path>, or /goal [status|pause|resume|clear|run]", "warning");
+			ctx.ui.notify(`Unknown /goal option: ${parsed.rest || parsed.action}. Use /goal help.`, "warning");
+			showGoalHelp();
 		},
 	});
 
@@ -370,6 +399,10 @@ function goalStoppedMessage(state: GoalState): string {
 	return `Goal run stopped after ${state.turnsUsed}/${state.turnBudget} turns (${reason}). Use /goal run --turns N to continue.`;
 }
 
+function goalHelpText(): string {
+	return ["# pi-goal commands", "", ...GOAL_HELP_COMMANDS.map((command) => `- ${command}`)].join("\n");
+}
+
 interface ParsedCommand {
 	readonly action: string;
 	readonly rest: string;
@@ -383,13 +416,16 @@ interface FileGoalArgs {
 function parseCommand(args: string): ParsedCommand {
 	const trimmed = args.trim();
 	if (!trimmed) {
-		return { action: "show", rest: "" };
+		return { action: "help", rest: "" };
 	}
 	const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
 	const action = match?.[1] ?? "show";
 	const rest = match?.[2] ?? "";
 	if (KNOWN_ACTIONS.has(action)) {
 		return { action, rest };
+	}
+	if (action.startsWith("-")) {
+		return { action: "unknown", rest: rest ? `${action} ${rest}` : action };
 	}
 	return { action: "goal", rest: rest ? `${action} ${rest}` : action };
 }

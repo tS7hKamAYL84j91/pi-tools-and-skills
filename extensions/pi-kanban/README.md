@@ -51,6 +51,13 @@ The extension locates the kanban directory by checking, in order:
 
 The legacy unprefixed `<cwd>/kanban/` fallback has been removed.
 
+## What this does NOT do
+
+- Does not own cron, recurring schedules, morning briefs, state capture cadence, or CoAS operational policy.
+- Does not implement portfolio governance, hierarchy, dependency graphs, or value-stream prioritization.
+- Does not monitor or nudge agents; use Panopticon agent health tools for that.
+- Does not inject full board contents automatically; snapshots and detail views are explicit.
+
 Files written:
 - `board.log` — event log (source of truth)
 - `snapshot.md` — regenerated on `kanban_snapshot`

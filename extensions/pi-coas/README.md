@@ -63,6 +63,14 @@ Optional `.pi/settings.json` override:
 
 `COAS_HOME` wins over settings.
 
+## What this does NOT do
+
+- Does not install cron or modify host scheduler state.
+- Does not run schedules while pi is closed.
+- Does not own kanban board mechanics; scheduled prompts may use `kanban_*` tools but cadence/policy stays in CoAS.
+- Does not create Matrix rooms or mutate external services.
+- Does not store secrets in workspace context.
+
 ## Safety
 
 - No model-callable tool can install cron or modify host scheduler state.

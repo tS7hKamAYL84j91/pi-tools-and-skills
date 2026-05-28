@@ -71,4 +71,12 @@ describe("test quality fitness functions", () => {
 		);
 		expect(missing).toEqual([]);
 	});
+
+	it("each shipped pi extension should document its boundary", () => {
+		const missing = extensionNames().filter((extension) => {
+			const readme = join("extensions", extension, "README.md");
+			return !existsSync(readme) || !readFileSync(readme, "utf8").includes("## What this does NOT do");
+		});
+		expect(missing).toEqual([]);
+	});
 });

@@ -68,6 +68,43 @@ describe("pi-goal extension", () => {
 		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete"]);
 	});
 
+	it("/goal with no args shows command help", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+
+		await runGoalCommand(pi, "", ctx);
+
+		expect(sentMessageContent(pi)).toContain("# pi-goal commands");
+		expect(sentMessageContent(pi)).toContain("/goal clear");
+	});
+
+	it("/goal help shows command help", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+
+		await runGoalCommand(pi, "help", ctx);
+
+		expect(sentMessageContent(pi)).toContain("/goal status");
+		expect(sentMessageContent(pi)).toContain("/goal file <path>");
+	});
+
+	it("unknown option-style goal commands show help without creating a goal", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+
+		await runGoalCommand(pi, "--bogus", ctx);
+
+		expect(ctx.ui.notifications).toContainEqual({
+			message: "Unknown /goal option: --bogus. Use /goal help.",
+			level: "warning",
+		});
+		expect(sentMessageContent(pi)).toContain("# pi-goal commands");
+		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
+	});
+
 	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
@@ -102,6 +139,22 @@ describe("pi-goal extension", () => {
 			level: "info",
 		});
 		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "goal", value: "goal: active" });
+	});
+
+	it("/goal clear explains local state removal", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = await createTextGoal(tempDir, "clear behavior");
+		await saveGoal(tempDir, state);
+
+		await runGoalCommand(pi, "clear", ctx);
+
+		expect(ctx.ui.notifications).toContainEqual({
+			message: "Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.",
+			level: "info",
+		});
+		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
 	it("/goal stop resolves a waiting goal loop", async () => {
@@ -191,6 +244,14 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	}
 	throw new Error("Timed out waiting for condition");
+}
+
+function sentMessageContent(pi: FakePi): string {
+	const message = pi.sentMessages.at(-1)?.message;
+	if (typeof message === "object" && message !== null && "content" in message && typeof message.content === "string") {
+		return message.content;
+	}
+	return "";
 }
 
 function toolNames(tools: unknown[]): string[] {
