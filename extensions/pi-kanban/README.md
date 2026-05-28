@@ -97,6 +97,27 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 
 `kanban_claim` without `task_id` selects by: `critical → high → medium → low`, then by lowest T-NNN number within the same priority.
 
+### Feature/epic tag convention
+
+Use the existing comma-separated `tags` field for lightweight feature or epic grouping. Canonical tags are lowercase slug prefixes:
+
+- `feature:<slug>` — capability or value-stream grouping, e.g. `feature:research-tools`
+- `epic:<slug>` — larger initiative grouping, e.g. `epic:coas-kanban-boundary`
+
+Examples:
+
+```text
+kanban_create task_id=T-557 agent=lead title="Document feature tags" priority=medium tags="feature:kanban-metadata,epic:operator-followthrough"
+kanban_edit task_id=T-557 agent=lead tags="feature:kanban-metadata,docs"
+```
+
+Rules:
+
+- Feature/epic tags are orthogonal to priority, column/status, owner, and WIP.
+- Generic tags remain valid; untagged tickets continue to use an empty tag string / `tags: []` task-file frontmatter.
+- `pi-kanban` stores tags as metadata only. It does not implement portfolio governance, hierarchy, dependency graphs, scheduling policy, or value-stream prioritization.
+- Prefer lowercase kebab-case slugs after the prefix. The current tool surface preserves unknown/generic tag values rather than rejecting them.
+
 ## Board Themes
 
 The `/kanban` overlay follows pi's active TUI theme by default. Set `KANBAN_BOARD_THEME` for a small board-specific remap:

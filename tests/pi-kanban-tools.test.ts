@@ -174,6 +174,66 @@ describe("kanban_create", () => {
 			}),
 		).rejects.toThrow(/T-NNN/);
 	});
+
+	it("keeps untagged tickets backward compatible", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-003",
+			agent: "lead",
+			title: "Untagged",
+			priority: "medium",
+		});
+
+		const detail = await callTool(tools, "kanban_snapshot", { task_id: "T-003" });
+		expect(detail.content[0]?.text).toContain("- Tags: —");
+
+		const taskFile = readFileSync(join(tmpDir, "tasks", "T-003.md"), "utf-8");
+		expect(taskFile).toContain("tags: []");
+	});
+
+	it("preserves a single feature tag in snapshots and task files", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-004",
+			agent: "lead",
+			title: "Feature tagged",
+			priority: "high",
+			tags: "feature:research-tools",
+		});
+
+		const detail = await callTool(tools, "kanban_snapshot", { task_id: "T-004" });
+		expect(detail.content[0]?.text).toContain("- Tags: feature:research-tools");
+
+		const taskFile = readFileSync(join(tmpDir, "tasks", "T-004.md"), "utf-8");
+		expect(taskFile).toContain("tags: [feature:research-tools]");
+	});
+
+	it("preserves multiple feature, epic, and generic tags", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-005",
+			agent: "lead",
+			title: "Multi tagged",
+			priority: "low",
+			tags: "feature:kanban-metadata,epic:operator-followthrough,docs",
+		});
+
+		const snapshot = await callTool(tools, "kanban_snapshot", { detail: "full" });
+		expect(snapshot.content[0]?.text).toContain("feature:kanban-metadata,epic:operator-followthrough,docs");
+
+		const taskFile = readFileSync(join(tmpDir, "tasks", "T-005.md"), "utf-8");
+		expect(taskFile).toContain("tags: [feature:kanban-metadata, epic:operator-followthrough, docs]");
+	});
+
+	it("preserves unknown tag values as generic metadata", async () => {
+		await callTool(tools, "kanban_create", {
+			task_id: "T-006",
+			agent: "lead",
+			title: "Generic tagged",
+			priority: "medium",
+			tags: "customer-x,theme.alpha",
+		});
+
+		const detail = await callTool(tools, "kanban_snapshot", { task_id: "T-006" });
+		expect(detail.content[0]?.text).toContain("- Tags: customer-x,theme.alpha");
+	});
 });
 
 describe("kanban_claim", () => {
