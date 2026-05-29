@@ -3,6 +3,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { TeamHandoffRouter, type TeamHandoff, type TeamHandoffTargetCandidate } from "./handoff.js";
 import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
 import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
 import { renderTemplate } from "./prompt-renderer.js";
@@ -101,6 +102,17 @@ function recordPhase(args: TeamHandlerRunArgs, phaseId: string, label = phaseId)
 
 function recordDetail(args: TeamHandlerRunArgs, detail: { kind: "trace" | "handoff" | "fallback" | "artifact" | "error"; message: string; phaseId?: string; nodeId?: string; data?: Record<string, unknown> }): void {
 	if (args.runId) args.stateManager.recordDetail(args.runId, detail);
+}
+
+function recordHandoff(args: TeamHandlerRunArgs, router: TeamHandoffRouter, handoff: TeamHandoff): void {
+	const route = router.route(handoff);
+	recordDetail(args, {
+		kind: "handoff",
+		phaseId: route.handoff.phaseId,
+		nodeId: route.target.nodeId,
+		message: route.handoff.message,
+		...(route.handoff.data ? { data: route.handoff.data } : {}),
+	});
 }
 
 function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: NodeRun): void {
@@ -280,6 +292,7 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const memberSource = sourceMembers[0] ?? requireBinding(args.team, ["member"]);
 	const criticSource = bindingForRole(args.team.agentBindings, ["critic"]) ?? memberSource;
 	const synthesisSource = bindingForRole(args.team.agentBindings, ["synthesis"]) ?? requireBinding(args.team, ["synthesis"]);
+	const handoffRouter = new TeamHandoffRouter([{ nodeId: "synthesis", binding: synthesisSource, model: synthesisModel }]);
 	recordPhase(args, "debate");
 	const generation = await Promise.all(memberModels.map((model, index) => {
 		const source = sourceMembers[index] ?? memberSource;
@@ -297,7 +310,13 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 		return runTeamNode({ binding, role: binding.role, model, prompt, systemPrompt: chainText(chains, "critique.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
 	for (const node of critiques) recordNode(args, "debate", node);
-	recordDetail(args, { kind: "handoff", phaseId: "debate", nodeId: "synthesis", message: "debate generation and critique outputs handed to synthesis", data: { generation: generation.length, critiques: critiques.length } });
+	recordHandoff(args, handoffRouter, {
+		phaseId: "debate",
+		fromNodeId: "critique_aggregate",
+		target: { type: "node", nodeId: "synthesis" },
+		message: "debate generation and critique outputs handed to synthesis",
+		data: { generation: generation.length, critiques: critiques.length },
+	});
 	const synthesisPrompt = renderJoinedSynthesisPrompt({ originalPrompt: args.params.prompt, generation: okGeneration, critiques: participantsFromRuns(critiques.filter((node) => node.ok)), members, template: chainText(chains, "synthesis.template").split("\n") });
 	const synthesis = await runTeamNode({ binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" }, role: "synthesis", model: synthesisModel, prompt: synthesisPrompt, systemPrompt: chainText(chains, "synthesis.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	recordNode(args, "debate", synthesis);
@@ -321,6 +340,12 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 	const explorerSource = bindingForRole(args.team.agentBindings, ["explorer", "member"]) ?? requireBinding(args.team, ["explorer", "member"]);
 	const verifierSource = bindingForRole(args.team.agentBindings, ["verifier", "critic"]) ?? requireBinding(args.team, ["verifier", "critic"]);
 	const synthesisSource = bindingForRole(args.team.agentBindings, ["synthesis"]) ?? requireBinding(args.team, ["synthesis"]);
+	const handoffTargets: TeamHandoffTargetCandidate[] = Array.from({ length: Math.max(0, maxLoops - 1) }, (_value, index) => ({
+		nodeId: `explorer_${index + 2}`,
+		binding: { ...explorerSource, role: `explorer_${index + 2}`, label: explorerSource.label ?? `Explorer ${index + 2}` },
+		model: explorerModel,
+	}));
+	const handoffRouter = new TeamHandoffRouter(handoffTargets);
 	const nodes: NodeRun[] = [];
 	let nextPrompt = `Original research request:\n${args.params.prompt}\n\nPlan and execute the first evidence-gathering pass. Emit a compact checklist, candidate claims, and explicit source bindings. Treat generated summaries as leads only.`;
 	let verifierOutput = "";
@@ -370,8 +395,16 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 			recordDetail(args, { kind: "trace", phaseId, nodeId: `verifier_${loop}`, message: "research verifier marked evidence complete", data: { loop } });
 			break;
 		}
-		recordDetail(args, { kind: "handoff", phaseId, nodeId: `explorer_${loop + 1}`, message: "research verifier gaps handed to next explorer pass", data: { loop } });
-		nextPrompt = `Original research request:\n${args.params.prompt}\n\nPrevious Explorer output:\n${explorer.output}\n\nVerifier gap report:\n${verifier.output}\n\nRun targeted follow-up only for the cited gaps. Preserve existing verified evidence and add new source bindings.`;
+		if (loop < maxLoops) {
+			recordHandoff(args, handoffRouter, {
+				phaseId,
+				fromNodeId: `verifier_${loop}`,
+				target: { type: "node", nodeId: `explorer_${loop + 1}` },
+				message: "research verifier gaps handed to next explorer pass",
+				data: { loop },
+			});
+			nextPrompt = `Original research request:\n${args.params.prompt}\n\nPrevious Explorer output:\n${explorer.output}\n\nVerifier gap report:\n${verifier.output}\n\nRun targeted follow-up only for the cited gaps. Preserve existing verified evidence and add new source bindings.`;
+		}
 	}
 	if (stopRequested(args)) return stoppedResult(args, nodes);
 	recordPhase(args, "research_synthesis", "Research synthesis");
