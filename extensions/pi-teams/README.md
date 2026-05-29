@@ -27,6 +27,10 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 Team specs live under `extensions/pi-teams/config/` and may be overridden by user/project team files. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field.
 
+## Recurring workflow SOPs
+
+Static, copyable SOP templates for recurring architecture/code review and research synthesis workflows live in `docs/templates/pi-teams-recurring-workflows.md`. They are guidance only and do not change team runtime behavior.
+
 ## What this does NOT do
 
 - Does not replace normal model/tool execution for simple tasks.
