@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderAgentMessageOverlay } from "../extensions/pi-panopticon/agent-message-overlay.js";
 import {
+	isAgentDetailBackInput,
 	renderAgentDetailOverlay,
 	renderAgentListOverlay,
 	sortAgentOverlayRecords,
@@ -71,8 +72,27 @@ describe("pi-panopticon overlay renderers", () => {
 			expect(body).toContain("Agent Panopticon");
 			expect(body).toContain("> R self (you)");
 			expect(body).toContain("enter detail");
+			expect(body).toContain("/ filter");
 			expect(body).toContain("esc close");
 			expect(body).toContain("unread first");
+			expectWidthBounded(lines, width);
+		});
+
+		it(`renders a filtered agent list within ${width} columns`, () => {
+			const lines = renderAgentListOverlay({
+				records,
+				selfId: "self",
+				theme: fakeTheme,
+				width,
+				searchActive: true,
+				query: "blocked",
+			});
+
+			const body = lines.join("\n");
+			expect(body).toContain("type to filter");
+			expect(body).toContain("esc clear");
+			expect(body).toContain("worker-one");
+			expect(body).not.toMatch(/^ {2}S worker-two/m);
 			expectWidthBounded(lines, width);
 		});
 
@@ -93,8 +113,10 @@ describe("pi-panopticon overlay renderers", () => {
 			expect(body).toContain("Recent Activity");
 			expect(body).toContain("(20 events)");
 			expect(body).toContain("... 5 earlier events omitted");
+			expect(body).toContain("backspace/← list");
+			expect(body).toContain("esc close");
 			expect(body).toContain("c direct message");
-			expect(body).toContain("m send message");
+			expect(body).toContain("m send");
 			expect(body).toContain("s stop");
 			expect(body).toContain("k kill");
 			expectWidthBounded(lines, width);
@@ -124,6 +146,13 @@ describe("pi-panopticon overlay renderers", () => {
 			expectWidthBounded(lines, width);
 		});
 	}
+
+	it("detects detail back-navigation keys", () => {
+		expect(isAgentDetailBackInput("\x7f")).toBe(true);
+		expect(isAgentDetailBackInput("\x1b[D")).toBe(true);
+		expect(isAgentDetailBackInput("\x1b")).toBe(false);
+		expect(isAgentDetailBackInput("c")).toBe(false);
+	});
 
 	it("sorts unread-message agents ahead of other peers while keeping self first", () => {
 		const ordered = sortAgentOverlayRecords([

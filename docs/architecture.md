@@ -69,6 +69,25 @@ flowchart TD
 
 ---
 
+## Cross-Extension TUI Standards
+
+```mermaid
+flowchart TD
+  Policy[docs/ux-tools-policy.md] --> Confirm[lib/tui-confirmation.ts\nstandard destructive confirmation]
+  Policy --> Overflow[lib/tui-overflow.ts\nstandard scroll/truncation cues]
+  Confirm --> KanbanDelete[/kanban delete task confirmation]
+  Confirm --> PanopticonStop[/agents stop/kill confirmation]
+  Confirm --> TeamsDelete[/teams delete/dissolve confirmation]
+  Overflow --> TeamsOverlay[/teams compact hidden-count cues]
+```
+
+### Context policy
+
+- Destructive confirmations use warning/error borders, explicit target text, and
+  the standard `y confirm · esc/n cancel` keys.
+- Scroll and hard-truncation cues are formatted through shared helpers to avoid
+  extension-specific wording drift.
+
 ## Kanban Extension
 
 ```mermaid
@@ -78,6 +97,7 @@ flowchart TD
   Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
   Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
+  Overlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
   Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
   Tools --> Board[board.ts event-sourced board model]
@@ -122,9 +142,10 @@ flowchart TD
   SetName --> Session[Pi session display name]
   SetName --> Registry[Panopticon registry record]
   Registry --> Display[Agent lists and peer routing]
-  Display --> AgentsOverlay[/agents overlay\nstatus, detail, direct messaging, stop/kill]
+  Display --> AgentsOverlay[/agents overlay\nstatus, fuzzy filter, detail/list navigation, messaging, stop/kill]
+  AgentsOverlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
+  Confirm --> Signals[Process signals\nSIGTERM / SIGKILL]
   AgentsOverlay --> Maildir[Agent transport\nMaildir channel]
-  AgentsOverlay --> Signals[Process signals\nSIGTERM / SIGKILL]
   Maildir --> Peers[Peer / spawned agents]
   Signals --> Peers
   GetName --> Details[Session, registry, and spawn-name metadata]
@@ -143,6 +164,8 @@ flowchart TD
   deprecation window.
 - Registry routing remains based on stable peer IDs; display names are UI labels.
 - `/agents` can send direct human-authored messages through the same agent transport as `agent_send`; replies still arrive through normal unread-message handling.
+- `/agents` list view supports `/`-activated fuzzy filtering for long visible agent lists without changing registry routing or unread-first sorting.
+- `/agents` detail view uses `backspace`/left-arrow to return to the agent list while `esc` closes the overlay.
 - `/agents` detail view can stop visible peer agents with SIGTERM or force-kill with SIGKILL after confirmation; it refuses to target the current agent.
 - Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
   require a fresh confirmation read, and idle stale-activity checks are

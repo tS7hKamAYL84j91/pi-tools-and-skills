@@ -28,6 +28,42 @@ Cross-extension TUI consistency and command namespace policy.
 - Never rely on color alone for semantic state.
 - Ensure rendered lines do not exceed the provided width.
 
+### Standard scroll and truncation cues
+
+Use `lib/tui-overflow.ts` helpers for shared overflow text. Use one shared cue
+format when a scrollable view shows only part of its content:
+
+```text
+[Showing N of M - scroll ↓ for more]
+```
+
+Rules:
+
+- Place the cue in dim help/status text below the visible content.
+- Use `scroll ↑/↓ for more` when both directions are available, `scroll ↑ for
+  more` at the end, and `scroll ↓ for more` at the start.
+- Do not say `scroll` when no additional content is reachable by scrolling.
+- Keep per-line truncation as `…` or `...` according to the renderer's existing
+  glyph policy; do not rely on color alone to indicate clipped content.
+- Prefer explicit hidden counts for compact summaries or hard truncation, for
+  example `...+3`, when line space is too constrained for the full cue.
+- Ensure the cue itself fits within the provided render width.
+
+### Standard destructive confirmation overlays
+
+Use `lib/tui-confirmation.ts` for destructive TUI confirmations.
+
+Rules:
+
+- Use a warning or error-colored border/title plus explicit text; never rely on
+  color alone.
+- Use the standard footer: `y confirm · esc/n cancel`.
+- Use `warning` severity for normal deletion/dissolution and graceful stops; use
+  `error` severity for force-kill or similarly immediate destructive actions.
+- Include the target object name/id in the subject line and one concise effect
+  line when useful.
+- Keep confirmation lines width-bounded by the provided render width.
+
 ### Standard overlay options
 
 ```ts
@@ -70,6 +106,8 @@ teams: ready
 | TUX-003 | Glyph/status convention | ✅ Done — ASCII markers, `msg:N` counts |
 | TUX-004 | Overflow indicators | ✅ Done — `...+N` on hidden agents, `DONE N+M` |
 | TUX-005 | Dense-view interaction parity | ✅ Done — Kanban `/` filter; Panopticon unread urgency sort; picker hints audited |
+| TUX-006 | Scroll/truncation cues | ✅ Done — shared `[Showing N of M - scroll ↓ for more]` policy documented |
+| TUX-007 | Destructive confirmations | ✅ Done — shared warning/error confirmation helper and standard keys documented |
 
 ### References
 

@@ -5,12 +5,17 @@
 import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
+	type Component,
+	type Focusable,
+	fuzzyFilter,
+	Input,
 	Text,
 	SelectList,
 	type SelectItem,
 	matchesKey,
 } from "@earendil-works/pi-tui";
 import { readSessionLog, type SessionEvent } from "../../lib/session-log.js";
+import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../lib/tui-confirmation.js";
 import { openAgentMessageOverlay } from "./agent-message-overlay.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "./registry.js";
@@ -33,6 +38,39 @@ function agentSelectItems(records: readonly AgentRecord[], selfId: string): Sele
 	});
 }
 
+interface MutableSelectListInternals {
+	filteredItems: SelectItem[];
+	selectedIndex: number;
+}
+
+class AgentSelectList extends SelectList {
+	private readonly allItems: SelectItem[];
+
+	constructor(
+		items: SelectItem[],
+		maxVisible: number,
+		theme: ConstructorParameters<typeof SelectList>[2],
+	) {
+		super(items, maxVisible, theme);
+		this.allItems = items;
+	}
+
+	override setFilter(query: string): void {
+		// SelectList exposes setFilter but not a fuzzy matcher hook, so this mirrors
+		// the existing Teams picker pattern to update its private filtered state.
+		const internals = this as unknown as MutableSelectListInternals;
+		const trimmed = query.trim();
+		internals.filteredItems = trimmed.length === 0
+			? this.allItems
+			: fuzzyFilter(
+					this.allItems,
+					trimmed,
+					(item) => `${item.label} ${item.description ?? ""} ${item.value}`,
+				);
+		internals.selectedIndex = 0;
+	}
+}
+
 interface RenderAgentListOverlayArgs {
 	records: AgentRecord[];
 	selfId: string;
@@ -52,39 +90,107 @@ export function sortAgentOverlayRecords(
 	});
 }
 
-function createAgentListView(args: Omit<RenderAgentListOverlayArgs, "width">): { container: Container; selectList: SelectList } {
-	const container = new Container();
-	const sortedRecords = sortAgentOverlayRecords(args.records, args.selfId);
-	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
-	const selectList = new SelectList(agentSelectItems(sortedRecords, args.selfId), Math.min(sortedRecords.length, 12), {
-		// SelectList hardcodes a Unicode arrow; normalize it to the shared
-		// ASCII-safe selected-row marker used by Teams and Kanban.
-		selectedPrefix: (t: string) => args.theme.fg("accent", t),
-		selectedText: (t: string) => args.theme.fg("accent", t.replace(/^→/, ">")),
-		description: (t: string) => args.theme.fg("muted", t),
-		scrollInfo: (t: string) => args.theme.fg("dim", t),
-		noMatch: (t: string) => args.theme.fg("warning", t),
-	});
-
-	container.addChild(border());
-	container.addChild(
-		new Text(
-			args.theme.fg("accent", args.theme.bold(" Agent Panopticon")) +
-				args.theme.fg("dim", ` - ${args.records.length} agent${args.records.length !== 1 ? "s" : ""}`),
-			1,
-			0,
-		),
-	);
-	container.addChild(new Text(` ${buildStatusSegments(args.records, args.selfId, args.theme).join(args.theme.fg("dim", " | "))}`, 1, 1));
-	container.addChild(new Text(args.theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
-	container.addChild(selectList);
-	container.addChild(new Text(args.theme.fg("dim", "  ↑/↓ navigate · enter detail · esc close · unread first"), 1, 0));
-	container.addChild(border());
-	return { container, selectList };
+interface AgentListComponentOptions extends Omit<RenderAgentListOverlayArgs, "width"> {
+	searchActive?: boolean;
+	query?: string;
 }
 
-export function renderAgentListOverlay(args: RenderAgentListOverlayArgs): string[] {
-	return createAgentListView(args).container.render(args.width);
+function agentSelectListTheme(theme: Theme): ConstructorParameters<typeof SelectList>[2] {
+	return {
+		// SelectList hardcodes a Unicode arrow; normalize it to the shared
+		// ASCII-safe selected-row marker used by Teams and Kanban.
+		selectedPrefix: (t: string) => theme.fg("accent", t),
+		selectedText: (t: string) => theme.fg("accent", t.replace(/^→/, ">")),
+		description: (t: string) => theme.fg("muted", t),
+		scrollInfo: (t: string) => theme.fg("dim", t),
+		noMatch: (t: string) => theme.fg("warning", t),
+	};
+}
+
+function createAgentListComponent(args: AgentListComponentOptions): Component & Focusable & { selectList: AgentSelectList } {
+	const sortedRecords = sortAgentOverlayRecords(args.records, args.selfId);
+	const selectList = new AgentSelectList(
+		agentSelectItems(sortedRecords, args.selfId),
+		Math.min(sortedRecords.length, 12),
+		agentSelectListTheme(args.theme),
+	);
+	const searchInput = new Input();
+	let searchActive = args.searchActive === true;
+	let focused = false;
+	if (args.query) {
+		searchInput.setValue(args.query);
+		selectList.setFilter(args.query);
+	}
+
+	const component: Component & Focusable & { selectList: AgentSelectList } = {
+		selectList,
+		get focused(): boolean {
+			return focused;
+		},
+		set focused(value: boolean) {
+			focused = value;
+			searchInput.focused = value && searchActive;
+		},
+		render: (width: number) => {
+			const container = new Container();
+			const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
+			container.addChild(border());
+			container.addChild(
+				new Text(
+					args.theme.fg("accent", args.theme.bold(" Agent Panopticon")) +
+						args.theme.fg("dim", ` - ${args.records.length} agent${args.records.length !== 1 ? "s" : ""}`),
+					1,
+					0,
+				),
+			);
+			container.addChild(new Text(` ${buildStatusSegments(args.records, args.selfId, args.theme).join(args.theme.fg("dim", " | "))}`, 1, 1));
+			container.addChild(new Text(args.theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
+			if (searchActive) {
+				container.addChild(searchInput);
+			}
+			container.addChild(selectList);
+			container.addChild(new Text(args.theme.fg("dim", searchActive
+				? "  type to filter · ↑/↓ navigate · enter detail · esc clear"
+				: "  ↑/↓ navigate · enter detail · / filter · esc close · unread first"), 1, 0));
+			container.addChild(border());
+			return container.render(width);
+		},
+		invalidate: () => {
+			searchInput.invalidate();
+			selectList.invalidate();
+		},
+		handleInput: (data: string) => {
+			if (searchActive) {
+				if (matchesKey(data, "escape")) {
+					searchActive = false;
+					searchInput.setValue("");
+					searchInput.focused = false;
+					selectList.setFilter("");
+					return;
+				}
+				if (matchesKey(data, "up") || matchesKey(data, "down") || matchesKey(data, "return") || matchesKey(data, "enter")) {
+					selectList.handleInput(data);
+					return;
+				}
+				searchInput.handleInput(data);
+				selectList.setFilter(searchInput.getValue());
+				return;
+			}
+			if (data === "/") {
+				searchActive = true;
+				searchInput.setValue("");
+				searchInput.focused = focused;
+				selectList.setFilter("");
+				return;
+			}
+			selectList.handleInput(data);
+		},
+	};
+	return component;
+}
+
+export function renderAgentListOverlay(args: RenderAgentListOverlayArgs & { searchActive?: boolean; query?: string }): string[] {
+	return createAgentListComponent(args).render(args.width);
 }
 
 interface RenderAgentDetailOverlayArgs {
@@ -139,6 +245,11 @@ function activityWindow(events: readonly SessionEvent[]): ActivityWindow {
 	return { visibleEvents, hiddenCount: events.length - visibleEvents.length };
 }
 
+/** @internal Return true for detail-view keys that navigate back to the agent list. */
+export function isAgentDetailBackInput(data: string): boolean {
+	return matchesKey(data, "backspace") || matchesKey(data, "left");
+}
+
 export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): string[] {
 	const container = new Container();
 	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
@@ -170,7 +281,7 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 		}
 	}
 
-	add(`\n  ${args.theme.fg("dim", ["esc close", ...(!isSelf ? ["c direct message", "m send message", "s stop", "k kill"] : [])].join(" · "))}`);
+	add(`\n  ${args.theme.fg("dim", ["backspace/← list", "esc close", ...(!isSelf ? ["c direct message", "m send message", "s stop", "k kill"] : [])].join(" · "))}`);
 	container.addChild(border());
 	return container.render(args.width);
 }
@@ -186,36 +297,55 @@ export async function openAgentOverlay(
 		return;
 	}
 
-	const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-		const { container, selectList } = createAgentListView({
-			records,
-			selfId: deps.selfId,
-			theme,
-		});
-		selectList.onSelect = (item) => done(item.value);
-		selectList.onCancel = () => done(null);
+	while (true) {
+		const selected = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+			const component = createAgentListComponent({
+				records,
+				selfId: deps.selfId,
+				theme,
+			});
+			component.selectList.onSelect = (item) => done(item.value);
+			component.selectList.onCancel = () => done(null);
 
-		return {
-			render: (w: number) => container.render(w),
-			invalidate: () => container.invalidate(),
-			handleInput: (data: string) => {
-				selectList.handleInput(data);
-				tui.requestRender();
+			return {
+				get focused(): boolean {
+					return component.focused;
+				},
+				set focused(value: boolean) {
+					component.focused = value;
+				},
+				render: (w: number) => component.render(w),
+				invalidate: () => component.invalidate(),
+				handleInput: (data: string) => {
+					component.handleInput?.(data);
+					tui.requestRender();
+				},
+			};
+		}, {
+			overlay: true,
+			overlayOptions: {
+				width: "70%",
+				minWidth: 60,
+				maxHeight: "80%",
+				anchor: "center",
+				margin: 2,
 			},
-		};
-	}, {
-		overlay: true,
-		overlayOptions: {
-			width: "70%",
-			minWidth: 60,
-			maxHeight: "80%",
-			anchor: "center",
-			margin: 2,
-		},
-	});
+		});
 
-	if (!selected) return;
-	await showAgentDetail(ctx, selected, deps);
+		if (!selected) return;
+		const detailAction = await showAgentDetail(ctx, selected, deps);
+		if (detailAction !== "back") return;
+	}
+}
+
+/** @internal Build the standardized stop/kill confirmation view. */
+export function agentStopConfirmationView(record: AgentRecord, force: boolean): DestructiveConfirmationView {
+	return {
+		title: force ? "Confirm KILL agent" : "Confirm stop agent",
+		subject: `${record.name} (pid ${record.pid})`,
+		details: [force ? "Sends SIGKILL immediately." : "Requests graceful SIGTERM."],
+		severity: force ? "error" : "warning",
+	};
 }
 
 async function confirmAgentStop(
@@ -223,38 +353,7 @@ async function confirmAgentStop(
 	record: AgentRecord,
 	force: boolean,
 ): Promise<boolean> {
-	return ctx.ui.custom<boolean>((_tui, theme, _kb, done) => {
-		const action = force ? "KILL" : "stop";
-		return {
-			render: (w: number) => {
-				const container = new Container();
-				const border = () => new DynamicBorder((s: string) => theme.fg(force ? "error" : "warning", s));
-				container.addChild(border());
-				container.addChild(new Text(`  ${theme.fg(force ? "error" : "warning", theme.bold(`Confirm ${action} agent`))}`, 1, 0));
-				container.addChild(new Text(`  ${record.name} (pid ${record.pid})`, 1, 0));
-				container.addChild(new Text(`  ${theme.fg("dim", "y confirm · esc/n cancel")}`, 1, 0));
-				container.addChild(border());
-				return container.render(w);
-			},
-			invalidate: () => undefined,
-			handleInput: (data: string) => {
-				if (data === "y" || data === "Y") {
-					done(true);
-				} else if (data === "n" || data === "N" || matchesKey(data, "escape")) {
-					done(false);
-				}
-			},
-		};
-	}, {
-		overlay: true,
-		overlayOptions: {
-			width: "50%",
-			minWidth: 40,
-			maxHeight: "40%",
-			anchor: "center",
-			margin: 2,
-		},
-	});
+	return confirmDestructiveAction(ctx, agentStopConfirmationView(record, force));
 }
 
 async function confirmAndStopAgent(
@@ -272,22 +371,24 @@ async function confirmAndStopAgent(
 	}
 }
 
+type AgentDetailAction = "back" | "close";
+
 async function showAgentDetail(
 	ctx: ExtensionContext,
 	agentName: string,
 	deps: AgentOverlayDeps,
-): Promise<void> {
+): Promise<AgentDetailAction> {
 	const self = deps.registry.getRecord();
 	const records = visibleRecords(self, deps.registry.readAllPeers());
 	const rec = findAgentByDisplayName(records, agentName);
 	if (!rec) {
 		ctx.ui.notify(`Agent "${agentName}" not found`, "warning");
-		return;
+		return "close";
 	}
 
 	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
-	let action: "message" | "compose" | "stop" | "kill" | undefined;
+	let action: "back" | "message" | "compose" | "stop" | "kill" | undefined;
 
 	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
 		return {
@@ -300,7 +401,10 @@ async function showAgentDetail(
 			}),
 			invalidate: () => undefined,
 			handleInput: (data: string) => {
-				if (matchesKey(data, "escape")) {
+				if (isAgentDetailBackInput(data)) {
+					action = "back";
+					done();
+				} else if (matchesKey(data, "escape")) {
 					done();
 				} else if (!isSelf && (data === "c" || data === "C")) {
 					action = "message";
@@ -328,6 +432,9 @@ async function showAgentDetail(
 		},
 	});
 
+	if (action === "back") {
+		return "back";
+	}
 	if (action === "compose") {
 		ctx.ui.setEditorText(`/send ${agentDisplayName(rec, records)} `);
 	} else if (action === "message") {
@@ -335,4 +442,5 @@ async function showAgentDetail(
 	} else if (action === "stop" || action === "kill") {
 		await confirmAndStopAgent(ctx, rec, deps, action === "kill");
 	}
+	return "close";
 }

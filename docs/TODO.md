@@ -243,11 +243,11 @@ Single tracking group for the identified visual, interaction, and structural UX 
 |------|-------------|--------|
 | 8.1 | **Kanban Summary Mode (Collapsed Metrics View):** Toggle vertical column progress bars and active/blocked summaries with `v` or `TAB` in `/kanban`. | `[ ]` Planned |
 | 8.2 | **Kanban Summary Drill-Down:** Support selecting a collapsed column and pressing `enter` to expand and browse only its tasks. | `[ ]` Planned |
-| 8.3 | **Panopticon Navigation Loop (Detail ➔ List):** Add a nested navigation state machine or `backspace` keybind in `/agents` to go back to directory from details. | `[ ]` Planned |
-| 8.4 | **Panopticon Fuzzy Filtering:** Add filter input triggerable by `/` inside `/agents` directory list to handle long agent lists. | `[ ]` Planned |
+| 8.3 | **Panopticon Navigation Loop (Detail ➔ List):** Add a nested navigation state machine or `backspace` keybind in `/agents` to go back to directory from details. | `[R]` Ready for review — 2026-05-29 added `backspace`/`←` detail-to-list navigation, kept `esc` as close, and updated focused render/key tests; `npm run check` ✅; `npm test` ✅ (69 files, 651 tests) |
+| 8.4 | **Panopticon Fuzzy Filtering:** Add filter input triggerable by `/` inside `/agents` directory list to handle long agent lists. | `[R]` Ready for review — 2026-05-29 added `/`-activated agent list filtering with `fuzzyFilter`, preserved unread-first sorting and detail/back navigation, and updated render coverage; `npm test -- tests/pi-panopticon-overlay-render.test.ts` ✅; `npm run check` ✅; `npm test` ✅ (69 files, 653 tests); navigator review ✅ |
 | 8.5 | **Interactive CoAS Command Browsers:** Migrate `/coas-workspaces` and `/coas-schedules` to interactive `SelectList` lists. | `[ ]` Planned |
-| 8.6 | **Standardized Scroll & Truncation Visual Cues:** Add a shared text truncation layout standard (`[Showing N of M - scroll ↓]`) in `docs/ux-tools-policy.md`. | `[ ]` Planned |
-| 8.7 | **Standardized Destructive Confirmation Modals:** Unify delete/kill overlays under standard warning borders and keybinds (`y` to confirm). | `[ ]` Planned |
+| 8.6 | **Standardized Scroll & Truncation Visual Cues:** Add a shared text truncation layout standard (`[Showing N of M - scroll ↓]`) in `docs/ux-tools-policy.md`. | `[R]` Ready for review — 2026-05-29 added `lib/tui-overflow.ts`, adopted compact hidden-count cue in Teams overlay, documented policy; `npm run check` ✅; `npm test` ✅ (69 files, 650 tests); navigator final review ✅ |
+| 8.7 | **Standardized Destructive Confirmation Modals:** Unify delete/kill overlays under standard warning borders and keybinds (`y` to confirm). | `[R]` Ready for review — 2026-05-29 added `lib/tui-confirmation.ts`, adopted it for Kanban task delete, Panopticon stop/kill, and Teams delete/dissolve confirmations, documented policy, and added render/input coverage; `npm run check` ✅; `npm test` ✅ (71 files, 658 tests); navigator review ✅ with follow-up coverage addressed |
 | 8.8 | **Goal Clear Command Shorthand:** Register direct `/goal-clear` slash command and update validation/test coverage. | `[x]` Done |
 
 ### References

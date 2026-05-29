@@ -8,6 +8,7 @@
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { renderDestructiveConfirmationOverlay } from "../../lib/tui-confirmation.js";
 import { type TaskState, WIP_LIMIT } from "./board.js";
 
 // ── Sanitisation ────────────────────────────────────────────────
@@ -360,32 +361,17 @@ export function renderConfirmDelete(
 	width: number,
 	theme: Theme,
 ): string[] {
-	const lines: string[] = [];
-	const innerW = modalInnerWidth(width);
-
-	lines.push(frameTop(innerW, theme));
-
 	if (!task) {
-		lines.push(...noSelectionLines(innerW, theme));
-		return lines;
+		const innerW = modalInnerWidth(width);
+		return [frameTop(innerW, theme), ...noSelectionLines(innerW, theme)];
 	}
 
-	const title = theme.bold(theme.fg("error", " Delete Task?"));
-	lines.push(modalLine(title, innerW, theme));
-	lines.push(frameMiddle(innerW, theme));
-
-	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)}`;
-	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
-	lines.push(modalLine("", innerW, theme));
-
-	const prompt = theme.fg(
-		"warning",
-		"  Press 'y' to delete, 'n' or esc to cancel",
-	);
-	lines.push(modalLine(prompt, innerW, theme));
-	lines.push(frameBottom(innerW, theme));
-
-	return lines;
+	return renderDestructiveConfirmationOverlay({
+		title: "Delete Task?",
+		subject: `${task.id} ${taskDisplayTitle(task)}`,
+		details: ["Appends a DELETE event; history remains in the board log."],
+		severity: "warning",
+	}, width, theme);
 }
 
 // ── Move-picker view ────────────────────────────────────────────

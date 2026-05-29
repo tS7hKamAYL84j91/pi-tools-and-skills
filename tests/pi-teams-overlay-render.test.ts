@@ -102,7 +102,7 @@ describe("pi-teams overlay renderers", () => {
 			const lines = renderTeamOverlay("Team Detail", detailLines, fakeTheme, width);
 
 			const body = lines.join("\n");
-			expect(body).toContain("... 6 more lines");
+			expect(body).toContain("...+6 more lines");
 			expect(body).not.toContain("Detail line 20");
 			expectWidthBounded(lines, width);
 		});

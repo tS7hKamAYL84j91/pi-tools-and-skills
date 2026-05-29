@@ -4,6 +4,7 @@
 
 import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { formatHiddenCountCue } from "../../lib/tui-overflow.js";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { STATUS_SYMBOLS } from "./status-symbols.js";
@@ -77,9 +78,11 @@ function readOnlyDetailLines(lines: readonly string[]): string[] {
 	if (lines.length <= MAX_READ_ONLY_DETAIL_LINES) return [...lines];
 	const visibleCount = MAX_READ_ONLY_DETAIL_LINES - 1;
 	const hiddenCount = lines.length - visibleCount;
+	const hiddenCue = formatHiddenCountCue(hiddenCount, "line");
+	if (!hiddenCue) return [...lines.slice(0, visibleCount)];
 	return [
 		...lines.slice(0, visibleCount),
-		`... ${hiddenCount} more line${hiddenCount === 1 ? "" : "s"}`,
+		hiddenCue,
 	];
 }
 

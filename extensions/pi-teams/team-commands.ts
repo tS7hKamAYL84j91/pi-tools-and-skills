@@ -3,6 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../lib/tui-confirmation.js";
 import { deleteTeamFiles } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLines } from "./team-overlay.js";
@@ -15,10 +16,19 @@ function parseRunArgs(rawArgs: string): { id: string; prompt: string } | undefin
 	return { id, prompt: rest.join(" ").trim() };
 }
 
+export function teamDeleteConfirmationView(id: string): DestructiveConfirmationView {
+	return {
+		title: "Delete team?",
+		subject: `Delete/dissolve team "${id}"?`,
+		details: ["Removes the user or project team files; built-in teams are protected."],
+		severity: "warning",
+	};
+}
+
 async function deleteSelectedTeam(ctx: ExtensionContext, requested?: string): Promise<string | undefined> {
 	const id = await pickTeamId(ctx, requested);
 	if (!id) return undefined;
-	const confirmed = await ctx.ui.confirm("Delete team?", `Delete/dissolve team "${id}"?`);
+	const confirmed = await confirmDestructiveAction(ctx, teamDeleteConfirmationView(id));
 	if (!confirmed) return undefined;
 	const result = deleteTeamFiles({ id }, ctx.cwd);
 	ctx.ui.notify(`Deleted team "${result.id}"`, "info");
