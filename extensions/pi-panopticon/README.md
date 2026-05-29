@@ -23,6 +23,8 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 
 Panopticon registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; healthy idle peers are suppressed.
 
+Design note: `docs/adr/022-panopticon-memory-snapshot.md` defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It is design-only; Panopticon does not currently write these snapshots.
+
 ## What this does NOT do
 
 - Does not replace project task boards, CoAS scheduling, or team protocols.
