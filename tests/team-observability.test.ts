@@ -40,6 +40,44 @@ describe("team observability primitives", () => {
 		]);
 	});
 
+	it("pins additive observability detail field projection", () => {
+		const [projected] = observabilityEventsFromRunEvents([
+			event({
+				kind: "run_detail",
+				detailKind: "trace",
+				phaseId: "phase",
+				nodeId: "node",
+				message: "trace message",
+				artifactUri: "session://team/run/artifact",
+				error: "warning",
+				data: { extra: true },
+			}),
+		]);
+
+		expect(projected ? Object.keys(projected).sort() : []).toEqual([
+			"artifactUri",
+			"data",
+			"error",
+			"kind",
+			"message",
+			"nodeId",
+			"phaseId",
+			"runId",
+			"schemaVersion",
+			"timestamp",
+		]);
+		expect(projected).toMatchObject({
+			schemaVersion: TEAM_OBSERVABILITY_SCHEMA_VERSION,
+			kind: "trace",
+			runId: "run-1",
+			phaseId: "phase",
+			nodeId: "node",
+			artifactUri: "session://team/run/artifact",
+			error: "warning",
+			data: { extra: true },
+		});
+	});
+
 	it("represents approval-required and approval-result gates", () => {
 		const events = observabilityEventsFromRunEvents([
 			event({ kind: "run_detail", detailKind: "trace", message: "human approval required", data: { approval: "required", gate: "deploy" } }),

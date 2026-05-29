@@ -19,6 +19,19 @@ describe("team-node-runner pure helpers", () => {
 		]);
 	});
 
+	it("keeps node detail surface compact on errors", () => {
+		const [detail] = nodeDetails([{ ...node, ok: false, error: "provider unavailable" }]);
+		expect(detail ? Object.keys(detail).sort() : []).toEqual([
+			"attempts",
+			"durationMs",
+			"error",
+			"model",
+			"ok",
+			"role",
+		]);
+		expect(detail).toEqual({ role: "member_1", model: "test/model", ok: false, durationMs: 7, attempts: 2, error: "provider unavailable" });
+	});
+
 	it("converts direct node runs to model runs for prompt packaging", () => {
 		expect(participantsFromRuns([node])).toEqual([
 			{

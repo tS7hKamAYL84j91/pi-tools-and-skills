@@ -122,6 +122,96 @@ describe("TeamStateManager", () => {
 		]);
 	});
 
+	it("pins persisted event and reduced run-record detail surfaces", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.recordPhaseStarted(runId, "research_loop_1", "Research loop 1");
+		writer.recordNodeCompleted(runId, {
+			phaseId: "research_loop_1",
+			nodeId: "explorer_1",
+			role: "explorer",
+			model: "test/model",
+			ok: true,
+			durationMs: 12,
+			output: "verified output",
+		});
+		writer.recordDetail(runId, {
+			kind: "artifact",
+			phaseId: "research_loop_1",
+			nodeId: "explorer_1",
+			message: "artifact recorded",
+			data: { source: "fixture" },
+			artifactUri: "session://team-runs/run/artifacts/1",
+			error: "warning only",
+		});
+		writer.recordRunCompleted(runId, 20, "summary");
+
+		const eventKeys = entries.map((entry) => Object.keys(entry.data as Record<string, unknown>).sort());
+		expect(eventKeys).toEqual([
+			["input", "kind", "orchestratorPid", "protocol", "runId", "schemaVersion", "seq", "teamId", "timestamp"],
+			["kind", "label", "orchestratorPid", "phaseId", "runId", "schemaVersion", "seq", "timestamp"],
+			["durationMs", "kind", "model", "nodeId", "ok", "orchestratorPid", "output", "outputChars", "outputSha256", "outputTruncated", "phaseId", "role", "runId", "schemaVersion", "seq", "timestamp"],
+			["artifactUri", "data", "detailKind", "error", "kind", "message", "nodeId", "orchestratorPid", "phaseId", "runId", "schemaVersion", "seq", "timestamp"],
+			["durationMs", "kind", "ok", "orchestratorPid", "runId", "schemaVersion", "seq", "summary", "timestamp"],
+		]);
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+		const record = reader.get(runId);
+		expect(record ? Object.keys(record).sort() : []).toEqual([
+			"completedAt",
+			"details",
+			"id",
+			"nodes",
+			"orchestratorPid",
+			"phases",
+			"prompt",
+			"protocol",
+			"startedAt",
+			"status",
+			"summary",
+			"team",
+			"version",
+		]);
+		expect(record?.nodes.map((node) => Object.keys(node).sort())).toEqual([
+			["durationMs", "model", "nodeId", "ok", "output", "phaseId", "role"],
+		]);
+		expect(record?.details.map((detail) => Object.keys(detail).sort())).toEqual([
+			["artifactUri", "data", "error", "kind", "message", "nodeId", "phaseId", "timestamp"],
+		]);
+	});
+
+	it("tolerates additive persisted event fields while reducing known state", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = writer.startRun({ teamId: "team", protocol: "research", prompt: "x" });
+		writer.recordNodeCompleted(runId, {
+			phaseId: "research_loop_1",
+			nodeId: "explorer_1",
+			role: "explorer",
+			model: "test/model",
+			ok: true,
+			durationMs: 12,
+			output: "verified output",
+		});
+		(entries[0]?.data as Record<string, unknown>).futureRunField = "ignored";
+		(entries[1]?.data as Record<string, unknown>).futureNodeField = { ignored: true };
+		entries.push({
+			type: "custom",
+			customType: TEAM_RUN_CUSTOM_TYPE,
+			data: { schemaVersion: 1, kind: "future_event", runId, seq: 99, timestamp: Date.now(), orchestratorPid: process.pid, payload: "ignored" },
+		});
+
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.get(runId)).toMatchObject({
+			team: "team",
+			nodes: [expect.objectContaining({ nodeId: "explorer_1", output: "verified output" })],
+		});
+	});
+
 	it("projects failed node errors into detail records", () => {
 		const entries: CustomEntry[] = [];
 		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
