@@ -261,6 +261,16 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerCommand("goal-clear", {
+		description: "Clear the active project-local pi goal",
+		handler: async (_args, ctx) => {
+			runtime.stopRequested = false;
+			await clearGoal(ctx.cwd);
+			await refreshUi(ctx, null);
+			ctx.ui.notify("Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
+		},
+	});
+
 	pi.registerTool({
 		name: "goal_get",
 		label: "Goal Get",
