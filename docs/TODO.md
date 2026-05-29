@@ -235,6 +235,29 @@ Simplify the Kanban directory resolution logic by strictly using `pi-kanban/`.
 
 ---
 
+## 8. Extension UX Improvements
+
+Single tracking group for the identified visual, interaction, and structural UX enhancements across all extensions.
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 8.1 | **Kanban Summary Mode (Collapsed Metrics View):** Toggle vertical column progress bars and active/blocked summaries with `v` or `TAB` in `/kanban`. | `[ ]` Planned |
+| 8.2 | **Kanban Summary Drill-Down:** Support selecting a collapsed column and pressing `enter` to expand and browse only its tasks. | `[ ]` Planned |
+| 8.3 | **Panopticon Navigation Loop (Detail ➔ List):** Add a nested navigation state machine or `backspace` keybind in `/agents` to go back to directory from details. | `[ ]` Planned |
+| 8.4 | **Panopticon Fuzzy Filtering:** Add filter input triggerable by `/` inside `/agents` directory list to handle long agent lists. | `[ ]` Planned |
+| 8.5 | **Interactive CoAS Command Browsers:** Migrate `/coas-workspaces` and `/coas-schedules` to interactive `SelectList` lists. | `[ ]` Planned |
+| 8.6 | **Standardized Scroll & Truncation Visual Cues:** Add a shared text truncation layout standard (`[Showing N of M - scroll ↓]`) in `docs/ux-tools-policy.md`. | `[ ]` Planned |
+| 8.7 | **Standardized Destructive Confirmation Modals:** Unify delete/kill overlays under standard warning borders and keybinds (`y` to confirm). | `[ ]` Planned |
+| 8.8 | **Goal Clear Command Shorthand:** Register direct `/goal-clear` slash command and update validation/test coverage. | `[x]` Done |
+
+### References
+
+- `docs/ux-tools-policy.md`
+- `extensions/pi-goal/goal-extension.ts`
+- `tests/extension-registration.test.ts`
+
+---
+
 ## Backlog (evidence-gated)
 
 These items only activate when a concrete user-visible gap or failing fitness
