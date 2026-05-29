@@ -41,6 +41,8 @@ backlog → todo → in-progress → done
                   blocked
 ```
 
+Canonical lifecycle vocabulary and implementation boundaries are documented in [`docs/reports/t-264-task-lifecycle-model.md`](../../docs/reports/t-264-task-lifecycle-model.md). That report is design/spec only and does not migrate `board.log` or change runtime behavior.
+
 WIP limit: **3** in-progress tasks (configurable via `KANBAN_WIP_LIMIT` env var).
 
 ### Directory
