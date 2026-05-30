@@ -2,8 +2,8 @@
  * Kanban board view and column-management tool registrations.
  */
 
-import { writeFile } from "node:fs/promises";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import {
@@ -57,7 +57,7 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 				returnedView = generateSnapshotSummary(board);
 			}
 			const sp = snapshotPath();
-			await writeFile(sp, snapshot, "utf-8");
+			await writeFileAtomic(sp, snapshot);
 			await logAppend(
 				`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
 			);

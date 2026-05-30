@@ -39,7 +39,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** `package.json` declares Vitest and all local quality gates as dev dependencies. Local dependency hydration with `npm install` reports dependencies up to date and restores `node_modules/.bin/vitest`. `.github/workflows/fitness.yml` runs `npm ci`, `npm run check`, and `npm test` on push to `main` and pull requests. Local validation on 2026-05-30: `npm run check` passed; `npm test` passed with 71 files and 659 tests, including architecture and test-quality suites.
 
-### AFR-002 — Standardize file persistence discipline `[ ] Planned`
+### AFR-002 — Standardize file persistence discipline `[R] Ready for review`
 
 **Priority:** P1
 
@@ -54,6 +54,8 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 - Shared helpers exist for safe JSON read/update/write cycles.
 - State-owning extensions use those helpers or document explicit exceptions.
 - Any locking/advisory-lock policy is documented where concurrent writers are possible.
+
+**Evidence:** Direct filesystem mutation inventory recorded in `docs/reports/afr-002-persistence-inventory.md`. Shared helpers now live in `lib/file-persistence.ts`: `writeFileAtomic()`, `appendLogLine()`, and `updateJsonFile()`. `pi-goal` state/artifact writes and low-risk `pi-kanban` board/task/snapshot writes use those helpers. `docs/architecture.md` documents the atomic-write, append-log, JSON-update, and advisory-lock policy. `tests/architecture/runtime-state-boundaries.ts` enforces that direct state writes use shared helpers or appear as explicit exceptions with rationale. Local validation on 2026-05-30: `npm run check` passed; `npm test` passed with 73 files and 672 tests.
 
 ### AFR-003 — Keep runtime coupling at extension APIs `[R] Ready for review`
 

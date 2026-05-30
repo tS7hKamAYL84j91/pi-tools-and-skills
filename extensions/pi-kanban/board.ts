@@ -7,8 +7,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ export const selfAppendedLines = new Set<string>();
 
 export const logAppend = async (line: string): Promise<void> => {
 	selfAppendedLines.add(line);
-	await appendFile(boardLogPath(), `${line}\n`, "utf-8");
+	await appendLogLine(boardLogPath(), line);
 };
 
 /**
@@ -120,7 +121,7 @@ export async function writeTaskFile(
 		lines.push(meta.description, "");
 	}
 	lines.push(notesSection, "");
-	await writeFile(taskFilePath(taskId), lines.join("\n"), "utf-8");
+	await writeFileAtomic(taskFilePath(taskId), lines.join("\n"));
 }
 
 /** Append a timestamped note to an existing task markdown file. Creates a stub file if missing. */
@@ -134,7 +135,7 @@ export async function appendTaskNote(
 	const entry = `${nowZ()} [${agent}] ${text}`;
 	if (existsSync(fp)) {
 		const existing = await readFile(fp, "utf-8");
-		await writeFile(fp, `${existing.trimEnd()}\n- ${entry}\n`, "utf-8");
+		await writeFileAtomic(fp, `${existing.trimEnd()}\n- ${entry}\n`);
 	} else {
 		await writeTaskFile(
 			taskId,

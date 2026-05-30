@@ -2,9 +2,10 @@
  * Project-local goal state persistence, rendering, and validation helpers.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 
 type GoalStatus = "active" | "paused" | "complete";
 
@@ -59,8 +60,8 @@ export async function loadGoal(cwd: string): Promise<GoalState | null> {
 export async function saveGoal(cwd: string, state: GoalState): Promise<void> {
 	const paths = goalPaths(cwd);
 	await mkdir(paths.dir, { recursive: true });
-	await writeFile(paths.statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-	await writeFile(paths.summaryPath, renderGoalMarkdown(state), "utf8");
+	await writeFileAtomic(paths.statePath, `${JSON.stringify(state, null, 2)}\n`);
+	await writeFileAtomic(paths.summaryPath, renderGoalMarkdown(state));
 	await ensureRuntimeIgnored(cwd);
 }
 
@@ -78,8 +79,14 @@ export async function writeGoalIteration(
 	const dir = join(goalPaths(cwd).dir, "runs", year, month, day);
 	await mkdir(dir, { recursive: true });
 	const prefix = `${runId}-iter-${String(iteration).padStart(3, "0")}`;
-	await writeFile(join(dir, `${prefix}.jsonl`), `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`, "utf8");
-	await writeFile(join(dir, `${prefix}.md`), renderIterationMarkdown(state, iteration), "utf8");
+	await writeFileAtomic(
+		join(dir, `${prefix}.jsonl`),
+		`${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
+	);
+	await writeFileAtomic(
+		join(dir, `${prefix}.md`),
+		renderIterationMarkdown(state, iteration),
+	);
 }
 
 export async function clearGoal(cwd: string): Promise<void> {
@@ -91,7 +98,10 @@ export function createFileGoal(cwd: string, inputPath: string): GoalState {
 	return newGoal(`Complete the work described by ${sourcePath}`, sourcePath);
 }
 
-export async function createFileTodoGoal(cwd: string, inputPath: string): Promise<GoalState> {
+export async function createFileTodoGoal(
+	cwd: string,
+	inputPath: string,
+): Promise<GoalState> {
 	const sourcePath = normalizeProjectPath(cwd, inputPath);
 	const content = (await readFile(join(cwd, sourcePath), "utf8")).trim();
 	if (!content) {
@@ -100,19 +110,25 @@ export async function createFileTodoGoal(cwd: string, inputPath: string): Promis
 	const objective = `Complete the work described by ${sourcePath}\n\n${content}`;
 	const paths = goalPaths(cwd);
 	await mkdir(paths.dir, { recursive: true });
-	await writeFile(paths.todoPath, renderTodoMarkdown(objective), "utf8");
+	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(objective));
 	await ensureRuntimeIgnored(cwd);
-	return newGoal(`Complete the work described by ${sourcePath}`, relative(cwd, paths.todoPath));
+	return newGoal(
+		`Complete the work described by ${sourcePath}`,
+		relative(cwd, paths.todoPath),
+	);
 }
 
-export async function createTextGoal(cwd: string, objective: string): Promise<GoalState> {
+export async function createTextGoal(
+	cwd: string,
+	objective: string,
+): Promise<GoalState> {
 	const cleaned = objective.trim();
 	if (!cleaned) {
 		throw new Error("Goal text must be non-empty");
 	}
 	const paths = goalPaths(cwd);
 	await mkdir(paths.dir, { recursive: true });
-	await writeFile(paths.todoPath, renderTodoMarkdown(cleaned), "utf8");
+	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(cleaned));
 	await ensureRuntimeIgnored(cwd);
 	return newGoal(cleaned, relative(cwd, paths.todoPath));
 }
@@ -133,7 +149,10 @@ function newGoal(objective: string, sourcePath: string): GoalState {
 	};
 }
 
-export function updateGoal(state: GoalState, patch: Partial<GoalState>): GoalState {
+export function updateGoal(
+	state: GoalState,
+	patch: Partial<GoalState>,
+): GoalState {
 	return {
 		...state,
 		...patch,
@@ -154,8 +173,12 @@ export function startRun(state: GoalState, turnBudget: number): GoalState {
 
 export function renderGoalSummary(state: GoalState): string {
 	const source = state.sourcePath ? `\nSource: ${state.sourcePath}` : "";
-	const run = state.runActive ? `\nRun: ${state.turnsUsed}/${state.turnBudget}` : "";
-	const evidence = state.completionEvidence ? `\nEvidence: ${state.completionEvidence}` : "";
+	const run = state.runActive
+		? `\nRun: ${state.turnsUsed}/${state.turnBudget}`
+		: "";
+	const evidence = state.completionEvidence
+		? `\nEvidence: ${state.completionEvidence}`
+		: "";
 	const error = state.lastError ? `\nLast error: ${state.lastError}` : "";
 	return `Goal ${state.goalId}\nStatus: ${state.status}${source}${run}\nObjective: ${state.objective}${evidence}${error}`;
 }
@@ -249,7 +272,7 @@ async function ensureRuntimeIgnored(cwd: string): Promise<void> {
 		return;
 	}
 	const prefix = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
-	await writeFile(gitExclude, `${current}${prefix}${STATE_DIR}/\n`, "utf8");
+	await writeFileAtomic(gitExclude, `${current}${prefix}${STATE_DIR}/\n`);
 }
 
 function parseGoalState(value: unknown): GoalState {
@@ -294,7 +317,9 @@ function readOptionalString(value: unknown): string | undefined {
 
 function readNumber(value: unknown, field: string): number {
 	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-		throw new Error(`Invalid goal state: ${field} must be a non-negative integer`);
+		throw new Error(
+			`Invalid goal state: ${field} must be a non-negative integer`,
+		);
 	}
 	return value;
 }

@@ -120,6 +120,35 @@ flowchart TD
 
 ---
 
+## Persistence Discipline
+
+```mermaid
+flowchart TD
+  StateOwner[State-owning extension/lib code] --> Helpers[lib/file-persistence.ts]
+  Helpers --> Atomic[writeFileAtomic\ntemp file + rename]
+  Helpers --> Append[appendLogLine\nopen append + newline]
+  Helpers --> Json[updateJsonFile\nread/update/atomic rewrite]
+  StateOwner -. documented exception .-> Exception[Protocol/lifecycle-specific IO]
+  Tests[architecture runtime-state-boundaries suite] --> StateOwner
+```
+
+### Context policy
+
+- Common full-file state writes should use `writeFileAtomic()` so readers see a
+  complete old or new file, not a partial rewrite.
+- Append-only event logs should use `appendLogLine()` for one-line appends with
+  consistent directory creation and file mode behavior.
+- JSON read/update/write cycles should use `updateJsonFile()` unless the caller
+  needs a stronger domain-specific transaction.
+- Atomic rename does not serialize competing read/modify/write cycles. Where
+  concurrent writers can update the same derived state, use an owning append log,
+  an advisory lock, or document why last-writer-wins is acceptable.
+- Direct `writeFile`/`appendFile` use in state-writing code must either move
+  through the shared helper or appear as an explicit architecture-test exception
+  with rationale.
+
+---
+
 ## Cross-Extension TUI Standards
 
 ```mermaid
@@ -336,6 +365,8 @@ flowchart TD
 ### Context policy
 
 - `.pi-goal/` is project-local runtime state and is automatically added to `.git/info/exclude` when possible.
+- `pi-goal` owns `.pi-goal/`; other extensions, including `pi-panopticon`, must not read, parse, write, or infer behavior from those files.
+- Cross-extension goal orchestration must use public runtime surfaces: `/goal`, `goal_get`, `goal_complete`, agent messages/tools, or extension host APIs.
 - `/goal` bounds autonomous progress by turn budget; `/goal stop` requests graceful stopping at safe turn boundaries.
 - `goal_complete` is root-owned and requires concrete evidence after re-reading source requirements and checking validation state.
 - Goal text and source files are treated as untrusted input; current repository/filesystem state remains authoritative.
