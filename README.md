@@ -2,11 +2,9 @@
 
 ![pi-panopticon](docs/images/pi-panopticon.png)
 
-Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent) — a local-first coding agent.
+Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent), a local-first coding agent.
 
-Tools for a personal Chief of Staff setup.
-
-Usual vibe coded warning!
+This repository provides reusable operator tooling for a personal Chief of Staff setup: extension packages, agent skills, prompt templates, and shared TypeScript utilities.
 
 ## Getting started
 
@@ -34,7 +32,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills`, and `prompts` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-teams`, and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-panopticon`, `pi-research-tools`, or `pi-teams`). It does not alter runtime/project settings.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon`, `pi-teams`, and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-panopticon`, `pi-research-tools`, or `pi-teams`). It does not alter runtime/project settings.
 
 ### 2. Set up
 
@@ -62,30 +60,31 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 
 `make setup` globally enables reusable operator extensions. Project/runtime extensions stay opt-in per workspace.
 
-| Extension         | Type    | What it does                                                                                            |
-| ----------------- | ------- | ------------------------------------------------------------------------------------------------------- |
-| **pi-panopticon** | Global  | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
-| **pi-teams**      | Global  | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
-| **pi-goal**       | Global  | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
-| **pi-research-tools** | User/Project | Registered dry-run research tools (`arxiv_search`, `semantic_scholar`, `github_search`, `web_read`) |
-| **pi-matrix**     | User    | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
-| **pi-kanban**     | Project | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
-| **pi-coas**       | Project | CoAS status, doctor, workspace, and schedule control surface                                            |
+| Extension             | Type         | What it does                                                                                            |
+| --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
+| **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management |
+| **pi-teams**          | Global       | Heterogeneous multi-model debate using the runtime model registry and visible config                    |
+| **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
+| **pi-research-tools** | User/Project | Registered dry-run research tools (`arxiv_search`, `semantic_scholar`, `github_search`, `web_read`)     |
+| **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
+| **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
+| **pi-coas**           | Project      | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
 
-Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Operator and methodology skills (clean-room, code-forensics, deep-research, planning, problem-crystalliser, red-team, six-thinking-hats, notebooklm, jules-delegation) live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
+Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Broader operator and methodology skills that are not specific to this repo live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
 
-| Skill                      | Bundle          | Purpose                                                                           |
-| -------------------------- | --------------- | --------------------------------------------------------------------------------- |
-| **node-esm-gotchas**       | shared          | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
-| **pi-agent-orchestration** | pi-panopticon   | Spawn, brief, monitor, message, and shut down pi worker agents                    |
-| **pi-extension-dev**       | shared          | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
-| **pi-kanban**              | pi-kanban       | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
-| **pi-model-selection**     | shared          | Verify pi-visible models and route work to the right provider/model               |
-| **pi-session-management**  | shared          | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
-| **pi-team-consultation**   | pi-teams        | Route review and decisions through `navigator` or `llm-council` teams             |
-| **skill-creator**          | shared          | Meta-skill for creating and improving skills                                      |
+| Skill                      | Bundle        | Purpose                                                                           |
+| -------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| **code-forensics**         | shared        | Analyze git history for hotspots, churn, temporal coupling, ownership, and age    |
+| **node-esm-gotchas**       | shared        | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
+| **pi-agent-orchestration** | pi-panopticon | Spawn, brief, monitor, message, and shut down pi worker agents                    |
+| **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
+| **pi-kanban**              | pi-kanban     | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
+| **pi-model-selection**     | shared        | Verify pi-visible models and route work to the right provider/model               |
+| **pi-session-management**  | shared        | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
+| **pi-team-consultation**   | pi-teams      | Route review and decisions through `navigator` or `llm-council` teams             |
+| **skill-creator**          | shared        | Meta-skill for creating and improving skills                                      |
 
 ---
 
@@ -93,21 +92,21 @@ Reusable skills for pi-platform tooling and compact reference guidance. Extensio
 
 Everything goes through `make`:
 
-| Command                                                             | What                                                 |
-| ------------------------------------------------------------------- | ---------------------------------------------------- |
-| `make` / `make help`                                                | Show available targets                               |
-| `make setup`                                                        | Install this checkout as a local pi package          |
+| Command                                                             | What                                                                                            |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `make` / `make help`                                                | Show available targets                                                                          |
+| `make setup`                                                        | Install this checkout as a local pi package                                                     |
 | `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-panopticon`, `pi-research-tools`, `pi-teams`) |
-| `make setup-clean`                                                  | Remove this checkout's pi package registration       |
-| `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                 |
-| `make doctor`                                                       | Run checks, tests, and gitleaks secret scans         |
-| `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%) |
-| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                 |
-| `make secret-scan`                                                  | Scan git history and working tree with gitleaks      |
-| `make test`                                                         | Run tests                                            |
-| `make test-watch`                                                   | Run tests in watch mode                              |
-| `make clean-mailboxes`                                              | Clean stale agent mailboxes                          |
-| `make clean-mailboxes DRY_RUN=1`                                    | Preview stale mailbox cleanup                        |
+| `make setup-clean`                                                  | Remove this checkout's pi package registration                                                  |
+| `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                                                            |
+| `make doctor`                                                       | Run checks, tests, and gitleaks secret scans                                                    |
+| `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%)                                            |
+| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                                                            |
+| `make secret-scan`                                                  | Scan git history and working tree with gitleaks                                                 |
+| `make test`                                                         | Run tests                                                                                       |
+| `make test-watch`                                                   | Run tests in watch mode                                                                         |
+| `make clean-mailboxes`                                              | Clean stale agent mailboxes                                                                     |
+| `make clean-mailboxes DRY_RUN=1`                                    | Preview stale mailbox cleanup                                                                   |
 
 ---
 
@@ -123,13 +122,13 @@ extensions/           Extensions:
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
-skills/               Agent skills and compact reference guidance
+skills/               Shared agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)
 scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-teams`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extensions (`pi-research-tools`, `pi-matrix`) can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-coas`) are added per-workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-teams`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extensions (`pi-research-tools`, `pi-matrix`) can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-coas`) are added per workspace in `.pi/settings.json`.
 
 ## Development
 

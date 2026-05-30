@@ -3,40 +3,18 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isLiveAgentRef } from "./live-agent.js";
+import { applyModelsToBindings, defaultAgentBindings } from "./team-form-bindings.js";
+import { deleteGeneratedSubagents, ensureSubagentFile } from "./team-form-files.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { dirsForTeamScope } from "./team-paths.js";
 import { chooseModel, chooseTeamTarget } from "./team-picker.js";
-import type { TeamAgentBinding, TeamModels, TeamProtocol, TeamSpec, TeamWritableSource } from "./team-types.js";
+import type { TeamFormInput, TeamFormModels, TeamFormProtocol, TeamFormScope } from "./team-form-types.js";
+import { teamFileContent } from "./team-form-yaml.js";
 
-export type TeamFormScope = TeamWritableSource;
-export type TeamFormProtocol = TeamProtocol;
-
-export interface TeamFormModels extends TeamModels {}
-
-export interface TeamFormLimits {
-	maxFixPasses?: number;
-	timeoutMs?: number;
-	maxConcurrency?: number;
-	maxRetries?: number;
-	maxLoops?: number;
-}
-
-export interface TeamFormInput {
-	id: string;
-	name?: string;
-	description?: string;
-	protocol: TeamFormProtocol;
-	agents: string[];
-	agentBindings?: TeamAgentBinding[];
-	prompts?: Record<string, string>;
-	models?: TeamFormModels;
-	limits?: TeamFormLimits;
-	scope?: TeamFormScope;
-	overwrite?: boolean;
-}
+export type { TeamFormInput, TeamFormModels, TeamFormScope };
 
 export interface TeamDeleteInput {
 	id: string;
@@ -60,7 +38,7 @@ interface TeamFormResult {
 interface TeamDeleteResult {
 	id: string;
 	teamPath: string;
-	source: TeamWritableSource;
+	source: TeamFormScope;
 }
 
 function normalizeTeamId(value: string): string {
@@ -116,167 +94,6 @@ async function chooseTargetModel(ctx: ExtensionContext, label: string, target: {
 	if (target.model) return target.model;
 	if (isLiveAgentRef(target.subagent)) return undefined;
 	return chooseModel(ctx, label);
-}
-
-function quote(value: string): string {
-	return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function roleMatches(role: string, value: string): boolean {
-	const normalized = role.toLowerCase().replaceAll("-", "_");
-	return normalized === value || normalized.startsWith(`${value}_`);
-}
-
-function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
-	const models = args.models ?? {};
-	if (args.agentBindings && args.agentBindings.length > 0) return args.agentBindings;
-	if (args.protocol === "debate") {
-		const memberSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "member");
-		const criticSubagents = args.agents.slice(1);
-		const memberModelIds = models.members && models.members.length > 0 ? models.members : [undefined];
-		return [
-			...memberModelIds.map((model, index) => ({
-				role: "member",
-				subagent: memberSubagent,
-				...(model ? { model } : {}),
-				label: `Member ${index + 1}`,
-			})),
-			{
-				role: "synthesis",
-				subagent: subagentIdFromTeam(args.id, "synthesis"),
-				...(models.synthesis ? { model: models.synthesis } : {}),
-			},
-			...criticSubagents.map((subagent) => ({ role: "critic", subagent })),
-		];
-	}
-	if (args.protocol === "consult") {
-		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
-	}
-	if (args.protocol === "research") {
-		const explorer = args.agents[0] ?? subagentIdFromTeam(args.id, "explorer");
-		const verifier = args.agents[1] ?? subagentIdFromTeam(args.id, "verifier");
-		const synthesis = args.agents[2] ?? subagentIdFromTeam(args.id, "synthesis");
-		return [
-			{ role: "explorer", subagent: explorer, ...(models.members?.[0] ? { model: models.members[0] } : {}) },
-			{ role: "verifier", subagent: verifier, ...(models.members?.[1] ? { model: models.members[1] } : {}) },
-			{ role: "synthesis", subagent: synthesis, ...(models.synthesis ? { model: models.synthesis } : {}) },
-		];
-	}
-	return args.agents.map((subagent) => ({ role: "agent", subagent }));
-}
-
-function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormModels, allRolesAreMembers = false): TeamAgentBinding[] {
-	let memberIndex = 0;
-	return bindings.map((binding) => {
-		if (allRolesAreMembers || roleMatches(binding.role, "member")) {
-			const model = models.members?.[memberIndex];
-			memberIndex++;
-			return { ...binding, ...(model ? { model } : {}) };
-		}
-		if (roleMatches(binding.role, "synthesis")) {
-			return { ...binding, ...(models.synthesis ? { model: models.synthesis } : {}) };
-		}
-		if (roleMatches(binding.role, "driver")) {
-			return { ...binding, ...(models.driver ? { model: models.driver } : {}) };
-		}
-		if (roleMatches(binding.role, "navigator")) {
-			return { ...binding, ...(models.navigator ? { model: models.navigator } : {}) };
-		}
-		return binding;
-	});
-}
-
-function ensureSubagentFile(dir: string, id: string): string {
-	mkdirSync(dir, { recursive: true });
-	const path = join(dir, `${id}.md`);
-	if (existsSync(path)) return path;
-	writeFileSync(
-		path,
-		[
-			"---",
-			`name: ${quote(id)}`,
-			'version: "1.0.0"',
-			`description: ${quote(`${titleFromId(id)} team role.`)}`,
-			'generatedBy: "pi-teams"',
-			"tools: []",
-			"---",
-			"",
-			"# IDENTITY",
-			"",
-			`You are ${titleFromId(id)}.`,
-			"",
-			"# CONSTRAINTS",
-			"",
-			"- Stay within the requested scope.",
-			"- Be concise, technical, and explicit about uncertainty.",
-			"",
-			"# HANDBACK PROTOCOL",
-			"",
-			"Return SUMMARY, OUTPUT, and STATUS.",
-		].join("\n"),
-		"utf8",
-	);
-	return path;
-}
-
-function scalar(value: string | number | boolean): string {
-	return typeof value === "string" ? quote(value) : String(value);
-}
-
-function inlineList(values: string[]): string {
-	return `[${values.map(quote).join(", ")}]`;
-}
-
-function inlineParameters(parameters: Record<string, string | number | boolean>): string {
-	const entries = Object.entries(parameters);
-	if (entries.length === 0) return "{}";
-	return `{ ${entries.map(([key, value]) => `${quote(key)}: ${scalar(value)}`).join(", ")} }`;
-}
-
-function promptLines(prompts: Record<string, string> | undefined): string[] {
-	const entries = Object.entries(prompts ?? {});
-	return entries.length > 0 ? ["prompts:", ...entries.map(([key, value]) => `  ${key}: ${quote(value)}`)] : [];
-}
-
-function agentBindingLines(bindings: TeamAgentBinding[]): string[] {
-	return [
-		"agents:",
-		...bindings.flatMap((binding) => [
-			`  - role: ${quote(binding.role)}`,
-			`    subagent: ${quote(binding.subagent)}`,
-			...(binding.model ? [`    model: ${quote(binding.model)}`] : []),
-			...(binding.label ? [`    label: ${quote(binding.label)}`] : []),
-			...(binding.promptId ? [`    promptId: ${quote(binding.promptId)}`] : []),
-			...(binding.templateId ? [`    templateId: ${quote(binding.templateId)}`] : []),
-			...(binding.systemPrompt ? [`    systemPrompt: ${quote(binding.systemPrompt)}`] : []),
-			...(binding.maxRetries !== undefined ? [`    maxRetries: ${binding.maxRetries}`] : []),
-			...(binding.tools ? [`    tools: ${inlineList(binding.tools)}`] : []),
-			...(binding.parameters ? [`    parameters: ${inlineParameters(binding.parameters)}`] : []),
-		]),
-	];
-}
-
-function teamFileContent(args: TeamFormInput & { id: string; name: string }): string {
-	const bindings = defaultAgentBindings(args);
-	return [
-		"---",
-		"schemaVersion: 2",
-		`id: ${quote(args.id)}`,
-		`name: ${quote(args.name)}`,
-		...(args.description ? [`description: ${quote(args.description)}`] : []),
-		`protocol: ${quote(args.protocol)}`,
-		...promptLines(args.prompts),
-		...agentBindingLines(bindings),
-		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
-		...(args.limits?.timeoutMs !== undefined ? [`timeoutMs: ${args.limits.timeoutMs}`] : []),
-		...(args.limits?.maxConcurrency !== undefined ? [`maxConcurrency: ${args.limits.maxConcurrency}`] : []),
-		...(args.limits?.maxRetries !== undefined ? [`maxRetries: ${args.limits.maxRetries}`] : []),
-		...(args.limits?.maxLoops !== undefined ? [`maxLoops: ${args.limits.maxLoops}`] : []),
-		"---",
-		"",
-		`${args.name} team.`,
-		"",
-	].join("\n");
 }
 
 function validateFormInput(input: TeamFormInput): void {
@@ -339,30 +156,6 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 		scope: input.scope ?? (team.source === "project" ? "project" : "user"),
 		overwrite: true,
 	}, cwd);
-}
-
-function isGeneratedSubagent(path: string): boolean {
-	try {
-		return readFileSync(path, "utf8").includes('generatedBy: "pi-teams"');
-	} catch {
-		return false;
-	}
-}
-
-function deleteGeneratedSubagents(team: TeamSpec, cwd: string): void {
-	if (team.source === "builtin") return;
-	const registry = loadTeamRegistry(undefined, { cwd });
-	const referenced = new Set(
-		[...registry.teams.values()]
-			.filter((entry) => entry.id !== team.id)
-			.flatMap((entry) => entry.agents),
-	);
-	const agentsDir = dirsForTeamScope(team.source, cwd).agents;
-	for (const subagent of team.agents) {
-		if (referenced.has(subagent) || isLiveAgentRef(subagent)) continue;
-		const path = join(agentsDir, `${subagent}.md`);
-		if (isGeneratedSubagent(path)) unlinkSync(path);
-	}
 }
 
 export function deleteTeamFiles(input: TeamDeleteInput, cwd: string): TeamDeleteResult {
