@@ -1,8 +1,8 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
-import { agentStopConfirmationView } from "../extensions/pi-panopticon/agent-overlay.js";
-import { teamDeleteConfirmationView } from "../extensions/pi-teams/team-commands.js";
+import { agentStopConfirmationView } from "../extensions/pi-panopticon/ui/agent-overlay.js";
+import { teamDeleteConfirmationView } from "../extensions/pi-panopticon/teams/team-commands.js";
 import type { AgentRecord } from "../extensions/pi-panopticon/types.js";
 import {
 	destructiveConfirmationInputResult,

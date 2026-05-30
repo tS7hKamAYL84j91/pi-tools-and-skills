@@ -9,9 +9,9 @@ This review covers the current `main` state after recent pi-teams hardening slic
 
 Reviewed artifacts and code paths:
 
-- Runtime/config: `extensions/pi-teams/team-manifest.ts`, `team-registry.ts`, `team-node-runner.ts`, `team-handlers.ts`, `handoff.ts`, `state.ts`, `observability.ts`, `worktree-isolation.ts`.
+- Runtime/config: `extensions/pi-panopticon/teams/team-manifest.ts`, `team-registry.ts`, `team-node-runner.ts`, `team-handlers.ts`, `handoff.ts`, `state.ts`, `observability.ts`, `worktree-isolation.ts`.
 - Tests: `tests/team-registry.test.ts`, `team-members.test.ts`, `team-node-runtime-fallback.test.ts`, `team-node-runner.test.ts`, `team-state.test.ts`, `team-observability.test.ts`, `team-handoff.test.ts`, `team-research-stop.test.ts`, `team-worktree-isolation.test.ts`, `team-provider-payload.test.ts`, `team-runner-cancel.test.ts`, `team-graph.test.ts`.
-- Docs/ADRs/reports: ADR 018, ADR 021, T-310, T-318, T-319, T-308/T-309, recurring SOP template docs, and `extensions/pi-teams/README.md`.
+- Docs/ADRs/reports: ADR 018, ADR 021, T-310, T-318, T-319, T-308/T-309, recurring SOP template docs, and `extensions/pi-panopticon/teams/README.md`.
 
 ## Integration findings
 

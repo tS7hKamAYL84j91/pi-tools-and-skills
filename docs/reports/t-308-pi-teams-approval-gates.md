@@ -8,9 +8,9 @@ T-308 adds provisional approval gate primitives for pi-teams workflows and Oracl
 
 Artifacts:
 
-- `extensions/pi-teams/approval-gates.ts` — approval request/result/state helpers.
+- `extensions/pi-panopticon/teams/approval-gates.ts` — approval request/result/state helpers.
 - `tests/team-approval-gates.test.ts` — approval-required, approved, rejected, expired, and invalid-record tests.
-- `extensions/pi-teams/observability.ts` — accepts `approval: "expired"` as an approval result.
+- `extensions/pi-panopticon/teams/observability.ts` — accepts `approval: "expired"` as an approval result.
 
 ## Schema
 

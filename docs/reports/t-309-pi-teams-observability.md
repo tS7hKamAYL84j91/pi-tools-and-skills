@@ -8,7 +8,7 @@ T-309 adds a provisional structured observability surface for pi-teams run event
 
 Artifacts:
 
-- `extensions/pi-teams/observability.ts` — schema v1 primitives and mapper.
+- `extensions/pi-panopticon/teams/observability.ts` — schema v1 primitives and mapper.
 - `tests/team-observability.test.ts` — lifecycle/detail/approval/error/serialization coverage.
 
 ## Schema

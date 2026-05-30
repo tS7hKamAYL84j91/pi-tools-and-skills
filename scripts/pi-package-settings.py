@@ -10,7 +10,6 @@ from typing import Any
 
 PACKAGE_EXTENSIONS = [
     "extensions/pi-panopticon/**",
-    "extensions/pi-teams/**",
     "extensions/pi-goal/**",
 ]
 
@@ -19,7 +18,6 @@ USER_INSTALLABLE_PACKAGES = {
     "pi-matrix",
     "pi-panopticon",
     "pi-research-tools",
-    "pi-teams",
 }
 
 PROJECT_ONLY_PACKAGES = {
@@ -29,7 +27,6 @@ PROJECT_ONLY_PACKAGES = {
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
-    "pi-teams",
     "council",
     "pi-kanban",
     "pi-matrix",

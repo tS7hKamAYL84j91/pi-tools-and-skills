@@ -9,7 +9,7 @@ describe("pi-teams legacy cleanup", () => {
 	it("runtime files should not reintroduce removed legacy protocol symbols", () => {
 		const forbidden = /\b(chairman|TeamRunDefinition|CouncilDefinition|CouncilMember|resolveCouncilSettings|LEGACY_TEAM_RUN_CUSTOM_TYPE|pi-teams:deliberation|TeamTopology|deliberate)\b/;
 		const violations: string[] = [];
-		for (const file of listFiles("extensions/pi-teams", [".ts", ".md", ".json"])) {
+		for (const file of listFiles("extensions/pi-panopticon/teams", [".ts", ".md", ".json"])) {
 			const content = readFileSync(file, "utf8");
 			const match = forbidden.exec(content);
 			if (match) {
@@ -22,7 +22,7 @@ describe("pi-teams legacy cleanup", () => {
 	it("pi-teams runtime should not import the removed graph executor or lowering", () => {
 		const forbidden = /from\s+["'].+\/(team-graph|team-lowering|protocol-contracts)\.js["']/;
 		const violations: string[] = [];
-		for (const file of listFiles("extensions/pi-teams", [".ts"])) {
+		for (const file of listFiles("extensions/pi-panopticon/teams", [".ts"])) {
 			const content = readFileSync(file, "utf8");
 			const match = forbidden.exec(content);
 			if (match) {

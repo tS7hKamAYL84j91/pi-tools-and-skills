@@ -17,8 +17,8 @@ Artifacts:
 
 | Surface | Location | Version marker | Classification | Notes |
 |---|---|---:|---|---|
-| Session custom event envelope | `extensions/pi-teams/state.ts` / `TEAM_RUN_CUSTOM_TYPE` | `schemaVersion: 1` | stable internal diagnostic | Stored as `customType: "pi-teams:run"`; used by `team_runs` and overlays. Not a durable resume/replay contract per ADR 018. |
-| Reduced run record | `TeamRunRecord` in `extensions/pi-teams/types.ts` | `version: 1` | stable internal diagnostic | Returned by `team_runs` details and local UI. Not a public storage API. |
+| Session custom event envelope | `extensions/pi-panopticon/teams/state.ts` / `TEAM_RUN_CUSTOM_TYPE` | `schemaVersion: 1` | stable internal diagnostic | Stored as `customType: "pi-teams:run"`; used by `team_runs` and overlays. Not a durable resume/replay contract per ADR 018. |
+| Reduced run record | `TeamRunRecord` in `extensions/pi-panopticon/teams/types.ts` | `version: 1` | stable internal diagnostic | Returned by `team_runs` details and local UI. Not a public storage API. |
 | Node completion event integrity fields | `TeamRunNodeCompletedEvent` | event schema v1 | stable internal diagnostic | `output`, `outputChars`, `outputSha256`, `outputTruncated`; output is bounded to 64,000 chars. |
 | Reduced node record | `TeamRunNodeRecord` | run record v1 | stable compact ledger | `phaseId`, `nodeId`, `role`, `model`, `ok`, `durationMs`, `output`, optional `error`. |
 | Handler result details | `TeamHandlerResult.details` / tool result details | none | runtime result, internal shape | Includes protocol-specific fields such as `team`, `ok`, `nodes`, `maxLoops`, `stopped`, `reason`; not persisted as-is. |

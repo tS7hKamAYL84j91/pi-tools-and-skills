@@ -9,7 +9,7 @@ T-310 adds a minimal experimental helper for isolating mutating pi-teams worker 
 
 Artifacts:
 
-- `extensions/pi-teams/worktree-isolation.ts` — internal planning/allocation/cleanup/conflict-reporting helpers.
+- `extensions/pi-panopticon/teams/worktree-isolation.ts` — internal planning/allocation/cleanup/conflict-reporting helpers.
 - `tests/team-worktree-isolation.test.ts` — temp-repo tests for path planning, invalid inputs, allocation, cleanup, lock collision, dirty-main protection, and conflict reporting.
 
 ## Lifecycle model

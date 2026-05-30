@@ -9,7 +9,7 @@ T-595 implements the ADR 022 follow-up shape for a pure synthetic renderer only.
 
 Artifacts:
 
-- `extensions/pi-panopticon/memory-renderer.ts` — pure renderer; no filesystem reads/writes, registry access, session access, live service access, tools, commands, or runtime registration.
+- `extensions/pi-panopticon/ui/memory-renderer.ts` — pure renderer; no filesystem reads/writes, registry access, session access, live service access, tools, commands, or runtime registration.
 - `tests/fixtures/panopticon-memory/synthetic-agent.json` — synthetic input fixture.
 - `tests/fixtures/panopticon-memory/expected-memory.md` — deterministic sample output.
 - `tests/panopticon-memory-renderer.test.ts` — fixture rendering, redaction, activity/byte caps, and synthetic-policy/schema rejection tests.

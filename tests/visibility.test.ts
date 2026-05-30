@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { AgentRecord } from "../lib/agent-registry.js";
-import { canSee, filterAgentList, visibleRecords } from "../extensions/pi-panopticon/visibility.js";
+import { canSee, filterAgentList, visibleRecords } from "../extensions/pi-panopticon/registry/visibility.js";
 
 function makeRecord(overrides: Partial<AgentRecord>): AgentRecord {
 	return {

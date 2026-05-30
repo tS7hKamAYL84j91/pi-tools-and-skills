@@ -1,5 +1,5 @@
 /**
- * Tests for peer resolution helpers (extensions/pi-panopticon/peers.ts)
+ * Tests for peer resolution helpers (extensions/pi-panopticon/registry/peers.ts)
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ import {
 	resolvePeer,
 	peerNames,
 	notFound,
-} from "../extensions/pi-panopticon/peers.js";
+} from "../extensions/pi-panopticon/registry/peers.js";
 
 function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
 	return {

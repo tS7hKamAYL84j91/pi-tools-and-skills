@@ -30,7 +30,7 @@ describe("team runner cancellation", () => {
 		].join("\n"), "utf8");
 		chmodSync(script, 0o755);
 		process.env.PI_TEAMS_TEST_PI_BINARY = script;
-		const { runMember } = await import("../extensions/pi-teams/runner.js");
+		const { runMember } = await import("../extensions/pi-panopticon/teams/runner.js");
 		const controller = new AbortController();
 		const startedAt = Date.now();
 		const promise = runMember({ label: "Cancel", model: "test/model" }, {

@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import teamExtension from "../extensions/pi-teams/index.js";
+import { registerTeams as teamExtension } from "../extensions/pi-panopticon/teams/register.js";
 import kanbanExtension from "../extensions/pi-kanban/index.js";
 import matrixExtension from "../extensions/pi-matrix/index.js";
 import coasExtension from "../extensions/pi-coas/index.js";
@@ -234,23 +234,36 @@ describe("extension registration smoke tests", () => {
 			"message_read",
 			"message_send",
 			"rpc_send",
+			"runtime_status",
+			"runtime_stop",
 			"set_name",
 			"spawn_agent",
+			"team_delete",
+			"team_describe",
+			"team_form",
+			"team_list",
+			"team_models",
+			"team_run",
+			"team_runs",
+			"team_stop",
 		]);
 		expectRegistered(registrations.commands, [
 			"agent-list-mode",
 			"agents",
 			"agents-mode",
 			"send",
+			"teams",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);
 		expectRegistered(registrations.events, [
 			"agent_end",
 			"agent_start",
+			"before_provider_request",
 			"input",
 			"model_select",
 			"session_shutdown",
 			"session_start",
+			"session_tree",
 		]);
 	});
 });

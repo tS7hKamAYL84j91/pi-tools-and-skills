@@ -33,7 +33,7 @@ Action: preserve current boundaries and avoid broad refactors.
 
 `docs/architecture.md` asks every README to include “What this does NOT do”, but current READMEs are inconsistent:
 
-- Missing README entirely: `extensions/pi-panopticon`, `extensions/pi-teams`.
+- Historical note: README coverage was missing for standalone `extensions/pi-panopticon` and standalone pi-teams package; the active merged extension now documents teams under `extensions/pi-panopticon/teams`.
 - Existing boundary prose but non-standard heading: `pi-research-tools` uses `## Boundaries`; `pi-goal` uses `## What this does not do`; `pi-matrix`, `pi-coas`, and `pi-kanban` contain boundary text but not the exact canonical heading.
 
 Action: add/normalize extension README boundary sections.
@@ -83,7 +83,7 @@ Action: include `pi-goal` in the execution backlog with:
 ### Phase A — Documentation baseline (small/safe)
 
 1. Add `extensions/pi-panopticon/README.md`.
-2. Add `extensions/pi-teams/README.md`.
+2. Add `extensions/pi-panopticon/teams/README.md`.
 3. Add exact `## What this does NOT do` sections to all extension READMEs.
 4. Update `docs/ux-tools-policy.md` with compact/detail disclosure and tool result conventions.
 5. Add `pi-goal` command discoverability requirements to docs so `/goal` help/clear UX is explicit before implementation.

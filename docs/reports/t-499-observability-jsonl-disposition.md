@@ -13,8 +13,8 @@ Decision artifact:
 
 ## Reviewed surfaces
 
-- `extensions/pi-teams/observability.ts`
-- `extensions/pi-teams/state.ts` event sources
+- `extensions/pi-panopticon/teams/observability.ts`
+- `extensions/pi-panopticon/teams/state.ts` event sources
 - `tests/team-observability.test.ts`
 - `tests/team-approval-gates.test.ts`
 - `docs/reports/t-309-pi-teams-observability.md`

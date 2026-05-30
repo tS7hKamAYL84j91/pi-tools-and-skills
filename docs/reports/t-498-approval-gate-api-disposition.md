@@ -13,10 +13,10 @@ Decision artifact:
 
 ## Reviewed surfaces
 
-- `extensions/pi-teams/approval-gates.ts`
-- `extensions/pi-teams/team-types.ts` (`TeamApprovalConfig`)
-- `extensions/pi-teams/team-manifest.ts` approval config validation
-- `extensions/pi-teams/observability.ts` approval mapping
+- `extensions/pi-panopticon/teams/approval-gates.ts`
+- `extensions/pi-panopticon/teams/team-types.ts` (`TeamApprovalConfig`)
+- `extensions/pi-panopticon/teams/team-manifest.ts` approval config validation
+- `extensions/pi-panopticon/teams/observability.ts` approval mapping
 - `tests/team-approval-gates.test.ts`
 - `tests/team-manifest-validation.test.ts`
 - `docs/reports/t-308-pi-teams-approval-gates.md`

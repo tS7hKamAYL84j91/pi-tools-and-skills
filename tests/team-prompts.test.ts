@@ -1,19 +1,20 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { renderTemplate } from "../extensions/pi-teams/prompt-renderer.js";
-import { promptAssetLines } from "../extensions/pi-teams/prompt-resolver.js";
-import { renderPeerCritiquePrompt } from "../extensions/pi-teams/protocol-prompts.js";
-import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
+import { renderTemplate } from "../extensions/pi-panopticon/teams/prompt-renderer.js";
+import { promptAssetLines } from "../extensions/pi-panopticon/teams/prompt-resolver.js";
+import { renderPeerCritiquePrompt } from "../extensions/pi-panopticon/teams/protocol-prompts.js";
+import { resolveTeamSettings } from "../extensions/pi-panopticon/teams/settings.js";
 import type {
 	TeamParticipant,
 	ModelRun,
-} from "../extensions/pi-teams/types.js";
+} from "../extensions/pi-panopticon/teams/types.js";
 
 const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
-	"pi-teams",
+	"pi-panopticon",
+	"teams",
 	"config",
 	"config.json",
 );

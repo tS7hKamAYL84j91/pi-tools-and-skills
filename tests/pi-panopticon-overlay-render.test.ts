@@ -5,13 +5,13 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
-import { renderAgentMessageOverlay } from "../extensions/pi-panopticon/agent-message-overlay.js";
+import { renderAgentMessageOverlay } from "../extensions/pi-panopticon/ui/agent-message-overlay.js";
 import {
 	isAgentDetailBackInput,
 	renderAgentDetailOverlay,
 	renderAgentListOverlay,
 	sortAgentOverlayRecords,
-} from "../extensions/pi-panopticon/agent-overlay.js";
+} from "../extensions/pi-panopticon/ui/agent-overlay.js";
 import type { AgentRecord } from "../extensions/pi-panopticon/types.js";
 import type { SessionEvent } from "../lib/session-log.js";
 

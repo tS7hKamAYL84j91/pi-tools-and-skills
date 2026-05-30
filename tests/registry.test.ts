@@ -12,7 +12,7 @@ import {
 	pickName,
 	pickActiveName,
 	sortRecords,
-} from "../extensions/pi-panopticon/registry.js";
+} from "../extensions/pi-panopticon/registry/registry.js";
 import { readSessionLog, formatSessionLog } from "../lib/session-log.js";
 
 // ── Fixtures ────────────────────────────────────────────────────

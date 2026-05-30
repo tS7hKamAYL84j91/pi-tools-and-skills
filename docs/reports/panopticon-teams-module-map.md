@@ -32,7 +32,7 @@ extensions/pi-panopticon/
 
 | Current file | Target module | Disposition |
 |---|---|---|
-| `extensions/pi-teams/index.ts` | `pi-panopticon/teams/register.ts` | Fold registration into Panopticon extension entrypoint. Remove standalone extension entrypoint. |
+| `extensions/pi-panopticon/teams/index.ts` | `pi-panopticon/teams/register.ts` | Fold registration into Panopticon extension entrypoint. Remove standalone extension entrypoint. |
 | `package.json` | remove | `pi-teams` should stop being independently installable after cutover. |
 | `README.md` | `pi-panopticon/teams/README.md` or Panopticon README section | Rewrite as module docs, not standalone extension docs. |
 | `config/config.json` | `pi-panopticon/teams/config/config.json` | Move with team defaults. |
@@ -114,7 +114,7 @@ Rules:
 1. `teams/*` cannot import `node:child_process` except `teams/policy/worktree-isolation.ts`.
 2. `runtime/*` cannot import from `teams/*`.
 3. `teams/protocols/*` cannot import TUI components.
-4. `extensions/pi-teams` package directory should be absent after physical cutover.
+4. standalone pi-teams package directory is absent after physical cutover; team modules live under `extensions/pi-panopticon/teams`.
 5. Removed legacy tools should not be registered after API cutover.
 
 ## Cutover notes

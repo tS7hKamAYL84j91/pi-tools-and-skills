@@ -7,7 +7,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
-import { setupSpawner } from "../extensions/pi-panopticon/spawner.js";
+import { setupSpawner } from "../extensions/pi-panopticon/spawner/spawner.js";
 import { formatCompletionSignal } from "../lib/completion-signal.js";
 import {
 	formatEvent,

@@ -6,7 +6,7 @@ import {
 	inferWorkspaceIdentity,
 	restoreLatestWorkspaceState,
 	type OperationalWorkspaceState,
-} from "../extensions/pi-panopticon/state.js";
+} from "../extensions/pi-panopticon/registry/state.js";
 
 function makeState(
 	overrides: Partial<OperationalWorkspaceState> = {},

@@ -17,8 +17,7 @@ Restrained, Elegant).
   infrastructure.
 - **Restrained & Elegant:** Extension boundaries are tight. Kanban uses a simple
   append-only log.
-- **Restrained `pi-teams`:** Team execution now uses direct protocol handlers;
-  the generic DAG executor and lowering layers are removed from the baseline.
+- **Restrained Teams module:** Team execution now uses direct protocol handlers inside `pi-panopticon/teams`; the generic DAG executor and lowering layers are removed from the baseline.
 - **Sparse Panopticon alerts:** Reconciliation follow-ups only interrupt for
   actionable states, reducing idle token cost (ADR 014).
 
@@ -31,11 +30,11 @@ The main risk is **custom framework growth**:
   pi-hosted timer loop, no external crontab reconciliation.
 - `pi-matrix`: Justified for human interaction, but too heavy for local
   agent-to-agent comms. Keep local peer routing on IPC-backed channels such as
-  `agent_send`, spawned-agent RPC, and `pi-teams` live-agent bindings.
+  `agent_send`, spawned-agent RPC, and Panopticon Teams live-agent bindings.
 
 ### Recommendations
 
-1. **Keep `pi-teams` direct:** Prefer direct coordination functions over a
+1. **Keep Teams direct:** Prefer direct coordination functions over a
    complex engine unless dynamic topologies are strictly required. ✅ Baseline —
    DAG removed.
 2. **Keep Kanban dumb:** Stick to the event-sourced log and deterministic state
@@ -58,7 +57,7 @@ flowchart TD
   Make[Make setup targets] --> Setup[scripts/setup-pi]
   Setup --> Settings[~/.pi/agent/settings.json]
   Setup --> RootPackage[pi-tools-and-skills package\nfiltered global extensions]
-  Setup --> UserPackage[Individual user packages\npi-goal/pi-matrix/pi-panopticon/pi-teams]
+  Setup --> UserPackage[Individual user packages\npi-goal/pi-matrix/pi-panopticon]
   Setup -. rejects .-> ProjectOnly[Project-only packages\npi-kanban/pi-coas]
   ProjectOnly --> Workspace[Workspace .pi/settings.json]
 ```
@@ -338,7 +337,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  DeepResearch[pi-teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
+  DeepResearch[Panopticon teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
   PromptTools --> Registered[pi-research-tools\nregistered dry-run tools]
   PromptTools --> Manifest[lib/research-tool-fixtures.ts\nmetadata fixtures]
   Manifest --> Discovery[discoverResearchTools\nread-only validation + sorting]
@@ -356,7 +355,7 @@ flowchart TD
 
 - Research-tool metadata remains the source for compatibility checks and future provider design.
 - `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only.
-- Deep-research workflow policy stays in `pi-teams` prompts and protocol handlers.
+- Deep-research workflow policy stays in `extensions/pi-panopticon/teams` prompts and protocol handlers.
 - Source IDs, provenance fields, artifact paths, and result semantics are declared before any provider/runtime promotion.
 - Runtime providers, credential handling, extension loading changes, durable artifact persistence, and deletion of old research behavior require separate approval/ADR.
 

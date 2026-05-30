@@ -6,17 +6,18 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../extensions/pi-teams/team-form.js";
-import { validateTeamManifest } from "../extensions/pi-teams/team-manifest.js";
-import { modelSlotsForTeam } from "../extensions/pi-teams/team-handlers.js";
-import { loadTeamRegistry } from "../extensions/pi-teams/team-registry.js";
-import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
+import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../extensions/pi-panopticon/teams/team-form.js";
+import { validateTeamManifest } from "../extensions/pi-panopticon/teams/team-manifest.js";
+import { modelSlotsForTeam } from "../extensions/pi-panopticon/teams/team-handlers.js";
+import { loadTeamRegistry } from "../extensions/pi-panopticon/teams/team-registry.js";
+import type { TeamSpec } from "../extensions/pi-panopticon/teams/team-types.js";
 import { withTempConfig, writeSubagent, writeTeam } from "./team-test-helpers.js";
 
 const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
-	"pi-teams",
+	"pi-panopticon",
+	"teams",
 	"config",
 	"config.json",
 );

@@ -34,10 +34,10 @@ Inventory of direct filesystem mutation points in `extensions/` and `lib/` for A
 - `extensions/pi-matrix/attachments.ts`
   - Writes downloaded attachment bytes.
   - Candidate for shared atomic write for binary content.
-- `extensions/pi-panopticon/registry.ts`
+- `extensions/pi-panopticon/registry/registry.ts`
   - Writes registry record JSON directly with `writeFileSync()`.
   - Candidate for sync or async shared atomic JSON write, or documented exception if lifecycle requires sync.
-- `extensions/pi-teams/team-form.ts`
+- `extensions/pi-panopticon/teams/team-form.ts`
   - Writes team and subagent Markdown files directly with `writeFileSync()`.
   - Candidate for sync or async shared atomic text writes.
 - `lib/session-hook-installer.ts`
@@ -58,8 +58,8 @@ Inventory of direct filesystem mutation points in `extensions/` and `lib/` for A
 ### Directory/removal/lock operations likely explicit exceptions
 
 - Directory creation with `mkdir`/`mkdirSync` remains necessary before writes.
-- Cleanup/removal calls in `lib/spawn-service.ts`, `extensions/pi-panopticon/spawner.ts`, `extensions/pi-teams/worktree-isolation.ts`, and registry cleanup are lifecycle operations, not persistence writes.
-- `extensions/pi-teams/worktree-isolation.ts` uses directory creation/removal as a simple lock primitive; document as an advisory-lock exception rather than replacing with file write helpers.
+- Cleanup/removal calls in `lib/spawn-service.ts`, `extensions/pi-panopticon/spawner/spawner.ts`, `extensions/pi-panopticon/teams/worktree-isolation.ts`, and registry cleanup are lifecycle operations, not persistence writes.
+- `extensions/pi-panopticon/teams/worktree-isolation.ts` uses directory creation/removal as a simple lock primitive; document as an advisory-lock exception rather than replacing with file write helpers.
 - `lib/transports/maildir.ts` uses Maildir-specific sync writes and renames; keep as a protocol-specific exception unless a sync helper is added later.
 - `lib/agent-registry.ts` currently manages shared agent registry directories synchronously; candidate for later helper adoption, but may remain an exception if pi lifecycle requires sync operations.
 

@@ -86,7 +86,7 @@ extensions/pi-panopticon/
   ui/
 ```
 
-- Map current `extensions/pi-teams/*` files into future modules.
+- Map current `extensions/pi-panopticon/teams/*` files into future modules.
 - Identify files that should remain shared `lib/*` versus move under `pi-panopticon/runtime/*`.
 
 ### Acceptance
@@ -190,10 +190,10 @@ UX should support:
 
 ### Work
 
-- Move `extensions/pi-teams/*` into `extensions/pi-panopticon/teams/*` or equivalent.
+- Move `extensions/pi-panopticon/teams/*` into `extensions/pi-panopticon/teams/*` or equivalent.
 - Keep imports clean: no circular dependencies between runtime and teams modules.
 - Register the final team/spec/runtime tools from the single Panopticon extension.
-- Remove `extensions/pi-teams` as an independently installable extension once its modules move under Panopticon.
+- Remove the standalone standalone pi-teams package; team modules now live under `extensions/pi-panopticon/teams`.
 
 ### Acceptance
 

@@ -9,8 +9,8 @@ T-319 separates the current internal handoff path into schema validation, target
 
 Changed paths:
 
-- `extensions/pi-teams/handoff.ts` — internal handoff schema, explicit node-target allow-list resolution, runtime-routable target guard, circular-route detection, and batch routing with partial-failure reporting.
-- `extensions/pi-teams/team-handlers.ts` — debate/research handoff detail emission now routes through the hardened handoff boundary.
+- `extensions/pi-panopticon/teams/handoff.ts` — internal handoff schema, explicit node-target allow-list resolution, runtime-routable target guard, circular-route detection, and batch routing with partial-failure reporting.
+- `extensions/pi-panopticon/teams/team-handlers.ts` — debate/research handoff detail emission now routes through the hardened handoff boundary.
 - `tests/team-handoff.test.ts` — deterministic malformed/unknown/circular/failed-resolution/partial-failure/valid-path coverage.
 - `tests/team-research-stop.test.ts` — regression coverage that research records only routable handoff details.
 

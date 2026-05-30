@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { stopPeerAgent } from "../extensions/pi-panopticon/agent-stop.js";
+import { stopPeerAgent } from "../extensions/pi-panopticon/spawner/agent-stop.js";
 import type { AgentRecord } from "../extensions/pi-panopticon/types.js";
 
 const originalKill = process.kill;

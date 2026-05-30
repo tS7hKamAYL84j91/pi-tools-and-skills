@@ -8,7 +8,7 @@ import {
 	DEFAULT_SYNTHESIS_CANDIDATES,
 	DEFAULT_MEMBER_CANDIDATES,
 	resolveTeamSettings,
-} from "../extensions/pi-teams/settings.js";
+} from "../extensions/pi-panopticon/teams/settings.js";
 
 function withTempDir(fn: (dir: string) => void) {
 	const dir = mkdtempSync(join(tmpdir(), "team-test-"));

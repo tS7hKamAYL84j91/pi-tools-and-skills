@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeAfterApproval, requestTeamApproval, resolveTeamApproval, type TeamApprovalRequest } from "../extensions/pi-teams/approval-gates.js";
-import { observabilityEventsFromRunEvents } from "../extensions/pi-teams/observability.js";
-import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager, type TeamRunEvent } from "../extensions/pi-teams/state.js";
+import { executeAfterApproval, requestTeamApproval, resolveTeamApproval, type TeamApprovalRequest } from "../extensions/pi-panopticon/teams/approval-gates.js";
+import { observabilityEventsFromRunEvents } from "../extensions/pi-panopticon/teams/observability.js";
+import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager, type TeamRunEvent } from "../extensions/pi-panopticon/teams/state.js";
 
 interface CustomEntry {
 	type: "custom";

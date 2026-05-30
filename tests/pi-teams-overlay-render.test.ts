@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 import {
 	renderTeamBrowserOverlay,
 	renderTeamOverlay,
-} from "../extensions/pi-teams/team-overlay.js";
-import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
+} from "../extensions/pi-panopticon/teams/team-overlay.js";
+import type { TeamSpec } from "../extensions/pi-panopticon/teams/team-types.js";
 
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,

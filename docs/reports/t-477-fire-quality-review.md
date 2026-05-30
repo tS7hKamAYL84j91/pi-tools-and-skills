@@ -24,7 +24,7 @@ Observed mechanisms:
 - `extensions/pi-kanban/board.ts` exports `WIP_LIMIT = parseInt(process.env.KANBAN_WIP_LIMIT ?? "3", 10)`.
 - `extensions/pi-kanban/claim-tools.ts` rejects new claims when in-progress count is `>= WIP_LIMIT`; reassignment bypasses the check.
 - `extensions/pi-kanban/snapshot.ts`, `watcher.ts`, and `overlay-render.ts` display `wip/WIP_LIMIT`.
-- `extensions/pi-panopticon/spawner.ts` prompt text says parallelisable work uses `centralised-mas with WIP=3`.
+- `extensions/pi-panopticon/spawner/spawner.ts` prompt text says parallelisable work uses `centralised-mas with WIP=3`.
 - `extensions/pi-panopticon/skills/pi-agent-orchestration/SKILL.md` tells agents to keep WIP small and batch 2–3 workers.
 
 Quality issue: the hard default is fast and cheap, but not adaptive. Changing it requires process environment changes or prompt discipline, which is not visible in board history and is hard to coordinate across agents.

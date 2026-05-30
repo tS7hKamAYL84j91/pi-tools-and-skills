@@ -18,7 +18,7 @@ const mockGetRecord = vi.fn((): { task: string | undefined; sessionFile: string 
 const mockFlush = vi.fn();
 const mockReadAllPeers = vi.fn(() => []);
 
-vi.mock("../extensions/pi-panopticon/registry.js", () => {
+vi.mock("../extensions/pi-panopticon/registry/registry.js", () => {
 	return {
 		default: class MockRegistry {
 			selfId = "test-id";
@@ -39,7 +39,7 @@ const mockPokePending = vi.fn();
 const mockDrainAll = vi.fn();
 const mockMessagingDispose = vi.fn();
 
-vi.mock("../extensions/pi-panopticon/messaging.js", () => ({
+vi.mock("../extensions/pi-panopticon/messaging/messaging.js", () => ({
 	createMessaging: vi.fn(() => vi.fn(() => ({ init: mockMessagingInit, pokePending: mockPokePending, drainAll: mockDrainAll, dispose: mockMessagingDispose }))),
 }));
 
@@ -57,11 +57,11 @@ type MissingDoneHandler = (agentName: string, pid: number, exitCode: number | nu
 
 const mockOnMissingDone = vi.fn<(handler: MissingDoneHandler) => () => void>(() => () => {});
 
-vi.mock("../extensions/pi-panopticon/spawner.js", () => ({
+vi.mock("../extensions/pi-panopticon/spawner/spawner.js", () => ({
 	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll, onMissingDone: mockOnMissingDone })),
 }));
 
-vi.mock("../extensions/pi-panopticon/peek.js", () => ({
+vi.mock("../extensions/pi-panopticon/registry/peek.js", () => ({
 	setupPeek: vi.fn(),
 }));
 
@@ -69,14 +69,14 @@ const mockReconcilerStart = vi.fn();
 const mockReconcilerStop = vi.fn();
 const mockReconcilerOnAgentEnd = vi.fn();
 
-vi.mock("../extensions/pi-panopticon/reconciler.js", () => ({
+vi.mock("../extensions/pi-panopticon/registry/reconciler.js", () => ({
 	setupReconciler: vi.fn(() => ({ start: mockReconcilerStart, stop: mockReconcilerStop, onAgentEnd: mockReconcilerOnAgentEnd, handleInboundMessage: vi.fn() })),
 }));
 
 const mockUIStart = vi.fn();
 const mockUIStop = vi.fn();
 
-vi.mock("../extensions/pi-panopticon/ui.js", () => ({
+vi.mock("../extensions/pi-panopticon/ui/ui.js", () => ({
 	setupUI: vi.fn(() => ({ start: mockUIStart, stop: mockUIStop, refresh: vi.fn() })),
 }));
 

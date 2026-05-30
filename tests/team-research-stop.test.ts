@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { TeamStateManager } from "../extensions/pi-teams/state.js";
-import type { TeamAgentBinding, TeamSpec } from "../extensions/pi-teams/team-types.js";
+import { TeamStateManager } from "../extensions/pi-panopticon/teams/state.js";
+import type { TeamAgentBinding, TeamSpec } from "../extensions/pi-panopticon/teams/team-types.js";
 
 let activeStateManager: TeamStateManager;
 let activeRunId: string;
@@ -8,7 +8,7 @@ let stopAfterRole: string | undefined;
 let activeEntries: Array<{ type: "custom"; customType: string; data?: unknown }> = [];
 const callRoles: string[] = [];
 
-vi.mock("../extensions/pi-teams/team-node-runner.js", () => ({
+vi.mock("../extensions/pi-panopticon/teams/team-node-runner.js", () => ({
 	participantsFromRuns: (runs: Array<{ output: string; model: string; ok: boolean; durationMs: number; error?: string }>) => runs.map((run) => ({
 		member: { label: "mock", model: run.model },
 		prompt: "",
@@ -43,7 +43,7 @@ vi.mock("../extensions/pi-teams/team-node-runner.js", () => ({
 	},
 }));
 
-const { getTeamHandler } = await import("../extensions/pi-teams/team-handlers.js");
+const { getTeamHandler } = await import("../extensions/pi-panopticon/teams/team-handlers.js");
 
 function researchTeam(): TeamSpec {
 	return {

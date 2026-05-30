@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import { createAgentListModeStore } from "../extensions/pi-panopticon/list-mode.js";
-import { setupUI } from "../extensions/pi-panopticon/ui.js";
+import { createAgentListModeStore } from "../extensions/pi-panopticon/ui/list-mode.js";
+import { setupUI } from "../extensions/pi-panopticon/ui/ui.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
 
 function makeRegistry(): Registry {

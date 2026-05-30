@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { renderSyntheticPanopticonMemory } from "../extensions/pi-panopticon/memory-renderer.js";
+import { renderSyntheticPanopticonMemory } from "../extensions/pi-panopticon/ui/memory-renderer.js";
 
 const fixtureDir = join(process.cwd(), "tests", "fixtures", "panopticon-memory");
 

@@ -11,7 +11,7 @@ Rationale: `whatsapp-pi@1.0.62` already proves Baileys connectivity, allowlists,
 ## Evidence inspected
 
 - Repo-local messaging boundary: `lib/message-transport.ts`.
-- Unified message tools and TUI notification flow: `extensions/pi-panopticon/messaging.ts`.
+- Unified message tools and TUI notification flow: `extensions/pi-panopticon/messaging/messaging.ts`.
 - Matrix channel implementation: `extensions/pi-matrix/index.ts`, `extensions/pi-matrix/client.ts`, `extensions/pi-matrix/transport.ts`, `extensions/pi-matrix/config.ts`.
 - `whatsapp-pi` npm metadata via `npm view whatsapp-pi --json`.
 - Published tarball `whatsapp-pi-1.0.62.tgz` inspected in `/tmp`; no install, no pairing, no credentials touched.

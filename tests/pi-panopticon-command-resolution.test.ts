@@ -5,9 +5,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { registerAgentsCommand } from "../extensions/pi-panopticon/agents-command.js";
-import { createAgentListModeStore } from "../extensions/pi-panopticon/list-mode.js";
-import { registerAgentListModeControls } from "../extensions/pi-panopticon/list-mode-command.js";
+import { registerAgentsCommand } from "../extensions/pi-panopticon/ui/agents-command.js";
+import { createAgentListModeStore } from "../extensions/pi-panopticon/ui/list-mode.js";
+import { registerAgentListModeControls } from "../extensions/pi-panopticon/ui/list-mode-command.js";
 import type { AgentRecord, Registry } from "../extensions/pi-panopticon/types.js";
 
 interface CommandDefinition {

@@ -13,9 +13,9 @@ import {
 	checkAgentHealth,
 	checkStaleActivity,
 	setupReconciler,
-} from "../extensions/pi-panopticon/reconciler.js";
+} from "../extensions/pi-panopticon/registry/reconciler.js";
 import type { Registry } from "../extensions/pi-panopticon/types.js";
-import type { OperationalStateStore } from "../extensions/pi-panopticon/state.js";
+import type { OperationalStateStore } from "../extensions/pi-panopticon/registry/state.js";
 import { makeAgentInfo, mockFindAgentStates } from "./helpers/agent-api-mock.js";
 
 vi.mock("../lib/agent-api.js", () => ({

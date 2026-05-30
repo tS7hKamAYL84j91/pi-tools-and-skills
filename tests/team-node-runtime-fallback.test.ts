@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TeamAgentBinding } from "../extensions/pi-teams/team-types.js";
-import type { ModelRun, TeamParticipant } from "../extensions/pi-teams/types.js";
+import type { TeamAgentBinding } from "../extensions/pi-panopticon/teams/team-types.js";
+import type { ModelRun, TeamParticipant } from "../extensions/pi-panopticon/teams/types.js";
 
 interface RunMemberArgs {
 	prompt: string;
@@ -25,17 +25,17 @@ type RunLiveAgentNodeMock = (args: {
 const runMemberMock = vi.hoisted(() => vi.fn<RunMemberMock>());
 const runLiveAgentNodeMock = vi.hoisted(() => vi.fn<RunLiveAgentNodeMock>());
 
-vi.mock("../extensions/pi-teams/runner.js", () => ({
+vi.mock("../extensions/pi-panopticon/teams/runner.js", () => ({
 	runMember: runMemberMock,
 }));
 
-vi.mock("../extensions/pi-teams/live-agent.js", () => ({
+vi.mock("../extensions/pi-panopticon/teams/live-agent.js", () => ({
 	isLiveAgentRef: (value: string) => value.toLowerCase().startsWith("agent:") && value.slice("agent:".length).trim().length > 0,
 	liveAgentModel: (value: string) => value === "agent:peer" ? "live/test-model" : undefined,
 	runLiveAgentNode: runLiveAgentNodeMock,
 }));
 
-const { nodeDetails, runTeamNode } = await import("../extensions/pi-teams/team-node-runner.js");
+const { nodeDetails, runTeamNode } = await import("../extensions/pi-panopticon/teams/team-node-runner.js");
 
 function fakeCtx(): ExtensionContext {
 	return {

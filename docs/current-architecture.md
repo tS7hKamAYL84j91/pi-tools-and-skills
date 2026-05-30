@@ -22,7 +22,6 @@ flowchart TD
     Goal[pi-goal]
     Matrix[pi-matrix]
     Panopticon[pi-panopticon]
-    Teams[pi-teams]
     Research[pi-research-tools]
   end
 
@@ -34,7 +33,7 @@ flowchart TD
   Pi --> Goal
   Pi --> Matrix
   Pi --> Panopticon
-  Pi --> Teams
+  Panopticon --> TeamsModule[teams module]
   Pi --> Research
   Pi --> Kanban
   Pi --> COAS
@@ -42,12 +41,12 @@ flowchart TD
   Goal --> SharedLib
   Matrix --> SharedLib
   Panopticon --> SharedLib
-  Teams --> SharedLib
+  TeamsModule --> SharedLib
   Research --> SharedLib
   Kanban --> SharedLib
   COAS --> SharedLib
 
-  Teams -. live-agent coordination .-> Panopticon
+  TeamsModule -. uses runtime substrate .-> Panopticon
   Kanban -. agent assignment/status .-> Panopticon
   Goal -. spawned-worker orchestration .-> Panopticon
   COAS -. task scheduling .-> Kanban
@@ -58,8 +57,7 @@ flowchart TD
 | Extension | Scope | Primary role | State owner |
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
-| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration | Panopticon registry/session state |
-| `pi-teams` | user/global | Declarative team workflows such as council, navigator, and research | Team definitions and team run session state |
+| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-research-tools` | user/global | Research helper tools and fixtures | Research tool configuration/fixtures |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
@@ -91,7 +89,7 @@ flowchart TD
 | Full-file JSON/Markdown state | Owning extension or shared runtime helper | `writeFileAtomic()` / `updateJsonFile()` where practical |
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
-| Team run state | `pi-teams` | Team run APIs and documented result paths |
+| Team run state | Panopticon Teams module | Team run APIs and documented result paths |
 
 Atomic rename prevents partial reads but does not serialize competing read/modify/write cycles. Concurrent writers must use an append-only owner, an advisory lock/domain transaction, or a documented last-writer-wins exception.
 
@@ -118,7 +116,7 @@ flowchart LR
 
 1. **Concurrency discipline:** Continue moving state writes through `lib/file-persistence.ts` helpers or documented domain-specific transactions.
 2. **README contract clarity:** Keep each extension README explicit about stable tools/commands, provisional surfaces, and cross-extension dependencies.
-3. **Progress UX:** Keep long-running `pi-teams`/`pi-goal` work visible with phase, elapsed time, last action, cancellation affordance, and artifact paths.
+3. **Progress UX:** Keep long-running Teams/`pi-goal` work visible with phase, elapsed time, last action, cancellation affordance, and artifact paths.
 4. **Transport diagnostics:** Keep `globalThis`/transport registry behavior documented with diagnostics and fallback behavior.
 
 ## Validation anchors

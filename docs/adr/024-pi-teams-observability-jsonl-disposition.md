@@ -6,7 +6,7 @@ Ticket: T-499
 
 ## Context
 
-T-309 added `extensions/pi-teams/observability.ts`, a mapper from internal `TeamRunEvent` records to newline-serializable `TeamObservabilityEvent` objects. T-318 later pinned current detail projection and additive compatibility in tests. T-316 concluded pi-teams is merge-ready only if observability remains non-public/non-durable. T-498/ADR 023 quarantined approval gates and explicitly kept approval observability provisional.
+T-309 added `extensions/pi-panopticon/teams/observability.ts`, a mapper from internal `TeamRunEvent` records to newline-serializable `TeamObservabilityEvent` objects. T-318 later pinned current detail projection and additive compatibility in tests. T-316 concluded pi-teams is merge-ready only if observability remains non-public/non-durable. T-498/ADR 023 quarantined approval gates and explicitly kept approval observability provisional.
 
 Current production surface:
 

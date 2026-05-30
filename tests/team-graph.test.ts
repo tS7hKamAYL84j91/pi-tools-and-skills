@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { getTeamHandler, modelSlotsForTeam, promptChainsForTeam } from "../extensions/pi-teams/team-handlers.js";
-import type { TeamSpec } from "../extensions/pi-teams/team-types.js";
+import { getTeamHandler, modelSlotsForTeam, promptChainsForTeam } from "../extensions/pi-panopticon/teams/team-handlers.js";
+import type { TeamSpec } from "../extensions/pi-panopticon/teams/team-types.js";
 
 function team(overrides: Partial<TeamSpec> = {}): TeamSpec {
 	return {

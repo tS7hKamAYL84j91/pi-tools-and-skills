@@ -39,7 +39,7 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 		label: "Panopticon registry",
 		patterns: [/\bREGISTRY_DIR\b/],
 	},
-	{ owner: "pi-teams", label: "Teams run state", patterns: [/pi-teams:run\b/] },
+	{ owner: "pi-panopticon", label: "Teams run state", patterns: [/pi-teams:run\b/] },
 ];
 
 const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
@@ -70,16 +70,16 @@ const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
 			"Binary attachment writes are content downloads, not shared control state.",
 	},
 	{
-		path: "extensions/pi-panopticon/registry.ts",
+		path: "extensions/pi-panopticon/registry/registry.ts",
 		reason:
 			"Synchronous lifecycle registry write; needs sync helper or documented exception.",
 	},
 	{
-		path: "extensions/pi-panopticon/spawner.ts",
+		path: "extensions/pi-panopticon/spawner/spawner-tools.ts",
 		reason: "Writes one-off prompt file before process spawn.",
 	},
 	{
-		path: "extensions/pi-teams/team-form.ts",
+		path: "extensions/pi-panopticon/teams/team-form.ts",
 		reason:
 			"Interactive sync authoring flow; needs sync helper or async refactor.",
 	},
@@ -145,12 +145,12 @@ describe("runtime state boundary", () => {
 		).toBe(true);
 	});
 
-	it("pi-teams direct child process lifecycle remains explicitly bounded", () => {
+	it("Panopticon teams direct child process lifecycle remains explicitly bounded", () => {
 		const allowed = new Set([
-			"extensions/pi-teams/worktree-isolation.ts",
+			"extensions/pi-panopticon/teams/worktree-isolation.ts",
 		]);
 		const childProcessImportPattern = /from\s+["']node:child_process["']/;
-		const violations = listTsFiles("extensions/pi-teams")
+		const violations = listTsFiles("extensions/pi-panopticon/teams")
 			.map((file) => relative(process.cwd(), file))
 			.filter((file) => !allowed.has(file))
 			.filter((file) =>

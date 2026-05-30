@@ -28,7 +28,7 @@ describe("research tool manifests", () => {
 	});
 
 	it("keeps current deep-research explorer tool names registered as metadata-only fixtures", () => {
-		const explorerPrompt = readFileSync("extensions/pi-teams/config/agents/deep-research-explorer.md", "utf8");
+		const explorerPrompt = readFileSync("extensions/pi-panopticon/teams/config/agents/deep-research-explorer.md", "utf8");
 		const registeredNames = new Set(discoverResearchTools(RESEARCH_TOOL_FIXTURES).map((tool) => tool.name));
 		const promptToolNames = Array.from(explorerPrompt.matchAll(/`([a-z][a-z0-9_]+)`/g)).flatMap((match) => {
 			const name = match[1];

@@ -6,8 +6,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import teamExtension from "../extensions/pi-teams/index.js";
-import { resolveTeamSettings } from "../extensions/pi-teams/settings.js";
+import { registerTeams as teamExtension } from "../extensions/pi-panopticon/teams/register.js";
+import { resolveTeamSettings } from "../extensions/pi-panopticon/teams/settings.js";
 import type { ToolResult } from "../lib/tool-result.js";
 
 interface VisibleConfig {
@@ -31,7 +31,7 @@ type RegisteredHandler = (
 	ctx: ExtensionContext,
 ) => Promise<unknown> | unknown;
 
-const CONFIG_DIR = join(process.cwd(), "extensions", "pi-teams", "config");
+const CONFIG_DIR = join(process.cwd(), "extensions", "pi-panopticon", "teams", "config");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 const AGENTS_DIR = join(CONFIG_DIR, "agents");
 const NO_SETTINGS = "/nonexistent/path/settings.json";

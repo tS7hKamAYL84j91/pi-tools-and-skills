@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	mergeGenerationParameters,
 	omitEmptyTools,
-} from "../extensions/pi-teams/provider-payload.js";
+} from "../extensions/pi-panopticon/teams/provider-payload.js";
 
 describe("omitEmptyTools", () => {
 	it("omits an empty top-level tools array from provider payloads", () => {

@@ -14,20 +14,21 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import Registry from "./registry.js";
-import { createMessaging } from "./messaging.js";
-import { setupSpawner } from "./spawner.js";
-import { setupPeek } from "./peek.js";
-import { setupHealth } from "./health.js";
-import { createAgentListModeStore } from "./list-mode.js";
-import type { AgentMessageSender, AgentStopper } from "./agent-overlay-types.js";
-import { getSelfName } from "./peers.js";
-import { setupUI } from "./ui.js";
-import { OperationalStateStore } from "./state.js";
-import { setupReconciler } from "./reconciler.js";
+import Registry from "./registry/registry.js";
+import { createMessaging } from "./messaging/messaging.js";
+import { setupSpawner } from "./spawner/spawner.js";
+import { setupPeek } from "./registry/peek.js";
+import { setupHealth } from "./registry/health.js";
+import { createAgentListModeStore } from "./ui/list-mode.js";
+import type { AgentMessageSender, AgentStopper } from "./ui/agent-overlay-types.js";
+import { getSelfName } from "./registry/peers.js";
+import { setupUI } from "./ui/ui.js";
+import { OperationalStateStore } from "./registry/state.js";
+import { setupReconciler } from "./registry/reconciler.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import { registerChannel } from "../../lib/message-transport.js";
-import { stopPeerAgent } from "./agent-stop.js";
+import { stopPeerAgent } from "./spawner/agent-stop.js";
+import { registerTeams } from "./teams/register.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -56,6 +57,7 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
+	registerTeams(pi);
 	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage, stopAgent });
 
 	// ── Lifecycle: start ────────────────────────────────────────

@@ -1,5 +1,5 @@
 /**
- * Tests for agent health assessment (extensions/pi-panopticon/health.ts)
+ * Tests for agent health assessment (extensions/pi-panopticon/registry/health.ts)
  *
  * Tests the pure functions: assessHealth, computeActivityHash,
  * detectApiErrors, agentSocketPath, and the status taxonomy logic.
@@ -30,7 +30,7 @@ import {
 	detectApiErrors,
 	agentSocketPath,
 	// AgentHealthStatus used implicitly in status string comparisons
-} from "../extensions/pi-panopticon/health.js";
+} from "../extensions/pi-panopticon/registry/health.js";
 
 const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
 const mockReadSessionLog = readSessionLog as ReturnType<typeof vi.fn>;

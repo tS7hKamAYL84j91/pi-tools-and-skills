@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toolArgs } from "../extensions/pi-teams/runner.js";
+import { toolArgs } from "../extensions/pi-panopticon/teams/runner.js";
 
 describe("toolArgs", () => {
 	it("omits tool flags when tools are unspecified", () => {
