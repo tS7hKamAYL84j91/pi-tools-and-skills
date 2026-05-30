@@ -81,17 +81,23 @@ export interface MessageTransport {
 }
 
 // ── Channel registry ───────────────────────────────────────────
-// Uses globalThis so the registry is shared across extension module
-// contexts. Pi may load each extension in a separate module scope,
-// which would give each its own module-level Map — breaking the
-// singleton pattern. globalThis is process-wide.
-
+/**
+ * Uses globalThis so the registry is shared across extension module
+ * contexts. Pi may load each extension in a separate module scope,
+ * which would give each its own module-level Map — breaking the
+ * singleton pattern. `globalThis` ensures exactly one registry exists
+ * process-wide, mitigating the risk of segmented module caches.
+ */
 const CHANNEL_KEY = "__pi_messaging_channels__";
 
 function getChannelMap(): Map<string, MessageTransport> {
 	// biome-ignore lint/suspicious/noExplicitAny: globalThis registry for cross-module sharing
 	const g = globalThis as any;
-	if (!g[CHANNEL_KEY]) g[CHANNEL_KEY] = new Map<string, MessageTransport>();
+	if (!g[CHANNEL_KEY]) {
+		g[CHANNEL_KEY] = new Map<string, MessageTransport>();
+		// Diagnostic: trace who initialized the global registry
+		// console.debug("[MessageTransport] Initialized globalThis channel registry.");
+	}
 	return g[CHANNEL_KEY] as Map<string, MessageTransport>;
 }
 
@@ -108,6 +114,32 @@ export function unregisterChannel(name: string): void {
 /** Get all registered channels. */
 export function getChannels(): ReadonlyMap<string, MessageTransport> {
 	return getChannelMap();
+}
+
+/**
+ * Get a specific channel by name, with an explicit fallback if missing.
+ * This mitigates risks of missed registrations or loading order issues
+ * by returning a diagnostic dummy transport instead of crashing.
+ */
+export function getChannel(name: string): MessageTransport {
+	const transport = getChannelMap().get(name);
+	if (transport) return transport;
+
+	// Explicit fallback for missing transports
+	console.warn(`[MessageTransport] WARNING: Channel "${name}" requested but not registered. Returning fallback transport.`);
+	return {
+		send: async () => ({
+			accepted: false,
+			immediate: false,
+			error: `Channel ${name} is not registered. (Is the extension loaded?)`,
+		}),
+		receive: () => [],
+		ack: () => {},
+		prune: () => {},
+		init: () => {},
+		pendingCount: () => 0,
+		cleanup: () => {},
+	};
 }
 
 // ── Channel notification ───────────────────────────────────────

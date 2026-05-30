@@ -329,6 +329,7 @@ export default class Registry implements RegistryInterface {
 		try {
 			ensureRegistryDir();
 			const path = join(REGISTRY_DIR, `${this.record.id}.json`);
+			// Heavily justified: called synchronously on agent shutdown to update status to terminated
 			writeFileSync(path, JSON.stringify(this.record, null, 2), "utf-8");
 		} catch {
 			// best-effort

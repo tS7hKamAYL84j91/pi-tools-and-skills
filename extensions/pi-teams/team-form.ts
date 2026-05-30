@@ -3,8 +3,10 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { isLiveAgentRef } from "./live-agent.js";
 import { applyModelsToBindings, defaultAgentBindings } from "./team-form-bindings.js";
 import { deleteGeneratedSubagents, ensureSubagentFile } from "./team-form-files.js";
@@ -106,13 +108,13 @@ function validateFormInput(input: TeamFormInput): void {
 	}
 }
 
-export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResult {
+export async function createTeamFiles(input: TeamFormInput, cwd: string): Promise<TeamFormResult> {
 	const id = normalizeTeamId(input.id);
 	if (!id) throw new Error("Team id is required.");
 	validateFormInput(input);
 	const scope = input.scope ?? "user";
 	const dirs = dirsForTeamScope(scope, cwd);
-	mkdirSync(dirs.teams, { recursive: true });
+	await mkdir(dirs.teams, { recursive: true });
 	const teamPath = join(dirs.teams, `${id}.md`);
 	const overwrote = existsSync(teamPath);
 	if (overwrote && !input.overwrite) {
@@ -121,10 +123,10 @@ export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResu
 	const bindings = defaultAgentBindings({ ...input, id });
 	const knownSubagents = loadTeamRegistry(undefined, { cwd }).subagents;
 	const subagentIds = [...new Set(bindings.map((binding) => binding.subagent))];
-	const subagentPaths = subagentIds
+	const subagentPaths = await Promise.all(subagentIds
 		.filter((agent) => !isLiveAgentRef(agent) && !knownSubagents.has(agent))
-		.map((agent) => ensureSubagentFile(dirs.agents, agent));
-	writeFileSync(
+		.map((agent) => ensureSubagentFile(dirs.agents, agent)));
+	await writeFileAtomic(
 		teamPath,
 		teamFileContent({
 			...input,
@@ -132,12 +134,12 @@ export function createTeamFiles(input: TeamFormInput, cwd: string): TeamFormResu
 			name: input.name ?? titleFromId(id),
 			agentBindings: bindings,
 		}),
-		"utf8",
+		{ encoding: "utf8" }
 	);
 	return { id, teamPath, subagentPaths, scope, overwrote };
 }
 
-export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormResult {
+export async function updateTeamModels(input: TeamModelsInput, cwd: string): Promise<TeamFormResult> {
 	const id = normalizeTeamId(input.id);
 	if (!id) throw new Error("Team id is required.");
 	const registry = loadTeamRegistry(undefined, { cwd });
@@ -158,7 +160,7 @@ export function updateTeamModels(input: TeamModelsInput, cwd: string): TeamFormR
 	}, cwd);
 }
 
-export function deleteTeamFiles(input: TeamDeleteInput, cwd: string): TeamDeleteResult {
+export async function deleteTeamFiles(input: TeamDeleteInput, cwd: string): Promise<TeamDeleteResult> {
 	const id = normalizeTeamId(input.id);
 	if (!id) throw new Error("Team id is required.");
 	const registry = loadTeamRegistry(undefined, { cwd });
@@ -166,8 +168,8 @@ export function deleteTeamFiles(input: TeamDeleteInput, cwd: string): TeamDelete
 	if (input.scope) {
 		const teamPath = join(dirsForTeamScope(input.scope, cwd).teams, `${id}.md`);
 		if (!existsSync(teamPath)) throw new Error(`No ${input.scope} team "${id}" at ${teamPath}.`);
-		unlinkSync(teamPath);
-		if (team?.source === input.scope) deleteGeneratedSubagents(team, cwd);
+		await rm(teamPath).catch(() => {});
+		if (team?.source === input.scope) await deleteGeneratedSubagents(team, cwd);
 		return { id, teamPath, source: input.scope };
 	}
 	if (loadBuiltinTeamIds().has(id)) {
@@ -175,8 +177,8 @@ export function deleteTeamFiles(input: TeamDeleteInput, cwd: string): TeamDelete
 	}
 	if (!team) throw new Error(`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
 	if (team.source === "builtin") throw new Error(`Built-in team "${id}" cannot be deleted.`);
-	unlinkSync(team.path);
-	deleteGeneratedSubagents(team, cwd);
+	await rm(team.path).catch(() => {});
+	await deleteGeneratedSubagents(team, cwd);
 	return { id, teamPath: team.path, source: team.source };
 }
 
@@ -217,7 +219,7 @@ export async function formTeam(
 	}
 
 	const teamPath = join(dirsForTeamScope("user", ctx.cwd).teams, `${id}.md`);
-	const result = createTeamFiles({
+	const result = await createTeamFiles({
 		id,
 		name,
 		...(description?.trim() ? { description: description.trim() } : {}),

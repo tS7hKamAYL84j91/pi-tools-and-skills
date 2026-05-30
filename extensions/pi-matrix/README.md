@@ -94,6 +94,20 @@ When a trusted sender sends an image, PDF, or other allowed file, `message_read`
 
 Use the built-in `read` tool on the local path to inspect images or text/PDF files when needed.
 
+## Stable Tools/Commands
+
+- `message_read` / `message_send` (via Matrix channel)
+- `/matrix` command
+
+## Provisional Surfaces
+
+- Encrypted media decryption pipeline (currently defers blobs).
+- HTML-to-Markdown inbound translation.
+
+## Cross-Extension Dependencies
+
+- Uses `pi-panopticon` channel registry for message routing.
+
 ## Security model
 
 Matrix messages and attachments are external input. This extension filters senders, wraps inbound messages before putting them in model context, stores attachments as inert files, and never executes or parses them automatically. Keep `trustedSenders`, `maxAttachmentBytes`, and `allowedMimePrefixes` restrictive for shared rooms.

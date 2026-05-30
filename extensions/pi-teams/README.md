@@ -2,7 +2,9 @@
 
 Declarative team workflows for lightweight review, council-style debate, and deep-research pipelines.
 
-## Tools
+## Stable Tools/Commands
+
+### Tools
 
 | Tool | Purpose |
 |---|---|
@@ -15,9 +17,19 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 | `team_runs` | Inspect active/recent team run state. |
 | `team_stop` | Request a team run stop at safe boundaries. |
 
-## Commands
+### Commands
 
 - `/teams` — browse and run configured teams from the TUI.
+
+## Provisional Surfaces
+
+- `research` protocol loop termination logic.
+- Model binding overrides per team.
+
+## Cross-Extension Dependencies
+
+- Depends on `pi-panopticon` for live agent spawning and message routing.
+- Can utilize `pi-research-tools` if deep-research is invoked.
 
 ## Protocols
 

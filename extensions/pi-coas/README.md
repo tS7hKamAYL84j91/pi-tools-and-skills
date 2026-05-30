@@ -12,7 +12,9 @@ routines, morning briefs, state capture, and recurring reviews. Those schedules
 may instruct use of `kanban_*` tools, but cron/cadence/policy ownership stays in
 CoAS rather than `pi-kanban`.
 
-## Tools
+## Stable Tools/Commands
+
+### Tools
 
 | Tool | Purpose |
 |---|---|
@@ -27,6 +29,24 @@ CoAS rather than `pi-kanban`.
 | `coas_schedule_run` | Dry-run a schedule; enabled schedules run through the internal scheduler |
 | `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler |
 
+### Commands
+
+- `/coas-status`
+- `/coas-doctor`
+- `/coas-workspaces`
+- `/coas-schedules`
+- `/coas-scheduler` — show and reconcile the in-process scheduler
+
+## Provisional Surfaces
+
+- Workspace fact extraction and summarization hooks.
+- Schedule recurring rules syntax expansion.
+
+## Cross-Extension Dependencies
+
+- Schedules may invoke `kanban_*` tools (provided by `pi-kanban`).
+- Uses `pi-panopticon` for injecting schedule prompts.
+
 ## TUI Status
 
 When CoAS context exists, the status bar shows a compact operational field:
@@ -36,14 +56,6 @@ coas: <workspace|on> <✓|idle|⚠> [sch enabled/active]
 ```
 
 This is intentionally operational state only: workspace/scheduler health, enabled schedules, and active runs.
-
-## Commands
-
-- `/coas-status`
-- `/coas-doctor`
-- `/coas-workspaces`
-- `/coas-schedules`
-- `/coas-scheduler` — show and reconcile the in-process scheduler
 
 ## Configuration
 

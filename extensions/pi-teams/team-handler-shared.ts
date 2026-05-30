@@ -205,6 +205,15 @@ export function stopRequested(args: TeamHandlerRunArgs): boolean {
 	return args.runId !== undefined && args.stateManager.isStopRequested(args.runId);
 }
 
+export function formatElapsed(startedAt: number, completedAt?: number): string {
+	const end = completedAt ?? Date.now();
+	const elapsedMs = end - startedAt;
+	const totalSeconds = Math.floor(elapsedMs / 1000);
+	const m = Math.floor(totalSeconds / 60);
+	const s = totalSeconds % 60;
+	return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 function stopReason(args: TeamHandlerRunArgs): string {
 	return args.runId ? args.stateManager.stopReason(args.runId) ?? "stop requested" : "stop requested";
 }

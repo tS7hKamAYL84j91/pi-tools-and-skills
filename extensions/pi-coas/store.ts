@@ -3,8 +3,9 @@
  */
 
 import { constants, existsSync } from "node:fs";
-import { access, chmod, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
+import { access, chmod, lstat, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { CoasConfig } from "./types.js";
 
 const SAFE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
@@ -113,11 +114,7 @@ export async function readOptionalFile(path: string): Promise<string | undefined
 
 export async function writePrivateFileAtomic(path: string, content: string): Promise<void> {
 	await ensurePrivateDir(dirname(path));
-	const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
-	await writeFile(tmp, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
-	await chmod(tmp, 0o600).catch(() => undefined);
-	await rename(tmp, path);
-	await chmod(path, 0o600).catch(() => undefined);
+	await writeFileAtomic(path, content, { encoding: "utf8", mode: 0o600 });
 }
 
 export async function removePrivateFiles(paths: string[]): Promise<void> {

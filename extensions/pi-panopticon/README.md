@@ -2,7 +2,9 @@
 
 Multi-agent visibility, messaging, spawning, health checks, and lifecycle controls for pi sessions.
 
-## Tools
+## Stable Tools/Commands
+
+### Tools
 
 | Tool | Purpose |
 |---|---|
@@ -13,11 +15,20 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 | `list_spawned` / `kill_agent` | Inspect and stop workers spawned by this session. |
 | `get_name` / `set_name` | Read or set this session's display/registry name. |
 
-## Commands
+### Commands
 
 - `/agents` — open the agent overlay for status, detail, direct messages, and stop/kill controls.
 - `/send` — send a direct peer message from the command line.
 - `/agent-list-mode` and `/agents-mode` — adjust agent list display mode.
+
+## Provisional Surfaces
+
+- `MEMORY.md` snapshot generation (currently advisory/design-only).
+- Agent stall heuristic thresholds.
+
+## Cross-Extension Dependencies
+
+- Acts as a foundational registry used by `pi-matrix` (for channel registration) and `pi-teams` (for agent discovery/spawning).
 
 ## State and UI
 

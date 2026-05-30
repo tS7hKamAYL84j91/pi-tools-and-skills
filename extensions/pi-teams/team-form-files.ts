@@ -3,7 +3,9 @@
  */
 
 import * as nodeFs from "node:fs";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { isLiveAgentRef } from "./live-agent.js";
 import { quoteYamlString } from "./team-form-yaml.js";
 import { dirsForTeamScope } from "./team-paths.js";
@@ -14,11 +16,11 @@ function titleFromId(id: string): string {
 	return id.split(/[-_]/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 
-export function ensureSubagentFile(dir: string, id: string): string {
-	nodeFs.mkdirSync(dir, { recursive: true });
+export async function ensureSubagentFile(dir: string, id: string): Promise<string> {
+	await mkdir(dir, { recursive: true });
 	const path = join(dir, `${id}.md`);
 	if (nodeFs.existsSync(path)) return path;
-	nodeFs.writeFileSync(
+	await writeFileAtomic(
 		path,
 		[
 			"---",
@@ -42,20 +44,20 @@ export function ensureSubagentFile(dir: string, id: string): string {
 			"",
 			"Return SUMMARY, OUTPUT, and STATUS.",
 		].join("\n"),
-		"utf8",
+		{ encoding: "utf8" }
 	);
 	return path;
 }
 
-function isGeneratedSubagent(path: string): boolean {
+async function isGeneratedSubagent(path: string): Promise<boolean> {
 	try {
-		return nodeFs.readFileSync(path, "utf8").includes('generatedBy: "pi-teams"');
+		return (await readFile(path, "utf8")).includes('generatedBy: "pi-teams"');
 	} catch {
 		return false;
 	}
 }
 
-export function deleteGeneratedSubagents(team: TeamSpec, cwd: string): void {
+export async function deleteGeneratedSubagents(team: TeamSpec, cwd: string): Promise<void> {
 	if (team.source === "builtin") return;
 	const registry = loadTeamRegistry(undefined, { cwd });
 	const referenced = new Set(
@@ -67,6 +69,6 @@ export function deleteGeneratedSubagents(team: TeamSpec, cwd: string): void {
 	for (const subagent of team.agents) {
 		if (referenced.has(subagent) || isLiveAgentRef(subagent)) continue;
 		const path = join(agentsDir, `${subagent}.md`);
-		if (isGeneratedSubagent(path)) nodeFs.unlinkSync(path);
+		if (await isGeneratedSubagent(path)) await rm(path).catch(() => {});
 	}
 }

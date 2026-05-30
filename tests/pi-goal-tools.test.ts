@@ -138,7 +138,8 @@ describe("pi-goal extension", () => {
 			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run --turns N to continue.",
 			level: "info",
 		});
-		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "goal", value: "goal: active" });
+		expect(ctx.ui.statuses.at(-1)?.key).toBe("goal");
+	expect(ctx.ui.statuses.at(-1)?.value).toMatch(/^goal: active( \[\ds\])?$/);
 	});
 
 	it("/goal clear explains local state removal", async () => {

@@ -6,9 +6,10 @@
  */
 
 import { existsSync } from "node:fs";
-import { appendFile, chmod, mkdir, readdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
+import { appendLogLine } from "../../lib/file-persistence.js";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
 	assertInside,
@@ -155,7 +156,10 @@ async function readSchedule(config: CoasConfig, taskId: string): Promise<Schedul
 async function logTask(config: CoasConfig, taskId: string, message: string): Promise<void> {
 	await mkdir(scheduleLogRoot(config), { recursive: true, mode: 0o700 });
 	const path = scheduleLogPath(config, taskId);
-	await appendFile(path, `[${isoUtc()}] ${message}\n`, { encoding: "utf8", mode: 0o600 });
+	await appendLogLine(path, `[${isoUtc()}] ${message}\n`, {
+		encoding: "utf8",
+		mode: 0o600,
+	});
 	await chmod(path, 0o600).catch(() => undefined);
 }
 

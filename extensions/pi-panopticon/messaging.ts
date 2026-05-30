@@ -20,7 +20,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { onAgentCleanup, REGISTRY_DIR } from "../../lib/agent-registry.js";
 import type { InboundAttachment, InboundMessage, MessageTransport } from "../../lib/message-transport.js";
-import { getChannels, onChannelNotify } from "../../lib/message-transport.js";
+import { getChannel, getChannels, onChannelNotify } from "../../lib/message-transport.js";
 import type { Registry } from "./types.js";
 import { ok, fail } from "./types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "./peers.js";
@@ -216,11 +216,11 @@ export function createMessaging(config: MessagingConfig) {
 				message: Type.String({ description: "Message body" }),
 			}),
 			async execute(_id, params) {
-				const transport = getChannels().get(params.channel);
-				if (!transport) {
+				if (!getChannels().has(params.channel)) {
 					const available = [...getChannels().keys()].filter((c) => c !== "agent").join(", ");
 					return fail(`Unknown channel "${params.channel}". Available: ${available || "(none)"}`);
 				}
+				const transport = getChannel(params.channel);
 				const stub = { id: "", name: "", pid: 0, cwd: "", model: "", startedAt: 0, heartbeat: 0, status: "running" as const };
 				const d = await transport.send(stub, getSelfName(registry), params.message);
 				if (!d.accepted) return fail(`Send failed: ${d.error}`);

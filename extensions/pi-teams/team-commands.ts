@@ -30,7 +30,7 @@ async function deleteSelectedTeam(ctx: ExtensionContext, requested?: string): Pr
 	if (!id) return undefined;
 	const confirmed = await confirmDestructiveAction(ctx, teamDeleteConfirmationView(id));
 	if (!confirmed) return undefined;
-	const result = deleteTeamFiles({ id }, ctx.cwd);
+	const result = await deleteTeamFiles({ id }, ctx.cwd);
 	ctx.ui.notify(`Deleted team "${result.id}"`, "info");
 	return id;
 }

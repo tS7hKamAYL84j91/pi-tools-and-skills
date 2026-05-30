@@ -45,7 +45,11 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		}
 		const stop = runtime.stopRequested ? " stopping" : "";
 		const run = current.runActive ? ` ${current.turnsUsed}/${current.turnBudget}${stop}` : "";
-		ctx.ui.setStatus("goal", `goal: ${current.status}${run}`);
+		
+		const phase = current.runActive ? "running" : current.status;
+		const time = current.runStartedAt && current.runActive ? formatElapsed(current.runStartedAt) : formatElapsed(current.createdAt);
+		
+		ctx.ui.setStatus("goal", `goal: ${phase} [${time}]${run}`);
 		if (current.status === "active") {
 			ctx.ui.setWidget("goal", compactWidget(current));
 		} else {
@@ -470,8 +474,31 @@ async function requireGoal(cwd: string): Promise<GoalState> {
 	return state;
 }
 
+function formatElapsed(startedAt: string): string {
+	const elapsedMs = Date.now() - new Date(startedAt).getTime();
+	const totalSeconds = Math.floor(elapsedMs / 1000);
+	const m = Math.floor(totalSeconds / 60);
+	const s = totalSeconds % 60;
+	return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 function compactWidget(state: GoalState): string[] {
 	const source = state.sourcePath ? `source: ${state.sourcePath}` : "source: none";
 	const run = state.runActive ? `run: ${state.turnsUsed}/${state.turnBudget}` : "run: idle";
-	return [`goal: ${state.objective}`, source, run, "complete only with goal_complete evidence"];
+	const phase = state.runActive ? "running" : state.status;
+	const cancel = state.runActive ? "cancel: /goal stop" : "cancel: /goal clear";
+	const time = state.runStartedAt && state.runActive ? `time: ${formatElapsed(state.runStartedAt)}` : `time: ${formatElapsed(state.createdAt)} (total)`;
+	const action = state.runActive ? `action: turn ${state.turnsUsed}` : "action: none";
+
+	return [
+		`goal: ${state.objective}`,
+		`phase: ${phase}`,
+		time,
+		action,
+		source,
+		run,
+		`artifacts: .pi-goal/GOAL.md`,
+		cancel,
+		"complete only with goal_complete evidence"
+	];
 }

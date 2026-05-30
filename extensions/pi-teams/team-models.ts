@@ -251,7 +251,7 @@ export async function selectTeamModels(
 		const model = await pickModel(ctx, slot.label, available, slot.current);
 		if (!model) return changed ? id : undefined;
 		models = applyModelSlot(models, slot, model);
-		const result = updateTeamModels({ id, models }, ctx.cwd);
+		const result = await updateTeamModels({ id, models }, ctx.cwd);
 		changed = true;
 		ctx.ui.notify(`Updated ${slot.label.toLowerCase()} for "${result.id}"`, "info");
 	}

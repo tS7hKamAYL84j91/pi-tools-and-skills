@@ -16,8 +16,8 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
-	writeFileSync,
 } from "node:fs";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, fail, type ToolResult, type Registry } from "./types.js";
@@ -152,7 +152,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 			if (params.systemPrompt) {
 				tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
 				const promptPath = join(tempDir, "system-prompt.md");
-				writeFileSync(promptPath, params.systemPrompt, { mode: 0o600 });
+				await writeFileAtomic(promptPath, params.systemPrompt, { mode: 0o600 });
 				args.push("--append-system-prompt", promptPath);
 			}
 

@@ -7,9 +7,10 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendFile, chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { appendLogLine } from "../../lib/file-persistence.js";
 import { isoUtc, scheduleLogRoot } from "./store.js";
 import { listSchedules } from "./schedules.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
@@ -101,7 +102,10 @@ async function appendScheduleLog(config: CoasConfig, taskId: string, message: st
 	const root = scheduleLogRoot(config);
 	await mkdir(root, { recursive: true, mode: 0o700 });
 	const path = join(root, `${taskId}.log`);
-	await appendFile(path, `[${isoUtc()}] ${message}\n`, { encoding: "utf8", mode: 0o600 });
+	await appendLogLine(path, `[${isoUtc()}] ${message}\n`, {
+		encoding: "utf8",
+		mode: 0o600,
+	});
 	await chmod(path, 0o600).catch(() => undefined);
 }
 

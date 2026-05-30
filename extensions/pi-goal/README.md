@@ -2,7 +2,9 @@
 
 Bounded project-goal workflow tools and the `/goal` command for pi.
 
-## Commands
+## Stable Tools/Commands
+
+### Commands
 
 - `/goal` or `/goal help` — show available commands.
 - `/goal <text>` — create a project goal from text and start a bounded run.
@@ -11,10 +13,19 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 - `/goal run [--turns N|--until-complete]` — continue an active or paused goal.
 - `/goal pause`, `/goal resume`, `/goal stop`, `/goal clear` — manage goal lifecycle. `/goal stop` immediately marks the bounded run idle and unblocks the goal loop so no further automatic turns are scheduled. `/goal clear` removes `.pi-goal/` local state and run artifacts for the current workspace.
 
-## Tools
+### Tools
 
 - `goal_get` — read the current project-local goal state.
 - `goal_complete` — mark the goal complete with concrete audit evidence.
+
+## Provisional Surfaces
+
+- `.pi-goal/TODO.md` extraction logic.
+- Bounded turn iteration limits.
+
+## Cross-Extension Dependencies
+
+- Independent, but often invoked in sequence with `pi-teams` for review.
 
 ## Runtime files
 

@@ -18,6 +18,7 @@ export interface GoalState {
 	readonly createdAt: string;
 	readonly updatedAt: string;
 	readonly runId?: string;
+	readonly runStartedAt?: string;
 	readonly runActive: boolean;
 	readonly turnBudget: number;
 	readonly turnsUsed: number;
@@ -164,6 +165,7 @@ export function startRun(state: GoalState, turnBudget: number): GoalState {
 	return updateGoal(state, {
 		status: "active",
 		runId: `run-${randomUUID()}`,
+		runStartedAt: new Date().toISOString(),
 		runActive: true,
 		turnBudget,
 		turnsUsed: 0,
@@ -289,6 +291,7 @@ function parseGoalState(value: unknown): GoalState {
 		createdAt: readString(value.createdAt, "createdAt"),
 		updatedAt: readString(value.updatedAt, "updatedAt"),
 		runId: readOptionalString(value.runId),
+		runStartedAt: readOptionalString(value.runStartedAt),
 		runActive: value.runActive === true,
 		turnBudget: readNumber(value.turnBudget, "turnBudget"),
 		turnsUsed: readNumber(value.turnsUsed, "turnsUsed"),

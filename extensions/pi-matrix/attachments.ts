@@ -5,8 +5,9 @@
  * optional SDK encrypted-media decryption, and local cache writes.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import type { InboundAttachment } from "../../lib/message-transport.js";
 import type { MatrixConfig } from "./types.js";
 
@@ -122,7 +123,7 @@ async function writeAttachment(config: MatrixConfig, attachment: InboundAttachme
 	);
 	await mkdir(eventDir, { recursive: true });
 	const localPath = join(eventDir, sanitizeFilename(attachment.filename, "attachment"));
-	await writeFile(localPath, data);
+	await writeFileAtomic(localPath, data);
 	return localPath;
 }
 

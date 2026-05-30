@@ -27,7 +27,7 @@ function requireTeam(registry: ReturnType<typeof loadTeamRegistry>, id: string):
 }
 
 describe("loadTeamRegistry", () => {
-	it("loads built-in teams and validates subagent references", () => {
+	it("loads built-in teams and validates subagent references", async () => {
 		const registry = loadTeamRegistry(CONFIG_PATH, { roots: [] });
 
 		expect([...registry.teams.keys()].sort()).toEqual([
@@ -50,7 +50,7 @@ describe("loadTeamRegistry", () => {
 		]);
 	});
 
-	it("accepts explicit-binding teams with custom protocol labels", () => {
+	it("accepts explicit-binding teams with custom protocol labels", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "custom_agent_1");
 			writeSubagent(root, "custom_agent_2");
@@ -82,7 +82,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("derives subagent execution config from protocol and manifests", () => {
+	it("derives subagent execution config from protocol and manifests", async () => {
 		withTempConfig((configPath, root) => {
 			writeFileSync(
 				join(root, "agents", "navigator_agent.md"),
@@ -124,7 +124,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("lets binding config explicitly override subagent config with empty values", () => {
+	it("lets binding config explicitly override subagent config with empty values", async () => {
 		withTempConfig((configPath, root) => {
 			writeFileSync(
 				join(root, "agents", "navigator_agent.md"),
@@ -168,7 +168,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("loads graph protocol manifests as unsupported legacy teams and ignores graph fields", () => {
+	it("loads graph protocol manifests as unsupported legacy teams and ignores graph fields", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "reviewer");
 			writeSubagent(root, "qa");
@@ -205,7 +205,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("derives role model bindings from object agent entries", () => {
+	it("derives role model bindings from object agent entries", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "shared_member");
 			writeSubagent(root, "synthesis_agent");
@@ -243,7 +243,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("reports missing live-agent refs without requiring subagent ids", () => {
+	it("reports missing live-agent refs without requiring subagent ids", async () => {
 		withTempConfig((configPath, root) => {
 			writeTeam(root, "live-consult", "agent:definitely-missing-live-peer");
 
@@ -255,7 +255,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("rejects mixed object and string agent lists", () => {
+	it("rejects mixed object and string agent lists", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "known_agent");
 			writeFileSync(
@@ -283,7 +283,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("reports unknown subagent references", () => {
+	it("reports unknown subagent references", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "known_agent");
 			writeTeam(root, "broken", "missing_agent");
@@ -295,7 +295,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("loads user and project teams after built-ins", () => {
+	it("loads user and project teams after built-ins", async () => {
 		withTempConfig((configPath, root) => {
 			const userRoot = join(root, "user");
 			const project = join(root, "project");
@@ -321,12 +321,12 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("team_form writes project teams to the default project root so they are immediately discoverable", () => {
+	it("team_form writes project teams to the default project root so they are immediately discoverable", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-form-project-root-"));
 		try {
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 
-			const result = createTeamFiles({
+			const result = await createTeamFiles({
 				id: "project-consult",
 				protocol: "consult",
 				agents: ["project_navigator"],
@@ -342,28 +342,28 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("team_form rejects removed telephone protocol without explicit bindings", () => {
+	it("team_form rejects removed telephone protocol without explicit bindings", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-form-telephone-"));
 		try {
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 
-			expect(() => createTeamFiles({
+			await expect(createTeamFiles({
 				id: "telephone-game",
 				protocol: "telephone",
 				agents: ["relay_1", "relay_2"],
 				scope: "project",
-			}, project)).toThrow("Unsupported team protocol telephone.");
+			}, project)).rejects.toThrow("Unsupported team protocol telephone.");
 		} finally {
 			rmSync(project, { recursive: true, force: true });
 		}
 	});
 
-	it("team_form creates runnable debate bindings without member models", () => {
+	it("team_form creates runnable debate bindings without member models", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-form-debate-"));
 		try {
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 
-			const result = createTeamFiles({
+			const result = await createTeamFiles({
 				id: "review-debate",
 				protocol: "debate",
 				agents: ["review_member", "review_critic"],
@@ -380,12 +380,12 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("team_form preserves live-agent refs without creating subagent stubs", () => {
+	it("team_form preserves live-agent refs without creating subagent stubs", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-form-live-"));
 		try {
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 
-			const result = createTeamFiles({
+			const result = await createTeamFiles({
 				id: "live-review",
 				protocol: "consult",
 				agents: ["agent:reviewer"],
@@ -401,19 +401,19 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("team_delete removes unreferenced generated subagent stubs", () => {
+	it("team_delete removes unreferenced generated subagent stubs", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-delete-generated-"));
 		try {
 			writeFileSync(join(project, "package.json"), "{}", "utf8");
 			mkdirSync(join(project, ".pi"), { recursive: true });
 			writeFileSync(join(project, ".pi", "settings.json"), JSON.stringify({ teams: { roots: [".pi/teams"] } }), "utf8");
-			const result = createTeamFiles({ id: "generated-review", protocol: "consult", agents: ["generated_navigator"], scope: "project" }, project);
+			const result = await createTeamFiles({ id: "generated-review", protocol: "consult", agents: ["generated_navigator"], scope: "project" }, project);
 			const subagentPath = join(project, ".pi", "teams", "agents", "generated_navigator.md");
 
 			expect(result.subagentPaths).toEqual([subagentPath]);
 			expect(readFileSync(subagentPath, "utf8")).toContain('generatedBy: "pi-teams"');
 
-			deleteTeamFiles({ id: "generated-review", scope: "project" }, project);
+			await deleteTeamFiles({ id: "generated-review", scope: "project" }, project);
 
 			expect(existsSync(result.teamPath)).toBe(false);
 			expect(existsSync(subagentPath)).toBe(false);
@@ -422,7 +422,7 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("team_models preserves binding config while dropping legacy graph policy", () => {
+	it("team_models preserves binding config while dropping legacy graph policy", async () => {
 		const project = mkdtempSync(join(tmpdir(), "team-models-graph-"));
 		try {
 			const teamsRoot = join(project, ".pi", "teams");
@@ -468,7 +468,7 @@ describe("loadTeamRegistry", () => {
 				"utf8",
 			);
 
-			updateTeamModels({ id: "review-qa", models: { members: ["new/review", "new/qa"] } }, project);
+			await updateTeamModels({ id: "review-qa", models: { members: ["new/review", "new/qa"] } }, project);
 			const updated = readFileSync(join(teamsRoot, "teams", "review-qa.md"), "utf8");
 			const team = requireTeam(loadTeamRegistry(CONFIG_PATH, { cwd: project }), "review-qa");
 
@@ -496,7 +496,7 @@ describe("loadTeamRegistry", () => {
 		}
 	});
 
-	it("compiles and validates manifest-level prompt contracts and model slots", () => {
+	it("compiles and validates manifest-level prompt contracts and model slots", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "graph_agent");
 			writeFileSync(
@@ -545,7 +545,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("rejects invalid manifest metadata before execution", () => {
+	it("rejects invalid manifest metadata before execution", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "graph_agent");
 			writeFileSync(
@@ -573,7 +573,7 @@ describe("loadTeamRegistry", () => {
 		});
 	});
 
-	it("reports strict manifest validator failures as registry warnings", () => {
+	it("reports strict manifest validator failures as registry warnings", async () => {
 		withTempConfig((configPath, root) => {
 			writeSubagent(root, "graph_agent");
 			writeFileSync(

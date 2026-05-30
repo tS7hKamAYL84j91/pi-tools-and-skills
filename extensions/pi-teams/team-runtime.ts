@@ -8,6 +8,7 @@ import { ok } from "../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
+import { formatElapsed } from "./team-handler-shared.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
 
@@ -72,6 +73,30 @@ const TeamRunSchema = Type.Object({
 	})),
 });
 
+function refreshTeamWidget(ctx: ExtensionContext, stateManager: TeamStateManager, runId: string) {
+	const run = stateManager.get(runId);
+	if (!run) return;
+	
+	const time = run.status === "running" || run.status === "pending" || run.status === "stopping"
+		? formatElapsed(run.startedAt)
+		: `completed in ${formatElapsed(run.startedAt, run.completedAt)}`;
+
+	const phase = run.phases.length > 0 ? run.phases[run.phases.length - 1] : "starting";
+	const nodes = run.nodes.length;
+	const details = run.details.length;
+	const artifacts = run.details.filter((d) => d.kind === "artifact" && d.artifactUri).map((d) => d.artifactUri);
+	const artifactsText = artifacts.length > 0 ? `artifacts: ${artifacts.join(", ")}` : "artifacts: none";
+
+	ctx.ui.setWidget(TEAM_STATUS_KEY, [
+		`team: ${run.team} (${run.protocol})`,
+		`phase: ${run.status === "running" ? phase : run.status}`,
+		`time: ${time}`,
+		`action: ${nodes} nodes, ${details} details`,
+		artifactsText,
+		`cancel: /team stop ${runId}`
+	]);
+}
+
 function requireTeam(id: string, cwd: string): TeamSpec {
 	const registry = loadTeamRegistry(undefined, { cwd });
 	const team = registry.teams.get(id);
@@ -101,6 +126,12 @@ export async function runTeam(args: {
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
 	const controller = new AbortController();
 	args.stateManager.registerAbortController(runId, controller);
+	
+	const progressInterval = setInterval(() => {
+		refreshTeamWidget(args.ctx, args.stateManager, runId);
+	}, 1000);
+	refreshTeamWidget(args.ctx, args.stateManager, runId);
+
 	try {
 		const result = await handler.run({
 			team,
@@ -121,6 +152,9 @@ export async function runTeam(args: {
 	} catch (error) {
 		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
 		throw error;
+	} finally {
+		clearInterval(progressInterval);
+		args.ctx.ui.setWidget(TEAM_STATUS_KEY, undefined);
 	}
 }
 
@@ -132,7 +166,7 @@ function registerTeamFormTool(pi: ExtensionAPI): void {
 		promptSnippet: "Create a user or project declarative team",
 		parameters: TeamFormSchema,
 		async execute(_id, params: TeamFormInput, _signal, _onUpdate, ctx) {
-			const result = createTeamFiles(params, ctx.cwd);
+			const result = await createTeamFiles(params, ctx.cwd);
 			return ok(`Team "${result.id}" written to ${result.teamPath}.`, {
 				...result,
 			});
@@ -148,7 +182,7 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 		promptSnippet: "Set default model bindings for a team",
 		parameters: TeamModelsSchema,
 		async execute(_id, params: TeamModelsInput, _signal, _onUpdate, ctx) {
-			const result = updateTeamModels(params, ctx.cwd);
+			const result = await updateTeamModels(params, ctx.cwd);
 			return ok(`Team "${result.id}" models updated in ${result.teamPath}.`, {
 				...result,
 			});
@@ -192,7 +226,7 @@ function registerTeamDeleteTool(pi: ExtensionAPI): void {
 		promptSnippet: "Delete or dissolve a user or project declarative team",
 		parameters: TeamDeleteSchema,
 		async execute(_id, params: TeamDeleteInput, _signal, _onUpdate, ctx) {
-			const result = deleteTeamFiles(params, ctx.cwd);
+			const result = await deleteTeamFiles(params, ctx.cwd);
 			return ok(`Team "${result.id}" deleted from ${result.teamPath}.`, {
 				...result,
 			});

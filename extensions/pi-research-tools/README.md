@@ -11,7 +11,9 @@ This first T-195 slice is deliberately safe and additive:
 - writes no artifacts;
 - preserves existing deep-research prompts and workflows.
 
-## Tools
+## Stable Tools/Commands
+
+### Tools
 
 | Tool | Parameters | Behavior |
 |---|---|---|
@@ -20,6 +22,15 @@ This first T-195 slice is deliberately safe and additive:
 | `semantic_scholar_search` | `query`, `limit?`, `persistToWorkspace?` | Compatibility alias matching existing deep-research prompt language. |
 | `github_search` | `query`, `limit?`, `persistToWorkspace?` | Dry-run JSON search envelope for future GitHub provider binding. |
 | `web_read` | `url`, `persistToWorkspace?` | Dry-run JSON URL-read envelope for future fetch provider binding. |
+
+## Provisional Surfaces
+
+- `persistToWorkspace` parameter (intent capture only).
+- All tools currently operate in dry-run mode until provider bindings are stabilized.
+
+## Cross-Extension Dependencies
+
+- Utilized by `pi-teams` when running the `research` protocol.
 
 `persistToWorkspace` only records intent in the dry-run envelope. It does not write `sources/manifest.json`.
 

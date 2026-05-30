@@ -3,9 +3,10 @@
  */
 
 import { existsSync } from "node:fs";
-import { appendFile, chmod, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
+import { appendLogLine } from "../../lib/file-persistence.js";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
 	assertInside,
@@ -138,7 +139,7 @@ export async function appendWorkspaceContext(
 	await assertNotSymlink(path);
 	await withFileMutationQueue(path, async () => {
 		const stamp = isoUtc();
-		await appendFile(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`, { encoding: "utf8", mode: 0o600 });
+		await appendLogLine(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`, { encoding: "utf8", mode: 0o600 });
 		await chmod(path, 0o600).catch(() => undefined);
 	});
 	const info = await stat(path);
@@ -167,7 +168,7 @@ export async function createWorkspace(config: CoasConfig, input: CreateWorkspace
 	}
 	await assertNotSymlink(contextPath);
 	if (!existsSync(contextPath)) {
-		await appendFile(contextPath, [
+		await appendLogLine(contextPath, [
 			`# CoAS Workspace: ${workspaceId}`,
 			"",
 			`- Room/reference: ${input.room || "unknown"}`,

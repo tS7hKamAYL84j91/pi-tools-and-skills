@@ -13,8 +13,9 @@
  * automatic and manual paths.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 
 import {
 	type BoardState,
@@ -79,7 +80,7 @@ async function runCompaction(
 	const archiveDir = join(dirname(logPath), "archive");
 	await mkdir(archiveDir, { recursive: true });
 	const backupPath = join(archiveDir, `board.log.bak.${backupTs}`);
-	await writeFile(backupPath, raw, "utf-8");
+	await writeFileAtomic(backupPath, raw, { encoding: "utf-8" });
 
 	// Preserve BLOCK/UNBLOCK diagnostic history per task
 	const blockHistory = new Map<string, string[]>();
@@ -156,7 +157,7 @@ async function runCompaction(
 	newLines.push(
 		`${ts} COMPACT T-000 ${agentLabel} events_before=${eventsBefore} events_after=${eventsAfter}${triggerSuffix}`,
 	);
-	await writeFile(logPath, `${newLines.join("\n")}\n`, "utf-8");
+	await writeFileAtomic(logPath, `${newLines.join("\n")}\n`, { encoding: "utf-8" });
 
 	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
 }

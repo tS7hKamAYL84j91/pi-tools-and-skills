@@ -57,9 +57,9 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function deleteTeam(ctx: ExtensionContext, team: TeamSpec): boolean {
+async function deleteTeam(ctx: ExtensionContext, team: TeamSpec): Promise<boolean> {
 	try {
-		const result = deleteTeamFiles({ id: team.id }, ctx.cwd);
+		const result = await deleteTeamFiles({ id: team.id }, ctx.cwd);
 		ctx.ui.notify(`Deleted team "${result.id}"`, "info");
 		return true;
 	} catch (error) {
@@ -230,9 +230,16 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 			if (deletingId) {
 				if (data.toLowerCase() === "y") {
 					const team = teams.find((entry) => entry.id === deletingId);
-					if (team && deleteTeam(ctx, team)) reload();
-					else deletingId = undefined;
-					tui.requestRender();
+					if (team) {
+						deleteTeam(ctx, team).then((success) => {
+							if (success) reload();
+							else deletingId = undefined;
+							tui.requestRender();
+						});
+					} else {
+						deletingId = undefined;
+						tui.requestRender();
+					}
 					return;
 				}
 				if (data.toLowerCase() === "n") {

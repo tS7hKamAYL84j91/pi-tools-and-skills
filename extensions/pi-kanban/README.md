@@ -65,7 +65,9 @@ Files written:
 - `snapshot.md` — regenerated on `kanban_snapshot`
 - `board.log.bak.<timestamp>` — created before compaction
 
-## Tools Reference
+## Stable Tools/Commands
+
+External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a board API, but `pi-kanban` does not own the cadence or policy that decides when to call them.
 
 ### Scheduler-safe surface
 
@@ -262,6 +264,16 @@ created: 2026-04-09T15:00:00Z
 - Existing tickets (created before this feature) do not get migrated — only new tickets written via `kanban_create` produce task files.
 - `kanban_edit` creates a stub file if one doesn't already exist when adding a note.
 - `kanban_edit` preserves existing notes and the original `created` timestamp when rewriting frontmatter.
+
+## Provisional Surfaces
+
+- Auto-compaction heuristics
+- Task file generation and bidirectional sync
+
+## Cross-Extension Dependencies
+
+- Interacts with `pi-coas` schedulers indirectly via safe board APIs.
+- Integrates with pi core for TUI theming (`KANBAN_BOARD_THEME`).
 
 ## File Layout
 
