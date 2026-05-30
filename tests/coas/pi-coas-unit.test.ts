@@ -1,0 +1,363 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../../extensions/pi-coas/format.js";
+import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
+import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
+import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
+import { validateCronExpr, formatScheduleList } from "../../extensions/pi-coas/schedules.js";
+import { ok, fail } from "../../lib/tool-result.js";
+import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
+
+describe("store", () => {
+	describe("slugify", () => {
+		it("lowercases and replaces separators", () => {
+			expect(slugify("My Workspace")).toBe("my-workspace");
+		});
+
+		it("collapses multiple separators", () => {
+			expect(slugify("a---b")).toBe("a-b");
+		});
+
+		it("trims leading/trailing separators", () => {
+			expect(slugify("-hello-")).toBe("hello");
+		});
+
+		it("returns fallback for empty string", () => {
+			expect(slugify("", "fallback")).toBe("fallback");
+		});
+
+		it("returns fallback for all-special input", () => {
+			expect(slugify("---", "fallback")).toBe("fallback");
+		});
+	});
+
+	describe("workspaceIdFromRoom", () => {
+		it("prefixes slugified room", () => {
+			expect(workspaceIdFromRoom("general")).toBe("room-general");
+		});
+	});
+
+	describe("assertSafeId", () => {
+		it("accepts valid ids", () => {
+			expect(() => assertSafeId("test", "abc123")).not.toThrow();
+		});
+
+		it("rejects ids with spaces", () => {
+			expect(() => assertSafeId("test", "abc 123")).toThrow(/Invalid/);
+		});
+
+		it("rejects ids with ..", () => {
+			expect(() => assertSafeId("test", "a..b")).toThrow(/Invalid/);
+		});
+	});
+
+	describe("pathInside", () => {
+		it("returns true for child path", () => {
+			expect(pathInside("/root", "/root/child")).toBe(true);
+		});
+
+		it("returns true for exact match", () => {
+			expect(pathInside("/root", "/root")).toBe(true);
+		});
+
+		it("returns false for sibling", () => {
+			expect(pathInside("/root", "/other")).toBe(false);
+		});
+
+		it("returns false for escape attempt", () => {
+			expect(pathInside("/root", "/root/../other")).toBe(false);
+		});
+	});
+
+	describe("parseEnv / formatEnv", () => {
+		it("round-trips simple values", () => {
+			const values = { KEY: "value", NUM: "42" };
+			expect(parseEnv(formatEnv(values))).toEqual(values);
+		});
+
+		it("ignores comments and blank lines", () => {
+			const content = "# comment\n\nKEY=val\n\n";
+			expect(parseEnv(content)).toEqual({ KEY: "val" });
+		});
+
+		it("unquotes single-quoted values", () => {
+			expect(parseEnv("KEY='hello world'")).toEqual({ KEY: "hello world" });
+		});
+
+		it("unquotes double-quoted values", () => {
+			expect(parseEnv('KEY="hello world"')).toEqual({ KEY: "hello world" });
+		});
+
+		it("skips lines without equals", () => {
+			expect(parseEnv("NOEQUALS\nKEY=val")).toEqual({ KEY: "val" });
+		});
+	});
+});
+
+describe("lifecycle", () => {
+	describe("formatCoasStatusSlot", () => {
+		it("uses extension-prefixed status text", () => {
+			expect(formatCoasStatusSlot()).toBe("coas: on ✓");
+		});
+
+		it("keeps workspace context after the extension prefix", () => {
+			expect(formatCoasStatusSlot("room-general")).toBe("coas: room-general");
+		});
+
+		it("includes scheduler health and active run counts when available", () => {
+			expect(formatCoasStatusSlot("exec-office", {
+				running: true,
+				enabledSchedules: 3,
+				activeRuns: 1,
+				startedAt: "2026-01-01T00:00:00Z",
+			})).toBe("coas: exec-office ✓ sch 3/1");
+		});
+
+		it("marks scheduler errors without using personality metaphors", () => {
+			expect(formatCoasStatusSlot(undefined, {
+				running: true,
+				enabledSchedules: 0,
+				activeRuns: 0,
+				startedAt: "2026-01-01T00:00:00Z",
+				lastError: "boom",
+			})).toBe("coas: on ⚠");
+		});
+	});
+});
+
+describe("format", () => {
+	describe("shortCommandSummary", () => {
+		it("shows exit code and limited lines", () => {
+			const result: CommandResult = { code: 0, stdout: ["a", "b", "c", "d", "e"].join("\n"), stderr: "" };
+			const summary = shortCommandSummary("test", result, 3);
+			expect(summary).toBe("test exit=0\na\nb\nc\n...");
+		});
+
+		it("does not add ellipsis when output fits", () => {
+			const result: CommandResult = { code: 1, stdout: "a\nb", stderr: "" };
+			const summary = shortCommandSummary("test", result, 4);
+			expect(summary).toBe("test exit=1\na\nb");
+		});
+	});
+
+	describe("renderSchedulerSnapshot", () => {
+		it("summarizes internal scheduler state", () => {
+			const rendered = renderSchedulerSnapshot({
+				running: true,
+				enabledSchedules: 2,
+				activeRuns: 1,
+				startedAt: "2026-01-01T00:00:00Z",
+			});
+			expect(rendered).toContain("running           yes");
+			expect(rendered).toContain("enabled schedules 2");
+		});
+	});
+
+	describe("truncateText", () => {
+		it("reports lines limit hit", () => {
+			const long = `${"line\n".repeat(2001)}`;
+			const result = truncateText(long);
+			expect(result.truncated).toBe(true);
+			expect(result.limitHit).toBe("lines");
+		});
+
+		it("reports bytes limit hit", () => {
+			const huge = "x".repeat(60 * 1024);
+			const result = truncateText(huge);
+			expect(result.truncated).toBe(true);
+			expect(result.limitHit).toBe("bytes");
+		});
+
+		it("returns no limit for short text", () => {
+			const result = truncateText("hello\nworld");
+			expect(result.truncated).toBe(false);
+			expect(result.limitHit).toBeUndefined();
+		});
+	});
+});
+
+describe("schedules", () => {
+	describe("validateCronExpr", () => {
+		it("accepts valid five-field cron", () => {
+			expect(() => validateCronExpr("0 9 * * 1")).not.toThrow();
+		});
+
+		it("rejects fewer than five fields", () => {
+			expect(() => validateCronExpr("0 9 * *")).toThrow(/five fields/);
+		});
+
+		it("rejects empty fields", () => {
+			expect(() => validateCronExpr("0 9  * *")).toThrow(/five fields/);
+		});
+
+		it("rejects expressions with more than five fields", () => {
+			expect(() => validateCronExpr("0 9 * * 1 extra")).toThrow(/five fields/);
+		});
+	});
+
+	describe("internal scheduler helpers", () => {
+		const mondayNine = new Date("2026-01-05T09:00:00");
+
+		it("matches exact due minute", () => {
+			expect(scheduleMatchesDate("0 9 * * 1", mondayNine)).toBe(true);
+		});
+
+		it("does not match outside due minute", () => {
+			expect(scheduleMatchesDate("30 9 * * 1", mondayNine)).toBe(false);
+		});
+
+		it("supports stepped minute fields", () => {
+			expect(scheduleMatchesDate("*/15 9 * * 1", mondayNine)).toBe(true);
+		});
+
+		it("treats both 0 and 7 as Sunday", () => {
+			const sunday = new Date("2026-01-04T09:00:00");
+			expect(scheduleMatchesDate("0 9 * * 0", sunday)).toBe(true);
+			expect(scheduleMatchesDate("0 9 * * 7", sunday)).toBe(true);
+		});
+
+		it("renders scheduled prompts with metadata", () => {
+			const prompt = renderScheduledPrompt({
+				taskId: "daily-check",
+				taskName: "Daily Check",
+				roomId: "general",
+				workspaceId: "room-general",
+				cronExpr: "0 9 * * 1",
+				enabled: true,
+				promptFile: "/tmp/daily-check.prompt",
+				prompt: "Summarize the workspace.",
+			});
+			expect(prompt).toContain("Daily Check");
+			expect(prompt).toContain("room-general");
+			expect(prompt).toContain("Summarize the workspace.");
+		});
+	});
+
+	describe("CoasInternalScheduler", () => {
+		it("clears runtime state on stop", () => {
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			scheduler.start({ coasHome: join(tmpdir(), "missing-coas-home") });
+
+			scheduler.stop();
+
+			expect(scheduler.snapshot()).toEqual({
+				running: false,
+				enabledSchedules: 0,
+				activeRuns: 0,
+				startedAt: undefined,
+				lastError: undefined,
+			});
+		});
+
+		it("records reconcile errors instead of silently hiding them", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-bad-schedule-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(join(schedulesDir, "bad.env"), "TASK_ID=bad\nCRON_EXPR=not-enough\nPROMPT_FILE=bad.prompt\nWORKSPACE_ID=room-a\n");
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+
+				expect(scheduler.snapshot().enabledSchedules).toBe(0);
+				expect(scheduler.snapshot().lastError).toContain("Cron expression must have exactly five fields");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+
+		it("records malformed schedule expressions during ticks", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-invalid-field-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			const promptPath = join(schedulesDir, "bad.prompt");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(promptPath, "Do work.\n");
+			await writeFile(join(schedulesDir, "bad.env"), [
+				"TASK_ID=bad",
+				"TASK_NAME=Bad",
+				"ROOM_ID=general",
+				"WORKSPACE_ID=room-a",
+				"CRON_EXPR=99 9 * * 1",
+				`PROMPT_FILE=${promptPath}`,
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+
+				expect(scheduler.snapshot().lastError).toContain("invalid schedule bad");
+				expect(scheduler.snapshot().lastError).toContain("minute field is invalid");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("formatScheduleList", () => {
+		it("formats schedule table with header", () => {
+			const entry: ScheduleEntry = {
+				taskId: "daily-check",
+				taskName: "Daily Check",
+				roomId: "general",
+				workspaceId: "room-general",
+				cronExpr: "0 9 * * 1",
+				enabled: true,
+				promptFile: "/tmp/daily-check.prompt",
+			};
+			const result = formatScheduleList([entry]);
+			expect(result).toContain("TASK");
+			expect(result).toContain("daily-check");
+			expect(result).toContain("Daily Check");
+		});
+
+		it("formats empty list", () => {
+			expect(formatScheduleList([])).toContain("TASK");
+		});
+	});
+});
+
+describe("tool-result error paths", () => {
+	it("ok result is not an error", () => {
+		const result = ok("success", { code: 0 });
+		expect(result.isError).toBeUndefined();
+		expect(result.content[0]?.text).toBe("success");
+	});
+
+	it("fail result is an error", () => {
+		const result = fail("No workspace selected and cwd is not a CoAS workspace");
+		expect(result.isError).toBe(true);
+		expect(result.content[0]?.text).toContain("No workspace selected");
+	});
+
+	it("fail result includes details", () => {
+		const result = fail("Schedule already exists: daily-check", { taskId: "daily-check" });
+		expect(result.isError).toBe(true);
+		expect(result.details).toEqual({ taskId: "daily-check" });
+	});
+
+	it("fail result for empty context update", () => {
+		const result = fail("Context update text must not be empty", { textLength: 0 });
+		expect(result.isError).toBe(true);
+		expect(result.details).toEqual({ textLength: 0 });
+	});
+
+	it("assertSafeId error is catchable", () => {
+		try {
+			assertSafeId("workspace id", "../etc/passwd");
+			expect.unreachable("should have thrown");
+		} catch (error) {
+			const result = fail((error as Error).message, { id: "../etc/passwd" });
+			expect(result.isError).toBe(true);
+			expect(result.content[0]?.text).toContain("Invalid workspace id");
+		}
+	});
+});

@@ -12,4 +12,6 @@ import "./architecture/ux-tools-policy.js";
 import "./architecture/tool-api-contracts.js";
 import "./architecture/lib-layering.js";
 import "./architecture/clean-code.js";
+import "./architecture/hotspots.js";
+import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";

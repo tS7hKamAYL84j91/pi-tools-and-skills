@@ -2,7 +2,7 @@
 
 Status: Proposed
 Date: 2026-05-30
-Source: `docs/reports/option-a-panopticon-runtime-consolidation-goal.md`
+Source: historical Panopticon runtime-consolidation report retained in git history.
 
 ## Context
 

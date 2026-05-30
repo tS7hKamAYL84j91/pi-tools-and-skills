@@ -50,6 +50,109 @@ The main risk is **custom framework growth**:
 
 ---
 
+## Current Architecture Map
+
+`pi-tools-and-skills` is a local-first extension workspace for the pi coding agent. This map records current extension ownership, shared library boundaries, state ownership, trust boundaries, active risks, and validation anchors.
+
+```mermaid
+flowchart TD
+  Pi[pi coding agent runtime] --> Settings[pi settings and package registry]
+  Settings --> GlobalExt[User/global extensions]
+  Settings --> ProjectExt[Project-local extensions]
+
+  subgraph SharedLib[Shared lib layer]
+    Core[Pure contracts and render helpers]
+    Runtime[Runtime/session/persistence helpers]
+    Transports[Transport adapters]
+    Core --> Runtime
+    Core --> Transports
+  end
+
+  subgraph GlobalExt[User/global extensions]
+    Goal[pi-goal]
+    Matrix[pi-matrix]
+    Panopticon[pi-panopticon]
+    Research[pi-research-tools]
+  end
+
+  subgraph ProjectExt[Project-local extensions]
+    Kanban[pi-kanban]
+    COAS[pi-coas]
+  end
+
+  Pi --> Goal
+  Pi --> Matrix
+  Pi --> Panopticon
+  Panopticon --> TeamsModule[teams module]
+  Pi --> Research
+  Pi --> Kanban
+  Pi --> COAS
+
+  Goal --> SharedLib
+  Matrix --> SharedLib
+  Panopticon --> SharedLib
+  TeamsModule --> SharedLib
+  Research --> SharedLib
+  Kanban --> SharedLib
+  COAS --> SharedLib
+
+  TeamsModule -. uses runtime substrate .-> Panopticon
+  Kanban -. agent assignment/status .-> Panopticon
+  Goal -. spawned-worker orchestration .-> Panopticon
+  COAS -. task scheduling .-> Kanban
+```
+
+### Extension roles
+
+| Extension | Scope | Primary role | State owner |
+| --- | --- | --- | --- |
+| `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
+| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
+| `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
+| `pi-research-tools` | user/global | Research helper tools and fixtures | Research tool configuration/fixtures |
+| `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
+| `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
+
+### State ownership summary
+
+| State class | Owner | Expected write pattern |
+| --- | --- | --- |
+| Append-only task/event logs | Owning extension (`pi-kanban`, similar event sources) | `appendLogLine()` or an owning append API |
+| Full-file JSON/Markdown state | Owning extension or shared runtime helper | `writeFileAtomic()` / `updateJsonFile()` where practical |
+| Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
+| Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
+| Team run state | Panopticon Teams module | Team run APIs and documented result paths |
+
+### Trust boundaries
+
+```mermaid
+flowchart LR
+  UserText[Untrusted user/objective text] --> Tools[pi tools and commands]
+  Repo[Workspace files] --> Tools
+  Tools --> FS[Local filesystem]
+  Tools --> IPC[Local IPC / spawned agents]
+  Tools --> Network[Optional external transports]
+  Network --> Matrix[Matrix]
+  IPC --> Agents[Peer/spawned agents]
+```
+
+- Treat user objectives, task text, Matrix messages, and agent messages as untrusted input.
+- Tool implementations must validate paths and avoid interpreting untrusted text as shell/code.
+- Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
+- Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
+- Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
+
+### Current risks and validation anchors
+
+1. **Concurrency discipline:** Continue moving state writes through `lib/file-persistence.ts` helpers or documented domain-specific transactions.
+2. **README contract clarity:** Keep each extension README explicit about stable tools/commands, provisional surfaces, and cross-extension dependencies.
+3. **Progress UX:** Keep long-running Teams/`pi-goal` work visible with phase, elapsed time, last action, cancellation affordance, and artifact paths.
+4. **Transport diagnostics:** Keep `globalThis`/transport registry behavior documented with diagnostics and fallback behavior.
+
+`tests/architecture.test.ts` enforces practical dependency layering, extension runtime-state boundaries, UX/tool policy checks, hotspot budgets, docs hygiene, and persistence-discipline exceptions.
+
+---
+
 ## Package Setup Boundary
 
 ```mermaid
@@ -169,34 +272,9 @@ flowchart TD
 
 ---
 
-## Cross-Extension TUI Standards
+## UX and Tool Policy
 
-```mermaid
-flowchart TD
-  Policy[docs/ux-tools-policy.md] --> Confirm[lib/tui-confirmation.ts\nstandard destructive confirmation]
-  Policy --> Overflow[lib/tui-overflow.ts\nstandard scroll/truncation cues]
-  Policy --> Tests[tests/architecture.test.ts\nUX and tools policy suite]
-  Tests --> Commands[command/tool naming shape]
-  Tests --> ToolResults[shared tool-result envelopes]
-  Tests --> OverlayOptions[bounded custom overlay options]
-  Tests --> NoAnsi[no raw ANSI in runtime TUI code]
-  Tests --> Footer[standard destructive footer]
-  Confirm --> KanbanDelete[/kanban delete task confirmation]
-  Confirm --> PanopticonStop[/agents stop/kill confirmation]
-  Confirm --> TeamsDelete[/teams delete/dissolve confirmation]
-  Overflow --> TeamsOverlay[/teams compact hidden-count cues]
-```
-
-### Context policy
-
-- Destructive confirmations use warning/error borders, explicit target text, and
-  the standard `y confirm · esc/n cancel` keys.
-- Scroll and hard-truncation cues are formatted through shared helpers to avoid
-  extension-specific wording drift.
-- `tests/architecture.test.ts` enforces the stable parts of
-  `docs/ux-tools-policy.md`: command/tool naming, shared tool-result envelopes,
-  custom overlay bounds, no raw ANSI in runtime TUI code, and destructive footer
-  wording.
+Detailed TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules live in [`docs/deep-dives/ux-tools-policy.md`](deep-dives/ux-tools-policy.md). This architecture reference only records the boundary: shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts` define reusable primitives, while `tests/architecture.test.ts` enforces the stable policy.
 
 ## Kanban Extension
 
