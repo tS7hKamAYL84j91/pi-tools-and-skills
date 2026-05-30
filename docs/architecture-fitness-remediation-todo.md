@@ -22,7 +22,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 ## Remediation goals
 
-### AFR-001 — Restore architecture fitness enforcement `[R] Ready for review`
+### AFR-001 — Restore architecture fitness enforcement `[x] Done`
 
 **Priority:** P0
 
@@ -39,7 +39,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** `package.json` declares Vitest and all local quality gates as dev dependencies. Local dependency hydration with `npm install` reports dependencies up to date and restores `node_modules/.bin/vitest`. `.github/workflows/fitness.yml` runs `npm ci`, `npm run check`, and `npm test` on push to `main` and pull requests. Local validation on 2026-05-30: `npm run check` passed; `npm test` passed with 71 files and 659 tests, including architecture and test-quality suites.
 
-### AFR-002 — Standardize file persistence discipline `[R] Ready for review`
+### AFR-002 — Standardize file persistence discipline `[x] Done`
 
 **Priority:** P1
 
@@ -57,7 +57,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** Direct filesystem mutation inventory recorded in `docs/reports/afr-002-persistence-inventory.md`. Shared helpers now live in `lib/file-persistence.ts`: `writeFileAtomic()`, `appendLogLine()`, and `updateJsonFile()`. `pi-goal` state/artifact writes and low-risk `pi-kanban` board/task/snapshot writes use those helpers. `docs/architecture.md` documents the atomic-write, append-log, JSON-update, and advisory-lock policy. `tests/architecture/runtime-state-boundaries.ts` enforces that direct state writes use shared helpers or appear as explicit exceptions with rationale. Local validation on 2026-05-30: `npm run check` passed; `npm test` passed with 73 files and 672 tests.
 
-### AFR-003 — Keep runtime coupling at extension APIs `[R] Ready for review`
+### AFR-003 — Keep runtime coupling at extension APIs `[x] Done`
 
 **Priority:** P1
 
@@ -73,7 +73,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** `tests/architecture.test.ts` now checks cross-extension private state markers. `pi-teams` self-lookup now uses `lib/agent-api.ts` instead of reading Panopticon registry files directly.
 
-### AFR-004 — Clarify `lib/` layering `[R] Ready for review`
+### AFR-004 — Clarify `lib/` layering `[x] Done`
 
 **Priority:** P2
 
@@ -90,7 +90,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** `docs/architecture.md` now classifies current `lib/` files into core, IO/runtime, pure runtime mapper, and transport layers, and documents one-way dependency direction (`extensions` may import `lib`; `lib` must not import `extensions`). `tests/architecture/lib-layering.ts` enforces that every `lib/` TypeScript module is classified, core files do not import Node IO modules, core files do not value-import higher IO/runtime layers, and `lib/` modules do not import extension runtime code. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
 
-### AFR-005 — Add richer architecture fitness checks `[R] Ready for review`
+### AFR-005 — Add richer architecture fitness checks `[x] Done`
 
 **Priority:** P2
 
@@ -107,7 +107,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** Cross-extension private-state contamination checks and direct state-write checks now live in `tests/architecture/runtime-state-boundaries.ts`; direct-write exceptions are explicit with rationale. Existing complexity gates in `tests/architecture/clean-code.ts` enforce extension/lib file-size ceilings, function parameter limits, class cohesion, and empty-catch hygiene without forcing arbitrary hotspot splits. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
 
-### AFR-006 — Manage complexity hotspots `[R] Ready for review`
+### AFR-006 — Manage complexity hotspots `[x] Done`
 
 **Priority:** P2
 
@@ -123,6 +123,37 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 - Any accepted hotspot has a documented reason.
 
 **Evidence:** `docs/reports/afr-006-complexity-hotspots.md` records the current >400-line extension hotspots, line counts, keep/split rationale, and a future review rule to extract only around stable responsibilities. Existing `tests/architecture/clean-code.ts` keeps hard drift bounded with file-size, parameter-count, class-cohesion, and empty-catch gates. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
+
+### AFR-007 — Keep extension UX discoverable and interactive `[x] Done`
+
+**Priority:** P2
+
+**Finding:** Some slash commands exposed useful state only as static text overlays, making routine navigation and follow-up actions harder than necessary.
+
+**Goal:** Prefer interactive, keyboard-discoverable command surfaces for list/browse workflows while preserving text fallbacks for auditability and low-capability terminals.
+
+**Done when:**
+
+- List/browse commands use interactive selectors where selection or follow-up action is useful.
+- Keyboard actions are visible in the overlay help text and do not rely on color alone.
+- Text fallbacks remain available when static output is preferable.
+- UX backlog items are tracked in a durable TODO/report.
+
+**Evidence:** `docs/ux-todo.md` tracks the CoAS browser UX item as complete. `/coas-workspaces` and `/coas-schedules` now open interactive `SelectList` browsers by default; `/coas-workspaces --text` and `/coas-schedules --text` preserve static text views. The schedule browser exposes `enter`/`r` dry-run and `d` remove actions in visible help text and reconciles the scheduler after removal. Local validation on 2026-05-30: `npm run check` passed; `npm test` passed with 73 files and 674 tests.
+
+## Final acceptance review
+
+Date: 2026-05-30
+
+LLM council decision: initial review blocked commit/push only until the tracker was finalized and durable evidence preserved. That has been resolved by marking AFR-001 through AFR-007 done and retaining this document as the durable remediation record rather than deleting it.
+
+Validation accepted for completion:
+
+- `npm run check` passed locally on 2026-05-30.
+- `npm test` passed locally on 2026-05-30 with 73 files and 674 tests.
+- `.github/workflows/fitness.yml` runs dependency hydration, `npm run check`, and `npm test` on push to `main` and pull requests.
+
+Tidy decision: no remediation evidence files were removed. `docs/architecture-fitness-remediation-todo.md`, `docs/reports/afr-002-persistence-inventory.md`, and `docs/reports/afr-006-complexity-hotspots.md` are retained as durable audit records.
 
 ## Guardrails
 
