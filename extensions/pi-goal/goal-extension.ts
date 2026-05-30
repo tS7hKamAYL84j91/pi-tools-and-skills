@@ -28,7 +28,7 @@ const GOAL_HELP_COMMANDS = [
 	"/goal file <path> [goal start|--until-complete] — create a file-backed goal",
 	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
 	"/goal pause | resume | stop — manage the current goal run",
-	"/goal clear — remove .pi-goal/ state and local run artifacts for this workspace",
+	"/goal clear — remove .pi/goal/ state and local run artifacts for this workspace",
 ] as const;
 const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "pause", "resume", "clear", "run", "stop"]);
 const GOAL_RUNTIME_KEY = Symbol.for("pi-goal.runtime");
@@ -223,7 +223,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				runtime.stopRequested = false;
 				await clearGoal(ctx.cwd);
 				await refreshUi(ctx, null);
-				ctx.ui.notify("Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
+				ctx.ui.notify("Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
 				return;
 			}
 
@@ -272,7 +272,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			runtime.stopRequested = false;
 			await clearGoal(ctx.cwd);
 			await refreshUi(ctx, null);
-			ctx.ui.notify("Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
+			ctx.ui.notify("Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
 		},
 	});
 
@@ -497,7 +497,7 @@ function compactWidget(state: GoalState): string[] {
 		action,
 		source,
 		run,
-		`artifacts: .pi-goal/GOAL.md`,
+		`artifacts: .pi/goal/GOAL.md`,
 		cancel,
 		"complete only with goal_complete evidence"
 	];

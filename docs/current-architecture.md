@@ -57,7 +57,7 @@ flowchart TD
 
 | Extension | Scope | Primary role | State owner |
 | --- | --- | --- | --- |
-| `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi-goal/` |
+| `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration | Panopticon registry/session state |
 | `pi-teams` | user/global | Declarative team workflows such as council, navigator, and research | Team definitions and team run session state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |

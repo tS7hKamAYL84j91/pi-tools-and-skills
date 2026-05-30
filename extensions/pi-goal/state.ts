@@ -2,7 +2,7 @@
  * Project-local goal state persistence, rendering, and validation helpers.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
@@ -33,7 +33,8 @@ interface GoalPaths {
 	readonly todoPath: string;
 }
 
-const STATE_DIR = ".pi-goal";
+const STATE_DIR = join(".pi", "goal");
+const LEGACY_STATE_DIR = ".pi-goal";
 const STATE_FILE = "goal.json";
 const SUMMARY_FILE = "GOAL.md";
 const TODO_FILE = "TODO.md";
@@ -48,7 +49,21 @@ function goalPaths(cwd: string): GoalPaths {
 	};
 }
 
+function legacyGoalDir(cwd: string): string {
+	return join(cwd, LEGACY_STATE_DIR);
+}
+
+async function migrateLegacyGoalDir(cwd: string): Promise<void> {
+	const paths = goalPaths(cwd);
+	if (existsSync(paths.dir) || !existsSync(legacyGoalDir(cwd))) {
+		return;
+	}
+	await mkdir(dirname(paths.dir), { recursive: true });
+	await rename(legacyGoalDir(cwd), paths.dir);
+}
+
 export async function loadGoal(cwd: string): Promise<GoalState | null> {
+	await migrateLegacyGoalDir(cwd);
 	const paths = goalPaths(cwd);
 	if (!existsSync(paths.statePath)) {
 		return null;
@@ -59,6 +74,7 @@ export async function loadGoal(cwd: string): Promise<GoalState | null> {
 }
 
 export async function saveGoal(cwd: string, state: GoalState): Promise<void> {
+	await migrateLegacyGoalDir(cwd);
 	const paths = goalPaths(cwd);
 	await mkdir(paths.dir, { recursive: true });
 	await writeFileAtomic(paths.statePath, `${JSON.stringify(state, null, 2)}\n`);
@@ -92,6 +108,7 @@ export async function writeGoalIteration(
 
 export async function clearGoal(cwd: string): Promise<void> {
 	await rm(goalPaths(cwd).dir, { recursive: true, force: true });
+	await rm(legacyGoalDir(cwd), { recursive: true, force: true });
 }
 
 export function createFileGoal(cwd: string, inputPath: string): GoalState {
@@ -270,11 +287,12 @@ async function ensureRuntimeIgnored(cwd: string): Promise<void> {
 	if (existsSync(gitExclude)) {
 		current = await readFile(gitExclude, "utf8");
 	}
-	if (current.split(/\r?\n/).includes(`${STATE_DIR}/`)) {
+	const ignoredPath = `${STATE_DIR}/`;
+	if (current.split(/\r?\n/).includes(ignoredPath)) {
 		return;
 	}
 	const prefix = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
-	await writeFileAtomic(gitExclude, `${current}${prefix}${STATE_DIR}/\n`);
+	await writeFileAtomic(gitExclude, `${current}${prefix}${ignoredPath}\n`);
 }
 
 function parseGoalState(value: unknown): GoalState {

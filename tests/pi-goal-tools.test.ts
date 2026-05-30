@@ -1,13 +1,13 @@
 /**
  * Direct behavior tests for the pi-goal extension.
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import goalExtension from "../extensions/pi-goal/index.js";
-import { createTextGoal, saveGoal, startRun } from "../extensions/pi-goal/state.js";
+import { createTextGoal, loadGoal, saveGoal, startRun } from "../extensions/pi-goal/state.js";
 
 interface RegisteredCommand {
 	readonly description: string;
@@ -102,7 +102,7 @@ describe("pi-goal extension", () => {
 			level: "warning",
 		});
 		expect(sentMessageContent(pi)).toContain("# pi-goal commands");
-		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
+		await expect(readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
 	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
@@ -113,14 +113,36 @@ describe("pi-goal extension", () => {
 
 		await runGoalCommand(pi, "file goal.txt goal start", ctx);
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as {
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
 			runActive: boolean;
 			turnBudget: number;
 			sourcePath: string;
 		};
-		const todo = await readFile(join(tempDir, ".pi-goal", "TODO.md"), "utf8");
-		expect(persisted).toMatchObject({ runActive: true, turnBudget: 20, sourcePath: ".pi-goal/TODO.md" });
+		const todo = await readFile(join(tempDir, ".pi/goal", "TODO.md"), "utf8");
+		expect(persisted).toMatchObject({ runActive: true, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
+	});
+
+	it("migrates legacy .pi-goal state into .pi/goal", async () => {
+		const legacyDir = join(tempDir, ".pi-goal");
+		await mkdir(legacyDir, { recursive: true });
+		await writeFile(join(legacyDir, "goal.json"), `${JSON.stringify({
+			schemaVersion: 1,
+			goalId: "g-legacy",
+			objective: "legacy goal",
+			status: "active",
+			createdAt: "2026-05-30T00:00:00.000Z",
+			updatedAt: "2026-05-30T00:00:00.000Z",
+			runActive: false,
+			turnBudget: 0,
+			turnsUsed: 0,
+		})}\n`, "utf8");
+
+		const migrated = await loadGoal(tempDir);
+
+		expect(migrated?.objective).toBe("legacy goal");
+		expect(JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8"))).toMatchObject({ goalId: "g-legacy" });
+		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
 	it("/goal stop shuts down the active run immediately", async () => {
@@ -132,7 +154,7 @@ describe("pi-goal extension", () => {
 
 		await runGoalCommand(pi, "stop", ctx);
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as { runActive: boolean };
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean };
 		expect(persisted.runActive).toBe(false);
 		expect(ctx.ui.notifications).toContainEqual({
 			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run --turns N to continue.",
@@ -152,10 +174,10 @@ describe("pi-goal extension", () => {
 		await runGoalCommand(pi, "clear", ctx);
 
 		expect(ctx.ui.notifications).toContainEqual({
-			message: "Goal cleared: removed .pi-goal/ state, TODO, summary, and local run transcripts for this workspace.",
+			message: "Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.",
 			level: "info",
 		});
-		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
+		await expect(readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
 	it("/goal stop resolves a waiting goal loop", async () => {
@@ -173,7 +195,7 @@ describe("pi-goal extension", () => {
 		resolveNewSession?.({ cancelled: false });
 		await runPromise;
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
 		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 0 });
 	});
 });

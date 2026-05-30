@@ -142,7 +142,7 @@ Completed on 2026-05-28:
 - Phase A documentation baseline is in place: every `extensions/pi-*` package has a README with the canonical `## What this does NOT do` boundary heading, including `pi-panopticon` and `pi-teams`.
 - `docs/ux-tools-policy.md` documents compact-default tool output, explicit detail/full expansion, durable `details`, and structured guard-result conventions.
 - Phase B guardrail exists in `tests/test-quality.test.ts`: shipped extensions must have README boundary documentation.
-- Phase C `/goal` UX cleanup is implemented: `/goal` and `/goal help` show command help, unknown option-style commands show help without creating a goal, and `/goal clear` explains that local `.pi-goal/` state/run artifacts are removed.
+- Phase C `/goal` UX cleanup is implemented: `/goal` and `/goal help` show command help, unknown option-style commands show help without creating a goal, and `/goal clear` explains that local `.pi/goal/` state/run artifacts are removed.
 - Panopticon canonical tool families are documented in `extensions/pi-panopticon/README.md`; no public commands were renamed or removed.
 
 Validation evidence:
