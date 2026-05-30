@@ -73,7 +73,7 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 
 **Evidence:** `tests/architecture.test.ts` now checks cross-extension private state markers. `pi-teams` self-lookup now uses `lib/agent-api.ts` instead of reading Panopticon registry files directly.
 
-### AFR-004 — Clarify `lib/` layering `[ ] Planned`
+### AFR-004 — Clarify `lib/` layering `[R] Ready for review`
 
 **Priority:** P2
 
@@ -88,7 +88,9 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 - Enforceable dependency-direction tests are added where practical.
 - Non-enforceable guidance is clearly marked as guidance, not a fake gate.
 
-### AFR-005 — Add richer architecture fitness checks `[~] In progress`
+**Evidence:** `docs/architecture.md` now classifies current `lib/` files into core, IO/runtime, pure runtime mapper, and transport layers, and documents one-way dependency direction (`extensions` may import `lib`; `lib` must not import `extensions`). `tests/architecture/lib-layering.ts` enforces that every `lib/` TypeScript module is classified, core files do not import Node IO modules, core files do not value-import higher IO/runtime layers, and `lib/` modules do not import extension runtime code. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
+
+### AFR-005 — Add richer architecture fitness checks `[R] Ready for review`
 
 **Priority:** P2
 
@@ -103,9 +105,9 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 - Any exceptions for direct writes are explicit and reviewed.
 - Complexity/module-responsibility checks are added only if they catch real drift without forcing artificial file splits.
 
-**Evidence:** Cross-extension private-state contamination checks now live in `tests/architecture.test.ts`; broader direct state-write checks remain.
+**Evidence:** Cross-extension private-state contamination checks and direct state-write checks now live in `tests/architecture/runtime-state-boundaries.ts`; direct-write exceptions are explicit with rationale. Existing complexity gates in `tests/architecture/clean-code.ts` enforce extension/lib file-size ceilings, function parameter limits, class cohesion, and empty-catch hygiene without forcing arbitrary hotspot splits. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
 
-### AFR-006 — Manage complexity hotspots `[ ] Planned`
+### AFR-006 — Manage complexity hotspots `[R] Ready for review`
 
 **Priority:** P2
 
@@ -119,6 +121,8 @@ Progress markers: `[ ]` Planned, `[~]` In progress, `[R]` Ready for review, `[x]
 - Future work on hotspot files either preserves responsibility boundaries or extracts by stable responsibility.
 - No file is split solely to satisfy a line count.
 - Any accepted hotspot has a documented reason.
+
+**Evidence:** `docs/reports/afr-006-complexity-hotspots.md` records the current >400-line extension hotspots, line counts, keep/split rationale, and a future review rule to extract only around stable responsibilities. Existing `tests/architecture/clean-code.ts` keeps hard drift bounded with file-size, parameter-count, class-cohesion, and empty-catch gates. Local validation on 2026-05-30: `npm run test -- --run tests/architecture.test.ts` passed with 31 tests.
 
 ## Guardrails
 

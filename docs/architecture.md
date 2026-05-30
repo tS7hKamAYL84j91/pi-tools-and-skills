@@ -90,10 +90,31 @@ flowchart TD
 
 - Core `lib/` files expose contracts and pure formatting/render helpers; they
   must not import Node filesystem, OS, or process-spawning APIs.
+  Current core files: `agent-names.ts`, `completion-signal.ts`,
+  `message-transport.ts`, `oracle-judge.ts`, `research-tool-fixtures.ts`,
+  `research-tool-manifest.ts`, `task-brief.ts`, `tool-result.ts`,
+  `tui-confirmation.ts`, and `tui-overflow.ts`.
+- IO/runtime `lib/` files own shared filesystem, process, settings, session,
+  spawn, and agent-registry behavior. Current IO/runtime files: `agent-api.ts`,
+  `agent-registry.ts`, `file-persistence.ts`, `pi-settings.ts`,
+  `session-hook-installer*.ts`, `session-log.ts`, `session-source*.ts`,
+  `session-spool*.ts`, `spawn-events.ts`, `spawn-rpc.ts`, and
+  `spawn-service.ts`.
+- Pure runtime mappers that do not touch IO may live beside runtime helpers when
+  their data shape is runtime-specific; currently `session-journal.ts` is in
+  this bucket.
+- Transport adapters live under `lib/transports/`; they may perform
+  protocol-specific IO but must depend only on lower-level contracts/services,
+  not extension runtime modules.
 - Runtime/session and transport `lib/` files may perform IO, but must stay below
   extensions and must not import extension runtime code.
+- Dependency direction is one-way: extensions may import `lib/`; `lib/` must not
+  import `extensions/`. Core contracts should stay below IO/runtime helpers; any
+  exception must be documented rather than hidden.
 - `tests/architecture.test.ts` enforces the currently practical parts of this
-  layering policy.
+  layering policy: all `lib/` TypeScript modules are classified, core files do
+  not import Node IO modules, core files do not value-import higher IO/runtime
+  layers, and `lib/` modules do not import extension runtime code.
 
 ---
 

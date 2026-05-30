@@ -12,17 +12,50 @@ const CORE_LIB_FILES = new Set([
 	"oracle-judge.ts",
 	"research-tool-fixtures.ts",
 	"research-tool-manifest.ts",
-	"spawn-events.ts",
-	"spawn-rpc.ts",
 	"task-brief.ts",
 	"tool-result.ts",
 	"tui-confirmation.ts",
 	"tui-overflow.ts",
 ]);
 
+const IO_LIB_FILES = new Set([
+	"agent-api.ts",
+	"agent-registry.ts",
+	"file-persistence.ts",
+	"pi-settings.ts",
+	"session-hook-installer-cli.ts",
+	"session-hook-installer.ts",
+	"session-log.ts",
+	"session-source-cli.ts",
+	"session-source-discovery.ts",
+	"session-spool-runner-cli.ts",
+	"session-spool-runner.ts",
+	"session-spool.ts",
+	"spawn-events.ts",
+	"spawn-rpc.ts",
+	"spawn-service.ts",
+	"maildir.ts",
+]);
+
+const PURE_RUNTIME_LIB_FILES = new Set(["session-journal.ts"]);
+
+const CLASSIFIED_LIB_FILES = new Set([
+	...CORE_LIB_FILES,
+	...IO_LIB_FILES,
+	...PURE_RUNTIME_LIB_FILES,
+]);
+
 const NODE_IO_IMPORT = /from\s+["']node:(?:fs|fs\/promises|child_process|os)["']/;
+const VALUE_RELATIVE_IMPORT = /^import\s+(?!type\b)[\s\S]*?from\s+["']\.\/?([^"']+)\.js["'];?$/gm;
 
 describe("lib layering", () => {
+	it("every lib TypeScript module is assigned to a documented layer", () => {
+		const unclassified = listTsFiles("lib")
+			.map((file) => relative(process.cwd(), file))
+			.filter((file) => !CLASSIFIED_LIB_FILES.has(basename(file)));
+		expect(unclassified).toEqual([]);
+	});
+
 	it("core lib contracts and render helpers do not import Node IO modules", () => {
 		const violations: string[] = [];
 		for (const file of listTsFiles("lib")) {
@@ -30,6 +63,24 @@ describe("lib layering", () => {
 			const content = readFileSync(file, "utf8");
 			if (NODE_IO_IMPORT.test(content)) {
 				violations.push(relative(process.cwd(), file));
+			}
+		}
+		expect(violations).toEqual([]);
+	});
+
+	it("core lib contracts do not value-import higher IO/runtime layers", () => {
+		const violations: string[] = [];
+		for (const file of listTsFiles("lib")) {
+			const fileName = basename(file);
+			if (!CORE_LIB_FILES.has(fileName)) continue;
+			const content = readFileSync(file, "utf8");
+			for (const match of content.matchAll(VALUE_RELATIVE_IMPORT)) {
+				const imported = `${match[1]}.ts`;
+				if (!CORE_LIB_FILES.has(basename(imported))) {
+					violations.push(
+						`${relative(process.cwd(), file)} value-imports ${match[1]}.js`,
+					);
+				}
 			}
 		}
 		expect(violations).toEqual([]);
