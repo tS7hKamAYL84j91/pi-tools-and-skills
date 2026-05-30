@@ -79,7 +79,6 @@ Reusable skills for pi-platform tooling and compact reference guidance. Extensio
 | **node-esm-gotchas**       | shared        | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
 | **pi-agent-orchestration** | pi-panopticon | Spawn, brief, monitor, message, and shut down pi worker agents                    |
 | **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
-| **pi-kanban**              | pi-kanban     | Use the project kanban board: create, claim, update, snapshot, and complete tasks |
 | **pi-model-selection**     | shared        | Verify pi-visible models and route work to the right provider/model               |
 | **pi-session-management**  | shared        | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
 | **pi-team-consultation**   | pi-panopticon teams | Route review and decisions through `navigator` or `llm-council` teams        |
