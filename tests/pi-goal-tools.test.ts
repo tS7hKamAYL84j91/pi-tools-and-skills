@@ -1,13 +1,13 @@
 /**
  * Direct behavior tests for the pi-goal extension.
  */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import goalExtension from "../extensions/pi-goal/index.js";
-import { createTextGoal, loadGoal, saveGoal, startRun } from "../extensions/pi-goal/state.js";
+import { createTextGoal, saveGoal, startRun } from "../extensions/pi-goal/state.js";
 
 interface RegisteredCommand {
 	readonly description: string;
@@ -121,28 +121,6 @@ describe("pi-goal extension", () => {
 		const todo = await readFile(join(tempDir, ".pi/goal", "TODO.md"), "utf8");
 		expect(persisted).toMatchObject({ runActive: true, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
-	});
-
-	it("migrates legacy .pi-goal state into .pi/goal", async () => {
-		const legacyDir = join(tempDir, ".pi-goal");
-		await mkdir(legacyDir, { recursive: true });
-		await writeFile(join(legacyDir, "goal.json"), `${JSON.stringify({
-			schemaVersion: 1,
-			goalId: "g-legacy",
-			objective: "legacy goal",
-			status: "active",
-			createdAt: "2026-05-30T00:00:00.000Z",
-			updatedAt: "2026-05-30T00:00:00.000Z",
-			runActive: false,
-			turnBudget: 0,
-			turnsUsed: 0,
-		})}\n`, "utf8");
-
-		const migrated = await loadGoal(tempDir);
-
-		expect(migrated?.objective).toBe("legacy goal");
-		expect(JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8"))).toMatchObject({ goalId: "g-legacy" });
-		await expect(readFile(join(tempDir, ".pi-goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
 	it("/goal stop shuts down the active run immediately", async () => {

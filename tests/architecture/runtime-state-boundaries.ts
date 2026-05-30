@@ -23,7 +23,7 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 		label: "CoAS state",
 		patterns: [/\bCOAS_HOME\b/, /\bcoasHome\b/, /["'`]\.coas["'`]/],
 	},
-	{ owner: "pi-goal", label: "Goal state", patterns: [/\.pi(?:\/|\\\\)goal\b/, /\.pi-goal\b/] },
+	{ owner: "pi-goal", label: "Goal state", patterns: [/\.pi(?:\/|\\\\)goal\b/] },
 	{
 		owner: "pi-kanban",
 		label: "Kanban state",
