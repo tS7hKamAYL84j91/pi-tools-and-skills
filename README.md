@@ -75,7 +75,6 @@ Reusable skills for pi-platform tooling and compact reference guidance. Extensio
 
 | Skill                      | Bundle        | Purpose                                                                           |
 | -------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| **code-forensics**         | shared        | Analyze git history for hotspots, churn, temporal coupling, ownership, and age    |
 | **node-esm-gotchas**       | shared        | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
 | **pi-agent-orchestration** | pi-panopticon | Spawn, brief, monitor, message, and shut down pi worker agents                    |
 | **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
