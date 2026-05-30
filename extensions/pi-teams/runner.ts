@@ -7,59 +7,31 @@
  */
 
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findCurrentAgent } from "../../lib/agent-api.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_VISIBILITY_ENV,
-	REGISTRY_DIR,
 } from "../../lib/agent-registry.js";
 import { resolvePiBinary } from "../../lib/spawn-service.js";
 import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
 import type { TeamParticipant, GenerationParameterValue, ModelRun } from "./types.js";
-
-/** Loose registry-record shape used for panopticon self-lookup. */
-interface RegistryRecord {
-	id?: string;
-	name?: string;
-	pid?: number;
-	cwd?: string;
-}
 
 interface PanopticonRecord {
 	id: string;
 	name: string;
 }
 
-/** Locate this orchestrator's panopticon id and name, if it has registered. */
+/** Locate this orchestrator's panopticon id and name through the agent API. */
 export async function currentPanopticonRecord(
 	cwd: string,
 ): Promise<PanopticonRecord | undefined> {
-	try {
-		const files = (await readdir(REGISTRY_DIR)).filter((f) =>
-			f.endsWith(".json"),
-		);
-		const records = await Promise.all(
-			files.map(async (file) => {
-				try {
-					return JSON.parse(
-						await readFile(join(REGISTRY_DIR, file), "utf-8"),
-					) as RegistryRecord;
-				} catch {
-					return undefined;
-				}
-			}),
-		);
-		const match = records.find(
-			(r): r is RegistryRecord =>
-				!!r?.id && r.pid === process.pid && r.cwd === cwd,
-		);
-		if (!match?.id) return undefined;
-		return { id: match.id, name: match.name ?? "" };
-	} catch {
+	const match = findCurrentAgent(cwd);
+	if (!match) {
 		return undefined;
 	}
+	return { id: match.id, name: match.registryName };
 }
 
 interface RunModelArgs {

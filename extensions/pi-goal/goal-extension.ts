@@ -3,6 +3,7 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { ok } from "../../lib/tool-result.js";
 import { continuationPrompt, goalContextMessage, kickoffPrompt } from "./prompts.js";
 import {
 	clearGoal,
@@ -279,10 +280,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			const state = await loadGoal(ctx.cwd);
-			return {
-				content: [{ type: "text", text: state ? renderGoalSummary(state) : "No pi goal is set." }],
-				details: state ?? {},
-			};
+			const details = state ? { ...state } : {};
+			return ok(state ? renderGoalSummary(state) : "No pi goal is set.", details);
 		},
 	});
 
@@ -314,8 +313,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			await saveGoal(ctx.cwd, next);
 			await refreshUi(ctx, next);
 			return {
-				content: [{ type: "text", text: `Goal complete. Evidence: ${evidence}` }],
-				details: next,
+				...ok(`Goal complete. Evidence: ${evidence}`, { ...next }),
 				terminate: true,
 			};
 		},

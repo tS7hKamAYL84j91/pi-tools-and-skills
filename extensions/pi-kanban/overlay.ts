@@ -434,7 +434,7 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 		(tui, theme, _kb, done) => new KanbanOverlay(tui, theme, board, done),
 		{
 			overlay: true,
-			overlayOptions: { anchor: "center", width: "95%", margin: 2 },
+			overlayOptions: { anchor: "center", width: "95%", minWidth: 60, maxHeight: "80%", margin: 2 },
 		},
 	);
 }

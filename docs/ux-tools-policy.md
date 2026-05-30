@@ -2,6 +2,10 @@
 
 Cross-extension TUI consistency and command namespace policy.
 
+Architecture fitness coverage lives in `tests/architecture.test.ts` under
+`UX and tools policy`. Run it with `npx vitest run tests/architecture.test.ts`
+or as part of `npm test`.
+
 ---
 
 ## TUI Consistency
@@ -97,20 +101,17 @@ agents: active:1 idle:1
 teams: ready
 ```
 
-### Remaining TUI items
+### Fitness enforcement
 
-| ID | Item | Status |
-|---|------|--------|
-| TUX-001 | Selection marker drift | ✅ Done — `>` standardized across all overlays |
-| TUX-002 | Kanban width/layout drift | ✅ Done — board clamps to 80 cols |
-| TUX-003 | Glyph/status convention | ✅ Done — ASCII markers, `msg:N` counts |
-| TUX-004 | Overflow indicators | ✅ Done — `...+N` on hidden agents, `DONE N+M` |
-| TUX-005 | Dense-view interaction parity | ✅ Done — Kanban `/` filter; Panopticon unread urgency sort; picker hints audited |
-| TUX-006 | Scroll/truncation cues | ✅ Done — shared `[Showing N of M - scroll ↓ for more]` policy documented |
-| TUX-007 | Destructive confirmations | ✅ Done — shared warning/error confirmation helper and standard keys documented |
+`tests/architecture.test.ts` enforces the non-brittle parts of this TUI policy:
+
+- custom overlays declare bounded overlay options;
+- runtime TUI code avoids raw ANSI escapes and uses theme rendering instead;
+- destructive confirmation footer text uses `y confirm · esc/n cancel`.
 
 ### References
 
+- `tests/architecture.test.ts` (`UX and tools policy` suite)
 - `docs/adr/005-shared-selection-marker.md`
 - `docs/adr/006-teams-reference-pattern.md`
 - `docs/adr/007-selection-state-non-color.md`
@@ -145,22 +146,25 @@ Reference pattern: `kanban_snapshot` returns compact board state by default and 
 - `scripts/builtins.json` is the source of truth for built-in commands.
 - `npm run check:namespace` enforces exact-collision policy.
 
+### Fitness enforcement
+
+`tests/architecture.test.ts` enforces command/tool naming and result shape:
+
+- registered slash commands use kebab-case;
+- registered model tools use snake_case;
+- registered tools use shared `lib/tool-result.ts` envelopes instead of ad hoc
+  text result objects;
+- tool failures use thrown errors for exceptional invalid inputs or the shared
+  `fail(...)` helper for structured guard/no-op outcomes.
+
+`npm run check:namespace` remains the exact built-in command collision gate.
+
 ### ADRs
 
+- `tests/architecture.test.ts` (`UX and tools policy` suite)
 - `docs/adr/009-reserved-command-names.md`
 - `docs/adr/010-name-canonical-identity.md`
 - `docs/adr/011-command-stem-parity.md`
 - `docs/adr/012-programmatic-naming-tool.md`
 - `docs/adr/013-name-overrides-spawn.md`
 
-### Remaining work
-
-| Phase | Step | Status |
-|-------|------|--------|
-| 1 | Remove `/alias`, add `set_name`, heartbeat sync | ✅ Done |
-| 1 | Registry schema includes `spawn_name` | ✅ Done |
-| 2 | Name precedence and revert logic | ✅ Done — session/programmatic > spawn > generated; clearing session reverts to spawn/generated |
-| 2 | Orchestration call-site audit (route by stable ID) | ✅ Done — duplicate display names use stable `#id6` selectors; raw duplicates are ambiguous |
-| 3 | Namespace audit (`npm run check:namespace`) | ✅ Done |
-| 3 | Document naming conventions | ✅ Done |
-| 4 | Remove deprecated `set_alias`/`get_alias` wrappers | ✅ Done — wrappers removed after deprecation window; use `set_name`/`get_name` |

@@ -4,14 +4,11 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { ok } from "../../lib/tool-result.js";
 import { formatPromptChains } from "./prompt-resolver.js";
 import { promptChainsForTeam } from "./team-handlers.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamAgentBinding, TeamSpec } from "./team-types.js";
-
-function teamOkText(text: string, details: Record<string, unknown>) {
-	return { content: [{ type: "text" as const, text }], details };
-}
 
 function teamSummary(team: TeamSpec): Record<string, unknown> {
 	return {
@@ -51,7 +48,7 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 			const body = lines.length > 0
 				? `Teams:\n${lines.join("\n")}`
 				: "No teams found.";
-			return teamOkText(body, {
+			return ok(body, {
 				teams: teams.map(teamSummary),
 				warnings: registry.warnings,
 			});
@@ -90,7 +87,7 @@ export function registerTeamTools(pi: ExtensionAPI): void {
 				"Prompt chains:",
 				...formatPromptChains(promptChains),
 			];
-			return teamOkText(lines.join("\n"), {
+			return ok(lines.join("\n"), {
 				team: teamSummary(team),
 				agents,
 				warnings: registry.warnings,

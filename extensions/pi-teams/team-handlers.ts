@@ -3,6 +3,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { TeamHandoffRouter, type TeamHandoff, type TeamHandoffTargetCandidate } from "./handoff.js";
 import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
 import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protocol-prompts.js";
@@ -50,10 +51,7 @@ export interface TeamModelSlot {
 	index?: number;
 }
 
-interface TeamHandlerResult {
-	content: Array<{ type: "text"; text: string }>;
-	details: Record<string, unknown>;
-}
+type TeamHandlerResult = ToolResult;
 
 interface TeamHandlerRunArgs {
 	team: TeamSpec;
@@ -76,10 +74,6 @@ interface PromptSlot {
 	kind: "system" | "template";
 	defaultPromptId: string;
 	roles?: string[];
-}
-
-function okText(text: string, details: Record<string, unknown>): TeamHandlerResult {
-	return { content: [{ type: "text", text }], details };
 }
 
 function memberModelSlots(args: {
@@ -258,7 +252,7 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 		maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
 	});
 	recordNode(args, "consult", node);
-	return okText(node.output, { team: args.team.id, ok: node.ok, nodes: nodeDetails([node]) });
+	return ok(node.output, { team: args.team.id, ok: node.ok, nodes: nodeDetails([node]) });
 }
 
 function stopRequested(args: TeamHandlerRunArgs): boolean {
@@ -270,7 +264,7 @@ function stopReason(args: TeamHandlerRunArgs): string {
 }
 
 function stoppedResult(args: TeamHandlerRunArgs, nodes: readonly NodeRun[]): TeamHandlerResult {
-	return okText(`Team run stopped: ${stopReason(args)}`, { team: args.team.id, ok: false, stopped: true, reason: stopReason(args), nodes: nodeDetails(nodes) });
+	return ok(`Team run stopped: ${stopReason(args)}`, { team: args.team.id, ok: false, stopped: true, reason: stopReason(args), nodes: nodeDetails(nodes) });
 }
 
 function boundedLoopCount(value: number | undefined): number {
@@ -321,7 +315,7 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const synthesis = await runTeamNode({ binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" }, role: "synthesis", model: synthesisModel, prompt: synthesisPrompt, systemPrompt: chainText(chains, "synthesis.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	recordNode(args, "debate", synthesis);
 	const nodes = [...generation, ...critiques, synthesis];
-	return okText(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
+	return ok(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
 }
 
 async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
@@ -369,7 +363,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		});
 		recordNode(args, phaseId, explorer);
 		nodes.push(explorer);
-		if (!explorer.ok) return okText(explorer.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		if (!explorer.ok) return ok(explorer.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
 		if (stopRequested(args)) return stoppedResult(args, nodes);
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: verifier ${loop}/${maxLoops}`);
 		const verifierPrompt = `Original research request:\n${args.params.prompt}\n\nExplorer output:\n${explorer.output}\n\nAct as Evidence Auditor and Gap Detector. Reject unsupported claims, require source bindings, and emit targeted follow-up queries for remaining critical gaps. If no critical gaps remain, include the exact marker VERIFIED_COMPLETE and list the verified facts only.`;
@@ -389,7 +383,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		recordNode(args, phaseId, verifier);
 		nodes.push(verifier);
 		verifierOutput = verifier.output;
-		if (!verifier.ok) return okText(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
+		if (!verifier.ok) return ok(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
 		if (stopRequested(args)) return stoppedResult(args, nodes);
 		if (verifier.output.includes("VERIFIED_COMPLETE")) {
 			recordDetail(args, { kind: "trace", phaseId, nodeId: `verifier_${loop}`, message: "research verifier marked evidence complete", data: { loop } });
@@ -425,7 +419,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 	});
 	recordNode(args, "research_synthesis", synthesis);
 	nodes.push(synthesis);
-	return okText(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), maxLoops, nodes: nodeDetails(nodes) });
+	return ok(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), maxLoops, nodes: nodeDetails(nodes) });
 }
 
 const researchHandler: TeamHandler = {

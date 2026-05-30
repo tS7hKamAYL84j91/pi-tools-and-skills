@@ -69,12 +69,69 @@ flowchart TD
 
 ---
 
+## Shared Library Layering
+
+```mermaid
+flowchart TD
+  Core[Core contracts and pure helpers\nagent names, manifests, tool results, TUI render helpers]
+  Runtime[Runtime/session helpers\nsession source, spool, hooks, agent API]
+  Transport[Transport adapters\nmaildir, spawn service]
+  Extensions[Extensions]
+  Core --> Runtime
+  Core --> Extensions
+  Runtime --> Extensions
+  Transport --> Extensions
+  Runtime -. no imports .-> Extensions
+  Core -. no Node IO .-> FS[node:fs/os/child_process]
+  Tests[tests/architecture.test.ts\nlib layering suite] --> Core
+```
+
+### Context policy
+
+- Core `lib/` files expose contracts and pure formatting/render helpers; they
+  must not import Node filesystem, OS, or process-spawning APIs.
+- Runtime/session and transport `lib/` files may perform IO, but must stay below
+  extensions and must not import extension runtime code.
+- `tests/architecture.test.ts` enforces the currently practical parts of this
+  layering policy.
+
+---
+
+## Runtime State Boundary
+
+```mermaid
+flowchart TD
+  ExtensionA[Extension A] --> PublicApi[Owning extension public API\ntools, commands, session events, shared services]
+  PublicApi --> ExtensionB[Extension B]
+  ExtensionA -. forbidden .-> PrivateState[Other extension private state files]
+  Tests[tests/architecture.test.ts] --> PrivateState
+```
+
+### Context policy
+
+- Static import isolation remains mandatory but is not the whole runtime boundary.
+- Extension-owned state files are private; other extensions must not read, write,
+  parse, or infer behavior from them.
+- Cross-extension cooperation must stay at the owning extension's public runtime
+  API: tools, commands, documented session events, or documented shared library
+  services.
+- Architecture fitness tests enforce that extension runtime code does not
+  reference another extension's private state markers.
+
+---
+
 ## Cross-Extension TUI Standards
 
 ```mermaid
 flowchart TD
   Policy[docs/ux-tools-policy.md] --> Confirm[lib/tui-confirmation.ts\nstandard destructive confirmation]
   Policy --> Overflow[lib/tui-overflow.ts\nstandard scroll/truncation cues]
+  Policy --> Tests[tests/architecture.test.ts\nUX and tools policy suite]
+  Tests --> Commands[command/tool naming shape]
+  Tests --> ToolResults[shared tool-result envelopes]
+  Tests --> OverlayOptions[bounded custom overlay options]
+  Tests --> NoAnsi[no raw ANSI in runtime TUI code]
+  Tests --> Footer[standard destructive footer]
   Confirm --> KanbanDelete[/kanban delete task confirmation]
   Confirm --> PanopticonStop[/agents stop/kill confirmation]
   Confirm --> TeamsDelete[/teams delete/dissolve confirmation]
@@ -87,6 +144,10 @@ flowchart TD
   the standard `y confirm · esc/n cancel` keys.
 - Scroll and hard-truncation cues are formatted through shared helpers to avoid
   extension-specific wording drift.
+- `tests/architecture.test.ts` enforces the stable parts of
+  `docs/ux-tools-policy.md`: command/tool naming, shared tool-result envelopes,
+  custom overlay bounds, no raw ANSI in runtime TUI code, and destructive footer
+  wording.
 
 ## Kanban Extension
 

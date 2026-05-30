@@ -6,6 +6,7 @@
  *
  * Provides:
  * - findAgentByName(): look up an agent and get liveness + health summary
+ * - findCurrentAgent(): look up this process' registry record
  * - sendAgentMessage(): deliver a message to an agent by ID
  */
 
@@ -63,6 +64,16 @@ export function listLiveAgents(excludeName?: string): AgentInfo[] {
 export function findAgentByName(name: string): AgentInfo | null {
 	const records = readRegistryRecords();
 	const rec = findAgentByDisplayName(records, name);
+	if (!rec) {
+		return null;
+	}
+	return toAgentInfo(rec, records, isPidAlive(rec.pid));
+}
+
+/** Find the registry record for a process in a cwd, normally this agent. */
+export function findCurrentAgent(cwd: string, pid = process.pid): AgentInfo | null {
+	const records = readRegistryRecords();
+	const rec = records.find((record) => record.pid === pid && record.cwd === cwd);
 	if (!rec) {
 		return null;
 	}

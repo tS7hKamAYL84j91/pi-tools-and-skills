@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { ok } from "../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
@@ -71,10 +72,6 @@ const TeamRunSchema = Type.Object({
 	})),
 });
 
-function okText(text: string, details: Record<string, unknown>) {
-	return { content: [{ type: "text" as const, text }], details };
-}
-
 function requireTeam(id: string, cwd: string): TeamSpec {
 	const registry = loadTeamRegistry(undefined, { cwd });
 	const team = registry.teams.get(id);
@@ -136,7 +133,7 @@ function registerTeamFormTool(pi: ExtensionAPI): void {
 		parameters: TeamFormSchema,
 		async execute(_id, params: TeamFormInput, _signal, _onUpdate, ctx) {
 			const result = createTeamFiles(params, ctx.cwd);
-			return okText(`Team "${result.id}" written to ${result.teamPath}.`, {
+			return ok(`Team "${result.id}" written to ${result.teamPath}.`, {
 				...result,
 			});
 		},
@@ -152,7 +149,7 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 		parameters: TeamModelsSchema,
 		async execute(_id, params: TeamModelsInput, _signal, _onUpdate, ctx) {
 			const result = updateTeamModels(params, ctx.cwd);
-			return okText(`Team "${result.id}" models updated in ${result.teamPath}.`, {
+			return ok(`Team "${result.id}" models updated in ${result.teamPath}.`, {
 				...result,
 			});
 		},
@@ -169,7 +166,7 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		async execute() {
 			const runs = stateManager.list();
 			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`);
-			return okText(lines.length ? lines.join("\n") : "No team runs in current session state.", { runs });
+			return ok(lines.length ? lines.join("\n") : "No team runs in current session state.", { runs });
 		},
 	});
 	pi.registerTool({
@@ -182,7 +179,7 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 			const reason = params.reason ?? "stop requested";
 			const accepted = stateManager.requestStop(params.runId, reason);
 			if (!accepted) throw new Error(`No active team run ${params.runId}`);
-			return okText(`Team run ${params.runId} stopping: ${reason}`, { runId: params.runId, reason, status: "stopping" });
+			return ok(`Team run ${params.runId} stopping: ${reason}`, { runId: params.runId, reason, status: "stopping" });
 		},
 	});
 }
@@ -196,7 +193,7 @@ function registerTeamDeleteTool(pi: ExtensionAPI): void {
 		parameters: TeamDeleteSchema,
 		async execute(_id, params: TeamDeleteInput, _signal, _onUpdate, ctx) {
 			const result = deleteTeamFiles(params, ctx.cwd);
-			return okText(`Team "${result.id}" deleted from ${result.teamPath}.`, {
+			return ok(`Team "${result.id}" deleted from ${result.teamPath}.`, {
 				...result,
 			});
 		},
@@ -234,7 +231,7 @@ export function registerTeamRunTool(
 						pi.sendUserMessage(`[Team "${params.id}" async failed]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
 					})
 					.finally(() => ctx.ui.setStatus(TEAM_STATUS_KEY, "teams: ready"));
-				return okText(`Team "${params.id}" started asynchronously. Result will arrive as a follow-up message.`, { team: params.id, async: true });
+				return ok(`Team "${params.id}" started asynchronously. Result will arrive as a follow-up message.`, { team: params.id, async: true });
 			}
 			try {
 				return await runTeam({ params, ctx, stateManager: registration.stateManager });
