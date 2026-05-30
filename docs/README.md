@@ -10,7 +10,6 @@
 - [`teams-platform.md`](teams-platform.md) — teams extension: standing decisions, evidence-gated future work, completed simplification summary.
 - [`templates/pi-teams-recurring-workflows.md`](templates/pi-teams-recurring-workflows.md) — static SOP templates for recurring pi-teams review and research workflows.
 - [`ux-tools-policy.md`](ux-tools-policy.md) — TUI consistency rules and command/tool namespace policy.
-- [`architecture-fitness-remediation-todo.md`](architecture-fitness-remediation-todo.md) — architecture fitness remediation tracker from the 2026-05-30 review.
 
 ## Historical records
 
