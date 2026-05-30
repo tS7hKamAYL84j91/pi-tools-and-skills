@@ -3,6 +3,12 @@
 import { randomUUID } from "node:crypto";
 import { findAgentByName, listLiveAgents, type AgentInfo } from "../../lib/agent-api.js";
 import type { InboundMessage, MessageTransport } from "../../lib/message-transport.js";
+import {
+	ackRuntimeAgentMessage,
+	receiveRuntimeAgentMessages,
+	sendRuntimeAgentMessage,
+} from "../../lib/runtime-agent-messaging.js";
+import type { RuntimeControlPlane, RuntimeEntityRef } from "../../lib/runtime-control-plane.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { TeamAgentBinding } from "./team-types.js";
 import type { ModelRun } from "./types.js";
@@ -26,6 +32,7 @@ interface LiveAgentDeps {
 	listAgents: () => AgentInfo[];
 	transport: MessageTransport;
 	requestId: () => string;
+	runtime?: RuntimeControlPlane;
 }
 
 interface RunLiveAgentNodeArgs {
@@ -36,6 +43,7 @@ interface RunLiveAgentNodeArgs {
 	signal: AbortSignal;
 	parentId?: string;
 	orchestratorName?: string;
+	runtimeParent?: RuntimeEntityRef;
 }
 
 export function isLiveAgentRef(value: string): boolean {
@@ -155,14 +163,14 @@ async function waitForResponse(args: {
 }): Promise<string | undefined> {
 	while (!args.signal.aborted) {
 		let matched: string | undefined;
-		for (const message of args.transport.receive(args.parentId)) {
+		for (const message of receiveRuntimeAgentMessages(args.transport, args.parentId)) {
 			const output = responseText(message, args.agent, args.requestId);
 			if (output !== undefined) {
-				args.transport.ack(args.parentId, message.id);
+				ackRuntimeAgentMessage(args.transport, args.parentId, message.id);
 				matched = output;
 				continue;
 			}
-			if (isStaleProtocolResponse(message)) args.transport.ack(args.parentId, message.id);
+			if (isStaleProtocolResponse(message)) ackRuntimeAgentMessage(args.transport, args.parentId, message.id);
 		}
 		if (matched !== undefined) return matched;
 		if (!await waitForPoll(args.signal)) return undefined;
@@ -177,25 +185,38 @@ export async function runLiveAgentNode(args: RunLiveAgentNodeArgs, deps: LiveAge
 		return failedRun(args, "live-agent nodes require this orchestrator to be registered in Panopticon", startedAt);
 	}
 	const agent = assertAvailableAgent({ ref: args.binding.subagent, parentId, orchestratorName: args.orchestratorName, deps });
+	deps.runtime?.registerEntity({
+		id: agent.id,
+		kind: "agent",
+		label: agent.name,
+		status: "running",
+		...(args.runtimeParent ? { parent: args.runtimeParent } : {}),
+	});
 	const requestId = deps.requestId();
 	const from = args.orchestratorName ?? "pi-teams";
-	const accepted = await deps.transport.send({
-		id: agent.id,
-		name: agent.name,
-		pid: agent.pid,
-		cwd: "",
-		model: agent.model,
-		startedAt: 0,
-		heartbeat: Date.now() - agent.heartbeatAge,
-		status: "running",
-	}, from, requestMessage({
-		id: requestId,
-		role: args.binding.role,
-		label: args.binding.label ?? args.binding.role,
-		systemPrompt: args.systemPrompt,
-		prompt: args.prompt,
-		orchestratorName: from,
-	}));
+	const accepted = await sendRuntimeAgentMessage(deps.transport, {
+		agent: {
+			id: agent.id,
+			name: agent.name,
+			pid: agent.pid,
+			cwd: "",
+			model: agent.model,
+			startedAt: 0,
+			heartbeat: Date.now() - agent.heartbeatAge,
+			status: "running",
+		},
+		from,
+		message: requestMessage({
+			id: requestId,
+			role: args.binding.role,
+			label: args.binding.label ?? args.binding.role,
+			systemPrompt: args.systemPrompt,
+			prompt: args.prompt,
+			orchestratorName: from,
+		}),
+		parent: args.runtimeParent,
+		runtime: deps.runtime,
+	});
 	if (!accepted.accepted) return failedRun(args, accepted.error ?? "live-agent message was not accepted", startedAt, agent);
 	const output = await waitForResponse({ agent, requestId, parentId, signal: args.signal, transport: deps.transport });
 	if (output === undefined) return failedRun(args, "cancelled", startedAt, agent);

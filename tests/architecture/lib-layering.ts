@@ -35,10 +35,11 @@ const IO_LIB_FILES = new Set([
 	"spawn-events.ts",
 	"spawn-rpc.ts",
 	"spawn-service.ts",
+	"runtime-child-process.ts",
 	"maildir.ts",
 ]);
 
-const PURE_RUNTIME_LIB_FILES = new Set(["session-journal.ts"]);
+const PURE_RUNTIME_LIB_FILES = new Set(["runtime-agent-messaging.ts", "runtime-control-plane.ts", "session-journal.ts"]);
 
 const CLASSIFIED_LIB_FILES = new Set([
 	...CORE_LIB_FILES,

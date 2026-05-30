@@ -6,7 +6,6 @@
  * `pi --print` invocation it replaces.
  */
 
-import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findCurrentAgent } from "../../lib/agent-api.js";
@@ -15,6 +14,7 @@ import {
 	PANOPTICON_VISIBILITY_ENV,
 } from "../../lib/agent-registry.js";
 import { resolvePiBinary } from "../../lib/spawn-service.js";
+import { spawnRuntimeChildProcess } from "../../lib/runtime-child-process.js";
 import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
 import type { TeamParticipant, GenerationParameterValue, ModelRun } from "./types.js";
 
@@ -71,7 +71,6 @@ export function toolArgs(tools: string[] | undefined): string[] {
 }
 
 function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
-	const startedAt = Date.now();
 	const parameters = args.parameters;
 	const hasParameters = parameters !== undefined && Object.keys(parameters).length > 0;
 	const piArgs = [
@@ -89,62 +88,31 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		args.prompt,
 	];
 
-	return new Promise((resolve) => {
-		const child = spawn(resolvePiBinary(), piArgs, {
-			cwd: args.cwd,
-			stdio: ["ignore", "pipe", "pipe"],
-			env: {
-				...process.env,
-				...(hasParameters
-					? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
-					: {}),
-				...(args.parentId
-					? {
-							[PANOPTICON_PARENT_ID_ENV]: args.parentId,
-							[PANOPTICON_VISIBILITY_ENV]: "scoped",
-						}
-					: {}),
-			},
-		});
-
-		let stdout = "";
-		let stderr = "";
-		let settled = false;
-		const finish = (ok: boolean, error?: string) => {
-			if (settled) return;
-			settled = true;
-			args.signal?.removeEventListener("abort", abort);
-			resolve({
-				prompt: args.prompt,
-				systemPrompt: args.systemPrompt,
-				output: stdout.trim(),
-				durationMs: Date.now() - startedAt,
-				ok,
-				...(error ? { error } : {}),
-			});
-		};
-		const abort = () => {
-			try {
-				child.kill("SIGTERM");
-			} catch {
-				/* best-effort */
-			}
-			finish(false, "cancelled");
-		};
-
-		args.signal?.addEventListener("abort", abort, { once: true });
-		child.stdout?.on("data", (chunk: Buffer) => {
-			stdout += chunk.toString();
-		});
-		child.stderr?.on("data", (chunk: Buffer) => {
-			stderr += chunk.toString();
-		});
-		child.on("error", (error) => finish(false, error.message));
-		child.on("close", (code) => {
-			if (code === 0) finish(true);
-			else finish(false, stderr.trim() || `pi exited with code ${code}`);
-		});
-	});
+	return spawnRuntimeChildProcess({
+		label: "pi model run",
+		command: resolvePiBinary(),
+		args: piArgs,
+		cwd: args.cwd,
+		signal: args.signal,
+		env: {
+			...(hasParameters
+				? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
+				: {}),
+			...(args.parentId
+				? {
+						[PANOPTICON_PARENT_ID_ENV]: args.parentId,
+						[PANOPTICON_VISIBILITY_ENV]: "scoped",
+					}
+				: {}),
+		},
+	}).then((result) => ({
+		prompt: args.prompt,
+		systemPrompt: args.systemPrompt,
+		output: result.stdout.trim(),
+		durationMs: result.durationMs,
+		ok: result.ok,
+		...(result.ok ? {} : { error: result.stderr.trim() || result.error }),
+	}));
 }
 
 /** Run a single member and package the result into a ModelRun. */

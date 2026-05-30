@@ -96,6 +96,8 @@ describe("extension registration smoke tests", () => {
 			"team_describe",
 			"team_form",
 			"team_list",
+			"runtime_status",
+			"runtime_stop",
 			"team_models",
 			"team_run",
 			"team_runs",

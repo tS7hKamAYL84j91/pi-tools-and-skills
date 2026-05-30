@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { RuntimeControlPlane, type RuntimeEntityRef } from "../../lib/runtime-control-plane.js";
 import { ok } from "../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
@@ -14,6 +15,7 @@ import type { TeamSpec } from "./team-types.js";
 
 export interface TeamRunRegistration {
 	stateManager: TeamStateManager;
+	runtime?: RuntimeControlPlane;
 }
 
 const TeamFormSchema = Type.Object({
@@ -53,6 +55,17 @@ const TeamDeleteSchema = Type.Object({
 
 const TeamStopSchema = Type.Object({
 	runId: Type.String({ description: "Team run id to mark stopped/failed." }),
+	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
+});
+
+const RuntimeStatusSchema = Type.Object({
+	kind: Type.Optional(Type.Union([Type.Literal("team_run")], { description: "Runtime entity kind to inspect. Currently supports team_run entities from pi-teams." })),
+	id: Type.Optional(Type.String({ description: "Runtime entity id to inspect. Omit to list current team run entities." })),
+});
+
+const RuntimeStopSchema = Type.Object({
+	kind: Type.Optional(Type.Union([Type.Literal("team_run")], { description: "Runtime entity kind to stop. Currently supports team_run entities from pi-teams." })),
+	id: Type.String({ description: "Runtime entity id to stop." }),
 	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
 });
 
@@ -116,6 +129,7 @@ export async function runTeam(args: {
 	params: TeamRunInput;
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
+	runtime?: RuntimeControlPlane;
 }) {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
 	const handler = getTeamHandler(team);
@@ -126,6 +140,10 @@ export async function runTeam(args: {
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
 	const controller = new AbortController();
 	args.stateManager.registerAbortController(runId, controller);
+	const runtimeRef = registerTeamRunRuntimeEntity(args.runtime, runId, team, (reason) => {
+		args.stateManager.requestStop(runId, reason);
+	});
+	args.runtime?.updateStatus(runtimeRef, "running");
 	
 	const progressInterval = setInterval(() => {
 		refreshTeamWidget(args.ctx, args.stateManager, runId);
@@ -145,12 +163,15 @@ export async function runTeam(args: {
 		if (args.stateManager.isStopRequested(runId) || result.details.stopped === true) {
 			const reason = typeof result.details.reason === "string" ? result.details.reason : args.stateManager.stopReason(runId) ?? "stop requested";
 			args.stateManager.recordRunStopped(runId, Date.now() - startedAt, reason, text);
+			args.runtime?.updateStatus(runtimeRef, "stopped");
 		} else {
 			args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
+			args.runtime?.updateStatus(runtimeRef, "completed");
 		}
 		return result;
 	} catch (error) {
 		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
+		args.runtime?.updateStatus(runtimeRef, "failed");
 		throw error;
 	} finally {
 		clearInterval(progressInterval);
@@ -190,7 +211,63 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 	});
 }
 
-function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManager): void {
+function registerTeamRunRuntimeEntity(
+	runtime: RuntimeControlPlane | undefined,
+	runId: string,
+	team: TeamSpec,
+	stop: (reason: string) => void,
+): RuntimeEntityRef {
+	const ref: RuntimeEntityRef = { kind: "team_run", id: runId };
+	if (!runtime) return ref;
+	return runtime.registerEntity({
+		...ref,
+		label: `${team.id} (${team.protocol})`,
+		status: "pending",
+		stop,
+	});
+}
+
+function formatTeamRunRuntimeLine(run: ReturnType<TeamStateManager["list"]>[number]): string {
+	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`;
+}
+
+function requestTeamRunStop(stateManager: TeamStateManager, runtime: RuntimeControlPlane, runId: string, reason: string) {
+	const runtimeStopped = runtime.stopEntity({ kind: "team_run", id: runId }, reason);
+	const accepted = runtimeStopped || stateManager.requestStop(runId, reason);
+	if (!accepted) throw new Error(`No active team run ${runId}`);
+	return ok(`Team run ${runId} stopping: ${reason}`, { kind: "team_run", id: runId, runId, reason, status: "stopping" });
+}
+
+function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManager, runtime: RuntimeControlPlane): void {
+	pi.registerTool({
+		name: "runtime_status",
+		label: "Runtime Status",
+		description: "Inspect runtime entities from the unified runtime surface. This pi-teams slice exposes team run entities; peer agent health remains available via agent_status.",
+		promptSnippet: "Inspect runtime entities",
+		parameters: RuntimeStatusSchema,
+		async execute(_id, params: { kind?: "team_run"; id?: string }) {
+			const runs = stateManager.list();
+			const entities = runtime.listEntities().filter((entity) => entity.kind === "team_run");
+			if (params.id) {
+				const run = runs.find((candidate) => candidate.id === params.id);
+				const entity = runtime.inspectEntity({ kind: "team_run", id: params.id });
+				if (!run && !entity) throw new Error(`No runtime team_run ${params.id}`);
+				return ok(run ? formatTeamRunRuntimeLine(run) : `team_run ${params.id} ${entity?.status ?? "unknown"}`, { entities: entity ? [entity] : [{ kind: "team_run", ...run }] });
+			}
+			const lines = runs.map(formatTeamRunRuntimeLine);
+			return ok(lines.length ? lines.join("\n") : "No runtime team_run entities in current session state.", { entities: entities.length > 0 ? entities : runs.map((run) => ({ kind: "team_run", ...run })) });
+		},
+	});
+	pi.registerTool({
+		name: "runtime_stop",
+		label: "Runtime Stop",
+		description: "Request stop for a runtime entity. This pi-teams slice supports team_run entities and uses the same semantics as team_stop.",
+		promptSnippet: "Request a runtime entity stop",
+		parameters: RuntimeStopSchema,
+		async execute(_id, params: { kind?: "team_run"; id: string; reason?: string }) {
+			return requestTeamRunStop(stateManager, runtime, params.id, params.reason ?? "stop requested");
+		},
+	});
 	pi.registerTool({
 		name: "team_runs",
 		label: "Team Runs",
@@ -210,10 +287,7 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		promptSnippet: "Request a team run stop and mark it stopping",
 		parameters: TeamStopSchema,
 		async execute(_id, params: { runId: string; reason?: string }) {
-			const reason = params.reason ?? "stop requested";
-			const accepted = stateManager.requestStop(params.runId, reason);
-			if (!accepted) throw new Error(`No active team run ${params.runId}`);
-			return ok(`Team run ${params.runId} stopping: ${reason}`, { runId: params.runId, reason, status: "stopping" });
+			return requestTeamRunStop(stateManager, runtime, params.runId, params.reason ?? "stop requested");
 		},
 	});
 }
@@ -238,10 +312,11 @@ export function registerTeamRunTool(
 	pi: ExtensionAPI,
 	registration: TeamRunRegistration,
 ): void {
+	const runtime = registration.runtime ?? new RuntimeControlPlane();
 	registerTeamFormTool(pi);
 	registerTeamModelsTool(pi);
 	registerTeamDeleteTool(pi);
-	registerTeamControlTools(pi, registration.stateManager);
+	registerTeamControlTools(pi, registration.stateManager, runtime);
 	pi.registerTool({
 		name: "team_run",
 		label: "Run Team",
@@ -256,7 +331,7 @@ export function registerTeamRunTool(
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {
 			if (params.async) {
-				void runTeam({ params: { ...params, async: undefined }, ctx, stateManager: registration.stateManager })
+				void runTeam({ params: { ...params, async: undefined }, ctx, stateManager: registration.stateManager, runtime })
 					.then((result) => {
 						const text = result.content.map((entry) => entry.text).join("\n");
 						pi.sendUserMessage(`[Team "${params.id}" async result]\n\n${text}`, { deliverAs: "followUp" });
@@ -268,7 +343,7 @@ export function registerTeamRunTool(
 				return ok(`Team "${params.id}" started asynchronously. Result will arrive as a follow-up message.`, { team: params.id, async: true });
 			}
 			try {
-				return await runTeam({ params, ctx, stateManager: registration.stateManager });
+				return await runTeam({ params, ctx, stateManager: registration.stateManager, runtime });
 			} finally {
 				ctx.ui.setStatus(TEAM_STATUS_KEY, "teams: ready");
 			}

@@ -144,6 +144,21 @@ describe("runtime state boundary", () => {
 			),
 		).toBe(true);
 	});
+
+	it("pi-teams direct child process lifecycle remains explicitly bounded", () => {
+		const allowed = new Set([
+			"extensions/pi-teams/worktree-isolation.ts",
+		]);
+		const childProcessImportPattern = /from\s+["']node:child_process["']/;
+		const violations = listTsFiles("extensions/pi-teams")
+			.map((file) => relative(process.cwd(), file))
+			.filter((file) => !allowed.has(file))
+			.filter((file) =>
+				childProcessImportPattern.test(readFileSync(file, "utf8")),
+			);
+
+		expect(violations).toEqual([]);
+	});
 });
 
 describe("render path safety", () => {

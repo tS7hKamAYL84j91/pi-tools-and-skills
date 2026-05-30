@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isLiveAgentRef, liveAgentName, runLiveAgentNode } from "../extensions/pi-teams/live-agent.js";
 import type { InboundMessage, MessageTransport, DeliveryResult } from "../lib/message-transport.js";
 import type { AgentInfo } from "../lib/agent-api.js";
+import { RuntimeControlPlane } from "../lib/runtime-control-plane.js";
 
 class FakeTransport implements MessageTransport {
 	readonly sent: string[] = [];
@@ -82,6 +83,31 @@ describe("live-agent refs", () => {
 		expect(transport.acked).toEqual(["msg-1"]);
 		expect(transport.sent[0]).toContain("<system-prompt>\nBe precise.\n</system-prompt>");
 		expect(transport.sent[0]).toContain("<prompt>\nCheck this patch.\n</prompt>");
+	});
+
+	it("registers and links live-agent entities to runtime team-run parents", async () => {
+		const runtime = new RuntimeControlPlane();
+		const parent = runtime.registerEntity({ id: "team-run-1", kind: "team_run", label: "Team run" });
+		const transport = new FakeTransport();
+		transport.messages = [{
+			id: "msg-1",
+			from: "reviewer",
+			text: "TEAM_NODE_RESPONSE req-1\n\nDone.",
+			ts: Date.now(),
+		}];
+
+		const result = await runLiveAgentNode({ ...runArgs(), runtimeParent: parent }, {
+			findAgent: () => agent(),
+			listAgents: () => [agent()],
+			transport,
+			requestId: () => "req-1",
+			runtime,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(runtime.inspectEntity(parent)?.children).toEqual([{ id: "peer-1", kind: "agent" }]);
+		expect(runtime.inspectEntity({ id: "peer-1", kind: "agent" })?.parent).toEqual(parent);
+		expect(runtime.listEvents().map((event) => event.type)).toContain("runtime.entity.linked");
 	});
 
 	it("rejects unavailable and self live agents clearly", async () => {

@@ -86,17 +86,19 @@ Explorer -> Verifier/EAM + Gap Detector -> targeted Explorer follow-up -> Synthe
   runtime overrides are capped at 5.
 - Verifier output containing `VERIFIED_COMPLETE` stops loop iteration early.
 - Run progress is persisted through existing session custom events and surfaced
-  via `team_runs`.
+  via `runtime_status` for the unified runtime view and `team_runs` for the
+  team-specific diagnostic view.
 - Node records remain the compact execution ledger; structured `details[]` carry
   EDA-friendly trace, handoff, fallback, artifact, and error records without
   changing protocol handlers into a graph runtime.
-- `team_stop` records a `stop_requested` event and shows the run as `stopping`
-  until the protocol reaches a safe boundary and records terminal `stopped`.
+- `runtime_stop` and compatibility `team_stop` record a `stop_requested` event
+  and show the run as `stopping` until the protocol reaches a safe boundary and
+  records terminal `stopped`.
 - The `research` handler checks stop state before each Explorer, Verifier,
   follow-up loop, and Synthesis call. A stop request prevents any new phase or
   model call after the current boundary.
 - One-shot model-backed team nodes run through a child `pi --print` subprocess;
-  `team_stop` aborts that subprocess with SIGTERM through the node AbortSignal.
+  `runtime_stop`/`team_stop` abort that subprocess with SIGTERM through the node AbortSignal.
   Live-agent bindings still rely on the live-agent transport/runtime honoring
   the same AbortSignal and may only stop at normal cancellation boundaries.
 

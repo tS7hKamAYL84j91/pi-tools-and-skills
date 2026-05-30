@@ -24,7 +24,7 @@ If multiple answers point to `llm-council`, use it. Do not downgrade architectur
 
 Invoke teams with `team_run`, and default to `async: true` so the main agent can keep working while the result arrives as a follow-up message.
 
-Use synchronous `team_run` only when the next step cannot proceed without the result.
+Use synchronous `team_run` only when the next step cannot proceed without the result. Inspect active team runs with `runtime_status`; stop them with `runtime_stop` unless a user explicitly asks for the older `team_runs`/`team_stop` names.
 
 ## Routing
 

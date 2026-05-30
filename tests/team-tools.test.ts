@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../extensions/pi-teams/state.js";
 import { registerTeamRunTool } from "../extensions/pi-teams/team-runtime.js";
 import { loadTeamRegistry } from "../extensions/pi-teams/team-registry.js";
+import { RuntimeControlPlane } from "../lib/runtime-control-plane.js";
 import { registerTeamTools } from "../extensions/pi-teams/team-tools.js";
 import { createFakeApi, writeSubagent, writeTeam } from "./team-test-helpers.js";
 
@@ -171,6 +172,51 @@ describe("team tools", () => {
 		expect(stopResult.details.runs).toEqual([
 			expect.objectContaining({ status: "stopping", stopReason: "bounded test stop" }),
 		]);
+	});
+
+	it("runtime_status and runtime_stop expose team runs through unified runtime names", async () => {
+		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
+		const runId = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "test" });
+		stateManager.recordPhaseStarted(runId, "consult", "Consult");
+		stateManager.rehydrateFromSession({ getEntries: () => entries });
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager });
+		const status = tools.get("runtime_status");
+		const stop = tools.get("runtime_stop");
+		if (!status || !stop) throw new Error("runtime control tools missing");
+
+		const statusResult = await status.execute("test", { kind: "team_run", id: runId } as never, undefined, undefined, { cwd: process.cwd() });
+		expect(statusResult.content[0]?.text).toContain(`team_run ${runId}`);
+		expect(statusResult.details.entities).toEqual([
+			expect.objectContaining({ kind: "team_run", id: runId, status: "running" }),
+		]);
+
+		const stopResult = await stop.execute("test", { kind: "team_run", id: runId, reason: "runtime stop" } as never, undefined, undefined, { cwd: process.cwd() });
+		expect(stopResult.details).toEqual(expect.objectContaining({ kind: "team_run", id: runId, status: "stopping" }));
+	});
+
+	it("runtime_stop delegates through the Panopticon runtime control plane", async () => {
+		let stoppedReason = "";
+		const runtime = new RuntimeControlPlane();
+		runtime.registerEntity({
+			id: "team-run-runtime-1",
+			kind: "team_run",
+			label: "Runtime team run",
+			status: "running",
+			stop: (reason) => {
+				stoppedReason = reason;
+			},
+		});
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager: new TeamStateManager(), runtime });
+		const stop = tools.get("runtime_stop");
+		if (!stop) throw new Error("runtime_stop missing");
+
+		await stop.execute("test", { kind: "team_run", id: "team-run-runtime-1", reason: "runtime delegated stop" } as never, undefined, undefined, { cwd: process.cwd() });
+
+		expect(stoppedReason).toBe("runtime delegated stop");
+		expect(runtime.inspectEntity({ kind: "team_run", id: "team-run-runtime-1" })?.status).toBe("stopping");
 	});
 
 	it("team_run rejects unknown team ids with a clear list", async () => {

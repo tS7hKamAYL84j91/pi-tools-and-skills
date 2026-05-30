@@ -14,8 +14,10 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 | `team_models` | Update model bindings for a team. |
 | `team_delete` | Delete a user/project team. |
 | `team_run` | Run a team protocol such as navigator, debate, or research. |
+| `runtime_status` | Inspect team run entities from the unified runtime surface. |
+| `runtime_stop` | Stop a team run entity through unified runtime semantics. |
 | `team_runs` | Inspect active/recent team run state. |
-| `team_stop` | Request a team run stop at safe boundaries. |
+| `team_stop` | Compatibility team-run stop surface; same stop semantics as `runtime_stop`. |
 
 ### Commands
 
@@ -37,7 +39,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 - `debate` — multi-member council with synthesis.
 - `research` — bounded Explorer/Verifier/Synthesis loop for evidence-audited reports.
 
-Team specs live under `extensions/pi-teams/config/` and may be overridden by user/project team files. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field.
+Team specs live under `extensions/pi-teams/config/` and may be overridden by user/project team files. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status` while the surfaces converge.
 
 ## Recurring workflow SOPs
 
