@@ -72,7 +72,6 @@ flowchart TD
     Goal[pi-goal]
     Matrix[pi-matrix]
     Panopticon[pi-panopticon]
-    Research[pi-research-tools]
     Bionic[pi-bionic]
   end
 
@@ -85,7 +84,6 @@ flowchart TD
   Pi --> Matrix
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
-  Pi --> Research
   Pi --> Bionic
   Pi --> Kanban
   Pi --> COAS
@@ -94,7 +92,6 @@ flowchart TD
   Matrix --> SharedLib
   Panopticon --> SharedLib
   TeamsModule --> SharedLib
-  Research --> SharedLib
   Bionic --> SharedLib
   Kanban --> SharedLib
   COAS --> SharedLib
@@ -112,7 +109,6 @@ flowchart TD
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
-| `pi-research-tools` | user/global | Research helper tools and fixtures | Research tool configuration/fixtures |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
 | `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
@@ -198,8 +194,7 @@ flowchart TD
 - Core `lib/` files expose contracts and pure formatting/render helpers; they
   must not import Node filesystem, OS, or process-spawning APIs.
   Current core files: `agent-names.ts`, `completion-signal.ts`,
-  `message-transport.ts`, `oracle-judge.ts`, `research-tool-fixtures.ts`,
-  `research-tool-manifest.ts`, `task-brief.ts`, `tool-result.ts`,
+  `message-transport.ts`, `oracle-judge.ts`, `task-brief.ts`, `tool-result.ts`,
   `tui-confirmation.ts`, and `tui-overflow.ts`.
 - IO/runtime `lib/` files own shared filesystem, process, settings, session,
   spawn, and agent-registry behavior. Current IO/runtime files: `agent-api.ts`,
@@ -421,13 +416,10 @@ flowchart TD
 ```mermaid
 flowchart TD
   DeepResearch[Panopticon teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
-  PromptTools --> Registered[pi-research-tools\nregistered dry-run tools]
-  PromptTools --> Manifest[lib/research-tool-fixtures.ts\nmetadata fixtures]
-  Manifest --> Discovery[discoverResearchTools\nread-only validation + sorting]
+  PromptTools --> Registered[pi-research-tools in pi-extension-poc\nregistered dry-run tools]
+  PromptTools --> Manifest[pi-extension-poc lib/research-tool-fixtures.ts\nmetadata fixtures]
   Registered --> Json[Typed params + JSON output\nempty dry-run envelopes]
   Manifest -. declares only .-> Artifacts[sources/manifest.json\nsourceId + provenance metadata]
-  Discovery --> Tests[research-tool-manifest tests]
-  Registered --> RuntimeTests[research-tools extension tests]
 
   Registered -. no runtime .-> NoNetwork[No live network/API calls]
   Registered -. no runtime .-> NoCreds[No credentials]
@@ -436,8 +428,8 @@ flowchart TD
 
 ### Context policy
 
-- Research-tool metadata remains the source for compatibility checks and future provider design.
-- `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only.
+- Research-tool metadata in `/home/jim/git/pi-extension-poc` remains the source for compatibility checks and future provider design.
+- `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only; this repo no longer owns its implementation.
 - Deep-research workflow policy stays in `extensions/pi-panopticon/teams` prompts and protocol handlers.
 - Source IDs, provenance fields, artifact paths, and result semantics are declared before any provider/runtime promotion.
 - Runtime providers, credential handling, extension loading changes, durable artifact persistence, and deletion of old research behavior require separate approval/ADR.

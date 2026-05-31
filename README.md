@@ -32,7 +32,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-panopticon`, or `pi-research-tools`). It does not alter runtime/project settings.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, or `pi-panopticon`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
 
 ### 2. Set up
 
@@ -64,7 +64,6 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
 | **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management, and modular team workflows (`team_run`) |
 | **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
-| **pi-research-tools** | User/Project | Registered dry-run research tools (`arxiv_search`, `semantic_scholar`, `github_search`, `web_read`)     |
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-coas**           | Project      | CoAS status, doctor, workspace, and schedule control surface                                            |
@@ -93,7 +92,7 @@ Everything goes through `make`:
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `make` / `make help`                                                | Show available targets                                                                          |
 | `make setup`                                                        | Install this checkout as a local pi package                                                     |
-| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-panopticon`, `pi-research-tools`) |
+| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-panopticon`) |
 | `make setup-clean`                                                  | Remove this checkout's pi package registration                                                  |
 | `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                                                            |
 | `make doctor`                                                       | Run checks, tests, and gitleaks secret scans                                                    |
@@ -113,7 +112,6 @@ Everything goes through `make`:
 extensions/           Extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health, teams
   pi-goal/              Global — bounded /goal workflow and completion audit
-  pi-research-tools/   User/Project — registered dry-run research tool surface
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
@@ -124,7 +122,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extensions (`pi-research-tools`, `pi-matrix`) can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-coas`) are added per workspace in `.pi/settings.json`.
+Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
 
 ## Development
 

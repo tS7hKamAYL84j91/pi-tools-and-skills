@@ -25,15 +25,15 @@ help: ## Show available make targets
 setup: ## Register this checkout as a local pi package
 	"$(ROOT_DIR)/scripts/setup-pi"
 
-setup-package: ## Register one user-installable package globally (PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-research-tools)
-	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-research-tools"; exit 2; }
+setup-package: ## Register one user-installable package globally (PACKAGE=pi-goal|pi-matrix|pi-panopticon)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=pi-goal|pi-matrix|pi-panopticon"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi" "$$PACKAGE"
 
 setup-clean: ## Remove this checkout's pi package registration
 	"$(ROOT_DIR)/scripts/setup-pi-clean"
 
-setup-package-clean: ## Remove one user-installable package registration (PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-research-tools)
-	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=pi-goal|pi-matrix|pi-panopticon|pi-research-tools"; exit 2; }
+setup-package-clean: ## Remove one user-installable package registration (PACKAGE=pi-goal|pi-matrix|pi-panopticon)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=pi-goal|pi-matrix|pi-panopticon"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi-clean" "$$PACKAGE"
 
 ##@ Quality

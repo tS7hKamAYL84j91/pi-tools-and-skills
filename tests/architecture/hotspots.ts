@@ -114,7 +114,6 @@ const MODULES: ModuleDefinition[] = [
 	{ name: "goal", pathPrefix: "extensions/pi-goal/" },
 	{ name: "matrix", pathPrefix: "extensions/pi-matrix/" },
 	{ name: "coas", pathPrefix: "extensions/pi-coas/" },
-	{ name: "research-tools", pathPrefix: "extensions/pi-research-tools/" },
 	{ name: "lib", pathPrefix: "lib/" },
 ];
 

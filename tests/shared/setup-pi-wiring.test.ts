@@ -124,11 +124,11 @@ describeIfPython("setup-pi package wiring", () => {
 		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
 	});
 
-	it("allows pi-research-tools as an individual user-installable package", () => {
-		runSettingsHelper("register-package", "pi-research-tools");
+	it("rejects pi-research-tools because canonical ownership moved to pi-extension-poc", () => {
+		const result = runSettingsHelperResult("register-package", "pi-research-tools");
 
-		const settings = readSettings();
-		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-research-tools") }]);
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("Unknown or non-user-installable package");
 	});
 
 	it("rejects project-only packages for global individual install", () => {
@@ -165,7 +165,6 @@ describeIfPython("setup-pi package wiring", () => {
 						join(extensionsDir, "pi-panopticon"),
 						join(extensionsDir, "pi-kanban"),
 						join(extensionsDir, "pi-coas"),
-						join(extensionsDir, "pi-research-tools"),
 						"/external/extension",
 					],
 					packages: [

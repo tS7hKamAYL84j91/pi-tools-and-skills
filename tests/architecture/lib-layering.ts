@@ -10,8 +10,6 @@ const CORE_LIB_FILES = new Set([
 	"completion-signal.ts",
 	"message-transport.ts",
 	"oracle-judge.ts",
-	"research-tool-fixtures.ts",
-	"research-tool-manifest.ts",
 	"task-brief.ts",
 	"tool-result.ts",
 	"tui-confirmation.ts",
