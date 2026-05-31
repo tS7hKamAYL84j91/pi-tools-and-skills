@@ -2,7 +2,7 @@
 schemaVersion: 2
 id: "llm-council"
 name: "LLM Council"
-description: "General high-stakes reasoning and architecture review."
+description: "High-stakes architecture, public API, persistence, security, or strategy review where disagreement is valuable."
 protocol: "debate"
 prompts:
   generation.system: "debate/generation/system"
@@ -34,4 +34,4 @@ agents:
     model: "openai-codex/gpt-5.5"
 ---
 
-Default built-in team for the existing multi-model debate workflow.
+Default built-in team for the existing multi-model debate workflow. Use when tradeoffs should be debated before synthesis, not as a rubber stamp for trivial edits.

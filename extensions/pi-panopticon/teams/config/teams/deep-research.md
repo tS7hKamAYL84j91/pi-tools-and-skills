@@ -2,7 +2,7 @@
 schemaVersion: 2
 id: "deep-research"
 name: "Deep Research Council"
-description: "Rigorous research pipeline enforcing citation audits and adversarial critique based on RhinoInsight principles."
+description: "Bounded evidence-gathering pipeline for research tasks that need source collection, verifier gap feedback, and synthesis."
 protocol: "research"
 maxLoops: 2
 prompts:
@@ -24,4 +24,4 @@ agents:
     model: "openai-codex/gpt-5.5"
 ---
 
-A RhinoInsight-inspired iterative deep research team. The Explorer acquires and normalises evidence into `sources/manifest.json`. The Verifier acts as Evidence Auditor and Gap Detector, either emitting `VERIFIED_COMPLETE` or targeted follow-up gaps. The protocol repeats bounded Explorer/Verifier loops before the Synthesis node assembles the final report using only verified facts with inline citations.
+A RhinoInsight-inspired iterative deep research team. Use it only when evidence gathering and independent verification loops are needed. The Explorer acquires and normalises evidence into `sources/manifest.json`. The Verifier acts as Evidence Auditor and Gap Detector, either emitting `VERIFIED_COMPLETE` or targeted follow-up gaps. The protocol repeats bounded Explorer/Verifier loops before the Synthesis node assembles the final report using only verified facts with inline citations.

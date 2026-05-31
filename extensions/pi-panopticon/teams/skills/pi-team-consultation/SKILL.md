@@ -5,7 +5,11 @@ description: Use pi declarative teams for review and decision support. Trigger w
 
 # Pi Team Consultation
 
-Use this skill to decide when and how to call the built-in `llm-council` and `navigator` teams.
+Use this skill to decide when and how to call the built-in `navigator`, `llm-council`, and `deep-research` teams.
+
+Choose the simplest team that can succeed. Teams are predictable workflows, not a generic autonomous-agent framework: `navigator` routes a focused review to one evaluator, `llm-council` parallelizes disagreement and synthesizes it, and `deep-research` coordinates evidence gathering with verification loops.
+
+Avoid raw logs, private transcripts, secrets, and large pasted context. Summarize evidence and point to paths instead.
 
 ## Decision checklist
 
@@ -14,9 +18,10 @@ Before choosing a reviewer, answer these:
 1. Does this change remove or add a public API, tool, or command? → `llm-council`
 2. Does this change affect architecture boundaries, handler interfaces, type schemas, persistence, or extension isolation? → `llm-council`
 3. Does this change affect 3+ files across 2+ extensions? → `llm-council` or `navigator`
-4. Is this a focused correctness, scope, test, or docs check on a bounded diff? → `navigator`
-5. Is this a small local implementation review or explicitly requested peer review? → `gravitas`
-6. Is this a trivial edit with green tests and no policy impact? → self-review is enough
+4. Does this need evidence gathering plus independent verification loops? → `deep-research`
+5. Is this a focused correctness, scope, test, or docs check on a bounded diff? → `navigator`
+6. Is this a small local implementation review or explicitly requested peer review? → `gravitas`
+7. Is this a trivial edit with green tests and no policy impact? → self-review is enough
 
 If multiple answers point to `llm-council`, use it. Do not downgrade architecture or public-surface decisions to `gravitas` just to save time.
 
@@ -27,6 +32,8 @@ Invoke teams with `team_run`, and default to `async: true` so the main agent can
 Use synchronous `team_run` only when the next step cannot proceed without the result. Inspect active team runs with `runtime_status`; stop them with `runtime_stop` unless a user explicitly asks for the older `team_runs`/`team_stop` names.
 
 ## Routing
+
+Treat `team_run.id` as the team/protocol route. Prefer the smallest sufficient team:
 
 Use `team_run` with `id="navigator"` and `async: true` for lightweight focused review:
 - before finalizing a non-trivial but local change
@@ -40,6 +47,8 @@ Use `team_run` with `id="llm-council"` and `async: true` for high-impact or cont
 - security, policy, persistence, or cross-repo decisions
 - ambiguous product direction where disagreement is valuable
 - choices that should produce tradeoffs, not just approval
+
+Use `team_run` with `id="deep-research"` and `async: true` only when the task needs sourced evidence, gap finding, and a bounded Explorer → Verifier → Synthesis loop.
 
 Prefer a direct peer review, such as `gravitas`, when the request explicitly asks for that peer or when the change is small and already well scoped.
 
@@ -111,6 +120,7 @@ Ask for disagreement explicitly. Good council prompts request tradeoffs, failure
 - Do not send huge raw logs when a concise summary and file paths suffice.
 - Do not block on user approval when project TODOs authorize team/council escalation.
 - Do not resurrect removed generic graph/topology abstractions; current teams use direct handlers.
+- Do not use `deep-research` when a compact review prompt or direct file inspection is enough.
 
 ## History notes
 

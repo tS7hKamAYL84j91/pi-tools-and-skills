@@ -320,13 +320,14 @@ export function registerTeamRunTool(
 	pi.registerTool({
 		name: "team_run",
 		label: "Run Team",
-		description: "Run a declarative team by id. Use team_list first if you do not know the team id.",
-		promptSnippet: "Run a declarative team by id",
+		description: "Run a declarative team by id. The id selects the team/protocol route; use team_list first if you do not know the team id.",
+		promptSnippet: "Run the smallest sufficient declarative team by id",
 		promptGuidelines: [
-			"Use team_run with id=llm-council for high-impact architecture or strategy where disagreement is valuable.",
-			"Use team_run with id=deep-research for research that needs Explorer -> Verifier gap feedback -> Synthesis.",
-			"Use team_run with id=navigator for lightweight Navigator review.",
-
+			"Choose the smallest sufficient team; do not use teams as a generic autonomous-agent framework.",
+			"Use team_run with id=navigator for lightweight focused review.",
+			"Use team_run with id=llm-council for architecture, public API, persistence, security, or contested strategy where disagreement is valuable.",
+			"Use team_run with id=deep-research only for research that needs evidence gathering plus Explorer -> Verifier gap feedback -> Synthesis.",
+			"Prefer async: true for non-blocking reviews and long research runs; use synchronous calls only when the next step depends on the answer.",
 		],
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {

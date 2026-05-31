@@ -101,7 +101,8 @@ describe("consult primer asset", () => {
 
 		expect(prompt).toContain('[Team "review"');
 		expect(prompt).toContain("Navigator: ollama/glm-5.1:cloud");
-		expect(prompt).toContain('id="consult"');
+		expect(prompt).toContain('id="navigator"');
+		expect(prompt).toContain("not raw logs or private transcripts");
 		expect(prompt).toContain("Task: tighten the tests");
 	});
 });

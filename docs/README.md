@@ -7,7 +7,6 @@ This directory is for active, decision-useful documentation. Completed reports a
 - [`architecture.md`](architecture.md) — current architecture map, state ownership, trust boundaries, validation anchors, detailed reference, and F.I.R.E. review context.
 - [`deep-dives/teams-platform.md`](deep-dives/teams-platform.md) — Panopticon teams standing decisions, run-state contract, and evidence-gated future work.
 - [`deep-dives/ux-tools-policy.md`](deep-dives/ux-tools-policy.md) — TUI consistency rules and command/tool namespace policy.
-- [`templates/pi-teams-recurring-workflows.md`](templates/pi-teams-recurring-workflows.md) — static SOP templates for recurring Panopticon teams review and research workflows.
 
 ## Architecture Decision Records
 
@@ -20,6 +19,7 @@ This directory is for active, decision-useful documentation. Completed reports a
 Current active reports:
 
 - [`reports/t-631-fire-review.md`](reports/t-631-fire-review.md) — current F.I.R.E. review and follow-ups.
+- [`reports/g-f90275d0-teams-protocol-anthropic-review.md`](reports/g-f90275d0-teams-protocol-anthropic-review.md) — active Teams protocol refinement report based on Anthropic effective-agents guidance.
 
 ## Historical records
 
