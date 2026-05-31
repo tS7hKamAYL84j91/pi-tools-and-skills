@@ -26,46 +26,11 @@ vi.mock("../../lib/message-transport.js", async (importOriginal) => {
 	};
 });
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as registry from "../../lib/agent-registry.js";
 import { createMessaging } from "../../extensions/pi-panopticon/messaging/messaging.js";
 import type { MessageTransport, DeliveryResult } from "../../lib/message-transport.js";
-import type { Registry } from "../../extensions/pi-panopticon/types.js";
 import type { AgentRecord } from "../../lib/agent-registry.js";
-
-
-
-// ── Minimal ExtensionAPI mock ───────────────────────────────────
-
-type ToolExecute = (toolCallId: string, params: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>;
-type CommandHandler = (args: string | undefined, ctx: { ui: { notify: (msg: string, level: string) => void } }) => Promise<void>;
-
-interface MockAPI {
-	registeredTools: Map<string, { execute: ToolExecute }>;
-	registeredCommands: Map<string, { handler: CommandHandler }>;
-	eventHandlers: Map<string, (() => Promise<void>)[]>;
-	sendUserMessage: MockedFunction<(msg: string, opts?: unknown) => void>;
-	on: (event: string, handler: () => Promise<void>) => void;
-	registerTool: (def: { name: string; execute: ToolExecute }) => void;
-	registerCommand: (name: string, def: { handler: CommandHandler }) => void;
-}
-
-function makeMockAPI(): MockAPI {
-	const api: MockAPI = {
-		registeredTools: new Map(),
-		registeredCommands: new Map(),
-		eventHandlers: new Map(),
-		sendUserMessage: vi.fn(),
-		on(event, handler) {
-			const list = api.eventHandlers.get(event) ?? [];
-			list.push(handler);
-			api.eventHandlers.set(event, list);
-		},
-		registerTool(def) { api.registeredTools.set(def.name, def); },
-		registerCommand(name, def) { api.registeredCommands.set(name, def); },
-	};
-	return api;
-}
+import { asExtensionApi, makeAgentRecord, makeMockContext, makeMockExtensionApi, makeRegistry, toolText, type MockExtensionApi } from "./helpers.js";
 
 // ── Mock transport ──────────────────────────────────────────────
 
@@ -91,49 +56,20 @@ function makeMockTransport(): MessageTransport & {
 
 // ── Fixtures ────────────────────────────────────────────────────
 
-const SELF: AgentRecord = { id: "self-id", name: "me", pid: process.pid, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
-const PEER_A: AgentRecord = { id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
-const PEER_B: AgentRecord = { id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
-const PEER_C: AgentRecord = { id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x", heartbeat: Date.now(), startedAt: Date.now(), status: "running" };
-
-// ── Mock Registry ───────────────────────────────────────────────
-
-function makeMockRegistry(): Registry & { pendingMessages: number } {
-	return {
-		selfId: "self-id",
-		getRecord: vi.fn(() => SELF),
-		register: vi.fn(),
-		unregister: vi.fn(),
-		setStatus: vi.fn(),
-		updateModel: vi.fn(),
-		setTask: vi.fn(),
-		setName: vi.fn(),
-		updatePendingMessages: vi.fn(),
-		readAllPeers: vi.fn(() => [SELF, PEER_A, PEER_B, PEER_C]),
-		flush: vi.fn(),
-		pendingMessages: 0,
-	};
-}
+const SELF: AgentRecord = makeAgentRecord({ id: "self-id", name: "me", cwd: "/", model: "x" });
+const PEER_A: AgentRecord = makeAgentRecord({ id: "peer-a", name: "alice", pid: 999, cwd: "/", model: "x" });
+const PEER_B: AgentRecord = makeAgentRecord({ id: "peer-b", name: "bob", pid: 998, cwd: "/", model: "x" });
+const PEER_C: AgentRecord = makeAgentRecord({ id: "peer-c", name: "charlie", pid: 997, cwd: "/", model: "x" });
 
 const ACCEPTED: DeliveryResult = { accepted: true, immediate: false, reference: "ref-001" };
 const FAILED: DeliveryResult = { accepted: false, immediate: false, error: "ENOSPC" };
 
-function makeMockCtx() {
-	return {
-		isIdle: vi.fn(() => true),
-		ui: { notify: vi.fn(), setStatus: vi.fn(), theme: { fg: (_c: string, t: string) => t, bold: (t: string) => t } },
-		hasUI: true,
-		cwd: "/tmp",
-		sessionManager: { getSessionDir: () => "/tmp", getSessionFile: () => "/tmp/s.jsonl", getEntries: () => [] },
-	};
-}
-
 // ── Setup ───────────────────────────────────────────────────────
 
-let api: MockAPI;
+let api: MockExtensionApi;
 let sendTransport: ReturnType<typeof makeMockTransport>;
 let broadcastTransport: ReturnType<typeof makeMockTransport>;
-let mockRegistry: ReturnType<typeof makeMockRegistry>;
+let mockRegistry: ReturnType<typeof makeRegistry>;
 let messagingModule: ReturnType<ReturnType<typeof createMessaging>>;
 
 beforeEach(async () => {
@@ -145,8 +81,8 @@ beforeEach(async () => {
 	broadcastTransport = makeMockTransport();
 	broadcastTransport.send.mockResolvedValue(ACCEPTED);
 
-	api = makeMockAPI();
-	mockRegistry = makeMockRegistry();
+	api = makeMockExtensionApi();
+	mockRegistry = makeRegistry(SELF, [SELF, PEER_A, PEER_B, PEER_C]);
 
 	// Register the send transport as the "agent" channel so message_read can find it
 	const { getChannels } = await import("../../lib/message-transport.js");
@@ -155,7 +91,7 @@ beforeEach(async () => {
 	(channels as Map<string, unknown>).set("agent", sendTransport);
 
 	messagingModule = createMessaging({ send: sendTransport, broadcast: broadcastTransport })(
-		api as unknown as ExtensionAPI,
+		asExtensionApi(api),
 		mockRegistry,
 	);
 });
@@ -166,31 +102,23 @@ function executeTool(name: string, params: Record<string, unknown>) {
 	return tool.execute("call-id", params, new AbortController().signal);
 }
 
-function getText(result: unknown): string {
-	return (result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
-}
-
 // ── agent_send ──────────────────────────────────────────────────
 
 describe("agent_send", () => {
-	it("registers the tool", () => {
-		expect(api.registeredTools.has("agent_send")).toBe(true);
-	});
-
 	it("does not register agent_send_durable", () => {
 		expect(api.registeredTools.has("agent_send_durable")).toBe(false);
 	});
 
 	it("returns error when peer not found", async () => {
 		const result = await executeTool("agent_send", { name: "nobody", message: "hi" });
-		expect(getText(result)).toContain('No agent named "nobody"');
-		expect(getText(result)).toContain("alice");
+		expect(toolText(result)).toContain('No agent named "nobody"');
+		expect(toolText(result)).toContain("alice");
 	});
 
 	it("sends via the send transport", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
 		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello");
-		expect(getText(result)).toContain("Sent to alice");
+		expect(toolText(result)).toContain("Sent to alice");
 	});
 
 	it("does not use the broadcast transport", async () => {
@@ -201,39 +129,35 @@ describe("agent_send", () => {
 	it("returns failure when transport rejects", async () => {
 		sendTransport.send.mockResolvedValue(FAILED);
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		expect(getText(result)).toContain("Failed");
+		expect(toolText(result)).toContain("Failed");
 	});
 
 	it("does not send to self", async () => {
 		const result = await executeTool("agent_send", { name: "me", message: "echo" });
-		expect(getText(result)).toContain("No agent named");
+		expect(toolText(result)).toContain("No agent named");
 	});
 });
 
 // ── agent_broadcast ─────────────────────────────────────────────
 
 describe("agent_broadcast", () => {
-	it("registers the tool", () => {
-		expect(api.registeredTools.has("agent_broadcast")).toBe(true);
-	});
-
 	it("reports no peers when registry is empty", async () => {
 		(mockRegistry.readAllPeers as MockedFunction<typeof mockRegistry.readAllPeers>).mockReturnValue([SELF]);
 		const result = await executeTool("agent_broadcast", { message: "hi" });
-		expect(getText(result)).toContain("No peer agents");
+		expect(toolText(result)).toContain("No peer agents");
 	});
 
 	it("reports no matches when filter matches nobody", async () => {
 		const result = await executeTool("agent_broadcast", { message: "hi", filter: "zzz" });
-		expect(getText(result)).toContain("No agents matching");
+		expect(toolText(result)).toContain("No agents matching");
 	});
 
 	it("sends to all peers via broadcast transport", async () => {
 		const result = await executeTool("agent_broadcast", { message: "everyone" });
 		expect(broadcastTransport.send).toHaveBeenCalledTimes(3);
-		expect(getText(result)).toContain("✓ alice");
-		expect(getText(result)).toContain("✓ bob");
-		expect(getText(result)).toContain("✓ charlie");
+		expect(toolText(result)).toContain("✓ alice");
+		expect(toolText(result)).toContain("✓ bob");
+		expect(toolText(result)).toContain("✓ charlie");
 	});
 
 	it("does not use the send transport", async () => {
@@ -252,18 +176,14 @@ describe("agent_broadcast", () => {
 			return peer.name === "charlie" ? FAILED : ACCEPTED;
 		});
 		const result = await executeTool("agent_broadcast", { message: "hi" });
-		expect(getText(result)).toContain("✓ alice");
-		expect(getText(result)).toContain("✗ charlie");
+		expect(toolText(result)).toContain("✓ alice");
+		expect(toolText(result)).toContain("✗ charlie");
 	});
 });
 
 // ── /send command ───────────────────────────────────────────────
 
 describe("/send command", () => {
-	it("registers the command", () => {
-		expect(api.registeredCommands.has("send")).toBe(true);
-	});
-
 	function runSend(args: string | undefined) {
 		const cmd = api.registeredCommands.get("send");
 		if (!cmd) {
@@ -312,7 +232,7 @@ describe("registry integration", () => {
 
 	it("agent_send resolves peers from registry", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		expect(getText(result)).toContain("Sent to alice");
+		expect(toolText(result)).toContain("Sent to alice");
 	});
 });
 
@@ -321,7 +241,7 @@ describe("registry integration", () => {
 describe("cleanup hook", () => {
 	it("registers a cleanup hook on init that delegates to transport.cleanup", () => {
 		const mockOnCleanup = registry.onAgentCleanup as MockedFunction<typeof registry.onAgentCleanup>;
-		messagingModule.init(makeMockCtx() as never);
+		messagingModule.init(makeMockContext() as never);
 
 		// onAgentCleanup should have been called with a function
 		expect(mockOnCleanup).toHaveBeenCalledTimes(1);
@@ -339,7 +259,7 @@ describe("cleanup hook", () => {
 describe("inbox draining", () => {
 	it("inits transport and pokes on init() when messages pending", () => {
 		sendTransport.pendingCount.mockReturnValue(1);
-		messagingModule.init(makeMockCtx() as never);
+		messagingModule.init(makeMockContext() as never);
 
 		expect(sendTransport.init).toHaveBeenCalledWith(SELF.id);
 		// Should poke immediately (not dump bodies) since there are pending messages
@@ -354,8 +274,8 @@ describe("inbox draining", () => {
 			{ id: "002.json", from: "bob", text: "pong", ts: 2 },
 		]);
 		const result = await executeTool("message_read", {});
-		expect(getText(result)).toContain("pong");
-		expect(getText(result)).toContain("<external-messages>");
+		expect(toolText(result)).toContain("pong");
+		expect(toolText(result)).toContain("<external-messages>");
 		expect(sendTransport.ack).toHaveBeenCalledWith(SELF.id, "002.json");
 		expect(sendTransport.prune).toHaveBeenCalled();
 	});
@@ -379,7 +299,7 @@ describe("inbox draining", () => {
 			},
 		]);
 		const result = await executeTool("message_read", {});
-		const text = getText(result);
+		const text = toolText(result);
 		expect(text).toContain("attachment:image");
 		expect(text).toContain("photo.png");
 		expect(text).toContain("/tmp/photo.png");
@@ -399,7 +319,7 @@ describe("inbox draining", () => {
 
 	it("does nothing when no self record", () => {
 		(mockRegistry.getRecord as MockedFunction<typeof mockRegistry.getRecord>).mockReturnValue(undefined);
-		messagingModule.init(makeMockCtx() as never);
+		messagingModule.init(makeMockContext() as never);
 		expect(sendTransport.init).not.toHaveBeenCalled();
 	});
 });

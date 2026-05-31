@@ -32,31 +32,43 @@ export function withTempConfig(fn: (configPath: string, root: string) => void): 
 	}
 }
 
+export async function withTempProjectRoot(prefix: string, fn: (project: string) => void | Promise<void>): Promise<void> {
+	const project = mkdtempSync(join(tmpdir(), prefix));
+	try {
+		writeFileSync(join(project, "package.json"), "{}", "utf8");
+		await fn(project);
+	} finally {
+		rmSync(project, { recursive: true, force: true });
+	}
+}
+
+function writeMarkdown(path: string, lines: string[]): void {
+	writeFileSync(path, lines.join("\n"), "utf8");
+}
+
 export function writeSubagent(root: string, name: string): void {
-	writeFileSync(
-		join(root, "agents", `${name}.md`),
-		["---", `name: "${name}"`, `promptId: "${name}System"`, "---", "Subagent body."].join("\n"),
-		"utf8",
-	);
+	writeMarkdown(join(root, "agents", `${name}.md`), [
+		"---",
+		`name: "${name}"`,
+		`promptId: "${name}System"`,
+		"---",
+		"Subagent body.",
+	]);
 }
 
 export function writeTeam(root: string, id: string, agent: string): void {
-	writeFileSync(
-		join(root, "teams", `${id}.md`),
-		[
-			"---",
-			"schemaVersion: 2",
-			`id: "${id}"`,
-			`name: "${id}"`,
-			'protocol: "consult"',
-			"agents:",
-			'  - role: "navigator"',
-			`    subagent: "${agent}"`,
-			"---",
-			"Team body.",
-		].join("\n"),
-		"utf8",
-	);
+	writeMarkdown(join(root, "teams", `${id}.md`), [
+		"---",
+		"schemaVersion: 2",
+		`id: "${id}"`,
+		`name: "${id}"`,
+		'protocol: "consult"',
+		"agents:",
+		'  - role: "navigator"',
+		`    subagent: "${agent}"`,
+		"---",
+		"Team body.",
+	]);
 }
 
 export function createFakeApi(): { tools: Map<string, RegisteredTool>; api: ExtensionAPI } {

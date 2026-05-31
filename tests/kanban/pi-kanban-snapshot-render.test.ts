@@ -5,11 +5,8 @@
  * the watcher widget builder.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
 	type BoardState,
@@ -29,6 +26,7 @@ import {
 	generateTaskDetail,
 } from "../../extensions/pi-kanban/snapshot.js";
 import { buildWidgetLines } from "../../extensions/pi-kanban/watcher.js";
+import { setupTempKanbanDir } from "./kanban-test-helpers.js";
 
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,
@@ -59,25 +57,10 @@ describe("kanban board themes", () => {
 });
 
 describe("snapshot renderers", () => {
-	let tmpDir: string;
-	let prevKanbanDir: string | undefined;
-
-	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "kanban-snapshot-test-"));
-		mkdirSync(join(tmpDir, "tasks"), { recursive: true });
-		writeFileSync(join(tmpDir, "board.log"), "", "utf-8");
-		prevKanbanDir = process.env.KANBAN_DIR;
-		process.env.KANBAN_DIR = tmpDir;
-	});
-
-	afterEach(() => {
-		if (prevKanbanDir === undefined) delete process.env.KANBAN_DIR;
-		else process.env.KANBAN_DIR = prevKanbanDir;
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
+	const harness = setupTempKanbanDir("kanban-snapshot-test-");
 
 	async function makeBoard(logContent: string): Promise<BoardState> {
-		writeFileSync(join(tmpDir, "board.log"), logContent, "utf-8");
+		harness.writeBoardLog(logContent);
 		return parseBoard();
 	}
 
@@ -176,25 +159,10 @@ describe("snapshot renderers", () => {
 });
 
 describe("widget builder", () => {
-	let tmpDir: string;
-	let prevKanbanDir: string | undefined;
-
-	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "kanban-widget-test-"));
-		mkdirSync(join(tmpDir, "tasks"), { recursive: true });
-		writeFileSync(join(tmpDir, "board.log"), "", "utf-8");
-		prevKanbanDir = process.env.KANBAN_DIR;
-		process.env.KANBAN_DIR = tmpDir;
-	});
-
-	afterEach(() => {
-		if (prevKanbanDir === undefined) delete process.env.KANBAN_DIR;
-		else process.env.KANBAN_DIR = prevKanbanDir;
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
+	const harness = setupTempKanbanDir("kanban-widget-test-");
 
 	async function makeBoard(logContent: string): Promise<BoardState> {
-		writeFileSync(join(tmpDir, "board.log"), logContent, "utf-8");
+		harness.writeBoardLog(logContent);
 		return parseBoard();
 	}
 

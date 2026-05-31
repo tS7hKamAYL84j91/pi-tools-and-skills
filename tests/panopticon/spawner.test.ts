@@ -5,7 +5,6 @@
  * Only the extracted helpers and lightweight registration wiring are tested here;
  * the tool execute paths rely on integration with the ExtensionAPI.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { setupSpawner } from "../../extensions/pi-panopticon/spawner/spawner.js";
 import { formatCompletionSignal } from "../../lib/completion-signal.js";
@@ -15,11 +14,7 @@ import {
 	recentOutputFromEvents,
 } from "../../lib/spawn-events.js";
 import { buildArgList, type SpawnedAgent } from "../../lib/spawn-service.js";
-
-interface RegisteredTool {
-	name: string;
-	prepareArguments?: (args: unknown) => unknown;
-}
+import { asExtensionApi, makeMockExtensionApi, makeRegistry } from "./helpers.js";
 
 function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
 	// Tests only exercise name and recentEvents in hasCompletionSignal.
@@ -27,32 +22,9 @@ function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
 }
 
 function getSpawnAgentPrepareArguments(): (args: unknown) => unknown {
-	const tools = new Map<string, RegisteredTool>();
-	// setupSpawner only calls registerTool while wiring tools in this test.
-	const api = {
-		registerTool(tool: RegisteredTool) {
-			tools.set(tool.name, tool);
-		},
-	} as unknown as ExtensionAPI;
-	const registry = {
-		selfId: "test-self",
-		getRecord() {
-			return undefined;
-		},
-		register() {},
-		unregister() {},
-		setStatus() {},
-		updateModel() {},
-		setTask() {},
-		setName() {},
-		updatePendingMessages() {},
-		readAllPeers() {
-			return [];
-		},
-		flush() {},
-	} satisfies Parameters<typeof setupSpawner>[1];
-	setupSpawner(api, registry);
-	const tool = tools.get("spawn_agent");
+	const api = makeMockExtensionApi();
+	setupSpawner(asExtensionApi(api), makeRegistry(undefined));
+	const tool = api.registeredTools.get("spawn_agent");
 	if (!tool?.prepareArguments) {
 		throw new Error("spawn_agent prepareArguments was not registered");
 	}

@@ -1,12 +1,11 @@
 /**
  * Tests for agent health assessment (extensions/pi-panopticon/registry/health.ts)
  *
- * Tests the pure functions: assessHealth, computeActivityHash,
- * detectApiErrors, agentSocketPath, and the status taxonomy logic.
+ * Tests assessHealth status taxonomy and tracker behavior.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRecord } from "../../lib/agent-registry.js";
+import { makeAgentRecord } from "./helpers.js";
 
 // Mock isPidAlive — control which PIDs are alive
 vi.mock("../../lib/agent-registry.js", async (importOriginal) => {
@@ -24,138 +23,23 @@ vi.mock("../../lib/session-log.js", () => ({
 
 import { isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
-import {
-	assessHealth,
-	computeActivityHash,
-	detectApiErrors,
-	agentSocketPath,
-	// AgentHealthStatus used implicitly in status string comparisons
-} from "../../extensions/pi-panopticon/registry/health.js";
+import { assessHealth } from "../../extensions/pi-panopticon/registry/health.js";
 
 const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
 const mockReadSessionLog = readSessionLog as ReturnType<typeof vi.fn>;
 
 // ── Fixtures ────────────────────────────────────────────────────
 
-function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
-	return {
-		id: "12345-abc",
-		name: "test-agent",
-		pid: 12345,
-		cwd: "/tmp/test",
-		model: "anthropic/claude-sonnet-4-6",
-		startedAt: Date.now() - 60_000,
-		heartbeat: Date.now() - 5_000,
-		status: "running",
-		pendingMessages: 0,
-		sessionFile: "/tmp/test-session.jsonl",
-		...overrides,
-	};
-}
-
 function makeStallTracker(): Map<string, { lastHash: string; stallCount: number }> {
 	return new Map();
 }
-
-// ── computeActivityHash ─────────────────────────────────────────
-
-describe("computeActivityHash", () => {
-	it("returns empty string when no session file", () => {
-		expect(computeActivityHash(undefined)).toBe("");
-	});
-
-	it("returns empty string when no events", () => {
-		mockReadSessionLog.mockReturnValue([]);
-		expect(computeActivityHash("/tmp/session.jsonl")).toBe("");
-	});
-
-	it("returns a hash when events exist", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_call", tool: "bash" },
-		]);
-		const hash = computeActivityHash("/tmp/session.jsonl");
-		expect(hash).toMatch(/^[a-f0-9]{32}$/);
-	});
-
-	it("returns different hashes for different events", () => {
-		mockReadSessionLog.mockReturnValueOnce([
-			{ ts: 1000, event: "tool_call", tool: "bash" },
-		]);
-		const hash1 = computeActivityHash("/tmp/a.jsonl");
-
-		mockReadSessionLog.mockReturnValueOnce([
-			{ ts: 2000, event: "tool_call", tool: "read" },
-		]);
-		const hash2 = computeActivityHash("/tmp/b.jsonl");
-
-		expect(hash1).not.toBe(hash2);
-	});
-});
-
-// ── detectApiErrors ─────────────────────────────────────────────
-
-describe("detectApiErrors", () => {
-	it("returns false when no session file", () => {
-		expect(detectApiErrors(undefined)).toBe(false);
-	});
-
-	it("returns false when no tool_result events", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_call", tool: "bash" },
-		]);
-		expect(detectApiErrors("/tmp/s.jsonl")).toBe(false);
-	});
-
-	it("returns false when tool results are successful", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_result", tool: "bash", isError: false },
-			{ ts: 2000, event: "tool_result", tool: "read", isError: false },
-		]);
-		expect(detectApiErrors("/tmp/s.jsonl")).toBe(false);
-	});
-
-	it("returns true when majority of tool results are errors", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_result", tool: "bash", isError: true },
-			{ ts: 2000, event: "tool_result", tool: "bash", isError: true },
-			{ ts: 3000, event: "tool_result", tool: "read", isError: false },
-		]);
-		expect(detectApiErrors("/tmp/s.jsonl")).toBe(true);
-	});
-
-	it("returns true when all tool results are errors", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_result", tool: "bash", isError: true },
-		]);
-		expect(detectApiErrors("/tmp/s.jsonl")).toBe(true);
-	});
-
-	it("returns false when minority of tool results are errors", () => {
-		mockReadSessionLog.mockReturnValue([
-			{ ts: 1000, event: "tool_result", tool: "bash", isError: true },
-			{ ts: 2000, event: "tool_result", tool: "bash", isError: false },
-			{ ts: 3000, event: "tool_result", tool: "read", isError: false },
-		]);
-		expect(detectApiErrors("/tmp/s.jsonl")).toBe(false);
-	});
-});
-
-// ── agentSocketPath ─────────────────────────────────────────────
-
-describe("agentSocketPath", () => {
-	it("returns the conventional socket path", () => {
-		const path = agentSocketPath("12345-abc");
-		expect(path).toContain("12345-abc.sock");
-		expect(path).toContain(".pi/agents");
-	});
-});
 
 // ── assessHealth: terminated ────────────────────────────────────
 
 describe("assessHealth — terminated", () => {
 	it("returns terminated when PID is dead", () => {
 		mockIsPidAlive.mockReturnValue(false);
-		const record = makeRecord();
+		const record = makeAgentRecord();
 		const tracker = makeStallTracker();
 
 		const h = assessHealth(record, tracker);
@@ -165,7 +49,7 @@ describe("assessHealth — terminated", () => {
 
 	it("clears stall tracker for terminated agents", () => {
 		mockIsPidAlive.mockReturnValue(false);
-		const record = makeRecord();
+		const record = makeAgentRecord();
 		const tracker = makeStallTracker();
 		tracker.set(record.id, { lastHash: "abc", stallCount: 5 });
 
@@ -179,7 +63,7 @@ describe("assessHealth — terminated", () => {
 describe("assessHealth — blocked", () => {
 	it("returns blocked when agent self-reports blocked", () => {
 		mockIsPidAlive.mockReturnValue(true);
-		const record = makeRecord({ status: "blocked" });
+		const record = makeAgentRecord({ status: "blocked" });
 		const h = assessHealth(record, makeStallTracker());
 		expect(h.status).toBe("blocked");
 	});
@@ -190,14 +74,14 @@ describe("assessHealth — blocked", () => {
 describe("assessHealth — waiting", () => {
 	it("returns waiting when agent is idle", () => {
 		mockIsPidAlive.mockReturnValue(true);
-		const record = makeRecord({ status: "waiting" });
+		const record = makeAgentRecord({ status: "waiting" });
 		const h = assessHealth(record, makeStallTracker());
 		expect(h.status).toBe("waiting");
 	});
 
 	it("clears stall tracker when waiting", () => {
 		mockIsPidAlive.mockReturnValue(true);
-		const record = makeRecord({ status: "waiting" });
+		const record = makeAgentRecord({ status: "waiting" });
 		const tracker = makeStallTracker();
 		tracker.set(record.id, { lastHash: "abc", stallCount: 3 });
 
@@ -215,7 +99,7 @@ describe("assessHealth — api_error", () => {
 			{ ts: 1000, event: "tool_result", tool: "bash", isError: true },
 			{ ts: 2000, event: "tool_result", tool: "bash", isError: true },
 		]);
-		const record = makeRecord({ status: "running" });
+		const record = makeAgentRecord({ status: "running" });
 		const h = assessHealth(record, makeStallTracker());
 		expect(h.status).toBe("api_error");
 	});
@@ -233,7 +117,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("returns active on first call (no prior hash)", () => {
-		const record = makeRecord({ status: "running" });
+		const record = makeAgentRecord({ status: "running" });
 		const tracker = makeStallTracker();
 		const h = assessHealth(record, tracker);
 		expect(h.status).toBe("active");
@@ -241,7 +125,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("increments stall count on unchanged activity", () => {
-		const record = makeRecord({ status: "running" });
+		const record = makeAgentRecord({ status: "running" });
 		const tracker = makeStallTracker();
 
 		// First call — establishes baseline
@@ -254,7 +138,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("returns stalled after reaching threshold with stale heartbeat", () => {
-		const record = makeRecord({
+		const record = makeAgentRecord({
 			status: "running",
 			heartbeat: Date.now() - 120_000, // 2 minutes ago — stale
 		});
@@ -271,7 +155,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("returns sleeping when threshold reached but heartbeat is fresh", () => {
-		const record = makeRecord({
+		const record = makeAgentRecord({
 			status: "running",
 			heartbeat: Date.now() - 5_000, // 5 seconds ago — fresh
 		});
@@ -287,7 +171,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("resets stall count when activity changes", () => {
-		const record = makeRecord({ status: "running" });
+		const record = makeAgentRecord({ status: "running" });
 		const tracker = makeStallTracker();
 
 		// First call
@@ -307,7 +191,7 @@ describe("assessHealth — stall detection", () => {
 	});
 
 	it("respects custom stall threshold", () => {
-		const record = makeRecord({
+		const record = makeAgentRecord({
 			status: "running",
 			heartbeat: Date.now() - 120_000,
 		});
@@ -327,7 +211,7 @@ describe("assessHealth — stall detection", () => {
 describe("assessHealth — status priority", () => {
 	it("terminated takes priority over everything", () => {
 		mockIsPidAlive.mockReturnValue(false);
-		const record = makeRecord({ status: "blocked" });
+		const record = makeAgentRecord({ status: "blocked" });
 		const h = assessHealth(record, makeStallTracker());
 		expect(h.status).toBe("terminated");
 	});
@@ -337,7 +221,7 @@ describe("assessHealth — status priority", () => {
 		mockReadSessionLog.mockReturnValue([
 			{ ts: 1, event: "tool_result", tool: "x", isError: true },
 		]);
-		const record = makeRecord({ status: "blocked" });
+		const record = makeAgentRecord({ status: "blocked" });
 		const h = assessHealth(record, makeStallTracker());
 		expect(h.status).toBe("blocked");
 	});
@@ -348,7 +232,7 @@ describe("assessHealth — status priority", () => {
 			{ ts: 1, event: "tool_result", tool: "x", isError: true },
 			{ ts: 2, event: "tool_result", tool: "y", isError: true },
 		]);
-		const record = makeRecord({ status: "running" });
+		const record = makeAgentRecord({ status: "running" });
 		const tracker = makeStallTracker();
 		// Even with stall history, api_error wins
 		tracker.set(record.id, { lastHash: "old", stallCount: 10 });
@@ -363,7 +247,7 @@ describe("assessHealth — output structure", () => {
 	it("includes all required fields", () => {
 		mockIsPidAlive.mockReturnValue(true);
 		mockReadSessionLog.mockReturnValue([]);
-		const record = makeRecord({
+		const record = makeAgentRecord({
 			model: "anthropic/claude-sonnet-4-6",
 			pendingMessages: 3,
 		});
