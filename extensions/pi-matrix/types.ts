@@ -22,6 +22,8 @@ export interface MatrixConfig {
 	allowedMimePrefixes: string[];
 	/** Label used in message attribution, e.g. "matrix" */
 	channelLabel: string;
-	/** MXIDs allowed to send messages to the agent. Empty = accept all. */
+	/** MXIDs allowed to send messages to the agent. Empty = deny by default. */
 	trustedSenders: string[];
+	/** Explicit dev/test escape hatch for accepting any Matrix sender. */
+	allowAnySender: boolean;
 }

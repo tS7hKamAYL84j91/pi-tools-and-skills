@@ -26,6 +26,7 @@ interface RawMatrixSettings {
 	allowedMimePrefixes?: unknown;
 	channelLabel?: unknown;
 	trustedSenders?: unknown;
+	allowAnySender?: unknown;
 }
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
@@ -97,6 +98,9 @@ export function loadMatrixConfig(
 				(s): s is string => typeof s === "string",
 			)
 		: [];
+	const allowAnySender = raw.allowAnySender === undefined
+		? false
+		: requireBoolean(raw.allowAnySender, "matrix.allowAnySender");
 
 	return {
 		homeserver,
@@ -109,6 +113,7 @@ export function loadMatrixConfig(
 		allowedMimePrefixes,
 		channelLabel,
 		trustedSenders,
+		allowAnySender,
 	};
 }
 
@@ -131,6 +136,13 @@ function requirePositiveInteger(value: unknown, fieldName: string): number {
 		throw new Error(
 			`matrix config: ${fieldName} must be a positive integer when provided`,
 		);
+	}
+	return value;
+}
+
+function requireBoolean(value: unknown, fieldName: string): boolean {
+	if (typeof value !== "boolean") {
+		throw new Error(`matrix config: ${fieldName} must be a boolean when provided`);
 	}
 	return value;
 }

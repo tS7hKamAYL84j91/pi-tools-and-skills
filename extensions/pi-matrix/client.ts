@@ -33,6 +33,18 @@ export interface InboundMessage {
 type InboundHandler = (msg: InboundMessage) => void | Promise<void>;
 type NotifyFn = (msg: string, level: "info" | "warning" | "error") => void;
 
+export function isTrustedMatrixSender(config: MatrixConfig, sender?: string): sender is string {
+	if (!sender) return false;
+	if (sender === config.userId) return false;
+	if (config.allowAnySender) return true;
+	return config.trustedSenders.includes(sender);
+}
+
+export function shouldJoinMatrixInvite(config: MatrixConfig, roomId: string, sender?: string): boolean {
+	if (config.roomId && roomId === config.roomId) return true;
+	return isTrustedMatrixSender(config, sender);
+}
+
 // ── Client wrapper ──────────────────────────────────────────────
 
 export class MatrixBridgeClient {
@@ -108,14 +120,9 @@ export class MatrixBridgeClient {
 
 		// Accept invites to the configured room and DMs from trusted senders.
 		this.client.on("room.invite", async (roomId: string, event: AnyClient) => {
-			if (this.config.roomId && roomId === this.config.roomId) {
-				await this.client.joinRoom(roomId);
-				return;
-			}
 			const sender = event?.sender ?? event?.state_key;
-			const trusted = this.config.trustedSenders;
-			if (sender && (trusted.length === 0 || trusted.includes(sender))) {
-				this.notifyFn?.(`joining DM from ${sender} (room ${roomId})`, "info");
+			if (shouldJoinMatrixInvite(this.config, roomId, sender)) {
+				this.notifyFn?.(`joining invite from ${sender ?? "unknown sender"} (room ${roomId})`, "info");
 				await this.client.joinRoom(roomId);
 				return;
 			}
@@ -151,9 +158,8 @@ export class MatrixBridgeClient {
 	}
 
 	async buildInboundMessage(roomId: string, event: MatrixRoomMessageEvent): Promise<InboundMessage | null> {
-		if (event.sender === this.config.userId) return null;
-		const trusted = this.config.trustedSenders;
-		if (!event.sender || (trusted.length > 0 && !trusted.includes(event.sender))) return null;
+		const sender = event.sender;
+		if (!isTrustedMatrixSender(this.config, sender)) return null;
 
 		const content = event.content;
 		const msgtype = content?.msgtype;
@@ -175,7 +181,7 @@ export class MatrixBridgeClient {
 
 		return {
 			roomId,
-			senderMxid: event.sender,
+			senderMxid: sender,
 			body,
 			eventId: event.event_id ?? `${roomId}-${Date.now()}`,
 			timestampMs: event.origin_server_ts ?? Date.now(),

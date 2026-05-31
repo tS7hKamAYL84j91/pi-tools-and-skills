@@ -55,7 +55,8 @@ In your workspace's `.pi/settings.json`:
 | `userId` | yes | — | Bot's full MXID |
 | `roomId` | yes | — | Primary room for replies |
 | `accessTokenEnv` | yes | — | Name of an environment variable already populated by your runtime/secret manager |
-| `trustedSenders` | no | `[]` (all) | MXIDs allowed to message the bot |
+| `trustedSenders` | no | `[]` (deny) | MXIDs allowed to message the bot |
+| `allowAnySender` | no | `false` | Explicit dev/test escape hatch to accept messages and DM invites from any MXID |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |
 | `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path |
 | `attachmentCachePath` | no | `~/.pi/agent/matrix-attachments` | Local cache for downloaded attachments |
@@ -64,7 +65,7 @@ In your workspace's `.pi/settings.json`:
 
 ## Room scope
 
-The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary.
+The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary. An empty `trustedSenders` list denies inbound messages by default; set `allowAnySender: true` only for auditable dev/test use. Invites to the configured `roomId` may be joined as an approved-room mechanism, but message ingestion still requires a trusted sender or explicit `allowAnySender`.
 
 ## Outbound rich-text formatting
 
