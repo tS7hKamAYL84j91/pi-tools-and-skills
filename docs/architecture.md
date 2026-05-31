@@ -73,6 +73,7 @@ flowchart TD
     Matrix[pi-matrix]
     Panopticon[pi-panopticon]
     Research[pi-research-tools]
+    Bionic[pi-bionic]
   end
 
   subgraph ProjectExt[Project-local extensions]
@@ -85,6 +86,7 @@ flowchart TD
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
   Pi --> Research
+  Pi --> Bionic
   Pi --> Kanban
   Pi --> COAS
 
@@ -93,6 +95,7 @@ flowchart TD
   Panopticon --> SharedLib
   TeamsModule --> SharedLib
   Research --> SharedLib
+  Bionic --> SharedLib
   Kanban --> SharedLib
   COAS --> SharedLib
 
@@ -110,6 +113,7 @@ flowchart TD
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-research-tools` | user/global | Research helper tools and fixtures | Research tool configuration/fixtures |
+| `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
 | `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
 
