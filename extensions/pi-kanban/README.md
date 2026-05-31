@@ -76,7 +76,7 @@ External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a
 | Scheduler need | Tool surface | Safe behavior |
 |---|---|---|
 | Inspect board, backlog, todo, WIP, blocked, done | `kanban_snapshot` default compact view | Read-oriented summary plus `snapshot.md`; no recurring loop is started. |
-| Inspect one card or full board when explicitly needed | `kanban_snapshot task_id="T-NNN"` or `detail="full"` | Gradual disclosure keeps default context small. |
+| Inspect one card, full board, or older Done history when explicitly needed | `kanban_snapshot task_id="T-NNN"`, `detail="full"`, or `show_all_done=true` | Gradual disclosure keeps default context small; Done is age-filtered by default. |
 | Start one authorized task | `kanban_claim agent=... task_id?` | With no `task_id`, picks highest-priority todo; returns `NO_TASK_AVAILABLE`, `WRONG_COLUMN`, `TASK_NOT_FOUND`, or `WIP_LIMIT_REACHED` without mutating on those failures. |
 | Record progress | `kanban_edit note=...` | Notes can be appended to any task; metadata edits remain limited to backlog/todo. |
 | Block or complete work | `kanban_block`, `kanban_complete` | Require in-progress tasks and record auditable events. |
@@ -101,7 +101,7 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 
 | Tool               | Parameters         | Notes                                                                |
 |--------------------|--------------------|----------------------------------------------------------------------|
-| `kanban_snapshot`  | `detail?`, `task_id?` | Regenerates full `snapshot.md`; returns compact summary by default, `detail="full"` for full board, or `task_id="T-NNN"` for one card |
+| `kanban_snapshot`  | `detail?`, `task_id?`, `show_all_done?` | Regenerates `snapshot.md`; returns compact summary by default, `detail="full"` for full board, `task_id="T-NNN"` for one card, or `show_all_done=true` to include older Done tasks |
 | `kanban_compact`   | _(none)_           | Manual log compaction; creates timestamped backup                    |
 
 ### Priority Order
@@ -214,11 +214,14 @@ _Gradual disclosure: task descriptions/notes are not included here..._
 - T-042: Implement OAuth — tools-worker
 ```
 
+Done is age-filtered to tasks completed in the last 30 days by default. Older completed tasks stay recoverable from `board.log` and can be shown explicitly.
+
 Full detail remains available on demand:
 
-- `kanban_snapshot({ "detail": "full" })` — returns the full board, including descriptions and notes.
-- `kanban_snapshot({ "task_id": "T-NNN" })` — returns full detail for one card.
-- `/kanban` — opens the full live TUI overlay.
+- `kanban_snapshot({ "detail": "full" })` — returns the full board, including descriptions and notes, with default Done-age filtering.
+- `kanban_snapshot({ "show_all_done": true })` — includes older completed tasks in the returned view and regenerated `snapshot.md`.
+- `kanban_snapshot({ "task_id": "T-NNN" })` — returns full detail for one card, including older Done tasks by id.
+- `/kanban` — opens the live TUI overlay, which remains bounded to the most recent Done cards.
 - `pi-kanban/tasks/T-NNN.md` — per-task markdown file for direct reads.
 
 `pi-kanban/snapshot.md` retains the full five-column Markdown board:

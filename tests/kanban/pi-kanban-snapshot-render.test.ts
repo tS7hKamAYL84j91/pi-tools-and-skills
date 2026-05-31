@@ -103,7 +103,7 @@ describe("snapshot renderers", () => {
 			].join("\n"),
 		);
 
-		const summary = generateSnapshotSummary(board);
+		const summary = generateSnapshotSummary(board, { showAllDone: true });
 		expect(summary).toMatch(/Done \(1\)/);
 		expect(summary).not.toContain("last 1 of 1");
 	});
@@ -122,7 +122,7 @@ describe("snapshot renderers", () => {
 		}
 		const board = await makeBoard(lines.join("\n"));
 
-		const summary = generateSnapshotSummary(board);
+		const summary = generateSnapshotSummary(board, { showAllDone: true });
 		expect(summary).toContain("last 5 of 6");
 	});
 
@@ -135,9 +135,36 @@ describe("snapshot renderers", () => {
 			].join("\n"),
 		);
 
-		const snapshot = generateSnapshot(board);
+		const snapshot = generateSnapshot(board, { showAllDone: true });
 		expect(snapshot).toMatch(/Done \(1\)/);
 		expect(snapshot).not.toContain("last 10 of 1");
+	});
+
+	it("default done view hides older tasks without changing parsed history", async () => {
+		const logContent = [
+			'2026-01-01T00:00:00Z CREATE T-040 lead title="Old done" priority="low" tags=""',
+			"2026-01-01T00:01:00Z COMPLETE T-040 worker-1 duration=1h",
+			"2026-01-01T00:01:00Z MOVE T-040 worker-1 from=in-progress to=done",
+		].join("\n");
+		const board = await makeBoard(logContent);
+
+		const summary = generateSnapshotSummary(board);
+		expect(summary).toContain("older hidden");
+		expect(summary).not.toContain("T-040: Old done");
+		expect(board.tasks.get("T-040")?.completedAt).toBe("2026-01-01T00:01:00Z");
+		expect(board.totalEvents).toBe(3);
+	});
+
+	it("show-all done view recovers older completed tasks", async () => {
+		const board = await makeBoard(
+			[
+				'2026-01-01T00:00:00Z CREATE T-041 lead title="Old done" priority="low" tags=""',
+				"2026-01-01T00:01:00Z COMPLETE T-041 worker-1 duration=1h",
+			].join("\n"),
+		);
+
+		const summary = generateSnapshotSummary(board, { showAllDone: true });
+		expect(summary).toContain("T-041: Old done");
 	});
 
 	it("task detail includes all metadata", async () => {

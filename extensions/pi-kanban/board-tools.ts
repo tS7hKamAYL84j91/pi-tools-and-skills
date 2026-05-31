@@ -27,9 +27,11 @@ import {
 async function executeSnapshot(
 	detail?: string,
 	task_id?: string,
+	show_all_done?: boolean,
 ): Promise<ToolResult> {
 	const board = await parseBoard();
-	const snapshot = generateSnapshot(board);
+	const snapshotOptions = { showAllDone: show_all_done ?? false };
+	const snapshot = generateSnapshot(board, snapshotOptions);
 	const view = task_id ? "task" : (detail ?? "compact");
 	let returnedView: string;
 	if (task_id) {
@@ -37,7 +39,7 @@ async function executeSnapshot(
 	} else if (view === "full") {
 		returnedView = snapshot;
 	} else {
-		returnedView = generateSnapshotSummary(board);
+		returnedView = generateSnapshotSummary(board, snapshotOptions);
 	}
 	const sp = snapshotPath();
 	await writeFileAtomic(sp, snapshot);
@@ -126,7 +128,8 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 		name: "kanban_snapshot",
 		label: "Kanban Snapshot",
 		description:
-			"Regenerate full snapshot.md from board.log and return a compact board summary by default. " +
+			"Regenerate snapshot.md from board.log and return a compact board summary by default. " +
+			"Done is age-filtered by default; pass show_all_done=true for all completed tasks. " +
 			'Uses gradual disclosure: pass detail="full" for the full board or task_id for one card\'s details.',
 		promptSnippet:
 			"Regenerate the kanban board snapshot and return a compact summary",
@@ -139,9 +142,20 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 				}),
 			),
 			task_id: Type.Optional(TASK_ID_SCHEMA),
+			show_all_done: Type.Optional(
+				Type.Boolean({
+					description:
+						"Include completed tasks older than the default Done age window",
+					default: false,
+				}),
+			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
-			return executeSnapshot(params.detail, params.task_id);
+			return executeSnapshot(
+				params.detail,
+				params.task_id,
+				params.show_all_done,
+			);
 		},
 	});
 

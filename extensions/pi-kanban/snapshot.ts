@@ -9,6 +9,34 @@
 import type { BoardState, TaskState } from "./board.js";
 import { nowZ, WIP_LIMIT } from "./board.js";
 
+// ── Done filtering ─────────────────────────────────────────────
+
+const DEFAULT_DONE_MAX_AGE_DAYS = 30;
+
+interface SnapshotOptions {
+	showAllDone?: boolean;
+}
+
+function doneCutoffMs(): number {
+	return Date.now() - DEFAULT_DONE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function isRecentDoneTask(task: TaskState): boolean {
+	if (!task.completedAt) return true;
+	const completedMs = Date.parse(task.completedAt);
+	return Number.isNaN(completedMs) || completedMs >= doneCutoffMs();
+}
+
+function visibleDoneTasks(tasks: TaskState[], options?: SnapshotOptions): TaskState[] {
+	return options?.showAllDone ? tasks : tasks.filter(isRecentDoneTask);
+}
+
+function doneCountLabel(visible: number, total: number, prefix?: string): string {
+	if (visible === total && !prefix) return String(visible);
+	const ageNote = visible < total ? `, ${total - visible} older hidden` : "";
+	return `${prefix ? `${prefix} ` : ""}${visible} of ${total}${ageNote}`;
+}
+
 // ── Column definitions ──────────────────────────────────────────
 
 interface ColumnDef {
@@ -168,20 +196,25 @@ export function generateTaskDetail(board: BoardState, taskId: string): string {
 }
 
 /** Generate a compact Markdown summary suitable for model context. */
-export function generateSnapshotSummary(board: BoardState): string {
+export function generateSnapshotSummary(
+	board: BoardState,
+	options?: SnapshotOptions,
+): string {
 	const { totalEvents } = board;
 	const now = nowZ();
 	const buckets = bucketTasks(board);
 	const wip = buckets["in-progress"]?.length ?? 0;
 	const doneAll = buckets.done ?? [];
-	const doneLast = doneAll.slice(-(SUMMARY_LIMITS.done ?? 5));
+	const doneVisible = visibleDoneTasks(doneAll, options);
+	const doneLast = doneVisible.slice(-(SUMMARY_LIMITS.done ?? 5));
 	const doneLabel =
-		doneAll.length > doneLast.length
-			? `last ${doneLast.length} of ${doneAll.length}`
-			: String(doneAll.length);
+		doneVisible.length > doneLast.length
+			? doneCountLabel(doneLast.length, doneAll.length, "last")
+			: doneCountLabel(doneVisible.length, doneAll.length);
 	return [
 		"# Kanban — Compact Summary",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
+		`_Done shows tasks completed in the last ${DEFAULT_DONE_MAX_AGE_DAYS} days by default; pass show_all_done=true to include older completed tasks._`,
 		'_Gradual disclosure: task descriptions/notes are not included here. Use kanban_snapshot with task_id="T-NNN" for one card or detail="full" for the whole board._',
 		"",
 		...renderSummaryColumn(buckets.backlog ?? [], "backlog"),
@@ -195,21 +228,26 @@ export function generateSnapshotSummary(board: BoardState): string {
 }
 
 /** Generate a full Markdown snapshot from parsed board state. */
-export function generateSnapshot(board: BoardState): string {
+export function generateSnapshot(
+	board: BoardState,
+	options?: SnapshotOptions,
+): string {
 	const { totalEvents } = board;
 	const now = nowZ();
 	const buckets = bucketTasks(board);
 	const wip = buckets["in-progress"]?.length ?? 0;
 	const doneAll = buckets.done ?? [];
-	const doneLast10 = doneAll.slice(-10);
+	const doneVisible = visibleDoneTasks(doneAll, options);
+	const doneLast10 = doneVisible.slice(-10);
 	const doneLabel =
-		doneAll.length > doneLast10.length
-			? `last 10 of ${doneAll.length}`
-			: String(doneAll.length);
+		doneVisible.length > doneLast10.length
+			? doneCountLabel(doneLast10.length, doneAll.length, "last")
+			: doneCountLabel(doneVisible.length, doneAll.length);
 
 	return [
 		"# Kanban — Snapshot",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
+		`_Done shows tasks completed in the last ${DEFAULT_DONE_MAX_AGE_DAYS} days by default; pass show_all_done=true to include older completed tasks._`,
 		"",
 		...renderColumn(
 			buckets.backlog ?? [],
