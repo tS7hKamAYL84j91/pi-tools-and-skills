@@ -11,7 +11,7 @@ import { readdirSync, readFileSync, renameSync, rmSync, unlinkSync } from "node:
 import { join } from "node:path";
 import type { AgentRecord } from "../agent-registry.js";
 import { REGISTRY_DIR, ensureRegistryDir } from "../agent-registry.js";
-import { assertPrivateFileForRead, assertPrivateFileTarget, ensurePrivateDirectory, writeNewPrivateFileSync } from "../private-local-mode.js";
+import { assertPrivateFileTarget, ensurePrivateDirectory, ensurePrivateFileForRead, writeNewPrivateFileSync } from "../private-local-mode.js";
 import type { DeliveryResult, InboundMessage, MessageTransport } from "../message-transport.js";
 
 // ── Maildir inbox helpers (private) ────────────────────────────
@@ -46,7 +46,7 @@ function inboxReadNew(
 							filename: f,
 							message: (() => {
 								const messagePath = join(newDir, f);
-								assertPrivateFileForRead(messagePath);
+								ensurePrivateFileForRead(messagePath);
 								return JSON.parse(readFileSync(messagePath, "utf-8")) as InboundMessage;
 							})(),
 						},

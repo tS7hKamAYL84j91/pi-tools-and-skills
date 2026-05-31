@@ -102,6 +102,14 @@ export function assertPrivateFileForRead(path: string): void {
 	if (!audit.ok) throw new Error(audit.error ?? `private file check failed: ${path}`);
 }
 
+export function ensurePrivateFileForRead(path: string): void {
+	assertNoSymlinkPathComponents(dirname(path));
+	const stat = lstatSync(path);
+	if (stat.isSymbolicLink()) throw new Error(`private local file is a symlink: ${path}`);
+	if (!stat.isFile()) throw new Error(`private local path is not a file: ${path}`);
+	chmodSync(path, PRIVATE_FILE_MODE);
+}
+
 export function assertPrivateFileTarget(path: string): void {
 	assertNoSymlinkPathComponents(dirname(path));
 	try {

@@ -9,6 +9,7 @@ import {
 	PRIVATE_FILE_MODE,
 	assertPrivateFileForRead,
 	assertPrivateFileTarget,
+	ensurePrivateFileForRead,
 	auditPrivateDirectory,
 	auditPrivateFile,
 	ensurePrivateDirectory,
@@ -66,6 +67,14 @@ describe("private local IPC path hardening", () => {
 			mode: PRIVATE_FILE_MODE,
 		});
 		expect(() => assertPrivateFileForRead(recordPath)).not.toThrow();
+	});
+
+	it("repairs permissive existing IPC files before reading", () => {
+		const recordPath = join(tmpDir, "legacy-agent.json");
+		closeSync(openSync(recordPath, "w", 0o644));
+
+		expect(() => ensurePrivateFileForRead(recordPath)).not.toThrow();
+		expect(auditPrivateFile(recordPath)).toMatchObject({ ok: true, mode: PRIVATE_FILE_MODE });
 	});
 
 	it("rejects symlinked registry/maildir directories", () => {

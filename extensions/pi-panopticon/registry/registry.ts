@@ -26,7 +26,7 @@ import {
 	runAgentCleanup,
 	reapOrphanedMailboxes,
 } from "../../../lib/agent-registry.js";
-import { assertPrivateFileForRead, assertPrivateFileTarget, writeNewPrivateFileSync } from "../../../lib/private-local-mode.js";
+import { assertPrivateFileTarget, ensurePrivateFileForRead, writeNewPrivateFileSync } from "../../../lib/private-local-mode.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
@@ -163,7 +163,7 @@ export function sortRecords(
  */
 function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 	try {
-		assertPrivateFileForRead(fullPath);
+		ensurePrivateFileForRead(fullPath);
 		const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
 		if (!record.name) {
 			record.name = basename(record.cwd) || record.id.slice(0, 8);
