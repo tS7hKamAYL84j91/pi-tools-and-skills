@@ -141,6 +141,7 @@ flowchart LR
 - Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
 - Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
+- Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
 
 ### Current risks and validation anchors
 

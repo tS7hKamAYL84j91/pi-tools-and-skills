@@ -24,6 +24,7 @@ const IO_LIB_FILES = new Set([
 	"file-lock.ts",
 	"file-persistence.ts",
 	"pi-settings.ts",
+	"private-local-mode.ts",
 	"session-hook-installer-cli.ts",
 	"session-hook-installer.ts",
 	"session-log.ts",

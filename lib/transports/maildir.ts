@@ -7,23 +7,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRecord } from "../agent-registry.js";
-import { REGISTRY_DIR } from "../agent-registry.js";
-import type {
-	DeliveryResult,
-	InboundMessage,
-	MessageTransport,
-} from "../message-transport.js";
+import { REGISTRY_DIR, ensureRegistryDir } from "../agent-registry.js";
+import { assertPrivateFileForRead, assertPrivateFileTarget, ensurePrivateDirectory, setPrivateFileMode } from "../private-local-mode.js";
+import type { DeliveryResult, InboundMessage, MessageTransport } from "../message-transport.js";
 
 // ── Maildir inbox helpers (private) ────────────────────────────
 
@@ -33,9 +22,11 @@ function inboxPaths(agentId: string) {
 }
 
 function ensureInbox(agentId: string): string {
+	ensureRegistryDir();
 	const paths = inboxPaths(agentId);
-	for (const dir of [paths.tmp, paths.new, paths.cur]) {
-		mkdirSync(dir, { recursive: true });
+	const agentDir = join(REGISTRY_DIR, agentId);
+	for (const dir of [agentDir, paths.base, paths.tmp, paths.new, paths.cur]) {
+		ensurePrivateDirectory(dir);
 	}
 	return paths.base;
 }
@@ -53,9 +44,11 @@ function inboxReadNew(
 					return [
 						{
 							filename: f,
-							message: JSON.parse(
-								readFileSync(join(newDir, f), "utf-8"),
-							) as InboundMessage,
+							message: (() => {
+								const messagePath = join(newDir, f);
+								assertPrivateFileForRead(messagePath);
+								return JSON.parse(readFileSync(messagePath, "utf-8")) as InboundMessage;
+							})(),
 						},
 					];
 				} catch {
@@ -113,13 +106,18 @@ function durableWrite(
 		const filename = `${ts}-${uuid}.json`;
 
 		const tmpPath = join(inboxBase, "tmp", filename);
+		assertPrivateFileTarget(tmpPath);
 		writeFileSync(
 			tmpPath,
 			JSON.stringify({ id: uuid, from, text, ts }),
-			"utf-8",
+			{ encoding: "utf-8", mode: 0o600 },
 		);
+		setPrivateFileMode(tmpPath);
 
-		renameSync(tmpPath, join(inboxBase, "new", filename));
+		const newPath = join(inboxBase, "new", filename);
+		assertPrivateFileTarget(newPath);
+		renameSync(tmpPath, newPath);
+		setPrivateFileMode(newPath);
 
 		return { accepted: true, immediate: false, reference: filename };
 	} catch (err) {

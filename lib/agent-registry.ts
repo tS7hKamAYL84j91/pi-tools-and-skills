@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { ensurePrivateDirectory } from "./private-local-mode.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -104,7 +105,8 @@ export function isPidAlive(pid: number): boolean {
 }
 
 export function ensureRegistryDir(): void {
-	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true });
+	if (!existsSync(REGISTRY_DIR)) mkdirSync(REGISTRY_DIR, { recursive: true, mode: 0o700 });
+	ensurePrivateDirectory(REGISTRY_DIR);
 }
 
 /**

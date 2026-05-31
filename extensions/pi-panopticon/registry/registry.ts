@@ -12,6 +12,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	readFileSync,
 	readdirSync,
+	renameSync,
 	rmSync,
 	unlinkSync,
 	writeFileSync,
@@ -26,6 +27,7 @@ import {
 	runAgentCleanup,
 	reapOrphanedMailboxes,
 } from "../../../lib/agent-registry.js";
+import { assertPrivateFileForRead, assertPrivateFileTarget, setPrivateFileMode } from "../../../lib/private-local-mode.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
@@ -162,6 +164,7 @@ export function sortRecords(
  */
 function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 	try {
+		assertPrivateFileForRead(fullPath);
 		const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
 		if (!record.name) {
 			record.name = basename(record.cwd) || record.id.slice(0, 8);
@@ -329,8 +332,14 @@ export default class Registry implements RegistryInterface {
 		try {
 			ensureRegistryDir();
 			const path = join(REGISTRY_DIR, `${this.record.id}.json`);
+			const tmpPath = `${path}.${process.pid}.tmp`;
+			assertPrivateFileTarget(tmpPath);
 			// Heavily justified: called synchronously on agent shutdown to update status to terminated
-			writeFileSync(path, JSON.stringify(this.record, null, 2), "utf-8");
+			writeFileSync(tmpPath, JSON.stringify(this.record, null, 2), { encoding: "utf-8", mode: 0o600 });
+			setPrivateFileMode(tmpPath);
+			assertPrivateFileTarget(path);
+			renameSync(tmpPath, path);
+			setPrivateFileMode(path);
 		} catch {
 			// best-effort
 		}

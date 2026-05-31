@@ -16,6 +16,8 @@ import {
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
+	chmodSync: vi.fn(),
+	lstatSync: vi.fn(() => ({ mode: 0o700, isSymbolicLink: () => false, isDirectory: () => true })),
 	readdirSync: vi.fn(() => []),
 	rmSync: vi.fn(),
 	unlinkSync: vi.fn(),

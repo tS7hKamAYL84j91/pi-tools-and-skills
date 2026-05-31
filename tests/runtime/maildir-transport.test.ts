@@ -16,10 +16,13 @@ import {
 
 vi.mock("../../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
+	ensureRegistryDir: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
 	mkdirSync: vi.fn(),
+	chmodSync: vi.fn(),
+	lstatSync: vi.fn(() => ({ mode: 0o600, isSymbolicLink: () => false, isDirectory: () => true, isFile: () => true })),
 	writeFileSync: vi.fn(),
 	readFileSync: vi.fn(),
 	readdirSync: vi.fn(),
@@ -37,12 +40,10 @@ import type { AgentRecord } from "../../lib/agent-registry.js";
 import type { MessageTransport } from "../../lib/message-transport.js";
 import { createMaildirTransport } from "../../lib/transports/maildir.js";
 
-const mockMkdirSync = nodefs.mkdirSync as MockedFunction<
-	typeof nodefs.mkdirSync
->;
 const mockWriteFileSync = nodefs.writeFileSync as MockedFunction<
 	typeof nodefs.writeFileSync
 >;
+const mockChmodSync = nodefs.chmodSync as MockedFunction<typeof nodefs.chmodSync>;
 // Pin to the string-returning overload to avoid Buffer overload ambiguity
 const mockReadFileSync = nodefs.readFileSync as unknown as MockedFunction<
 	(path: string, enc: BufferEncoding) => string
@@ -98,28 +99,16 @@ describe("send", () => {
 		expect(result.error).toBeDefined();
 	});
 
-	it("writes to correct peer inbox", async () => {
+	it("hardens the correct peer inbox", async () => {
 		await transport.send(PEER, "me", "hello");
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			expect.stringContaining("peer-id"),
-			{ recursive: true },
-		);
+		expect(mockChmodSync).toHaveBeenCalledWith(expect.stringContaining("peer-id"), 0o700);
 	});
 
-	it("creates tmp, new, cur subdirectories via ensureInbox", async () => {
+	it("hardens tmp, new, cur subdirectories via ensureInbox", async () => {
 		await transport.send(PEER, "me", "hello");
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/peer-id/inbox/tmp",
-			{ recursive: true },
-		);
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/peer-id/inbox/new",
-			{ recursive: true },
-		);
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/peer-id/inbox/cur",
-			{ recursive: true },
-		);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/peer-id/inbox/tmp", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/peer-id/inbox/new", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/peer-id/inbox/cur", 0o700);
 	});
 });
 
@@ -228,21 +217,11 @@ describe("prune", () => {
 // ── init ────────────────────────────────────────────────────────
 
 describe("init", () => {
-	it("creates inbox subdirectories via ensureInbox", () => {
+	it("hardens inbox subdirectories via ensureInbox", () => {
 		transport.init("my-id");
-		expect(mockMkdirSync).toHaveBeenCalledTimes(3);
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/my-id/inbox/tmp",
-			{ recursive: true },
-		);
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/my-id/inbox/new",
-			{ recursive: true },
-		);
-		expect(mockMkdirSync).toHaveBeenCalledWith(
-			"/fake/.pi/agents/my-id/inbox/cur",
-			{ recursive: true },
-		);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/tmp", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/new", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/cur", 0o700);
 	});
 });
 
