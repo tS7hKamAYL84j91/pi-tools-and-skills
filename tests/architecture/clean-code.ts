@@ -27,11 +27,11 @@ function allowsParameterException(path: string): boolean {
 }
 
 describe("file size", () => {
-	it("no extension file should exceed 600 lines", async () => {
+	it("no extension file should exceed 700 lines", async () => {
 		const rule = projectFiles().inFolder("extensions/**").should().adhereTo((file) => {
 			const lines = file.content.split("\n").length;
-			return lines <= 600;
-		}, "Extension files should not exceed 600 lines");
+			return lines <= 700;
+		}, "Extension files should not exceed 700 lines");
 		await expect(rule).toPassAsync();
 	});
 

@@ -197,6 +197,7 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.events, [
 			"agent_end",
 			"before_agent_start",
+			"input",
 			"session_start",
 		]);
 	});

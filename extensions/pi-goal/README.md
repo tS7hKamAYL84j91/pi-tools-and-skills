@@ -11,7 +11,7 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 - `/goal file <path> [goal start|--until-complete]` — use an existing project file as the goal source; with `goal start`/`--until-complete`, create `.pi/goal/TODO.md` from the file and start a 20-turn run.
 - `/goal status` — show the current goal state.
 - `/goal run [--turns N|--until-complete]` — continue an active or paused goal.
-- `/goal pause`, `/goal resume`, `/goal stop`, `/goal clear` — manage goal lifecycle. `/goal stop` immediately marks the bounded run idle and unblocks the goal loop so no further automatic turns are scheduled. `/goal clear` removes `.pi/goal/` local state and run artifacts for the current workspace.
+- `/goal pause`, `/goal resume`, `/goal stop`, `/goal clear`, `/goal edit <text>` — manage goal lifecycle. `/goal stop` immediately marks the bounded run idle and unblocks the goal loop so no further automatic turns are scheduled. `/goal clear` removes `.pi/goal/` local state and run artifacts for the current workspace. `/goal edit` updates the objective of an active or paused goal without resetting turn counters.
 
 ### Tools
 

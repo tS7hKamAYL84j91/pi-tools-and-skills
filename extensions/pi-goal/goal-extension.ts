@@ -21,6 +21,8 @@ import {
 
 const DEFAULT_TURNS = 3;
 const UNTIL_COMPLETE_TURNS = 20;
+const CONTINUATION_MARKER_PREFIX = "pi-goal-continuation:";
+const MAX_CANCELLED_MARKERS = 20;
 const GOAL_HELP_COMMANDS = [
 	"/goal help — show this command summary",
 	"/goal status — show the current goal",
@@ -28,9 +30,10 @@ const GOAL_HELP_COMMANDS = [
 	"/goal file <path> [goal start|--until-complete] — create a file-backed goal",
 	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
 	"/goal pause | resume | stop — manage the current goal run",
+	"/goal edit <text> — update the objective of the active goal",
 	"/goal clear — remove .pi/goal/ state and local run artifacts for this workspace",
 ] as const;
-const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "pause", "resume", "clear", "run", "stop"]);
+const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "pause", "resume", "clear", "run", "stop", "edit"]);
 const GOAL_RUNTIME_KEY = Symbol.for("pi-goal.runtime");
 
 export default function goalExtension(pi: ExtensionAPI): void {
@@ -45,10 +48,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		}
 		const stop = runtime.stopRequested ? " stopping" : "";
 		const run = current.runActive ? ` ${current.turnsUsed}/${current.turnBudget}${stop}` : "";
-		
+
 		const phase = current.runActive ? "running" : current.status;
 		const time = current.runStartedAt && current.runActive ? formatElapsed(current.runStartedAt) : formatElapsed(current.createdAt);
-		
+
 		ctx.ui.setStatus("goal", `goal: ${phase} [${time}]${run}`);
 		if (current.status === "active") {
 			ctx.ui.setWidget("goal", compactWidget(current));
@@ -99,26 +102,41 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		while (state.runActive && state.status === "active" && state.turnsUsed < state.turnBudget) {
 			if (runtime.stopRequested) break;
 			const iteration = state.turnsUsed + 1;
-			const prompt = iteration === 1 ? kickoffPrompt(state) : continuationPrompt(state);
+			const rawPrompt = iteration === 1 ? kickoffPrompt(state) : continuationPrompt(state);
+			const markedPrompt = iteration > 1
+				? `${rawPrompt}\n\n${continuationMarkerComment(continuationMarker(state.goalId, iteration))}`
+				: rawPrompt;
+			runtime.pendingMarker = iteration > 1 ? continuationMarker(state.goalId, iteration) : null;
+
 			const agentDone = new Promise<readonly unknown[]>((resolve) => {
 				runtime.resolve = resolve;
 			});
-			activeCtx.ui.setStatus("goal", `goal: active ${state.turnsUsed}/${state.turnBudget} fresh-session`);
-			const result = await activeCtx.newSession({
-				...(originalSession ? { parentSession: originalSession } : {}),
-				withSession: async (replacementCtx) => {
-					activeCtx = replacementCtx;
-					await replacementCtx.sendUserMessage(prompt);
-				},
-			});
-			if (result.cancelled) {
-				runtime.resolve = null;
-				return;
+
+			if (iteration === 1) {
+				activeCtx.ui.setStatus("goal", `goal: active ${state.turnsUsed}/${state.turnBudget} current-session`);
+				await pi.sendUserMessage(markedPrompt);
+			} else {
+				activeCtx.ui.setStatus("goal", `goal: active ${state.turnsUsed}/${state.turnBudget} fresh-session`);
+				const result = await activeCtx.newSession({
+					...(originalSession ? { parentSession: originalSession } : {}),
+					withSession: async (replacementCtx) => {
+						activeCtx = replacementCtx;
+						await replacementCtx.sendUserMessage(markedPrompt);
+					},
+				});
+				if (result.cancelled) {
+					runtime.resolve = null;
+					runtime.pendingMarker = null;
+					return;
+				}
 			}
+
 			const messages = await agentDone;
+			runtime.resolve = null;
+			runtime.pendingMarker = null;
+
 			const latest = await loadGoal(activeCtx.cwd);
 			if (!latest || latest.status !== "active" || !latest.runActive) {
-				runtime.resolve = null;
 				runtime.stopRequested = false;
 				await refreshUi(activeCtx, latest);
 				return;
@@ -127,7 +145,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			await writeGoalIteration(activeCtx.cwd, afterTurn, afterTurn.turnsUsed, messages);
 			if (afterTurn.turnsUsed >= afterTurn.turnBudget || runtime.stopRequested) {
 				const stopped = updateGoal(afterTurn, { runActive: false });
-				runtime.resolve = null;
 				runtime.stopRequested = false;
 				await saveGoal(activeCtx.cwd, stopped);
 				await refreshUi(activeCtx, stopped);
@@ -196,8 +213,32 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
+			if (parsed.action === "edit") {
+				const state = await requireGoal(ctx.cwd);
+				const trimmed = parsed.rest.trim();
+				if (!trimmed) {
+					ctx.ui.notify("Usage: /goal edit <new objective>", "warning");
+					return;
+				}
+				cancelContinuationPending(runtime);
+				const next = updateGoal(state, { objective: trimmed });
+				await saveGoal(ctx.cwd, next);
+				showGoal(next);
+				await refreshUi(ctx, next);
+				ctx.ui.notify("Goal updated.", "info");
+				if (next.status === "active") {
+					try {
+						await pi.sendUserMessage(buildObjectiveUpdatedPrompt(next), { deliverAs: "followUp" });
+					} catch {
+						// Follow-up delivery is best-effort; ignore errors.
+					}
+				}
+				return;
+			}
+
 			if (parsed.action === "pause") {
 				const state = await requireGoal(ctx.cwd);
+				cancelContinuationPending(runtime);
 				runtime.stopRequested = false;
 				const next = updateGoal(state, { status: "paused", runActive: false });
 				await saveGoal(ctx.cwd, next);
@@ -220,6 +261,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			}
 
 			if (parsed.action === "clear") {
+				cancelContinuationPending(runtime);
 				runtime.stopRequested = false;
 				await clearGoal(ctx.cwd);
 				await refreshUi(ctx, null);
@@ -249,6 +291,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("No active goal run is in progress.", "info");
 					return;
 				}
+				cancelContinuationPending(runtime);
 				const stopped = updateGoal(state, { runActive: false });
 				await saveGoal(ctx.cwd, stopped);
 				const resolve = runtime.resolve;
@@ -269,6 +312,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("goal-clear", {
 		description: "Clear the active project-local pi goal",
 		handler: async (_args, ctx) => {
+			cancelContinuationPending(runtime);
 			runtime.stopRequested = false;
 			await clearGoal(ctx.cwd);
 			await refreshUi(ctx, null);
@@ -327,6 +371,13 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		await refreshUi(ctx);
 	});
 
+	pi.on("input", async (event) => {
+		if (event.source !== "extension") return;
+		if (isCancelledContinuation(runtime, event.text)) {
+			return { action: "handled" };
+		}
+	});
+
 	pi.on("before_agent_start", async (_event, ctx) => {
 		const state = await loadGoal(ctx.cwd);
 		if (!state || state.status !== "active") {
@@ -348,6 +399,24 @@ export default function goalExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
+		const finalAssistant = findFinalAssistantMessage(event.messages);
+		if (finalAssistant && (finalAssistant.stopReason === "aborted" || finalAssistant.stopReason === "error")) {
+			const state = await loadGoal(ctx.cwd);
+			if (state && state.status === "active" && state.runActive) {
+				cancelContinuationPending(runtime);
+				const paused = updateGoal(state, { status: "paused", runActive: false });
+				await saveGoal(ctx.cwd, paused);
+				await refreshUi(ctx, paused);
+				ctx.ui.notify("Goal paused after interruption/agent error. Run /goal resume to continue.", "info");
+				if (runtime.resolve) {
+					const resolve = runtime.resolve;
+					runtime.resolve = null;
+					resolve([]);
+				}
+				return;
+			}
+		}
+
 		if (runtime.resolve) {
 			const resolve = runtime.resolve;
 			runtime.resolve = null;
@@ -396,14 +465,69 @@ export default function goalExtension(pi: ExtensionAPI): void {
 interface GoalRuntime {
 	resolve: ((messages: readonly unknown[]) => void) | null;
 	stopRequested: boolean;
+	pendingMarker: string | null;
+	cancelledMarkers: Set<string>;
 }
 
 function getGoalRuntime(): GoalRuntime {
 	const globals = globalThis as Record<symbol, unknown>;
 	if (!globals[GOAL_RUNTIME_KEY]) {
-		globals[GOAL_RUNTIME_KEY] = { resolve: null, stopRequested: false } satisfies GoalRuntime;
+		globals[GOAL_RUNTIME_KEY] = {
+			resolve: null,
+			stopRequested: false,
+			pendingMarker: null,
+			cancelledMarkers: new Set<string>(),
+		} satisfies GoalRuntime;
 	}
 	return globals[GOAL_RUNTIME_KEY] as GoalRuntime;
+}
+
+function continuationMarker(goalId: string, iteration: number): string {
+	return `${goalId}:${iteration}`;
+}
+
+function continuationMarkerComment(marker: string): string {
+	return `<!-- ${CONTINUATION_MARKER_PREFIX}${marker} -->`;
+}
+
+function extractContinuationMarker(prompt: string): string | undefined {
+	const match = prompt.match(/<!--\s*pi-goal-continuation:([^>]+)\s*-->/);
+	return match?.[1]?.trim();
+}
+
+function cancelContinuationPending(runtime: GoalRuntime): void {
+	if (runtime.pendingMarker) {
+		runtime.cancelledMarkers.add(runtime.pendingMarker);
+		while (runtime.cancelledMarkers.size > MAX_CANCELLED_MARKERS) {
+			const first = runtime.cancelledMarkers.values().next().value as string;
+			runtime.cancelledMarkers.delete(first);
+		}
+		runtime.pendingMarker = null;
+	}
+}
+
+function isCancelledContinuation(runtime: GoalRuntime, prompt: string): boolean {
+	const marker = extractContinuationMarker(prompt);
+	return marker !== undefined && runtime.cancelledMarkers.has(marker);
+}
+
+function findFinalAssistantMessage(messages: readonly unknown[]): { role: string; stopReason?: string; errorMessage?: string } | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (!m || typeof m !== "object") continue;
+		const c = m as Record<string, unknown>;
+		if (c.role !== "assistant") continue;
+		return {
+			role: "assistant",
+			stopReason: typeof c.stopReason === "string" ? c.stopReason : undefined,
+			errorMessage: typeof c.errorMessage === "string" ? c.errorMessage : undefined,
+		};
+	}
+	return undefined;
+}
+
+function buildObjectiveUpdatedPrompt(state: GoalState): string {
+	return `The goal objective has been updated:\n\n${state.objective}\n\nContinue working toward the revised objective.`;
 }
 
 function goalStoppedMessage(state: GoalState): string {

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
-import { createTextGoal, saveGoal, startRun } from "../../extensions/pi-goal/state.js";
+import { createTextGoal, saveGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
 
 interface RegisteredCommand {
 	readonly description: string;
@@ -34,13 +34,25 @@ interface FakeCommandContext {
 	waitForIdle(): Promise<void>;
 	readonly sessionManager: { getSessionFile(): string | undefined };
 	newSession(): Promise<{ cancelled: boolean }>;
-	sendUserMessage(message: string): Promise<void>;
+	sendUserMessage(message: string, options?: unknown): Promise<void>;
+	hasPendingMessages(): boolean;
+	isIdle(): boolean;
+}
+
+interface FakeContext {
+	readonly cwd: string;
+	readonly ui: FakeUi;
+	readonly sessionManager: { getSessionFile(): string | undefined };
+	hasPendingMessages(): boolean;
+	isIdle(): boolean;
+	sendUserMessage(message: string, options?: unknown): Promise<void>;
 }
 
 interface FakePi {
 	readonly commands: Map<string, RegisteredCommand>;
 	readonly tools: unknown[];
 	readonly sentMessages: SentMessage[];
+	readonly handlers: Map<string, unknown[]>;
 	registerCommand(name: string, command: RegisteredCommand): void;
 	registerTool(tool: unknown): void;
 	on(eventName: string, handler: unknown): void;
@@ -108,7 +120,10 @@ describe("pi-goal extension", () => {
 	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
-		const ctx = createFakeContext(tempDir);
+		const ctx = createFakeContext(tempDir, pi);
+		pi.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", stopReason: "aborted", content: "" }]);
+		};
 		await writeFile(join(tempDir, "goal.txt"), "Ship the requested file-backed goal flow.", "utf8");
 
 		await runGoalCommand(pi, "file goal.txt goal start", ctx);
@@ -119,7 +134,7 @@ describe("pi-goal extension", () => {
 			sourcePath: string;
 		};
 		const todo = await readFile(join(tempDir, ".pi/goal", "TODO.md"), "utf8");
-		expect(persisted).toMatchObject({ runActive: true, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
+		expect(persisted).toMatchObject({ runActive: false, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
 
@@ -166,6 +181,10 @@ describe("pi-goal extension", () => {
 		ctx.newSession = () => new Promise((resolve) => {
 			resolveNewSession = resolve;
 		});
+		// Mock pi.sendUserMessage to trigger agent_end so iteration 1 completes.
+		pi.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		};
 
 		const runPromise = runGoalCommand(pi, "goal test loop shutdown", ctx);
 		await waitFor(() => resolveNewSession !== undefined);
@@ -174,7 +193,130 @@ describe("pi-goal extension", () => {
 		await runPromise;
 
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
-		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 0 });
+		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 1 });
+	});
+
+	it("/goal edit updates the objective without resetting counters", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = updateGoal(startRun(await createTextGoal(tempDir, "original objective"), 5), { turnsUsed: 2 });
+		await saveGoal(tempDir, state);
+
+		await runGoalCommand(pi, "edit revised objective text", ctx);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
+			objective: string;
+			turnsUsed: number;
+			turnBudget: number;
+		};
+		expect(persisted.objective).toBe("revised objective text");
+		expect(persisted.turnsUsed).toBe(2);
+		expect(persisted.turnBudget).toBe(5);
+		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated.", level: "info" });
+		expect(sentMessageContent(pi)).toContain("revised objective text");
+	});
+
+	it("continuation marker guard swallows cancelled extension input", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir, pi);
+		const state = await createTextGoal(tempDir, "marker test");
+		await saveGoal(tempDir, state);
+
+		// Start a run so a marker gets registered, then pause to cancel it.
+		let resolveNewSession: ((value: { cancelled: boolean }) => void) | undefined;
+		ctx.newSession = () => new Promise((resolve) => {
+			resolveNewSession = resolve;
+		});
+		pi.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		};
+
+		const runPromise = runGoalCommand(pi, "run", ctx);
+		await waitFor(() => resolveNewSession !== undefined);
+		await runGoalCommand(pi, "pause", ctx);
+		resolveNewSession?.({ cancelled: false });
+		await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		await runPromise;
+
+		// Now trigger the input event with the cancelled marker.
+		const result = await triggerInputEvent(pi, "extension", "Continue <!-- pi-goal-continuation:" + state.goalId + ":2 -->");
+		expect(result).toEqual({ action: "handled" });
+
+		// An unrelated extension input should not be handled.
+		const unrelated = await triggerInputEvent(pi, "extension", "Some unrelated prompt");
+		expect(unrelated).toBeUndefined();
+	});
+
+	it("auto-pause on agent_end with stopReason error", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(await createTextGoal(tempDir, "auto pause test"), 5);
+		await saveGoal(tempDir, state);
+
+		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "error", content: "oops" }]);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
+			status: string;
+			runActive: boolean;
+		};
+		expect(persisted.status).toBe("paused");
+		expect(persisted.runActive).toBe(false);
+		expect(ctx.ui.notifications).toContainEqual({
+			message: "Goal paused after interruption/agent error. Run /goal resume to continue.",
+			level: "info",
+		});
+	});
+
+	it("auto-pause on agent_end with stopReason aborted", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(await createTextGoal(tempDir, "auto pause aborted"), 5);
+		await saveGoal(tempDir, state);
+
+		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "aborted", content: "" }]);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
+			status: string;
+			runActive: boolean;
+		};
+		expect(persisted.status).toBe("paused");
+		expect(persisted.runActive).toBe(false);
+	});
+
+	it("first turn of a run uses current session (sendUserMessage), second uses newSession", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir, pi);
+		const state = await createTextGoal(tempDir, "session routing test");
+		await saveGoal(tempDir, state);
+
+		const sendUserMessageCalls: string[] = [];
+		let resolveNewSession: ((value: { cancelled: boolean }) => void) | undefined;
+		pi.sendUserMessage = async (message) => {
+			sendUserMessageCalls.push(message);
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		};
+		ctx.newSession = () =>
+			new Promise((resolve) => {
+				resolveNewSession = resolve;
+			});
+
+		const runPromise = runGoalCommand(pi, "run --turns 2", ctx);
+		await waitFor(() => resolveNewSession !== undefined);
+
+		// Iteration 1 should have used sendUserMessage in the current session.
+		expect(sendUserMessageCalls.length).toBe(1);
+		expect(sendUserMessageCalls[0]).toContain("session routing test");
+		expect(sendUserMessageCalls[0]).not.toContain("pi-goal-continuation:");
+
+		// Resolve iteration 2 so the loop can finish.
+		resolveNewSession?.({ cancelled: false });
+		await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		await runPromise;
 	});
 });
 
@@ -182,17 +324,21 @@ function createFakePi(): FakePi {
 	const commands = new Map<string, RegisteredCommand>();
 	const tools: unknown[] = [];
 	const sentMessages: SentMessage[] = [];
+	const handlers = new Map<string, unknown[]>();
 	return {
 		commands,
 		tools,
 		sentMessages,
+		handlers,
 		registerCommand(name, command) {
 			commands.set(name, command);
 		},
 		registerTool(tool) {
 			tools.push(tool);
 		},
-		on() {},
+		on(eventName, handler) {
+			handlers.set(eventName, [...(handlers.get(eventName) ?? []), handler]);
+		},
 		sendMessage(message, options) {
 			sentMessages.push({ message, options });
 		},
@@ -200,8 +346,8 @@ function createFakePi(): FakePi {
 	};
 }
 
-function createFakeContext(cwd: string): FakeCommandContext {
-	return {
+function createFakeContext(cwd: string, pi?: FakePi): FakeCommandContext {
+	const ctx: FakeCommandContext = {
 		cwd,
 		ui: createFakeUi(),
 		async waitForIdle() {},
@@ -210,7 +356,35 @@ function createFakeContext(cwd: string): FakeCommandContext {
 			return { cancelled: true };
 		},
 		async sendUserMessage() {},
+		hasPendingMessages: () => false,
+		isIdle: () => true,
 	};
+	if (pi) {
+		ctx.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		};
+		ctx.newSession = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+			return { cancelled: false };
+		};
+	}
+	return ctx;
+}
+
+async function triggerInputEvent(pi: FakePi, source: string, text: string): Promise<unknown> {
+	const eventHandlers = pi.handlers.get("input") ?? [];
+	for (const handler of eventHandlers) {
+		const result = await (handler as (event: { source: string; text: string }) => Promise<unknown> | unknown)({ source, text });
+		if (result !== undefined) return result;
+	}
+	return undefined;
+}
+
+async function triggerAgentEndEvent(pi: FakePi, ctx: FakeContext, messages: unknown[]): Promise<void> {
+	const eventHandlers = pi.handlers.get("agent_end") ?? [];
+	for (const handler of eventHandlers) {
+		await (handler as (event: { messages: unknown[] }, ctx: FakeContext) => Promise<void>)({ messages }, ctx);
+	}
 }
 
 function createFakeUi(): FakeUi {
