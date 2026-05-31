@@ -16,9 +16,12 @@ vi.mock("../../lib/agent-registry.js", async (importOriginal) => {
 });
 
 vi.mock("node:fs", () => ({
+	constants: { O_WRONLY: 1, O_CREAT: 64, O_EXCL: 128, O_NOFOLLOW: 131072 },
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
 	chmodSync: vi.fn(),
+	closeSync: vi.fn(),
+	openSync: vi.fn(() => 1),
 	lstatSync: vi.fn(() => ({ mode: 0o600, isSymbolicLink: () => false, isDirectory: () => true, isFile: () => true })),
 	readdirSync: vi.fn(() => []),
 	readFileSync: vi.fn(),

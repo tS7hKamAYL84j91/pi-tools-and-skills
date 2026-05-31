@@ -15,7 +15,6 @@ import {
 	renameSync,
 	rmSync,
 	unlinkSync,
-	writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
 import type { AgentNameSource, AgentRecord, AgentStatus } from "../../../lib/agent-registry.js";
@@ -27,7 +26,7 @@ import {
 	runAgentCleanup,
 	reapOrphanedMailboxes,
 } from "../../../lib/agent-registry.js";
-import { assertPrivateFileForRead, assertPrivateFileTarget, setPrivateFileMode } from "../../../lib/private-local-mode.js";
+import { assertPrivateFileForRead, assertPrivateFileTarget, writeNewPrivateFileSync } from "../../../lib/private-local-mode.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
@@ -334,12 +333,10 @@ export default class Registry implements RegistryInterface {
 			const path = join(REGISTRY_DIR, `${this.record.id}.json`);
 			const tmpPath = `${path}.${process.pid}.tmp`;
 			assertPrivateFileTarget(tmpPath);
-			// Heavily justified: called synchronously on agent shutdown to update status to terminated
-			writeFileSync(tmpPath, JSON.stringify(this.record, null, 2), { encoding: "utf-8", mode: 0o600 });
-			setPrivateFileMode(tmpPath);
+			// Heavily justified: called synchronously on agent shutdown to update status to terminated.
+			writeNewPrivateFileSync(tmpPath, JSON.stringify(this.record, null, 2));
 			assertPrivateFileTarget(path);
 			renameSync(tmpPath, path);
-			setPrivateFileMode(path);
 		} catch {
 			// best-effort
 		}

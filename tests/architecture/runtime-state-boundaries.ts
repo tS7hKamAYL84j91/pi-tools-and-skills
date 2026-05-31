@@ -88,6 +88,10 @@ const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
 		reason: "Synchronous process registry lifecycle code.",
 	},
 	{
+		path: "lib/private-local-mode.ts",
+		reason: "Private local hardening owns the sync O_NOFOLLOW file creation helper.",
+	},
+	{
 		path: "lib/session-hook-installer.ts",
 		reason: "Hook installer write migration remains a later AFR-002 slice.",
 	},

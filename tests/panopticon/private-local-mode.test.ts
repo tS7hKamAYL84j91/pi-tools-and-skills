@@ -13,6 +13,7 @@ import {
 	auditPrivateFile,
 	ensurePrivateDirectory,
 	setPrivateFileMode,
+	writeNewPrivateFileSync,
 } from "../../lib/private-local-mode.js";
 
 describe("private local IPC path hardening", () => {
@@ -80,6 +81,16 @@ describe("private local IPC path hardening", () => {
 		expect(() => ensurePrivateDirectory(link)).toThrow(/symlink/);
 	});
 
+	it("rejects symlinked parent IPC path components", () => {
+		const target = join(tmpDir, "target");
+		const link = join(tmpDir, "pi-link");
+		ensurePrivateDirectory(target);
+		symlinkSync(target, link, "dir");
+
+		expect(() => ensurePrivateDirectory(join(link, "agents"))).toThrow(/symlink/);
+		expect(() => assertPrivateFileTarget(join(link, "agents", "agent.json"))).toThrow(/symlink/);
+	});
+
 	it("rejects symlinked registry/message files", () => {
 		const target = join(tmpDir, "target.json");
 		const link = join(tmpDir, "agent.json");
@@ -92,6 +103,19 @@ describe("private local IPC path hardening", () => {
 		});
 		expect(() => assertPrivateFileForRead(link)).toThrow(/symlink/);
 		expect(() => assertPrivateFileTarget(link)).toThrow(/symlink/);
+	});
+
+	it("writes new private files without following final symlink targets", () => {
+		const recordPath = join(tmpDir, "agent.json");
+		const target = join(tmpDir, "target.json");
+		const link = join(tmpDir, "link.json");
+		closeSync(openSync(target, "w", 0o600));
+		symlinkSync(target, link);
+
+		writeNewPrivateFileSync(recordPath, "{}");
+
+		expect(auditPrivateFile(recordPath)).toMatchObject({ ok: true, mode: PRIVATE_FILE_MODE });
+		expect(() => writeNewPrivateFileSync(link, "{}")).toThrow(/symlink|EEXIST/);
 	});
 
 	it("allows missing private file targets but rejects existing symlink targets before write", () => {

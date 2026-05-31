@@ -7,11 +7,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRecord } from "../agent-registry.js";
 import { REGISTRY_DIR, ensureRegistryDir } from "../agent-registry.js";
-import { assertPrivateFileForRead, assertPrivateFileTarget, ensurePrivateDirectory, setPrivateFileMode } from "../private-local-mode.js";
+import { assertPrivateFileForRead, assertPrivateFileTarget, ensurePrivateDirectory, writeNewPrivateFileSync } from "../private-local-mode.js";
 import type { DeliveryResult, InboundMessage, MessageTransport } from "../message-transport.js";
 
 // ── Maildir inbox helpers (private) ────────────────────────────
@@ -107,17 +107,11 @@ function durableWrite(
 
 		const tmpPath = join(inboxBase, "tmp", filename);
 		assertPrivateFileTarget(tmpPath);
-		writeFileSync(
-			tmpPath,
-			JSON.stringify({ id: uuid, from, text, ts }),
-			{ encoding: "utf-8", mode: 0o600 },
-		);
-		setPrivateFileMode(tmpPath);
+		writeNewPrivateFileSync(tmpPath, JSON.stringify({ id: uuid, from, text, ts }));
 
 		const newPath = join(inboxBase, "new", filename);
 		assertPrivateFileTarget(newPath);
 		renameSync(tmpPath, newPath);
-		setPrivateFileMode(newPath);
 
 		return { accepted: true, immediate: false, reference: filename };
 	} catch (err) {
