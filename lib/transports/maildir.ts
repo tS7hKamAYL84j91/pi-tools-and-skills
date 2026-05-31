@@ -16,7 +16,14 @@ import type { DeliveryResult, InboundMessage, MessageTransport } from "../messag
 
 // ── Maildir inbox helpers (private) ────────────────────────────
 
+function assertSafeAgentId(agentId: string): void {
+	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(agentId)) {
+		throw new Error(`invalid agent id for Maildir path: ${agentId || "(empty)"}`);
+	}
+}
+
 function inboxPaths(agentId: string) {
+	assertSafeAgentId(agentId);
 	const base = join(REGISTRY_DIR, agentId, "inbox");
 	return { base, tmp: join(base, "tmp"), new: join(base, "new"), cur: join(base, "cur") };
 }
@@ -63,8 +70,8 @@ function inboxReadNew(
 }
 
 function inboxAcknowledge(agentId: string, filename: string): void {
-	const paths = inboxPaths(agentId);
 	try {
+		const paths = inboxPaths(agentId);
 		renameSync(
 			join(paths.new, filename),
 			join(paths.cur, filename),
@@ -161,6 +168,7 @@ class MaildirTransport implements MessageTransport {
 
 	cleanup(agentId: string): void {
 		try {
+			assertSafeAgentId(agentId);
 			rmSync(join(REGISTRY_DIR, agentId), {
 				recursive: true,
 				force: true,

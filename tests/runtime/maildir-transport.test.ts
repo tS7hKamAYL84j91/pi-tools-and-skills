@@ -102,6 +102,21 @@ describe("send", () => {
 		expect(result.error).toBeDefined();
 	});
 
+	it("rejects empty peer ids instead of creating a root inbox", async () => {
+		const result = await transport.send({ ...PEER, id: "" }, "me", "hello");
+
+		expect(result.accepted).toBe(false);
+		expect(result.error).toContain("invalid agent id");
+		expect(mockChmodSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox", 0o700);
+	});
+
+	it("rejects path-like peer ids", async () => {
+		const result = await transport.send({ ...PEER, id: "../evil" }, "me", "hello");
+
+		expect(result.accepted).toBe(false);
+		expect(result.error).toContain("invalid agent id");
+	});
+
 	it("hardens the correct peer inbox", async () => {
 		await transport.send(PEER, "me", "hello");
 		expect(mockChmodSync).toHaveBeenCalledWith(expect.stringContaining("peer-id"), 0o700);
@@ -120,6 +135,11 @@ describe("send", () => {
 describe("receive", () => {
 	it("returns empty when no messages", () => {
 		expect(transport.receive("my-id")).toEqual([]);
+	});
+
+	it("rejects empty ids before reading a root inbox", () => {
+		expect(transport.receive("")).toEqual([]);
+		expect(mockReaddirSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox/new");
 	});
 
 	it("reads from the correct inbox/new directory", () => {
@@ -169,6 +189,11 @@ describe("receive", () => {
 // ── ack ──────────────────────────────────────────────────────────
 
 describe("ack", () => {
+	it("ignores empty ids before acknowledging a root inbox", () => {
+		transport.ack("", "001.json");
+		expect(mockRenameSync).not.toHaveBeenCalled();
+	});
+
 	it("renames file from new/ to cur/ via inboxAcknowledge", () => {
 		transport.ack("my-id", "001.json");
 		expect(mockRenameSync).toHaveBeenCalledWith(
@@ -220,6 +245,11 @@ describe("prune", () => {
 // ── init ────────────────────────────────────────────────────────
 
 describe("init", () => {
+	it("rejects empty ids before creating a root inbox", () => {
+		expect(() => transport.init("")).toThrow(/invalid agent id/);
+		expect(mockChmodSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox", 0o700);
+	});
+
 	it("hardens inbox subdirectories via ensureInbox", () => {
 		transport.init("my-id");
 		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/tmp", 0o700);
@@ -234,6 +264,11 @@ describe("pendingCount", () => {
 	it("returns 0 when no messages", () => {
 		mockReaddirSync.mockReturnValue([]);
 		expect(transport.pendingCount("my-id")).toBe(0);
+	});
+
+	it("returns 0 for empty ids without reading a root inbox", () => {
+		expect(transport.pendingCount("")).toBe(0);
+		expect(mockReaddirSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox/new");
 	});
 
 	it("counts .json files in new/ directory", () => {
@@ -265,6 +300,11 @@ describe("pendingCount", () => {
 // ── cleanup ──────────────────────────────────────────────────────
 
 describe("cleanup", () => {
+	it("ignores empty ids before removing the registry root", () => {
+		transport.cleanup("");
+		expect(mockRmSync).not.toHaveBeenCalled();
+	});
+
 	it("calls rmSync on the agent's entire directory", () => {
 		transport.cleanup("my-id");
 		expect(mockRmSync).toHaveBeenCalledWith(
