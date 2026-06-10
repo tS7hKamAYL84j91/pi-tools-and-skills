@@ -53,7 +53,7 @@ Validation:
 - Bounded touched-file secret scan passed.
 
 Review disposition:
-- Navigator run `team-mq8le2rk-81b8643b` completed for T-666 focused API/scope review; no blocking follow-up was delivered before commit prep.
+- Navigator run `team-mq8le2rk-81b8643b` approved the MVP. Follow-up patch added duplicate tool-name namespace diagnostics/tests per review note.
 
 ## T-672 evidence
 

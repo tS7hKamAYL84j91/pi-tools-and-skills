@@ -52,8 +52,8 @@ describe("runDoctor", () => {
 	it("reports missing manifests and command namespace collisions", async () => {
 		const cwd = await makeWorkspace();
 		writeFileSync(join(cwd, "extensions", "pi-doctor", "package.json"), JSON.stringify({ name: "wrong", type: "commonjs" }));
-		writeFileSync(join(cwd, "extensions", "pi-doctor", "index.ts"), "pi.registerCommand(\"reload\", {});\npi.registerCommand(\"shared\", {});\n");
-		writeFileSync(join(cwd, "extensions", "pi-bionic", "index.ts"), "pi.registerCommand(\"shared\", {});\n");
+		writeFileSync(join(cwd, "extensions", "pi-doctor", "index.ts"), "pi.registerCommand(\"reload\", {});\npi.registerCommand(\"shared\", {});\npi.registerTool({ name: \"shared_tool\" });\n");
+		writeFileSync(join(cwd, "extensions", "pi-bionic", "index.ts"), "pi.registerCommand(\"shared\", {});\npi.registerTool({ name: \"shared_tool\" });\n");
 
 		const report = runDoctor(cwd);
 		const text = formatDoctorReport(report);
@@ -63,5 +63,6 @@ describe("runDoctor", () => {
 		expect(text).toContain("manifest name must be pi-doctor");
 		expect(text).toContain("/reload collides");
 		expect(text).toContain("/shared is registered by both");
+		expect(text).toContain("shared_tool tool is registered by both");
 	});
 });

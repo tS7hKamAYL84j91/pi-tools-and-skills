@@ -36,6 +36,7 @@ const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-kanban",
 const REQUIRED_ROOT_SCRIPTS = ["check:namespace", "typecheck", "lint", "knip", "type-coverage", "check", "test"];
 const RESERVED_COMMANDS = new Set(["settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys", "fork", "clone", "tree", "login", "logout", "new", "compact", "resume", "reload", "quit"]);
 const COMMAND_PATTERN = /\.registerCommand\(\s*["']([^"']+)["']/g;
+const TOOL_PATTERN = /\.registerTool\(\s*\{[\s\S]*?\bname:\s*["']([^"']+)["']/g;
 
 function readJson(path: string): unknown {
 	return JSON.parse(readFileSync(path, "utf8"));
@@ -87,30 +88,37 @@ function checkRootPackage(cwd: string): DoctorFinding[] {
 	}
 }
 
-function collectCommands(cwd: string): DoctorFinding[] {
+function collectNamespaceFindings(cwd: string): DoctorFinding[] {
 	const findings: DoctorFinding[] = [];
-	const seen = new Map<string, string>();
+	const seenCommands = new Map<string, string>();
+	const seenTools = new Map<string, string>();
 	for (const name of EXTENSIONS) {
 		const indexPath = join(cwd, "extensions", name, "index.ts");
 		if (!existsSync(indexPath)) continue;
 		const text = readFileSync(indexPath, "utf8");
+		const path = relative(cwd, indexPath);
 		for (const match of text.matchAll(COMMAND_PATTERN)) {
 			const command = match[1] ?? "";
-			const path = relative(cwd, indexPath);
 			if (RESERVED_COMMANDS.has(command)) findings.push(finding("error", "command-namespace", `/${command} collides with a built-in pi command.`, path));
-			const previous = seen.get(command);
+			const previous = seenCommands.get(command);
 			if (previous) findings.push(finding("error", "command-namespace", `/${command} is registered by both ${previous} and ${path}.`, path));
-			seen.set(command, path);
+			seenCommands.set(command, path);
+		}
+		for (const match of text.matchAll(TOOL_PATTERN)) {
+			const tool = match[1] ?? "";
+			const previous = seenTools.get(tool);
+			if (previous) findings.push(finding("error", "tool-namespace", `${tool} tool is registered by both ${previous} and ${path}.`, path));
+			seenTools.set(tool, path);
 		}
 	}
-	return findings.length > 0 ? findings : [finding("ok", "command-namespace", `No duplicate or reserved slash commands found across ${seen.size} commands.`)];
+	return findings.length > 0 ? findings : [finding("ok", "namespace", `No duplicate or reserved slash commands found across ${seenCommands.size} commands; no duplicate tool names found across ${seenTools.size} tools.`)];
 }
 
 export function runDoctor(cwd: string): DoctorReport {
 	const findings = [
 		...checkRootPackage(cwd),
 		...EXTENSIONS.flatMap((name) => checkExtensionPackage(cwd, name)),
-		...collectCommands(cwd),
+		...collectNamespaceFindings(cwd),
 	];
 	const summary = {
 		ok: findings.filter((item) => item.severity === "ok").length,

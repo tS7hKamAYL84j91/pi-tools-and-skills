@@ -13,6 +13,7 @@ Read-only diagnostics for this `pi-tools-and-skills` workspace.
 - Shipped extension package manifests have the expected `name`, `type`, `main`, and `pi.extensions` shape.
 - Shipped extension entrypoints exist.
 - Slash commands do not duplicate each other or collide with current built-in pi command names.
+- Tool names do not duplicate each other across shipped extension entrypoints.
 
 ## What this does NOT do
 
