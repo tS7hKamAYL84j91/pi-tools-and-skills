@@ -55,7 +55,7 @@ describe("destructive confirmation overlay", () => {
 
 		const body = lines.join("\n");
 		expect(body).toContain("Confirm destructive action");
-		expect(body).toContain("y confirm · esc/n cancel");
+		expect(body).toContain("[y] confirm · [esc/n] cancel");
 		expectWidthBounded(lines, width);
 	});
 

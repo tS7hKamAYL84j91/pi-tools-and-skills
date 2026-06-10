@@ -48,7 +48,7 @@ export function renderDestructiveConfirmationOverlay(
 	for (const detail of view.details ?? []) {
 		container.addChild(new Text(theme.fg("dim", boundedLine(detail, width)), 1, 0));
 	}
-	container.addChild(new Text(theme.fg("dim", boundedLine("y confirm · esc/n cancel", width)), 1, 0));
+	container.addChild(new Text(theme.fg("dim", boundedLine("[y] confirm · [esc/n] cancel", width)), 1, 0));
 	container.addChild(border());
 	return container.render(width);
 }

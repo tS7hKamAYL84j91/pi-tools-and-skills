@@ -32,6 +32,29 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-671 evidence
+
+Slice: TUI/accessibility keyboard cue consistency for destructive confirmations.
+
+Artifacts:
+- `lib/tui-confirmation.ts`
+- `extensions/pi-panopticon/teams/team-overlay.ts`
+- `tests/runtime/tui-confirmation.test.ts`
+- `tests/kanban/pi-kanban-overlay-render.test.ts`
+- `tests/kanban/pi-kanban-snapshot-render.test.ts`
+- `tests/architecture/ux-tools-policy.ts`
+
+Validation:
+- `npm test -- tests/runtime/tui-confirmation.test.ts tests/kanban/pi-kanban-overlay-render.test.ts tests/kanban/pi-kanban-snapshot-render.test.ts tests/architecture.test.ts` passed.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 87 files, 751 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review/tui-design disposition:
+- TUI design disposition: non-colour keyboard affordance improvement only; bracketed key labels make confirm/cancel actions visible without relying on color.
+- Navigator run `team-mq8n8kbr-0d55e682` completed before commit prep with no blocking follow-up observed.
+
 ## T-670 evidence
 
 Slice: CoAS scheduler read-only preview helper.

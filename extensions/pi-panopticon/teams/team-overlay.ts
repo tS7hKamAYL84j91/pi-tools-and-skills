@@ -105,7 +105,7 @@ export function renderTeamBrowserOverlay(args: RenderTeamBrowserArgs): string[] 
 	container.addChild(new Text(args.theme.fg("accent", args.theme.bold(args.detailLines ? " Team Detail" : " Teams")), 1, 0));
 	if (args.deletingId) {
 		container.addChild(new Text(`Delete team "${args.deletingId}"?`, 1, 0));
-		container.addChild(new Text(args.theme.fg("dim", " y confirm · esc/n cancel"), 1, 0));
+		container.addChild(new Text(args.theme.fg("dim", " [y] confirm · [esc/n] cancel"), 1, 0));
 	} else if (args.detailLines) {
 		for (const line of readOnlyDetailLines(args.detailLines)) {
 			container.addChild(new Text(line, 1, 0));

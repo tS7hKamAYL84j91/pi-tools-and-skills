@@ -301,7 +301,7 @@ describe("overlay modal renderers", () => {
 		const move = renderMovePicker(task, 80, fakeTheme).join("\n");
 
 		expect(confirm).toContain("Delete Task?");
-		expect(confirm).toContain("y confirm · esc/n cancel");
+		expect(confirm).toContain("[y] confirm · [esc/n] cancel");
 		expect(move).toContain("Move Task");
 		expect(move).toContain("[2] todo (current)");
 	});

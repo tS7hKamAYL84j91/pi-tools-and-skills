@@ -51,7 +51,7 @@ describe("pi-kanban overlay renderers", () => {
 
 		expect(body).toContain("Delete Task?");
 		expect(body).toContain("T-001");
-		expect(body).toContain("y confirm · esc/n cancel");
+		expect(body).toContain("[y] confirm · [esc/n] cancel");
 		expectWidthBounded(lines, width);
 	});
 });

@@ -62,8 +62,8 @@ describe("UX and tools policy", () => {
 		const violations: string[] = [];
 		for (const file of sourceFiles()) {
 			const content = readFileSync(file, "utf8");
-			for (const footer of stringLiteralMatches(content, /["']([^"']*y confirm[^"']*)["']/g)) {
-				if (!footer.includes("esc/n cancel")) {
+			for (const footer of stringLiteralMatches(content, /["']([^"']*confirm[^"']*cancel[^"']*)["']/g)) {
+				if (!footer.includes("[y] confirm") || !footer.includes("[esc/n] cancel")) {
 					violations.push(`${relative(process.cwd(), file)} uses ${footer}`);
 				}
 			}
