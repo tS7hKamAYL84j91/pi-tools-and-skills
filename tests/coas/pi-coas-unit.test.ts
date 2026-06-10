@@ -6,7 +6,7 @@ import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../.
 import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
-import { addSchedule, validateCronExpr, formatScheduleList } from "../../extensions/pi-coas/schedules.js";
+import { addSchedule, validateCronExpr, formatScheduleList, renderInternalSchedulePlan } from "../../extensions/pi-coas/schedules.js";
 import { ok, fail } from "../../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
 
@@ -332,6 +332,28 @@ describe("schedules", () => {
 					cron: "99 9 * * 1",
 					prompt: "Do work.",
 				})).rejects.toThrow(/minute field is invalid/);
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("renderInternalSchedulePlan", () => {
+		it("previews enabled schedules without prompt text", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-preview-${process.pid}-${Date.now()}`);
+			try {
+				await addSchedule({ coasHome }, {
+					room: "general",
+					name: "Daily Check",
+					cron: "0 9 * * 1",
+					prompt: "private prompt sentinel",
+				});
+
+				const result = await renderInternalSchedulePlan({ coasHome });
+
+				expect(result.code).toBe(0);
+				expect(result.stdout).toContain("0 9 * * 1 daily-check -> pi internal scheduler");
+				expect(result.stdout).not.toContain("private prompt sentinel");
 			} finally {
 				await rm(coasHome, { recursive: true, force: true });
 			}

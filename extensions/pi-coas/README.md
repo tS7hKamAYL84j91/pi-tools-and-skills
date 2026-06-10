@@ -25,6 +25,7 @@ CoAS rather than `pi-kanban`.
 | `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md` |
 | `coas_workspace_create` | Create a workspace record without Matrix room creation |
 | `coas_schedule_list` | List file-backed schedules |
+| `coas_schedule_preview` | Read-only preview of enabled internal scheduler plan lines |
 | `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler |
 | `coas_schedule_run` | Dry-run a schedule; enabled schedules run through the internal scheduler |
 | `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler |

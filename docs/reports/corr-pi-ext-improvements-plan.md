@@ -32,6 +32,28 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-670 evidence
+
+Slice: CoAS scheduler read-only preview helper.
+
+Artifacts:
+- `extensions/pi-coas/tools.ts`
+- `tests/coas/pi-coas-unit.test.ts`
+- `extensions/pi-coas/README.md`
+- `tests/shared/extension-registration.test.ts`
+
+Validation:
+- `npm test -- tests/coas/pi-coas-unit.test.ts tests/shared/extension-registration.test.ts` passed.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 87 files, 751 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review/ADR disposition:
+- Navigator run `team-mq8mvzhy-f600a176` completed before commit prep with no blocking follow-up observed.
+- ADR disposition: no new ADR planned; additive read-only tool over existing scheduler plan renderer, no runtime/storage semantics change.
+- Privacy/workflow disposition: preview includes cron/task ids only and omits schedule prompt text; does not queue runs or write logs.
+
 ## T-669 evidence
 
 Slice: read-only kanban JSON export helper.

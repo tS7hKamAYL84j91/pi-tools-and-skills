@@ -163,6 +163,7 @@ describe("extension registration smoke tests", () => {
 			"coas_doctor",
 			"coas_schedule_add",
 			"coas_schedule_list",
+			"coas_schedule_preview",
 			"coas_schedule_remove",
 			"coas_schedule_run",
 			"coas_status",

@@ -8,7 +8,7 @@ import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary } from "./format.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
-import { addSchedule, formatScheduleList, listSchedules, removeSchedule, runSchedule } from "./schedules.js";
+import { addSchedule, formatScheduleList, listSchedules, removeSchedule, renderInternalSchedulePlan, runSchedule } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import {
 	appendWorkspaceContext,
@@ -141,6 +141,22 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 			try {
 				const schedules = await listSchedules(configFor(ctx));
 				return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules, scheduler: scheduler.snapshot() });
+			} catch (error) {
+				return fail((error as Error).message);
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "coas_schedule_preview",
+		label: "CoAS Schedule Preview",
+		description: "Read-only preview of enabled CoAS schedules as internal scheduler plan lines. Does not queue runs or write logs.",
+		promptSnippet: "Preview enabled CoAS schedules without running them",
+		parameters: Type.Object({}),
+		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+			try {
+				const result = await renderInternalSchedulePlan(configFor(ctx));
+				return ok(commandSummary("coas-schedule preview", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
 			}
