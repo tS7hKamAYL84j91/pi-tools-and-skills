@@ -176,7 +176,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  Core[Core contracts and pure helpers\nagent names, manifests, tool results, TUI render helpers]
+  Core[Core contracts and pure helpers\nagent names, manifests, redaction, tool results, TUI render helpers]
   Runtime[Runtime/session helpers\nsession source, spool, hooks, agent API]
   Transport[Transport adapters\nmaildir, spawn service]
   Extensions[Extensions]
@@ -194,8 +194,9 @@ flowchart TD
 - Core `lib/` files expose contracts and pure formatting/render helpers; they
   must not import Node filesystem, OS, or process-spawning APIs.
   Current core files: `agent-names.ts`, `completion-signal.ts`,
-  `message-transport.ts`, `oracle-judge.ts`, `task-brief.ts`, `tool-result.ts`,
-  `tui-confirmation.ts`, and `tui-overflow.ts`.
+  `message-transport.ts`, `oracle-judge.ts`, `secret-redaction.ts`,
+  `task-brief.ts`, `tool-result.ts`, `tui-confirmation.ts`, and
+  `tui-overflow.ts`.
 - IO/runtime `lib/` files own shared filesystem, process, settings, session,
   spawn, and agent-registry behavior. Current IO/runtime files: `agent-api.ts`,
   `agent-registry.ts`, `file-persistence.ts`, `pi-settings.ts`,

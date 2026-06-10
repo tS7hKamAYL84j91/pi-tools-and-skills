@@ -7,6 +7,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 
+import { redactSecrets, redactedJsonPreview } from "./secret-redaction.js";
+
 // ── Types ───────────────────────────────────────────────────────
 
 /** @public */
@@ -41,14 +43,14 @@ export function readSessionLog(sessionFile: string, count: number): SessionEvent
 							if (!block || typeof block !== "object") continue;
 							const b = block as { type?: string; name?: string; text?: string; input?: unknown; content?: unknown[]; isError?: boolean; id?: string; tool_use_id?: string };
 							if (b.type === "text" && b.text) {
-								events.push({ ts, event: "message", role, text: b.text.slice(0, 100) });
+								events.push({ ts, event: "message", role, text: redactSecrets(b.text).slice(0, 100) });
 							} else if (b.type === "toolCall" || b.type === "tool_use") {
-								const argsPreview = b.input ? JSON.stringify(b.input).slice(0, 100) : "";
+								const argsPreview = b.input ? redactedJsonPreview(b.input, 100) : "";
 								events.push({ ts, event: "tool_call", tool: b.name, args: argsPreview, id: b.id });
 							} else if (b.type === "toolResult" || b.type === "tool_result") {
 								const inner = b.content as Array<{ type: string; text?: string }> | undefined;
 								const summary = inner
-									? inner.map((c) => c.type === "text" ? c.text ?? "" : `[${c.type}]`).join(" ").slice(0, 100)
+									? redactSecrets(inner.map((c) => c.type === "text" ? c.text ?? "" : `[${c.type}]`).join(" ")).slice(0, 100)
 									: "";
 								events.push({ ts, event: "tool_result", tool: b.name, summary, isError: b.isError, id: b.id });
 							}

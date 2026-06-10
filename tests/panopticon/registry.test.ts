@@ -2,6 +2,10 @@
  * Characterisation tests for pi-panopticon pure functions.
  * These lock in existing behaviour before refactoring.
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, it, expect } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import {
@@ -221,6 +225,34 @@ describe("readSessionLog", () => {
 	it("returns empty array for non-existent file", () => {
 		const events = readSessionLog("/tmp/nonexistent-session-file.jsonl", 50);
 		expect(events).toEqual([]);
+	});
+
+	it("redacts secret-shaped message and tool previews", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pi-session-log-"));
+		try {
+			const file = join(dir, "session.jsonl");
+			const apiKeyValue = "example-secret-value";
+			const tokenValue = "example-token-value";
+			const bearerValue = "example-bearer-value";
+			writeFileSync(file, `${JSON.stringify({
+				message: {
+					role: "assistant",
+					timestamp: new Date("2025-01-01T00:00:00Z").getTime(),
+					content: [
+						{ type: "text", text: `api_key=${apiKeyValue}` },
+						{ type: "tool_use", name: "bash", input: { command: `echo token=${tokenValue}` } },
+						{ type: "tool_result", name: "bash", content: [{ type: "text", text: `Authorization: Bearer ${bearerValue}` }] },
+					],
+				},
+			})}\n`);
+			const formatted = formatSessionLog(readSessionLog(file, 10));
+			expect(formatted).toContain("[REDACTED]");
+			expect(formatted).not.toContain(apiKeyValue);
+			expect(formatted).not.toContain(tokenValue);
+			expect(formatted).not.toContain(bearerValue);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 // ── sortRecords ──────────────────────────────────────────────────
