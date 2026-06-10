@@ -6,7 +6,7 @@ import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../.
 import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
-import { validateCronExpr, formatScheduleList } from "../../extensions/pi-coas/schedules.js";
+import { addSchedule, validateCronExpr, formatScheduleList } from "../../extensions/pi-coas/schedules.js";
 import { ok, fail } from "../../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
 
@@ -195,6 +195,26 @@ describe("schedules", () => {
 		it("rejects expressions with more than five fields", () => {
 			expect(() => validateCronExpr("0 9 * * 1 extra")).toThrow(/five fields/);
 		});
+
+		it("rejects out-of-range minute fields", () => {
+			expect(() => validateCronExpr("99 9 * * 1")).toThrow(/minute field is invalid/);
+		});
+
+		it("rejects out-of-range hour fields", () => {
+			expect(() => validateCronExpr("0 24 * * 1")).toThrow(/hour field is invalid/);
+		});
+
+		it("rejects out-of-range day-of-month fields", () => {
+			expect(() => validateCronExpr("0 9 32 * 1")).toThrow(/day-of-month field is invalid/);
+		});
+
+		it("rejects out-of-range month fields", () => {
+			expect(() => validateCronExpr("0 9 * 13 1")).toThrow(/month field is invalid/);
+		});
+
+		it("rejects out-of-range day-of-week fields", () => {
+			expect(() => validateCronExpr("0 9 * * 8")).toThrow(/day-of-week field is invalid/);
+		});
 	});
 
 	describe("internal scheduler helpers", () => {
@@ -294,8 +314,24 @@ describe("schedules", () => {
 				await scheduler.reconcile({ coasHome });
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
 
-				expect(scheduler.snapshot().lastError).toContain("invalid schedule bad");
+				expect(scheduler.snapshot().lastError).toContain("schedule bad");
 				expect(scheduler.snapshot().lastError).toContain("minute field is invalid");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("addSchedule", () => {
+		it("rejects invalid cron fields before writing schedule files", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-invalid-add-${process.pid}-${Date.now()}`);
+			try {
+				await expect(addSchedule({ coasHome }, {
+					room: "general",
+					name: "Bad Schedule",
+					cron: "99 9 * * 1",
+					prompt: "Do work.",
+				})).rejects.toThrow(/minute field is invalid/);
 			} finally {
 				await rm(coasHome, { recursive: true, force: true });
 			}

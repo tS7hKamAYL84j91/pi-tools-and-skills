@@ -12,76 +12,31 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { appendLogLine } from "../../lib/file-persistence.js";
 import { isoUtc, scheduleLogRoot } from "./store.js";
-import { listSchedules } from "./schedules.js";
+import { cronExpressionError, cronFieldMatches, listSchedules } from "./schedules.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
 
 const TICK_MS = 60_000;
-
-interface FieldSpec {
-	values?: Set<number>;
-	any: boolean;
-}
 
 function minuteKey(date: Date): string {
 	return date.toISOString().slice(0, 16);
 }
 
-function parseField(field: string, min: number, max: number): FieldSpec {
-	if (field === "*") return { any: true };
-	const values = new Set<number>();
-	for (const part of field.split(",")) {
-		const [range, stepText] = part.split("/");
-		const step = stepText ? Number.parseInt(stepText, 10) : 1;
-		if (!range || !Number.isInteger(step) || step < 1) return { any: false };
-		const [startText, endText] = range === "*" ? [String(min), String(max)] : range.split("-");
-		const start = Number.parseInt(startText ?? "", 10);
-		const end = Number.parseInt(endText ?? startText ?? "", 10);
-		if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) return { any: false };
-		for (let value = start; value <= end; value += step) values.add(value);
-	}
-	return { any: false, values };
-}
-
-function fieldMatches(field: string, value: number, min: number, max: number): boolean {
-	const spec = parseField(field, min, max);
-	return spec.any || Boolean(spec.values?.has(value));
-}
-
-function fieldError(label: string, field: string, min: number, max: number): string | undefined {
-	const spec = parseField(field, min, max);
-	if (spec.any || spec.values) return undefined;
-	return `${label} field is invalid: ${field} (expected ${min}-${max}, *, ranges, lists, or steps)`;
-}
-
-function scheduleExpressionError(expr: string): string | undefined {
-	const fields = expr.trim().split(/\s+/);
-	if (fields.length !== 5) return "schedule expression must have exactly five fields";
-	const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
-	return (
-		fieldError("minute", minute ?? "", 0, 59) ??
-		fieldError("hour", hour ?? "", 0, 23) ??
-		fieldError("day-of-month", dayOfMonth ?? "", 1, 31) ??
-		fieldError("month", month ?? "", 1, 12) ??
-		fieldError("day-of-week", dayOfWeek ?? "", 0, 7)
-	);
-}
-
 export function scheduleMatchesDate(expr: string, date: Date): boolean {
-	if (scheduleExpressionError(expr)) return false;
+	if (cronExpressionError(expr)) return false;
 	const fields = expr.trim().split(/\s+/);
 	const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
 	const weekday = date.getDay();
 	const weekdayMatches = Boolean(
 		dayOfWeek &&
-		(fieldMatches(dayOfWeek, weekday, 0, 7) ||
-			(weekday === 0 && fieldMatches(dayOfWeek, 7, 0, 7))),
+		(cronFieldMatches(dayOfWeek, weekday, 0, 7) ||
+			(weekday === 0 && cronFieldMatches(dayOfWeek, 7, 0, 7))),
 	);
 	return Boolean(
 		minute && hour && dayOfMonth && month &&
-		fieldMatches(minute, date.getMinutes(), 0, 59) &&
-		fieldMatches(hour, date.getHours(), 0, 23) &&
-		fieldMatches(dayOfMonth, date.getDate(), 1, 31) &&
-		fieldMatches(month, date.getMonth() + 1, 1, 12) &&
+		cronFieldMatches(minute, date.getMinutes(), 0, 59) &&
+		cronFieldMatches(hour, date.getHours(), 0, 23) &&
+		cronFieldMatches(dayOfMonth, date.getDate(), 1, 31) &&
+		cronFieldMatches(month, date.getMonth() + 1, 1, 12) &&
 		weekdayMatches
 	);
 }
@@ -169,10 +124,17 @@ export class CoasInternalScheduler {
 
 	async tick(now: Date): Promise<void> {
 		if (!this.config) return;
-		const schedules = (await listSchedules(this.config)).filter((schedule) => schedule.enabled);
+		let schedules: ScheduleEntry[];
+		try {
+			schedules = (await listSchedules(this.config)).filter((schedule) => schedule.enabled);
+		} catch (error) {
+			this.enabledCount = 0;
+			this.lastError = (error as Error).message;
+			return;
+		}
 		this.enabledCount = schedules.length;
 		for (const schedule of schedules) {
-			const error = scheduleExpressionError(schedule.cronExpr);
+			const error = cronExpressionError(schedule.cronExpr);
 			if (error) {
 				this.lastError = `invalid schedule ${schedule.taskId}: ${error}`;
 				continue;
