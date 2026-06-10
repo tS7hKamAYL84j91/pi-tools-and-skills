@@ -50,7 +50,7 @@ Validation:
 - Bounded touched-file secret scan passed.
 
 Review disposition:
-- Navigator run `team-mq8lsyeu-f3b95844` completed before commit prep with no blocking follow-up observed.
+- Navigator run `team-mq8lsyeu-f3b95844` approved. Follow-up patch added zero-agent summary and header/agent-shape compatibility tests.
 - Privacy disposition: aggregate counts only; no new raw logs, transcript text, paths beyond existing per-agent socket field, or persistence.
 
 ## T-666 evidence

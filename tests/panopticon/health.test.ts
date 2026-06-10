@@ -23,7 +23,7 @@ vi.mock("../../lib/session-log.js", () => ({
 
 import { isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
-import { assessHealth, summarizeHealth } from "../../extensions/pi-panopticon/registry/health.js";
+import { assessHealth, formatHealthTable, summarizeHealth } from "../../extensions/pi-panopticon/registry/health.js";
 
 const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
 const mockReadSessionLog = readSessionLog as ReturnType<typeof vi.fn>;
@@ -244,6 +244,19 @@ describe("assessHealth — status priority", () => {
 // ── assessHealth: structured output ─────────────────────────────
 
 describe("summarizeHealth", () => {
+	it("returns zero counts for an empty registry", () => {
+		expect(summarizeHealth([])).toEqual({
+			total: 0,
+			actionable: 0,
+			byStatus: {},
+			pendingMessages: 0,
+			terminated: 0,
+			blocked: 0,
+			stalled: 0,
+			apiErrors: 0,
+		});
+	});
+
 	it("returns privacy-preserving aggregate observability counts", () => {
 		const healths = [
 			{ name: "a", pid: 1, alive: false, status: "terminated" as const, heartbeatAge: 1, stallCycles: 0, model: "m", pendingMessages: 0, socket: "/tmp/a.sock" },
@@ -263,6 +276,17 @@ describe("summarizeHealth", () => {
 			stalled: 0,
 			apiErrors: 0,
 		});
+	});
+
+	it("formats a summary header without raw session content and keeps agent shape", () => {
+		const health = { name: "test-agent", pid: 123, alive: true, status: "api_error" as const, heartbeatAge: 1_000, stallCycles: 0, model: "model", pendingMessages: 1, socket: "/tmp/test.sock" };
+
+		const text = formatHealthTable([health]);
+
+		expect(text).toContain("Agent health (1): actionable=2 pending=1 terminated=0 blocked=0 stalled=0 api_errors=1");
+		expect(text).toContain("test-agent");
+		expect(text).not.toContain("raw error body");
+		expect(Object.keys(health).sort()).toEqual(["alive", "heartbeatAge", "model", "name", "pendingMessages", "pid", "socket", "stallCycles", "status"].sort());
 	});
 });
 

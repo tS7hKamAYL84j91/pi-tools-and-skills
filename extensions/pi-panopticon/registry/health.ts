@@ -255,7 +255,7 @@ export function summarizeHealth(healths: AgentHealth[]): AgentHealthSummary {
 	return summary;
 }
 
-function formatHealthTable(healths: AgentHealth[]): string {
+export function formatHealthTable(healths: AgentHealth[]): string {
 	const summary = summarizeHealth(healths);
 	const header = `Agent health (${summary.total}): actionable=${summary.actionable} pending=${summary.pendingMessages} terminated=${summary.terminated} blocked=${summary.blocked} stalled=${summary.stalled} api_errors=${summary.apiErrors}`;
 	const lines = healths.map((h) => {
