@@ -53,6 +53,60 @@ interface PiModelResult {
 	error?: string;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+	// Narrowed by the object/null guard; keys are inspected defensively below.
+	return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function assistantTextFromMessage(value: unknown): string | undefined {
+	const message = asRecord(value);
+	if (message?.role !== "assistant") return undefined;
+	const content = message.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return undefined;
+	const parts = content
+		.map((entry) => {
+			const item = asRecord(entry);
+			return item?.type === "text" && typeof item.text === "string" ? item.text : undefined;
+		})
+		.filter((part): part is string => part !== undefined);
+	return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function finalAssistantTextFromEvent(value: unknown): string | undefined {
+	const event = asRecord(value);
+	if (!event) return undefined;
+	if (event.type === "agent_end" && Array.isArray(event.messages)) {
+		for (const message of [...event.messages].reverse()) {
+			const text = assistantTextFromMessage(message);
+			if (text !== undefined) return text;
+		}
+	}
+	if ((event.type === "message_end" || event.type === "turn_end") && "message" in event) {
+		return assistantTextFromMessage(event.message);
+	}
+	return assistantTextFromMessage(event);
+}
+
+export function extractPiPrintOutput(stdout: string): string {
+	let finalAssistantText: string | undefined;
+	let sawJsonEvent = false;
+	for (const line of stdout.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) continue;
+		try {
+			const text = finalAssistantTextFromEvent(JSON.parse(trimmed));
+			if (text !== undefined) {
+				finalAssistantText = text;
+				sawJsonEvent = true;
+			}
+		} catch {
+			// Non-JSON stdout is the normal text-mode path.
+		}
+	}
+	return (sawJsonEvent ? finalAssistantText ?? "" : stdout).trim();
+}
+
 /**
  * Honors the AbortSignal: aborted runs send SIGTERM and resolve with
  * { ok: false, error: "cancelled" } rather than rejecting.
@@ -108,7 +162,7 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	}).then((result) => ({
 		prompt: args.prompt,
 		systemPrompt: args.systemPrompt,
-		output: result.stdout.trim(),
+		output: extractPiPrintOutput(result.stdout),
 		durationMs: result.durationMs,
 		ok: result.ok,
 		...(result.ok ? {} : { error: result.stderr.trim() || result.error }),
