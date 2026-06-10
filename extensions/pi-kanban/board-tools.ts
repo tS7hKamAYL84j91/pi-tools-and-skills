@@ -17,6 +17,7 @@ import {
 	snapshotPath,
 } from "./board.js";
 import { compactIfNeeded } from "./compaction.js";
+import { exportBoardJson } from "./export.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 import {
 	generateSnapshot,
@@ -64,6 +65,12 @@ async function executeSnapshot(
 			view,
 		},
 	);
+}
+
+async function executeExportJson(): Promise<ToolResult> {
+	const board = await parseBoard();
+	const exported = exportBoardJson(board);
+	return ok(JSON.stringify(exported, null, 2), { ...exported });
 }
 
 async function executeUnblock(
@@ -156,6 +163,19 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 				params.task_id,
 				params.show_all_done,
 			);
+		},
+	});
+
+	// ── kanban_export_json ───────────────────────────────────────
+	pi.registerTool({
+		name: "kanban_export_json",
+		label: "Kanban Export JSON",
+		description:
+			"Read-only JSON export of active kanban tasks and column counts. Does not write snapshot files or append board events.",
+		promptSnippet: "Export the active kanban board as JSON",
+		parameters: Type.Object({}),
+		async execute(): Promise<ToolResult> {
+			return executeExportJson();
 		},
 	});
 

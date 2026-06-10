@@ -96,6 +96,7 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 | `kanban_move`     | `task_id`, `agent`, `to`                        | Moves between backlog and todo only            |
 | `kanban_edit`     | `task_id`, `agent`, `title?`, `priority?`, `tags?`, `description?`, `note?` | Edits backlog/todo task metadata, or appends a progress note to any task |
 | `kanban_delete`   | `task_id`, `agent`, `reason?`                   | Soft-deletes backlog/todo/done tasks           |
+| `kanban_export_json` | none                                         | Read-only JSON export of active tasks/counts   |
 
 ### Board Operations
 

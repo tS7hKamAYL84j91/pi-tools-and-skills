@@ -123,6 +123,7 @@ describe("extension registration smoke tests", () => {
 			"kanban_create",
 			"kanban_delete",
 			"kanban_edit",
+			"kanban_export_json",
 			"kanban_move",
 			"kanban_snapshot",
 			"kanban_unblock",

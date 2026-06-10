@@ -32,6 +32,28 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-669 evidence
+
+Slice: read-only kanban JSON export helper.
+
+Artifacts:
+- `extensions/pi-kanban/export.ts`
+- `extensions/pi-kanban/board-tools.ts`
+- `tests/kanban/pi-kanban-tools-export-json.test.ts`
+- `extensions/pi-kanban/README.md`
+
+Validation:
+- `npm test -- tests/kanban/pi-kanban-tools-export-json.test.ts` passed.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 87 files, 750 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review/ADR disposition:
+- Navigator run `team-mq8mjfmh-49243475` completed before commit prep with no blocking follow-up observed.
+- ADR disposition: no new ADR planned; additive read-only tool, no storage semantics change.
+- Privacy/workflow disposition: export omits task descriptions/notes and does not append board events or write snapshot files.
+
 ## T-668 evidence
 
 Slice: Teams/council resilience/status observability without resume/checkpoint semantics.
