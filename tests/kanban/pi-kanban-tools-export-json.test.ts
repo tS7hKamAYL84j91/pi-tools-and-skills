@@ -12,8 +12,13 @@ describe("kanban_export_json", () => {
 			agent: "lead",
 			title: "Export me",
 			priority: "high",
-			description: "private implementation note",
+			description: "private-description-sentinel",
 			tags: "api, docs",
+		});
+		await callTool(harness.tools, "kanban_edit", {
+			task_id: "T-101",
+			agent: "lead",
+			note: "private-note-sentinel",
 		});
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-102",
@@ -31,12 +36,13 @@ describe("kanban_export_json", () => {
 		expect(result.isError).toBeFalsy();
 		expect(exported).toEqual({
 			schemaVersion: 1,
-			totalEvents: 4,
+			totalEvents: 5,
 			counts: { todo: 1 },
 			tasks: [expect.objectContaining({ id: "T-101", column: "todo", priority: "high", title: "Export me", tags: ["api", "docs"] })],
 		});
 		expect(result.details).toEqual(exported);
-		expect(result.content[0]?.text).not.toContain("private implementation note");
+		expect(result.content[0]?.text).not.toContain("private-description-sentinel");
+		expect(result.content[0]?.text).not.toContain("private-note-sentinel");
 		expect(harness.readBoardLog()).toBe(before);
 		expect(existsSync(join(harness.tmpDir, "snapshot.md"))).toBe(false);
 	});

@@ -50,9 +50,9 @@ Validation:
 - Bounded touched-file secret scan passed.
 
 Review/ADR disposition:
-- Navigator run `team-mq8mjfmh-49243475` completed before commit prep with no blocking follow-up observed.
+- Navigator run `team-mq8mjfmh-49243475` requested diff verification. Follow-up patch added explicit description and note sentinel assertions for serialized JSON.
 - ADR disposition: no new ADR planned; additive read-only tool, no storage semantics change.
-- Privacy/workflow disposition: export omits task descriptions/notes and does not append board events or write snapshot files.
+- Privacy/workflow disposition: explicit allowlist export omits task descriptions/notes and does not append board events or write snapshot files.
 
 ## T-668 evidence
 
