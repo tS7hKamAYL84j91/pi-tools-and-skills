@@ -1,0 +1,22 @@
+# pi-doctor
+
+Read-only diagnostics for this `pi-tools-and-skills` workspace.
+
+## Surfaces
+
+- Tool: `pi_doctor`
+- Command: `/pi-doctor`
+
+## Checks
+
+- Root `package.json` declares required validation scripts and core dependencies.
+- Shipped extension package manifests have the expected `name`, `type`, `main`, and `pi.extensions` shape.
+- Shipped extension entrypoints exist.
+- Slash commands do not duplicate each other or collide with current built-in pi command names.
+
+## What this does NOT do
+
+- Does not mutate files, auto-fix manifests, install dependencies, or run package scripts.
+- Does not change pi extension loading, fail-soft startup, or isolation semantics.
+- Does not validate every possible runtime dependency or execute extension factories.
+- Does not replace `npm run check` or `npm test`; it is a fast local diagnostic summary.

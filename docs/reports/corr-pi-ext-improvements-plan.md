@@ -32,6 +32,29 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-666 evidence
+
+Slice: read-only `pi-doctor` diagnostics MVP.
+
+Artifacts:
+- `extensions/pi-doctor/index.ts`
+- `extensions/pi-doctor/doctor.ts`
+- `extensions/pi-doctor/package.json`
+- `extensions/pi-doctor/README.md`
+- `tests/pi-doctor-doctor.test.ts`
+- `docs/architecture.md`
+
+Validation:
+- `npm test -- tests/pi-doctor-doctor.test.ts tests/architecture.test.ts` passed after adding module comments.
+- `npm test -- tests/pi-doctor-doctor.test.ts tests/shared/test-quality.test.ts` passed after adding README and direct test filename.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 86 files, 745 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review disposition:
+- Navigator run `team-mq8le2rk-81b8643b` completed for T-666 focused API/scope review; no blocking follow-up was delivered before commit prep.
+
 ## T-672 evidence
 
 Slice: display-only secret redaction for Panopticon session-log previews.
