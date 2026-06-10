@@ -10,7 +10,7 @@ Multi-agent visibility, messaging, spawning, health checks, lifecycle controls, 
 |---|---|
 | `message_read` / `message_send` | Read and send messages across registered channels such as Matrix or agent transport. |
 | `agent_send` / `agent_broadcast` | Send direct or broadcast messages to registered peer agents. |
-| `agent_peek` / `agent_status` | Inspect peer activity and health. |
+| `agent_peek` / `agent_status` | Inspect peer activity and health; `agent_status` includes privacy-preserving aggregate counts for actionable states and pending messages. |
 | `spawn_agent` / `rpc_send` | Spawn local RPC workers and send commands to them. |
 | `list_spawned` / `kill_agent` | Inspect and stop workers spawned by this session. |
 | `get_name` / `set_name` | Read or set this session's display/registry name. |

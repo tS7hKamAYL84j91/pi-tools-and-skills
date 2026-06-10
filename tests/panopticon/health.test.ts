@@ -23,7 +23,7 @@ vi.mock("../../lib/session-log.js", () => ({
 
 import { isPidAlive } from "../../lib/agent-registry.js";
 import { readSessionLog } from "../../lib/session-log.js";
-import { assessHealth } from "../../extensions/pi-panopticon/registry/health.js";
+import { assessHealth, summarizeHealth } from "../../extensions/pi-panopticon/registry/health.js";
 
 const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
 const mockReadSessionLog = readSessionLog as ReturnType<typeof vi.fn>;
@@ -238,6 +238,31 @@ describe("assessHealth — status priority", () => {
 		tracker.set(record.id, { lastHash: "old", stallCount: 10 });
 		const h = assessHealth(record, tracker);
 		expect(h.status).toBe("api_error");
+	});
+});
+
+// ── assessHealth: structured output ─────────────────────────────
+
+describe("summarizeHealth", () => {
+	it("returns privacy-preserving aggregate observability counts", () => {
+		const healths = [
+			{ name: "a", pid: 1, alive: false, status: "terminated" as const, heartbeatAge: 1, stallCycles: 0, model: "m", pendingMessages: 0, socket: "/tmp/a.sock" },
+			{ name: "b", pid: 2, alive: true, status: "blocked" as const, heartbeatAge: 2, stallCycles: 0, model: "m", pendingMessages: 2, socket: "/tmp/b.sock" },
+			{ name: "c", pid: 3, alive: true, status: "waiting" as const, heartbeatAge: 3, stallCycles: 0, model: "m", pendingMessages: 0, socket: "/tmp/c.sock" },
+		];
+
+		const summary = summarizeHealth(healths);
+
+		expect(summary).toEqual({
+			total: 3,
+			actionable: 3,
+			byStatus: { terminated: 1, blocked: 1, waiting: 1 },
+			pendingMessages: 2,
+			terminated: 1,
+			blocked: 1,
+			stalled: 0,
+			apiErrors: 0,
+		});
 	});
 });
 

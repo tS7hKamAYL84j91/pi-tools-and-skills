@@ -32,6 +32,27 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-667 evidence
+
+Slice: Panopticon reliability/status observability without restart/resume semantics.
+
+Artifacts:
+- `extensions/pi-panopticon/registry/health.ts`
+- `tests/panopticon/health.test.ts`
+- `extensions/pi-panopticon/README.md`
+- `tests/architecture/hotspots.ts`
+
+Validation:
+- `npm test -- tests/panopticon/health.test.ts` passed.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 86 files, 746 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review disposition:
+- Navigator run `team-mq8lsyeu-f3b95844` completed before commit prep with no blocking follow-up observed.
+- Privacy disposition: aggregate counts only; no new raw logs, transcript text, paths beyond existing per-agent socket field, or persistence.
+
 ## T-666 evidence
 
 Slice: read-only `pi-doctor` diagnostics MVP.

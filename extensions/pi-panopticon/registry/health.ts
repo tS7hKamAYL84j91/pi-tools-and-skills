@@ -65,6 +65,17 @@ export interface AgentHealth {
 	socket: string;             // peer socket path for diagnostics
 }
 
+interface AgentHealthSummary {
+	total: number;
+	actionable: number;
+	byStatus: Partial<Record<AgentHealthStatus, number>>;
+	pendingMessages: number;
+	terminated: number;
+	blocked: number;
+	stalled: number;
+	apiErrors: number;
+}
+
 // ── Constants ───────────────────────────────────────────────────
 
 const DEFAULT_STALL_THRESHOLD = 3;
@@ -222,7 +233,31 @@ function formatAge(ms: number): string {
 	return `${Math.round(ms / 60_000)}m`;
 }
 
+export function summarizeHealth(healths: AgentHealth[]): AgentHealthSummary {
+	const summary: AgentHealthSummary = {
+		total: healths.length,
+		actionable: 0,
+		byStatus: {},
+		pendingMessages: healths.reduce((sum, health) => sum + health.pendingMessages, 0),
+		terminated: 0,
+		blocked: 0,
+		stalled: 0,
+		apiErrors: 0,
+	};
+	for (const health of healths) {
+		summary.byStatus[health.status] = (summary.byStatus[health.status] ?? 0) + 1;
+		if (health.status === "terminated") summary.terminated += 1;
+		if (health.status === "blocked") summary.blocked += 1;
+		if (health.status === "stalled") summary.stalled += 1;
+		if (health.status === "api_error") summary.apiErrors += 1;
+	}
+	summary.actionable = summary.terminated + summary.blocked + summary.stalled + summary.apiErrors + healths.filter((health) => health.pendingMessages > 0).length;
+	return summary;
+}
+
 function formatHealthTable(healths: AgentHealth[]): string {
+	const summary = summarizeHealth(healths);
+	const header = `Agent health (${summary.total}): actionable=${summary.actionable} pending=${summary.pendingMessages} terminated=${summary.terminated} blocked=${summary.blocked} stalled=${summary.stalled} api_errors=${summary.apiErrors}`;
 	const lines = healths.map((h) => {
 		const icon = STATUS_ICON[h.status];
 		const parts = [
@@ -237,7 +272,7 @@ function formatHealthTable(healths: AgentHealth[]): string {
 		];
 		return `  ${parts.join(" ")}`;
 	});
-	return `Agent health (${healths.length}):\n${lines.join("\n")}`;
+	return `${header}\n${lines.join("\n")}`;
 }
 
 // ── Module setup ────────────────────────────────────────────────
@@ -296,7 +331,7 @@ export function setupHealth(
 					return ok(`No agent named "${params.name}". Known peers: ${peerNames(registry)}`);
 				}
 				const h = assessHealth(rec, stallTracker, threshold);
-				return ok(formatHealthTable([h]), { agents: [h] });
+				return ok(formatHealthTable([h]), { agents: [h], summary: summarizeHealth([h]) });
 			}
 
 			const self = registry.getRecord();
@@ -307,7 +342,7 @@ export function setupHealth(
 			}
 
 			const healths = peers.map((r) => assessHealth(r, stallTracker, threshold));
-			return ok(formatHealthTable(healths), { agents: healths });
+			return ok(formatHealthTable(healths), { agents: healths, summary: summarizeHealth(healths) });
 		},
 	});
 

@@ -94,8 +94,8 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	},
 	{
 		path: "extensions/pi-panopticon/registry/health.ts",
-		maxLines: 345,
-		reason: "Agent health heuristics; keep detection helpers pure and bounded.",
+		maxLines: 370,
+		reason: "Agent health heuristics and aggregate observability; keep detection helpers pure and bounded.",
 	},
 	{
 		path: "extensions/pi-panopticon/messaging/messaging.ts",
