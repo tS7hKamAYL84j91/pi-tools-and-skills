@@ -51,4 +51,4 @@ Validation:
 - `npm test` passed: 84 files, 739 tests.
 
 Review disposition:
-- Navigator run `team-mq8gwm37-b82fbed7` completed for T-672 focused security review; no blocking follow-up was delivered.
+- Navigator run `team-mq8gwm37-b82fbed7` conditionally approved. Follow-up patch added direct helper coverage for non-mutation, mixed-case keys/headers, JSON-ish authorization, nested tool args, and redact-before-truncate behavior.
