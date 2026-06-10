@@ -32,6 +32,28 @@ Owner: pi-tools-and-skills GM
 - Claimed T-672 first per urgent directive.
 - Next planned: T-666 read-only pi-doctor MVP.
 
+## T-668 evidence
+
+Slice: Teams/council resilience/status observability without resume/checkpoint semantics.
+
+Artifacts:
+- `extensions/pi-panopticon/teams/team-runtime.ts`
+- `tests/teams/team-tools.test.ts`
+- `extensions/pi-panopticon/teams/README.md`
+- `tests/architecture/hotspots.ts`
+
+Validation:
+- `npm test -- tests/teams/team-tools.test.ts` passed.
+- `npm run check` passed; Biome emitted one pre-existing informational template-literal suggestion in `tests/goal/pi-goal-tools.test.ts`.
+- `npm test` passed: 86 files, 749 tests.
+- `git diff --check` passed.
+- Bounded touched-file secret scan passed.
+
+Review/ADR disposition:
+- Navigator run `team-mq8m719b-7a1510a0` completed before commit prep with no blocking follow-up observed.
+- ADR disposition: no new ADR planned; this is an additive status-surface change with no persistence schema or protocol semantics change.
+- Privacy disposition: aggregate counts only; no raw prompts, transcripts, logs, model output, or error bodies in summary.
+
 ## T-667 evidence
 
 Slice: Panopticon reliability/status observability without restart/resume semantics.

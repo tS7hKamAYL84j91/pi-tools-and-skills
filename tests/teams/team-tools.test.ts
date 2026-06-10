@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { registerTeamRunTool } from "../../extensions/pi-panopticon/teams/team-runtime.js";
+import { registerTeamRunTool, summarizeTeamRuns } from "../../extensions/pi-panopticon/teams/team-runtime.js";
 import { loadTeamRegistry } from "../../extensions/pi-panopticon/teams/team-registry.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { registerTeamTools } from "../../extensions/pi-panopticon/teams/team-tools.js";
@@ -16,6 +16,23 @@ import { createFakeApi, writeSubagent, writeTeam } from "./team-test-helpers.js"
 const CONFIG_PATH = join(process.cwd(), "extensions", "pi-panopticon", "teams", "config", "config.json");
 
 describe("team tools", () => {
+	it("summarizes team run status without raw run text", () => {
+		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
+		const running = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "prompt with private objective" });
+		const completed = stateManager.startRun({ teamId: "llm-council", protocol: "debate", prompt: "other private objective" });
+		stateManager.recordPhaseStarted(running, "consult");
+		stateManager.recordDetail(completed, { kind: "artifact", message: "artifact ready", artifactUri: "file://artifact.md" });
+		stateManager.recordRunCompleted(completed, 10, "private summary body");
+		stateManager.rehydrateFromSession({ getEntries: () => entries });
+
+		const summary = summarizeTeamRuns(stateManager.list());
+
+		expect(summary).toEqual({ total: 2, running: 1, pending: 0, stopping: 0, completed: 1, failed: 0, stopped: 0, artifacts: 1 });
+		expect(JSON.stringify(summary)).not.toContain("private");
+		expect(running).toMatch(/^team-/);
+	});
+
 	it("registers read-only team discovery tools", async () => {
 		const { api, tools } = createFakeApi();
 		registerTeamTools(api);
@@ -163,8 +180,10 @@ describe("team tools", () => {
 		if (!peek || !stop) throw new Error("team control tools missing");
 
 		const peekResult = await peek.execute("test", {}, undefined, undefined, { cwd: process.cwd() });
+		expect(peekResult.content[0]?.text).toContain("summary total=1 running=1 pending=0 stopping=0 completed=0 failed=0 stopped=0 artifacts=0");
 		expect(peekResult.content[0]?.text).toContain(runId);
 		expect(peekResult.content[0]?.text).toContain("research");
+		expect(peekResult.details.summary).toEqual(expect.objectContaining({ total: 1, running: 1 }));
 
 		await stop.execute("test", { runId, reason: "bounded test stop" }, undefined, undefined, { cwd: process.cwd() });
 		const stopResult = await peek.execute("test", {}, undefined, undefined, { cwd: process.cwd() });

@@ -14,9 +14,9 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 | `team_models` | Update model bindings for a team. |
 | `team_delete` | Delete a user/project team. |
 | `team_run` | Run a team by `id`; choose the smallest sufficient route such as `navigator`, `llm-council`, or `deep-research`. |
-| `runtime_status` | Inspect team run entities from the unified runtime surface. |
+| `runtime_status` | Inspect team run entities from the unified runtime surface, including aggregate status/artifact counts. |
 | `runtime_stop` | Stop a team run entity through unified runtime semantics. |
-| `team_runs` | Inspect active/recent team run state. |
+| `team_runs` | Inspect active/recent team run state, including aggregate status/artifact counts. |
 | `team_stop` | Compatibility team-run stop surface; same stop semantics as `runtime_stop`. |
 
 ### Commands

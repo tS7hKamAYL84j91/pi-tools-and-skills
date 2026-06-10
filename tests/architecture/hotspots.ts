@@ -84,8 +84,8 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	},
 	{
 		path: "extensions/pi-panopticon/teams/team-runtime.ts",
-		maxLines: 365,
-		reason: "Team runtime control; keep protocol/runtime adapter boundaries explicit.",
+		maxLines: 385,
+		reason: "Team runtime control and aggregate status surface; keep protocol/runtime adapter boundaries explicit.",
 	},
 	{
 		path: "extensions/pi-panopticon/teams/team-registry.ts",

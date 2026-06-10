@@ -227,7 +227,34 @@ function registerTeamRunRuntimeEntity(
 	});
 }
 
-function formatTeamRunRuntimeLine(run: ReturnType<TeamStateManager["list"]>[number]): string {
+type TeamRunSnapshot = ReturnType<TeamStateManager["list"]>[number];
+
+interface TeamRunSummary {
+	total: number;
+	running: number;
+	pending: number;
+	stopping: number;
+	completed: number;
+	failed: number;
+	stopped: number;
+	artifacts: number;
+}
+
+export function summarizeTeamRuns(runs: TeamRunSnapshot[]): TeamRunSummary {
+	const summary: TeamRunSummary = { total: runs.length, running: 0, pending: 0, stopping: 0, completed: 0, failed: 0, stopped: 0, artifacts: 0 };
+	for (const run of runs) {
+		if (run.status in summary) summary[run.status as keyof Omit<TeamRunSummary, "total" | "artifacts">] += 1;
+		summary.artifacts += run.details.filter((detail) => detail.kind === "artifact" && detail.artifactUri).length;
+	}
+	return summary;
+}
+
+function formatTeamRunSummary(runs: TeamRunSnapshot[]): string {
+	const summary = summarizeTeamRuns(runs);
+	return `summary total=${summary.total} running=${summary.running} pending=${summary.pending} stopping=${summary.stopping} completed=${summary.completed} failed=${summary.failed} stopped=${summary.stopped} artifacts=${summary.artifacts}`;
+}
+
+function formatTeamRunRuntimeLine(run: TeamRunSnapshot): string {
 	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`;
 }
 
@@ -255,7 +282,8 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 				return ok(run ? formatTeamRunRuntimeLine(run) : `team_run ${params.id} ${entity?.status ?? "unknown"}`, { entities: entity ? [entity] : [{ kind: "team_run", ...run }] });
 			}
 			const lines = runs.map(formatTeamRunRuntimeLine);
-			return ok(lines.length ? lines.join("\n") : "No runtime team_run entities in current session state.", { entities: entities.length > 0 ? entities : runs.map((run) => ({ kind: "team_run", ...run })) });
+			const summary = summarizeTeamRuns(runs);
+			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No runtime team_run entities in current session state.", { entities: entities.length > 0 ? entities : runs.map((run) => ({ kind: "team_run", ...run })), summary });
 		},
 	});
 	pi.registerTool({
@@ -277,7 +305,7 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		async execute() {
 			const runs = stateManager.list();
 			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`);
-			return ok(lines.length ? lines.join("\n") : "No team runs in current session state.", { runs });
+			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No team runs in current session state.", { runs, summary: summarizeTeamRuns(runs) });
 		},
 	});
 	pi.registerTool({
