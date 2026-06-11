@@ -194,6 +194,9 @@ function heartbeat(): void {
 		process.exit(0);
 	}
 
+	// Regularly poll the mailbox in case file system watch events are missed
+	deliverNewMessages();
+
 	if (!existsSync(recordPath)) {
 		writeRecord();
 		transport.init(agentId);
