@@ -4,6 +4,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok } from "../../lib/tool-result.js";
+import { showGoalOverlay } from "./goal-overlay.js";
 import { continuationPrompt, goalContextMessage, kickoffPrompt } from "./prompts.js";
 import {
 	clearGoal,
@@ -50,26 +51,12 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		const run = current.runActive ? ` ${current.turnsUsed}/${current.turnBudget}${stop}` : "";
 
 		const phase = current.runActive ? "running" : current.status;
-		const time = current.runStartedAt && current.runActive ? formatElapsed(current.runStartedAt) : formatElapsed(current.createdAt);
-
-		ctx.ui.setStatus("goal", `goal: ${phase} [${time}]${run}`);
-		if (current.status === "active") {
-			ctx.ui.setWidget("goal", compactWidget(current));
-		} else {
-			ctx.ui.setWidget("goal", undefined);
-		}
+		ctx.ui.setStatus("goal", `goal: ${phase}${run}`);
+		ctx.ui.setWidget("goal", compactWidget(current));
 	}
 
-	function showGoal(state: GoalState): void {
-		pi.sendMessage(
-			{
-				customType: "pi-goal-status",
-				content: renderGoalSummary(state),
-				display: true,
-				details: state,
-			},
-			{ triggerTurn: false },
-		);
+	async function showGoal(ctx: ExtensionCommandContext, state: GoalState): Promise<void> {
+		await showGoalOverlay(ctx, state);
 	}
 
 	function showGoalHelp(): void {
@@ -113,10 +100,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			});
 
 			if (iteration === 1) {
-				activeCtx.ui.setStatus("goal", `goal: active ${state.turnsUsed}/${state.turnBudget} current-session`);
+				activeCtx.ui.setStatus("goal", `goal: running ${state.turnsUsed}/${state.turnBudget}`);
 				await pi.sendUserMessage(markedPrompt);
 			} else {
-				activeCtx.ui.setStatus("goal", `goal: active ${state.turnsUsed}/${state.turnBudget} fresh-session`);
+				activeCtx.ui.setStatus("goal", `goal: running ${state.turnsUsed}/${state.turnBudget}`);
 				const result = await activeCtx.newSession({
 					...(originalSession ? { parentSession: originalSession } : {}),
 					withSession: async (replacementCtx) => {
@@ -175,7 +162,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					showGoalHelp();
 					return;
 				}
-				showGoal(state);
+				await showGoal(ctx, state);
 				await refreshUi(ctx, state);
 				return;
 			}
@@ -193,7 +180,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				const next = file.untilComplete ? startRun(state, UNTIL_COMPLETE_TURNS) : state;
 				runtime.stopRequested = false;
 				await saveGoal(ctx.cwd, next);
-				showGoal(next);
 				await refreshUi(ctx, next);
 				if (file.untilComplete) {
 					await runGoalLoop(ctx, next);
@@ -207,7 +193,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				const state = await createTextGoal(ctx.cwd, parsed.rest);
 				const next = startRun(state, UNTIL_COMPLETE_TURNS);
 				await saveGoal(ctx.cwd, next);
-				showGoal(next);
 				await refreshUi(ctx, next);
 				await runGoalLoop(ctx, next);
 				return;
@@ -223,7 +208,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				cancelContinuationPending(runtime);
 				const next = updateGoal(state, { objective: trimmed });
 				await saveGoal(ctx.cwd, next);
-				showGoal(next);
 				await refreshUi(ctx, next);
 				ctx.ui.notify("Goal updated.", "info");
 				if (next.status === "active") {
@@ -242,7 +226,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				runtime.stopRequested = false;
 				const next = updateGoal(state, { status: "paused", runActive: false });
 				await saveGoal(ctx.cwd, next);
-				showGoal(next);
 				await refreshUi(ctx, next);
 				return;
 			}
@@ -255,7 +238,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				}
 				const next = updateGoal(state, { status: "active" });
 				await saveGoal(ctx.cwd, next);
-				showGoal(next);
 				await refreshUi(ctx, next);
 				return;
 			}
@@ -598,31 +580,7 @@ async function requireGoal(cwd: string): Promise<GoalState> {
 	return state;
 }
 
-function formatElapsed(startedAt: string): string {
-	const elapsedMs = Date.now() - new Date(startedAt).getTime();
-	const totalSeconds = Math.floor(elapsedMs / 1000);
-	const m = Math.floor(totalSeconds / 60);
-	const s = totalSeconds % 60;
-	return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
 function compactWidget(state: GoalState): string[] {
-	const source = state.sourcePath ? `source: ${state.sourcePath}` : "source: none";
-	const run = state.runActive ? `run: ${state.turnsUsed}/${state.turnBudget}` : "run: idle";
 	const phase = state.runActive ? "running" : state.status;
-	const cancel = state.runActive ? "cancel: /goal stop" : "cancel: /goal clear";
-	const time = state.runStartedAt && state.runActive ? `time: ${formatElapsed(state.runStartedAt)}` : `time: ${formatElapsed(state.createdAt)} (total)`;
-	const action = state.runActive ? `action: turn ${state.turnsUsed}` : "action: none";
-
-	return [
-		`goal: ${state.objective}`,
-		`phase: ${phase}`,
-		time,
-		action,
-		source,
-		run,
-		`artifacts: .pi/goal/GOAL.md`,
-		cancel,
-		"complete only with goal_complete evidence"
-	];
+	return [`goal: ${phase} ${state.turnsUsed}/${state.turnBudget} · /goal status for details`];
 }

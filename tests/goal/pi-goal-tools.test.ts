@@ -154,7 +154,7 @@ describe("pi-goal extension", () => {
 			level: "info",
 		});
 		expect(ctx.ui.statuses.at(-1)?.key).toBe("goal");
-	expect(ctx.ui.statuses.at(-1)?.value).toMatch(/^goal: active( \[\ds\])?$/);
+		expect(ctx.ui.statuses.at(-1)?.value).toBe("goal: active");
 	});
 
 	it("/goal clear explains local state removal", async () => {
@@ -214,7 +214,7 @@ describe("pi-goal extension", () => {
 		expect(persisted.turnsUsed).toBe(2);
 		expect(persisted.turnBudget).toBe(5);
 		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated.", level: "info" });
-		expect(sentMessageContent(pi)).toContain("revised objective text");
+		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: running 2/5 · /goal status for details"]);
 	});
 
 	it("continuation marker guard swallows cancelled extension input", async () => {
@@ -241,7 +241,7 @@ describe("pi-goal extension", () => {
 		await runPromise;
 
 		// Now trigger the input event with the cancelled marker.
-		const result = await triggerInputEvent(pi, "extension", "Continue <!-- pi-goal-continuation:" + state.goalId + ":2 -->");
+		const result = await triggerInputEvent(pi, "extension", `Continue <!-- pi-goal-continuation:${state.goalId}:2 -->`);
 		expect(result).toEqual({ action: "handled" });
 
 		// An unrelated extension input should not be handled.
