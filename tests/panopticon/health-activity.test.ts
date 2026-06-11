@@ -24,7 +24,7 @@ describe("computeActivityHash", () => {
 		const hash1 = computeActivityHash("/tmp/a.jsonl");
 		mockReadSessionLog.mockReturnValueOnce([{ ts: 2000, event: "tool_call", tool: "read" }]);
 		const hash2 = computeActivityHash("/tmp/b.jsonl");
-		expect(hash1).toMatch(/^[a-f0-9]{32}$/);
+		expect(hash1).toMatch(/^[a-f0-9]{64}$/);
 		expect(hash1).not.toBe(hash2);
 	});
 });

@@ -100,7 +100,7 @@ export function computeActivityHash(sessionFile: string | undefined): string {
 	if (!sessionFile) return "";
 	const events = readSessionLog(sessionFile, ACTIVITY_WINDOW);
 	if (events.length === 0) return "";
-	return createHash("md5").update(JSON.stringify(events)).digest("hex");
+	return createHash("sha256").update(JSON.stringify(events)).digest("hex");
 }
 
 /**
