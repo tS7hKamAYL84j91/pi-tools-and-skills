@@ -67,7 +67,10 @@ async function git(cwd: string, args: readonly string[]): Promise<ExecResult> {
 function isWithin(parent: string, child: string): boolean {
 	const normalizedParent = resolve(parent);
 	const normalizedChild = resolve(child);
-	return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}${sep}`);
+	return (
+		normalizedChild === normalizedParent ||
+		normalizedChild.startsWith(`${normalizedParent}${sep}`)
+	);
 }
 
 function requireAbsolutePath(name: string, path: string): string {
@@ -82,10 +85,17 @@ function safeId(value: string, name: string): string {
 	if (!trimmed) {
 		throw new Error(`${name} is required`);
 	}
-	if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+	if (
+		trimmed.includes("/") ||
+		trimmed.includes("\\") ||
+		trimmed.includes("..")
+	) {
 		throw new Error(`${name} must not contain path separators or traversal`);
 	}
-	const slug = trimmed.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+	const slug = trimmed
+		.toLowerCase()
+		.replace(/[^a-z0-9._-]+/g, "-")
+		.replace(/^-+|-+$/g, "");
 	if (!slug) {
 		throw new Error(`${name} must contain at least one alphanumeric character`);
 	}
@@ -94,7 +104,10 @@ function safeId(value: string, name: string): string {
 
 function safeBranchPrefix(value: string | undefined): string {
 	const raw = value?.trim() || DEFAULT_BRANCH_PREFIX;
-	const segments = raw.split("/").filter(Boolean).map((segment) => safeId(segment, "branchPrefix"));
+	const segments = raw
+		.split("/")
+		.filter(Boolean)
+		.map((segment) => safeId(segment, "branchPrefix"));
 	if (segments.length === 0) {
 		throw new Error("branchPrefix is required");
 	}
@@ -120,7 +133,9 @@ async function assertGitRepoRoot(repoRoot: string): Promise<void> {
 async function assertCleanMainCheckout(repoRoot: string): Promise<void> {
 	const result = await git(repoRoot, ["status", "--porcelain"]);
 	if (result.stdout.trim()) {
-		throw new Error("main checkout must be clean before allocating a mutating team worktree");
+		throw new Error(
+			"main checkout must be clean before allocating a mutating team worktree",
+		);
 	}
 }
 
@@ -136,7 +151,7 @@ async function acquireLock(lockPath: string): Promise<void> {
 }
 
 async function releaseLock(lockPath: string): Promise<boolean> {
-	if (!await pathExists(lockPath)) {
+	if (!(await pathExists(lockPath))) {
 		return false;
 	}
 	await rm(lockPath, { recursive: true, force: true });
@@ -144,11 +159,18 @@ async function releaseLock(lockPath: string): Promise<boolean> {
 }
 
 /** Build deterministic branch, worktree, and lock paths without touching git. */
-export function planTeamWorktree(request: TeamWorktreeRequest): TeamWorktreePlan {
+export function planTeamWorktree(
+	request: TeamWorktreeRequest,
+): TeamWorktreePlan {
 	const repoRoot = requireAbsolutePath("repoRoot", request.repoRoot);
-	const worktreeRoot = requireAbsolutePath("worktreeRoot", request.worktreeRoot);
+	const worktreeRoot = requireAbsolutePath(
+		"worktreeRoot",
+		request.worktreeRoot,
+	);
 	if (isWithin(repoRoot, worktreeRoot)) {
-		throw new Error("worktreeRoot must be outside repoRoot to avoid dirtying the main checkout");
+		throw new Error(
+			"worktreeRoot must be outside repoRoot to avoid dirtying the main checkout",
+		);
 	}
 	const runSlug = safeId(request.runId, "runId");
 	const workerSlug = safeId(request.workerId, "workerId");
@@ -169,7 +191,9 @@ export function planTeamWorktree(request: TeamWorktreeRequest): TeamWorktreePlan
  * Allocate an isolated git worktree for an opt-in mutating team worker.
  * This helper is not wired into team runtime; callers must opt in explicitly.
  */
-export async function allocateTeamWorktree(request: TeamWorktreeRequest): Promise<TeamWorktreePlan> {
+export async function allocateTeamWorktree(
+	request: TeamWorktreeRequest,
+): Promise<TeamWorktreePlan> {
 	const plan = planTeamWorktree(request);
 	await assertGitRepoRoot(plan.repoRoot);
 	await assertCleanMainCheckout(plan.repoRoot);
@@ -179,7 +203,15 @@ export async function allocateTeamWorktree(request: TeamWorktreeRequest): Promis
 	}
 	await acquireLock(plan.lockPath);
 	try {
-		await git(plan.repoRoot, ["worktree", "add", "-b", plan.branchName, plan.worktreePath, plan.baseRef]);
+		await git(plan.repoRoot, [
+			"worktree",
+			"add",
+			"-b",
+			plan.branchName,
+			"--",
+			plan.worktreePath,
+			plan.baseRef,
+		]);
 		return plan;
 	} catch (error) {
 		await releaseLock(plan.lockPath);
@@ -188,15 +220,23 @@ export async function allocateTeamWorktree(request: TeamWorktreeRequest): Promis
 }
 
 /** Remove the isolated worktree, its branch, and allocation lock as rollback cleanup. */
-export async function cleanupTeamWorktree(plan: TeamWorktreePlan): Promise<TeamWorktreeCleanupResult> {
+export async function cleanupTeamWorktree(
+	plan: TeamWorktreePlan,
+): Promise<TeamWorktreeCleanupResult> {
 	let removedWorktree = false;
 	let removedBranch = false;
 	if (await pathExists(plan.worktreePath)) {
-		await git(plan.repoRoot, ["worktree", "remove", "--force", plan.worktreePath]);
+		await git(plan.repoRoot, [
+			"worktree",
+			"remove",
+			"--force",
+			"--",
+			plan.worktreePath,
+		]);
 		removedWorktree = true;
 	}
 	try {
-		await git(plan.repoRoot, ["branch", "-D", plan.branchName]);
+		await git(plan.repoRoot, ["branch", "-D", "--", plan.branchName]);
 		removedBranch = true;
 	} catch {
 		// Branch may already be removed or may never have been created.
@@ -206,11 +246,20 @@ export async function cleanupTeamWorktree(plan: TeamWorktreePlan): Promise<TeamW
 }
 
 /** Report unmerged files in an allocated worktree without mutating either checkout. */
-export async function inspectTeamWorktreeConflicts(plan: TeamWorktreePlan): Promise<TeamWorktreeConflictReport> {
-	if (!await pathExists(plan.worktreePath)) {
+export async function inspectTeamWorktreeConflicts(
+	plan: TeamWorktreePlan,
+): Promise<TeamWorktreeConflictReport> {
+	if (!(await pathExists(plan.worktreePath))) {
 		return { hasConflicts: false, files: [], unavailable: "worktree missing" };
 	}
-	const result = await git(plan.worktreePath, ["diff", "--name-only", "--diff-filter=U"]);
-	const files = result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+	const result = await git(plan.worktreePath, [
+		"diff",
+		"--name-only",
+		"--diff-filter=U",
+	]);
+	const files = result.stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
 	return { hasConflicts: files.length > 0, files };
 }

@@ -1,5 +1,6 @@
 /** Opt-in session export spooling into Panopticon-compatible fixture records. */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AgentRecord } from "./agent-registry.js";
@@ -42,7 +43,7 @@ function boundedEvents(events: readonly JournalEvent[], maxEvents: number): Jour
 
 async function atomicWriteFile(path: string, content: string): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
-	const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+	const tmpPath = `${path}.tmp-${randomUUID()}`;
 	try {
 		await writeFile(tmpPath, content, "utf8");
 		await rename(tmpPath, path);
