@@ -21,12 +21,14 @@ USER_INSTALLABLE_PACKAGES = {
 
 PROJECT_ONLY_PACKAGES = {
     "pi-coas",
+    "pi-file-watch",
     "pi-kanban",
 }
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
     "council",
+    "pi-file-watch",
     "pi-kanban",
     "pi-matrix",
     "pi-coas",

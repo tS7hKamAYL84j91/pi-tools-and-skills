@@ -78,6 +78,7 @@ flowchart TD
 
   subgraph ProjectExt[Project-local extensions]
     Kanban[pi-kanban]
+    FileWatch[pi-file-watch]
     COAS[pi-coas]
   end
 
@@ -88,6 +89,7 @@ flowchart TD
   Pi --> Bionic
   Pi --> Doctor
   Pi --> Kanban
+  Pi --> FileWatch
   Pi --> COAS
 
   Goal --> SharedLib
@@ -97,6 +99,7 @@ flowchart TD
   Bionic --> SharedLib
   Doctor --> SharedLib
   Kanban --> SharedLib
+  FileWatch --> SharedLib
   COAS --> SharedLib
 
   TeamsModule -. uses runtime substrate .-> Panopticon
@@ -115,6 +118,7 @@ flowchart TD
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
 | `pi-doctor` | user/global | Read-only diagnostics for extension manifests, command namespaces, and required package scripts/dependencies | Stateless; reads workspace/package metadata only |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
+| `pi-file-watch` | project-local | Watches explicitly configured files and wakes the active session with bounded redacted updates | Runtime watchers only; reads `.pi/file-watch.json` and configured files |
 | `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
 
 ### State ownership summary
@@ -123,6 +127,7 @@ flowchart TD
 | --- | --- | --- |
 | Append-only task/event logs | Owning extension (`pi-kanban`, similar event sources) | `appendLogLine()` or an owning append API |
 | Full-file JSON/Markdown state | Owning extension or shared runtime helper | `writeFileAtomic()` / `updateJsonFile()` where practical |
+| Watched files | Owning user/workspace; `pi-file-watch` reads only | Explicit configured file paths, no recursive discovery or writes |
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
 | Team run state | Panopticon Teams module | Team run APIs and documented result paths |
@@ -143,6 +148,7 @@ flowchart LR
 - Treat user objectives, task text, Matrix messages, and agent messages as untrusted input.
 - Tool implementations must validate paths and avoid interpreting untrusted text as shell/code.
 - Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
+- `pi-file-watch` may observe symlinked or external files only when each configured path explicitly opts into that trust boundary; it does not recursively scan or write watched paths.
 - Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
 - Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.

@@ -66,6 +66,7 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
+| **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
 | **pi-coas**           | Project      | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
@@ -114,6 +115,7 @@ extensions/           Extensions:
   pi-goal/              Global — bounded /goal workflow and completion audit
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
+  pi-file-watch/        Project — explicit non-recursive file watch
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Shared agent skills and compact reference guidance
@@ -122,7 +124,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
+Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
 
 ## Development
 

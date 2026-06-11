@@ -14,6 +14,7 @@ import matrixExtension from "../../extensions/pi-matrix/index.js";
 import coasExtension from "../../extensions/pi-coas/index.js";
 import panopticonExtension from "../../extensions/pi-panopticon/index.js";
 import goalExtension from "../../extensions/pi-goal/index.js";
+import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
 
 interface NamedRegistration {
 	name: string;
@@ -135,6 +136,22 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+k"]);
 		expectRegistered(registrations.events, [
 			"agent_end",
+			"session_shutdown",
+			"session_start",
+		]);
+	});
+
+	it("pi-file-watch registers its tools, command, and lifecycle hooks", () => {
+		const { api, registrations } = createFakeApi();
+
+		fileWatchExtension(api);
+
+		expectRegistered(registrations.tools, [
+			"file_watch_list",
+			"file_watch_reload",
+		]);
+		expectRegistered(registrations.commands, ["file-watch"]);
+		expectRegistered(registrations.events, [
 			"session_shutdown",
 			"session_start",
 		]);

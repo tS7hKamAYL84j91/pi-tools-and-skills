@@ -32,7 +32,7 @@ interface PackageJson {
 	};
 }
 
-const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-kanban", "pi-matrix", "pi-panopticon"];
+const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-panopticon"];
 const REQUIRED_ROOT_SCRIPTS = ["check:namespace", "typecheck", "lint", "knip", "type-coverage", "check", "test"];
 const RESERVED_COMMANDS = new Set(["settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys", "fork", "clone", "tree", "login", "logout", "new", "compact", "resume", "reload", "quit"]);
 const COMMAND_PATTERN = /\.registerCommand\(\s*["']([^"']+)["']/g;
