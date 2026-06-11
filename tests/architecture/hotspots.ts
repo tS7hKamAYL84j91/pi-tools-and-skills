@@ -23,8 +23,17 @@ interface CouplingBudget {
 	readonly reason: string;
 }
 
+interface HotspotMetric {
+	readonly path: string;
+	readonly lines: number;
+	readonly churn90d: number;
+	readonly complexity: number;
+	readonly score: number;
+}
+
 const EXTENSION_DEFAULT_MAX_LINES = 300;
 const LIB_DEFAULT_MAX_LINES = 200;
+const TOP_HOTSPOT_REFACTOR_GATE = 3;
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
@@ -154,6 +163,14 @@ function lineCount(path: string): number {
 	return readFileSync(path, "utf8").split("\n").length;
 }
 
+function lineCountText(content: string): number {
+	return content.split("\n").length;
+}
+
+function complexityApprox(content: string): number {
+	return [...content.matchAll(/\b(if|for|while|case|catch|switch)\b|&&|\|\||\?/g)].length;
+}
+
 function budgetFor(path: string): LineBudgetException | undefined {
 	return LINE_BUDGET_EXCEPTIONS.find((exception) => exception.path === path);
 }
@@ -184,6 +201,64 @@ function couplingBudgets(): Map<string, CouplingBudget> {
 			budget,
 		]),
 	);
+}
+
+function changedFilesSinceMergeBase(): Set<string> {
+	let base = "";
+	try {
+		base = execFileSync("git", ["merge-base", "origin/main", "HEAD"], { encoding: "utf8" }).trim();
+	} catch {
+		return new Set<string>();
+	}
+	const committed = gitLines(["diff", "--name-only", `${base}...HEAD`, "--", "extensions", "lib"]);
+	const workingTree = gitLines(["diff", "--name-only", "HEAD", "--", "extensions", "lib"]);
+	return new Set([...committed, ...workingTree].filter((path) => path.endsWith(".ts")));
+}
+
+function textAtRevision(revision: string, path: string): string | undefined {
+	try {
+		return execFileSync("git", ["show", `${revision}:${path}`], { encoding: "utf8" });
+	} catch {
+		return undefined;
+	}
+}
+
+function churnByFile90d(): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const file of gitLines([
+		"log",
+		"--since=90 days ago",
+		"--name-only",
+		"--pretty=format:",
+		"--",
+		"extensions",
+		"lib",
+	])) {
+		if (file.endsWith(".ts")) {
+			counts.set(file, (counts.get(file) ?? 0) + 1);
+		}
+	}
+	return counts;
+}
+
+function hotspotMetrics(): HotspotMetric[] {
+	const churn = churnByFile90d();
+	return [...listTsFiles("extensions"), ...listTsFiles("lib")]
+		.map((file) => relative(process.cwd(), file))
+		.map((path) => {
+			const content = readFileSync(path, "utf8");
+			const lines = lineCountText(content);
+			const complexity = complexityApprox(content);
+			const churn90d = churn.get(path) ?? 0;
+			return {
+				path,
+				lines,
+				churn90d,
+				complexity,
+				score: lines * Math.max(churn90d, 1) * Math.max(complexity, 1),
+			};
+		})
+		.sort((first, second) => second.score - first.score || first.path.localeCompare(second.path));
 }
 
 function changedModulesByCommit(): Map<string, Set<string>> {
@@ -257,6 +332,34 @@ describe("line-count hotspot budgets", () => {
 
 		expect(unexpectedRootFiles).toEqual([]);
 		expect(oversizedRootFiles).toEqual([]);
+	});
+
+	it("changes to top combined hotspots must reduce size or complexity", () => {
+		const changedFiles = changedFilesSinceMergeBase();
+		const topHotspots = hotspotMetrics().slice(0, TOP_HOTSPOT_REFACTOR_GATE);
+		const topHotspotPaths = new Set(topHotspots.map((hotspot) => hotspot.path));
+		const currentNumberOne = topHotspots[0]?.path;
+		const violations = [...changedFiles]
+			.filter((path) => topHotspotPaths.has(path) || path === currentNumberOne)
+			.map((path) => {
+				const base = execFileSync("git", ["merge-base", "origin/main", "HEAD"], { encoding: "utf8" }).trim();
+				const previous = textAtRevision(base, path);
+				if (!previous) {
+					return undefined;
+				}
+				const current = readFileSync(path, "utf8");
+				const previousLines = lineCountText(previous);
+				const currentLines = lineCountText(current);
+				const previousComplexity = complexityApprox(previous);
+				const currentComplexity = complexityApprox(current);
+				if (currentLines < previousLines || currentComplexity < previousComplexity) {
+					return undefined;
+				}
+				return `${path}: top-${TOP_HOTSPOT_REFACTOR_GATE} hotspot changed without reducing lines (${previousLines}->${currentLines}) or complexity (${previousComplexity}->${currentComplexity}); refactor while touching it.`;
+			})
+			.filter((violation): violation is string => violation != null);
+
+		expect(violations).toEqual([]);
 	});
 });
 
