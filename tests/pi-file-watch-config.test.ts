@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
-import { describeWatchedFiles, formatChangeMessage, formatWatchList, readBoundedRedactedFile } from "../extensions/pi-file-watch/watcher.js";
+import { describeWatchedFiles, formatChangeMessage, formatWatchList } from "../extensions/pi-file-watch/watcher.js";
 
 let workspace: string;
 let external: string;
@@ -64,22 +64,33 @@ describe("file watch config", () => {
 		expect(files[0]?.realPath).toBe(externalReal);
 	});
 
-	it("redacts and truncates watched content", async () => {
-		const file = join(workspace, ".pi", "journal.md");
-		writeFileSync(file, `prefix api_key=supersecretvalue\n${"x".repeat(40)}`);
+	it("formats change notifications without file content", () => {
+		const files = describeWatchedFiles(workspace, parseFileWatchConfig({ watch: [".pi/journal.md"] }));
+		const file = files[0];
+		expect(file?.status).toBe("watching");
+		if (!file) return;
 
-		const result = await readBoundedRedactedFile(file, 80);
+		const message = formatChangeMessage({ ...file, status: "watching", realPath: join(workspace, ".pi", "journal.md") }, {
+			eventType: "change",
+			timestamp: "2026-06-12T00:00:00.000Z",
+			sizeBytes: 123,
+			mtimeMs: 1_765_497_600_000,
+		});
 
-		expect(result.text).not.toContain("supersecretvalue");
+		expect(message).toContain("FILE WATCH UPDATE");
+		expect(message).toContain("event: change");
+		expect(message).toContain("sizeBytes: 123");
+		expect(message).toContain("content: not included");
+		expect(message).not.toContain("Current bounded/redacted file content");
+		expect(message).not.toContain("one");
 	});
 
-	it("formats status and change messages", () => {
+	it("formats status and watch list messages", () => {
 		const files = describeWatchedFiles(workspace, parseFileWatchConfig({ watch: ["missing.md"] }));
 
 		const file = files[0];
 		expect(file).toBeDefined();
 		if (!file) return;
 		expect(formatWatchList(files)).toContain("missing.md");
-		expect(formatChangeMessage({ ...file, status: "watching", realPath: join(workspace, "missing.md") }, "hello", false)).toContain("FILE WATCH UPDATE");
 	});
 });
