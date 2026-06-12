@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
-import { describeWatchedFiles, formatChangeMessage, formatWatchList } from "../extensions/pi-file-watch/watcher.js";
+import { buildFirewatchUpdate, describeWatchedFiles, formatChangeMessage, formatWatchList } from "../extensions/pi-file-watch/watcher.js";
 
 let workspace: string;
 let external: string;
@@ -64,22 +64,38 @@ describe("file watch config", () => {
 		expect(files[0]?.realPath).toBe(externalReal);
 	});
 
-	it("formats change notifications without file content", () => {
+	it("builds firewatch_update fields from readable files", () => {
 		const files = describeWatchedFiles(workspace, parseFileWatchConfig({ watch: [".pi/journal.md"] }));
 		const file = files[0];
 		expect(file?.status).toBe("watching");
 		if (!file) return;
 
-		const message = formatChangeMessage({ ...file, status: "watching", realPath: join(workspace, ".pi", "journal.md") }, {
-			eventType: "change",
-			timestamp: "2026-06-12T00:00:00.000Z",
-			sizeBytes: 123,
-			mtimeMs: 1_765_497_600_000,
+		const update = buildFirewatchUpdate(file, "change");
+
+		expect(update.path).toBe(".pi/journal.md");
+		expect(update.event).toBe("modified");
+		expect(update.hash).toMatch(/^[a-f0-9]{64}$/);
+		expect(update.byte_size).toBe(3);
+		expect(update.mtime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+	});
+
+	it("formats firewatch_update notifications without file content", () => {
+		const message = formatChangeMessage({
+			path: ".pi/journal.md",
+			event: "modified",
+			hash: "abc123",
+			byte_size: 123,
+			mtime: "2026-06-12T00:00:00.000Z",
+			target: join(workspace, ".pi", "journal.md"),
 		});
 
-		expect(message).toContain("FILE WATCH UPDATE");
-		expect(message).toContain("event: change");
-		expect(message).toContain("sizeBytes: 123");
+		expect(message).toContain("firewatch_update");
+		expect(message).toContain("path: .pi/journal.md");
+		expect(message).toContain("event: modified");
+		expect(message).toContain("hash: abc123");
+		expect(message).toContain("byte_size: 123");
+		expect(message).toContain("mtime: 2026-06-12T00:00:00.000Z");
+		expect(message).toContain("target:");
 		expect(message).toContain("content: not included");
 		expect(message).not.toContain("Current bounded/redacted file content");
 		expect(message).not.toContain("one");

@@ -1,6 +1,7 @@
 /** File watcher helpers for pi-file-watch. */
-import { existsSync, lstatSync, realpathSync, statSync, watch } from "node:fs";
-import { dirname, isAbsolute, relative } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, statSync, watch } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveConfiguredPath } from "./config.js";
 import type { FileWatchConfig, WatchedFileDescription, WatcherRuntimeState } from "./types.js";
@@ -48,36 +49,83 @@ export function formatWatchList(files: readonly WatchedFileDescription[]): strin
 	return files.map((file) => `- ${file.status}: ${file.configuredPath}${file.external ? " (external)" : ""}${file.symlink ? " (symlink)" : ""}${file.error ? ` — ${file.error}` : ""}`).join("\n");
 }
 
-interface FileChangeMetadata {
-	eventType: string;
-	timestamp: string;
-	sizeBytes?: number;
-	mtimeMs?: number;
+interface FirewatchUpdate {
+	path: string;
+	event: string;
+	hash?: string;
+	byte_size?: number;
+	mtime?: string;
+	target?: string;
 }
 
-function fileChangeMetadata(file: WatchedFileDescription, eventType: string): FileChangeMetadata {
+function mapWatchEvent(eventType: string): string {
+	if (eventType === "change") {
+		return "modified";
+	}
+	return eventType;
+}
+
+function symlinkTarget(file: WatchedFileDescription): string | undefined {
+	if (!file.symlink) {
+		return undefined;
+	}
+	try {
+		return resolve(dirname(file.absolutePath), readlinkSync(file.absolutePath));
+	} catch {
+		return undefined;
+	}
+}
+
+function fileHash(path: string): string {
+	return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+export function buildFirewatchUpdate(file: WatchedFileDescription, eventType: string): FirewatchUpdate {
+	const update: FirewatchUpdate = {
+		path: file.configuredPath,
+		event: mapWatchEvent(eventType),
+	};
+	const target = symlinkTarget(file);
+	if (target) {
+		update.target = target;
+	}
 	if (!file.realPath) {
-		return { eventType, timestamp: new Date().toISOString() };
+		return update;
 	}
 	try {
 		const stats = statSync(file.realPath);
-		return { eventType, timestamp: new Date().toISOString(), sizeBytes: stats.size, mtimeMs: stats.mtimeMs };
+		if (!stats.isFile()) {
+			return update;
+		}
+		update.hash = fileHash(file.realPath);
+		update.byte_size = stats.size;
+		update.mtime = stats.mtime.toISOString();
 	} catch {
-		return { eventType, timestamp: new Date().toISOString() };
+		// Deleted or unreadable files still report path/event/target only.
 	}
+	return update;
 }
 
-export function formatChangeMessage(file: WatchedFileDescription, metadata: FileChangeMetadata): string {
-	const size = metadata.sizeBytes == null ? "unknown" : String(metadata.sizeBytes);
-	const modified = metadata.mtimeMs == null ? "unknown" : new Date(metadata.mtimeMs).toISOString();
-	return [
-		`FILE WATCH UPDATE: ${file.configuredPath}${file.external ? " (external)" : ""}`,
-		`event: ${metadata.eventType}`,
-		`timestamp: ${metadata.timestamp}`,
-		`sizeBytes: ${size}`,
-		`modified: ${modified}`,
-		"content: not included; use read if needed",
-	].join("\n");
+export function formatChangeMessage(update: FirewatchUpdate): string {
+	const lines = [
+		"firewatch_update",
+		`path: ${update.path}`,
+		`event: ${update.event}`,
+	];
+	if (update.hash) {
+		lines.push(`hash: ${update.hash}`);
+	}
+	if (update.byte_size != null) {
+		lines.push(`byte_size: ${update.byte_size}`);
+	}
+	if (update.mtime) {
+		lines.push(`mtime: ${update.mtime}`);
+	}
+	if (update.target) {
+		lines.push(`target: ${update.target}`);
+	}
+	lines.push("content: not included; use read if needed");
+	return lines.join("\n");
 }
 
 export function stopFileWatch(state: WatcherRuntimeState): void {
@@ -89,10 +137,10 @@ export function stopFileWatch(state: WatcherRuntimeState): void {
 
 function sendFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
 	if (!state.config || file.status !== "watching" || !file.realPath) return;
-	const metadata = fileChangeMetadata(file, eventType);
+	const update = buildFirewatchUpdate(file, eventType);
 	state.lastEventAt = Date.now();
 	state.eventCount += 1;
-	pi.sendMessage({ customType: "file-watch:update", content: formatChangeMessage(file, metadata), display: true, details: { file, metadata } }, { triggerTurn: state.config.triggerTurn });
+	pi.sendMessage({ customType: "firewatch_update", content: formatChangeMessage(update), display: true, details: update }, { triggerTurn: state.config.triggerTurn });
 }
 
 function scheduleFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
