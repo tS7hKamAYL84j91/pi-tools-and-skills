@@ -18,7 +18,8 @@ This directory is for active, decision-useful documentation. Completed reports a
 
 Current active reports:
 
-- [`reports/t-631-fire-review.md`](reports/t-631-fire-review.md) — current F.I.R.E. review and follow-ups.
+- [`reports/t-681-fire-review.md`](reports/t-681-fire-review.md) — current F.I.R.E. review for recent platform/extension changes.
+- [`reports/t-631-fire-review.md`](reports/t-631-fire-review.md) — Panopticon capability consolidation F.I.R.E. review and follow-ups.
 - [`reports/g-f90275d0-teams-protocol-anthropic-review.md`](reports/g-f90275d0-teams-protocol-anthropic-review.md) — active Teams protocol refinement report based on Anthropic effective-agents guidance.
 
 ## Historical records
