@@ -2,9 +2,10 @@ import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
-import { buildFirewatchUpdate, describeWatchedFiles, formatChangeMessage, formatWatchList } from "../extensions/pi-file-watch/watcher.js";
+import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, queueBatchUpdate } from "../extensions/pi-file-watch/watcher.js";
 
 let workspace: string;
 let external: string;
@@ -29,6 +30,7 @@ describe("file watch config", () => {
 		expect(parsed.watch).toEqual([]);
 		expect(parsed.allowExternalPaths).toBe(true);
 		expect(parsed.followSymlinks).toBe(true);
+		expect(parsed.batchWindowMs).toBe(120_000);
 	});
 
 	it("loads explicit workspace-local paths from config file", async () => {
@@ -99,6 +101,40 @@ describe("file watch config", () => {
 		expect(message).not.toContain("content:");
 		expect(message).not.toContain("Current bounded/redacted file content");
 		expect(message).not.toContain("one");
+	});
+
+	it("batches repeated changes and emits final metadata only", () => {
+		vi.useFakeTimers();
+		try {
+			const files = describeWatchedFiles(workspace, parseFileWatchConfig({ watch: [".pi/journal.md"], batchWindowMs: 120 }));
+			const file = files[0];
+			expect(file?.status).toBe("watching");
+			if (!file) return;
+			const messages: Array<{ customType: string; content: string; details: unknown }> = [];
+			const pi = {
+				sendMessage(message: { customType: string; content: string; details: unknown }) {
+					messages.push(message);
+				},
+			} as ExtensionAPI;
+			const state = createRuntimeState();
+			state.config = parseFileWatchConfig({ watch: [".pi/journal.md"], batchWindowMs: 120 });
+
+			queueBatchUpdate(pi, state, file, "change");
+			writeFileSync(join(workspace, ".pi", "journal.md"), "two");
+			queueBatchUpdate(pi, state, file, "change");
+			vi.advanceTimersByTime(120);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.customType).toBe("firewatch_batch");
+			expect(messages[0]?.content).toContain("firewatch_batch");
+			expect(messages[0]?.content).toContain("change_count=2");
+			expect(messages[0]?.content).not.toContain("two");
+			expect(messages[0]?.details).toMatchObject({
+				changes: [expect.objectContaining({ path: ".pi/journal.md", event: "modified", byte_size: 3, change_count: 2 })],
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("formats status and watch list messages", () => {

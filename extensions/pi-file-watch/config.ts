@@ -10,12 +10,14 @@ import type { FileWatchConfig } from "./types.js";
 const DEFAULT_CONFIG_PATH = ".pi/file-watch.json";
 const DEFAULT_MAX_BYTES = 12_000;
 const DEFAULT_DEBOUNCE_MS = 500;
+const DEFAULT_BATCH_WINDOW_MS = 120_000;
 
 interface RawConfig {
 	watch?: unknown;
 	paths?: unknown;
 	maxBytes?: unknown;
 	debounceMs?: unknown;
+	batchWindowMs?: unknown;
 	triggerTurn?: unknown;
 	allowExternalPaths?: unknown;
 	followSymlinks?: unknown;
@@ -45,6 +47,7 @@ export function parseFileWatchConfig(value: unknown): FileWatchConfig {
 		watch: configuredPaths(raw.watch ?? raw.paths),
 		maxBytes: numberOrDefault(raw.maxBytes, DEFAULT_MAX_BYTES, 512, 128_000),
 		debounceMs: numberOrDefault(raw.debounceMs, DEFAULT_DEBOUNCE_MS, 50, 10_000),
+		batchWindowMs: numberOrDefault(raw.batchWindowMs, DEFAULT_BATCH_WINDOW_MS, 0, 600_000),
 		triggerTurn: typeof raw.triggerTurn === "boolean" ? raw.triggerTurn : true,
 		allowExternalPaths: typeof raw.allowExternalPaths === "boolean" ? raw.allowExternalPaths : true,
 		followSymlinks: typeof raw.followSymlinks === "boolean" ? raw.followSymlinks : true,

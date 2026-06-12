@@ -7,6 +7,7 @@ export interface FileWatchConfig {
 	readonly watch: readonly string[];
 	readonly maxBytes: number;
 	readonly debounceMs: number;
+	readonly batchWindowMs: number;
 	readonly triggerTurn: boolean;
 	readonly allowExternalPaths: boolean;
 	readonly followSymlinks: boolean;
@@ -26,6 +27,9 @@ export interface WatchedFileDescription {
 export interface WatcherRuntimeState {
 	watchers: FSWatcher[];
 	timers: Map<string, ReturnType<typeof setTimeout>>;
+	batchTimer: ReturnType<typeof setTimeout> | undefined;
+	batchWindowStart: number | undefined;
+	batchChanges: Map<string, { file: WatchedFileDescription; eventType: string; changeCount: number }>;
 	files: WatchedFileDescription[];
 	config: FileWatchConfig | undefined;
 	lastEventAt: number | undefined;

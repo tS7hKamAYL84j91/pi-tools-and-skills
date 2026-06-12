@@ -37,7 +37,7 @@ export function describeWatchedFiles(cwd: string, config: FileWatchConfig): Watc
 }
 
 export function createRuntimeState(): WatcherRuntimeState {
-	return { watchers: [], timers: new Map(), files: [], config: undefined, lastEventAt: undefined, eventCount: 0 };
+	return { watchers: [], timers: new Map(), batchTimer: undefined, batchWindowStart: undefined, batchChanges: new Map(), files: [], config: undefined, lastEventAt: undefined, eventCount: 0 };
 }
 
 export function renderStatus(config: FileWatchConfig, files: readonly WatchedFileDescription[], state: WatcherRuntimeState): string {
@@ -56,6 +56,13 @@ interface FirewatchUpdate {
 	byte_size?: number;
 	mtime?: string;
 	target?: string;
+	change_count?: number;
+}
+
+interface FirewatchBatch {
+	window_start: string;
+	window_end: string;
+	changes: FirewatchUpdate[];
 }
 
 function mapWatchEvent(eventType: string): string {
@@ -127,19 +134,63 @@ export function formatChangeMessage(update: FirewatchUpdate): string {
 	return lines.join("\n");
 }
 
+function formatBatchMessage(batch: FirewatchBatch): string {
+	return [
+		"firewatch_batch",
+		`window_start: ${batch.window_start}`,
+		`window_end: ${batch.window_end}`,
+		`changes: ${batch.changes.length}`,
+		...batch.changes.map((change) => `- ${change.path} event=${change.event} change_count=${change.change_count ?? 1}`),
+	].join("\n");
+}
+
 export function stopFileWatch(state: WatcherRuntimeState): void {
 	for (const timer of state.timers.values()) clearTimeout(timer);
 	state.timers.clear();
+	if (state.batchTimer) {
+		clearTimeout(state.batchTimer);
+	}
+	state.batchTimer = undefined;
+	state.batchWindowStart = undefined;
+	state.batchChanges.clear();
 	for (const watcher of state.watchers) watcher.close();
 	state.watchers = [];
 }
 
-function sendFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
-	if (!state.config || file.status !== "watching" || !file.realPath) return;
-	const update = buildFirewatchUpdate(file, eventType);
+function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
+	if (!state.config || state.batchChanges.size === 0) return;
+	const windowStart = state.batchWindowStart ?? Date.now();
+	const changes = [...state.batchChanges.values()].map((entry) => ({
+		...buildFirewatchUpdate(entry.file, entry.eventType),
+		change_count: entry.changeCount,
+	}));
+	const batch: FirewatchBatch = {
+		window_start: new Date(windowStart).toISOString(),
+		window_end: new Date().toISOString(),
+		changes,
+	};
+	state.batchChanges.clear();
+	state.batchTimer = undefined;
+	state.batchWindowStart = undefined;
 	state.lastEventAt = Date.now();
-	state.eventCount += 1;
-	pi.sendMessage({ customType: "firewatch_update", content: formatChangeMessage(update), display: true, details: update }, { triggerTurn: state.config.triggerTurn });
+	state.eventCount += changes.length;
+	pi.sendMessage({ customType: "firewatch_batch", content: formatBatchMessage(batch), display: true, details: batch }, { triggerTurn: state.config.triggerTurn });
+}
+
+export function queueBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
+	if (!state.config || file.status !== "watching" || !file.realPath) return;
+	const existing = state.batchChanges.get(file.realPath);
+	state.batchChanges.set(file.realPath, {
+		file,
+		eventType,
+		changeCount: (existing?.changeCount ?? 0) + 1,
+	});
+	if (state.batchWindowStart == null) {
+		state.batchWindowStart = Date.now();
+	}
+	if (!state.batchTimer) {
+		state.batchTimer = setTimeout(() => sendBatchUpdate(pi, state), state.config.batchWindowMs);
+	}
 }
 
 function scheduleFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
@@ -148,7 +199,7 @@ function scheduleFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: 
 	if (existing) clearTimeout(existing);
 	state.timers.set(file.realPath, setTimeout(() => {
 		if (file.realPath) state.timers.delete(file.realPath);
-		sendFileUpdate(pi, state, file, eventType);
+		queueBatchUpdate(pi, state, file, eventType);
 	}, state.config.debounceMs));
 }
 
