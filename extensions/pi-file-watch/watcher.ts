@@ -124,7 +124,6 @@ export function formatChangeMessage(update: FirewatchUpdate): string {
 	if (update.target) {
 		lines.push(`target: ${update.target}`);
 	}
-	lines.push("content: not included; use read if needed");
 	return lines.join("\n");
 }
 

@@ -96,7 +96,7 @@ describe("file watch config", () => {
 		expect(message).toContain("byte_size: 123");
 		expect(message).toContain("mtime: 2026-06-12T00:00:00.000Z");
 		expect(message).toContain("target:");
-		expect(message).toContain("content: not included");
+		expect(message).not.toContain("content:");
 		expect(message).not.toContain("Current bounded/redacted file content");
 		expect(message).not.toContain("one");
 	});
