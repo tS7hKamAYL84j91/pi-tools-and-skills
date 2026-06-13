@@ -36,6 +36,7 @@ const IO_LIB_FILES = new Set([
 	"spawn-rpc.ts",
 	"spawn-service.ts",
 	"runtime-child-process.ts",
+	"template-safety.ts",
 	"maildir.ts",
 ]);
 
