@@ -119,10 +119,12 @@ describe("file watch config", () => {
 			const file = files[0];
 			expect(file?.status).toBe("watching");
 			if (!file) return;
-			const messages: Array<{ customType: string; content: string; details: unknown }> = [];
+			const messages: Array<{ customType: string; content: string; display?: boolean; details: unknown }> = [];
+			const options: unknown[] = [];
 			const pi = {
-				sendMessage(message: { customType: string; content: string; details: unknown }) {
+				sendMessage(message: { customType: string; content: string; display?: boolean; details: unknown }, sendOptions?: unknown) {
 					messages.push(message);
+					options.push(sendOptions);
 				},
 			} as ExtensionAPI;
 			const state = createRuntimeState();
@@ -135,6 +137,8 @@ describe("file watch config", () => {
 
 			expect(messages).toHaveLength(1);
 			expect(messages[0]?.customType).toBe("firewatch_batch");
+			expect(messages[0]?.display).toBe(false);
+			expect(options[0]).toEqual({ triggerTurn: true });
 			expect(messages[0]?.content).toContain("firewatch_batch");
 			expect(messages[0]?.content).toContain("change_count=2");
 			expect(messages[0]?.content).not.toContain("two");
@@ -158,9 +162,9 @@ describe("file watch config", () => {
 	it("reports target content changes through a configured symlink path", async () => {
 		const externalReal = await realpath(join(external, "journal.md"));
 		symlinkSync(externalReal, join(workspace, "journal-link.md"));
-		const messages: Array<{ customType: string; content: string; details: { changes?: Array<{ path?: string; hash?: string }> } }> = [];
+		const messages: Array<{ customType: string; content: string; display?: boolean; details: { changes?: Array<{ path?: string; hash?: string }> } }> = [];
 		const pi = {
-			sendMessage(message: { customType: string; content: string; details: { changes?: Array<{ path?: string; hash?: string }> } }) {
+			sendMessage(message: { customType: string; content: string; display?: boolean; details: { changes?: Array<{ path?: string; hash?: string }> } }) {
 				messages.push(message);
 			},
 		} as ExtensionAPI;
@@ -172,6 +176,7 @@ describe("file watch config", () => {
 			await waitFor(() => messages.length > 0);
 
 			expect(messages[0]?.details.changes?.[0]).toMatchObject({ path: "journal-link.md" });
+			expect(messages[0]?.display).toBe(false);
 			expect(messages[0]?.content).not.toContain("changed");
 		} finally {
 			stopFileWatch(state);

@@ -174,7 +174,7 @@ function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
 	state.batchWindowStart = undefined;
 	state.lastEventAt = Date.now();
 	state.eventCount += changes.length;
-	pi.sendMessage({ customType: "firewatch_batch", content: formatBatchMessage(batch), display: true, details: batch }, { triggerTurn: state.config.triggerTurn });
+	pi.sendMessage({ customType: "firewatch_batch", content: formatBatchMessage(batch), display: false, details: batch }, { triggerTurn: state.config.triggerTurn });
 }
 
 export function queueBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {

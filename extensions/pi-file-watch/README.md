@@ -6,7 +6,7 @@ Small configurable watcher for explicitly listed files.
 
 - Watches only configured file paths with `node:fs.watch` and `recursive: false`.
 - Debounces file-system events, then batches notifications to reduce autosave noise.
-- Emits metadata-only `firewatch_batch` messages; it does not inject file contents.
+- Emits metadata-only hidden `firewatch_batch` messages; it does not open overlays or inject file contents.
 - Allows symlink or external workspace targets by config.
 - Provides `/file-watch`, `file_watch_list`, and `file_watch_reload`.
 
@@ -17,6 +17,7 @@ Small configurable watcher for explicitly listed files.
 - No automatic path creation.
 - No shell execution.
 - No file-body injection; agents should use read tools when content is needed.
+- No overlay/editor UX; `/file-watch` only refreshes the status line, and details stay in `file_watch_list`.
 
 ## Configuration
 

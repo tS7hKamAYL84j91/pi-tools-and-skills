@@ -56,10 +56,10 @@ export default function fileWatchExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("file-watch", {
-		description: "Show configured file watch files and reload watcher state.",
+		description: "Reload file watch state and refresh the status line. Use file_watch_list for details.",
 		handler: async (_args, ctx) => {
 			await reload(ctx);
-			ctx.ui.notify(formatWatchList(state.files), "info");
+			if (ctx.hasUI && state.config) ctx.ui.setStatus("file-watch", renderStatus(state.config, state.files, state));
 		},
 	});
 }
