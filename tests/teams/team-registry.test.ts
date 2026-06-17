@@ -31,6 +31,7 @@ describe("loadTeamRegistry", () => {
 			"deep-research",
 			"llm-council",
 			"navigator",
+			"router-fusion",
 		]);
 		expect(registry.warnings).toEqual([]);
 		const deepResearch = requireTeam(registry, "deep-research");
@@ -45,6 +46,10 @@ describe("loadTeamRegistry", () => {
 		expect(requireTeam(registry, "navigator").agents).toEqual([
 			"consult_navigator",
 		]);
+		expect(requireTeam(registry, "router-fusion")).toMatchObject({
+			protocol: "fusion",
+			limits: { maxLoops: 3 },
+		});
 	});
 
 	it("accepts explicit-binding teams with custom protocol labels", async () => {

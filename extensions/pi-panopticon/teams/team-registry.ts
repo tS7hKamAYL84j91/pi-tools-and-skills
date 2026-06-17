@@ -147,13 +147,13 @@ function firstModelForRole(bindings: TeamAgentBinding[], roles: string[]): strin
 
 function modelsFromBindings(bindings: TeamAgentBinding[]): TeamModels {
 	const roleMembers = bindings
-		.filter((binding) => roleMatches(binding.role, ["member", "explorer", "verifier"]) && binding.model)
+		.filter((binding) => roleMatches(binding.role, ["member", "panel", "explorer", "verifier"]) && binding.model)
 		.map((binding) => binding.model as string);
 	const members = roleMembers;
 	return {
 		...(members.length > 0 ? { members } : {}),
 		...(firstModelForRole(bindings, ["synthesis"]) ? { synthesis: firstModelForRole(bindings, ["synthesis"]) } : {}),
-		...(firstModelForRole(bindings, ["driver", "driver_implementation"]) ? { driver: firstModelForRole(bindings, ["driver", "driver_implementation"]) } : {}),
+		...(firstModelForRole(bindings, ["driver", "driver_implementation", "fallback"]) ? { driver: firstModelForRole(bindings, ["driver", "driver_implementation", "fallback"]) } : {}),
 		...(firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) ? { navigator: firstModelForRole(bindings, ["navigator", "navigator_brief", "navigator_review"]) } : {}),
 	};
 }

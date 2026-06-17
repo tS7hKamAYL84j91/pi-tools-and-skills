@@ -31,6 +31,7 @@ describe("direct team handlers", () => {
 		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "research" }))?.key).toBe("research");
+		expect(getTeamHandler(team({ protocol: "fusion" }))?.key).toBe("fusion");
 		expect(getTeamHandler(team({ protocol: "telephone" }))).toBeUndefined();
 		expect(modelSlotsForTeam(team({ protocol: "telephone" }), team().models)).toEqual([]);
 		expect(promptChainsForTeam(team({ protocol: "telephone" }))).toEqual([]);
@@ -51,6 +52,11 @@ describe("direct team handlers", () => {
 			{ id: "verifier", label: "Verifier model", current: "test/b", kind: "member", index: 1 },
 			{ id: "synthesis", label: "Synthesis model", current: "test/synthesis", kind: "synthesis" },
 		]);
+		expect(modelSlotsForTeam(team({ protocol: "fusion", agentBindings: [{ role: "panel", subagent: "panel_agent", model: "test/a" }, { role: "judge", subagent: "judge_agent", model: "test/synthesis" }], models: { members: ["test/a"], synthesis: "test/synthesis", driver: "test/fallback" } }), { members: ["test/a"], synthesis: "test/synthesis", driver: "test/fallback" })).toEqual([
+			{ id: "member:0", label: "Panel model 1", current: "test/a", kind: "member", index: 0 },
+			{ id: "judge", label: "Judge model", current: "test/synthesis", kind: "synthesis" },
+			{ id: "fallback", label: "Fallback model", current: "test/fallback", kind: "driver" },
+		]);
 	});
 
 	it("declares protocol prompt chains from handlers", () => {
@@ -65,5 +71,6 @@ describe("direct team handlers", () => {
 			"navigator.system",
 			"navigator.template",
 		]);
+		expect(promptChainsForTeam(team({ protocol: "fusion" })).map((chain) => chain.slot)).toEqual(["judge.system"]);
 	});
 });

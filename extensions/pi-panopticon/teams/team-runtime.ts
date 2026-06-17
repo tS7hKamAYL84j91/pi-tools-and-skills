@@ -22,11 +22,12 @@ const TeamFormSchema = Type.Object({
 	id: Type.String({ description: "Team id to create or replace." }),
 	name: Type.Optional(Type.String({ description: "Human-readable team name." })),
 	description: Type.Optional(Type.String({ description: "Team description." })),
-	protocol: Type.Union([Type.Literal("consult"), Type.Literal("debate"), Type.Literal("research")], { description: "Team protocol for generated team files." }),
+	protocol: Type.Union([Type.Literal("consult"), Type.Literal("debate"), Type.Literal("research"), Type.Literal("fusion")], { description: "Team protocol for generated team files." }),
 	agents: Type.Array(Type.String(), { description: "Subagent ids or explicit live-agent refs (agent:<registered-name>) referenced by the team." }),
 	models: Type.Optional(Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate member model IDs." })),
-		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
+		synthesis: Type.Optional(Type.String({ description: "debate/fusion synthesis or judge model." })),
+		driver: Type.Optional(Type.String({ description: "driver/fallback model id." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow default model id." })),
 	})),
 	limits: Type.Optional(Type.Object({
@@ -42,7 +43,8 @@ const TeamModelsSchema = Type.Object({
 	id: Type.String({ description: "Team id to update." }),
 	models: Type.Object({
 		members: Type.Optional(Type.Array(Type.String(), { description: "debate member model IDs." })),
-		synthesis: Type.Optional(Type.String({ description: "debate synthesis model." })),
+		synthesis: Type.Optional(Type.String({ description: "debate/fusion synthesis or judge model." })),
+		driver: Type.Optional(Type.String({ description: "driver/fallback model id." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow model id." })),
 	}),
 	scope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")], { description: "Where to write the model binding. Defaults to current team scope, or user for built-ins." })),
@@ -75,8 +77,9 @@ const TeamRunSchema = Type.Object({
 
 	async: Type.Optional(Type.Boolean({ description: "Return immediately and deliver the team result as a follow-up message." })),
 	models: Type.Optional(Type.Object({
-		members: Type.Optional(Type.Array(Type.String(), { description: "debate/research member model IDs." })),
-		synthesis: Type.Optional(Type.String({ description: "debate/research synthesis model ID." })),
+		members: Type.Optional(Type.Array(Type.String(), { description: "debate/research/fusion member model IDs." })),
+		synthesis: Type.Optional(Type.String({ description: "debate/research/fusion synthesis or judge model ID." })),
+		driver: Type.Optional(Type.String({ description: "driver/fallback model ID." })),
 		navigator: Type.Optional(Type.String({ description: "navigator workflow override model id." })),
 	})),
 	limits: Type.Optional(Type.Object({

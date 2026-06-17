@@ -16,9 +16,11 @@ flowchart TD
 
   Runtime --> Handler[TeamHandler boundary]
   Handler --> Council[Direct council handler\nconsult/debate]
+  Handler --> Fusion[Direct fusion handler\nbounded panel/judge/synthesis]
   Handler --> Research[Direct research handler\nExplorer/Verifier feedback loops]
 
   Council --> ModelNode[Model-backed role call]
+  Fusion --> ModelNode
   Research --> ModelNode
   Council --> LiveNode[agent:<name> live-agent call]
   Research --> LiveNode
@@ -73,6 +75,27 @@ implicit graph config is not migrated automatically.
 Approval gates from T-308 are default-disabled. A team may declare `approval` only
 as explicit opt-in metadata; this cleanup does not make gates globally mandatory
 or wire them into default team execution.
+
+## Fusion protocol
+
+`router-fusion` uses protocol `fusion`, a conservative direct handler:
+
+```text
+Panel (1-3, hard cap 4) -> Judge JSON -> Synthesis
+                         \-> sequential fallback when all panel nodes fail
+```
+
+- Panel nodes run in bounded parallel with tools disabled by default.
+- The pure planner preserves configured model order, filters unavailable models
+  when pi-visible model data is available, applies provider allow/deny policy,
+  caps panel size, and records plan warnings in run details.
+- Judge output must be structured JSON with consensus, contradictions, partial
+  coverage, unique insights, blind spots, confidence, and missing evidence.
+  Invalid judge JSON degrades to synthesis from raw panel responses.
+- All-panel failure uses the configured fallback model sequentially; partial
+  panel success continues without fallback.
+- Fusion is not recursive and is not a replacement for `llm-council`; use it
+  only for bounded answer aggregation, not governance debate.
 
 ## Research protocol
 
