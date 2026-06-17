@@ -1,14 +1,23 @@
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
-import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, queueBatchUpdate } from "../extensions/pi-file-watch/watcher.js";
+import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, queueBatchUpdate, startFileWatch, stopFileWatch } from "../extensions/pi-file-watch/watcher.js";
 
 let workspace: string;
 let external: string;
+
+async function waitFor(condition: () => boolean): Promise<void> {
+	const deadline = Date.now() + 1_000;
+	while (Date.now() < deadline) {
+		if (condition()) return;
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+	expect(condition()).toBe(true);
+}
 
 beforeEach(async () => {
 	workspace = await mkdtemp(join(tmpdir(), "file-watch-workspace-"));
@@ -144,5 +153,55 @@ describe("file watch config", () => {
 		expect(file).toBeDefined();
 		if (!file) return;
 		expect(formatWatchList(files)).toContain("missing.md");
+	});
+
+	it("reports target content changes through a configured symlink path", async () => {
+		const externalReal = await realpath(join(external, "journal.md"));
+		symlinkSync(externalReal, join(workspace, "journal-link.md"));
+		const messages: Array<{ customType: string; content: string; details: { changes?: Array<{ path?: string; hash?: string }> } }> = [];
+		const pi = {
+			sendMessage(message: { customType: string; content: string; details: { changes?: Array<{ path?: string; hash?: string }> } }) {
+				messages.push(message);
+			},
+		} as ExtensionAPI;
+		const state = createRuntimeState();
+		try {
+			startFileWatch(pi, { cwd: workspace } as ExtensionContext, parseFileWatchConfig({ watch: ["journal-link.md"], debounceMs: 20, batchWindowMs: 20 }), state);
+			writeFileSync(externalReal, "changed");
+
+			await waitFor(() => messages.length > 0);
+
+			expect(messages[0]?.details.changes?.[0]).toMatchObject({ path: "journal-link.md" });
+			expect(messages[0]?.content).not.toContain("changed");
+		} finally {
+			stopFileWatch(state);
+		}
+	});
+
+	it("rebuilds watcher state when a configured symlink is repointed", async () => {
+		const otherExternal = await mkdtemp(join(tmpdir(), "file-watch-other-external-"));
+		const firstReal = await realpath(join(external, "journal.md"));
+		const second = join(otherExternal, "journal.md");
+		writeFileSync(second, "three");
+		symlinkSync(firstReal, join(workspace, "journal-link.md"));
+		const messages: Array<{ details: { changes?: Array<{ target?: string }> } }> = [];
+		const pi = {
+			sendMessage(message: { details: { changes?: Array<{ target?: string }> } }) {
+				messages.push(message);
+			},
+		} as ExtensionAPI;
+		const state = createRuntimeState();
+		try {
+			startFileWatch(pi, { cwd: workspace } as ExtensionContext, parseFileWatchConfig({ watch: ["journal-link.md"], debounceMs: 20, batchWindowMs: 20 }), state);
+			unlinkSync(join(workspace, "journal-link.md"));
+			symlinkSync(second, join(workspace, "journal-link.md"));
+			await waitFor(() => state.files[0]?.realPath === second);
+			writeFileSync(second, "four");
+
+			await waitFor(() => messages.some((message) => message.details.changes?.some((change) => change.target === second)));
+		} finally {
+			stopFileWatch(state);
+			await rm(otherExternal, { recursive: true, force: true });
+		}
 	});
 });

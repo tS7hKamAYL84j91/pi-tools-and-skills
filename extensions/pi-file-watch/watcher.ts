@@ -203,16 +203,45 @@ function scheduleFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: 
 	}, state.config.debounceMs));
 }
 
+function sameWatchedName(filename: string | Buffer | null, watchedName: string): boolean {
+	return !filename || filename.toString() === watchedName;
+}
+
+interface RestartFileWatchArgs {
+	readonly pi: ExtensionAPI;
+	readonly ctx: ExtensionContext;
+	readonly config: FileWatchConfig;
+	readonly state: WatcherRuntimeState;
+	readonly configuredPath: string;
+	readonly event: string;
+}
+
+function restartFileWatch(args: RestartFileWatchArgs): void {
+	startFileWatch(args.pi, args.ctx, args.config, args.state);
+	const file = args.state.files.find((entry) => entry.configuredPath === args.configuredPath);
+	if (file) scheduleFileUpdate(args.pi, args.state, file, args.event);
+}
+
 export function startFileWatch(pi: ExtensionAPI, ctx: ExtensionContext, config: FileWatchConfig, state: WatcherRuntimeState): WatchedFileDescription[] {
 	stopFileWatch(state);
 	state.config = config;
 	state.files = describeWatchedFiles(ctx.cwd, config);
 	for (const file of state.files) {
 		if (file.status !== "watching" || !file.realPath) continue;
-		const watchedName = file.realPath.split(/[\\/]/).pop();
-		state.watchers.push(watch(dirname(file.realPath), (event, filename) => {
-			if (!filename || filename.toString() === watchedName) scheduleFileUpdate(pi, state, file, event);
-		}));
+		const targetName = file.realPath.split(/[\\/]/).pop();
+		if (targetName) {
+			state.watchers.push(watch(dirname(file.realPath), (event, filename) => {
+				if (sameWatchedName(filename, targetName)) scheduleFileUpdate(pi, state, file, event);
+			}));
+		}
+		if (file.symlink && config.followSymlinks) {
+			const linkName = file.absolutePath.split(/[\\/]/).pop();
+			if (linkName) {
+				state.watchers.push(watch(dirname(file.absolutePath), (event, filename) => {
+					if (sameWatchedName(filename, linkName)) restartFileWatch({ pi, ctx, config, state, configuredPath: file.configuredPath, event });
+				}));
+			}
+		}
 	}
 	return state.files;
 }
