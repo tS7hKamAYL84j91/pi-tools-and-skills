@@ -15,6 +15,7 @@ import coasExtension from "../../extensions/pi-coas/index.js";
 import panopticonExtension from "../../extensions/pi-panopticon/index.js";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
+import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
 
 interface NamedRegistration {
 	name: string;
@@ -270,5 +271,15 @@ describe("extension registration smoke tests", () => {
 			"session_start",
 			"session_tree",
 		]);
+	});
+
+	it("pi-ollama-models registers its tool and session_start hook", () => {
+		const { api, registrations } = createFakeApi();
+
+		ollamaModelsExtension(api);
+
+		expectRegistered(registrations.tools, ["pi_ollama_sync_models"]);
+		expectRegistered(registrations.commands, []);
+		expectRegistered(registrations.events, ["session_start"]);
 	});
 });

@@ -32,7 +32,7 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, or `pi-panopticon`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-ollama-models`, or `pi-panopticon`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
 
 ### 2. Set up
 
@@ -67,6 +67,7 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
+| **pi-ollama-models**  | User         | Auto-sync local Ollama models into pi's models.json on session start/reload                              |
 | **pi-coas**           | Project      | CoAS status, doctor, workspace, and schedule control surface                                            |
 
 ### Skills
@@ -93,7 +94,7 @@ Everything goes through `make`:
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `make` / `make help`                                                | Show available targets                                                                          |
 | `make setup`                                                        | Install this checkout as a local pi package                                                     |
-| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-panopticon`) |
+| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`) |
 | `make setup-clean`                                                  | Remove this checkout's pi package registration                                                  |
 | `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                                                            |
 | `make doctor`                                                       | Run checks, tests, and gitleaks secret scans                                                    |
@@ -116,6 +117,7 @@ extensions/           Extensions:
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-file-watch/        Project — explicit non-recursive file watch
+  pi-ollama-models/     User — auto-sync local Ollama models into models.json
   pi-coas/              Project — CoAS status, doctor, workspaces, schedules
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Shared agent skills and compact reference guidance
@@ -124,7 +126,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` can be installed individually or per workspace. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
+Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` and user extension `pi-ollama-models` can be installed individually. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
 
 ## Development
 

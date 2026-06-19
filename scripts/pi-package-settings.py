@@ -16,6 +16,7 @@ PACKAGE_EXTENSIONS = [
 USER_INSTALLABLE_PACKAGES = {
     "pi-goal",
     "pi-matrix",
+    "pi-ollama-models",
     "pi-panopticon",
 }
 
@@ -33,6 +34,7 @@ OWNED_EXTENSION_DIRS = [
     "pi-matrix",
     "pi-coas",
     "pi-goal",
+    "pi-ollama-models",
 ]
 
 

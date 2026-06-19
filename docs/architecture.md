@@ -71,6 +71,7 @@ flowchart TD
   subgraph GlobalExt[User/global extensions]
     Goal[pi-goal]
     Matrix[pi-matrix]
+    OllamaModels[pi-ollama-models]
     Panopticon[pi-panopticon]
     Bionic[pi-bionic]
     Doctor[pi-doctor]
@@ -84,6 +85,7 @@ flowchart TD
 
   Pi --> Goal
   Pi --> Matrix
+  Pi --> OllamaModels
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
   Pi --> Bionic
@@ -94,6 +96,7 @@ flowchart TD
 
   Goal --> SharedLib
   Matrix --> SharedLib
+  OllamaModels --> SharedLib
   Panopticon --> SharedLib
   TeamsModule --> SharedLib
   Bionic --> SharedLib
@@ -115,6 +118,7 @@ flowchart TD
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
+| `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
 | `pi-doctor` | user/global | Read-only diagnostics for extension manifests, command namespaces, and required package scripts/dependencies | Stateless; reads workspace/package metadata only |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
@@ -131,6 +135,7 @@ flowchart TD
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
 | Team run state | Panopticon Teams module | Team run APIs and documented result paths |
+| Local model registry | `pi-ollama-models` for the `ollama` provider entry | Atomic full-file rewrite of pi `models.json`, preserving other providers |
 
 ### Trust boundaries
 
@@ -150,6 +155,7 @@ flowchart LR
 - Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
 - `pi-file-watch` may observe symlinked or external files only when each configured path explicitly opts into that trust boundary; it does not recursively scan or write watched paths.
 - Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
+- `pi-ollama-models` trusts only the local `ollama` executable name and writes no credentials; other model providers in `models.json` remain outside its ownership.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
 - Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
 
