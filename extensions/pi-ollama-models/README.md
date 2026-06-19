@@ -21,7 +21,7 @@ It mirrors the useful part of CoAS Quartermaster/setup behavior: discover `ollam
 make setup-package PACKAGE=pi-ollama-models
 ```
 
-Then run `pi`. If pi read `models.json` before extensions run, one more reload refreshes the picker.
+Then run `pi`. Normal sync status appears as `ollama: synced N`; a notification is shown only when the discovered model inventory changes or sync fails. If synced models are missing from the picker, run `/reload`.
 
 ## Tool
 
@@ -46,4 +46,4 @@ Then run `pi`. If pi read `models.json` before extensions run, one more reload r
 
 ## Notes
 
-The sync happens at pi session start/reload, but the model picker may need one more reload if pi reads `models.json` before extensions run. This extension keeps the registry file current without changing CoAS scripts or storing credentials.
+The sync happens at pi session start/reload, but the model picker may need one more reload if pi reads `models.json` before extensions run. This extension keeps the registry file current without changing CoAS scripts or storing credentials, and keeps routine success feedback in the status slot to avoid startup notification noise.

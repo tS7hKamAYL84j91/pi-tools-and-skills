@@ -128,24 +128,37 @@ async function discoverOllamaModels(command: string): Promise<PiModel[]> {
 	}
 }
 
+export function modelIdsChanged(existing: PiModelConfig, models: PiModel[]): boolean {
+	const previous = existing.providers?.ollama?.models?.map((model) => model.id) ?? [];
+	const next = models.map((model) => model.id);
+	return previous.length !== next.length || previous.some((id, index) => id !== next[index]);
+}
+
 async function syncOllamaModels(options: SyncOptions = {}): Promise<ToolResult> {
 	const modelsPath = options.modelsPath ?? process.env.PI_OLLAMA_MODELS_PATH ?? DEFAULT_MODELS_PATH;
 	const command = options.ollamaCommand ?? process.env.PI_OLLAMA_COMMAND ?? "ollama";
 	const models = await discoverOllamaModels(command);
-	const config = mergeOllamaModelsConfig(await readExistingConfig(modelsPath), models);
+	const existing = await readExistingConfig(modelsPath);
+	const changed = modelIdsChanged(existing, models);
+	const config = mergeOllamaModelsConfig(existing, models);
 	if (options.dryRun !== true) {
 		await writeFileAtomic(modelsPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 	}
-	return ok(JSON.stringify({ dryRun: options.dryRun === true, modelsPath, modelCount: models.length, models: models.map((model) => model.id) }, null, 2), { dryRun: options.dryRun === true, modelsPath, modelCount: models.length });
+	return ok(JSON.stringify({ dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed, models: models.map((model) => model.id) }, null, 2), { dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed });
 }
 
 export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		try {
 			const result = await syncOllamaModels();
-			ctx.ui.notify(`pi-ollama synced ${(result.details.modelCount as number) ?? 0} model(s); reload may be needed for picker refresh.`, "info");
+			const modelCount = (result.details.modelCount as number) ?? 0;
+			ctx.ui.setStatus("ollama", `ollama: synced ${modelCount}`);
+			if (result.details.changed === true) {
+				ctx.ui.notify(`ollama: synced ${modelCount} model(s). Run /reload if new models are missing from picker.`, "info");
+			}
 		} catch (error) {
-			ctx.ui.notify(`pi-ollama model sync skipped: ${error instanceof Error ? error.message : "unknown error"}`, "warning");
+			ctx.ui.setStatus("ollama", "ollama: skipped");
+			ctx.ui.notify(`ollama: sync skipped — ${error instanceof Error ? error.message : "unknown error"}`, "warning");
 		}
 	});
 

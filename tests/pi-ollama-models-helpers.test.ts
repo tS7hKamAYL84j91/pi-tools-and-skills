@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeOllamaModelsConfig, modelFromOllamaShow, parseOllamaList } from "../extensions/pi-ollama-models/index.js";
+import { mergeOllamaModelsConfig, modelFromOllamaShow, modelIdsChanged, parseOllamaList } from "../extensions/pi-ollama-models/index.js";
 
 describe("pi ollama models extension helpers", () => {
 	it("parses ollama list output", () => {
@@ -40,5 +40,14 @@ describe("pi ollama models extension helpers", () => {
 		expect(config.providers?.openrouter).toEqual({ apiKey: "cmd" });
 		expect(config.providers?.ollama?.baseUrl).toBe("custom");
 		expect(config.providers?.ollama?.models).toEqual([model]);
+	});
+
+	it("detects model inventory changes for startup UX", () => {
+		const model = modelFromOllamaShow("gemma4:26b", "");
+		const existing = mergeOllamaModelsConfig({}, [model]);
+
+		expect(modelIdsChanged(existing, [model])).toBe(false);
+		expect(modelIdsChanged(existing, [modelFromOllamaShow("qwen3:8b", "")])).toBe(true);
+		expect(modelIdsChanged({}, [model])).toBe(true);
 	});
 });
