@@ -64,8 +64,34 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 	return result;
 }
 
+/** Apply a parsed `/team` command to session state, returning a new state object.
+ *  `status` leaves `state` unchanged; `on`/`off`/`once` set the mode. Pure: input is not mutated. */
+export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult): SessionTeamMode {
+	const next: SessionTeamMode = {
+		...state,
+		...(parsed.topology ? { topology: parsed.topology } : {}),
+		...(parsed.maxModels !== undefined ? { maxModels: parsed.maxModels } : {}),
+	};
+	if (parsed.action === "on" || parsed.action === "off" || parsed.action === "once") {
+		next.state = parsed.action;
+	}
+	return next;
+}
+
+function fusionPanelSize(state: SessionTeamMode): number {
+	return Math.min(state.maxModels, OVERRIDE_MAX_MODELS);
+}
+
+/** Human-readable estimate of model calls a `/team` run will make for the active
+ *  topology. `maxModels` caps the router-fusion panel size, not total calls. Pure. */
+export function estimatedCallDescription(state: SessionTeamMode): string {
+	if (state.topology === "navigator") return "1 model call (one focused review)";
+	if (state.topology === "llm-council") return "members + critiques + synthesis (debate; multiple calls)";
+	return `${fusionPanelSize(state)} panel + judge + synthesis`;
+}
+
 function statusLine(state: SessionTeamMode): string {
-	return `team mode: ${state.state} topology=${state.topology} maxModels=${state.maxModels} approved=${state.approved ? "yes" : "no"}`;
+	return `team mode: ${state.state} topology=${state.topology} maxModels=${state.maxModels} calls=${estimatedCallDescription(state)} approved=${state.approved ? "yes" : "no"}`;
 }
 
 function shouldBypass(text: string, source: string | undefined): boolean {
@@ -100,7 +126,7 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 		state.approved = true;
 	}
 	if (state.maxModels > DEFAULT_MAX_MODELS) {
-		return ctx.ui.confirm("Approve larger team fanout?", `This prompt may use up to ${state.maxModels} team model calls. Continue?`);
+		return ctx.ui.confirm("Approve larger team fanout?", `This run may use ${estimatedCallDescription(state)}. Continue?`);
 	}
 	if (text.length > LARGE_CONTEXT_CHARS) {
 		return ctx.ui.confirm("Approve large-context team prompt?", "This prompt is large; team fanout may multiply cost and data exposure. Continue?");
@@ -115,12 +141,8 @@ export function registerTeamSessionMode(pi: ExtensionAPI): void {
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseTeamModeArgs(rawArgs);
-				if (parsed.topology) state.topology = parsed.topology;
-				if (parsed.maxModels !== undefined) state.maxModels = Math.min(parsed.maxModels, HARD_MAX_MODELS);
-				if (parsed.action === "off") state.state = "off";
-				if (parsed.action === "on") state.state = "on";
-				if (parsed.action === "once") state.state = "once";
-				ctx.ui.notify(statusLine(state), parsed.action === "status" ? "info" : "info");
+				Object.assign(state, applyParsedCommand(state, parsed));
+				ctx.ui.notify(statusLine(state), "info");
 			} catch (error) {
 				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 			}
