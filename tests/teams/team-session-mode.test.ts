@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyParsedCommand, buildTeamModePrompt, estimatedCallDescription, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import { applyParsedCommand, buildTeamModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
 
 describe("team session mode", () => {
 	it("parses on/off/status/once with topology and fanout caps", () => {
@@ -73,5 +73,48 @@ describe("estimatedCallDescription", () => {
 	it("reports panel + judge + synthesis for router-fusion, capped at the override", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 2, approved: true })).toBe("2 panel + judge + synthesis");
 		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 5, approved: true })).toBe("3 panel + judge + synthesis");
+	});
+});
+
+describe("classifyTeamOutcome", () => {
+	it("is ok when all nodes succeed and nothing degraded", () => {
+		expect(classifyTeamOutcome({ nodes: [{ ok: true }, { ok: true }, { ok: true }] })).toEqual({ status: "ok", failedCount: 0 });
+	});
+
+	it("is partial when a node failed or degraded", () => {
+		expect(classifyTeamOutcome({ nodes: [{ ok: true }, { ok: false }] })).toEqual({ status: "partial", failedCount: 1 });
+		expect(classifyTeamOutcome({ degraded: true, nodes: [{ ok: true }] })).toEqual({ status: "partial", failedCount: 0 });
+	});
+
+	it("is failed when a failure reason or stop is present", () => {
+		expect(classifyTeamOutcome({ failureReason: "all_panels_failed", nodes: [] })).toEqual({ status: "failed", failedCount: 0 });
+		expect(classifyTeamOutcome({ stopped: true, nodes: [{ ok: true }] })).toEqual({ status: "failed", failedCount: 0 });
+	});
+});
+
+describe("formatTeamModeResult / formatTeamModeError", () => {
+	it("formats an ok result with calls count and no degraded hint", () => {
+		const out = formatTeamModeResult("router-fusion", { nodes: [{ ok: true }, { ok: true }, { ok: true }] }, "synthesis text");
+		expect(out).toContain('[Team "router-fusion" result — status: ok · calls: 3]');
+		expect(out).toContain("synthesis text");
+		expect(out).not.toContain("Degraded run");
+	});
+
+	it("formats a partial result with failed count and degraded hint", () => {
+		const out = formatTeamModeResult("router-fusion", { degraded: true, nodes: [{ ok: true }, { ok: false }, { ok: true }] }, "synthesis text");
+		expect(out).toContain('status: partial · calls: 3 · failed: 1');
+		expect(out).toContain('Ask for "trace" for per-model details.');
+	});
+
+	it("formats a failed result", () => {
+		const out = formatTeamModeResult("router-fusion", { failureReason: "all_panels_failed", nodes: [] }, "");
+		expect(out).toContain('status: failed · calls: 0');
+	});
+
+	it("formats an error follow-up with fail-closed guidance", () => {
+		const out = formatTeamModeError("navigator", new Error("boom"));
+		expect(out).toContain('[Team "navigator" failed — team mode bypassed]');
+		expect(out).toContain("boom");
+		expect(out).toContain("Re-ask your prompt");
 	});
 });

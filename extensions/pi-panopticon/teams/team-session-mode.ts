@@ -1,6 +1,7 @@
 /** Session-only `/team` interaction mode for synthesis-first team assistance. */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 type TeamModeState = "off" | "on" | "once";
 type TeamRoute = "router-fusion" | "llm-council" | "navigator";
@@ -16,6 +17,13 @@ interface ParseResult {
 	action: "on" | "off" | "once" | "status";
 	topology?: TeamRoute;
 	maxModels?: number;
+}
+
+interface TeamRunOutcomeDetails {
+	degraded?: boolean;
+	failureReason?: string;
+	stopped?: boolean;
+	nodes?: ReadonlyArray<{ ok?: boolean; model?: string; error?: string }>;
 }
 
 const DEFAULT_TOPOLOGY: TeamRoute = "router-fusion";
@@ -102,7 +110,7 @@ function shouldBypass(text: string, source: string | undefined): boolean {
 function topologyInstruction(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "Use team_run with id=\"navigator\" for one focused review, then answer from the synthesis first.";
 	if (state.topology === "llm-council") return "Use team_run with id=\"llm-council\" for bounded debate, then answer from the synthesis first.";
-	return `Use team_run with id="router-fusion" and limits.maxLoops=${Math.min(state.maxModels, OVERRIDE_MAX_MODELS)} for a bounded fusion panel, then answer from the synthesis first.`;
+	return `Use team_run with id="router-fusion" and limits.maxLoops=${fusionPanelSize(state)} for a bounded fusion panel, then answer from the synthesis first.`;
 }
 
 export function buildTeamModePrompt(text: string, state: SessionTeamMode): string {
@@ -116,6 +124,30 @@ export function buildTeamModePrompt(text: string, state: SessionTeamMode): strin
 		"User prompt:",
 		text,
 	].join("\n");
+}
+
+/** Classify a team run outcome from its result details. Pure. */
+export function classifyTeamOutcome(details: TeamRunOutcomeDetails): { status: "ok" | "partial" | "failed"; failedCount: number } {
+	const nodes = details.nodes ?? [];
+	const failedCount = nodes.filter((node) => !node.ok).length;
+	if (details.failureReason || details.stopped) return { status: "failed", failedCount };
+	if (details.degraded || failedCount > 0) return { status: "partial", failedCount };
+	return { status: "ok", failedCount };
+}
+
+/** Format the user-facing follow-up for a forced (`/team once`) run. Pure. */
+export function formatTeamModeResult(teamId: string, details: TeamRunOutcomeDetails, body: string): string {
+	const { status, failedCount } = classifyTeamOutcome(details);
+	const calls = details.nodes?.length ?? 0;
+	const header = `[Team "${teamId}" result — status: ${status} · calls: ${calls}${failedCount > 0 ? ` · failed: ${failedCount}` : ""}]`;
+	const tail = status === "ok" ? "" : `\n\n_Degraded run. Ask for "trace" for per-model details._`;
+	return `${header}\n\n${body}${tail}`;
+}
+
+/** Format the user-facing follow-up when a forced run errors (fail-closed). Pure. */
+export function formatTeamModeError(teamId: string, error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return `[Team "${teamId}" failed — team mode bypassed]\n\n${message}\n\n_Re-ask your prompt to answer directly, or run /team off._`;
 }
 
 async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, message: string) => Promise<boolean>; notify?: (message: string, level?: "info" | "warning" | "error") => void } }, state: SessionTeamMode, text: string): Promise<boolean> {
@@ -134,8 +166,16 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 	return true;
 }
 
-export function registerTeamSessionMode(pi: ExtensionAPI): void {
+/** Build the run params for a forced `/team once` run. Pure. */
+function forcedRunParams(state: SessionTeamMode, prompt: string): { id: string; prompt: string; limits?: { maxLoops: number } } {
+	return state.topology === "router-fusion"
+		? { id: state.topology, prompt, limits: { maxLoops: fusionPanelSize(state) } }
+		: { id: state.topology, prompt };
+}
+
+export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunRegistration): void {
 	const state = defaultState();
+	let inFlight = false;
 	pi.registerCommand("team", {
 		description: "Session-only team interaction mode: /team on|off|status|once [--topology router-fusion|llm-council|navigator] [--max-models 1-5]",
 		handler: async (rawArgs, ctx) => {
@@ -148,14 +188,28 @@ export function registerTeamSessionMode(pi: ExtensionAPI): void {
 			}
 		},
 	});
-	pi.on("input", async (event, ctx) => {
-		if (state.state === "off" || shouldBypass(event.text, event.source)) return { action: "continue" as const };
+	pi.on("input", async (event, ctx: ExtensionContext) => {
+		if (state.state === "off" || shouldBypass(event.text, event.source) || inFlight) return { action: "continue" as const };
 		const ok = await approvalOk(ctx, state, event.text);
-		if (state.state === "once") state.state = "off";
+		const wasOnce = state.state === "once";
+		if (wasOnce) state.state = "off";
 		if (!ok) {
 			ctx.ui?.notify?.("team mode bypassed", "warning");
 			return { action: "continue" as const };
 		}
-		return { action: "transform" as const, text: buildTeamModePrompt(event.text, state), images: event.images };
+		// `/team on` = available: assistant-mediated transform (model decides when to call team_run).
+		if (!wasOnce) return { action: "transform" as const, text: buildTeamModePrompt(event.text, state), images: event.images };
+		// `/team once` = forced: deterministically run the team and deliver the result as a follow-up.
+		inFlight = true;
+		const teamId = state.topology;
+		const params = forcedRunParams(state, event.text);
+		void runTeam({ params, ctx, stateManager: registration.stateManager, runtime: registration.runtime })
+			.then((result) => pi.sendUserMessage(
+				formatTeamModeResult(teamId, result.details as TeamRunOutcomeDetails, result.content.map((entry) => entry.text).join("\n")),
+				{ deliverAs: "followUp" },
+			))
+			.catch((error: unknown) => pi.sendUserMessage(formatTeamModeError(teamId, error), { deliverAs: "followUp" }))
+			.finally(() => { inFlight = false; });
+		return { action: "handled" as const };
 	});
 }
