@@ -7,6 +7,7 @@ import { omitEmptyTools } from "./provider-payload.js";
 import { TeamStateManager } from "./state.js";
 import { registerTeamCommands } from "./team-commands.js";
 import { registerTeamRunTool } from "./team-runtime.js";
+import { registerTeamSessionMode } from "./team-session-mode.js";
 import { registerTeamTools } from "./team-tools.js";
 
 export function registerTeams(pi: ExtensionAPI) {
@@ -21,5 +22,6 @@ export function registerTeams(pi: ExtensionAPI) {
 	registerTeamTools(pi);
 	registerTeamRunTool(pi, { stateManager });
 	registerTeamCommands(pi, { stateManager });
+	registerTeamSessionMode(pi);
 }
 

@@ -22,6 +22,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 ### Commands
 
 - `/teams` — browse and run configured teams from the TUI.
+- `/team on|off|status|once` — session-only interaction mode that asks the active model to use a bounded team route for the next/user prompts; defaults to `router-fusion` with a 2-model cap and never persists default-on.
 
 ## Provisional Surfaces
 
@@ -42,6 +43,7 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
 | `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
+| `router-fusion` | Bounded panel + judge + synthesis | A synthesis-first answer would benefit from a small multi-model panel without external routing dependencies. |
 
 - `navigator` — lightweight review and decision support.
 - `debate` — multi-member council with synthesis.
@@ -53,6 +55,7 @@ Team specs live under `extensions/pi-panopticon/teams/config/` and may be overri
 
 - Does not replace normal model/tool execution for simple tasks.
 - Does not own provider credentials or add model providers; it uses the active pi model registry.
+- Does not persist `/team` interaction mode across sessions or turn it on by default.
 - Does not force dynamic graph execution for every workflow; protocols are direct and intentionally restrained.
 - Does not provide a generic DAG, topology lowering layer, scheduler, or template engine.
 - Does not make deep-research provider calls itself; research tool availability is provided by registered tools such as `pi-research-tools`.

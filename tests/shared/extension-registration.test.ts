@@ -103,9 +103,10 @@ describe("extension registration smoke tests", () => {
 			"team_runs",
 			"team_stop",
 		]);
-		expectRegistered(registrations.commands, ["teams"]);
+		expectRegistered(registrations.commands, ["teams", "team"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
+			"input",
 			"session_start",
 			"session_tree",
 		]);
@@ -255,6 +256,7 @@ describe("extension registration smoke tests", () => {
 			"agents",
 			"agents-mode",
 			"send",
+			"team",
 			"teams",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);
