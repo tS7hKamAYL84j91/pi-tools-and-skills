@@ -17,6 +17,8 @@ const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
 export type TeamRunEventKind =
 	| "run_started"
 	| "phase_started"
+	| "node_started"
+	| "node_heartbeat"
 	| "node_completed"
 	| "run_detail"
 	| "stop_requested"
@@ -48,6 +50,26 @@ export interface TeamRunPhaseStartedEvent extends TeamRunEventBase {
 	kind: "phase_started";
 	phaseId: string;
 	label: string;
+}
+
+/** @public */
+export interface TeamRunNodeStartedEvent extends TeamRunEventBase {
+	kind: "node_started";
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+}
+
+/** @public */
+export interface TeamRunNodeHeartbeatEvent extends TeamRunEventBase {
+	kind: "node_heartbeat";
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	elapsedMs: number;
+	runningWorkers: number;
 }
 
 /** @public */
@@ -117,6 +139,8 @@ export interface TeamRunTombstonedEvent extends TeamRunEventBase {
 export type TeamRunEvent =
 	| TeamRunStartedEvent
 	| TeamRunPhaseStartedEvent
+	| TeamRunNodeStartedEvent
+	| TeamRunNodeHeartbeatEvent
 	| TeamRunNodeCompletedEvent
 	| TeamRunDetailEvent
 	| TeamRunStopRequestedEvent
@@ -145,6 +169,22 @@ interface RecordNodeArgs {
 	durationMs: number;
 	output: string;
 	error?: string;
+}
+
+interface RecordNodeStartArgs {
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+}
+
+interface RecordNodeHeartbeatArgs {
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	elapsedMs: number;
+	runningWorkers: number;
 }
 
 interface RecordDetailArgs {
@@ -201,6 +241,8 @@ function nodeRecord(event: TeamRunNodeCompletedEvent): TeamRunNodeRecord {
 		ok: event.ok,
 		durationMs: event.durationMs,
 		output: event.output ?? "",
+		status: event.ok ? "completed" : "failed",
+		updatedAt: event.timestamp,
 		...(event.error ? { error: event.error } : {}),
 	};
 }
@@ -240,14 +282,47 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 	if (event.kind === "phase_started") {
 		record.status = "running";
 		if (!record.phases.includes(event.phaseId)) record.phases.push(event.phaseId);
+	} else if (event.kind === "node_started") {
+		let node = record.nodes.find((n) => n.phaseId === event.phaseId && n.nodeId === event.nodeId);
+		if (!node) {
+			node = {
+				phaseId: event.phaseId,
+				nodeId: event.nodeId,
+				role: event.role,
+				model: event.model,
+				ok: false,
+				durationMs: 0,
+				output: "",
+				status: "running",
+				startedAt: event.timestamp,
+				updatedAt: event.timestamp,
+				runningWorkers: 1,
+			};
+			record.nodes.push(node);
+		}
+	} else if (event.kind === "node_heartbeat") {
+		const node = record.nodes.find((n) => n.phaseId === event.phaseId && n.nodeId === event.nodeId);
+		if (node) {
+			node.updatedAt = event.timestamp;
+			node.runningWorkers = event.runningWorkers;
+		}
 	} else if (event.kind === "node_completed") {
-		record.nodes.push(nodeRecord(event));
+		const existingIndex = record.nodes.findIndex((n) => n.phaseId === event.phaseId && n.nodeId === event.nodeId);
+		const newNode = nodeRecord(event);
+		if (existingIndex >= 0) {
+			record.nodes[existingIndex] = { ...record.nodes[existingIndex], ...newNode };
+		} else {
+			record.nodes.push(newNode);
+		}
 		if (!event.ok && event.error) record.details.push(detailRecord({ ...event, kind: "run_detail", detailKind: "error", message: event.error }));
 	} else if (event.kind === "run_detail") {
 		record.details.push(detailRecord(event));
 	} else if (event.kind === "stop_requested") {
 		record.status = "stopping";
 		record.stopReason = event.reason;
+		for (const node of record.nodes) {
+			if (node.status === "running") node.status = "stopped";
+		}
 	} else if (event.kind === "run_stopped") {
 		record.status = "stopped";
 		record.stopReason = event.reason;
@@ -263,6 +338,9 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 		delete record.stopReason;
 		record.error = event.error;
 		record.completedAt = event.timestamp;
+		for (const node of record.nodes) {
+			if (node.status === "running") node.status = "failed";
+		}
 	} else if (event.kind === "run_tombstoned") {
 		records.delete(event.runId);
 	}
@@ -298,7 +376,7 @@ export class TeamStateManager {
 			orchestratorPid: process.pid,
 		} as TeamRunEvent;
 		this.options.appendEntry?.(TEAM_RUN_CUSTOM_TYPE, full);
-		if (this.sessionHydrated) applyEvent(this.sessionRecords, full);
+		applyEvent(this.sessionRecords, full);
 	}
 
 	startRun(args: StartRunArgs): string {
@@ -317,6 +395,14 @@ export class TeamStateManager {
 
 	recordPhaseStarted(runId: string, phaseId: string, label: string = phaseId): void {
 		this.appendEvent({ kind: "phase_started", runId, phaseId, label });
+	}
+
+	recordNodeStarted(runId: string, args: RecordNodeStartArgs): void {
+		this.appendEvent({ kind: "node_started", runId, phaseId: args.phaseId, nodeId: args.nodeId, role: args.role, model: args.model });
+	}
+
+	recordNodeHeartbeat(runId: string, args: RecordNodeHeartbeatArgs): void {
+		this.appendEvent({ kind: "node_heartbeat", runId, phaseId: args.phaseId, nodeId: args.nodeId, role: args.role, model: args.model, elapsedMs: args.elapsedMs, runningWorkers: args.runningWorkers });
 	}
 
 	recordNodeCompleted(runId: string, args: RecordNodeArgs): void {

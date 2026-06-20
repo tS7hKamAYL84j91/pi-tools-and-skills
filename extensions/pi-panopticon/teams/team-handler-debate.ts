@@ -6,9 +6,9 @@ import { renderJoinedSynthesisPrompt, renderPeerCritiquePrompt } from "./protoco
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import { bindingForRole, roleBindings } from "./team-bindings.js";
-import { nodeDetails, participantsFromRuns, runTeamNode } from "./team-node-runner.js";
+import { nodeDetails, participantsFromRuns } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs } from "./team-handler-shared.js";
-import { TEAM_STATUS_KEY, chainText, councilSlots, memberModelSlots, promptChains, recordDetail, recordHandoff, recordNode, recordPhase, requireBinding } from "./team-handler-shared.js";
+import { TEAM_STATUS_KEY, chainText, councilSlots, memberModelSlots, promptChains, recordDetail, recordHandoff, recordPhase, requireBinding, runAndRecordNode } from "./team-handler-shared.js";
 import type { TeamParticipant } from "./types.js";
 
 async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
@@ -31,18 +31,16 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 		const source = sourceMembers[index] ?? memberSource;
 		const binding = { ...source, role: `generation_${index + 1}`, label: source.label ?? `Member ${index + 1}` };
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${binding.role}`);
-		return runTeamNode({ binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: chainText(chains, "generation.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+		return runAndRecordNode(args, "debate", { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: chainText(chains, "generation.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
-	for (const node of generation) recordNode(args, "debate", node);
 	const members: TeamParticipant[] = generation.map((node) => ({ label: node.binding.label ?? node.role, model: node.model }));
 	const okGeneration = participantsFromRuns(generation.filter((node) => node.ok));
 	const critiques = await Promise.all(memberModels.map((model, index) => {
 		const binding = { ...criticSource, role: `critique_${index + 1}`, label: generation[index]?.binding.label ?? `Member ${index + 1}` };
 		const prompt = renderPeerCritiquePrompt({ originalPrompt: args.params.prompt, generation: okGeneration, members, viewer: { label: binding.label ?? binding.role, model }, template: chainText(chains, "critique.template").split("\n") });
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${binding.role}`);
-		return runTeamNode({ binding, role: binding.role, model, prompt, systemPrompt: chainText(chains, "critique.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+		return runAndRecordNode(args, "debate", { binding, role: binding.role, model, prompt, systemPrompt: chainText(chains, "critique.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
-	for (const node of critiques) recordNode(args, "debate", node);
 	recordHandoff(args, handoffRouter, {
 		phaseId: "debate",
 		fromNodeId: "critique_aggregate",
@@ -51,8 +49,7 @@ async function runDebate(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 		data: { generation: generation.length, critiques: critiques.length },
 	});
 	const synthesisPrompt = renderJoinedSynthesisPrompt({ originalPrompt: args.params.prompt, generation: okGeneration, critiques: participantsFromRuns(critiques.filter((node) => node.ok)), members, template: chainText(chains, "synthesis.template").split("\n") });
-	const synthesis = await runTeamNode({ binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" }, role: "synthesis", model: synthesisModel, prompt: synthesisPrompt, systemPrompt: chainText(chains, "synthesis.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
-	recordNode(args, "debate", synthesis);
+	const synthesis = await runAndRecordNode(args, "debate", { binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" }, role: "synthesis", model: synthesisModel, prompt: synthesisPrompt, systemPrompt: chainText(chains, "synthesis.system"), ctx: args.ctx, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	const nodes = [...generation, ...critiques, synthesis];
 	return ok(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), nodes: nodeDetails(nodes) });
 }

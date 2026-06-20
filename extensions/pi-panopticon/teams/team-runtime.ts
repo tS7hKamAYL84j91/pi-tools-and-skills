@@ -7,11 +7,58 @@ import { Type } from "@sinclair/typebox";
 import { RuntimeControlPlane, type RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { ok } from "../../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
+import type { TeamRunNodeRecord, TeamRunRecord } from "./types.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
 import { formatElapsed } from "./team-handler-shared.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
+
+/** Stall detection thresholds (read-side only, not persisted). */
+const NO_HEARTBEAT_THRESHOLD_MS = 30_000;
+const IDLE_STALL_THRESHOLD_MS = 60_000;
+
+interface NodeStallResult {
+	stalled: boolean;
+	reason?: string;
+}
+
+/** Compute stall status for a node from its in-memory record. */
+export function computeNodeStall(node: TeamRunNodeRecord, now: number = Date.now()): NodeStallResult {
+	if (node.status !== "running") return { stalled: false };
+	const sinceLastUpdate = now - (node.updatedAt ?? node.startedAt ?? now);
+	if (node.runningWorkers === 0 && sinceLastUpdate > IDLE_STALL_THRESHOLD_MS) return { stalled: true, reason: "idle_stall" };
+	if (sinceLastUpdate > NO_HEARTBEAT_THRESHOLD_MS) return { stalled: true, reason: "no_heartbeat" };
+	return { stalled: false };
+}
+
+/** Classify nodes by status for summary counts. */
+function classifyNodes(nodes: readonly TeamRunNodeRecord[], now: number = Date.now()): { total: number; running: number; stalled: number; done: number } {
+	let running = 0, stalled = 0, done = 0;
+	for (const node of nodes) {
+		if (node.status === "running") {
+			running++;
+			if (computeNodeStall(node, now).stalled) stalled++;
+		} else {
+			done++;
+		}
+	}
+	return { total: nodes.length, running, stalled, done };
+}
+
+/** Find the current (most recently started running) node. */
+function currentNode(record: TeamRunRecord): TeamRunNodeRecord | undefined {
+	const running = record.nodes.filter((node) => node.status === "running");
+	if (running.length > 0) return running[running.length - 1];
+	return record.nodes[record.nodes.length - 1];
+}
+
+/** Format elapsed time for a running node from its startedAt. */
+function nodeElapsed(node: TeamRunNodeRecord): string {
+	if (node.status === "running" && node.startedAt) return formatElapsed(node.startedAt);
+	if (node.durationMs > 0) return formatElapsed(0, node.durationMs);
+	return "0s";
+}
 
 export interface TeamRunRegistration {
 	stateManager: TeamStateManager;
@@ -92,22 +139,26 @@ const TeamRunSchema = Type.Object({
 function refreshTeamWidget(ctx: ExtensionContext, stateManager: TeamStateManager, runId: string) {
 	const run = stateManager.get(runId);
 	if (!run) return;
-	
+
 	const time = run.status === "running" || run.status === "pending" || run.status === "stopping"
 		? formatElapsed(run.startedAt)
 		: `completed in ${formatElapsed(run.startedAt, run.completedAt)}`;
 
 	const phase = run.phases.length > 0 ? run.phases[run.phases.length - 1] : "starting";
-	const nodes = run.nodes.length;
-	const details = run.details.length;
 	const artifacts = run.details.filter((d) => d.kind === "artifact" && d.artifactUri).map((d) => d.artifactUri);
 	const artifactsText = artifacts.length > 0 ? `artifacts: ${artifacts.join(", ")}` : "artifacts: none";
+	const counts = classifyNodes(run.nodes);
+	const current = currentNode(run);
+	const currentLine = current
+		? `current: ${current.role} (${current.model}) ${nodeElapsed(current)}${computeNodeStall(current).stalled ? " \u26a0 STALLED" : ""}`
+		: "current: -";
 
 	ctx.ui.setWidget(TEAM_STATUS_KEY, [
 		`team: ${run.team} (${run.protocol})`,
 		`phase: ${run.status === "running" ? phase : run.status}`,
 		`time: ${time}`,
-		`action: ${nodes} nodes, ${details} details`,
+		`nodes: ${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done})`,
+		currentLine,
 		artifactsText,
 		`cancel: /team stop ${runId}`
 	]);
@@ -258,14 +309,26 @@ function formatTeamRunSummary(runs: TeamRunSnapshot[]): string {
 }
 
 function formatTeamRunRuntimeLine(run: TeamRunSnapshot): string {
-	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`;
+	const counts = classifyNodes(run.nodes);
+	const current = currentNode(run);
+	const currentText = current ? `${run.phases[run.phases.length - 1] ?? "-"}/${current.nodeId}` : "-";
+	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
 }
 
 function requestTeamRunStop(stateManager: TeamStateManager, runtime: RuntimeControlPlane, runId: string, reason: string) {
 	const runtimeStopped = runtime.stopEntity({ kind: "team_run", id: runId }, reason);
 	const accepted = runtimeStopped || stateManager.requestStop(runId, reason);
 	if (!accepted) throw new Error(`No active team run ${runId}`);
-	return ok(`Team run ${runId} stopping: ${reason}`, { kind: "team_run", id: runId, runId, reason, status: "stopping" });
+	const run = stateManager.get(runId);
+	const runningNodes = run?.nodes.filter((node) => node.status === "running") ?? [];
+	const nodeLines = runningNodes.map((node) => {
+		const stall = computeNodeStall(node);
+		return `${node.role} (${node.model}) ${nodeElapsed(node)}${stall.stalled ? ", stalled" : ""}`;
+	});
+	const text = nodeLines.length > 0
+		? `Team run ${runId} stopping: ${reason}\nRunning nodes: ${nodeLines.join(", ")}`
+		: `Team run ${runId} stopping: ${reason}`;
+	return ok(text, { kind: "team_run" as const, id: runId, runId, reason, status: "stopping" });
 }
 
 function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManager, runtime: RuntimeControlPlane): void {
@@ -282,11 +345,31 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 				const run = runs.find((candidate) => candidate.id === params.id);
 				const entity = runtime.inspectEntity({ kind: "team_run", id: params.id });
 				if (!run && !entity) throw new Error(`No runtime team_run ${params.id}`);
-				return ok(run ? formatTeamRunRuntimeLine(run) : `team_run ${params.id} ${entity?.status ?? "unknown"}`, { entities: entity ? [entity] : [{ kind: "team_run", ...run }] });
+				if (run) {
+					const counts = classifyNodes(run.nodes);
+					const current = currentNode(run);
+					const nodeDetailsList = run.nodes.map((node) => ({
+						nodeId: node.nodeId,
+						role: node.role,
+						model: node.model,
+						status: node.status ?? "completed",
+						elapsedMs: node.status === "running" && node.startedAt ? Date.now() - node.startedAt : node.durationMs,
+						runningWorkers: node.runningWorkers,
+						stalled: computeNodeStall(node).stalled,
+					}));
+					return ok(formatTeamRunRuntimeLine(run), {
+						entities: (entity ? [entity] : [Object.assign({ kind: "team_run" as const }, run)]),
+						nodes: nodeDetailsList,
+						phases: run.phases.length,
+						current: current ? { nodeId: current.nodeId, phaseId: run.phases[run.phases.length - 1] } : undefined,
+						nodeCounts: counts,
+					});
+				}
+				return ok(`team_run ${params.id} ${entity?.status ?? "unknown"}`, { entities: (entity ? [entity] : [Object.assign({ kind: "team_run" as const }, run)]) });
 			}
 			const lines = runs.map(formatTeamRunRuntimeLine);
 			const summary = summarizeTeamRuns(runs);
-			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No runtime team_run entities in current session state.", { entities: entities.length > 0 ? entities : runs.map((run) => ({ kind: "team_run", ...run })), summary });
+			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No runtime team_run entities in current session state.", { entities: (entities.length > 0 ? entities : runs.map((run) => Object.assign({ kind: "team_run" as const }, run))), summary });
 		},
 	});
 	pi.registerTool({
@@ -307,7 +390,12 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		parameters: Type.Object({}),
 		async execute() {
 			const runs = stateManager.list();
-			const lines = runs.map((run) => `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} details=${run.details.length}${run.error ? ` error=${run.error}` : ""}`);
+			const lines = runs.map((run) => {
+				const counts = classifyNodes(run.nodes);
+				const current = currentNode(run);
+				const currentText = current ? `${run.phases[run.phases.length - 1] ?? "-"}/${current.nodeId}` : "-";
+				return `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
+			});
 			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No team runs in current session state.", { runs, summary: summarizeTeamRuns(runs) });
 		},
 	});

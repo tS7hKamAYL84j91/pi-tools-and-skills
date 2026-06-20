@@ -6,6 +6,9 @@ import { runMember } from "./runner.js";
 import type { TeamAgentBinding } from "./team-types.js";
 import type { ModelRun } from "./types.js";
 
+/** Heartbeat emission interval in milliseconds while a node is in flight. */
+const NODE_HEARTBEAT_INTERVAL_MS = 5_000;
+
 export interface NodeRun {
 	role: string;
 	binding: TeamAgentBinding;
@@ -57,8 +60,10 @@ export async function runTeamNode(args: {
 	orchestratorName?: string;
 	timeoutMs?: number;
 	maxRetries?: number;
+	onHeartbeat?: (elapsedMs: number, runningWorkers: number) => void;
 }): Promise<NodeRun> {
 	const startedAt = Date.now();
+
 	const retries = isLiveAgentRef(args.binding.subagent) ? 0 : args.maxRetries ?? args.binding.maxRetries ?? 0;
 	for (let attempt = 1; attempt <= retries + 1; attempt++) {
 		const controller = new AbortController();
@@ -67,6 +72,9 @@ export async function runTeamNode(args: {
 		args.ctx.signal?.addEventListener("abort", onParentAbort, { once: true });
 		args.signal?.addEventListener("abort", onParentAbort, { once: true });
 		if (args.ctx.signal?.aborted || args.signal?.aborted) controller.abort();
+		const heartbeat = args.onHeartbeat ? setInterval(() => {
+			args.onHeartbeat?.(Date.now() - startedAt, 1);
+		}, NODE_HEARTBEAT_INTERVAL_MS) : undefined;
 		try {
 			const run = await runRoleCall({ ...args, signal: controller.signal });
 			const error = controller.signal.aborted && !args.ctx.signal?.aborted ? "timeout" : run.error;
@@ -77,6 +85,7 @@ export async function runTeamNode(args: {
 			if (message !== "timeout" && !args.ctx.signal?.aborted && !args.signal?.aborted && attempt <= retries) continue;
 			return failedNodeRun(args, startedAt, attempt, message);
 		} finally {
+			if (heartbeat) clearInterval(heartbeat);
 			if (timeout) clearTimeout(timeout);
 			args.ctx.signal?.removeEventListener("abort", onParentAbort);
 			args.signal?.removeEventListener("abort", onParentAbort);

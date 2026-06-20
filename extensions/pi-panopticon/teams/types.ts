@@ -44,6 +44,8 @@ export interface TeamRunDetailRecord {
 	timestamp: number;
 }
 
+export type TeamRunNodeStatus = "running" | "completed" | "failed" | "stopped";
+
 export interface TeamRunNodeRecord {
 	phaseId: string;
 	nodeId: string;
@@ -53,6 +55,26 @@ export interface TeamRunNodeRecord {
 	durationMs: number;
 	output: string;
 	error?: string;
+	/** Lifecycle status; absent on legacy records that predate node_started events. */
+	status?: TeamRunNodeStatus;
+	/** Wall-clock when the node started execution (from node_started). */
+	startedAt?: number;
+	/** Wall-clock of the last heartbeat or state transition. */
+	updatedAt?: number;
+	/** Number of executing workers for this node (1 while the underlying call is in-flight, 0 if idle). */
+	runningWorkers?: number;
+}
+
+/** In-flight node state for live observability. Transient; cleared on run completion. */
+export interface TeamRunInFlightNode {
+	phaseId: string;
+	nodeId: string;
+	role: string;
+	model: string;
+	status: "running" | "stopped";
+	startedAt: number;
+	updatedAt: number;
+	runningWorkers: number;
 }
 
 /** Persistent record of one team protocol run. */
@@ -69,6 +91,7 @@ export interface TeamRunRecord {
 	phases: string[];
 	nodes: TeamRunNodeRecord[];
 	details: TeamRunDetailRecord[];
+	inFlightNodes?: TeamRunInFlightNode[];
 	summary?: string;
 	error?: string;
 	stopReason?: string;

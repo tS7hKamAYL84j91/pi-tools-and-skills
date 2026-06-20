@@ -175,7 +175,7 @@ describe("TeamStateManager", () => {
 			"version",
 		]);
 		expect(record?.nodes.map((node) => Object.keys(node).sort())).toEqual([
-			["durationMs", "model", "nodeId", "ok", "output", "phaseId", "role"],
+			["durationMs", "model", "nodeId", "ok", "output", "phaseId", "role", "status", "updatedAt"],
 		]);
 		expect(record?.details.map((detail) => Object.keys(detail).sort())).toEqual([
 			["artifactUri", "data", "error", "kind", "message", "nodeId", "phaseId", "timestamp"],

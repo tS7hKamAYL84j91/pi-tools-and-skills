@@ -73,6 +73,15 @@ export function observabilityEventsFromRunEvents(events: readonly TeamRunEvent[]
 			out.push({ ...base(event, "run_stopped", event.summary ?? event.reason), ok: false, status, durationMs: event.durationMs, data: { reason: event.reason } });
 		} else if (event.kind === "run_failed") {
 			out.push({ ...base(event, "run_failed", event.error), ok: false, status: "failed", error: event.error });
+		} else if (event.kind === "node_started") {
+			out.push({
+				...base(event, "trace", `node ${event.nodeId} started`),
+				phaseId: event.phaseId,
+				nodeId: event.nodeId,
+				data: { role: event.role, model: event.model },
+			});
+		} else if (event.kind === "node_heartbeat") {
+			// Deliberately ignored: heartbeats are internal/live-state only and would bloat JSONL.
 		} else if (event.kind === "node_completed" && !event.ok) {
 			out.push({ ...base(event, "error", event.error ?? "team node failed"), phaseId: event.phaseId, nodeId: event.nodeId, ok: false, durationMs: event.durationMs, error: event.error });
 		} else if (event.kind === "run_detail") {

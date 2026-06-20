@@ -9,7 +9,7 @@ import { resolveSystemPrompt, resolveTemplatePrompt, type PromptCatalog, type Re
 import { resolveTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { bindingForRole } from "./team-bindings.js";
-import { nodeDetails, type NodeRun } from "./team-node-runner.js";
+import { nodeDetails, type NodeRun, runTeamNode } from "./team-node-runner.js";
 import type { TeamAgentBinding, TeamModelSlotSpec, TeamModels, TeamPromptRefs, TeamSpec } from "./team-types.js";
 
 export const TEAM_STATUS_KEY = "team";
@@ -104,7 +104,7 @@ export function recordHandoff(args: TeamHandlerRunArgs, router: TeamHandoffRoute
 	});
 }
 
-export function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: NodeRun): void {
+function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: NodeRun): void {
 	if (!args.runId) return;
 	args.stateManager.recordNodeCompleted(args.runId, {
 		phaseId,
@@ -117,6 +117,33 @@ export function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: Node
 		...(node.error ? { error: node.error } : {}),
 	});
 }
+
+/** Wrap runTeamNode with node_started/heartbeat/node_completed event emission. */
+export async function runAndRecordNode(
+	args: TeamHandlerRunArgs,
+	phaseId: string,
+	nodeArgs: Omit<Parameters<typeof runTeamNode>[0], "onHeartbeat">,
+): Promise<NodeRun> {
+	const nodeId = nodeArgs.role;
+	const role = nodeArgs.binding.role;
+	const model = nodeArgs.model;
+	const runId = args.runId;
+	if (runId) {
+		args.stateManager.recordNodeStarted(runId, { phaseId, nodeId, role, model });
+	}
+	const node = await runTeamNode({
+		...nodeArgs,
+		...(runId ? {
+			onHeartbeat: (elapsedMs: number, runningWorkers: number) => {
+				args.stateManager.recordNodeHeartbeat(runId, { phaseId, nodeId, role, model, elapsedMs, runningWorkers });
+			},
+		} : {}),
+	});
+	recordNode(args, phaseId, node);
+	return node;
+}
+
+
 
 function currentModelForSlot(slot: TeamModelSlotSpec, models: TeamModels, index: number): string | undefined {
 	if (slot.kind === "member") return models.members?.[index];

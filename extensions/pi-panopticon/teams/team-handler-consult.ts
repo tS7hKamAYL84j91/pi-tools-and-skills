@@ -5,9 +5,9 @@ import { isLiveAgentRef, liveAgentModel } from "./live-agent.js";
 import { renderTemplate } from "./prompt-renderer.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
-import { runTeamNode, nodeDetails } from "./team-node-runner.js";
+import { nodeDetails } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs } from "./team-handler-shared.js";
-import { TEAM_STATUS_KEY, chainText, councilSlots, promptChains, recordDetail, recordNode, recordPhase, requireBinding } from "./team-handler-shared.js";
+import { TEAM_STATUS_KEY, chainText, councilSlots, promptChains, recordDetail, recordPhase, requireBinding, runAndRecordNode } from "./team-handler-shared.js";
 
 async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const settings = resolveTeamSettings();
@@ -19,7 +19,7 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 	const parent = await currentPanopticonRecord(args.ctx.cwd);
 	recordPhase(args, "consult");
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: consult navigator`);
-	const node = await runTeamNode({
+	const node = await runAndRecordNode(args, "consult", {
 		binding: { ...binding, role: "navigator" },
 		role: "navigator",
 		model,
@@ -31,7 +31,6 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 		timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 		maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
 	});
-	recordNode(args, "consult", node);
 	return ok(node.output, { team: args.team.id, ok: node.ok, nodes: nodeDetails([node]) });
 }
 

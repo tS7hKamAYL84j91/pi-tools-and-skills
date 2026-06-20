@@ -5,9 +5,9 @@ import { TeamHandoffRouter, type TeamHandoffTargetCandidate } from "./handoff.js
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import { bindingForRole } from "./team-bindings.js";
-import { nodeDetails, type NodeRun, runTeamNode } from "./team-node-runner.js";
+import { nodeDetails, type NodeRun } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs } from "./team-handler-shared.js";
-import { TEAM_STATUS_KEY, boundedLoopCount, chainText, councilSlots, promptChains, recordDetail, recordHandoff, recordNode, recordPhase, requireBinding, stoppedResult, stopRequested } from "./team-handler-shared.js";
+import { TEAM_STATUS_KEY, boundedLoopCount, chainText, councilSlots, promptChains, recordDetail, recordHandoff, recordPhase, requireBinding, runAndRecordNode, stoppedResult, stopRequested } from "./team-handler-shared.js";
 
 async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	const settings = resolveTeamSettings();
@@ -39,7 +39,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		const phaseId = `research_loop_${loop}`;
 		recordPhase(args, phaseId, `Research loop ${loop}/${maxLoops}`);
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: explorer ${loop}/${maxLoops}`);
-		const explorer = await runTeamNode({
+		const explorer = await runAndRecordNode(args, phaseId, {
 			binding: { ...explorerSource, role: `explorer_${loop}`, label: explorerSource.label ?? `Explorer ${loop}` },
 			role: `explorer_${loop}`,
 			model: explorerModel,
@@ -52,13 +52,12 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 			maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
 		});
-		recordNode(args, phaseId, explorer);
 		nodes.push(explorer);
 		if (!explorer.ok) return ok(explorer.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
 		if (stopRequested(args)) return stoppedResult(args, nodes);
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: verifier ${loop}/${maxLoops}`);
 		const verifierPrompt = `Original research request:\n${args.params.prompt}\n\nExplorer output:\n${explorer.output}\n\nAct as Evidence Auditor and Gap Detector. Reject unsupported claims, require source bindings, and emit targeted follow-up queries for remaining critical gaps. If no critical gaps remain, include the exact marker VERIFIED_COMPLETE and list the verified facts only.`;
-		const verifier = await runTeamNode({
+		const verifier = await runAndRecordNode(args, phaseId, {
 			binding: { ...verifierSource, role: `verifier_${loop}`, label: verifierSource.label ?? `Verifier ${loop}` },
 			role: `verifier_${loop}`,
 			model: verifierModel,
@@ -71,7 +70,6 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 			timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 			maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
 		});
-		recordNode(args, phaseId, verifier);
 		nodes.push(verifier);
 		verifierOutput = verifier.output;
 		if (!verifier.ok) return ok(verifier.output, { team: args.team.id, ok: false, maxLoops, completedLoops: loop, nodes: nodeDetails(nodes) });
@@ -95,7 +93,7 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 	recordPhase(args, "research_synthesis", "Research synthesis");
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: synthesis`);
 	const synthesisPrompt = `Original research request:\n${args.params.prompt}\n\nVerifier-approved facts and caveats:\n${verifierOutput}\n\nWrite the final answer from verified facts only. Separate verified facts, inferences, recommendations, risks, and open questions. Include citations/source IDs for substantive claims and disclose unresolved gaps.`;
-	const synthesis = await runTeamNode({
+	const synthesis = await runAndRecordNode(args, "research_synthesis", {
 		binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis" },
 		role: "synthesis",
 		model: synthesisModel,
@@ -108,7 +106,6 @@ async function runResearch(args: TeamHandlerRunArgs): Promise<TeamHandlerResult>
 		timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs,
 		maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries,
 	});
-	recordNode(args, "research_synthesis", synthesis);
 	nodes.push(synthesis);
 	return ok(synthesis.output, { team: args.team.id, ok: nodes.every((node) => node.ok), maxLoops, nodes: nodeDetails(nodes) });
 }

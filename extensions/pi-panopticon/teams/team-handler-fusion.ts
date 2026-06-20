@@ -4,9 +4,9 @@ import { ok } from "../../../lib/tool-result.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import { bindingForRole, roleBindings } from "./team-bindings.js";
-import { nodeDetails, participantsFromRuns, runTeamNode, type NodeRun } from "./team-node-runner.js";
+import { nodeDetails, participantsFromRuns, type NodeRun } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs, TeamModelSlot } from "./team-handler-shared.js";
-import { TEAM_STATUS_KEY, chainText, memberModelSlots, promptChains, recordDetail, recordNode, recordPhase, requireBinding, stoppedResult, stopRequested } from "./team-handler-shared.js";
+import { TEAM_STATUS_KEY, chainText, memberModelSlots, promptChains, recordDetail, recordPhase, requireBinding, runAndRecordNode, stoppedResult, stopRequested } from "./team-handler-shared.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
 
 const DEFAULT_MAX_PANEL_MODELS = 3;
@@ -157,8 +157,7 @@ async function runFallback(input: { args: TeamHandlerRunArgs; binding: TeamAgent
 		if (stopRequested(input.args)) return undefined;
 		const role = `fallback_${index + 1}`;
 		input.args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${input.args.team.id}: ${role}`);
-		const node = await runTeamNode({ binding: { ...input.binding, role, label: input.binding.label ?? `Fallback ${index + 1}` }, role, model, prompt: input.args.params.prompt, systemPrompt: "Answer as the reliable fallback model for a failed fusion panel.", ctx: input.args.ctx, signal: input.args.signal, parentId: input.parentId, orchestratorName: input.orchestratorName, timeoutMs: input.args.params.limits?.timeoutMs ?? input.args.team.limits.timeoutMs, maxRetries: input.args.params.limits?.maxRetries ?? input.args.team.limits.maxRetries });
-		recordNode(input.args, FUSION_PHASE, node);
+		const node = await runAndRecordNode(input.args, FUSION_PHASE, { binding: { ...input.binding, role, label: input.binding.label ?? `Fallback ${index + 1}` }, role, model, prompt: input.args.params.prompt, systemPrompt: "Answer as the reliable fallback model for a failed fusion panel.", ctx: input.args.ctx, signal: input.args.signal, parentId: input.parentId, orchestratorName: input.orchestratorName, timeoutMs: input.args.params.limits?.timeoutMs ?? input.args.team.limits.timeoutMs, maxRetries: input.args.params.limits?.maxRetries ?? input.args.team.limits.maxRetries });
 		if (node.ok && node.output.trim()) return node;
 		recordDetail(input.args, { kind: "fallback", phaseId: FUSION_PHASE, nodeId: role, message: "fusion fallback model failed", data: { model, error: node.error ?? "empty output" } });
 	}
@@ -192,9 +191,8 @@ async function runFusion(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 		const source = sourcePanel[index] ?? panelSource;
 		const binding = { ...source, role: `panel_${index + 1}`, label: source.label ?? `Panel ${index + 1}`, tools: [] };
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${binding.role}`);
-		return runTeamNode({ binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently as a fusion panel member. Do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+		return runAndRecordNode(args, FUSION_PHASE, { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently as a fusion panel member. Do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
-	for (const node of panelRuns) recordNode(args, FUSION_PHASE, node);
 	let usablePanel = panelRuns.filter((node) => node.ok && node.output.trim());
 	const allNodes: NodeRun[] = [...panelRuns];
 	if (usablePanel.length === 0) {
@@ -206,17 +204,15 @@ async function runFusion(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
 	}
 	if (stopRequested(args)) return stoppedResult(args, allNodes);
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: judge`);
-	let judge = await runTeamNode({ binding: { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [] }, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+	let judge = await runAndRecordNode(args, FUSION_PHASE, { binding: { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [] }, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	if (judge.ok && !isValidJudgeJson(judge.output)) {
 		judge = { ...judge, ok: false, error: "invalid judge JSON" };
 		recordDetail(args, { kind: "error", phaseId: FUSION_PHASE, nodeId: "judge", message: "fusion judge returned invalid JSON; synthesis will use raw panel responses" });
 	}
-	recordNode(args, FUSION_PHASE, judge);
 	allNodes.push(judge);
 	if (stopRequested(args)) return stoppedResult(args, allNodes);
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: synthesis`);
-	const synthesis = await runTeamNode({ binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis", tools: [] }, role: "synthesis", model: plan.judge, prompt: renderSynthesisPrompt(args.params.prompt, usablePanel, judge), systemPrompt: "Produce the final fusion answer from the judge analysis and panel responses.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
-	recordNode(args, FUSION_PHASE, synthesis);
+	const synthesis = await runAndRecordNode(args, FUSION_PHASE, { binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis", tools: [] }, role: "synthesis", model: plan.judge, prompt: renderSynthesisPrompt(args.params.prompt, usablePanel, judge), systemPrompt: "Produce the final fusion answer from the judge analysis and panel responses.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	allNodes.push(synthesis);
 	return ok(synthesis.output, { team: args.team.id, ok: allNodes.every((node) => node.ok), nodes: nodeDetails(allNodes), degraded: !judge.ok || panelRuns.some((node) => !node.ok) });
 }
