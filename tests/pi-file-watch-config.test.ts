@@ -1,7 +1,7 @@
 import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
@@ -168,10 +168,16 @@ describe("file watch config", () => {
 				messages.push(message);
 			},
 		} as ExtensionAPI;
+		const watchedDirs = new Map<string, (event: string, filename: string | Buffer | null) => void>();
 		const state = createRuntimeState();
+		state.watchFactory = (dir, callback) => {
+			watchedDirs.set(dir, callback);
+			return { close: () => { watchedDirs.delete(dir); } };
+		};
 		try {
 			startFileWatch(pi, { cwd: workspace } as ExtensionContext, parseFileWatchConfig({ watch: ["journal-link.md"], debounceMs: 20, batchWindowMs: 20 }), state);
 			writeFileSync(externalReal, "changed");
+			watchedDirs.get(dirname(externalReal))?.("change", "journal.md");
 
 			await waitFor(() => messages.length > 0);
 
@@ -195,13 +201,20 @@ describe("file watch config", () => {
 				messages.push(message);
 			},
 		} as ExtensionAPI;
+		const watchedDirs = new Map<string, (event: string, filename: string | Buffer | null) => void>();
 		const state = createRuntimeState();
+		state.watchFactory = (dir, callback) => {
+			watchedDirs.set(dir, callback);
+			return { close: () => { watchedDirs.delete(dir); } };
+		};
 		try {
 			startFileWatch(pi, { cwd: workspace } as ExtensionContext, parseFileWatchConfig({ watch: ["journal-link.md"], debounceMs: 20, batchWindowMs: 20 }), state);
 			unlinkSync(join(workspace, "journal-link.md"));
 			symlinkSync(second, join(workspace, "journal-link.md"));
+			watchedDirs.get(workspace)?.("rename", "journal-link.md");
 			await waitFor(() => state.files[0]?.realPath === second);
 			writeFileSync(second, "four");
+			watchedDirs.get(dirname(state.files[0]?.realPath ?? second))?.("change", "journal.md");
 
 			await waitFor(() => messages.some((message) => message.details.changes?.some((change) => change.target === second)));
 		} finally {

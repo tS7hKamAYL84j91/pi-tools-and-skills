@@ -1,7 +1,13 @@
 /**
  * Shared type declarations for pi-file-watch.
  */
-import type { FSWatcher } from "node:fs";
+/** Minimal handle returned by a directory watch. Only `close()` is used. */
+export interface WatchHandle {
+	close(): void;
+}
+
+/** Factory that starts watching a directory, mirroring `fs.watch`'s callback form. */
+export type WatchFactory = (path: string, callback: (event: string, filename: string | Buffer | null) => void) => WatchHandle;
 
 export interface FileWatchConfig {
 	readonly watch: readonly string[];
@@ -25,7 +31,8 @@ export interface WatchedFileDescription {
 }
 
 export interface WatcherRuntimeState {
-	watchers: FSWatcher[];
+	watchers: WatchHandle[];
+	watchFactory?: WatchFactory;
 	timers: Map<string, ReturnType<typeof setTimeout>>;
 	batchTimer: ReturnType<typeof setTimeout> | undefined;
 	batchWindowStart: number | undefined;

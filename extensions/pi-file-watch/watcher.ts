@@ -230,14 +230,14 @@ export function startFileWatch(pi: ExtensionAPI, ctx: ExtensionContext, config: 
 		if (file.status !== "watching" || !file.realPath) continue;
 		const targetName = file.realPath.split(/[\\/]/).pop();
 		if (targetName) {
-			state.watchers.push(watch(dirname(file.realPath), (event, filename) => {
+			state.watchers.push((state.watchFactory ?? watch)(dirname(file.realPath), (event, filename) => {
 				if (sameWatchedName(filename, targetName)) scheduleFileUpdate(pi, state, file, event);
 			}));
 		}
 		if (file.symlink && config.followSymlinks) {
 			const linkName = file.absolutePath.split(/[\\/]/).pop();
 			if (linkName) {
-				state.watchers.push(watch(dirname(file.absolutePath), (event, filename) => {
+				state.watchers.push((state.watchFactory ?? watch)(dirname(file.absolutePath), (event, filename) => {
 					if (sameWatchedName(filename, linkName)) restartFileWatch({ pi, ctx, config, state, configuredPath: file.configuredPath, event });
 				}));
 			}
