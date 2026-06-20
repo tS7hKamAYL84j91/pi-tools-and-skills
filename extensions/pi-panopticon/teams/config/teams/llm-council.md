@@ -21,7 +21,7 @@ agents:
     label: "Diziet Sma"
   - role: "member"
     subagent: "debate_generation_member"
-    model: "ollama/kimi-k2.6:cloud "
+    model: "ollama/kimi-k2.6:cloud"
     label: "Flere-Imsaho"
   - role: "member"
     subagent: "debate_generation_member"
