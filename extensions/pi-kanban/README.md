@@ -62,7 +62,7 @@ The legacy unprefixed `<cwd>/kanban/` fallback has been removed.
 
 Files written:
 - `board.log` — event log (source of truth)
-- `snapshot.md` — regenerated on `kanban_snapshot`
+- `snapshot.md` — regenerated on `kanban_snapshot` with the same view requested: compact by default, full only for `detail="full"`, or one-card detail for `task_id`
 - `board.log.bak.<timestamp>` — created before compaction
 
 ## Stable Tools/Commands
@@ -201,7 +201,7 @@ Triggered automatically after `kanban_complete` and `kanban_snapshot` if either 
 
 ## Snapshot Output
 
-`kanban_snapshot` always writes full `snapshot.md` with five columns, but the tool result returned to the model is compact by default:
+`kanban_snapshot` writes and returns a compact summary by default:
 
 ```markdown
 # Kanban — Compact Summary
@@ -225,7 +225,7 @@ Full detail remains available on demand:
 - `/kanban` — opens the live TUI overlay, which remains bounded to the most recent Done cards.
 - `pi-kanban/tasks/T-NNN.md` — per-task markdown file for direct reads.
 
-`pi-kanban/snapshot.md` retains the full five-column Markdown board:
+`pi-kanban/snapshot.md` retains the compact view by default. A full five-column Markdown board is written only when explicitly requested with `detail="full"`:
 
 ```markdown
 # Kanban — Snapshot
@@ -240,7 +240,7 @@ _Generated: ... | Log events: 247 | WIP: 2/3_
 ...
 ```
 
-Notes and descriptions appear only in explicit detail views or the written snapshot file.
+Notes and descriptions appear only in explicit full-board or task-detail views, and are persisted to `snapshot.md` only when that explicit view is requested.
 
 ## Task Files
 

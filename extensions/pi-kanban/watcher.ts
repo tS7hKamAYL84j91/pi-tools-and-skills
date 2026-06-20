@@ -34,7 +34,7 @@ const DEBOUNCE_MS = 200;
 const INJECT_COOLDOWN_MS = 5 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 3;
 
-const INJECT_MESSAGE = [
+export const KANBAN_WATCHER_INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
 	"Use gradual disclosure: do not dump the full board into context.",
 	'Run kanban_snapshot for a compact board summary; use task_id="T-NNN" for one card or detail="full" only when full board details are explicitly needed.',
@@ -196,7 +196,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		state.lastAutoInjectTime = now;
 		state.consecutiveAutoInjects++;
 
-		pi.sendUserMessage(INJECT_MESSAGE, { deliverAs: "followUp" });
+		pi.sendUserMessage(KANBAN_WATCHER_INJECT_MESSAGE, { deliverAs: "followUp" });
 	}
 
 	// ── Debounced file change handler ───────────────────────

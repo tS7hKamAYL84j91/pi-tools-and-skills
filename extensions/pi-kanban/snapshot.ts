@@ -105,6 +105,10 @@ function bucketTasks(board: BoardState): Record<string, TaskState[]> {
 	return buckets;
 }
 
+function truncateInlineDetail(value: string, maxLength: number): string {
+	return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+}
+
 function renderSummaryColumn(
 	tasks: TaskState[],
 	colKey: string,
@@ -124,7 +128,9 @@ function renderSummaryColumn(
 			const owner = task.claimAgent || task.doneAgent || task.agent;
 			const suffix = owner ? ` — ${owner}` : "";
 			const reasonSuffix =
-				colKey === "blocked" && task.reason ? ` (${task.reason})` : "";
+				colKey === "blocked" && task.reason
+					? ` (${truncateInlineDetail(task.reason, 80)})`
+					: "";
 			lines.push(`- ${task.id}: ${task.title}${suffix}${reasonSuffix}`);
 		}
 		if (omitted > 0) {

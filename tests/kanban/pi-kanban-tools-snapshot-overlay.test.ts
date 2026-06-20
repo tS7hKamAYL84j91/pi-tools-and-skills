@@ -6,7 +6,7 @@ import { callTool, setupKanbanToolHarness } from "./kanban-test-helpers.js";
 const harness = setupKanbanToolHarness();
 
 describe("kanban_snapshot", () => {
-	it("writes full snapshot.md but returns compact summary", async () => {
+	it("writes and returns compact summary by default", async () => {
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-060",
 			agent: "lead",
@@ -24,14 +24,15 @@ describe("kanban_snapshot", () => {
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("T-060");
 		expect(result.content[0]?.text).toContain("Compact Summary");
-		expect(result.content[0]?.text).toContain("Returned view: compact");
+		expect(result.content[0]?.text).toContain("Persisted/returned view: compact");
 		expect(result.content[0]?.text).not.toContain("private-ish detail");
 		expect(existsSync(join(harness.tmpDir, "snapshot.md"))).toBe(true);
 
 		const snap = readFileSync(join(harness.tmpDir, "snapshot.md"), "utf-8");
 		expect(snap).toContain("T-060");
 		expect(snap).toContain("Snap me");
-		expect(snap).toContain("private-ish detail");
+		expect(snap).toContain("Compact Summary");
+		expect(snap).not.toContain("private-ish detail");
 	});
 
 	it("returns full board details when explicitly requested", async () => {
@@ -51,7 +52,7 @@ describe("kanban_snapshot", () => {
 		const result = await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0]?.text).toContain("Returned view: full");
+		expect(result.content[0]?.text).toContain("Persisted/returned view: full");
 		expect(result.content[0]?.text).toContain("Notes for T-061");
 		expect(result.content[0]?.text).toContain(
 			"Only include this in explicit full output",
@@ -85,7 +86,7 @@ describe("kanban_snapshot", () => {
 		});
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0]?.text).toContain("Returned view: task");
+		expect(result.content[0]?.text).toContain("Persisted/returned view: task");
 		expect(result.content[0]?.text).toContain("# Kanban Task T-062");
 		expect(result.content[0]?.text).toContain("Specific card context");
 		expect(result.content[0]?.text).toContain("specific note");

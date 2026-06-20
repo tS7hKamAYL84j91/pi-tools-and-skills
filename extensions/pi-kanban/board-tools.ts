@@ -32,18 +32,17 @@ async function executeSnapshot(
 ): Promise<ToolResult> {
 	const board = await parseBoard();
 	const snapshotOptions = { showAllDone: show_all_done ?? false };
-	const snapshot = generateSnapshot(board, snapshotOptions);
 	const view = task_id ? "task" : (detail ?? "compact");
 	let returnedView: string;
 	if (task_id) {
 		returnedView = generateTaskDetail(board, task_id);
 	} else if (view === "full") {
-		returnedView = snapshot;
+		returnedView = generateSnapshot(board, snapshotOptions);
 	} else {
 		returnedView = generateSnapshotSummary(board, snapshotOptions);
 	}
 	const sp = snapshotPath();
-	await writeFileAtomic(sp, snapshot);
+	await writeFileAtomic(sp, returnedView);
 	await logAppend(
 		`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
 	);
@@ -57,7 +56,7 @@ async function executeSnapshot(
 		? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
 		: "";
 	return ok(
-		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nReturned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
+		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nPersisted/returned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
 		{
 			snapshotPath: sp,
 			totalEvents: board.totalEvents,

@@ -25,7 +25,10 @@ import {
 	generateSnapshotSummary,
 	generateTaskDetail,
 } from "../../extensions/pi-kanban/snapshot.js";
-import { buildWidgetLines } from "../../extensions/pi-kanban/watcher.js";
+import {
+	buildWidgetLines,
+	KANBAN_WATCHER_INJECT_MESSAGE,
+} from "../../extensions/pi-kanban/watcher.js";
 import { setupTempKanbanDir } from "./kanban-test-helpers.js";
 
 const fakeTheme = {
@@ -79,6 +82,22 @@ describe("snapshot renderers", () => {
 		const summary = generateSnapshotSummary(board);
 		expect(summary).toContain("waiting on deploy");
 		expect(summary).toContain("T-001");
+	});
+
+	it("compact summary truncates long blocked reasons inline", async () => {
+		const longReason = "x".repeat(120);
+		const board = await makeBoard(
+			[
+				'2026-01-01T00:00:00Z CREATE T-006 lead title="Blocked task" priority="high" tags=""',
+				`2026-01-01T00:03:00Z BLOCK T-006 worker-1 reason="${longReason}"`,
+				"2026-01-01T00:03:00Z MOVE T-006 worker-1 from=in-progress to=blocked",
+			].join("\n"),
+		);
+
+		const summary = generateSnapshotSummary(board);
+		expect(summary).toContain("T-006");
+		expect(summary).toContain("…");
+		expect(summary).not.toContain(longReason);
 	});
 
 	it("compact summary does not add reason suffix for non-blocked tasks", async () => {
@@ -182,6 +201,16 @@ describe("snapshot renderers", () => {
 		expect(detail).toContain("critical");
 		expect(detail).toContain("in-progress");
 		expect(detail).toContain("worker-1");
+	});
+});
+
+describe("watcher disclosure prompts", () => {
+	it("instructs compact-first follow-up without dumping full board details", () => {
+		expect(KANBAN_WATCHER_INJECT_MESSAGE).toContain("Board updated externally");
+		expect(KANBAN_WATCHER_INJECT_MESSAGE).toContain("compact board summary");
+		expect(KANBAN_WATCHER_INJECT_MESSAGE).toContain('task_id="T-NNN"');
+		expect(KANBAN_WATCHER_INJECT_MESSAGE).toContain("detail=\"full\" only");
+		expect(KANBAN_WATCHER_INJECT_MESSAGE).toContain("do not dump the full board");
 	});
 });
 
