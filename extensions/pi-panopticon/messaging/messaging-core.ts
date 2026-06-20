@@ -75,8 +75,10 @@ export class MessagingCore {
 		for (const [name, transport] of getChannels()) {
 			const pending = transport.receive(record.id);
 			for (const msg of pending) {
-				all.push({ ...msg, channel: name });
-				if (name === "agent") this.config.onMessage?.(msg.text);
+				const text = typeof msg.text === "string" ? msg.text : "";
+				const normalizedMsg = { ...msg, text };
+				all.push({ ...normalizedMsg, channel: name });
+				if (name === "agent") this.config.onMessage?.(text);
 				transport.ack(record.id, msg.id);
 			}
 			if (pending.length > 0) transport.prune(record.id);
