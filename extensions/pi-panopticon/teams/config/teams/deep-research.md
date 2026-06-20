@@ -14,14 +14,16 @@ prompts:
 agents:
   - role: "explorer"
     subagent: "deep_research_explorer"
-    model: "openai-codex/gpt-5.5"
+    model: "ollama/minimax-m3:cloud"
     label: "Explorer Node"
   - role: "verifier"
     subagent: "deep_research_verifier"
-    model: "openai-codex/gpt-5.5"
+    model: "ollama/nemotron-3-ultra:cloud"
   - role: "synthesis"
     subagent: "deep_research_synthesis"
-    model: "openai-codex/gpt-5.5"
+    model: "ollama/glm-5.2:cloud"
 ---
 
 A RhinoInsight-inspired iterative deep research team. Use it only when evidence gathering and independent verification loops are needed. The Explorer acquires and normalises evidence into `sources/manifest.json`. The Verifier acts as Evidence Auditor and Gap Detector, either emitting `VERIFIED_COMPLETE` or targeted follow-up gaps. The protocol repeats bounded Explorer/Verifier loops before the Synthesis node assembles the final report using only verified facts with inline citations.
+
+Model-routing policy: MiniMax explores and summarises evidence, Nemotron verifies/provenance-checks, and GLM synthesises. For code-heavy specialist research, route a separate subcall to Kimi rather than making Deep Research a code executor.
