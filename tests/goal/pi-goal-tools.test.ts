@@ -157,6 +157,26 @@ describe("pi-goal extension", () => {
 		expect(ctx.ui.statuses.at(-1)?.value).toBe("goal: active");
 	});
 
+	it("goal_complete clears the footer status and widget on completion", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(await createTextGoal(tempDir, "complete clears footer"), 5);
+		await saveGoal(tempDir, state);
+
+		const tool = pi.tools.find((entry) => {
+			return typeof entry === "object" && entry !== null && "name" in entry && entry.name === "goal_complete";
+		}) as { execute: (id: string, params: { evidence: string }, signal: unknown, onUpdate: unknown, ctx: FakeCommandContext) => Promise<unknown> } | undefined;
+		expect(tool).toBeDefined();
+		await tool?.execute("call-1", { evidence: "all tests green" }, undefined, undefined, ctx);
+
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "goal", value: undefined });
+		expect(ctx.ui.widgets.at(-1)).toEqual({ key: "goal", value: undefined });
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { status: string; runActive: boolean };
+		expect(persisted.status).toBe("complete");
+		expect(persisted.runActive).toBe(false);
+	});
+
 	it("/goal clear explains local state removal", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);

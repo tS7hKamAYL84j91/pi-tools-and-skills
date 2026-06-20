@@ -16,7 +16,7 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 ### Tools
 
 - `goal_get` — read the current project-local goal state.
-- `goal_complete` — mark the goal complete with concrete audit evidence.
+- `goal_complete` — mark the goal complete with concrete audit evidence. A completed goal clears the TUI footer status/widget; the goal record remains under `.pi/goal/` for `/goal status` and history until `/goal clear`.
 
 ## Provisional Surfaces
 

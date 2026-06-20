@@ -42,7 +42,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
 	async function refreshUi(ctx: ExtensionContext, state?: GoalState | null): Promise<void> {
 		const current = state === undefined ? await loadGoal(ctx.cwd) : state;
-		if (!current) {
+		if (!current || current.status === "complete") {
 			ctx.ui.setStatus("goal", undefined);
 			ctx.ui.setWidget("goal", undefined);
 			return;
@@ -52,7 +52,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
 		const phase = current.runActive ? "running" : current.status;
 		ctx.ui.setStatus("goal", `goal: ${phase}${run}`);
-		ctx.ui.setWidget("goal", compactWidget(current));
+		ctx.ui.setWidget("goal", [`goal: ${phase} ${current.turnsUsed}/${current.turnBudget} · /goal status for details`]);
 	}
 
 	async function showGoal(ctx: ExtensionCommandContext, state: GoalState): Promise<void> {
@@ -578,9 +578,4 @@ async function requireGoal(cwd: string): Promise<GoalState> {
 		throw new Error("No pi goal is set. Use /goal file <path> first.");
 	}
 	return state;
-}
-
-function compactWidget(state: GoalState): string[] {
-	const phase = state.runActive ? "running" : state.status;
-	return [`goal: ${phase} ${state.turnsUsed}/${state.turnBudget} · /goal status for details`];
 }
