@@ -22,6 +22,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 ### Commands
 
 - `/teams` — browse and run configured teams from the TUI.
+- `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
 - `/team on|off|status|once` — session-only interaction mode that asks the active model to use a bounded team route for the next/user prompts; defaults to `router-fusion` with a 2-model cap and never persists default-on.
 
 ## Provisional Surfaces
@@ -49,7 +50,7 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 - `debate` — multi-member council with synthesis.
 - `research` — bounded Explorer/Verifier/Synthesis loop for evidence-audited reports.
 
-Team specs live under `extensions/pi-panopticon/teams/config/` and may be overridden by user/project team files. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status`.
+Team specs live under `extensions/pi-panopticon/teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. See ADR 026. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status`.
 
 ## What this does NOT do
 

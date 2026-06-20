@@ -8,6 +8,7 @@ import { deleteTeamFiles } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLines } from "./team-overlay.js";
 import { formTeam } from "./team-form.js";
+import { projectBuiltinTeams } from "./team-projection.js";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 function parseRunArgs(rawArgs: string): { id: string; prompt: string } | undefined {
@@ -25,6 +26,29 @@ export function teamDeleteConfirmationView(id: string): DestructiveConfirmationV
 	};
 }
 
+function teamSeedForceConfirmationView(): DestructiveConfirmationView {
+	return {
+		title: "Re-project built-in teams with --force?",
+		subject: "Overwrite all user-scope built-in team files with fresh seed copies?",
+		details: ["This replaces your editable copies of built-in teams (e.g. llm-council, navigator) with the packaged seeds. Custom teams you created are not affected."],
+		severity: "warning",
+	};
+}
+
+async function seedBuiltinTeams(ctx: ExtensionContext, rawArgs: string): Promise<void> {
+	const force = /(?:^|\s)--force(?:\s|$)/.test(rawArgs);
+	if (force) {
+		const confirmed = await confirmDestructiveAction(ctx, teamSeedForceConfirmationView());
+		if (!confirmed) return;
+	}
+	const result = await projectBuiltinTeams(ctx, { force });
+	const parts: string[] = [];
+	if (result.projected.length > 0) parts.push(`projected ${result.projected.length}: ${result.projected.join(", ")}`);
+	if (result.overwritten.length > 0) parts.push(`overwritten ${result.overwritten.length}: ${result.overwritten.join(", ")}`);
+	if (result.skipped.length > 0) parts.push(`skipped ${result.skipped.length} (already present)`);
+	ctx.ui.notify(`Team seed${force ? " (force)" : ""}: ${parts.join(" · ") || "no changes"}`, "info");
+}
+
 async function deleteSelectedTeam(ctx: ExtensionContext, requested?: string): Promise<string | undefined> {
 	const id = await pickTeamId(ctx, requested);
 	if (!id) return undefined;
@@ -40,7 +64,7 @@ export function registerTeamCommands(
 	registration: TeamRunRegistration,
 ): void {
 	pi.registerCommand("teams", {
-		description: "Browse, describe, form, configure models, delete, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|run [id] [prompt]|async [id] [prompt]]",
+		description: "Browse, describe, form, configure models, delete, seed, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|run [id] [prompt]|async [id] [prompt]]",
 		handler: async (rawArgs, ctx) => {
 			const trimmed = rawArgs.trim();
 			if (!trimmed || trimmed === "list") {
@@ -68,6 +92,10 @@ export function registerTeamCommands(
 			}
 			if (command === "delete" || command === "dissolve") {
 				await deleteSelectedTeam(ctx, rest[0]);
+				return;
+			}
+			if (command === "seed") {
+				await seedBuiltinTeams(ctx, rest.join(" "));
 				return;
 			}
 			const isAsyncRun = command === "async";
