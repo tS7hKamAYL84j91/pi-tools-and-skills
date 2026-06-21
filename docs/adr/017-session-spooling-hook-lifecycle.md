@@ -50,6 +50,13 @@ explicitly. For the approved local pi path, relative source paths are resolved
 under `~/.pi/agent/sessions/` unless a test-only/synthetic `sourceRoot` is
 provided.
 
+T-510 addendum: `lib/session-spool-select-cli.ts` is a thin explicit UX wrapper
+for this boundary. Its default mode is read-only discovery of recent source
+files. It invokes the spooling runner only when the user supplies both
+`--pick N` and `--spool` plus the explicit registry/name/cwd arguments. It does
+not install hooks, start background work, mutate canonical session logs, or emit
+raw session exports.
+
 ### Invocation lifecycle
 
 A future hook runner may run at these boundaries only:
