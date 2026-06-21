@@ -66,6 +66,7 @@ Files changed:
 - `extensions/pi-panopticon/teams/team-projection.ts` — `pruneBuiltinTeams`.
 - `extensions/pi-panopticon/teams/team-commands.ts` — `/teams prune` command.
 - `extensions/pi-panopticon/teams/README.md` — UX and context enrichment documentation.
+- `docs/adr/029-team-context-review.md` — ADR spec, Phase 1 marked implemented.
 - `tests/teams/team-session-mode.test.ts` — updated for on/auto/once and `buildTeamContext`.
 - `tests/teams/team-projection.test.ts` — prune tests.
 
@@ -75,4 +76,4 @@ Validation:
 - `type-coverage` 99.32%.
 - Full `npm test` has one pre-existing unrelated failure: `lib/session-spool-select-cli.ts` unclassified in `tests/architecture/lib-layering.ts`.
 
-No blockers. Ready to commit/push Phase 1.
+Delivered to `origin/main` at `41765e3`. No blockers.

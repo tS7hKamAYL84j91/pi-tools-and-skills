@@ -19,16 +19,17 @@
 - **Strengthening `/team on` with Context (ADR 029):**
     - Implemented `buildTeamContext` in `team-session-mode.ts` to gather and bound session history (last 5 turns, 4k char limit, heuristic secret redaction).
     - Injected this context into `forcedRunParams` so deterministic team runs (`on` and `once`) are no longer "blind" to the conversation.
-    - Verified implementation with 25 unit tests in `tests/teams/team-session-mode.test.ts`.
+    - Verified implementation with 5 new unit tests in `tests/teams/team-session-mode.test.ts`.
 
 ## Validation Results (latest run)
 - `npm run check`: PASS (typecheck, lint, knip, type-coverage 99.32%).
 - `npx vitest run tests/teams`: 218 tests passed.
 - No new findings from knip.
 
+## Delivery
+- Committed and pushed to `origin/main` at `41765e3` (merge of `feat/adr-029-team-context`).
+
 ## Next Steps
-- Commit and push ADR 029 Phase 1 changes.
-- Update ADR status to "Implemented".
 - Consider Phase 2 (Main-Agent-First Review mode) if Phase 1 proves insufficient in practice.
 
 ## Known Issues
