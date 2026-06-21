@@ -33,6 +33,74 @@ const DEFAULT_MAX_MODELS = 2;
 const OVERRIDE_MAX_MODELS = 3;
 const HARD_MAX_MODELS = 5;
 const LARGE_CONTEXT_CHARS = 12_000;
+const MAX_HISTORY_TURNS = 5;
+const MAX_HISTORY_CHARS = 4_000;
+
+interface SessionMessageEntry {
+	readonly type: "message";
+	readonly message: {
+		readonly role?: string;
+		readonly content?: string | readonly unknown[];
+	};
+}
+
+function isSessionMessageEntry(entry: unknown): entry is SessionMessageEntry {
+	return typeof entry === "object" && entry !== null && (entry as { type?: string }).type === "message" && typeof (entry as { message?: unknown }).message === "object";
+}
+
+function textContent(value: string | readonly unknown[] | undefined): string | undefined {
+	if (typeof value === "string") return value;
+	if (!Array.isArray(value)) return undefined;
+	return value
+		.filter((item): item is { type?: string; text?: string } => typeof item === "object" && item !== null)
+		.map((item) => item.text)
+		.filter((text): text is string => typeof text === "string")
+		.join("");
+}
+
+function looksLikeSecret(text: string): boolean {
+	// Heuristic: common secret-bearing tokens.
+	return /\b(?:api[_-]?key|token|password|secret|bearer)\b/gi.test(text) && /[a-zA-Z0-9+/=]{16,}/.test(text);
+}
+
+function isTextOnlyUserOrAssistant(role: string | undefined): boolean {
+	return role === "user" || role === "assistant";
+}
+
+export function buildTeamContext(ctx: ExtensionContext, currentPrompt: string): string {
+	const entries = (ctx.sessionManager?.getEntries?.() ?? []) as readonly unknown[];
+	const lines: string[] = [];
+	let charBudget = MAX_HISTORY_CHARS;
+	let turns = 0;
+	for (let index = entries.length - 1; index >= 0; index--) {
+		if (turns >= MAX_HISTORY_TURNS) break;
+		const entry = entries[index];
+		if (!isSessionMessageEntry(entry)) continue;
+		const role = entry.message.role;
+		if (!isTextOnlyUserOrAssistant(role)) continue;
+		const text = textContent(entry.message.content)?.trim();
+		if (!text || text === currentPrompt.trim()) continue;
+		if (looksLikeSecret(text)) {
+			lines.unshift(`[${role}]: [redacted: possible secret]`);
+			turns++;
+			continue;
+		}
+		const available = Math.min(charBudget, text.length);
+		const truncated = available < text.length ? `${text.slice(0, available)}\n[older message truncated]` : text;
+		lines.unshift(`[${role}]: ${truncated}`);
+		charBudget -= available;
+		turns++;
+		if (charBudget <= 0) break;
+	}
+	if (lines.length === 0) return currentPrompt;
+	return [
+		"Recent conversation context:",
+		...lines,
+		"",
+		"Current user prompt:",
+		currentPrompt,
+	].join("\n");
+}
 
 function defaultState(): SessionTeamMode {
 	return { state: "off", topology: DEFAULT_TOPOLOGY, maxModels: DEFAULT_MAX_MODELS, approved: false };
@@ -176,9 +244,10 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 	return true;
 }
 
-/** Build the run params for a forced `/team once` run. Pure. */
-function forcedRunParams(state: SessionTeamMode, prompt: string): { id: string; prompt: string; limits?: { maxLoops: number } } {
-	return { id: state.topology, prompt, limits: { maxLoops: fusionPanelSize(state) } };
+/** Build the run params for a forced `/team once` or deterministic `/team on` run. Pure. */
+function forcedRunParams(state: SessionTeamMode, prompt: string, ctx: ExtensionContext): { id: string; prompt: string; limits?: { maxLoops: number } } {
+	const contextualPrompt = buildTeamContext(ctx, prompt);
+	return { id: state.topology, prompt: contextualPrompt, limits: { maxLoops: fusionPanelSize(state) } };
 }
 
 export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunRegistration): void {
@@ -214,7 +283,7 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 		// `/team on` = deterministic: every prompt is forced through the team.
 		inFlight = true;
 		const teamId = state.topology;
-		const params = forcedRunParams(state, promptText);
+		const params = forcedRunParams(state, promptText, ctx);
 		void runTeam({ params, ctx, stateManager: registration.stateManager, runtime: registration.runtime })
 			.then((result) => pi.sendUserMessage(
 				formatTeamModeResult(teamId, result.details as TeamRunOutcomeDetails, result.content.map((entry) => entry.text).join("\n")),

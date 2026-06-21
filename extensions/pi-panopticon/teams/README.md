@@ -23,7 +23,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 - `/teams` — browse and run configured teams from the TUI.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
-- `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic (every prompt runs the team), `auto` is assistant-mediated (model decides), `once <prompt>` runs the team immediately. Defaults to `fusion-analysis`.
+- `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic (every prompt runs the team with recent conversation context), `auto` is assistant-mediated (model decides), `once <prompt>` runs the team immediately with the same context enrichment as `on`. Defaults to `fusion-analysis`.
 
 ## Provisional Surfaces
 
@@ -45,11 +45,12 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 | `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
 | `fusion-analysis` | Bounded panel + judge (analysis only) | OpenRouter-style deliberation: the team returns structured JSON analysis and the caller synthesizes the final answer. |
-| `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 
-- `navigator` — lightweight review and decision support.
-- `debate` — multi-member council with synthesis.
-- `research` — bounded Explorer/Verifier/Synthesis loop for evidence-audited reports.
+### `/team on` / `/team once` context enrichment
+
+Deterministic team runs (`on` and `once`) are no longer "blind" panels. Before the team prompt is sent, the last five user/assistant text turns are prepended to the prompt, up to a 4,000-character history budget. Each turn is truncated oldest-first; when a turn exceeds its remaining budget, the kept portion ends with `[older message truncated]`. Tool results, system messages, and non-text content are skipped; messages matching a heuristic secret pattern are redacted. This is implemented entirely in the session-mode handler (`buildTeamContext` in `team-session-mode.ts`), so the underlying team protocols remain unchanged.
+
+## Configuration
 
 Team specs live under `extensions/pi-panopticon/teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. See ADR 026. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status`.
 
