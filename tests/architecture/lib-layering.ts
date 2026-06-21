@@ -31,6 +31,7 @@ const IO_LIB_FILES = new Set([
 	"session-source-discovery.ts",
 	"session-spool-runner-cli.ts",
 	"session-spool-runner.ts",
+	"session-spool-select-cli.ts", // CLI wrapper: combines session-source-discovery + session-spool-runner IO modules
 	"session-spool.ts",
 	"spawn-events.ts",
 	"spawn-rpc.ts",
