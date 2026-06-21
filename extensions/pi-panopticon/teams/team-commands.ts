@@ -8,7 +8,7 @@ import { deleteTeamFiles } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLines } from "./team-overlay.js";
 import { formTeam } from "./team-form.js";
-import { projectBuiltinTeams } from "./team-projection.js";
+import { projectBuiltinTeams, pruneBuiltinTeams } from "./team-projection.js";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 function parseRunArgs(rawArgs: string): { id: string; prompt: string } | undefined {
@@ -33,6 +33,20 @@ function teamSeedForceConfirmationView(): DestructiveConfirmationView {
 		details: ["This replaces your editable copies of built-in teams (e.g. llm-council, navigator) with the packaged seeds. Custom teams you created are not affected."],
 		severity: "warning",
 	};
+}
+
+function teamPruneConfirmationView(): DestructiveConfirmationView {
+	return {
+		title: "Prune stale built-in teams?",
+		subject: "Remove user-scope files for team ids no longer shipped as built-in seeds?",
+		details: ["Only files created by built-in seed projection are removed. Custom teams you created are preserved."],
+		severity: "warning",
+	};
+}
+
+async function pruneBuiltinTeamsCmd(ctx: ExtensionContext): Promise<void> {
+	const result = await pruneBuiltinTeams(ctx);
+	ctx.ui.notify(`Team prune: removed ${result.removed.length} stale seed(s)${result.removed.length > 0 ? `: ${result.removed.join(", ")}` : ""}`, "info");
 }
 
 async function seedBuiltinTeams(ctx: ExtensionContext, rawArgs: string): Promise<void> {
@@ -64,7 +78,7 @@ export function registerTeamCommands(
 	registration: TeamRunRegistration,
 ): void {
 	pi.registerCommand("teams", {
-		description: "Browse, describe, form, configure models, delete, seed, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|run [id] [prompt]|async [id] [prompt]]",
+		description: "Browse, describe, form, configure models, delete, seed, prune, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|prune|run [id] [prompt]|async [id] [prompt]]",
 		handler: async (rawArgs, ctx) => {
 			const trimmed = rawArgs.trim();
 			if (!trimmed || trimmed === "list") {
@@ -96,6 +110,12 @@ export function registerTeamCommands(
 			}
 			if (command === "seed") {
 				await seedBuiltinTeams(ctx, rest.join(" "));
+				return;
+			}
+			if (command === "prune") {
+				const confirmed = await confirmDestructiveAction(ctx, teamPruneConfirmationView());
+				if (!confirmed) return;
+				await pruneBuiltinTeamsCmd(ctx);
 				return;
 			}
 			const isAsyncRun = command === "async";

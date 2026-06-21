@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { projectBuiltinTeams } from "../../extensions/pi-panopticon/teams/team-projection.js";
+import { projectBuiltinTeams, pruneBuiltinTeams } from "../../extensions/pi-panopticon/teams/team-projection.js";
 
 const BUILTIN_IDS = ["deep-research", "fusion-analysis", "llm-council", "navigator"];
 
@@ -88,5 +88,38 @@ describe("projectBuiltinTeams", () => {
 		expect(result.projected).toEqual([]);
 		expect(result.skipped).toEqual([]);
 		expect(existsSync(join(dest, "teams"))).toBe(false);
+	});
+});
+
+describe("pruneBuiltinTeams", () => {
+	it("removes user-scope files for ids no longer in built-in seeds", async () => {
+		await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+		writeFileSync(join(dest, "router-fusion.md"), '---\nschemaVersion: 2\nid: "router-fusion"\n---\n\n<!-- pi-panopticon seed projection of "router-fusion". This file is the source of truth for this team; edit it freely. Re-project missing seeds with /teams seed. -->\n\nstale seed\n', "utf8");
+
+		const result = await pruneBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+
+		expect([...result.removed].sort()).toEqual(["router-fusion"]);
+		expect(existsSync(join(dest, "router-fusion.md"))).toBe(false);
+		expect(existsSync(join(dest, "navigator.md"))).toBe(true);
+	});
+
+	it("preserves custom user files without the seed marker", async () => {
+		await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+		writeFileSync(join(dest, "custom-team.md"), '---\nschemaVersion: 2\nid: "custom-team"\n---\n\ncustom body\n', "utf8");
+
+		const result = await pruneBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+
+		expect(result.removed).toEqual([]);
+		expect(existsSync(join(dest, "custom-team.md"))).toBe(true);
+	});
+
+	it("is idempotent", async () => {
+		await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+
+		const first = await pruneBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+		const second = await pruneBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
+
+		expect(first.removed).toEqual([]);
+		expect(second.removed).toEqual([]);
 	});
 });

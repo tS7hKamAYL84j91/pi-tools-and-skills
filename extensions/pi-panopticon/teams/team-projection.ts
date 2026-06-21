@@ -10,7 +10,7 @@
  * escape hatch). See `docs/adr/026-project-built-in-teams-into-user-scope.md`.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../../lib/file-persistence.js";
@@ -79,6 +79,32 @@ function builtinTeamFiles(configPath: string = DEFAULT_CONFIG_JSON): BuiltinTeam
 			const path = join(builtin.teams, file);
 			return { id: file.slice(0, -".md".length), path, raw: readFileSync(path, "utf8") };
 		});
+}
+
+/**
+ * Prune user-scope team files whose ids are no longer present in the
+ * built-in seed set. Returns the list of removed ids. Safe to call repeatedly:
+ * idsempotent and limited to the user scope.
+ */
+export async function pruneBuiltinTeams(ctx: ExtensionContext, options: ProjectOptions = {}): Promise<{ readonly removed: readonly string[] }> {
+	const destTeamsDir = options.userTeamsDir ?? dirsForTeamScope("user", ctx.cwd).teams;
+	const seeds = builtinTeamFiles(options.configPath);
+	const seedIds = new Set(seeds.map((seed) => seed.id));
+	const removed: string[] = [];
+	if (!existsSync(destTeamsDir)) return { removed };
+	for (const file of readdirSync(destTeamsDir)) {
+		if (!file.endsWith(".md")) continue;
+		const id = file.slice(0, -".md".length);
+		if (seedIds.has(id)) continue;
+		const target = join(destTeamsDir, file);
+		// Only prune files that were seeded by us (marker present). Custom user teams are preserved.
+		if (!existsSync(target)) continue;
+		const raw = readFileSync(target, "utf8");
+		if (!raw.includes(seedMarker(id))) continue;
+		unlinkSync(target);
+		removed.push(id);
+	}
+	return { removed };
 }
 
 /**
