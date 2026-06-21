@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyParsedCommand, buildTeamModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import { applyParsedCommand, buildAutoModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
 
 describe("team session mode", () => {
 	it("parses on/off/status/once with topology and fanout caps", () => {
@@ -8,6 +8,7 @@ describe("team session mode", () => {
 			topology: "llm-council",
 			maxModels: 3,
 		});
+		expect(parseTeamModeArgs("auto --topology navigator")).toEqual({ action: "auto", topology: "navigator" });
 		expect(parseTeamModeArgs("once --topology navigator")).toEqual({ action: "once", topology: "navigator" });
 		expect(parseTeamModeArgs("off")).toEqual({ action: "off" });
 		expect(parseTeamModeArgs("")).toEqual({ action: "status" });
@@ -33,24 +34,22 @@ describe("team session mode", () => {
 		});
 	});
 
-	it("builds analysis-first prompt by default", () => {
-		const prompt = buildTeamModePrompt("Compare options", {
-			state: "on",
+	it("builds auto-mode prompt", () => {
+		const prompt = buildAutoModePrompt("Compare options", {
+			state: "auto",
 			topology: "fusion-analysis",
 			maxModels: 2,
 			approved: true,
 		});
 
+		expect(prompt).toContain("Team auto mode is enabled");
 		expect(prompt).toContain("team_run");
-		expect(prompt).toContain("fusion-analysis");
-		expect(prompt).toContain("limits.maxLoops=2");
-		expect(prompt).toContain("structured JSON analysis");
-		expect(prompt).toContain("Synthesize the final answer yourself");
+		expect(prompt).toContain("only if the prompt warrants deliberation");
 		expect(prompt).toContain("Compare options");
 	});
 
-	it("builds synthesis-first prompt for llm-council", () => {
-		const prompt = buildTeamModePrompt("Design this", {
+	it("builds deterministic team-on prompt for llm-council", () => {
+		const prompt = buildAutoModePrompt("Design this", {
 			state: "on",
 			topology: "llm-council",
 			maxModels: 2,
@@ -67,8 +66,9 @@ describe("team session mode", () => {
 describe("applyParsedCommand", () => {
 	const base = { state: "off" as const, topology: "fusion-analysis" as const, maxModels: 2, approved: false };
 
-	it("sets mode for on/off/once and leaves status unchanged", () => {
+	it("sets mode for on/auto/off/once and leaves status unchanged", () => {
 		expect(applyParsedCommand(base, { action: "on" })).toMatchObject({ state: "on" });
+		expect(applyParsedCommand(base, { action: "auto" })).toMatchObject({ state: "auto" });
 		expect(applyParsedCommand(base, { action: "off" })).toMatchObject({ state: "off" });
 		expect(applyParsedCommand(base, { action: "once" })).toMatchObject({ state: "once" });
 		expect(applyParsedCommand({ ...base, state: "on" }, { action: "status" })).toMatchObject({ state: "on" });

@@ -3,7 +3,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
-type TeamModeState = "off" | "on" | "once";
+type TeamModeState = "off" | "on" | "auto" | "once";
 type TeamRoute = "fusion-analysis" | "llm-council" | "navigator";
 
 interface SessionTeamMode {
@@ -15,7 +15,7 @@ interface SessionTeamMode {
 }
 
 interface ParseResult {
-	action: "on" | "off" | "once" | "status";
+	action: "on" | "off" | "auto" | "once" | "status";
 	topology?: TeamRoute;
 	maxModels?: number;
 	prompt?: string;
@@ -55,8 +55,8 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 	const flagPart = firstFlagIndex === -1 ? "" : trimmed.slice(firstFlagIndex).trim();
 	const headTokens = head.split(/\s+/).filter(Boolean);
 	const command = headTokens.shift() ?? "status";
-	if (command !== "on" && command !== "off" && command !== "once" && command !== "status") {
-		throw new Error("Usage: /team on|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]");
+	if (command !== "on" && command !== "off" && command !== "auto" && command !== "once" && command !== "status") {
+		throw new Error("Usage: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]");
 	}
 	const inlinePrompt = headTokens.join(" ").trim() || undefined;
 	const result: ParseResult = { action: command, prompt: inlinePrompt };
@@ -89,7 +89,7 @@ export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult):
 		...(parsed.maxModels !== undefined ? { maxModels: parsed.maxModels } : {}),
 		...(parsed.prompt ? { prompt: parsed.prompt } : {}),
 	};
-	if (parsed.action === "on" || parsed.action === "off" || parsed.action === "once") {
+	if (parsed.action === "on" || parsed.action === "auto" || parsed.action === "off" || parsed.action === "once") {
 		next.state = parsed.action;
 	}
 	return next;
@@ -122,10 +122,11 @@ function topologyInstruction(state: SessionTeamMode): string {
 	return `Use team_run with id="fusion-analysis" and limits.maxLoops=${fusionPanelSize(state)} for bounded multi-model deliberation. The team returns structured JSON analysis (consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence). Synthesize the final answer yourself from that analysis.`;
 }
 
-export function buildTeamModePrompt(text: string, state: SessionTeamMode): string {
+export function buildAutoModePrompt(text: string, state: SessionTeamMode): string {
 	return [
-		"Team interaction mode is enabled for this single user prompt.",
+		"Team auto mode is enabled for this single user prompt.",
 		topologyInstruction(state),
+		"Use the team route only if the prompt warrants deliberation. If it does not, answer directly.",
 		"Fail closed: if the team run cannot safely start, answer directly and say team mode was bypassed.",
 		"Do not expose raw panel/debate trace by default. Give the synthesized answer first. Only include details if the user explicitly asks for expand, trace, or diagnostics.",
 		"Do not send secrets, private session data, or unnecessary large context into team calls.",
@@ -184,7 +185,7 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 	const state = defaultState();
 	let inFlight = false;
 	pi.registerCommand("team", {
-		description: "Session-only team interaction mode: /team on|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]. Defaults to fusion-analysis. /team once <prompt> runs the team immediately on the given prompt.",
+		description: "Session-only team interaction mode: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]. on=deterministic, auto=assistant-mediated.",
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseTeamModeArgs(rawArgs);
@@ -202,14 +203,15 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 		const promptText = pendingPrompt ?? event.text;
 		const ok = await approvalOk(ctx, state, promptText);
 		const wasOnce = state.state === "once";
+		const wasAuto = state.state === "auto";
 		if (wasOnce) state.state = "off";
 		if (!ok) {
 			ctx.ui?.notify?.("team mode bypassed", "warning");
 			return { action: "continue" as const };
 		}
-		// `/team on` = available: assistant-mediated transform (model decides when to call team_run).
-		if (!wasOnce) return { action: "transform" as const, text: buildTeamModePrompt(event.text, state), images: event.images };
-		// `/team once` = forced: deterministically run the team and deliver the result as a follow-up.
+		// `/team auto` = assistant-mediated transform (model decides when to call team_run).
+		if (wasAuto) return { action: "transform" as const, text: buildAutoModePrompt(event.text, state), images: event.images };
+		// `/team on` = deterministic: every prompt is forced through the team.
 		inFlight = true;
 		const teamId = state.topology;
 		const params = forcedRunParams(state, promptText);
