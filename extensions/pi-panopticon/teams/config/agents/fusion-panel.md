@@ -3,7 +3,7 @@ name: "fusion_panel"
 version: "1.0.0"
 description: "Independent panel member for bounded internal fusion deliberation."
 promptId: "fusion/panel/system"
-scope: "fusion"
+scope: "fusion-analysis"
 stage: "panel"
 tools: []
 ---

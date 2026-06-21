@@ -23,7 +23,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 - `/teams` — browse and run configured teams from the TUI.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
-- `/team on|off|status|once [--topology fusion-analysis|router-fusion|llm-council|navigator] [--max-models 1-5]` — session-only interaction mode that asks the active model to use a bounded team route for the next/user prompts; defaults to `fusion-analysis` and never persists default-on. `fusion-analysis` returns structured JSON analysis and lets the outer model synthesize the final answer.
+- `/team on|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]` — session-only interaction mode that asks the active model to use a bounded team route for the next/user prompts; defaults to `fusion-analysis` and never persists default-on. `fusion-analysis` returns structured JSON analysis and lets the outer model synthesize the final answer. `/team once <prompt>` runs the team immediately on the given prompt.
 
 ## Provisional Surfaces
 
@@ -44,8 +44,8 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
 | `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
-| `router-fusion` | Bounded panel + judge + synthesis | A synthesis-first answer would benefit from a small multi-model panel without external routing dependencies. |
 | `fusion-analysis` | Bounded panel + judge (analysis only) | OpenRouter-style deliberation: the team returns structured JSON analysis and the caller synthesizes the final answer. |
+| `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 
 - `navigator` — lightweight review and decision support.
 - `debate` — multi-member council with synthesis.

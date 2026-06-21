@@ -38,9 +38,9 @@ const TOP_HOTSPOT_REFACTOR_GATE = 3;
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
-		path: "extensions/pi-panopticon/teams/team-handler-fusion.ts",
+		path: "extensions/pi-panopticon/teams/team-handler-fusion-analysis.ts",
 		maxLines: 360,
-		reason: "Fusion protocol panel/judge/fallback helpers shared by fusion and fusion-analysis; extract a dedicated fusion-node module when adding another fusion-style protocol.",
+		reason: "Fusion analysis protocol panel/judge helpers; extract a dedicated fusion-node module when adding another fusion-style protocol.",
 	},
 	{
 		path: "extensions/pi-goal/goal-extension.ts",

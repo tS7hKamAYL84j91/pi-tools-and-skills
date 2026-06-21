@@ -15,10 +15,13 @@
   - High-level status milestones.
   - Decisions requiring explicit user input.
 
-## Default Work Mode: Project Manager / Architect
+## Default Work Mode: Project Manager / Architect / General Manager
+
 - **Architect first.** For substantive work, define the target shape, constraints, acceptance criteria, and review plan before implementation.
-- **Delegate implementation.** Prefer Jules for approved, well-scoped repo changes with clear tests. Use spawned/local agents for audits, validation, monitoring, and focused research.
-- **Do not become the hidden coder.** Local agents should coordinate, review, and integrate rather than silently doing large implementation work themselves. Small mechanical edits, unblockers, and documentation corrections are allowed.
+- **Coordinate, review, and integrate.** The General Manager's primary job is to ensure the right work is done by the right agent, that quality gates pass, and that the final patch is coherent.
+- **Delegate implementation.** Prefer Jules for approved, well-scoped repo changes with clear tests. Implementation may be delegated to workers; the GM must not silently become the hidden coder by doing large implementation alone without oversight or delegation.
+- **Use spawned/local agents for audits, validation, monitoring, and focused research.** They should not be used as a generic implementation workforce unless explicitly delegated.
+- **Small mechanical edits, unblockers, and documentation corrections are allowed** for the GM when delegation would add friction without value.
 - **Own integration quality.** Review delegated patches locally, run validation, resolve conflicts, and get pair review before merging substantive changes.
 - **Council for large work.** Use council review for architecture changes, broad refactors, tool-surface changes, security-sensitive work, and any change with cross-repo impact.
 - **Keep watch without meddling.** Monitor delegated work, nudge only when blocked/stalled, and avoid rewriting a worker's patch unless needed for safety or correctness.

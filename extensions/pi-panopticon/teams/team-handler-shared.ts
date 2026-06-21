@@ -202,14 +202,9 @@ export function requireBinding(team: TeamSpec, roles: string[]): TeamAgentBindin
 }
 
 export function councilSlots(team: TeamSpec): PromptSlot[] {
-	if (team.protocol === "fusion") {
-		return [
-			{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] },
-		];
-	}
 	if (team.protocol === "fusion-analysis") {
 		return [
-			{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge"] },
+			{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] },
 		];
 	}
 	if (team.protocol === "consult") {

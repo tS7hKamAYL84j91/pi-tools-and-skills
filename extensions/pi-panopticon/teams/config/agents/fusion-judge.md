@@ -3,7 +3,7 @@ name: "fusion_judge"
 version: "1.0.0"
 description: "Judge that compares fusion panel outputs and returns structured analysis."
 promptId: "fusion/judge/system"
-scope: "fusion"
+scope: "fusion-analysis"
 stage: "judge"
 tools: []
 ---

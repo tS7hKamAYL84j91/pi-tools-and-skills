@@ -4,19 +4,21 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 type TeamModeState = "off" | "on" | "once";
-type TeamRoute = "fusion-analysis" | "router-fusion" | "llm-council" | "navigator";
+type TeamRoute = "fusion-analysis" | "llm-council" | "navigator";
 
 interface SessionTeamMode {
 	state: TeamModeState;
 	topology: TeamRoute;
 	maxModels: number;
 	approved: boolean;
+	prompt?: string;
 }
 
 interface ParseResult {
 	action: "on" | "off" | "once" | "status";
 	topology?: TeamRoute;
 	maxModels?: number;
+	prompt?: string;
 }
 
 interface TeamRunOutcomeDetails {
@@ -37,7 +39,7 @@ function defaultState(): SessionTeamMode {
 }
 
 function isTopology(value: string): value is TeamRoute {
-	return value === "fusion-analysis" || value === "router-fusion" || value === "llm-council" || value === "navigator";
+	return value === "fusion-analysis" || value === "llm-council" || value === "navigator";
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -47,17 +49,23 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 }
 
 export function parseTeamModeArgs(rawArgs: string): ParseResult {
-	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
-	const command = tokens.shift() ?? "status";
+	const trimmed = rawArgs.trim();
+	const firstFlagIndex = trimmed.search(/\s+--/);
+	const head = firstFlagIndex === -1 ? trimmed : trimmed.slice(0, firstFlagIndex);
+	const flagPart = firstFlagIndex === -1 ? "" : trimmed.slice(firstFlagIndex).trim();
+	const headTokens = head.split(/\s+/).filter(Boolean);
+	const command = headTokens.shift() ?? "status";
 	if (command !== "on" && command !== "off" && command !== "once" && command !== "status") {
-		throw new Error("Usage: /team on|off|status|once [--topology fusion-analysis|router-fusion|llm-council|navigator] [--max-models 1-5]");
+		throw new Error("Usage: /team on|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]");
 	}
-	const result: ParseResult = { action: command };
+	const inlinePrompt = headTokens.join(" ").trim() || undefined;
+	const result: ParseResult = { action: command, prompt: inlinePrompt };
+	const tokens = flagPart.split(/\s+/).filter(Boolean);
 	for (let index = 0; index < tokens.length; index++) {
 		const token = tokens[index];
 		if (token === "--topology") {
 			const topology = tokens[++index];
-			if (!topology || !isTopology(topology)) throw new Error("--topology must be fusion-analysis, router-fusion, llm-council, or navigator");
+			if (!topology || !isTopology(topology)) throw new Error("--topology must be fusion-analysis, llm-council, or navigator");
 			result.topology = topology;
 			continue;
 		}
@@ -79,6 +87,7 @@ export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult):
 		...state,
 		...(parsed.topology ? { topology: parsed.topology } : {}),
 		...(parsed.maxModels !== undefined ? { maxModels: parsed.maxModels } : {}),
+		...(parsed.prompt ? { prompt: parsed.prompt } : {}),
 	};
 	if (parsed.action === "on" || parsed.action === "off" || parsed.action === "once") {
 		next.state = parsed.action;
@@ -91,12 +100,11 @@ function fusionPanelSize(state: SessionTeamMode): number {
 }
 
 /** Human-readable estimate of model calls a `/team` run will make for the active
- *  topology. `maxModels` caps the router-fusion panel size, not total calls. Pure. */
+ *  topology. `maxModels` caps the fusion-analysis panel size, not total calls. Pure. */
 export function estimatedCallDescription(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "1 model call (one focused review)";
 	if (state.topology === "llm-council") return "members + critiques + synthesis (debate; multiple calls)";
-	if (state.topology === "fusion-analysis") return `${fusionPanelSize(state)} panel + judge (structured analysis; outer model synthesizes answer)`;
-	return `${fusionPanelSize(state)} panel + judge + synthesis`;
+	return `${fusionPanelSize(state)} panel + judge (structured analysis; outer model synthesizes answer)`;
 }
 
 function statusLine(state: SessionTeamMode): string {
@@ -111,8 +119,7 @@ function shouldBypass(text: string, source: string | undefined): boolean {
 function topologyInstruction(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "Use team_run with id=\"navigator\" for one focused review, then answer from the synthesis first.";
 	if (state.topology === "llm-council") return "Use team_run with id=\"llm-council\" for bounded debate, then answer from the synthesis first.";
-	if (state.topology === "fusion-analysis") return `Use team_run with id="fusion-analysis" and limits.maxLoops=${fusionPanelSize(state)} for bounded multi-model deliberation. The team returns structured JSON analysis (consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence). Synthesize the final answer yourself from that analysis.`;
-	return `Use team_run with id="router-fusion" and limits.maxLoops=${fusionPanelSize(state)} for a bounded fusion panel, then answer from the synthesis first.`;
+	return `Use team_run with id="fusion-analysis" and limits.maxLoops=${fusionPanelSize(state)} for bounded multi-model deliberation. The team returns structured JSON analysis (consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence). Synthesize the final answer yourself from that analysis.`;
 }
 
 export function buildTeamModePrompt(text: string, state: SessionTeamMode): string {
@@ -170,16 +177,14 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 
 /** Build the run params for a forced `/team once` run. Pure. */
 function forcedRunParams(state: SessionTeamMode, prompt: string): { id: string; prompt: string; limits?: { maxLoops: number } } {
-	return state.topology === "router-fusion" || state.topology === "fusion-analysis"
-		? { id: state.topology, prompt, limits: { maxLoops: fusionPanelSize(state) } }
-		: { id: state.topology, prompt };
+	return { id: state.topology, prompt, limits: { maxLoops: fusionPanelSize(state) } };
 }
 
 export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunRegistration): void {
 	const state = defaultState();
 	let inFlight = false;
 	pi.registerCommand("team", {
-		description: "Session-only team interaction mode: /team on|off|status|once [--topology fusion-analysis|router-fusion|llm-council|navigator] [--max-models 1-5]. Defaults to fusion-analysis.",
+		description: "Session-only team interaction mode: /team on|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]. Defaults to fusion-analysis. /team once <prompt> runs the team immediately on the given prompt.",
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseTeamModeArgs(rawArgs);
@@ -192,7 +197,10 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 	});
 	pi.on("input", async (event, ctx: ExtensionContext) => {
 		if (state.state === "off" || shouldBypass(event.text, event.source) || inFlight) return { action: "continue" as const };
-		const ok = await approvalOk(ctx, state, event.text);
+		const pendingPrompt = state.prompt;
+		delete state.prompt;
+		const promptText = pendingPrompt ?? event.text;
+		const ok = await approvalOk(ctx, state, promptText);
 		const wasOnce = state.state === "once";
 		if (wasOnce) state.state = "off";
 		if (!ok) {
@@ -204,7 +212,7 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 		// `/team once` = forced: deterministically run the team and deliver the result as a follow-up.
 		inFlight = true;
 		const teamId = state.topology;
-		const params = forcedRunParams(state, event.text);
+		const params = forcedRunParams(state, promptText);
 		void runTeam({ params, ctx, stateManager: registration.stateManager, runtime: registration.runtime })
 			.then((result) => pi.sendUserMessage(
 				formatTeamModeResult(teamId, result.details as TeamRunOutcomeDetails, result.content.map((entry) => entry.text).join("\n")),
@@ -212,6 +220,6 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 			))
 			.catch((error: unknown) => pi.sendUserMessage(formatTeamModeError(teamId, error), { deliverAs: "followUp" }))
 			.finally(() => { inFlight = false; });
-		return { action: "handled" as const };
+		return pendingPrompt ? { action: "handled" as const, text: promptText, images: event.images } : { action: "handled" as const };
 	});
 }

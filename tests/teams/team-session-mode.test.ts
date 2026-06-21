@@ -18,6 +18,21 @@ describe("team session mode", () => {
 		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/fusion-analysis/);
 	});
 
+	it("parses inline prompt for once", () => {
+		expect(parseTeamModeArgs("once Should we refactor this?")).toEqual({
+			action: "once",
+			prompt: "Should we refactor this?",
+		});
+	});
+
+	it("parses inline prompt with flags", () => {
+		expect(parseTeamModeArgs("once Should we refactor this? --topology navigator")).toEqual({
+			action: "once",
+			prompt: "Should we refactor this?",
+			topology: "navigator",
+		});
+	});
+
 	it("builds analysis-first prompt by default", () => {
 		const prompt = buildTeamModePrompt("Compare options", {
 			state: "on",
@@ -34,19 +49,17 @@ describe("team session mode", () => {
 		expect(prompt).toContain("Compare options");
 	});
 
-	it("builds synthesis-first prompt for router-fusion", () => {
+	it("builds synthesis-first prompt for llm-council", () => {
 		const prompt = buildTeamModePrompt("Design this", {
 			state: "on",
-			topology: "router-fusion",
+			topology: "llm-council",
 			maxModels: 2,
 			approved: true,
 		});
 
 		expect(prompt).toContain("team_run");
-		expect(prompt).toContain("router-fusion");
-		expect(prompt).toContain("limits.maxLoops=2");
+		expect(prompt).toContain("llm-council");
 		expect(prompt).toContain("synthesized answer first");
-		expect(prompt).toContain("Only include details if the user explicitly asks");
 		expect(prompt).toContain("Design this");
 	});
 });
@@ -70,6 +83,16 @@ describe("applyParsedCommand", () => {
 		});
 	});
 
+	it("stores inline prompt in state", () => {
+		expect(applyParsedCommand(base, { action: "once", prompt: "Refactor this?" })).toEqual({
+			state: "once",
+			topology: "fusion-analysis",
+			maxModels: 2,
+			approved: false,
+			prompt: "Refactor this?",
+		});
+	});
+
 	it("does not mutate input state", () => {
 		const input = { ...base };
 		applyParsedCommand(input, { action: "on", maxModels: 3 });
@@ -89,11 +112,6 @@ describe("estimatedCallDescription", () => {
 	it("reports panel + judge (analysis only) for fusion-analysis, capped at the override", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 2, approved: true })).toBe("2 panel + judge (structured analysis; outer model synthesizes answer)");
 		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 5, approved: true })).toBe("3 panel + judge (structured analysis; outer model synthesizes answer)");
-	});
-
-	it("reports panel + judge + synthesis for router-fusion", () => {
-		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 2, approved: true })).toBe("2 panel + judge + synthesis");
-		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 5, approved: true })).toBe("3 panel + judge + synthesis");
 	});
 });
 
@@ -115,20 +133,20 @@ describe("classifyTeamOutcome", () => {
 
 describe("formatTeamModeResult / formatTeamModeError", () => {
 	it("formats an ok result with calls count and no degraded hint", () => {
-		const out = formatTeamModeResult("router-fusion", { nodes: [{ ok: true }, { ok: true }, { ok: true }] }, "synthesis text");
-		expect(out).toContain('[Team "router-fusion" result — status: ok · calls: 3]');
-		expect(out).toContain("synthesis text");
+		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, "analysis text");
+		expect(out).toContain('[Team "fusion-analysis" result — status: ok · calls: 2]');
+		expect(out).toContain("analysis text");
 		expect(out).not.toContain("Degraded run");
 	});
 
 	it("formats a partial result with failed count and degraded hint", () => {
-		const out = formatTeamModeResult("router-fusion", { degraded: true, nodes: [{ ok: true }, { ok: false }, { ok: true }] }, "synthesis text");
-		expect(out).toContain('status: partial · calls: 3 · failed: 1');
+		const out = formatTeamModeResult("fusion-analysis", { degraded: true, nodes: [{ ok: true }, { ok: false }] }, "analysis text");
+		expect(out).toContain('status: partial · calls: 2 · failed: 1');
 		expect(out).toContain('Ask for "trace" for per-model details.');
 	});
 
 	it("formats a failed result", () => {
-		const out = formatTeamModeResult("router-fusion", { failureReason: "all_panels_failed", nodes: [] }, "");
+		const out = formatTeamModeResult("fusion-analysis", { failureReason: "all_panels_failed", nodes: [] }, "");
 		expect(out).toContain('status: failed · calls: 0');
 	});
 

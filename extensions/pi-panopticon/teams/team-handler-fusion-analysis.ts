@@ -1,4 +1,4 @@
-/** Fusion protocol handler: bounded panel, judge, synthesis, and fallback. */
+/** Fusion-analysis protocol handler: bounded panel + judge returning structured JSON analysis. */
 
 import { ok } from "../../../lib/tool-result.js";
 import { currentPanopticonRecord } from "./runner.js";
@@ -12,7 +12,6 @@ import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
 const DEFAULT_MAX_PANEL_MODELS = 3;
 const HARD_MAX_PANEL_MODELS = 4;
 const DEFAULT_APPROVAL_CALL_GATE = 4;
-const FUSION_PHASE = "fusion";
 const FUSION_ANALYSIS_PHASE = "fusion-analysis";
 
 const INVALID_JUDGE_FALLBACK = JSON.stringify({
@@ -31,7 +30,6 @@ interface SharedContext {
 	parent: { id?: string; name?: string } | undefined;
 	panelSource: TeamAgentBinding;
 	judgeSource: TeamAgentBinding;
-	phase: string;
 }
 
 interface PanelAndJudgeResult {
@@ -41,49 +39,48 @@ interface PanelAndJudgeResult {
 	panelRuns: NodeRun[];
 }
 
-async function buildSharedContext(args: TeamHandlerRunArgs, phase: string): Promise<SharedContext> {
+async function buildSharedContext(args: TeamHandlerRunArgs): Promise<SharedContext> {
 	const parent = await currentPanopticonRecord(args.ctx.cwd);
 	const sourcePanel = roleBindings(args.team.agentBindings, ["panel", "member"]);
 	const panelSource = sourcePanel[0] ?? requireBinding(args.team, ["panel", "member"]);
 	const judgeSource = bindingForRole(args.team.agentBindings, ["judge", "synthesis"]) ?? requireBinding(args.team, ["judge", "synthesis"]);
-	return { args, plan: undefined as unknown as FusionPlan, parent, panelSource, judgeSource, phase };
+	return { args, plan: undefined as unknown as FusionPlan, parent, panelSource, judgeSource };
 }
 
 async function runPanel(ctx: SharedContext): Promise<{ panelRuns: NodeRun[]; usablePanel: NodeRun[] }> {
-	const { args, plan, parent, panelSource, phase } = ctx;
+	const { args, plan, parent, panelSource } = ctx;
 	const panelRuns = await Promise.all(plan.panel.map((model, index) => {
 		const source = roleBindings(args.team.agentBindings, ["panel", "member"])[index] ?? panelSource;
 		const binding = { ...source, role: `panel_${index + 1}`, label: source.label ?? `Panel ${index + 1}`, tools: [] };
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${binding.role}`);
-		return runAndRecordNode(args, phase, { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently as a fusion panel member. Do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+		return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently as a fusion panel member. Do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
 	const usablePanel = panelRuns.filter((node) => node.ok && node.output.trim());
 	return { panelRuns, usablePanel };
 }
 
 async function runJudge(ctx: SharedContext, usablePanel: NodeRun[]): Promise<NodeRun> {
-	const { args, plan, parent, judgeSource, phase } = ctx;
+	const { args, plan, parent, judgeSource } = ctx;
 	if (stopRequested(args)) throw new Error("stop requested");
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: judge`);
-	const judge = await runAndRecordNode(args, phase, { binding: { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [] }, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
-	return judge;
+	return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding: { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [] }, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 }
 
-function validateJudgeJson(judge: NodeRun, phase: string, args: TeamHandlerRunArgs): NodeRun {
+function validateJudgeJson(judge: NodeRun, args: TeamHandlerRunArgs): NodeRun {
 	if (!judge.ok || isValidJudgeJson(judge.output)) return judge;
-	recordDetail(args, { kind: "error", phaseId: phase, nodeId: "judge", message: `${phase} judge returned invalid JSON`, data: { output: judge.output.slice(0, 200) } });
+	recordDetail(args, { kind: "error", phaseId: FUSION_ANALYSIS_PHASE, nodeId: "judge", message: "fusion-analysis judge returned invalid JSON", data: { output: judge.output.slice(0, 200) } });
 	return { ...judge, ok: false, error: "invalid judge JSON" };
 }
 
-async function runPanelAndJudge(args: TeamHandlerRunArgs, phase: string, plan: FusionPlan): Promise<PanelAndJudgeResult> {
-	const ctx = await buildSharedContext(args, phase);
+async function runPanelAndJudge(args: TeamHandlerRunArgs, plan: FusionPlan): Promise<PanelAndJudgeResult> {
+	const ctx = await buildSharedContext(args);
 	ctx.plan = plan;
 	const { panelRuns, usablePanel } = await runPanel(ctx);
 	if (usablePanel.length === 0) {
 		return { allNodes: [...panelRuns], judge: undefined as unknown as NodeRun, usablePanel, panelRuns };
 	}
 	if (stopRequested(args)) return { allNodes: [...panelRuns], judge: undefined as unknown as NodeRun, usablePanel, panelRuns };
-	const judge = validateJudgeJson(await runJudge(ctx, usablePanel), phase, args);
+	const judge = validateJudgeJson(await runJudge(ctx, usablePanel), args);
 	return { allNodes: [...panelRuns, judge], judge, usablePanel, panelRuns };
 }
 
@@ -188,18 +185,6 @@ function fusionAnalysisModelSlots(team: TeamSpec, models: TeamModels): TeamModel
 	];
 }
 
-function fusionModelSlots(team: TeamSpec, models: TeamModels): TeamModelSlot[] {
-	return [
-		...memberModelSlots({
-			count: Math.max(models.members?.length ?? 0, roleBindings(team.agentBindings, ["panel", "member"]).length, 1),
-			label: (index) => `Panel model ${index + 1}`,
-			models,
-		}),
-		{ id: "judge", label: "Judge model", current: models.synthesis, kind: "synthesis" },
-		{ id: "fallback", label: "Fallback model", current: models.driver, kind: "driver" },
-	];
-}
-
 function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[]): string {
 	return [
 		"Original prompt:",
@@ -212,21 +197,6 @@ function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[]
 	].join("\n");
 }
 
-function renderSynthesisPrompt(originalPrompt: string, panelRuns: readonly NodeRun[], judge: NodeRun | undefined): string {
-	return [
-		"Original prompt:",
-		originalPrompt,
-		"",
-		judge?.ok ? "Judge analysis:" : "Judge analysis unavailable or invalid; synthesize from panel responses only.",
-		judge?.ok ? judge.output : judge?.error ?? "missing",
-		"",
-		"Panel responses:",
-		participantsFromRuns(panelRuns).map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${run.output}`).join("\n\n"),
-		"",
-		"Write the final answer. Preserve disagreements and blind spots; do not invent evidence.",
-	].join("\n");
-}
-
 function isValidJudgeJson(text: string): boolean {
 	try {
 		const parsed = JSON.parse(text);
@@ -234,18 +204,6 @@ function isValidJudgeJson(text: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-async function runFallback(input: { args: TeamHandlerRunArgs; binding: TeamAgentBinding; models: readonly string[]; parentId?: string; orchestratorName?: string }): Promise<NodeRun | undefined> {
-	for (const [index, model] of input.models.entries()) {
-		if (stopRequested(input.args)) return undefined;
-		const role = `fallback_${index + 1}`;
-		input.args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${input.args.team.id}: ${role}`);
-		const node = await runAndRecordNode(input.args, FUSION_PHASE, { binding: { ...input.binding, role, label: input.binding.label ?? `Fallback ${index + 1}` }, role, model, prompt: input.args.params.prompt, systemPrompt: "Answer as the reliable fallback model for a failed fusion panel.", ctx: input.args.ctx, signal: input.args.signal, parentId: input.parentId, orchestratorName: input.orchestratorName, timeoutMs: input.args.params.limits?.timeoutMs ?? input.args.team.limits.timeoutMs, maxRetries: input.args.params.limits?.maxRetries ?? input.args.team.limits.maxRetries });
-		if (node.ok && node.output.trim()) return node;
-		recordDetail(input.args, { kind: "fallback", phaseId: FUSION_PHASE, nodeId: role, message: "fusion fallback model failed", data: { model, error: node.error ?? "empty output" } });
-	}
-	return undefined;
 }
 
 async function runFusionAnalysis(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
@@ -264,59 +222,13 @@ async function runFusionAnalysis(args: TeamHandlerRunArgs): Promise<TeamHandlerR
 	recordPhase(args, FUSION_ANALYSIS_PHASE);
 	recordDetail(args, { kind: "trace", phaseId: FUSION_ANALYSIS_PHASE, message: "fusion-analysis plan selected", data: { panel: plan.panel, judge: plan.judge, estimatedCalls: plan.estimatedCalls, requiresApproval: plan.requiresApproval, warnings: plan.warnings } });
 	if (plan.requiresApproval) throw new Error(`fusion-analysis plan requires approval: estimated ${plan.estimatedCalls} model calls exceeds gate.`);
-	const { allNodes, judge, usablePanel, panelRuns } = await runPanelAndJudge(args, FUSION_ANALYSIS_PHASE, plan);
+	const { allNodes, judge, usablePanel, panelRuns } = await runPanelAndJudge(args, plan);
 	if (usablePanel.length === 0) {
 		return ok("Fusion analysis failed: no panel model produced usable output.", { team: args.team.id, ok: false, nodes: nodeDetails(allNodes), failureReason: "all_panels_failed" });
 	}
 	if (stopRequested(args)) return stoppedResult(args, allNodes);
 	const output = judge.ok ? judge.output : INVALID_JUDGE_FALLBACK;
 	return ok(output, { team: args.team.id, ok: judge.ok && allNodes.every((node) => node.ok), nodes: nodeDetails(allNodes), analysis: true, degraded: !judge.ok || panelRuns.some((node) => !node.ok), ...(judge.ok ? {} : { failureReason: "invalid_judge_json" }) });
-}
-
-async function runFusion(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {
-	if (stopRequested(args)) return stoppedResult(args, []);
-	const settings = resolveTeamSettings();
-	const panelConfig = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
-	const judgeConfig = args.params.models?.synthesis ?? args.team.models.synthesis ?? panelConfig[0];
-	const fallbackConfig = args.params.models?.driver ? [args.params.models.driver] : args.team.models.driver ? [args.team.models.driver] : [];
-	const plan = planFusion({
-		configuredPanel: panelConfig,
-		configuredJudge: judgeConfig,
-		configuredFallback: fallbackConfig,
-		visibleModels: visibleTextModelIds(args),
-		maxPanelModels: args.params.limits?.maxLoops ?? args.team.limits.maxLoops ?? DEFAULT_MAX_PANEL_MODELS,
-		...modelPolicy(args.team),
-	});
-	recordPhase(args, FUSION_PHASE);
-	recordDetail(args, { kind: "trace", phaseId: FUSION_PHASE, message: "fusion plan selected", data: { panel: plan.panel, judge: plan.judge, fallback: plan.fallback, estimatedCalls: plan.estimatedCalls, requiresApproval: plan.requiresApproval, warnings: plan.warnings } });
-	if (plan.requiresApproval) throw new Error(`fusion plan requires approval: estimated ${plan.estimatedCalls} model calls exceeds gate.`);
-	const parent = await currentPanopticonRecord(args.ctx.cwd);
-	const panelSource = roleBindings(args.team.agentBindings, ["panel", "member"])[0] ?? requireBinding(args.team, ["panel", "member"]);
-	const judgeSource = bindingForRole(args.team.agentBindings, ["judge", "synthesis"]) ?? requireBinding(args.team, ["judge", "synthesis"]);
-	const synthesisSource = bindingForRole(args.team.agentBindings, ["synthesis"]) ?? judgeSource;
-	const fallbackSource = bindingForRole(args.team.agentBindings, ["fallback"]) ?? panelSource;
-	const ctx: SharedContext = { args, plan, parent, panelSource, judgeSource, phase: FUSION_PHASE };
-	const { panelRuns, usablePanel } = await runPanel(ctx);
-	const allNodes: NodeRun[] = [...panelRuns];
-	let effectivePanel = usablePanel;
-	if (effectivePanel.length === 0) {
-		recordDetail(args, { kind: "fallback", phaseId: FUSION_PHASE, message: "all fusion panel models failed; trying sequential fallback", data: { panel: plan.panel } });
-		const fallback = await runFallback({ args, binding: fallbackSource, models: plan.fallback, parentId: parent?.id, orchestratorName: parent?.name });
-		if (!fallback) return ok("Fusion failed: all panel and fallback models failed.", { team: args.team.id, ok: false, nodes: nodeDetails(allNodes), failureReason: "all_panels_failed" });
-		allNodes.push(fallback);
-		effectivePanel = [fallback];
-	}
-	if (stopRequested(args)) return stoppedResult(args, allNodes);
-	let judge = validateJudgeJson(await runJudge(ctx, effectivePanel), FUSION_PHASE, args);
-	if (!judge.ok && judge.error === "invalid judge JSON") {
-		judge = { ...judge, error: "invalid judge JSON; synthesis will use raw panel responses" };
-	}
-	allNodes.push(judge);
-	if (stopRequested(args)) return stoppedResult(args, allNodes);
-	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: synthesis`);
-	const synthesis = await runAndRecordNode(args, FUSION_PHASE, { binding: { ...synthesisSource, role: "synthesis", label: synthesisSource.label ?? "Synthesis", tools: [] }, role: "synthesis", model: plan.judge, prompt: renderSynthesisPrompt(args.params.prompt, effectivePanel, judge), systemPrompt: "Produce the final fusion answer from the judge analysis and panel responses.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
-	allNodes.push(synthesis);
-	return ok(synthesis.output, { team: args.team.id, ok: allNodes.every((node) => node.ok), nodes: nodeDetails(allNodes), degraded: !judge.ok || panelRuns.some((node) => !node.ok) });
 }
 
 export const fusionAnalysisHandler: TeamHandler = {
@@ -329,18 +241,5 @@ export const fusionAnalysisHandler: TeamHandler = {
 	},
 	async run(args) {
 		return runFusionAnalysis(args);
-	},
-};
-
-export const fusionHandler: TeamHandler = {
-	key: "fusion",
-	matches(team) {
-		return team.protocol === "fusion";
-	},
-	modelSlots(team, models) {
-		return fusionModelSlots(team, models);
-	},
-	async run(args) {
-		return runFusion(args);
 	},
 };
