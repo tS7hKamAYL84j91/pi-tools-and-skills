@@ -15,10 +15,26 @@ describe("team session mode", () => {
 
 	it("rejects unsafe fanout and unknown topology", () => {
 		expect(() => parseTeamModeArgs("on --max-models 6")).toThrow(/1 to 5/);
-		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/router-fusion/);
+		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/fusion-analysis/);
 	});
 
-	it("builds synthesis-first prompt without trace-by-default", () => {
+	it("builds analysis-first prompt by default", () => {
+		const prompt = buildTeamModePrompt("Compare options", {
+			state: "on",
+			topology: "fusion-analysis",
+			maxModels: 2,
+			approved: true,
+		});
+
+		expect(prompt).toContain("team_run");
+		expect(prompt).toContain("fusion-analysis");
+		expect(prompt).toContain("limits.maxLoops=2");
+		expect(prompt).toContain("structured JSON analysis");
+		expect(prompt).toContain("Synthesize the final answer yourself");
+		expect(prompt).toContain("Compare options");
+	});
+
+	it("builds synthesis-first prompt for router-fusion", () => {
 		const prompt = buildTeamModePrompt("Design this", {
 			state: "on",
 			topology: "router-fusion",
@@ -36,7 +52,7 @@ describe("team session mode", () => {
 });
 
 describe("applyParsedCommand", () => {
-	const base = { state: "off" as const, topology: "router-fusion" as const, maxModels: 2, approved: false };
+	const base = { state: "off" as const, topology: "fusion-analysis" as const, maxModels: 2, approved: false };
 
 	it("sets mode for on/off/once and leaves status unchanged", () => {
 		expect(applyParsedCommand(base, { action: "on" })).toMatchObject({ state: "on" });
@@ -70,7 +86,12 @@ describe("estimatedCallDescription", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "llm-council", maxModels: 3, approved: true })).toBe("members + critiques + synthesis (debate; multiple calls)");
 	});
 
-	it("reports panel + judge + synthesis for router-fusion, capped at the override", () => {
+	it("reports panel + judge (analysis only) for fusion-analysis, capped at the override", () => {
+		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 2, approved: true })).toBe("2 panel + judge (structured analysis; outer model synthesizes answer)");
+		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 5, approved: true })).toBe("3 panel + judge (structured analysis; outer model synthesizes answer)");
+	});
+
+	it("reports panel + judge + synthesis for router-fusion", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 2, approved: true })).toBe("2 panel + judge + synthesis");
 		expect(estimatedCallDescription({ state: "on", topology: "router-fusion", maxModels: 5, approved: true })).toBe("3 panel + judge + synthesis");
 	});

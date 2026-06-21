@@ -58,6 +58,27 @@ function fusionTeam(): TeamSpec {
 	};
 }
 
+function fusionAnalysisTeam(): TeamSpec {
+	return {
+		schemaVersion: 2,
+		id: "fusion-analysis-test",
+		name: "Fusion Analysis Test",
+		protocol: "fusion-analysis",
+		prompts: {},
+		agents: ["fusion_panel", "fusion_judge"],
+		agentBindings: [
+			{ role: "panel", subagent: "fusion_panel", model: "test/a", tools: [] },
+			{ role: "panel", subagent: "fusion_panel", model: "test/b", tools: [] },
+			{ role: "panel", subagent: "fusion_panel", model: "test/c", tools: [] },
+			{ role: "judge", subagent: "fusion_judge", model: "test/judge", tools: [] },
+		],
+		models: { members: ["test/a", "test/b", "test/c"], synthesis: "test/judge" },
+		limits: { maxLoops: 3 },
+		source: "builtin",
+		path: "fusion-analysis-test.md",
+	};
+}
+
 function fakeCtx() {
 	return {
 		cwd: process.cwd(),
@@ -123,6 +144,22 @@ describe("fusion planner", () => {
 	});
 });
 
+async function runFusionAnalysis(team = fusionAnalysisTeam()) {
+	calls.length = 0;
+	const stateManager = new TeamStateManager({ appendEntry() {} });
+	const runId = stateManager.startRun({ teamId: team.id, protocol: "fusion-analysis", prompt: "test prompt" });
+	const handler = getTeamHandler(team);
+	if (!handler) throw new Error("fusion-analysis handler missing");
+	return handler.run({
+		team,
+		params: { id: team.id, prompt: "test prompt" },
+		ctx: fakeCtx() as never,
+		stateManager,
+		runId,
+		signal: new AbortController().signal,
+	});
+}
+
 describe("fusion handler", () => {
 	it("runs bounded panel, judge, and synthesis", async () => {
 		responses.clear();
@@ -160,5 +197,37 @@ describe("fusion handler", () => {
 
 		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge", "synthesis"]);
 		expect(result.details).toMatchObject({ degraded: true });
+	});
+});
+
+describe("fusion-analysis handler", () => {
+	it("runs bounded panel and judge, skipping synthesis", async () => {
+		responses.clear();
+		const result = await runFusionAnalysis();
+
+		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+		expect(result.content.map((entry) => entry.text).join("")).toContain("consensus");
+	});
+
+	it("fails when all panel models fail", async () => {
+		responses.clear();
+		responses.set("panel_1", { ok: false, output: "", error: "fail" });
+		responses.set("panel_2", { ok: false, output: "", error: "fail" });
+		responses.set("panel_3", { ok: false, output: "", error: "fail" });
+		const result = await runFusionAnalysis();
+
+		expect(calls).toEqual(["panel_1", "panel_2", "panel_3"]);
+		expect(result.details).toMatchObject({ ok: false, failureReason: "all_panels_failed" });
+	});
+
+	it("returns structured fallback JSON when judge returns invalid JSON", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "not json" });
+		const result = await runFusionAnalysis();
+
+		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
+		expect(result.details).toMatchObject({ analysis: true, degraded: true, failureReason: "invalid_judge_json" });
+		expect(result.content.map((entry) => entry.text).join("")).toContain("judge returned invalid JSON");
 	});
 });

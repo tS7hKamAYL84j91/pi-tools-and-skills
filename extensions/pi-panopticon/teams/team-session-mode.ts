@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 type TeamModeState = "off" | "on" | "once";
-type TeamRoute = "router-fusion" | "llm-council" | "navigator";
+type TeamRoute = "fusion-analysis" | "router-fusion" | "llm-council" | "navigator";
 
 interface SessionTeamMode {
 	state: TeamModeState;
@@ -26,7 +26,7 @@ interface TeamRunOutcomeDetails {
 	nodes?: ReadonlyArray<{ ok?: boolean; model?: string; error?: string }>;
 }
 
-const DEFAULT_TOPOLOGY: TeamRoute = "router-fusion";
+const DEFAULT_TOPOLOGY: TeamRoute = "fusion-analysis";
 const DEFAULT_MAX_MODELS = 2;
 const OVERRIDE_MAX_MODELS = 3;
 const HARD_MAX_MODELS = 5;
@@ -37,7 +37,7 @@ function defaultState(): SessionTeamMode {
 }
 
 function isTopology(value: string): value is TeamRoute {
-	return value === "router-fusion" || value === "llm-council" || value === "navigator";
+	return value === "fusion-analysis" || value === "router-fusion" || value === "llm-council" || value === "navigator";
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -50,14 +50,14 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
 	const command = tokens.shift() ?? "status";
 	if (command !== "on" && command !== "off" && command !== "once" && command !== "status") {
-		throw new Error("Usage: /team on|off|status|once [--topology router-fusion|llm-council|navigator] [--max-models 1-5]");
+		throw new Error("Usage: /team on|off|status|once [--topology fusion-analysis|router-fusion|llm-council|navigator] [--max-models 1-5]");
 	}
 	const result: ParseResult = { action: command };
 	for (let index = 0; index < tokens.length; index++) {
 		const token = tokens[index];
 		if (token === "--topology") {
 			const topology = tokens[++index];
-			if (!topology || !isTopology(topology)) throw new Error("--topology must be router-fusion, llm-council, or navigator");
+			if (!topology || !isTopology(topology)) throw new Error("--topology must be fusion-analysis, router-fusion, llm-council, or navigator");
 			result.topology = topology;
 			continue;
 		}
@@ -95,6 +95,7 @@ function fusionPanelSize(state: SessionTeamMode): number {
 export function estimatedCallDescription(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "1 model call (one focused review)";
 	if (state.topology === "llm-council") return "members + critiques + synthesis (debate; multiple calls)";
+	if (state.topology === "fusion-analysis") return `${fusionPanelSize(state)} panel + judge (structured analysis; outer model synthesizes answer)`;
 	return `${fusionPanelSize(state)} panel + judge + synthesis`;
 }
 
@@ -110,6 +111,7 @@ function shouldBypass(text: string, source: string | undefined): boolean {
 function topologyInstruction(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "Use team_run with id=\"navigator\" for one focused review, then answer from the synthesis first.";
 	if (state.topology === "llm-council") return "Use team_run with id=\"llm-council\" for bounded debate, then answer from the synthesis first.";
+	if (state.topology === "fusion-analysis") return `Use team_run with id="fusion-analysis" and limits.maxLoops=${fusionPanelSize(state)} for bounded multi-model deliberation. The team returns structured JSON analysis (consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence). Synthesize the final answer yourself from that analysis.`;
 	return `Use team_run with id="router-fusion" and limits.maxLoops=${fusionPanelSize(state)} for a bounded fusion panel, then answer from the synthesis first.`;
 }
 
@@ -168,7 +170,7 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 
 /** Build the run params for a forced `/team once` run. Pure. */
 function forcedRunParams(state: SessionTeamMode, prompt: string): { id: string; prompt: string; limits?: { maxLoops: number } } {
-	return state.topology === "router-fusion"
+	return state.topology === "router-fusion" || state.topology === "fusion-analysis"
 		? { id: state.topology, prompt, limits: { maxLoops: fusionPanelSize(state) } }
 		: { id: state.topology, prompt };
 }
@@ -177,7 +179,7 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 	const state = defaultState();
 	let inFlight = false;
 	pi.registerCommand("team", {
-		description: "Session-only team interaction mode: /team on|off|status|once [--topology router-fusion|llm-council|navigator] [--max-models 1-5]",
+		description: "Session-only team interaction mode: /team on|off|status|once [--topology fusion-analysis|router-fusion|llm-council|navigator] [--max-models 1-5]. Defaults to fusion-analysis.",
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseTeamModeArgs(rawArgs);

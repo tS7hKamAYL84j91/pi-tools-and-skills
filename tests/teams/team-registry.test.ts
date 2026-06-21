@@ -29,6 +29,7 @@ describe("loadTeamRegistry", () => {
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"deep-research",
+			"fusion-analysis",
 			"llm-council",
 			"navigator",
 			"router-fusion",
@@ -48,6 +49,10 @@ describe("loadTeamRegistry", () => {
 		]);
 		expect(requireTeam(registry, "router-fusion")).toMatchObject({
 			protocol: "fusion",
+			limits: { maxLoops: 3 },
+		});
+		expect(requireTeam(registry, "fusion-analysis")).toMatchObject({
+			protocol: "fusion-analysis",
 			limits: { maxLoops: 3 },
 		});
 	});

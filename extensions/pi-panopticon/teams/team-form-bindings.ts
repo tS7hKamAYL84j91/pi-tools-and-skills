@@ -40,6 +40,21 @@ export function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 	if (args.protocol === "consult") {
 		return args.agents.map((subagent) => ({ role: "navigator", subagent, ...(models.navigator ? { model: models.navigator } : {}) }));
 	}
+	if (args.protocol === "fusion-analysis") {
+		const panelSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "panel");
+		const panelModels = models.members && models.members.length > 0 ? models.members : [undefined];
+		return [
+			...panelModels.map((model, index) => ({
+				role: "panel",
+				subagent: panelSubagent,
+				...(model ? { model } : {}),
+				label: `Panel ${index + 1}`,
+				tools: [],
+			})),
+			{ role: "judge", subagent: args.agents[1] ?? subagentIdFromTeam(args.id, "judge"), ...(models.synthesis ? { model: models.synthesis } : {}), tools: [] },
+			...(models.driver ? [{ role: "fallback", subagent: args.agents[2] ?? panelSubagent, model: models.driver, tools: [] }] : []),
+		];
+	}
 	if (args.protocol === "fusion") {
 		const panelSubagent = args.agents[0] ?? subagentIdFromTeam(args.id, "panel");
 		const panelModels = models.members && models.members.length > 0 ? models.members : [undefined];
