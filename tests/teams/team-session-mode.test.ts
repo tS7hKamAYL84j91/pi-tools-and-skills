@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyParsedCommand, buildAutoModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import { applyParsedCommand, buildAutoModePrompt, buildTeamContext, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 describe("team session mode", () => {
 	it("parses on/off/status/once with topology and fanout caps", () => {
@@ -128,6 +129,67 @@ describe("classifyTeamOutcome", () => {
 	it("is failed when a failure reason or stop is present", () => {
 		expect(classifyTeamOutcome({ failureReason: "all_panels_failed", nodes: [] })).toEqual({ status: "failed", failedCount: 0 });
 		expect(classifyTeamOutcome({ stopped: true, nodes: [{ ok: true }] })).toEqual({ status: "failed", failedCount: 0 });
+	});
+});
+
+describe("buildTeamContext", () => {
+	function fakeCtx(entries: unknown[]): ExtensionContext {
+		return {
+			sessionManager: {
+				getEntries: () => entries,
+			},
+		} as unknown as ExtensionContext;
+	}
+
+	it("returns just the current prompt when no history", () => {
+		expect(buildTeamContext(fakeCtx([]), "Do this")).toBe("Do this");
+	});
+
+	it("prepends recent user/assistant turns", () => {
+		const entries = [
+			{ type: "message", message: { role: "user", content: "hello" } },
+			{ type: "message", message: { role: "assistant", content: "hi there" } },
+			{ type: "message", message: { role: "user", content: "Do this" } },
+		];
+		const ctx = fakeCtx(entries);
+		const result = buildTeamContext(ctx, "Do this");
+		expect(result).toContain("Recent conversation context:");
+		expect(result).toContain("[user]: hello");
+		expect(result).toContain("[assistant]: hi there");
+		expect(result).toContain("Current user prompt:");
+		expect(result).toContain("Do this");
+	});
+
+	it("skips non-text messages", () => {
+		const entries = [
+			{ type: "message", message: { role: "user", content: "hello" } },
+			{ type: "model_change", provider: "ollama", modelId: "qwen" },
+			{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "hi" }] } },
+		];
+		const result = buildTeamContext(fakeCtx(entries), "Do this");
+		expect(result).toContain("[user]: hello");
+		expect(result).toContain("[assistant]: hi");
+		expect(result).not.toContain("model_change");
+	});
+
+	it("redacts messages that look like secrets", () => {
+		const entries = [
+			{ type: "message", message: { role: "user", content: "apikey is sk-1234567890abcdef" } },
+		];
+		const result = buildTeamContext(fakeCtx(entries), "Do this");
+		expect(result).toContain("[redacted: possible secret]");
+		expect(result).not.toContain("sk-1234567890abcdef");
+	});
+
+	it("truncates oldest messages to stay within budget", () => {
+		const longText = "x".repeat(5_000);
+		const entries = [
+			{ type: "message", message: { role: "user", content: longText } },
+			{ type: "message", message: { role: "assistant", content: "short" } },
+			{ type: "message", message: { role: "user", content: "Do this" } },
+		];
+		const result = buildTeamContext(fakeCtx(entries), "Do this");
+		expect(result).toContain("[older message truncated]");
 	});
 });
 
