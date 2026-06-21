@@ -27,7 +27,8 @@
 - No new findings from knip.
 
 ## Delivery
-- Committed and pushed to `origin/main` at `41765e3` (merge of `feat/adr-029-team-context`).
+- Feature merged to `origin/main` at `41765e3` (`feat/adr-029-team-context`).
+- State/TODO meta update pushed to `origin/main` at `2cf98d3`.
 
 ## Next Steps
 - Consider Phase 2 (Main-Agent-First Review mode) if Phase 1 proves insufficient in practice.
