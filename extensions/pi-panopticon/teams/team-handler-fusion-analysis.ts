@@ -197,9 +197,26 @@ function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[]
 	].join("\n");
 }
 
+function stripMarkdownFences(text: string): string {
+	const trimmed = text.trim();
+	// Strip leading ``` or ```json etc.
+	const fenceStart = trimmed.match(/^```[a-zA-Z]*\n?/);
+	if (fenceStart) {
+		const afterStart = trimmed.slice(fenceStart[0].length);
+		// Strip trailing ```
+		const fenceEnd = afterStart.match(/\n?```$/);
+		if (fenceEnd) {
+			return afterStart.slice(0, afterStart.length - fenceEnd[0].length).trim();
+		}
+		return afterStart.trim();
+	}
+	return trimmed;
+}
+
 function isValidJudgeJson(text: string): boolean {
 	try {
-		const parsed = JSON.parse(text);
+		const cleaned = stripMarkdownFences(text);
+		const parsed = JSON.parse(cleaned);
 		return typeof parsed === "object" && parsed !== null && ("consensus" in parsed || "contradictions" in parsed || "blindSpots" in parsed);
 	} catch {
 		return false;

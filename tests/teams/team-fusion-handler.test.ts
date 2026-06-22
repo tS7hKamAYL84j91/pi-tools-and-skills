@@ -150,4 +150,22 @@ describe("fusion-analysis handler", () => {
 		expect(result.details).toMatchObject({ analysis: true, degraded: true, failureReason: "invalid_judge_json" });
 		expect(result.content.map((entry) => entry.text).join("")).toContain("judge returned invalid JSON");
 	});
+
+	it("parses judge JSON wrapped in markdown code fences (T-744 fix)", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "```json\n{\"consensus\": [\"panel agrees\"], \"contradictions\": [], \"blindSpots\": []}\n```" });
+		const result = await runFusionAnalysis();
+
+		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+		expect(result.content.map((entry) => entry.text).join("")).toContain("consensus");
+	});
+
+	it("parses judge JSON wrapped in fences with language tag (T-744 fix)", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "```\n{\"consensus\": [\"ok\"], \"blindSpots\": []}\n```" });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+	});
 });
