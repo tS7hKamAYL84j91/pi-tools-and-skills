@@ -199,20 +199,46 @@ function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[]
 
 function stripMarkdownFences(text: string): string {
 	const trimmed = text.trim();
-	// Strip leading ``` or ```json etc.
-	const fenceStart = trimmed.match(/^```[a-zA-Z]*\n?/);
-	if (fenceStart) {
-		const afterStart = trimmed.slice(fenceStart[0].length);
-		// Strip trailing ```
-		const fenceEnd = afterStart.match(/\n?```$/);
-		if (fenceEnd) {
-			return afterStart.slice(0, afterStart.length - fenceEnd[0].length).trim();
-		}
-		return afterStart.trim();
+	// Find all fence positions.
+	const fencePositions: number[] = [];
+	let idx = 0;
+	while (true) {
+		const next = trimmed.indexOf("```", idx);
+		if (next === -1) break;
+		fencePositions.push(next);
+		idx = next + 3;
 	}
-	return trimmed;
-}
+	// If we found at least two fences, try to extract a valid JSON object between the first and last fence.
+	if (fencePositions.length >= 2) {
+		const first = fencePositions[0];
+		const last = fencePositions[fencePositions.length - 1];
+		if (first !== undefined && last !== undefined) {
+			let content = trimmed.slice(first + 3, last).trim();
+			// Strip optional language tag line (e.g. ```json) if it appears on its own.
+			const firstNewline = content.indexOf("\n");
+			if (firstNewline !== -1) {
+				const firstLine = content.slice(0, firstNewline).trim();
+				if (/^[a-zA-Z0-9]+$/.test(firstLine) && firstLine.length <= 20) {
+					content = content.slice(firstNewline + 1).trim();
+				}
+			}
+			try {
+				JSON.parse(content);
+				return content;
+			} catch {
+				// Not JSON — fall through to original behavior.
+			}
+		}
+	}
+	// Original behavior: fence must be at the very start.
+	const openMatch = trimmed.match(/^```[a-zA-Z]*\n?/);
+	if (!openMatch) return trimmed;
 
+	const afterOpen = trimmed.slice(openMatch[0].length);
+	const closeIdx = afterOpen.lastIndexOf("\n```");
+	if (closeIdx === -1) return afterOpen.trim();
+	return afterOpen.slice(0, closeIdx).trim();
+}
 function isValidJudgeJson(text: string): boolean {
 	try {
 		const cleaned = stripMarkdownFences(text);

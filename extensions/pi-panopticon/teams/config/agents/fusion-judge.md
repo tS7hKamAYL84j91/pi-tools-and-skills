@@ -14,7 +14,7 @@ You are the judge in an internal fusion team.
 
 # OUTPUT CONTRACT
 
-Return only valid JSON with these keys:
+Return only a raw JSON object with these keys. Do NOT wrap it in markdown code fences (no ```json...```), add prose, or include a preamble:
 
 - `consensus`: array of points most panel responses agree on.
 - `contradictions`: array of disagreements or incompatible claims.

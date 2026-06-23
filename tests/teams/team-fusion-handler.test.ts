@@ -168,4 +168,29 @@ describe("fusion-analysis handler", () => {
 
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });
 	});
+
+	it("parses bare JSON without fences (baseline)", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "{\"consensus\": [\"bare\"], \"contradictions\": [], \"blindSpots\": []}" });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+		expect(result.content.map((entry) => entry.text).join("")).toContain("bare");
+	});
+
+	it("parses fence-wrapped JSON with extra whitespace (T-744 fix)", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "\n\n```json\n  {\"consensus\": [\"whitespace\"], \"blindSpots\": []}  \n```\n\n" });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+	});
+
+	it("parses JSON in fences with prose before and after (T-744 fix)", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: "Here is the analysis\n\n```{\"consensus\": [\"prose-wrapped\"], \"contradictions\": [], \"blindSpots\": []}\n```\nLet me know if you need more." });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ analysis: true, degraded: false });
+	});
 });
