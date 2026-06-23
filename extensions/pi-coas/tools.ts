@@ -74,17 +74,23 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 	pi.registerTool({
 		name: "coas_workspace_read",
 		label: "CoAS Workspace Read",
-		description: "Read a CoAS workspace CONTEXT.md. Defaults to the current CoAS workspace when cwd is a real workspace. Pass a workspace id, path, or COAS_WORKSPACE_ID to select a specific workspace. Raises an error if no workspace is selected and cwd is not a CoAS workspace.",
-		promptSnippet: "Read durable CoAS workspace context",
+		description: "Read CoAS workspace CONTEXT.md with gradual disclosure. Defaults to summary metadata/headings/preview; mode=full is guarded to small files, and mode=section requires a heading.",
+		promptSnippet: "Read durable CoAS workspace context summary first",
 		parameters: Type.Object({
 			workspace: Type.Optional(Type.String({ description: "Workspace id or path. Defaults to current workspace." })),
+			mode: Type.Optional(Type.Union([
+				Type.Literal("summary"),
+				Type.Literal("section"),
+				Type.Literal("full"),
+			], { description: "Read mode. Defaults to summary." })),
+			section: Type.Optional(Type.String({ description: "Heading text for mode=section." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await readWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd);
-				return ok(result.text, { path: result.path });
+				const result = await readWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd, { mode: params.mode, section: params.section });
+				return ok(result.text, { path: result.path, mode: result.mode, bytes: result.bytes });
 			} catch (error) {
-				return fail((error as Error).message, { selector: params.workspace });
+				return fail((error as Error).message, { selector: params.workspace, mode: params.mode, section: params.section });
 			}
 		},
 	});

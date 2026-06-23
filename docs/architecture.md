@@ -510,7 +510,7 @@ C4Component
     title pi-coas internal scheduler
     Container(pi, "pi session", "Extension host", "Runs extension lifecycle and message injection")
     Component(coas, "pi-coas", "Extension", "Owns schedule tools, commands, and lifecycle")
-    Component(files, "Schedule files", "~/.coas/schedules", "Desired schedule state")
+    Component(files, "Schedule files", ".pi/coas/schedules or COAS_HOME/schedules", "Desired schedule state")
     Component(scheduler, "Internal scheduler", "Timer loop", "Reconciles enabled schedules and queues due prompts")
     Component(agent, "Pi agent turn", "LLM runtime", "Executes scheduled prompt as normal user message")
     Component(kanban, "pi-kanban tools", "Board surface", "Reusable board state/actions; no recurring schedule ownership")
@@ -531,3 +531,34 @@ C4Component
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
 - Tests cover due-time matching and schedule prompt rendering.
 - CoAS remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
+
+---
+
+## CoAS Workspace Context
+
+### Goal
+Keep `pi-coas` context project-local and gradual-disclosure safe. Active `CONTEXT.md` files are small SPR-style durable memory, not transcript archives.
+
+### Architecture
+
+```mermaid
+flowchart TD
+  CWD[pi session cwd] --> HOME{COAS_HOME/settings?}
+  HOME -- explicit --> ROOT[configured CoAS home]
+  HOME -- absent --> LOCAL{nearest .pi/coas workspace root?}
+  LOCAL -- yes --> PROJ[project-local .pi/coas/workspace]
+  LOCAL -- legacy --> PROJLEG[project-local .pi/coas/workspaces]
+  LOCAL -- no --> GLOBAL[user-global .pi/coas]
+  READ[coas_workspace_read] --> SUMMARY[default summary: path size headings bounded preview]
+  READ -->|mode=section/full| GUARD[hard size guard]
+  UPDATE[coas_workspace_update] --> APPEND[append stable non-secret fact]
+  APPEND --> THRESH{active CONTEXT.md over threshold?}
+  THRESH -- yes --> ARCHIVE[copy previous file to archive/] --> SPR[rewrite compact active SPR memory]
+  THRESH -- no --> KEEP[keep active file]
+```
+
+### Acceptance criteria
+
+- Project-local `.pi/coas/workspace/<id>` is the standard workspace root when present; existing plural `workspaces/` roots remain readable for migration compatibility.
+- `coas_workspace_read` never returns full context by default; full and section modes are explicit and size guarded.
+- `coas_workspace_update` archives before compacting oversized active context and preserves private permissions.

@@ -2,8 +2,9 @@
  * CoAS extension configuration discovery.
  */
 
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, parse, resolve } from "node:path";
 import { readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { CoasConfig, RawCoasSettings } from "./types.js";
 
@@ -25,15 +26,45 @@ function expandHome(path: string): string {
 	return path;
 }
 
+function defaultAgentHome(): string {
+	return process.env.AGENT_HOME && process.env.AGENT_HOME.trim().length > 0
+		? expandHome(process.env.AGENT_HOME)
+		: homedir();
+}
+
+export function defaultCoasHome(): string {
+	return join(defaultAgentHome(), ".pi", "coas");
+}
+
+function nearestProjectCoasHome(cwd: string): string | undefined {
+	let current = resolve(cwd);
+	const root = parse(current).root;
+	while (true) {
+		const candidate = join(current, ".pi", "coas");
+		if (existsSync(join(candidate, "workspace")) || existsSync(join(candidate, "workspaces"))) return candidate;
+		if (current === root) return undefined;
+		current = dirname(current);
+	}
+}
+
+function workspaceDirName(coasHome: string): "workspace" | "workspaces" {
+	if (existsSync(join(coasHome, "workspace"))) return "workspace";
+	if (existsSync(join(coasHome, "workspaces"))) return "workspaces";
+	return "workspace";
+}
+
 export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
 	const projectSettings = readCoasSettings(join(cwd, ".pi", "settings.json"));
 	const globalSettings = readCoasSettings();
-	const settings = projectSettings ?? globalSettings;
 	const coasHome =
 		process.env.COAS_HOME ??
-		optionalString(settings?.coasHome) ??
-		join(homedir(), ".coas");
+		optionalString(projectSettings?.coasHome) ??
+		nearestProjectCoasHome(cwd) ??
+		optionalString(globalSettings?.coasHome) ??
+		defaultCoasHome();
+	const resolvedHome = resolve(expandHome(coasHome));
 	return {
-		coasHome: resolve(expandHome(coasHome)),
+		coasHome: resolvedHome,
+		workspaceDirName: workspaceDirName(resolvedHome),
 	};
 }

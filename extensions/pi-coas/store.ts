@@ -33,7 +33,7 @@ export function assertSafeId(label: string, value: string): void {
 }
 
 export function workspaceRoot(config: CoasConfig): string {
-	return join(config.coasHome, "workspaces");
+	return join(config.coasHome, config.workspaceDirName ?? "workspace");
 }
 
 export function scheduleRoot(config: CoasConfig): string {

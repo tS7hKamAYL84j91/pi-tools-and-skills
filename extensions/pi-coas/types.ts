@@ -4,6 +4,7 @@
 
 export interface CoasConfig {
 	coasHome: string;
+	workspaceDirName?: "workspace" | "workspaces";
 }
 
 export interface RawCoasSettings {
@@ -32,6 +33,13 @@ export interface WorkspaceSummary {
 	isolated?: string;
 	updatedAt?: string;
 	hasContext: boolean;
+}
+
+export type WorkspaceReadMode = "summary" | "section" | "full";
+
+export interface WorkspaceReadOptions {
+	mode?: WorkspaceReadMode;
+	section?: string;
 }
 
 export interface CreateWorkspaceInput {

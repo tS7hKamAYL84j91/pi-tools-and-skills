@@ -1,12 +1,15 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../../extensions/pi-coas/format.js";
+import { resolveCoasConfig } from "../../extensions/pi-coas/config.js";
 import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
 import { addSchedule, validateCronExpr, formatScheduleList, renderInternalSchedulePlan } from "../../extensions/pi-coas/schedules.js";
+import { appendWorkspaceContext, createWorkspace, readWorkspaceContext } from "../../extensions/pi-coas/workspaces.js";
 import { ok, fail } from "../../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
 
@@ -93,6 +96,84 @@ describe("store", () => {
 		it("skips lines without equals", () => {
 			expect(parseEnv("NOEQUALS\nKEY=val")).toEqual({ KEY: "val" });
 		});
+	});
+});
+
+describe("workspaces", () => {
+	it("prefers project-local singular workspace root before global fallback", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const project = join(tmpdir(), `pi-coas-project-${process.pid}-${Date.now()}`);
+		const nested = join(project, "repo", "subdir");
+		const workspaceDir = join(project, "repo", ".pi", "coas", "workspace", "local");
+		try {
+			await mkdir(nested, { recursive: true });
+			await mkdir(workspaceDir, { recursive: true });
+			await writeFile(join(workspaceDir, "CONTEXT.md"), "# Local\n", "utf8");
+
+			const config = resolveCoasConfig(nested);
+
+			expect(config.coasHome).toBe(join(project, "repo", ".pi", "coas"));
+			expect(config.workspaceDirName).toBe("workspace");
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+			await rm(project, { recursive: true, force: true });
+		}
+	});
+
+	it("returns summary metadata by default instead of full context", async () => {
+		const coasHome = join(tmpdir(), `pi-coas-summary-${process.pid}-${Date.now()}`);
+		try {
+			await createWorkspace({ coasHome }, { room: "general", workspace: "alpha" });
+			const contextPath = join(coasHome, "workspace", "alpha", "CONTEXT.md");
+			await writeFile(contextPath, `# Alpha\n\n## Stable Memory\n\nsmall fact\n\n## Private Detail\n\n${"x".repeat(20 * 1024)}\n`, "utf8");
+
+			const result = await readWorkspaceContext({ coasHome }, "alpha", coasHome);
+
+			expect(result.mode).toBe("summary");
+			expect(result.text).toContain("Size:");
+			expect(result.text).toContain("## Stable Memory");
+			expect(result.text.length).toBeLessThan(13 * 1024);
+			expect(result.text).not.toContain("x".repeat(13 * 1024));
+		} finally {
+			await rm(coasHome, { recursive: true, force: true });
+		}
+	});
+
+	it("guards full and section reads for oversized context files", async () => {
+		const coasHome = join(tmpdir(), `pi-coas-guard-${process.pid}-${Date.now()}`);
+		try {
+			await createWorkspace({ coasHome }, { room: "general", workspace: "alpha" });
+			await writeFile(join(coasHome, "workspace", "alpha", "CONTEXT.md"), `# Alpha\n\n${"x".repeat(130 * 1024)}\n`, "utf8");
+
+			await expect(readWorkspaceContext({ coasHome }, "alpha", coasHome, { mode: "full" })).rejects.toThrow(/full reads are limited/);
+			await expect(readWorkspaceContext({ coasHome }, "alpha", coasHome, { mode: "section", section: "Alpha" })).rejects.toThrow(/section reads are limited/);
+		} finally {
+			await rm(coasHome, { recursive: true, force: true });
+		}
+	});
+
+	it("compacts oversized active context and archives the previous content", async () => {
+		const coasHome = join(tmpdir(), `pi-coas-compact-${process.pid}-${Date.now()}`);
+		try {
+			await createWorkspace({ coasHome }, { room: "general", workspace: "alpha" });
+			const workspaceDir = join(coasHome, "workspace", "alpha");
+			await writeFile(join(workspaceDir, "CONTEXT.md"), `# Alpha\n\n${"old detail\n".repeat(9000)}`, "utf8");
+
+			const result = await appendWorkspaceContext({ coasHome }, "alpha", coasHome, "new stable fact");
+			const active = await readFile(result.path, "utf8");
+
+			expect(active).toContain("# CoAS Workspace Context (SPR)");
+			expect(active).toContain("new stable fact");
+			expect(active.length).toBeLessThan(4096);
+			expect(existsSync(join(workspaceDir, "archive"))).toBe(true);
+		} finally {
+			await rm(coasHome, { recursive: true, force: true });
+		}
 	});
 });
 

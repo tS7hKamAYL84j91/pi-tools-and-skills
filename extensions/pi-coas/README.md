@@ -1,7 +1,7 @@
 # Pi CoAS Extension
 
 TypeScript-native pi control surface for CoAS workspace, schedule, status, and
-health state under `${COAS_HOME:-~/.coas}`.
+health state under project-local `.pi/coas` when present, otherwise `${COAS_HOME:-${AGENT_HOME:-$HOME}/.pi/coas}`.
 
 This extension does **not** depend on a sibling `~/git/coas` checkout and does
 not shell out to CoAS scripts. Schedules are run by an in-process pi-hosted
@@ -20,9 +20,9 @@ CoAS rather than `pi-kanban`.
 |---|---|
 | `coas_status` | Summarize the local CoAS data root |
 | `coas_doctor` | Run TypeScript runtime diagnostics |
-| `coas_workspace_list` | List `${COAS_HOME:-~/.coas}/workspaces` |
-| `coas_workspace_read` | Read a real workspace `CONTEXT.md` |
-| `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md` |
+| `coas_workspace_list` | List `${COAS_HOME}/workspace` (or legacy `workspaces`) |
+| `coas_workspace_read` | Read workspace `CONTEXT.md` by gradual disclosure; summary by default, guarded `section`/`full` modes |
+| `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md`; archives/compacts oversized active context |
 | `coas_workspace_create` | Create a workspace record without Matrix room creation |
 | `coas_schedule_list` | List file-backed schedules |
 | `coas_schedule_preview` | Read-only preview of enabled internal scheduler plan lines |
@@ -60,21 +60,39 @@ This is intentionally operational state only: workspace/scheduler health, enable
 
 ## Configuration
 
-Defaults:
+Resolution order:
 
-- `COAS_HOME=${HOME}/.coas`
+1. Explicit `COAS_HOME`.
+2. Project `.pi/settings.json` `coas.coasHome`.
+3. Nearest project-local `.pi/coas` containing `workspace/` or legacy `workspaces/`.
+4. User/global settings `coas.coasHome`.
+5. `${AGENT_HOME:-$HOME}/.pi/coas`.
+
+The standard workspace registry directory is singular `workspace/`. Existing plural `workspaces/` registries are still discovered for backward-compatible migration and dry-run workflows.
 
 Optional `.pi/settings.json` override:
 
 ```json
 {
   "coas": {
-    "coasHome": "~/.coas"
+    "coasHome": "~/.pi/coas"
   }
 }
 ```
 
-`COAS_HOME` wins over settings.
+`COAS_HOME` wins over all discovery. Project-local discovery wins over user/global settings so EO repo-local CoAS state is preferred by default.
+
+## Workspace Context Policy
+
+`CONTEXT.md` is active durable memory, not a transcript dump. Keep it small and SPR-style: stable, non-secret facts that are useful across turns/sessions.
+
+`coas_workspace_read` is gradual-disclosure safe:
+
+- Default mode is `summary`: returns path, byte size, sampled headings, and a bounded preview only.
+- `mode=section` requires `section` heading text and is guarded for oversized files.
+- `mode=full` is explicit and rejected for files above the hard full-read limit.
+
+`coas_workspace_update` appends a stable fact, then compacts when active `CONTEXT.md` exceeds the threshold. Compaction copies the previous file into `archive/CONTEXT.<timestamp>.md` with private permissions and rewrites the active file to a small SPR memory plus archive index.
 
 ## What this does NOT do
 
@@ -89,7 +107,8 @@ Optional `.pi/settings.json` override:
 - No model-callable tool can install cron or modify host scheduler state.
 - The internal scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
 - CoAS schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
-- Workspace reads/writes are confined to `${COAS_HOME}/workspaces` unless the target already has `.coas/workspace.env` metadata.
-- Workspace context updates use pi's file mutation queue and reject symlinked `CONTEXT.md` files.
+- Workspace reads/writes are confined to `${COAS_HOME}/workspace` (or existing legacy `${COAS_HOME}/workspaces`) unless the target already has `.pi/coas/workspace.env` metadata (legacy `.coas/workspace.env` is read for migration only).
+- Workspace context reads default to bounded summaries; full/section reads have hard size guards.
+- Workspace context updates use pi's file mutation queue, reject symlinked `CONTEXT.md` files, and archive before compacting oversized active context.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.
 - Tool output is truncated before entering model context.

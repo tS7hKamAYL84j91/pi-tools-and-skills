@@ -34,7 +34,7 @@ function contextInstruction(ctx: ExtensionContext): string | undefined {
 	const inWorkspaceRoot = pathInside(workspaceRoot(config), ctx.cwd);
 	// currentWorkspaceLabel detects cwd-relative workspaces and COAS_WORKSPACE_ID;
 	// pathInside+workspaceRoot detects cwd inside COAS_HOME/workspaces.
-	// The previous .coas/workspace.env file check was redundant because both
+	// The previous legacy .coas/workspace.env file check was redundant because both
 	// detection paths already cover those workspaces.
 	if (!workspace && !inWorkspaceRoot) return undefined;
 	return [
