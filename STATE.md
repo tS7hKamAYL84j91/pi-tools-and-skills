@@ -14,6 +14,7 @@
 - **Implemented `/teams prune`:** Added a command to remove stale user-scope team files projected from deleted built-in seeds.
 - **Patched AGENTS.md:** Clarified the General Manager role (coordinate/review/integrate) and delegation rules.
 - **Config Synchronization:** Updated local `.pi/settings.json` to replace `routerFusion` defaults with `fusionAnalysis`. Gravitas/Quartermaster coordinating EO cleanup.
+- **T-744 fixed:** Added markdown fence stripping in `isValidJudgeJson()` so fused-judge JSON wrapped in ````json...```` parses correctly. Updated fusion-judge system prompt with explicit raw-JSON instruction. Added 3 regression tests to `tests/teams/team-fusion-handler.test.ts` (bare baseline, extra whitespace, prose-wrapped), total now 10 fence-handling tests all passing.
 
 ## Active Task
 - **Strengthening `/team on` with Context (ADR 029):**
