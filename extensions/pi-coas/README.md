@@ -24,11 +24,11 @@ CoAS rather than `pi-kanban`.
 | `coas_workspace_read` | Read workspace `CONTEXT.md` by gradual disclosure; summary by default, guarded `section`/`full` modes |
 | `coas_workspace_update` | Append stable non-secret facts to `CONTEXT.md`; archives/compacts oversized active context |
 | `coas_workspace_create` | Create a workspace record without Matrix room creation |
-| `coas_schedule_list` | List file-backed schedules |
-| `coas_schedule_preview` | Read-only preview of enabled internal scheduler plan lines |
-| `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler |
-| `coas_schedule_run` | Dry-run a schedule; enabled schedules run through the internal scheduler |
-| `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler |
+| `coas_schedule_list` | List file-backed schedules; optional `cwd` targets another project's CoAS runtime |
+| `coas_schedule_preview` | Read-only preview of enabled schedules; optional `cwd` targets another project's runtime |
+| `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler when targeting the current runtime; optional `cwd` adds to another project |
+| `coas_schedule_run` | Dry-run a schedule; optional `cwd` targets another project's runtime |
+| `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler when targeting the current runtime; optional `cwd` removes from another project |
 
 ### Commands
 

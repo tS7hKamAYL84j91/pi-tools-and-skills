@@ -5,11 +5,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
-import { resolveCoasConfig } from "./config.js";
+import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
 import { addSchedule, formatScheduleList, listSchedules, removeSchedule, renderInternalSchedulePlan, runSchedule } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
+import type { CoasConfig } from "./types.js";
 import {
 	appendWorkspaceContext,
 	createWorkspace,
@@ -18,8 +19,8 @@ import {
 	readWorkspaceContext,
 } from "./workspaces.js";
 
-function configFor(ctx: ExtensionContext): ReturnType<typeof resolveCoasConfig> {
-	return resolveCoasConfig(ctx.cwd);
+async function configFor(ctx: ExtensionContext, cwd?: string): Promise<CoasConfig> {
+	return resolveCoasConfigForCwd(ctx.cwd, cwd);
 }
 
 export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
@@ -31,7 +32,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await coasStatus(configFor(ctx), scheduler.snapshot());
+				const result = await coasStatus(await configFor(ctx), scheduler.snapshot());
 				return ok(commandSummary("coas-status", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -47,7 +48,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await coasDoctor(configFor(ctx), scheduler.snapshot());
+				const result = await coasDoctor(await configFor(ctx), scheduler.snapshot());
 				return ok(commandSummary("coas-doctor", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -63,7 +64,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const workspaces = await listWorkspaces(configFor(ctx));
+				const workspaces = await listWorkspaces(await configFor(ctx));
 				return ok(formatWorkspaceList(workspaces), { count: workspaces.length, workspaces });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -87,7 +88,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await readWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd, { mode: params.mode, section: params.section });
+				const result = await readWorkspaceContext(await configFor(ctx), params.workspace, ctx.cwd, { mode: params.mode, section: params.section });
 				return ok(result.text, { path: result.path, mode: result.mode, bytes: result.bytes });
 			} catch (error) {
 				return fail((error as Error).message, { selector: params.workspace, mode: params.mode, section: params.section });
@@ -107,7 +108,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await appendWorkspaceContext(configFor(ctx), params.workspace, ctx.cwd, params.text);
+				const result = await appendWorkspaceContext(await configFor(ctx), params.workspace, ctx.cwd, params.text);
 				return ok(`Updated ${result.path}`, result);
 			} catch (error) {
 				return fail((error as Error).message, { selector: params.workspace, textLength: params.text.length });
@@ -129,7 +130,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await createWorkspace(configFor(ctx), params);
+				const result = await createWorkspace(await configFor(ctx), params);
 				return ok(`coas workspace: ${result.dryRun ? "would create" : "ready"} ${result.workspaceId} at ${result.path}`, result);
 			} catch (error) {
 				return fail((error as Error).message, { workspace: params.workspace, room: params.room });
@@ -142,10 +143,12 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		label: "CoAS Schedule List",
 		description: "List CoAS scheduled automations from COAS_HOME.",
 		promptSnippet: "List CoAS scheduled automations",
-		parameters: Type.Object({}),
-		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+		parameters: Type.Object({
+			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const schedules = await listSchedules(configFor(ctx));
+				const schedules = await listSchedules(await configFor(ctx, params.cwd));
 				return ok(formatScheduleList(schedules), { code: 0, count: schedules.length, schedules, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -158,10 +161,12 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		label: "CoAS Schedule Preview",
 		description: "Read-only preview of enabled CoAS schedules as internal scheduler plan lines. Does not queue runs or write logs.",
 		promptSnippet: "Preview enabled CoAS schedules without running them",
-		parameters: Type.Object({}),
-		async execute(_id, _params, _signal, _onUpdate, ctx): Promise<ToolResult> {
+		parameters: Type.Object({
+			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const result = await renderInternalSchedulePlan(configFor(ctx));
+				const result = await renderInternalSchedulePlan(await configFor(ctx, params.cwd));
 				return ok(commandSummary("coas-schedule preview", result), { code: result.code });
 			} catch (error) {
 				return fail((error as Error).message);
@@ -181,12 +186,15 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 			prompt: Type.String({ description: "Prompt to run on schedule." }),
 			workspace: Type.Optional(Type.String({ description: "Workspace id/name." })),
 			disabled: Type.Optional(Type.Boolean({ description: "Create disabled schedule." })),
+			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const config = configFor(ctx);
+				const config = await configFor(ctx, params.cwd);
 				const schedule = await addSchedule(config, params);
-				await scheduler.reconcile(config);
+				if (scheduler.coasHome === config.coasHome) {
+					await scheduler.reconcile(config);
+				}
 				return ok(`coas-schedule: added ${schedule.taskId}`, { code: 0, schedule, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message, { room: params.room, name: params.name });
@@ -202,11 +210,12 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id." }),
 			dryRun: Type.Optional(Type.Boolean({ description: "Dry-run only. Defaults to true." })),
+			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
 				const dryRun = params.dryRun ?? true;
-				const result = await runSchedule(configFor(ctx), params.taskId, dryRun);
+				const result = await runSchedule(await configFor(ctx, params.cwd), params.taskId, dryRun);
 				return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun, unsupported: !dryRun });
 			} catch (error) {
 				return fail((error as Error).message, { taskId: params.taskId });
@@ -220,12 +229,15 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 		description: "Remove a CoAS schedule by task id and reconcile the internal scheduler.",
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task id to remove." }),
+			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
-				const config = configFor(ctx);
+				const config = await configFor(ctx, params.cwd);
 				const message = await removeSchedule(config, params.taskId);
-				await scheduler.reconcile(config);
+				if (scheduler.coasHome === config.coasHome) {
+					await scheduler.reconcile(config);
+				}
 				return ok(message, { code: 0, taskId: params.taskId, scheduler: scheduler.snapshot() });
 			} catch (error) {
 				return fail((error as Error).message, { taskId: params.taskId });

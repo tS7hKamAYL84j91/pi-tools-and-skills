@@ -3,9 +3,11 @@
  */
 
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, parse, resolve } from "node:path";
 import { readPiSettingsKey } from "../../lib/pi-settings.js";
+import { pathInside } from "./store.js";
 import type { CoasConfig, RawCoasSettings } from "./types.js";
 
 function optionalString(value: unknown): string | undefined {
@@ -54,4 +56,19 @@ export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
 		optionalString(globalSettings?.coasHome) ??
 		defaultCoasHome();
 	return { coasHome: resolve(expandHome(coasHome)) };
+}
+
+export async function resolveCoasConfigForCwd(baseCwd: string, cwd?: string): Promise<CoasConfig> {
+	const resolvedCwd = cwd ? resolve(cwd) : baseCwd;
+	if (cwd) {
+		const info = await stat(resolvedCwd).catch(() => undefined);
+		if (!info?.isDirectory()) {
+			throw new Error(`No such directory: ${cwd}`);
+		}
+	}
+	const config = resolveCoasConfig(resolvedCwd);
+	if (cwd && !pathInside(resolvedCwd, config.coasHome)) {
+		throw new Error(`No CoAS runtime found under ${resolvedCwd} (resolved COAS_HOME=${config.coasHome})`);
+	}
+	return config;
 }

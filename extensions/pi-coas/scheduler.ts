@@ -112,6 +112,10 @@ export class CoasInternalScheduler {
 		}
 	}
 
+	get coasHome(): string | undefined {
+		return this.config?.coasHome;
+	}
+
 	snapshot(): SchedulerSnapshot {
 		return {
 			running: Boolean(this.interval && this.config),
