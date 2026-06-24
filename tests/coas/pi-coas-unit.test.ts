@@ -114,7 +114,6 @@ describe("workspaces", () => {
 			const config = resolveCoasConfig(nested);
 
 			expect(config.coasHome).toBe(join(project, "repo", ".pi", "coas"));
-			expect(config.workspaceDirName).toBe("workspace");
 		} finally {
 			if (previousCoasHome === undefined) {
 				delete process.env.COAS_HOME;

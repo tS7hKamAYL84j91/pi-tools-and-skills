@@ -88,13 +88,8 @@ async function checkWorkspaceRegistry(config: CoasConfig): Promise<DoctorCheck[]
 			bad++;
 		}
 		const metadataPath = join(dir, ".pi", "coas", "workspace.env");
-		const legacyMetadataPath = join(dir, ".coas", "workspace.env");
 		if (!await fileExists(metadataPath)) {
-			if (await fileExists(legacyMetadataPath)) {
-				checks.push({ level: "warn", message: `workspace uses legacy metadata path; migrate to .pi/coas: ${dir}` });
-			} else {
-				checks.push({ level: "warn", message: `workspace missing metadata: ${dir}` });
-			}
+			checks.push({ level: "warn", message: `workspace missing metadata: ${dir}` });
 			bad++;
 		}
 	}

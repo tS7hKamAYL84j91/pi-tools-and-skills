@@ -4,7 +4,6 @@
 
 export interface CoasConfig {
 	coasHome: string;
-	workspaceDirName?: "workspace" | "workspaces";
 }
 
 export interface RawCoasSettings {

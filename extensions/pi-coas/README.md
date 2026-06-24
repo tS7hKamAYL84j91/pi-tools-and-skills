@@ -64,11 +64,11 @@ Resolution order:
 
 1. Explicit `COAS_HOME`.
 2. Project `.pi/settings.json` `coas.coasHome`.
-3. Nearest project-local `.pi/coas` containing `workspace/` or legacy `workspaces/`.
+3. Nearest project-local `.pi/coas` containing `workspace/`.
 4. User/global settings `coas.coasHome`.
 5. `${AGENT_HOME:-$HOME}/.pi/coas`.
 
-The standard workspace registry directory is singular `workspace/`. Existing plural `workspaces/` registries are still discovered for backward-compatible migration and dry-run workflows.
+The workspace registry directory is `workspace/`.
 
 Optional `.pi/settings.json` override:
 
@@ -107,7 +107,7 @@ Optional `.pi/settings.json` override:
 - No model-callable tool can install cron or modify host scheduler state.
 - The internal scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
 - CoAS schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
-- Workspace reads/writes are confined to `${COAS_HOME}/workspace` (or existing legacy `${COAS_HOME}/workspaces`) unless the target already has `.pi/coas/workspace.env` metadata (legacy `.coas/workspace.env` is read for migration only).
+- Workspace reads/writes are confined to `${COAS_HOME}/workspace` unless the target already has `.pi/coas/workspace.env` metadata.
 - Workspace context reads default to bounded summaries; full/section reads have hard size guards.
 - Workspace context updates use pi's file mutation queue, reject symlinked `CONTEXT.md` files, and archive before compacting oversized active context.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.

@@ -26,14 +26,11 @@ function expandHome(path: string): string {
 	return path;
 }
 
-function defaultAgentHome(): string {
-	return process.env.AGENT_HOME && process.env.AGENT_HOME.trim().length > 0
+function defaultCoasHome(): string {
+	const agentHome = process.env.AGENT_HOME && process.env.AGENT_HOME.trim().length > 0
 		? expandHome(process.env.AGENT_HOME)
 		: homedir();
-}
-
-export function defaultCoasHome(): string {
-	return join(defaultAgentHome(), ".pi", "coas");
+	return join(agentHome, ".pi", "coas");
 }
 
 function nearestProjectCoasHome(cwd: string): string | undefined {
@@ -41,16 +38,10 @@ function nearestProjectCoasHome(cwd: string): string | undefined {
 	const root = parse(current).root;
 	while (true) {
 		const candidate = join(current, ".pi", "coas");
-		if (existsSync(join(candidate, "workspace")) || existsSync(join(candidate, "workspaces"))) return candidate;
+		if (existsSync(join(candidate, "workspace"))) return candidate;
 		if (current === root) return undefined;
 		current = dirname(current);
 	}
-}
-
-function workspaceDirName(coasHome: string): "workspace" | "workspaces" {
-	if (existsSync(join(coasHome, "workspace"))) return "workspace";
-	if (existsSync(join(coasHome, "workspaces"))) return "workspaces";
-	return "workspace";
 }
 
 export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
@@ -62,9 +53,5 @@ export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
 		nearestProjectCoasHome(cwd) ??
 		optionalString(globalSettings?.coasHome) ??
 		defaultCoasHome();
-	const resolvedHome = resolve(expandHome(coasHome));
-	return {
-		coasHome: resolvedHome,
-		workspaceDirName: workspaceDirName(resolvedHome),
-	};
+	return { coasHome: resolve(expandHome(coasHome)) };
 }

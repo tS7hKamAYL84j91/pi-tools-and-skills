@@ -43,12 +43,8 @@ function workspaceMetadataPath(dir: string): string {
 	return join(dir, ".pi", "coas", "workspace.env");
 }
 
-function legacyWorkspaceMetadataPath(dir: string): string {
-	return join(dir, ".coas", "workspace.env");
-}
-
 function hasWorkspaceMetadata(dir: string): boolean {
-	return existsSync(workspaceMetadataPath(dir)) || existsSync(legacyWorkspaceMetadataPath(dir));
+	return existsSync(workspaceMetadataPath(dir));
 }
 
 function assertAllowedWorkspacePath(config: CoasConfig, dir: string): void {
@@ -103,11 +99,9 @@ async function assertSafeWorkspaceDir(config: CoasConfig, dir: string): Promise<
 
 async function readWorkspaceEnv(dir: string): Promise<Record<string, string>> {
 	const envPath = workspaceMetadataPath(dir);
-	const legacyEnvPath = legacyWorkspaceMetadataPath(dir);
-	const selected = existsSync(envPath) ? envPath : legacyEnvPath;
-	if (!existsSync(selected)) return {};
-	await assertNotSymlink(selected);
-	return parseEnv(await readFile(selected, "utf8"));
+	if (!existsSync(envPath)) return {};
+	await assertNotSymlink(envPath);
+	return parseEnv(await readFile(envPath, "utf8"));
 }
 
 export async function listWorkspaces(config: CoasConfig): Promise<WorkspaceSummary[]> {
