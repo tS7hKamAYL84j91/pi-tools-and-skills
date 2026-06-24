@@ -52,10 +52,6 @@ const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
 		reason: "CoAS append log migration remains a later AFR-002 slice.",
 	},
 	{
-		path: "extensions/pi-coas/workspaces.ts",
-		reason: "CoAS workspace journal migration remains a later AFR-002 slice.",
-	},
-	{
 		path: "extensions/pi-coas/scheduler.ts",
 		reason: "CoAS scheduler log migration remains a later AFR-002 slice.",
 	},

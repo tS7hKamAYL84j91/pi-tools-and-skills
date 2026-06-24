@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../../extensions/pi-coas/format.js";
-import { resolveCoasConfig } from "../../extensions/pi-coas/config.js";
+import { resolveCoasConfig, resolveCoasConfigForCwd } from "../../extensions/pi-coas/config.js";
 import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
@@ -96,6 +96,102 @@ describe("store", () => {
 		it("skips lines without equals", () => {
 			expect(parseEnv("NOEQUALS\nKEY=val")).toEqual({ KEY: "val" });
 		});
+	});
+});
+
+describe("config", () => {
+	it("uses baseCwd when no override cwd is provided", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const project = join(tmpdir(), `pi-coas-base-${process.pid}-${Date.now()}`);
+		try {
+			await mkdir(join(project, ".pi", "coas", "workspace"), { recursive: true });
+			const config = await resolveCoasConfigForCwd(project);
+			expect(config.coasHome).toBe(join(project, ".pi", "coas"));
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+			await rm(project, { recursive: true, force: true });
+		}
+	});
+
+	it("resolves CoAS_HOME from an override cwd", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const base = join(tmpdir(), `pi-coas-base-override-${process.pid}-${Date.now()}`);
+		const other = join(tmpdir(), `pi-coas-other-${process.pid}-${Date.now()}`);
+		try {
+			await mkdir(join(base, ".pi", "coas", "workspace"), { recursive: true });
+			await mkdir(join(other, ".pi", "coas", "workspace"), { recursive: true });
+			const config = await resolveCoasConfigForCwd(base, other);
+			expect(config.coasHome).toBe(join(other, ".pi", "coas"));
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+			await rm(base, { recursive: true, force: true });
+			await rm(other, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a non-existent override cwd", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const missing = join(tmpdir(), `pi-coas-missing-${process.pid}-${Date.now()}`);
+		try {
+			await expect(resolveCoasConfigForCwd(process.cwd(), missing)).rejects.toThrow(/No such directory/);
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+		}
+	});
+
+	it("rejects an override cwd without a CoAS runtime", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const base = join(tmpdir(), `pi-coas-base-no-runtime-${process.pid}-${Date.now()}`);
+		const empty = join(tmpdir(), `pi-coas-empty-${process.pid}-${Date.now()}`);
+		try {
+			await mkdir(join(base, ".pi", "coas", "workspace"), { recursive: true });
+			await mkdir(empty, { recursive: true });
+			await expect(resolveCoasConfigForCwd(base, empty)).rejects.toThrow(/No CoAS runtime found under/);
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+			await rm(base, { recursive: true, force: true });
+			await rm(empty, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an override cwd that is a file", async () => {
+		const previousCoasHome = process.env.COAS_HOME;
+		delete process.env.COAS_HOME;
+		const base = join(tmpdir(), `pi-coas-base-file-${process.pid}-${Date.now()}`);
+		const file = join(tmpdir(), `pi-coas-file-${process.pid}-${Date.now()}`);
+		try {
+			await mkdir(join(base, ".pi", "coas", "workspace"), { recursive: true });
+			await writeFile(file, "not a directory", "utf8");
+			await expect(resolveCoasConfigForCwd(base, file)).rejects.toThrow(/No such directory/);
+		} finally {
+			if (previousCoasHome === undefined) {
+				delete process.env.COAS_HOME;
+			} else {
+				process.env.COAS_HOME = previousCoasHome;
+			}
+			await rm(base, { recursive: true, force: true });
+			await rm(file, { recursive: true, force: true });
+		}
 	});
 });
 

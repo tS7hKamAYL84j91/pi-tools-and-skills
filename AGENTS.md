@@ -1,6 +1,7 @@
 # Project Agent Guidelines
 
 ## Directives (Highest Priority)
+- **No Fitness-Test Exemptions:** Do not add exceptions to architecture fitness tests to avoid refactoring. A failing fitness test is a signal to split, simplify, or use shared helpers — never to add the module to an exception list.
 - **Output Efficiency:** Lead with the action or answer, not the reasoning. Skip preambles and restatements.
 - **Sparsity:** If a task can be explained in one sentence, do not use three. Use the simplest approach first.
 - **No Over-Engineering:** Only make changes that are directly requested or strictly necessary for stability.
