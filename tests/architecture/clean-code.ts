@@ -20,12 +20,6 @@ function countFuncParams(content: string, maxParams: number): boolean {
 	return true;
 }
 
-function allowsParameterException(path: string): boolean {
-	// applyEvent() consumes one parsed log event: task, event, agent, timestamp,
-	// and key/value payload. This is legacy event-sourcing core, not new API shape.
-	return path.endsWith("extensions/pi-kanban/board.ts");
-}
-
 describe("file size", () => {
 	it("no extension file should exceed 700 lines", async () => {
 		const rule = projectFiles().inFolder("extensions/**").should().adhereTo((file) => {
@@ -59,7 +53,7 @@ describe("function parameters", () => {
 		const rule = projectFiles()
 			.inFolder("extensions/**")
 			.should()
-			.adhereTo((file) => allowsParameterException(file.path) || countFuncParams(file.content, 4), "Functions should have at most 4 parameters (Clean Code: 3 ideal, 4 max)");
+			.adhereTo((file) => countFuncParams(file.content, 4), "Functions should have at most 4 parameters (Clean Code: 3 ideal, 4 max)");
 		await expect(rule).toPassAsync();
 	});
 

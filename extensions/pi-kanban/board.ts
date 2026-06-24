@@ -273,33 +273,36 @@ function parseKV(fields: string[]): Record<string, string> {
 	return kv;
 }
 
+interface BoardEvent {
+	task: TaskState;
+	event: string;
+	agent: string;
+	timestamp: string;
+	payload: Record<string, string>;
+}
+
 /** Apply a single event to a task accumulator. */
-function applyEvent(
-	task: TaskState,
-	event: string,
-	agent: string,
-	ts: string,
-	kv: Record<string, string>,
-): void {
+function applyEvent(boardEvent: BoardEvent): void {
+	const { task, event, agent, timestamp, payload } = boardEvent;
 	switch (event) {
 		case "CREATE":
-			if (kv.title) task.title = kv.title;
-			if (kv.priority) task.priority = kv.priority;
-			if (kv.tags) task.tags = kv.tags;
-			if (kv.description) task.description = kv.description;
-			task.createdAt = ts;
+			if (payload.title) task.title = payload.title;
+			if (payload.priority) task.priority = payload.priority;
+			if (payload.tags) task.tags = payload.tags;
+			if (payload.description) task.description = payload.description;
+			task.createdAt = timestamp;
 			task.agent = agent;
 			break;
 		case "MOVE":
-			if (kv.to) task.col = kv.to;
+			if (payload.to) task.col = payload.to;
 			break;
 		case "CLAIM":
 			if (!task.claimed) {
 				task.claimed = true;
 				task.claimAgent = agent;
 				task.col = "in-progress";
-				if (kv.expires) task.expires = kv.expires;
-				if (kv.model) task.model = kv.model;
+				if (payload.expires) task.expires = payload.expires;
+				if (payload.model) task.model = payload.model;
 			}
 			break;
 		case "UNCLAIM":
@@ -312,32 +315,32 @@ function applyEvent(
 			task.claimed = false;
 			task.claimAgent = "";
 			task.expires = "";
-			task.completedAt = ts;
+			task.completedAt = timestamp;
 			task.col = "done";
-			if (kv.duration) task.duration = kv.duration;
+			if (payload.duration) task.duration = payload.duration;
 			task.doneAgent = agent;
 			break;
 		case "BLOCK":
 			task.claimed = false;
 			task.claimAgent = "";
 			task.col = "blocked";
-			if (kv.reason) task.reason = kv.reason;
+			if (payload.reason) task.reason = payload.reason;
 			break;
 		case "UNBLOCK":
 			task.reason = "";
 			task.col = "todo";
 			break;
 		case "NOTE":
-			task.notes.push(`${ts} [${agent}] ${kv.text ?? ""}`);
+			task.notes.push(`${timestamp} [${agent}] ${payload.text ?? ""}`);
 			break;
 		case "DELETE":
 			task.deleted = true;
 			break;
 		case "EDIT":
-			if (kv.title) task.title = kv.title;
-			if (kv.priority) task.priority = kv.priority;
-			if (kv.tags) task.tags = kv.tags;
-			if (kv.description) task.description = kv.description;
+			if (payload.title) task.title = payload.title;
+			if (payload.priority) task.priority = payload.priority;
+			if (payload.tags) task.tags = payload.tags;
+			if (payload.description) task.description = payload.description;
 			break;
 	}
 }
@@ -363,7 +366,7 @@ export async function parseBoard(): Promise<BoardState> {
 			order.push(tid);
 		}
 		const task = tasks.get(tid) as TaskState;
-		applyEvent(task, event, agent, ts, parseKV(parts.slice(4)));
+		applyEvent({ task, event, agent, timestamp: ts, payload: parseKV(parts.slice(4)) });
 	}
 
 	return { tasks, order, totalEvents: lines.length };

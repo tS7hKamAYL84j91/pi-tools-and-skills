@@ -10,7 +10,8 @@ interface LineBudgetException {
 	readonly path: string;
 	readonly maxLines: number;
 	readonly reason: string;
-	readonly allowHotspotGrowth?: boolean;
+	readonly createdAt: string;
+	readonly targetDate: string;
 }
 
 interface ModuleDefinition {
@@ -22,6 +23,8 @@ interface CouplingBudget {
 	readonly modules: readonly [string, string];
 	readonly maxCommits90d: number;
 	readonly reason: string;
+	readonly createdAt: string;
+	readonly targetDate: string;
 }
 
 interface HotspotMetric {
@@ -35,88 +38,124 @@ interface HotspotMetric {
 const EXTENSION_DEFAULT_MAX_LINES = 300;
 const LIB_DEFAULT_MAX_LINES = 200;
 const TOP_HOTSPOT_REFACTOR_GATE = 3;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function daysBetween(start: string, end: string): number {
+	return (new Date(end).getTime() - new Date(start).getTime()) / MS_PER_DAY;
+}
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
 		path: "extensions/pi-panopticon/teams/team-handler-fusion-analysis.ts",
 		maxLines: 360,
 		reason: "Fusion analysis protocol panel/judge helpers; extract a dedicated fusion-node module when adding another fusion-style protocol.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-goal/goal-extension.ts",
 		maxLines: 650,
-		reason: "Legacy goal tool/command entrypoint; split registration from state flow when touched.",
+		reason: "Established goal tool/command entrypoint; split registration from state flow when touched.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-goal/state.ts",
 		maxLines: 350,
-		reason: "Legacy goal state persistence; extract versioned helpers on schema changes.",
+		reason: "Established goal state persistence; extract versioned helpers on schema changes.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-kanban/board.ts",
 		maxLines: 470,
 		reason: "Kanban event parser hotspot; extract typed event handlers when syntax grows.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-kanban/overlay-render.ts",
 		maxLines: 435,
 		reason: "Kanban overlay renderer hotspot; extract section renderers when adding UI states.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-kanban/overlay.ts",
 		maxLines: 460,
 		reason: "Kanban overlay interaction hotspot; split navigation/input concerns when modified.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-kanban/task-tools.ts",
 		maxLines: 325,
 		reason: "Kanban task tool hotspot; split command families when adding mutations.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/ui/agent-overlay.ts",
 		maxLines: 460,
-		reason: "Legacy agent TUI flow; extract focused view helpers when modified.",
+		reason: "Established agent TUI flow; extract focused view helpers when modified.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/teams/state.ts",
 		maxLines: 540,
 		reason: "Team run state serialization expanded for ADR 027 node observability; extract versioned codecs on the next schema change.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/teams/team-overlay.ts",
 		maxLines: 430,
 		reason: "Team overlay renderer; extract render helpers when adding UI states.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/registry/registry.ts",
 		maxLines: 420,
 		reason: "Registry lifecycle/persistence; extract sync persistence helpers when touched.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/spawner/spawner-tools.ts",
 		maxLines: 405,
 		reason: "Spawner tool surface; split prompt-file/RPC helpers on new behavior.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/teams/team-runtime.ts",
 		maxLines: 500,
 		reason: "Team runtime control expanded for ADR 027 node observability; extract team control tools before adding more runtime surfaces.",
-		allowHotspotGrowth: true,
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/teams/team-registry.ts",
 		maxLines: 350,
 		reason: "Team manifest registry; extract manifest IO/merge helpers when expanded.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/registry/health.ts",
 		maxLines: 370,
 		reason: "Agent health heuristics and aggregate observability; keep detection helpers pure and bounded.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		path: "extensions/pi-panopticon/messaging/messaging.ts",
 		maxLines: 325,
 		reason: "Messaging tool surface; extract channel/tool families when adding transports.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 ];
 
@@ -137,32 +176,44 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 	{
 		modules: ["panopticon-teams", "lib"],
 		maxCommits90d: 14,
-		reason: "Teams intentionally uses shared runtime child-process/control-plane adapters.",
+		reason: "Teams intentionally uses shared runtime child-process/control-plane adapters. Decoupling plan target 2026-09-22: extract runtime-control adapters to lib/runtime-control-plane to reduce co-change.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		modules: ["panopticon-registry", "panopticon-spawner"],
 		maxCommits90d: 10,
-		reason: "Spawner publishes parent/visibility metadata through the agent registry.",
+		reason: "Spawner publishes parent/visibility metadata through the agent registry. Decoupling plan target 2026-09-22: move spawn metadata exchange to a narrow registry event bus.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		modules: ["panopticon-messaging", "panopticon-registry"],
 		maxCommits90d: 10,
-		reason: "Messaging resolves visible peers through registry metadata.",
+		reason: "Messaging resolves visible peers through registry metadata. Decoupling plan target 2026-09-22: cache visibility snapshots in messaging so registry schema changes do not require messaging edits.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		modules: ["panopticon-ui", "panopticon-registry"],
 		maxCommits90d: 10,
-		reason: "UI renders agent registry and health metadata.",
+		reason: "UI renders agent registry and health metadata. Decoupling plan target 2026-09-22: introduce a stable view-model so UI only changes on intentional health schema updates.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		modules: ["coas", "kanban"],
 		maxCommits90d: 5,
-		reason: "Recent setup/docs/package changes touched orchestration extensions together; avoid further runtime coupling.",
+		reason: "Recent setup/docs/package changes touched orchestration extensions together; avoid further runtime coupling. Decoupling plan target 2026-09-22: keep shared surface limited to docs/package metadata, no runtime calls.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 	{
 		modules: ["kanban", "matrix"],
 		maxCommits90d: 5,
-		reason: "Recent setup/docs/package changes touched communication/task extensions together; avoid further runtime coupling.",
+		reason: "Recent setup/docs/package changes touched communication/task extensions together; avoid further runtime coupling. Decoupling plan target 2026-09-22: keep shared surface limited to docs/package metadata, no runtime calls.",
+		createdAt: "2026-06-24",
+		targetDate: "2026-09-22",
 	},
 ];
 
@@ -349,9 +400,6 @@ describe("line-count hotspot budgets", () => {
 		const violations = [...changedFiles]
 			.filter((path) => topHotspotPaths.has(path) || path === currentNumberOne)
 			.map((path) => {
-				if (budgetFor(path)?.allowHotspotGrowth === true) {
-					return undefined;
-				}
 				const base = execFileSync("git", ["merge-base", "origin/main", "HEAD"], { encoding: "utf8" }).trim();
 				const previous = textAtRevision(base, path);
 				if (!previous) {
@@ -369,6 +417,21 @@ describe("line-count hotspot budgets", () => {
 			})
 			.filter((violation): violation is string => violation != null);
 
+		expect(violations).toEqual([]);
+	});
+
+	it("line-budget exceptions have a target date within 90 days of creation", () => {
+		const violations = LINE_BUDGET_EXCEPTIONS
+			.filter((exception) => Number.isNaN(new Date(exception.createdAt).getTime()) || Number.isNaN(new Date(exception.targetDate).getTime()) || daysBetween(exception.createdAt, exception.targetDate) > 90)
+			.map((exception) => exception.path);
+		expect(violations).toEqual([]);
+	});
+
+	it("line-budget exception reasons do not use open-ended deferral language", () => {
+		const vague = /\b(later|legacy)\b/i;
+		const violations = LINE_BUDGET_EXCEPTIONS
+			.filter((exception) => vague.test(exception.reason))
+			.map((exception) => exception.path);
 		expect(violations).toEqual([]);
 	});
 });
@@ -410,5 +473,19 @@ describe("module temporal coupling", () => {
 			.map((budget) => budget.modules.join(" <-> "));
 
 		expect(missingReasons).toEqual([]);
+	});
+
+	it("temporal-coupling exceptions above the default include a bounded decoupling plan", () => {
+		const defaultThreshold = 4;
+		const violations = COUPLING_BUDGETS
+			.filter((budget) => budget.maxCommits90d > defaultThreshold)
+			.filter((budget) => {
+				const createdMs = new Date(budget.createdAt).getTime();
+				const targetMs = new Date(budget.targetDate).getTime();
+				return Number.isNaN(createdMs) || Number.isNaN(targetMs) || daysBetween(budget.createdAt, budget.targetDate) > 90 || budget.reason.trim().length < 20;
+			})
+			.map((budget) => budget.modules.join(" <-> "));
+
+		expect(violations).toEqual([]);
 	});
 });

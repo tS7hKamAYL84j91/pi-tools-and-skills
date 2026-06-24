@@ -1,7 +1,7 @@
 # T-745 — Architecture Fitness Test Exception Audit
 
 Date: 2026-06-24
-Status: active
+Status: complete
 Owner: pi-tools-and-skills GM
 Baseline: `main` at `ed08486`
 

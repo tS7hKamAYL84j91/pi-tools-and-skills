@@ -23,7 +23,6 @@ import {
 	boardLogPath,
 	parseBoard,
 	selfAppendedLines,
-	type TaskState,
 	WIP_LIMIT,
 } from "./board.js";
 import { openKanbanOverlay } from "./overlay.js";
@@ -34,7 +33,7 @@ const DEBOUNCE_MS = 200;
 const INJECT_COOLDOWN_MS = 5 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 3;
 
-export const KANBAN_WATCHER_INJECT_MESSAGE = [
+const KANBAN_WATCHER_INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
 	"Use gradual disclosure: do not dump the full board into context.",
 	'Run kanban_snapshot for a compact board summary; use task_id="T-NNN" for one card or detail="full" only when full board details are explicitly needed.',
@@ -82,21 +81,11 @@ function hasExternalEvents(newLines: string[]): boolean {
 
 export function buildWidgetLines(board: BoardState): string[] {
 	const buckets: Record<string, number> = {};
-	const inProgress: string[] = [];
-	const blockedTasks: TaskState[] = [];
 
 	for (const tid of board.order) {
 		const t = board.tasks.get(tid);
 		if (!t || t.deleted) continue;
 		buckets[t.col] = (buckets[t.col] ?? 0) + 1;
-		if (t.col === "in-progress") {
-			inProgress.push(
-				`  ${t.id} ${t.title.slice(0, 30)} (${t.claimAgent || "?"})`,
-			);
-		}
-		if (t.col === "blocked") {
-			blockedTasks.push(t);
-		}
 	}
 
 	const wip = buckets["in-progress"] ?? 0;
@@ -104,21 +93,9 @@ export function buildWidgetLines(board: BoardState): string[] {
 	const done = buckets.done ?? 0;
 	const todo = buckets.todo ?? 0;
 
-	let blockedInfo = `blocked ${blocked}`;
-	const latestBlocked = blockedTasks[blockedTasks.length - 1];
-	if (blocked > 0 && latestBlocked?.reason) {
-		const truncated =
-			latestBlocked.reason.length > 18
-				? `${latestBlocked.reason.slice(0, 15)}...`
-				: latestBlocked.reason;
-		blockedInfo += ` (${truncated})`;
-	}
-
-	const lines = [
-		`pi-kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | ${blockedInfo} | done ${done}`,
-		...inProgress,
+	return [
+		`pi-kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | blocked ${blocked} | done ${done}`,
 	];
-	return lines;
 }
 
 // Status text is intentionally empty — the kanban widget above the

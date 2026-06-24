@@ -4,7 +4,7 @@ Single tracker for active work on this goal.
 
 ## Goal
 
-complete the imeplementations, refactor then commit. converge on clean implementaiton of on, auto, once, off, prune and a UX that aligns with our principles, and tests exist include arch fitness tests
+complete the recommendations set out in docs/reports/t-745-fitness-exception-audit.md
 
 **🔴 AUTONOMY RULE — READ FIRST:**
 The implementation agent is expected to complete outstanding items without asking the user for confirmation.
@@ -38,42 +38,29 @@ Progress markers:
 ## Remaining TODO Items
 
 - [x] (1.1) Inspect the current repository state and refine this TODO into concrete, verifiable tasks derived from the goal.
-- [x] (1.2) Implement the smallest useful change that advances the goal: add `/teams prune` to remove stale user-scope team files when built-in seeds are deleted.
-- [x] (1.3) Validate the result and record evidence.
-- [x] (1.4) Final summary: what changed, what stayed unchanged, validation performed, and any blockers or follow-up work.
+- [x] (2.1) Clean up `DIRECT_STATE_WRITE_EXCEPTIONS` in `tests/architecture/runtime-state-boundaries.ts`.
+- [x] (2.2) Refactor `extensions/pi-kanban/board.ts#applyEvent` to accept a single event object (`BoardEvent`) with ≤4 declared parameters.
+  - Remove the `allowsParameterException` bypass in `tests/architecture/clean-code.ts`.
+- [x] (2.3) Remove the `allowHotspotGrowth` flag from `tests/architecture/hotspots.ts`.
+- [x] (2.4) Harden exception metadata for `LINE_BUDGET_EXCEPTIONS` and `COUPLING_BUDGETS`.
+  - Eliminate vague "legacy"/"later" reasons or link them to a ticket.
+  - Add explicit target removal/reduce dates and an age/deadline test.
+- [x] (2.5) Run `npm run check` and `npm test`; fix any regressions.
+- [x] (2.6) Mark `docs/reports/t-745-fitness-exception-audit.md` as complete and move it to `docs/archive/reports/`.
+- [x] (1.4) Final summary.
+  - **Done:**
+    - `DIRECT_STATE_WRITE_EXCEPTIONS` reduced to three documented core IO-layer modules (`lib/private-local-mode.ts`, `lib/session-spool.ts`, `lib/session-hook-installer.ts`); stale extension entries removed; added assertions that no extension path appears in the list and that reasons avoid "later"/"legacy".
+    - `extensions/pi-kanban/board.ts#applyEvent` refactored to accept a single `BoardEvent` object (1 declared parameter); removed `allowsParameterException` from `tests/architecture/clean-code.ts`.
+    - `allowHotspotGrowth` field removed from `LineBudgetException` and the hotspot-growth bypass in the top-hotspot test.
+    - `LINE_BUDGET_EXCEPTIONS` and `COUPLING_BUDGETS` updated with `createdAt`/`targetDate` fields, concrete remediation/decoupling plans, and tests verifying target dates are within 90 days of creation and reasons avoid open-ended "later"/"legacy" language.
+    - Report status set to `complete` and moved to `docs/archive/reports/t-745-fitness-exception-audit.md`.
+  - **Validation:** `npm run check` (namespace, template-safety, typecheck, lint, knip, type-coverage) and `npm test` (874 tests) both pass.
+  - **Blockers/follow-up:** None.
 
 ---
 
-## Phase 2 Candidate — Main-Agent-First Review Mode
+## Completion Criteria
 
-Optional future enhancement if Phase 1 context enrichment proves insufficient. Spec is in `docs/adr/029-team-context-review.md`; do not implement until Phase 1 has been exercised.
-
----
-
-## Final Summary
-
-Implemented and validated:
-
-- `/team on` is deterministic: every user prompt runs the configured team.
-- `/team auto` is assistant-mediated: the model decides when to call `team_run`.
-- `/team once <prompt>` runs the team immediately on the given prompt.
-- `/team off` and `/team status` remain unchanged.
-- `/teams prune` removes stale user-scope team files for ids no longer present in built-in seeds; custom user teams are preserved.
-- **ADR 029 Phase 1 — Context enrichment:** deterministic `/team on` and `/team once` now include bounded recent conversation context (last 5 user/assistant text turns, up to 4k chars, secret heuristics, tool/system messages skipped). Implemented in `team-session-mode.ts` without changing `TeamRunInput` or any team protocol.
-
-Files changed:
-- `extensions/pi-panopticon/teams/team-session-mode.ts` — deterministic on, auto mode, once prompt, `buildTeamContext`.
-- `extensions/pi-panopticon/teams/team-projection.ts` — `pruneBuiltinTeams`.
-- `extensions/pi-panopticon/teams/team-commands.ts` — `/teams prune` command.
-- `extensions/pi-panopticon/teams/README.md` — UX and context enrichment documentation.
-- `docs/adr/029-team-context-review.md` — ADR spec, Phase 1 marked implemented.
-- `tests/teams/team-session-mode.test.ts` — updated for on/auto/once and `buildTeamContext`.
-- `tests/teams/team-projection.test.ts` — prune tests.
-
-Validation:
-- `npm run check` passes.
-- `npx vitest run tests/teams` — 218 tests pass.
-- `type-coverage` 99.32%.
-- Full `npm test` has one pre-existing unrelated failure: `lib/session-spool-select-cli.ts` unclassified in `tests/architecture/lib-layering.ts`.
-
-Delivered to `origin/main` at `41765e3`. No blockers.
+- All TODO items are `[x]`, `[R]` with review notes, or `[!]` with explicit blockers.
+- Required validation has passed or has a documented reason why it cannot run.
+- Final state and evidence are recorded in this file.

@@ -44,60 +44,19 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 
 const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
 	{
-		path: "extensions/pi-coas/store.ts",
-		reason: "Existing local atomic helper; migrate in a later AFR-002 slice.",
-	},
-	{
-		path: "extensions/pi-coas/schedules.ts",
-		reason: "CoAS append log migration remains a later AFR-002 slice.",
-	},
-	{
-		path: "extensions/pi-coas/scheduler.ts",
-		reason: "CoAS scheduler log migration remains a later AFR-002 slice.",
-	},
-	{
-		path: "extensions/pi-kanban/compaction.ts",
-		reason:
-			"Board-log replacement semantics need a dedicated compaction migration.",
-	},
-	{
-		path: "extensions/pi-matrix/attachments.ts",
-		reason:
-			"Binary attachment writes are content downloads, not shared control state.",
-	},
-	{
-		path: "extensions/pi-panopticon/registry/registry.ts",
-		reason:
-			"Synchronous lifecycle registry write; needs sync helper or documented exception.",
-	},
-	{
-		path: "extensions/pi-panopticon/spawner/spawner-tools.ts",
-		reason: "Writes one-off prompt file before process spawn.",
-	},
-	{
-		path: "extensions/pi-panopticon/teams/team-form.ts",
-		reason:
-			"Interactive sync authoring flow; needs sync helper or async refactor.",
-	},
-	{
-		path: "lib/agent-registry.ts",
-		reason: "Synchronous process registry lifecycle code.",
-	},
-	{
 		path: "lib/private-local-mode.ts",
-		reason: "Private local hardening owns the sync O_NOFOLLOW file creation helper.",
+		reason:
+			"Core IO-layer module: owns the synchronous O_NOFOLLOW private-file creation helper used by registry and session writes.",
 	},
 	{
 		path: "lib/session-hook-installer.ts",
-		reason: "Hook installer write migration remains a later AFR-002 slice.",
+		reason:
+			"Core IO-layer module: writes session lifecycle hook files before higher-level persistence helpers are loaded.",
 	},
 	{
 		path: "lib/session-spool.ts",
-		reason: "Existing local atomic helper; migrate in a later AFR-002 slice.",
-	},
-	{
-		path: "lib/transports/maildir.ts",
-		reason: "Maildir protocol requires its own tmp/new rename semantics.",
+		reason:
+			"Core IO-layer module: spools transient session output to disk when the persistence queue is not yet available.",
 	},
 ];
 
@@ -124,7 +83,7 @@ describe("runtime state boundary", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("state-writing code uses shared persistence helpers or explicit exceptions", () => {
+	it("state-writing code uses shared persistence helpers or core IO-layer exceptions", () => {
 		const exceptionPaths = new Set(
 			DIRECT_STATE_WRITE_EXCEPTIONS.map((exception) => exception.path),
 		);
@@ -143,6 +102,17 @@ describe("runtime state boundary", () => {
 				(exception) => exception.reason.length > 0,
 			),
 		).toBe(true);
+		expect(
+			DIRECT_STATE_WRITE_EXCEPTIONS.some((exception) =>
+				exception.path.startsWith("extensions/"),
+			),
+		).toBe(false);
+		const vagueReasonPattern = /\b(later|legacy)\b/i;
+		expect(
+			DIRECT_STATE_WRITE_EXCEPTIONS.filter((exception) =>
+				vagueReasonPattern.test(exception.reason),
+			).map((exception) => exception.path),
+		).toEqual([]);
 	});
 
 	it("Panopticon teams direct child process lifecycle remains explicitly bounded", () => {
