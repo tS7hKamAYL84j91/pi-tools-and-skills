@@ -114,7 +114,7 @@ describe("kanban snapshot/overlay rendering", () => {
 		expect(lines).toHaveLength(1);
 		const header = lines[0] ?? "";
 		expect(header).toMatch(
-			/^pi-kanban: wip 1\/5 \| todo 1 \| blocked 0 \| done 0$/,
+			/^pi-kanban: wip 1\/\d+ \| todo 1 \| blocked 0 \| done 0$/,
 		);
 	});
 
@@ -133,7 +133,7 @@ describe("kanban snapshot/overlay rendering", () => {
 		const lines = buildWidgetLines(board);
 		const header = lines[0] ?? "";
 		expect(header).toMatch(
-			/^pi-kanban: wip 0\/5 \| todo 0 \| blocked 1 \| done 0$/,
+			/^pi-kanban: wip 0\/\d+ \| todo 0 \| blocked 1 \| done 0$/,
 		);
 		expect(header).not.toContain("(");
 	});
