@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseBoard } from "../../extensions/pi-kanban/board.js";
-import { buildWidgetLines } from "../../extensions/pi-kanban/watcher.js";
+import { buildStatusText, buildWidgetLines } from "../../extensions/pi-kanban/watcher.js";
 import { setupTempKanbanDir } from "./kanban-test-helpers.js";
 import {
 	renderBoard,
@@ -114,6 +114,22 @@ describe("kanban snapshot/overlay rendering", () => {
 		expect(lines).toHaveLength(1);
 		const header = lines[0] ?? "";
 		expect(header).toMatch(
+			/^pi-kanban: wip 1\/\d+ \| todo 1 \| blocked 0 \| done 0$/,
+		);
+	});
+
+	it("footer status uses the same compact counts-only text", async () => {
+		harness.writeBoardLog(
+			[
+				'2026-01-01T00:00:00Z CREATE T-001 lead title="First" priority="high" tags=""',
+				'2026-01-01T00:00:00Z CREATE T-002 lead title="Second" priority="medium" tags=""',
+				"2026-01-01T00:01:00Z MOVE T-001 lead from=backlog to=todo",
+				"2026-01-01T00:01:00Z CLAIM T-002 lead expires=2026-01-01T02:02:00Z",
+				"2026-01-01T00:02:00Z MOVE T-002 lead from=backlog to=in-progress",
+			].join("\n"),
+		);
+		const board = await parseBoard();
+		expect(buildStatusText(board)).toMatch(
 			/^pi-kanban: wip 1\/\d+ \| todo 1 \| blocked 0 \| done 0$/,
 		);
 	});

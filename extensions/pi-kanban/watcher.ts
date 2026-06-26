@@ -79,7 +79,7 @@ function hasExternalEvents(newLines: string[]): boolean {
 
 // ── Widget rendering (fast path, no LLM) ────────────────────
 
-export function buildWidgetLines(board: BoardState): string[] {
+function buildCountsText(board: BoardState): string {
 	const buckets: Record<string, number> = {};
 
 	for (const tid of board.order) {
@@ -93,16 +93,16 @@ export function buildWidgetLines(board: BoardState): string[] {
 	const done = buckets.done ?? 0;
 	const todo = buckets.todo ?? 0;
 
-	return [
-		`pi-kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | blocked ${blocked} | done ${done}`,
-	];
+	return `pi-kanban: wip ${wip}/${WIP_LIMIT} | todo ${todo} | blocked ${blocked} | done ${done}`;
 }
 
-// Status text is intentionally empty — the kanban widget above the
-// prompt already shows the full WIP/todo/blocked/done breakdown.
-// Duplicating it in the powerline just wastes horizontal space.
-function buildStatusText(_board: BoardState): string {
-	return "";
+export function buildWidgetLines(board: BoardState): string[] {
+	return [buildCountsText(board)];
+}
+
+// Keep the footer/statusline counts-only too: no active-task title list.
+export function buildStatusText(board: BoardState): string {
+	return buildCountsText(board);
 }
 
 // ── Setup ───────────────────────────────────────────────────
