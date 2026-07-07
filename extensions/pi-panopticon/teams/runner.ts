@@ -124,6 +124,52 @@ export function toolArgs(tools: string[] | undefined): string[] {
 	return tools.length > 0 ? ["--tools", tools.join(",")] : ["--no-tools"];
 }
 
+/** Spawn-result shape used by {@link mapSpawnResultToModelRun}. */
+interface SpawnResultLike {
+	stdout: string;
+	stderr: string;
+	durationMs: number;
+	ok: boolean;
+	error?: string;
+}
+
+/**
+ * Maps a `pi --print` child result to a {@link PiModelResult}.
+ *
+ * Team member/synthesis nodes are one-shot `--print --no-session` calls that
+ * must produce output. A child that exits successfully with empty stdout is a
+ * silent failure (e.g. a CoAS lockfile wrapper aborting a non-interactive
+ * duplicate launch with a stderr warning and exit 0). Surface it as a loud
+ * error instead of returning an empty "done" result.
+ */
+export function mapSpawnResultToModelRun(
+	args: { prompt: string; systemPrompt: string },
+	result: SpawnResultLike,
+): PiModelResult {
+	const output = extractPiPrintOutput(result.stdout);
+	const stderr = result.stderr.trim();
+	if (result.ok && !output.trim()) {
+		return {
+			prompt: args.prompt,
+			systemPrompt: args.systemPrompt,
+			output: "",
+			durationMs: result.durationMs,
+			ok: false,
+			error: stderr
+				? `pi --print child exited successfully but produced no output. stderr: ${stderr}`
+				: "pi --print child exited successfully but produced no output.",
+		};
+	}
+	return {
+		prompt: args.prompt,
+		systemPrompt: args.systemPrompt,
+		output,
+		durationMs: result.durationMs,
+		ok: result.ok,
+		...(result.ok ? {} : { error: stderr || result.error }),
+	};
+}
+
 function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	const parameters = args.parameters;
 	const hasParameters = parameters !== undefined && Object.keys(parameters).length > 0;
@@ -149,6 +195,11 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		cwd: args.cwd,
 		signal: args.signal,
 		env: {
+			// Team member/synthesis nodes are stateless `--print --no-session`
+			// one-shots. They do not register a panopticon agent or take a
+			// workspace lock, so the CoAS lockfile wrapper's duplicate-launch
+			// guard must not abort them.
+			COAS_PI_LOCKFILE_CONTINUE: "1",
 			...(hasParameters
 				? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
 				: {}),
@@ -159,14 +210,9 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 					}
 				: {}),
 		},
-	}).then((result) => ({
-		prompt: args.prompt,
-		systemPrompt: args.systemPrompt,
-		output: extractPiPrintOutput(result.stdout),
-		durationMs: result.durationMs,
-		ok: result.ok,
-		...(result.ok ? {} : { error: result.stderr.trim() || result.error }),
-	}));
+	}).then((result) =>
+		mapSpawnResultToModelRun({ prompt: args.prompt, systemPrompt: args.systemPrompt }, result),
+	);
 }
 
 /** Run a single member and package the result into a ModelRun. */
