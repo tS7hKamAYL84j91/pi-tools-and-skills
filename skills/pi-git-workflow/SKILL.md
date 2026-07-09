@@ -48,6 +48,31 @@ When the working tree contains unrelated changes:
 3. Verify with `git diff --cached --stat` before committing.
 4. Leave unrelated changes unstaged — or explicitly `git stash` them if needed.
 
+## Atomic commit ordering (omp-commit pattern)
+
+For larger changes, produce a set of minimal, dependency-ordered commits instead of one
+mixed commit. Adapted from the MIT `omp` commit helper (clean-room concepts; do not copy
+`omp` source).
+
+1. **Read the working tree:** use `git status --porcelain` and `git diff --name-only`
+   to discover changed files.
+2. **Exclude non-source noise:** skip lock files and generated artifacts; do not try
+   to order or split them.
+3. **Group into atomic change sets:** identify which files move together as one logical
+   change. Score source files above tests, docs, and config files when a tie needs to be
+   broken.
+4. **Build a dependency graph:** determine which change sets must land before others
+   (for example, a new API must exist before tests that import it, or a schema change
+   before consuming code).
+5. **Reject cycles:** if the dependency graph has a cycle, stop before writing anything.
+   The human must resolve the entanglement; do not fabricate an order.
+6. **Commit in topological order:** stage and commit each change set with a focused
+   conventional commit message.
+
+> **Candidate future extension:** a `conflict://` resolution UX that writes `@ours`,
+> `@theirs`, and `@base` slices for each merge conflict so a tool or human can resolve
+> deterministically. This is ADR-gated; do not build it as part of this skill update.
+
 ## Branch management
 
 - Feature branches: `feat/<description>`, `fix/<description>`
