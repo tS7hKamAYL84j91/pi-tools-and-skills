@@ -159,7 +159,7 @@ Acceptance evidence (2026-07-11): `MatrixIngressLimiter` and `MatrixTransport` n
 - [x] Pin third-party GitHub Actions to reviewed commit SHAs.
 - [x] Add supported Node.js compatibility jobs, initially Node 22, 24, and 25.
 - [x] Add `engines.node` to the root and extension manifests where appropriate.
-- [ ] Replace wildcard pi/pi-tui peer dependency ranges with tested compatibility ranges.
+- [x] Replace wildcard pi/pi-tui peer dependency ranges with tested compatibility ranges.
 - [x] Add `coverage/` to `.gitignore`.
 - [ ] Add risk-weighted coverage thresholds for executable security, persistence, spawning, Matrix, and lifecycle modules; do not penalize type-only files.
 - [x] Add a package-install smoke test for the root package and individually installable extension packages.
