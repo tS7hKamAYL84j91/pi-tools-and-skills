@@ -1,7 +1,7 @@
 /**
  * Read-only pi-tools extension diagnostics.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 type DoctorSeverity = "ok" | "warning" | "error";
@@ -32,11 +32,26 @@ interface PackageJson {
 	};
 }
 
-const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-panopticon"];
+const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-ollama-models", "pi-panopticon"];
 const REQUIRED_ROOT_SCRIPTS = ["check:namespace", "typecheck", "lint", "knip", "type-coverage", "check", "test"];
 const RESERVED_COMMANDS = new Set(["settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys", "fork", "clone", "tree", "login", "logout", "new", "compact", "resume", "reload", "quit"]);
 const COMMAND_PATTERN = /\.registerCommand\(\s*["']([^"']+)["']/g;
 const TOOL_PATTERN = /\.registerTool\(\s*\{[\s\S]*?\bname:\s*["']([^"']+)["']/g;
+
+function listTsFiles(dir: string): string[] {
+	if (!existsSync(dir)) return [];
+	const entries = readdirSync(dir, { withFileTypes: true });
+	const files: string[] = [];
+	for (const entry of entries) {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...listTsFiles(path));
+		} else if (entry.isFile() && entry.name.endsWith(".ts")) {
+			files.push(path);
+		}
+	}
+	return files;
+}
 
 function readJson(path: string): unknown {
 	return JSON.parse(readFileSync(path, "utf8"));
@@ -93,22 +108,24 @@ function collectNamespaceFindings(cwd: string): DoctorFinding[] {
 	const seenCommands = new Map<string, string>();
 	const seenTools = new Map<string, string>();
 	for (const name of EXTENSIONS) {
-		const indexPath = join(cwd, "extensions", name, "index.ts");
-		if (!existsSync(indexPath)) continue;
-		const text = readFileSync(indexPath, "utf8");
-		const path = relative(cwd, indexPath);
-		for (const match of text.matchAll(COMMAND_PATTERN)) {
-			const command = match[1] ?? "";
-			if (RESERVED_COMMANDS.has(command)) findings.push(finding("error", "command-namespace", `/${command} collides with a built-in pi command.`, path));
-			const previous = seenCommands.get(command);
-			if (previous) findings.push(finding("error", "command-namespace", `/${command} is registered by both ${previous} and ${path}.`, path));
-			seenCommands.set(command, path);
-		}
-		for (const match of text.matchAll(TOOL_PATTERN)) {
-			const tool = match[1] ?? "";
-			const previous = seenTools.get(tool);
-			if (previous) findings.push(finding("error", "tool-namespace", `${tool} tool is registered by both ${previous} and ${path}.`, path));
-			seenTools.set(tool, path);
+		const extDir = join(cwd, "extensions", name);
+		if (!existsSync(extDir)) continue;
+		for (const filePath of listTsFiles(extDir)) {
+			const text = readFileSync(filePath, "utf8");
+			const path = relative(cwd, filePath);
+			for (const match of text.matchAll(COMMAND_PATTERN)) {
+				const command = match[1] ?? "";
+				if (RESERVED_COMMANDS.has(command)) findings.push(finding("error", "command-namespace", `/${command} collides with a built-in pi command.`, path));
+				const previous = seenCommands.get(command);
+				if (previous) findings.push(finding("error", "command-namespace", `/${command} is registered by both ${previous} and ${path}.`, path));
+				seenCommands.set(command, path);
+			}
+			for (const match of text.matchAll(TOOL_PATTERN)) {
+				const tool = match[1] ?? "";
+				const previous = seenTools.get(tool);
+				if (previous) findings.push(finding("error", "tool-namespace", `${tool} tool is registered by both ${previous} and ${path}.`, path));
+				seenTools.set(tool, path);
+			}
 		}
 	}
 	return findings.length > 0 ? findings : [finding("ok", "namespace", `No duplicate or reserved slash commands found across ${seenCommands.size} commands; no duplicate tool names found across ${seenTools.size} tools.`)];

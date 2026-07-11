@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: namespace, typecheck, lint, knip, coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 25
+          cache: npm
+
+      - name: Hydrate dependencies
+        run: npm ci
+
+      - name: Run full check suite
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+  compatibility:
+    name: Node compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24, 25]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Hydrate dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  security:
+    name: audit and secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 25
+          cache: npm
+
+      - name: Hydrate dependencies
+        run: npm ci
+
+      - name: Run production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.24.0
+          GITLEAKS_SHA256: 9f5b907a2b813c1c3f7dc5935339264b9e1bffc4aaeb5f6a72534e1bd1d04bd9
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          ./gitleaks version
+
+      - name: Run gitleaks detect
+        run: ./gitleaks detect --source . --verbose --config .gitleaks.toml --log-level info
+
+  install-smoke:
+    name: package install smoke test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - .
+          - extensions/pi-bionic
+          - extensions/pi-coas
+          - extensions/pi-doctor
+          - extensions/pi-file-watch
+          - extensions/pi-goal
+          - extensions/pi-kanban
+          - extensions/pi-matrix
+          - extensions/pi-panopticon
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 25
+          cache: npm
+
+      - name: Install package
+        working-directory: ${{ matrix.package }}
+        run: npm install --ignore-scripts

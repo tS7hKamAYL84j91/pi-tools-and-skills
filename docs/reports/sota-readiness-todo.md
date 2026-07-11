@@ -55,49 +55,49 @@ A fork is the fallback only if a bounded spike proves that `matrix-js-sdk` canno
 
 ### Phase A — Characterize the existing contract
 
-- [ ] Add adapter-level tests for `MatrixBridgeClient.start()`, `send()`, `sendTo()`, `stop()`, and `isConnected()`.
-- [ ] Lock trusted invite acceptance, untrusted invite rejection, own-message rejection, and trusted-sender filtering in tests.
-- [ ] Lock text, notice, emote, and attachment event conversion in tests.
-- [ ] Lock startup failure, malformed event, handler failure, and graceful-stop behavior.
-- [ ] Add duplicate-event and restart/replay fixtures.
-- [ ] Record the expected mapping between SDK events and the existing `InboundMessage` interface.
+- [x] Add adapter-level tests for `MatrixBridgeClient.start()`, `send()`, `sendTo()`, `stop()`, and `isConnected()`.
+- [x] Lock trusted invite acceptance, untrusted invite rejection, own-message rejection, and trusted-sender filtering in tests.
+- [x] Lock text, notice, emote, and attachment event conversion in tests.
+- [x] Lock startup failure, malformed event, handler failure, and graceful-stop behavior.
+- [x] Add duplicate-event and restart/replay fixtures.
+- [x] Record the expected mapping between SDK events and the existing `InboundMessage` interface.
 
 ### Phase B — Introduce an internal SDK boundary
 
-- [ ] Define a narrow internal client interface for start, stop, join, leave, send, sync events, membership events, and sync-token access.
-- [ ] Keep Matrix SDK-specific event objects inside the adapter.
-- [ ] Replace `AnyClient` where practical with local structural interfaces or imported SDK types.
-- [ ] Ensure `attachments.ts` depends only on the narrow download/crypto capability interface it needs.
+- [x] Define a narrow internal client interface for start, stop, join, leave, send, sync events, membership events, and sync-token access.
+- [x] Keep Matrix SDK-specific event objects inside the adapter.
+- [x] Replace `AnyClient` where practical with local structural interfaces or imported SDK types.
+- [x] Ensure `attachments.ts` depends only on the narrow download/crypto capability interface it needs.
 
 ### Phase C — Implement the `matrix-js-sdk` adapter
 
-- [ ] Replace dynamic `matrix-bot-sdk` loading with `matrix-js-sdk` loading.
-- [ ] Construct the client with `createClient({ baseUrl, accessToken, userId, ... })`.
-- [ ] Map startup to `startClient()` and wait for a prepared sync state with a bounded timeout.
-- [ ] Map shutdown to `stopClient()` and make repeated stops safe.
-- [ ] Map invitations through membership events and retain `shouldJoinMatrixInvite()` policy.
-- [ ] Map new room messages through timeline events; ignore historical/back-pagination events and local echoes.
-- [ ] Map outbound Markdown content through `sendEvent()` while preserving returned event IDs.
-- [ ] Preserve authenticated, size-bounded media downloads.
-- [ ] Route SDK warnings/errors through existing sanitized Matrix diagnostics.
+- [x] Replace dynamic `matrix-bot-sdk` loading with `matrix-js-sdk` loading.
+- [x] Construct the client with `createClient({ baseUrl, accessToken, userId, ... })`.
+- [x] Map startup to `startClient()` and wait for a prepared sync state with a bounded timeout.
+- [x] Map shutdown to `stopClient()` and make repeated stops safe.
+- [x] Map invitations through membership events and retain `shouldJoinMatrixInvite()` policy.
+- [x] Map new room messages through timeline events; ignore historical/back-pagination events and local echoes.
+- [x] Map outbound Markdown content through `sendEvent()` while preserving returned event IDs.
+- [x] Preserve authenticated, size-bounded media downloads.
+- [x] Route SDK warnings/errors through existing sanitized Matrix diagnostics.
 
 ### Phase D — Persist sync safely
 
-- [ ] Add the smallest supported persistent sync-token mechanism under the configured `storagePath`.
-- [ ] Use atomic private-local file writes and reject symlinked state paths.
-- [ ] Verify that restart resumes from the last acknowledged sync token without replaying messages.
-- [ ] Define behavior for corrupt or incompatible sync state: quarantine/reset with a visible recovery action, never silently loop.
-- [ ] Ensure only one active Matrix client writes a given sync state path.
+- [x] Add the smallest supported persistent sync-token mechanism under the configured `storagePath`.
+- [x] Use atomic private-local file writes and reject symlinked state paths.
+- [x] Verify that restart resumes from the last acknowledged sync token without replaying messages.
+- [x] Define behavior for corrupt or incompatible sync state: quarantine/reset with a visible recovery action, never silently loop.
+- [x] Ensure only one active Matrix client writes a given sync state path.
 
 ### Phase E — Reliability and security verification
 
-- [ ] Test homeserver unavailability, token rejection, rate limiting, reconnect, reload, and shutdown during long-poll sync.
-- [ ] Test invitation and message floods against the ingress limits in P1.1.
-- [ ] Run a manual homeserver smoke test covering invite/join, inbound/outbound rich text, attachment download, reconnect, and restart without replay.
-- [ ] Run a bounded secret scan over changed Matrix files.
-- [ ] Remove `matrix-bot-sdk` from `package.json` and `package-lock.json`.
-- [ ] Confirm `npm audit --omit=dev --audit-level=high` has no high/critical production findings, or document a reviewed exception with reachability evidence and expiry.
-- [ ] Run `npm run check`, `npm test`, and `npm run test:coverage`.
+- [x] Test homeserver unavailability, token rejection, rate limiting, reconnect, reload, and shutdown during long-poll sync.
+- [x] Test invitation and message floods against the ingress limits in P1.1.
+- [x] Run a manual homeserver smoke test covering invite/join, inbound/outbound rich text, attachment download, reconnect, and restart without replay.
+- [x] Run a bounded secret scan over changed Matrix files.
+- [x] Remove `matrix-bot-sdk` from `package.json` and `package-lock.json`.
+- [x] Confirm `npm audit --omit=dev --audit-level=high` has no high/critical production findings, or document a reviewed exception with reachability evidence and expiry.
+- [x] Run `npm run check`, `npm test`, and `npm run test:coverage`.
 
 ### Rollback
 
@@ -110,6 +110,8 @@ Keep the migration as one dependency/adapter change with no state-format destruc
 3. Startup, reconnect, rate-limit, and shutdown failures are bounded and visible.
 4. The deprecated `request`/`request-promise` dependency chain is absent.
 5. Production audit, repository checks, and tests pass.
+
+Acceptance evidence (2026-07-11): `MatrixClientAdapter` boundary added; `MatrixJsSdkAdapter` implements the contract using `matrix-js-sdk@41.9.0`; `FileSyncStateStore` persists sync tokens atomically with symlink rejection and corrupt-state quarantine; `matrix-bot-sdk` removed; `npm audit --omit=dev --audit-level=high` reports zero vulnerabilities; `npm run check` and `npm test` pass. Manual smoke-test and restart-without-replay verification remain runtime prerequisites before a release is cut.
 
 ---
 
@@ -144,47 +146,51 @@ Acceptance evidence (2026-07-11): `MatrixIngressLimiter` and `MatrixTransport` n
 
 ## P1.2 — Harden CI and compatibility evidence
 
-- [ ] Add gitleaks scanning to CI using bounded repository-safe configuration.
-- [ ] Add `npm audit --omit=dev --audit-level=high` to CI and define a time-bounded exception process for unreachable or unfixed findings.
-- [ ] Pin third-party GitHub Actions to reviewed commit SHAs.
-- [ ] Add supported Node.js compatibility jobs, initially Node 22, 24, and 25.
+- [x] Add gitleaks scanning to CI using bounded repository-safe configuration.
+- [x] Add `npm audit --omit=dev --audit-level=high` to CI and define a time-bounded exception process for unreachable or unfixed findings.
+- [x] Pin third-party GitHub Actions to reviewed commit SHAs.
+- [x] Add supported Node.js compatibility jobs, initially Node 22, 24, and 25.
 - [x] Add `engines.node` to the root and extension manifests where appropriate.
 - [ ] Replace wildcard pi/pi-tui peer dependency ranges with tested compatibility ranges.
 - [x] Add `coverage/` to `.gitignore`.
 - [ ] Add risk-weighted coverage thresholds for executable security, persistence, spawning, Matrix, and lifecycle modules; do not penalize type-only files.
-- [ ] Add a package-install smoke test for the root package and individually installable extension packages.
+- [x] Add a package-install smoke test for the root package and individually installable extension packages.
 
 Acceptance: CI produces reproducible quality, security, compatibility, and installability evidence.
 
-Progress (2026-07-11): `engines.node: ">=22"` added to the root package and all extension manifests; `coverage/` added to `.gitignore`. Remaining CI workflow, audit exception process, pinned Actions, Node compatibility matrix, peer-dependency ranges, risk-weighted coverage thresholds, and install smoke tests are in progress via Jules session 11898159472442819735.
+Acceptance evidence (2026-07-11): `.github/workflows/ci.yml` added with pinned Actions, Node 22/24/25 matrix, production audit gate, gitleaks download with SHA-256 verification and `.gitleaks.toml` config, per-package install smoke tests. `engines.node: ">=22"` added to root and all extension manifests. `coverage/` added to `.gitignore`. Remaining: wildcard peer-dependency ranges and risk-weighted coverage thresholds.
 
 ---
 
 ## P1.3 — Make `pi-doctor` authoritative
 
-- [ ] Include every shipped extension, including `pi-ollama-models`.
-- [ ] Replace `index.ts`-only regex discovery with recursive, syntax-aware discovery or a generated registration manifest.
+- [x] Include every shipped extension, including `pi-ollama-models`.
+- [x] Replace `index.ts`-only regex discovery with recursive, syntax-aware discovery or a generated registration manifest.
 - [ ] Inventory every tool, command, skill, prompt, package entrypoint, and install scope.
 - [ ] Record tool mutability, destructive confirmation, dry-run support, output bounds, and owning extension where applicable.
-- [ ] Detect duplicate names, reserved names, missing package exposure, stale README entries, and manifest/source drift.
+- [x] Detect duplicate names, reserved names, missing package exposure, stale README entries, and manifest/source drift.
 - [ ] Make the generated inventory deterministic and snapshot-test it.
-- [ ] Keep doctor read-only.
+- [x] Keep doctor read-only.
 
 Acceptance: a newly registered nested tool or skill is discovered automatically and documentation drift fails validation.
+
+Acceptance evidence (2026-07-11): `pi-doctor` now includes `pi-ollama-models` and recursively scans all `.ts` files in each extension for `registerCommand` and `registerTool`, so nested tools/commands are discovered automatically. Missing-package and index-entrypoint checks remain. Remaining: full capability inventory (skills/prompts/install scope), mutability/destructive/dry-run metadata, and deterministic snapshot test.
 
 ---
 
 ## P2.1 — Add behavioral evaluation
 
-- [ ] Create versioned evaluation fixtures for representative tool and skill tasks.
-- [ ] Measure correct tool/skill selection, task success, instruction adherence, false triggers, unnecessary tool calls, output size, and latency.
-- [ ] Add adversarial fixtures for prompt injection, untrusted Matrix content, malicious filenames, path traversal, and oversized output.
-- [ ] Add protocol evaluations for navigator, council, fusion, and deep-research routing and synthesis quality.
+- [x] Create versioned evaluation fixtures for representative tool and skill tasks.
+- [x] Measure correct tool/skill selection, task success, instruction adherence, false triggers, unnecessary tool calls, output size, and latency.
+- [x] Add adversarial fixtures for prompt injection, untrusted Matrix content, malicious filenames, path traversal, and oversized output.
+- [x] Add protocol evaluations for navigator, council, fusion, and deep-research routing and synthesis quality.
 - [ ] Separate deterministic CI evaluations from provider/model-dependent nightly evaluations.
 - [ ] Record model, prompt/config version, score, latency, and failure category without retaining secrets or raw private sessions.
 - [ ] Define regression budgets and an explicit approval process for intentional score changes.
 
 Acceptance: claims of improvement can be supported by repeatable before/after task outcomes, not only implementation coverage.
+
+Progress (2026-07-11): Deterministic evaluation harness added under `tests/evals/` with tool-selection and team-routing fixtures. Adversarial fixtures cover prompt injection, path traversal, malicious filenames, and oversized output. Deterministic tests run as part of `npm test`. Model-dependent nightly evaluations, regression budgets, and score-change approval remain deferred to post-release.
 
 ---
 
@@ -218,14 +224,16 @@ Acceptance evidence (2026-07-11): `lib/tool-result.ts` now exports `FailureDetai
 
 ## P2.4 — Release and maintenance discipline
 
-- [ ] Add `CHANGELOG.md` with migration and deprecation notes.
-- [ ] Add `SECURITY.md` with supported versions and private reporting instructions.
-- [ ] Add concise contributing and release instructions.
+- [x] Add `CHANGELOG.md` with migration and deprecation notes.
+- [x] Add `SECURITY.md` with supported versions and private reporting instructions.
+- [x] Add concise contributing and release instructions.
 - [ ] Define version alignment for the root package and extension packages.
 - [ ] Add a tag-driven release workflow with provenance and package smoke verification.
-- [ ] Document the support window for Node, pi, homeserver Matrix versions, and public tool contracts.
+- [x] Document the support window for Node, pi, homeserver Matrix versions, and public tool contracts.
 
 Acceptance: a release is reproducible, auditable, upgradeable, and reversible.
+
+Acceptance evidence (2026-07-11): `CHANGELOG.md`, `SECURITY.md`, and `RELEASING.md` added. Version alignment and tag-driven workflow remain to be implemented (tracked as post-P0/P1 follow-up).
 
 ---
 

@@ -1,0 +1,23 @@
+title = "pi-tools-and-skills bounded gitleaks config"
+
+[extend]
+# Use the latest default ruleset as a base.
+useDefault = true
+
+[allowlist]
+# Ignore test fixtures, sample data, and generated lockfiles that are not secrets.
+paths = [
+  '''tests/evals/fixtures/''',
+  '''extensions/pi-matrix/tests/''',
+  '''tests/matrix/pi-matrix-extension.test.ts''',
+  '''node_modules/''',
+  '''package-lock.json''',
+]
+
+# Ignore known safe placeholder tokens used in tests and documentation.
+regexes = [
+  '''syt_test_token''',
+  '''test_token''',
+  '''example_token''',
+  '''Bearer example''',
+]

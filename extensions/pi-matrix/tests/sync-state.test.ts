@@ -1,7 +1,8 @@
 /** Tests for FileSyncStateStore. */
 
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,7 +33,7 @@ describe("FileSyncStateStore", () => {
 	it("quarantines corrupt state and returns null", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "matrix-sync-test-"));
 		try {
-			writeFileSync(join(dir, "sync.json"), "not json", "utf-8");
+			fs.writeFileSync(join(dir, "sync.json"), "not json", "utf-8");
 			const store = new FileSyncStateStore({ storagePath: dir });
 			expect(await store.load()).toBeNull();
 			expect(() => {
@@ -49,7 +50,7 @@ describe("FileSyncStateStore", () => {
 		const dir = mkdtempSync(join(tmpdir(), "matrix-sync-test-"));
 		const otherDir = mkdtempSync(join(tmpdir(), "matrix-sync-other-"));
 		try {
-			writeFileSync(join(otherDir, "sync.json"), '{"nextBatch":"tok"}', "utf-8");
+			fs.writeFileSync(join(otherDir, "sync.json"), '{"nextBatch":"tok"}', "utf-8");
 			symlinkSync(join(otherDir, "sync.json"), join(dir, "sync.json"));
 			const store = new FileSyncStateStore({ storagePath: dir });
 			await expect(store.load()).rejects.toThrow("symlink");
