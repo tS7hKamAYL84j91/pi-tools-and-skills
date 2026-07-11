@@ -19,12 +19,12 @@ Make the tools and skills release-ready and measurably reliable without adding a
 
 ## Current baseline
 
-- `npm run check` passes with 99.33% type coverage.
-- `npm test` currently fails because the `lib/ must not import from extensions/` architecture test exceeds Vitest's default 5-second timeout. The full 880-test suite passes with `--testTimeout=15000`.
-- `npm audit --omit=dev --audit-level=high` reports 13 production dependency findings, including 2 critical findings through `matrix-bot-sdk -> request -> form-data`.
-- `matrix-bot-sdk@0.8.0` is already the latest package release. Element's `@vector-im/matrix-bot-sdk@0.9.0-element.1` still depends on `request` and `request-promise`.
-- A clean production audit of `matrix-js-sdk@41.9.0` reported zero vulnerabilities on 2026-07-11.
-- `MatrixBridgeClient` already isolates the external SDK primarily behind `extensions/pi-matrix/client.ts`.
+- `npm run check` passes with 99.18% type coverage.
+- `npm test` passes deterministically with 111 files and 904 tests.
+- `npm audit --omit=dev --audit-level=high` reports zero production dependency findings.
+- `matrix-bot-sdk` has been removed; `matrix-js-sdk@41.9.0` is the active Matrix SDK.
+- `MatrixBridgeClient` depends on the new `MatrixClientAdapter` interface, implemented by `MatrixJsSdkAdapter`.
+- Remaining P1/P2 follow-up items are documented as out of scope for this bounded run.
 
 ## Priority summary
 
