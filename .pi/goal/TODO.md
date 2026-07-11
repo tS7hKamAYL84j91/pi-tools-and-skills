@@ -293,11 +293,10 @@ Progress markers:
 
 - [x] (1.1) Inspected repository state; the embedded SOTA report already provides concrete P0/P1/P2 workstreams and acceptance criteria. Delegated five non-overlapping implementation slices to Jules sessions 2578975516223107050, 3931481838701481352, 11898159472442819735, 15932419047442740865, and 3119812060772634685.
 - [~] (1.2) Implementation in progress.
-  - Completed locally: P0.2 deterministic default-test gate; P1.1 bounded Matrix ingress with redacted diagnostics and `allowAnySender` warning.
-  - In flight via Jules: P0.1 Matrix SDK migration, P1.2 CI/release hardening, P1.3 authoritative `pi-doctor`, P2.1 behavioral evaluation, and P2.3 structured tool failures.
+  - Completed locally and committed: P0.2 deterministic default-test gate; P1.1 bounded Matrix ingress with redacted diagnostics and `allowAnySender` warning; P1.2 partial (engines.node, coverage ignore); P2.3 structured tool failure metadata (pulled from Jules session 3119812060772634685).
+  - In flight via Jules: P0.1 Matrix SDK migration (session 2578975516223107050), P1.2 CI/release hardening (session 11898159472442819735), P1.3 authoritative `pi-doctor` (session 3931481838701481352), P2.1 behavioral evaluation (session 15932419047442740865).
 - [~] (1.3) Validation in progress.
-  - P0.2: normal `npm test` passes repeatedly (880+ tests, ~5s duration).
-  - P1.1: new `extensions/pi-matrix/tests/transport.test.ts` and `lifecycle.test.ts` additions pass; full `npm run check` passes; type coverage remains 99.33%.
+  - P0.2/P1.1/P2.3: `npm run check` passes (typecheck, lint, knip, type-coverage at 99.33%); `npm test` passes with 108 files and 892 tests.
 - [ ] (1.4) Final summary: what changed, what stayed unchanged, validation performed, and any blockers or follow-up work.
 
 ---
