@@ -15,6 +15,7 @@
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage --testTimeout=15000",
 		"test:watch": "vitest",
+		"test:evals": "vitest run tests/evals",
 		"knip": "knip"
 	},
 	"repository": {
@@ -70,7 +71,7 @@
 	},
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.49",
-		"matrix-bot-sdk": "^0.8.0"
+		"matrix-js-sdk": "^41.9.0"
 	},
 	"engines": {
 		"node": ">=22"

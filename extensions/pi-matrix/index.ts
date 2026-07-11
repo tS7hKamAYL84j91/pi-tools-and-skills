@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 import { registerChannel, unregisterChannel, notifyChannel } from "../../lib/message-transport.js";
 import { loadMatrixConfig } from "./config.js";
+import { FileSyncStateStore } from "./sync-state.js";
+import { MatrixJsSdkAdapter } from "./js-sdk-adapter.js";
 import { MatrixBridgeClient } from "./client.js";
 import {
 	classifyMatrixConfigError,
@@ -98,7 +100,7 @@ export default function (pi: ExtensionAPI): void {
 
 		connectionState = "connecting";
 		updateStatus();
-		client = new MatrixBridgeClient(config);
+		client = new MatrixBridgeClient(config, new MatrixJsSdkAdapter(new FileSyncStateStore({ storagePath: config.storagePath })));
 		transport = new MatrixTransport(client, channelLabel, config.ingress, (msg) =>
 			emitMatrixMessage(c, msg, "warning"),
 		);

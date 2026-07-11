@@ -2,9 +2,9 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
+import { isTopology, type TeamRoute } from "./team-routes.js";
 
 type TeamModeState = "off" | "on" | "auto" | "once";
-type TeamRoute = "fusion-analysis" | "llm-council" | "navigator";
 
 interface SessionTeamMode {
 	state: TeamModeState;
@@ -104,10 +104,6 @@ export function buildTeamContext(ctx: ExtensionContext, currentPrompt: string): 
 
 function defaultState(): SessionTeamMode {
 	return { state: "off", topology: DEFAULT_TOPOLOGY, maxModels: DEFAULT_MAX_MODELS, approved: false };
-}
-
-function isTopology(value: string): value is TeamRoute {
-	return value === "fusion-analysis" || value === "llm-council" || value === "navigator";
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {

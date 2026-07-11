@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { mxidLocalpart } from "../../extensions/pi-matrix/bridge.js";
 import { extractMatrixAttachment } from "../../extensions/pi-matrix/attachments.js";
 import { MatrixBridgeClient, isTrustedMatrixSender, shouldJoinMatrixInvite } from "../../extensions/pi-matrix/client.js";
+import type { MatrixClientAdapter } from "../../extensions/pi-matrix/adapter.js";
 import {
 	markdownToMatrixContent,
 	markdownToMatrixHtml,
@@ -25,6 +26,19 @@ import {
 import { MatrixTransport } from "../../extensions/pi-matrix/transport.js";
 import type { MatrixConfig } from "../../extensions/pi-matrix/types.js";
 import type { MatrixDownloadClient } from "../../extensions/pi-matrix/attachments.js";
+
+function createFakeAdapter(overrides: Partial<MatrixClientAdapter> = {}): MatrixClientAdapter {
+	return {
+		start: vi.fn(async () => {}),
+		stop: vi.fn(async () => {}),
+		joinRoom: vi.fn(async () => {}),
+		leaveRoom: vi.fn(async () => {}),
+		sendMessage: vi.fn(async () => ({ eventId: "$event:matrix.org" })),
+		isConnected: vi.fn(() => true),
+		crypto: null,
+		...overrides,
+	};
+}
 
 // ── mxidLocalpart ───────────────────────────────────────────────
 
@@ -447,14 +461,15 @@ describe("Matrix outbound formatting", () => {
 	});
 
 	it("sends Matrix messages with formatted HTML payloads", async () => {
-		const bridgeClient = new MatrixBridgeClient(makeAttachmentConfig("/tmp"));
-		const sendMessage = vi.fn(async () => "$event/formatted");
-		(bridgeClient as unknown as { client: { sendMessage: typeof sendMessage } }).client = { sendMessage };
+		const adapter = createFakeAdapter({
+			sendMessage: vi.fn(async () => ({ eventId: "$event/formatted" })),
+		});
+		const bridgeClient = new MatrixBridgeClient(makeAttachmentConfig("/tmp"), adapter);
 
 		const result = await bridgeClient.sendTo("!room:matrix.org", "**hello**");
 
 		expect(result.eventId).toBe("$event/formatted");
-		expect(sendMessage).toHaveBeenCalledWith("!room:matrix.org", {
+		expect(adapter.sendMessage).toHaveBeenCalledWith("!room:matrix.org", {
 			msgtype: "m.text",
 			body: "hello",
 			format: "org.matrix.custom.html",
@@ -470,14 +485,32 @@ describe("Matrix inbound message handling", () => {
 		vi.unstubAllGlobals();
 	});
 
+	function buildInbound(
+		client: MatrixBridgeClient,
+		roomId: string,
+		sender: string,
+		eventId: string,
+		content: Record<string, unknown>,
+		overrides: Partial<{ timestampMs: number; isHistorical: boolean; isLocalEcho: boolean }> = {},
+	): Promise<unknown> {
+		return (client as unknown as { buildInboundMessage: (event: unknown) => Promise<unknown> }).buildInboundMessage({
+			roomId,
+			sender,
+			eventId,
+			timestampMs: overrides.timestampMs ?? Date.now(),
+			content,
+			isHistorical: overrides.isHistorical ?? false,
+			isLocalEcho: overrides.isLocalEcho ?? false,
+		});
+	}
+
 	it("denies messages and DM invites by default when trustedSenders is empty", async () => {
 		const config = makeAttachmentConfig("/tmp", { trustedSenders: [] });
-		const client = new MatrixBridgeClient(config);
+		const client = new MatrixBridgeClient(config, createFakeAdapter());
 
-		const msg = await client.buildInboundMessage("!dm:matrix.org", {
-			sender: "@stranger:matrix.org",
-			event_id: "$event/stranger",
-			content: { msgtype: "m.text", body: "hello" },
+		const msg = await buildInbound(client, "!dm:matrix.org", "@stranger:matrix.org", "$event/stranger", {
+			msgtype: "m.text",
+			body: "hello",
 		});
 
 		expect(msg).toBeNull();
@@ -487,44 +520,40 @@ describe("Matrix inbound message handling", () => {
 
 	it("allows any sender only when allowAnySender is explicit", async () => {
 		const config = makeAttachmentConfig("/tmp", { trustedSenders: [], allowAnySender: true });
-		const client = new MatrixBridgeClient(config);
+		const client = new MatrixBridgeClient(config, createFakeAdapter());
 
-		const msg = await client.buildInboundMessage("!dm:matrix.org", {
-			sender: "@dev:matrix.org",
-			event_id: "$event/dev",
-			content: { msgtype: "m.text", body: "dev hello" },
+		const msg = await buildInbound(client, "!dm:matrix.org", "@dev:matrix.org", "$event/dev", {
+			msgtype: "m.text",
+			body: "dev hello",
 		});
 
-		expect(msg?.senderMxid).toBe("@dev:matrix.org");
+		expect((msg as { senderMxid?: string })?.senderMxid).toBe("@dev:matrix.org");
 		expect(isTrustedMatrixSender(config, "@dev:matrix.org")).toBe(true);
 		expect(shouldJoinMatrixInvite(config, "!dm:matrix.org", "@dev:matrix.org")).toBe(true);
 	});
 
 	it("allows trusted senders and denies untrusted senders", async () => {
-		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp"));
-		const trustedMsg = await client.buildInboundMessage("!room:matrix.org", {
-			sender: "@user:matrix.org",
-			event_id: "$event/trusted",
-			content: { msgtype: "m.text", body: "trusted" },
+		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp"), createFakeAdapter());
+		const trustedMsg = await buildInbound(client, "!room:matrix.org", "@user:matrix.org", "$event/trusted", {
+			msgtype: "m.text",
+			body: "trusted",
 		});
-		const untrustedMsg = await client.buildInboundMessage("!room:matrix.org", {
-			sender: "@stranger:matrix.org",
-			event_id: "$event/untrusted",
-			content: { msgtype: "m.text", body: "untrusted" },
+		const untrustedMsg = await buildInbound(client, "!room:matrix.org", "@stranger:matrix.org", "$event/untrusted", {
+			msgtype: "m.text",
+			body: "untrusted",
 		});
 
-		expect(trustedMsg?.body).toBe("trusted");
+		expect((trustedMsg as { body?: string })?.body).toBe("trusted");
 		expect(untrustedMsg).toBeNull();
 	});
 
 	it("joins approved room invites but filters messages by sender trust", async () => {
 		const config = makeAttachmentConfig("/tmp", { trustedSenders: [] });
-		const client = new MatrixBridgeClient(config);
+		const client = new MatrixBridgeClient(config, createFakeAdapter());
 
-		const msg = await client.buildInboundMessage("!room:matrix.org", {
-			sender: "@stranger:matrix.org",
-			event_id: "$event/approved-room-stranger",
-			content: { msgtype: "m.text", body: "room hello" },
+		const msg = await buildInbound(client, "!room:matrix.org", "@stranger:matrix.org", "$event/approved-room-stranger", {
+			msgtype: "m.text",
+			body: "room hello",
 		});
 
 		expect(shouldJoinMatrixInvite(config, "!room:matrix.org", "@stranger:matrix.org")).toBe(true);
@@ -532,13 +561,11 @@ describe("Matrix inbound message handling", () => {
 	});
 
 	it("keeps text messages backwards compatible", async () => {
-		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp"));
-		const msg = await client.buildInboundMessage("!room:matrix.org", {
-			sender: "@user:matrix.org",
-			event_id: "$event/text",
-			origin_server_ts: 42,
-			content: { msgtype: "m.text", body: "hello" },
-		});
+		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp"), createFakeAdapter());
+		const msg = await buildInbound(client, "!room:matrix.org", "@user:matrix.org", "$event/text", {
+			msgtype: "m.text",
+			body: "hello",
+		}, { timestampMs: 42 });
 
 		expect(msg).toEqual({
 			roomId: "!room:matrix.org",
@@ -551,23 +578,21 @@ describe("Matrix inbound message handling", () => {
 	});
 
 	it("builds media messages with attachment error metadata", async () => {
-		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp", { allowedMimePrefixes: ["application/pdf"] }));
+		const client = new MatrixBridgeClient(
+			makeAttachmentConfig("/tmp", { allowedMimePrefixes: ["application/pdf"] }),
+			createFakeAdapter(),
+		);
 		const fetchMock = mockFetchResponse();
-		const msg = await client.buildInboundMessage("!room:matrix.org", {
-			sender: "@user:matrix.org",
-			event_id: "$event/media-error",
-			origin_server_ts: 43,
-			content: {
-				msgtype: "m.image",
-				body: "photo.png",
-				url: "mxc://matrix.org/photo",
-				info: { mimetype: "image/png", size: 5 },
-			},
-		});
+		const msg = await buildInbound(client, "!room:matrix.org", "@user:matrix.org", "$event/media-error", {
+			msgtype: "m.image",
+			body: "photo.png",
+			url: "mxc://matrix.org/photo",
+			info: { mimetype: "image/png", size: 5 },
+		}, { timestampMs: 43 });
 
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(msg?.body).toBe("photo.png");
-		expect(msg?.attachments?.[0]?.error).toContain("MIME type not allowed");
+		expect((msg as { body?: string })?.body).toBe("photo.png");
+		expect((msg as { attachments?: Array<{ error?: string }> })?.attachments?.[0]?.error).toContain("MIME type not allowed");
 	});
 
 	it("preserves attachment records through MatrixTransport", () => {

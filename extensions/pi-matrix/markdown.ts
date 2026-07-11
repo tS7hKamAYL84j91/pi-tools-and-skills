@@ -3,6 +3,7 @@
 const MATRIX_HTML_FORMAT = "org.matrix.custom.html";
 
 interface MatrixMarkdownContent {
+	[msgtype: string]: string;
 	msgtype: "m.text";
 	body: string;
 	format: typeof MATRIX_HTML_FORMAT;

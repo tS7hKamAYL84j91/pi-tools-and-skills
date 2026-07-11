@@ -1,0 +1,5 @@
+{
+    "pathTraversal": { "filepath": "../../../etc/passwd", "expectedSafe": false },
+    "safePath": { "filepath": "docs/safe.txt", "expectedSafe": true },
+    "largePayload": { "size": 10000, "maxLength": 5000 }
+}
