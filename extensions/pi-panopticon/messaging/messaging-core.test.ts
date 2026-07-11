@@ -1,9 +1,9 @@
 /** Tests for messaging core channel draining. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerChannel, unregisterChannel } from "../../../lib/message-transport.js";
+import { notifyChannel, onChannelNotify, registerChannel, unregisterChannel } from "../../../lib/message-transport.js";
 import type { MessageTransport } from "../../../lib/message-transport.js";
 import { MessagingCore } from "./messaging-core.js";
 import type { Registry } from "../types.js";
@@ -21,6 +21,16 @@ function stubTransport(message: unknown): MessageTransport {
 }
 
 describe("MessagingCore", () => {
+	it("does not retain a channel notification listener after disposal", () => {
+		const listener = vi.fn();
+		const dispose = onChannelNotify(listener);
+
+		dispose();
+		notifyChannel();
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
 	it("normalizes missing message text before completion-signal parsing", () => {
 		const channelName = "agent";
 		const seen: string[] = [];

@@ -47,8 +47,13 @@ vi.mock("../../lib/transports/maildir.js", () => ({
 	getMaildirTransport: vi.fn(() => ({})),
 }));
 
+const channelMocks = vi.hoisted(() => ({
+	unregisterChannel: vi.fn(),
+}));
+
 vi.mock("../../lib/message-transport.js", () => ({
 	registerChannel: vi.fn(),
+	unregisterChannel: channelMocks.unregisterChannel,
 }));
 
 const mockShutdownAll = vi.fn(async () => {});
@@ -234,11 +239,20 @@ describe("session_shutdown", () => {
 		mockReconcilerStop.mockImplementation(() => { order.push("reconciler.stop"); });
 		mockDrainAll.mockImplementation(() => { order.push("drainAll"); });
 		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
+		channelMocks.unregisterChannel.mockImplementation(() => { order.push("channel-unregister"); });
 		mockUIStop.mockImplementation(() => { order.push("ui.stop"); });
 		mockUnregister.mockImplementation(() => { order.push("unregister"); });
 
 		await fire(pi, "session_shutdown", {});
 
-		expect(order).toEqual(["shutdownAll", "reconciler.stop", "drainAll", "dispose", "ui.stop", "unregister"]);
+		expect(order).toEqual([
+			"shutdownAll",
+			"reconciler.stop",
+			"drainAll",
+			"dispose",
+			"channel-unregister",
+			"ui.stop",
+			"unregister",
+		]);
 	});
 });

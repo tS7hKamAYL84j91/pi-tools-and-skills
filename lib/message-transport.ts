@@ -155,10 +155,16 @@ function getNotifyFn(): ChannelNotifyFn | undefined {
 	return (globalThis as any)[NOTIFY_KEY] as ChannelNotifyFn | undefined;
 }
 
-/** Called by the messaging module to register its poke trigger. */
-export function onChannelNotify(fn: ChannelNotifyFn): void {
+/** Register a poke trigger. The disposer clears it only when still current. */
+export function onChannelNotify(fn: ChannelNotifyFn): () => void {
 	// biome-ignore lint/suspicious/noExplicitAny: globalThis for cross-module sharing
-	(globalThis as any)[NOTIFY_KEY] = fn;
+	const globalState = globalThis as any;
+	globalState[NOTIFY_KEY] = fn;
+	return () => {
+		if (globalState[NOTIFY_KEY] === fn) {
+			delete globalState[NOTIFY_KEY];
+		}
+	};
 }
 
 /** Called by any channel when new messages are available. Triggers the poke system. */

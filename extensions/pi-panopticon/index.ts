@@ -26,7 +26,7 @@ import { setupUI } from "./ui/ui.js";
 import { OperationalStateStore } from "./registry/state.js";
 import { setupReconciler } from "./registry/reconciler.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
-import { registerChannel } from "../../lib/message-transport.js";
+import { registerChannel, unregisterChannel } from "../../lib/message-transport.js";
 import { stopPeerAgent } from "./spawner/agent-stop.js";
 import { registerTeams } from "./teams/register.js";
 
@@ -117,6 +117,7 @@ export default function (pi: ExtensionAPI) {
 		reconciler.stop();
 		messaging.drainAll();
 		messaging.dispose();
+		unregisterChannel("agent");
 		ui.stop();
 		registry.unregister();
 	});

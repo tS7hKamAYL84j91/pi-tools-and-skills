@@ -92,6 +92,7 @@ interface MessagingModule {
 export function createMessaging(config: MessagingConfig) {
 	return function setup(pi: ExtensionAPI, registry: Registry): MessagingModule {
 		let disposeCleanupHook: (() => void) | null = null;
+		let disposeChannelNotify: (() => void) | null = null;
 		const core = new MessagingCore(pi, registry, config);
 
 		// ── message_read tool ──────────────────────────────────
@@ -276,8 +277,9 @@ export function createMessaging(config: MessagingConfig) {
 				// Drain any messages already pending at startup
 				if (core.totalPending() > 0) core.pokeNow();
 				// Register as the channel notification handler — any channel
-				// (Matrix, future channels) calls notifyChannel() to trigger poke
-				onChannelNotify(() => core.schedulePoke());
+				// (Matrix, future channels) calls notifyChannel() to trigger poke.
+				disposeChannelNotify?.();
+				disposeChannelNotify = onChannelNotify(() => core.schedulePoke());
 				// Register transport cleanup for dead-agent reaping
 				disposeCleanupHook?.();
 				disposeCleanupHook = onAgentCleanup((agentId: string) => config.send.cleanup(agentId));
@@ -304,6 +306,8 @@ export function createMessaging(config: MessagingConfig) {
 				core.dispose();
 				disposeCleanupHook?.();
 				disposeCleanupHook = null;
+				disposeChannelNotify?.();
+				disposeChannelNotify = null;
 			},
 		};
 
