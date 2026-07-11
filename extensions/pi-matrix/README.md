@@ -63,6 +63,12 @@ In your workspace's `.pi/settings.json`:
 | `maxAttachmentBytes` | no | `26214400` | Per-attachment download/write limit |
 | `allowedMimePrefixes` | no | images, PDFs, text, audio, video | MIME classes allowed for download. Entries ending in `/` match prefixes (for example `image/`); concrete entries match exactly (for example `application/pdf`). Empty array disables MIME filtering. |
 
+## Status and recovery
+
+Run `/matrix` for a diagnostic summary of configuration, connection state, room, sender policy, unread count, the last safe error, and the next recovery action. In headless modes, the same summary is emitted as text rather than relying on TUI-only notifications.
+
+The footer distinguishes `not configured`, `token unavailable`, `connecting`, `connected`, `disconnected`, and `error`. Reconnect through `/reload`; the SDK owns its sync loop, so a separate retry command would create competing lifecycle ownership. Token values are redacted from diagnostics and SDK feedback.
+
 ## Room scope
 
 The bot listens to messages from **all rooms** the bot has joined, not just `roomId`. The `trustedSenders` filter is the access-control boundary. An empty `trustedSenders` list denies inbound messages by default; set `allowAnySender: true` only for auditable dev/test use. Invites to the configured `roomId` may be joined as an approved-room mechanism, but message ingestion still requires a trusted sender or explicit `allowAnySender`.
@@ -94,6 +100,8 @@ When a trusted sender sends an image, PDF, or other allowed file, `message_read`
 ```
 
 Use the built-in `read` tool on the local path to inspect images or text/PDF files when needed.
+
+Skipped attachments include the filename, MIME type, size when known, concise reason, and a recovery action—for example, asking the sender to resend below `maxAttachmentBytes` or updating `allowedMimePrefixes`.
 
 ## Stable Tools/Commands
 

@@ -407,6 +407,7 @@ flowchart TD
   Human[Human Matrix client] --> HS[Homeserver media repository]
   HS --> SDK[matrix-bot-sdk sync loop]
   SDK --> Matrix[pi-matrix MatrixBridgeClient]
+  Matrix --> Diagnostics[Safe status / recovery diagnostics]
   Matrix --> Filter[trusted sender + msgtype filter]
   Filter --> Text[m.text / m.notice / m.emote]
   Filter --> Media[m.image / m.file / m.audio / m.video]
@@ -426,6 +427,7 @@ flowchart TD
 - `message_read` includes filename, MIME, size, local path, MXC URL, room, and event metadata.
 - Workers use built-in `read` on local image/PDF/file paths only when the task requires it.
 - Encrypted media blobs are deferred because the SDK decrypt helper does not expose a bounded download path; a visible attachment error is surfaced.
+- Matrix diagnostics redact token-like values, expose a recovery action in every mode, and release the client/channel when startup fails or the session reloads.
 
 ---
 

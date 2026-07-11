@@ -93,6 +93,19 @@ function getKind(msgtype: MatrixMediaMsgtype): InboundAttachment["kind"] {
 	return "file";
 }
 
+function formatBytes(bytes: number | undefined): string {
+	if (bytes === undefined) return "unknown size";
+	if (bytes < 1024) return `${bytes} B`;
+	const kibibytes = bytes / 1024;
+	if (kibibytes < 1024) return `${kibibytes.toFixed(1)} KiB`;
+	return `${(kibibytes / 1024).toFixed(1)} MiB`;
+}
+
+function attachmentError(attachment: InboundAttachment, reason: string, nextAction: string): string {
+	const mimeType = attachment.mimeType ?? "unknown type";
+	return `Attachment "${attachment.filename}" (${mimeType}, ${formatBytes(attachment.sizeBytes)}) was skipped: ${reason}. Next action: ${nextAction}`;
+}
+
 function baseAttachment(
 	roomId: string,
 	event: MatrixRoomMessageEvent,
@@ -139,20 +152,41 @@ export async function extractMatrixAttachment(
 
 	const attachment = baseAttachment(roomId, event, content, msgtype);
 	if (!attachment.mxcUrl) {
-		return { ...attachment, error: "Matrix media event did not include an mxc:// URL." };
+		return {
+			...attachment,
+			error: attachmentError(attachment, "the Matrix event did not include an mxc:// URL", "ask the sender to resend the file"),
+		};
 	}
 	if (attachment.sizeBytes !== undefined && attachment.sizeBytes > config.maxAttachmentBytes) {
-		return { ...attachment, error: `Attachment exceeds maxAttachmentBytes (${attachment.sizeBytes} > ${config.maxAttachmentBytes}).` };
+		return {
+			...attachment,
+			error: attachmentError(
+				attachment,
+				`size exceeds maxAttachmentBytes (${attachment.sizeBytes} > ${config.maxAttachmentBytes})`,
+				`ask the sender to resend below ${formatBytes(config.maxAttachmentBytes)} or raise pi-matrix.maxAttachmentBytes`,
+			),
+		};
 	}
 	if (!isAllowedMimeType(attachment.mimeType, config.allowedMimePrefixes)) {
-		return { ...attachment, error: `MIME type not allowed: ${attachment.mimeType}.` };
+		return {
+			...attachment,
+			error: attachmentError(
+				attachment,
+				`MIME type not allowed (${attachment.mimeType ?? "missing"})`,
+				"update pi-matrix.allowedMimePrefixes or ask for an allowed file type",
+			),
+		};
 	}
 
 	if (attachment.encrypted) {
 		const cryptoStatus = client.crypto?.decryptMedia ? "SDK crypto is available, but" : "SDK crypto is unavailable and";
 		return {
 			...attachment,
-			error: `Encrypted Matrix media download is deferred: ${cryptoStatus} matrix-bot-sdk decryptMedia does not expose a bounded download path.`,
+			error: attachmentError(
+				attachment,
+				`Encrypted Matrix media download is deferred because ${cryptoStatus} matrix-bot-sdk decryptMedia does not expose a bounded download path`,
+				"use an unencrypted room/file or download the attachment outside pi",
+			),
 		};
 	}
 
@@ -160,20 +194,38 @@ export async function extractMatrixAttachment(
 		const data = await downloadUnencryptedMedia(config, attachment.mxcUrl);
 		const mimeType = attachment.mimeType ?? data.contentType;
 		if (!isAllowedMimeType(data.contentType, config.allowedMimePrefixes)) {
-			return { ...attachment, mimeType, sizeBytes: data.buffer.length, error: `MIME type not allowed: ${data.contentType}.` };
+			const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
+			return {
+				...failedAttachment,
+				error: attachmentError(
+					failedAttachment,
+					`MIME type not allowed (${data.contentType ?? "missing"})`,
+					"update pi-matrix.allowedMimePrefixes or ask for an allowed file type",
+				),
+			};
 		}
 		if (data.buffer.length > config.maxAttachmentBytes) {
+			const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
 			return {
-				...attachment,
-				mimeType,
-				sizeBytes: data.buffer.length,
-				error: `Attachment exceeds maxAttachmentBytes (${data.buffer.length} > ${config.maxAttachmentBytes}).`,
+				...failedAttachment,
+				error: attachmentError(
+					failedAttachment,
+					`size exceeds maxAttachmentBytes (${data.buffer.length} > ${config.maxAttachmentBytes})`,
+					`ask the sender to resend below ${formatBytes(config.maxAttachmentBytes)} or raise pi-matrix.maxAttachmentBytes`,
+				),
 			};
 		}
 		const localPath = await writeAttachment(config, attachment, data.buffer);
 		return { ...attachment, mimeType, sizeBytes: data.buffer.length, localPath };
 	} catch (err) {
-		return { ...attachment, error: err instanceof Error ? err.message : String(err) };
+		return {
+			...attachment,
+			error: attachmentError(
+				attachment,
+				err instanceof Error ? err.message : String(err),
+				"verify homeserver media access or ask the sender to resend",
+			),
+		};
 	}
 }
 

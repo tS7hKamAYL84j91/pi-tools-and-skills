@@ -19,6 +19,13 @@ import { join } from "node:path";
 import { registerChannel, unregisterChannel, notifyChannel } from "../../lib/message-transport.js";
 import { loadMatrixConfig } from "./config.js";
 import { MatrixBridgeClient } from "./client.js";
+import {
+	classifyMatrixConfigError,
+	matrixDiagnosticSummary,
+	matrixStatusText,
+	sanitizeMatrixError,
+	type MatrixConnectionState,
+} from "./status.js";
 import { MatrixTransport } from "./transport.js";
 import type { MatrixConfig } from "./types.js";
 
@@ -29,19 +36,31 @@ let client: MatrixBridgeClient | null = null;
 let transport: MatrixTransport | null = null;
 let ctx: ExtensionContext | null = null;
 let lastError: string | null = null;
+let connectionState: MatrixConnectionState = "not_configured";
 let channelLabel = "matrix";
 
 // ── Status helpers ──────────────────────────────────────────────
 
+function currentDiagnosticInput() {
+	return {
+		config,
+		state: connectionState,
+		unreadCount: transport?.pendingCount("") ?? 0,
+		lastError,
+	};
+}
+
 function updateStatus(): void {
 	if (!ctx) return;
-	if (!config) { ctx.ui.setStatus("pi-matrix", "pi-matrix: off"); return; }
-	if (!client) { ctx.ui.setStatus("pi-matrix", "pi-matrix: init"); return; }
-	if (lastError) { ctx.ui.setStatus("pi-matrix", "pi-matrix: err"); return; }
-	if (!client.isConnected()) { ctx.ui.setStatus("pi-matrix", "pi-matrix: off"); return; }
-	const pending = transport?.pendingCount("") ?? 0;
-	const unreadTag = pending > 0 ? ` msg:${pending}` : "";
-	ctx.ui.setStatus("pi-matrix", `pi-matrix: on${unreadTag}`);
+	ctx.ui.setStatus("pi-matrix", matrixStatusText(currentDiagnosticInput()));
+}
+
+function emitMatrixMessage(context: ExtensionContext, message: string, level: "info" | "warning" | "error"): void {
+	if (context.hasUI) {
+		context.ui.notify(message, level);
+		return;
+	}
+	console.log(message);
 }
 
 // ── Extension ───────────────────────────────────────────────────
@@ -52,15 +71,18 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, c) => {
 		ctx = c;
+		config = null;
 		lastError = null;
+		connectionState = "not_configured";
 
 		const projectSettingsPath = join(c.cwd, ".pi", "settings.json");
 		try {
 			config = loadMatrixConfig(projectSettingsPath);
 			channelLabel = config?.channelLabel ?? "matrix";
 		} catch (err) {
-			lastError = (err as Error).message;
-			ctx.ui.notify(`matrix: ${lastError}`, "warning");
+			lastError = sanitizeMatrixError(err instanceof Error ? err.message : String(err));
+			connectionState = classifyMatrixConfigError(lastError ?? "");
+			emitMatrixMessage(c, `matrix: ${lastError}`, "warning");
 			updateStatus();
 			return;
 		}
@@ -70,10 +92,12 @@ export default function (pi: ExtensionAPI): void {
 			return;
 		}
 
+		connectionState = "connecting";
+		updateStatus();
 		client = new MatrixBridgeClient(config);
 		transport = new MatrixTransport(client, channelLabel);
 
-		// Register as a messaging channel — panopticon handles notification
+		// Register as a messaging channel — panopticon handles notification.
 		registerChannel(channelLabel, transport);
 
 		try {
@@ -83,12 +107,21 @@ export default function (pi: ExtensionAPI): void {
 					notifyChannel();
 					updateStatus();
 				},
-				(msg, level) => c.ui.notify(`matrix: ${msg}`, level),
+				(msg, level) => emitMatrixMessage(c, `matrix: ${sanitizeMatrixError(msg) ?? msg}`, level),
 			);
+			connectionState = client.isConnected() ? "connected" : "disconnected";
 		} catch (err) {
-			lastError = (err as Error).message;
-			ctx.ui.notify(`matrix: failed to connect — ${lastError}`, "error");
+			lastError = sanitizeMatrixError(err instanceof Error ? err.message : String(err));
+			connectionState = "error";
+			emitMatrixMessage(c, `matrix: failed to connect — ${lastError}`, "error");
+			unregisterChannel(channelLabel);
+			try {
+				await client.stop();
+			} catch {
+				// Preserve the startup failure; the client is discarded below.
+			}
 			client = null;
+			transport = null;
 		}
 		updateStatus();
 	});
@@ -99,6 +132,7 @@ export default function (pi: ExtensionAPI): void {
 		client = null;
 		transport = null;
 		config = null;
+		connectionState = "not_configured";
 		ctx = null;
 	});
 
@@ -117,15 +151,18 @@ export default function (pi: ExtensionAPI): void {
 	// ── /matrix command ───────────────────────────────────────
 
 	pi.registerCommand("matrix", {
-		description: "Show Matrix status",
+		description: "Show Matrix diagnostic summary and recovery action",
 		handler: async (_args, c) => {
-			if (!config) { c.ui.notify("Matrix: not configured", "info"); return; }
-			if (!client) { c.ui.notify(`Matrix: not connected. ${lastError ?? ""}`, "warning"); return; }
-			const pending = transport?.pendingCount("") ?? 0;
-			c.ui.notify(
-				`Matrix: ${client.isConnected() ? "connected" : "disconnected"}, ${pending} unread`,
-				client.isConnected() ? "info" : "warning",
-			);
+			const state = client && connectionState !== "error"
+				? client.isConnected() ? "connected" : "disconnected"
+				: connectionState;
+			const summary = matrixDiagnosticSummary({
+				config,
+				state,
+				unreadCount: transport?.pendingCount("") ?? 0,
+				lastError,
+			});
+			emitMatrixMessage(c, summary, state === "connected" ? "info" : "warning");
 		},
 	});
 }
