@@ -94,6 +94,7 @@ const MATRIX_CONFIG = {
 	channelLabel: "matrix",
 	trustedSenders: [],
 	allowAnySender: false,
+	ingress: {},
 };
 
 describe("Matrix lifecycle", () => {
@@ -114,5 +115,19 @@ describe("Matrix lifecycle", () => {
 		expect(mocks.unregisterChannel).toHaveBeenCalledWith("matrix");
 		expect(mocks.instances).toHaveLength(1);
 		expect(mocks.instances[0]?.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("warns when allowAnySender is enabled", async () => {
+		const api = createApi();
+		matrixExtension(api);
+		mocks.loadMatrixConfig.mockReturnValue({ ...MATRIX_CONFIG, allowAnySender: true });
+
+		const context = createContext();
+		await emit(api, "session_start", {}, context);
+
+		expect(context.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("allowAnySender is enabled"),
+			"warning",
+		);
 	});
 });

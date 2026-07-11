@@ -205,6 +205,7 @@ function makeAttachmentConfig(attachmentCachePath: string, overrides: Partial<Ma
 		channelLabel: "matrix",
 		trustedSenders: ["@user:matrix.org"],
 		allowAnySender: false,
+		ingress: {},
 		...overrides,
 	};
 }

@@ -138,6 +138,10 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 				return fail(`Failed to spawn agent "${params.name}".`, {
 					error: "spawn_failed",
+					code: "internal",
+					retryable: true,
+					action: "Check agent configuration and try again",
+					schemaVersion: 1,
 					envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { code: "spawn_failed" }, startedAt, success: false, error: "spawn_failed" }),
 				});
 			}
@@ -239,6 +243,10 @@ export function registerRpcSendTool(pi: ExtensionAPI, ctx: SpawnerContext): void
 			if (!response && events.length === 0) {
 				return fail(`Failed to communicate with agent "${params.name}".`, {
 					error: "write_failed",
+					code: "timeout",
+					retryable: true,
+					action: "Retry RPC call or check agent status",
+					schemaVersion: 1,
 					envelope: createResultEnvelope({ tool: "rpc_send", params, result: { code: "write_failed" }, startedAt, success: false, error: "write_failed" }),
 				});
 			}

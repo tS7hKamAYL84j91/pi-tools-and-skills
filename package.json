@@ -71,5 +71,8 @@
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.49",
 		"matrix-bot-sdk": "^0.8.0"
+	},
+	"engines": {
+		"node": ">=22"
 	}
 }

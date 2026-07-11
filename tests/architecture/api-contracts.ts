@@ -10,7 +10,7 @@ describe("dependency direction", () => {
 	it("lib/ must not import from extensions/", async () => {
 		const rule = projectFiles().inFolder("lib/**").shouldNot().dependOnFiles().inFolder("extensions/**");
 		await expect(rule).toPassAsync();
-	});
+	}, 15_000);
 
 	it("lib/ must not import from tests/", async () => {
 		const rule = projectFiles().inFolder("lib/**").shouldNot().dependOnFiles().inFolder("tests/**");

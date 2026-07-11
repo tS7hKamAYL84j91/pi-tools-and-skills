@@ -218,7 +218,13 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 				const result = await runSchedule(await configFor(ctx, params.cwd), params.taskId, dryRun);
 				return ok(commandSummary("coas-schedule run", result), { code: result.code, dryRun, unsupported: !dryRun });
 			} catch (error) {
-				return fail((error as Error).message, { taskId: params.taskId });
+				return fail((error as Error).message, {
+					code: "internal",
+					retryable: false,
+					action: "Check schedule validity",
+					schemaVersion: 1,
+					taskId: params.taskId,
+				});
 			}
 		},
 	});
@@ -240,7 +246,13 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 				}
 				return ok(message, { code: 0, taskId: params.taskId, scheduler: scheduler.snapshot() });
 			} catch (error) {
-				return fail((error as Error).message, { taskId: params.taskId });
+				return fail((error as Error).message, {
+					code: "internal",
+					retryable: false,
+					action: "Check task ID exists",
+					schemaVersion: 1,
+					taskId: params.taskId,
+				});
 			}
 		},
 	});

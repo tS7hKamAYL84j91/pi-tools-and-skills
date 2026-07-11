@@ -24,6 +24,7 @@ function makeConfig(overrides: Partial<MatrixConfig> = {}): MatrixConfig {
 		channelLabel: "matrix",
 		trustedSenders: ["@owner:example"],
 		allowAnySender: false,
+		ingress: {},
 		...overrides,
 	};
 }

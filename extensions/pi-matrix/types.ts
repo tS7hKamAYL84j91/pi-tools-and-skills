@@ -2,6 +2,20 @@
  * Matrix extension — shared types.
  */
 
+/** Configurable inbound message policy. */
+export interface MatrixIngressConfig {
+	/** Maximum in-memory inbound messages before overflow drops begin. */
+	maxBuffer?: number;
+	/** Maximum messages accepted across all senders within rateWindowMs. */
+	globalBurstLimit?: number;
+	/** Maximum messages accepted from one sender within rateWindowMs. */
+	perSenderBurstLimit?: number;
+	/** Sliding window duration in milliseconds for burst limits. */
+	rateWindowMs?: number;
+	/** Whether a full buffer evicts the oldest message or rejects the newest. */
+	overflowPolicy?: "drop-newest" | "drop-oldest";
+}
+
 /** Resolved configuration for the matrix extension. */
 export interface MatrixConfig {
 	/** Homeserver base URL */
@@ -26,4 +40,6 @@ export interface MatrixConfig {
 	trustedSenders: string[];
 	/** Explicit dev/test escape hatch for accepting any Matrix sender. */
 	allowAnySender: boolean;
+	/** Optional inbound rate/buffer policy. Defaults are applied when omitted. */
+	ingress: MatrixIngressConfig;
 }

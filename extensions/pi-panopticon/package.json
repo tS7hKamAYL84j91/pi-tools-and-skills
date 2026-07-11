@@ -1,9 +1,19 @@
 {
-  "name": "pi-panopticon",
-  "version": "1.0.0",
-  "keywords": ["pi-package"],
-  "pi": {
-    "extensions": ["./index.ts"],
-    "skills": ["./skills", "./teams/skills"]
-  }
+	"name": "pi-panopticon",
+	"version": "1.0.0",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		],
+		"skills": [
+			"./skills",
+			"./teams/skills"
+		]
+	},
+	"engines": {
+		"node": ">=22"
+	}
 }

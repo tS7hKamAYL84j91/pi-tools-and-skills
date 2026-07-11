@@ -434,9 +434,10 @@ async function runGoalCommand(pi: FakePi, args: string, ctx: FakeCommandContext)
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-	for (let i = 0; i < 20; i++) {
+	const deadline = Date.now() + 1_000;
+	while (Date.now() < deadline) {
 		if (predicate()) return;
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise((resolve) => setTimeout(resolve, 5));
 	}
 	throw new Error("Timed out waiting for condition");
 }

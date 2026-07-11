@@ -29,10 +29,19 @@ Add the extension and Matrix settings to that workspace's `.pi/settings.json`:
     "channelLabel": "matrix",
     "attachmentCachePath": "~/.pi/agent/matrix-attachments",
     "maxAttachmentBytes": 26214400,
-    "allowedMimePrefixes": ["image/", "application/pdf", "text/", "audio/", "video/"]
+    "allowedMimePrefixes": ["image/", "application/pdf", "text/", "audio/", "video/"],
+    "ingress": {
+      "maxBuffer": 200,
+      "globalBurstLimit": 1000,
+      "perSenderBurstLimit": 100,
+      "rateWindowMs": 10000,
+      "overflowPolicy": "drop-newest"
+    }
   }
 }
 ```
+
+If `ingress` is omitted, the defaults above are applied.
 
 ## 3. Start pi from your runtime launcher
 
@@ -59,3 +68,15 @@ Attachments are cached locally and are not auto-executed. Remove old files from 
 | Attachment shows `maxAttachmentBytes` | Raise the per-attachment limit only if the room and sender are trusted. |
 | Encrypted attachment has no local path | Current behavior deliberately defers encrypted media blob downloads because the SDK helper cannot enforce this extension's size limit before buffering. Metadata is still shown. |
 | Decryption errors | If E2EE is configured, wipe the crypto store used by that workspace and restart. |
+
+## Inbound rate and overflow policy
+
+Inbound Matrix messages are buffered in memory with a bounded policy:
+
+- `maxBuffer` — maximum messages held before overflow handling begins.
+- `globalBurstLimit` — maximum messages accepted from all senders in `rateWindowMs`.
+- `perSenderBurstLimit` — maximum messages accepted from a single sender in `rateWindowMs`.
+- `rateWindowMs` — sliding window length for the burst limits.
+- `overflowPolicy` — `drop-newest` (default) rejects the newest message when the buffer is full; `drop-oldest` evicts the oldest.
+
+Dropped messages are counted and surfaced through a redacted diagnostic that includes counts and the drop reason, never message bodies or sender MXIDs.

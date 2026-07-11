@@ -8,7 +8,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
-import type { MatrixConfig } from "./types.js";
+import type { MatrixConfig, MatrixIngressConfig } from "./types.js";
 
 const DEFAULT_STORAGE_PATH = join(homedir(), ".pi", "agent", "matrix-sync");
 const DEFAULT_ATTACHMENT_CACHE_PATH = join(homedir(), ".pi", "agent", "matrix-attachments");
@@ -27,6 +27,7 @@ interface RawMatrixSettings {
 	channelLabel?: unknown;
 	trustedSenders?: unknown;
 	allowAnySender?: unknown;
+	ingress?: unknown;
 }
 
 function readMatrixSettings(path: string): RawMatrixSettings | null {
@@ -114,7 +115,46 @@ export function loadMatrixConfig(
 		channelLabel,
 		trustedSenders,
 		allowAnySender,
+		ingress: resolveIngress(raw.ingress),
 	};
+}
+
+function resolveIngress(raw: unknown): MatrixIngressConfig {
+	const defaults: Required<MatrixIngressConfig> = {
+		maxBuffer: 200,
+		globalBurstLimit: 1000,
+		perSenderBurstLimit: 100,
+		rateWindowMs: 10_000,
+		overflowPolicy: "drop-newest",
+	};
+	if (raw === undefined || raw === null) return defaults;
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error("matrix config: ingress must be an object when provided");
+	}
+	const value = raw as Record<string, unknown>;
+	return {
+		maxBuffer: optionalPositiveInteger(value.maxBuffer, "matrix.ingress.maxBuffer") ?? defaults.maxBuffer,
+		globalBurstLimit: optionalPositiveInteger(value.globalBurstLimit, "matrix.ingress.globalBurstLimit") ?? defaults.globalBurstLimit,
+		perSenderBurstLimit: optionalPositiveInteger(value.perSenderBurstLimit, "matrix.ingress.perSenderBurstLimit") ?? defaults.perSenderBurstLimit,
+		rateWindowMs: optionalPositiveInteger(value.rateWindowMs, "matrix.ingress.rateWindowMs") ?? defaults.rateWindowMs,
+		overflowPolicy: optionalOverflowPolicy(value.overflowPolicy) ?? defaults.overflowPolicy,
+	};
+}
+
+function optionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+		throw new Error(`matrix config: ${fieldName} must be a positive integer when provided`);
+	}
+	return value;
+}
+
+function optionalOverflowPolicy(value: unknown): "drop-newest" | "drop-oldest" | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (value !== "drop-newest" && value !== "drop-oldest") {
+		throw new Error('matrix config: ingress.overflowPolicy must be "drop-newest" or "drop-oldest"');
+	}
+	return value;
 }
 
 function requireString(value: unknown, fieldName: string): string {

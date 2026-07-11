@@ -92,10 +92,16 @@ export default function (pi: ExtensionAPI): void {
 			return;
 		}
 
+		if (config.allowAnySender) {
+			emitMatrixMessage(c, "matrix: allowAnySender is enabled; accepting messages from any Matrix sender (dev/test override)", "warning");
+		}
+
 		connectionState = "connecting";
 		updateStatus();
 		client = new MatrixBridgeClient(config);
-		transport = new MatrixTransport(client, channelLabel);
+		transport = new MatrixTransport(client, channelLabel, config.ingress, (msg) =>
+			emitMatrixMessage(c, msg, "warning"),
+		);
 
 		// Register as a messaging channel — panopticon handles notification.
 		registerChannel(channelLabel, transport);

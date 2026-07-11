@@ -5,6 +5,7 @@ out/
 *.vsix
 *.tsbuildinfo
 .DS_Store
+coverage/
 .pi/
 .workers/
 .ralph/
