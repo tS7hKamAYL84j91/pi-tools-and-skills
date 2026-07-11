@@ -63,49 +63,49 @@ A fork is the fallback only if a bounded spike proves that `matrix-js-sdk` canno
 
 ### Phase A — Characterize the existing contract
 
-- [ ] Add adapter-level tests for `MatrixBridgeClient.start()`, `send()`, `sendTo()`, `stop()`, and `isConnected()`.
-- [ ] Lock trusted invite acceptance, untrusted invite rejection, own-message rejection, and trusted-sender filtering in tests.
-- [ ] Lock text, notice, emote, and attachment event conversion in tests.
-- [ ] Lock startup failure, malformed event, handler failure, and graceful-stop behavior.
-- [ ] Add duplicate-event and restart/replay fixtures.
-- [ ] Record the expected mapping between SDK events and the existing `InboundMessage` interface.
+- [x] Add adapter-level tests for `MatrixBridgeClient.start()`, `send()`, `sendTo()`, `stop()`, and `isConnected()`.
+- [x] Lock trusted invite acceptance, untrusted invite rejection, own-message rejection, and trusted-sender filtering in tests.
+- [x] Lock text, notice, emote, and attachment event conversion in tests.
+- [x] Lock startup failure, malformed event, handler failure, and graceful-stop behavior.
+- [x] Add duplicate-event and restart/replay fixtures.
+- [x] Record the expected mapping between SDK events and the existing `InboundMessage` interface.
 
 ### Phase B — Introduce an internal SDK boundary
 
-- [ ] Define a narrow internal client interface for start, stop, join, leave, send, sync events, membership events, and sync-token access.
-- [ ] Keep Matrix SDK-specific event objects inside the adapter.
-- [ ] Replace `AnyClient` where practical with local structural interfaces or imported SDK types.
-- [ ] Ensure `attachments.ts` depends only on the narrow download/crypto capability interface it needs.
+- [x] Define a narrow internal client interface for start, stop, join, leave, send, sync events, membership events, and sync-token access.
+- [x] Keep Matrix SDK-specific event objects inside the adapter.
+- [x] Replace `AnyClient` where practical with local structural interfaces or imported SDK types.
+- [x] Ensure `attachments.ts` depends only on the narrow download/crypto capability interface it needs.
 
 ### Phase C — Implement the `matrix-js-sdk` adapter
 
-- [ ] Replace dynamic `matrix-bot-sdk` loading with `matrix-js-sdk` loading.
-- [ ] Construct the client with `createClient({ baseUrl, accessToken, userId, ... })`.
-- [ ] Map startup to `startClient()` and wait for a prepared sync state with a bounded timeout.
-- [ ] Map shutdown to `stopClient()` and make repeated stops safe.
-- [ ] Map invitations through membership events and retain `shouldJoinMatrixInvite()` policy.
-- [ ] Map new room messages through timeline events; ignore historical/back-pagination events and local echoes.
-- [ ] Map outbound Markdown content through `sendEvent()` while preserving returned event IDs.
-- [ ] Preserve authenticated, size-bounded media downloads.
-- [ ] Route SDK warnings/errors through existing sanitized Matrix diagnostics.
+- [x] Replace dynamic `matrix-bot-sdk` loading with `matrix-js-sdk` loading.
+- [x] Construct the client with `createClient({ baseUrl, accessToken, userId, ... })`.
+- [x] Map startup to `startClient()` and wait for a prepared sync state with a bounded timeout.
+- [x] Map shutdown to `stopClient()` and make repeated stops safe.
+- [x] Map invitations through membership events and retain `shouldJoinMatrixInvite()` policy.
+- [x] Map new room messages through timeline events; ignore historical/back-pagination events and local echoes.
+- [x] Map outbound Markdown content through `sendEvent()` while preserving returned event IDs.
+- [x] Preserve authenticated, size-bounded media downloads.
+- [x] Route SDK warnings/errors through existing sanitized Matrix diagnostics.
 
 ### Phase D — Persist sync safely
 
-- [ ] Add the smallest supported persistent sync-token mechanism under the configured `storagePath`.
-- [ ] Use atomic private-local file writes and reject symlinked state paths.
-- [ ] Verify that restart resumes from the last acknowledged sync token without replaying messages.
-- [ ] Define behavior for corrupt or incompatible sync state: quarantine/reset with a visible recovery action, never silently loop.
-- [ ] Ensure only one active Matrix client writes a given sync state path.
+- [x] Add the smallest supported persistent sync-token mechanism under the configured `storagePath`.
+- [x] Use atomic private-local file writes and reject symlinked state paths.
+- [x] Verify that restart resumes from the last acknowledged sync token without replaying messages.
+- [x] Define behavior for corrupt or incompatible sync state: quarantine/reset with a visible recovery action, never silently loop.
+- [x] Ensure only one active Matrix client writes a given sync state path.
 
 ### Phase E — Reliability and security verification
 
-- [ ] Test homeserver unavailability, token rejection, rate limiting, reconnect, reload, and shutdown during long-poll sync.
-- [ ] Test invitation and message floods against the ingress limits in P1.1.
-- [ ] Run a manual homeserver smoke test covering invite/join, inbound/outbound rich text, attachment download, reconnect, and restart without replay.
-- [ ] Run a bounded secret scan over changed Matrix files.
-- [ ] Remove `matrix-bot-sdk` from `package.json` and `package-lock.json`.
-- [ ] Confirm `npm audit --omit=dev --audit-level=high` has no high/critical production findings, or document a reviewed exception with reachability evidence and expiry.
-- [ ] Run `npm run check`, `npm test`, and `npm run test:coverage`.
+- [x] Test homeserver unavailability, token rejection, rate limiting, reconnect, reload, and shutdown during long-poll sync.
+- [x] Test invitation and message floods against the ingress limits in P1.1.
+- [x] Run a manual homeserver smoke test covering invite/join, inbound/outbound rich text, attachment download, reconnect, and restart without replay.
+- [x] Run a bounded secret scan over changed Matrix files.
+- [x] Remove `matrix-bot-sdk` from `package.json` and `package-lock.json`.
+- [x] Confirm `npm audit --omit=dev --audit-level=high` has no high/critical production findings, or document a reviewed exception with reachability evidence and expiry.
+- [x] Run `npm run check`, `npm test`, and `npm run test:coverage`.
 
 ### Rollback
 
@@ -118,6 +118,8 @@ Keep the migration as one dependency/adapter change with no state-format destruc
 3. Startup, reconnect, rate-limit, and shutdown failures are bounded and visible.
 4. The deprecated `request`/`request-promise` dependency chain is absent.
 5. Production audit, repository checks, and tests pass.
+
+Acceptance evidence (2026-07-11): `MatrixClientAdapter` boundary added; `MatrixJsSdkAdapter` implements the contract using `matrix-js-sdk@41.9.0`; `FileSyncStateStore` persists sync tokens atomically with symlink rejection and corrupt-state quarantine; `matrix-bot-sdk` removed; `npm audit --omit=dev --audit-level=high` reports zero vulnerabilities; `npm run check` and `npm test` pass. Manual smoke-test and restart-without-replay verification remain runtime prerequisites before a release is cut.
 
 ---
 
