@@ -77,6 +77,11 @@ export interface SchedulerSnapshot {
 	activeRuns: number;
 	startedAt?: string;
 	lastError?: string;
+	queued?: number;
+	failed?: number;
+	lastQueuedAt?: string;
+	lastFailedAt?: string;
+	lastTaskId?: string;
 }
 
 export interface DoctorCheck {

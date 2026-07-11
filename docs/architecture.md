@@ -528,8 +528,11 @@ C4Component
 - Schedule add/remove reconciles in-memory timers.
 - `/coas-schedules`, `coas_status`, `coas_doctor`, and the compact TUI status field report internal scheduler
   state instead of crontab state.
+- Scheduler telemetry is ephemeral and queue-level only: aggregate `queued`/`failed` counters and
+  `lastQueuedAt`/`lastFailedAt`/`lastTaskId` surfaced through existing status channels, reset on stop.
+  No public telemetry tool, durable metrics store, event bus, or cross-extension import is introduced.
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
-- Tests cover due-time matching and schedule prompt rendering.
+- Tests cover due-time matching, schedule prompt rendering, and scheduler telemetry accounting.
 - CoAS remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
 
 ---

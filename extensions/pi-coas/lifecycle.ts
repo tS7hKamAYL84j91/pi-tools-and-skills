@@ -15,7 +15,11 @@ export function formatCoasStatusSlot(workspace?: string, scheduler?: SchedulerSn
 	if (!scheduler) return workspace ? `coas: ${scope}` : "coas: on ✓";
 	const health = scheduler.lastError ? "⚠" : scheduler.running ? "✓" : "idle";
 	const scheduleText = scheduler.enabledSchedules > 0 ? ` sch ${scheduler.enabledSchedules}/${scheduler.activeRuns}` : "";
-	return `coas: ${scope} ${health}${scheduleText}`;
+	const queued = scheduler.queued ?? 0;
+	const failed = scheduler.failed ?? 0;
+	const queueText = queued > 0 ? ` q${queued}` : "";
+	const failText = failed > 0 ? ` f${failed}` : "";
+	return `coas: ${scope} ${health}${scheduleText}${queueText}${failText}`;
 }
 
 function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): void {

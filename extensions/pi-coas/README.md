@@ -53,10 +53,10 @@ CoAS rather than `pi-kanban`.
 When CoAS context exists, the status bar shows a compact operational field:
 
 ```text
-coas: <workspace|on> <✓|idle|⚠> [sch enabled/active]
+coas: <workspace|on> <✓|idle|⚠> [sch enabled/active] [q<queued>] [f<failed>]
 ```
 
-This is intentionally operational state only: workspace/scheduler health, enabled schedules, and active runs.
+This is intentionally operational state only: workspace/scheduler health, enabled schedules, active runs, and ephemeral queue-level telemetry. The `q` and `f` suffixes appear only when non-zero. Counters reset when the scheduler stops (session close / pi exit).
 
 ## Configuration
 
@@ -100,6 +100,7 @@ Optional `.pi/settings.json` override:
 - Does not run schedules while pi is closed.
 - Does not own kanban board mechanics; scheduled prompts may use `kanban_*` tools but cadence/policy stays in CoAS.
 - Does not create Matrix rooms or mutate external services.
+- The internal scheduler tracks ephemeral queue-level telemetry (queued/failed counts and last task timestamps) only while pi is open. It does not correlate agent-turn completion, store long-term metrics, or expose a telemetry tool.
 - Does not store secrets in workspace context.
 
 ## Safety

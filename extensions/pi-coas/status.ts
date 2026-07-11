@@ -64,10 +64,17 @@ export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapsh
 		statusLine("enabled schedules", schedules.filter((schedule) => schedule.enabled).length),
 		statusLine("scheduler", scheduler?.running ? "running" : "stopped"),
 		statusLine("active runs", scheduler?.activeRuns ?? 0),
+	];
+	if (scheduler && (scheduler.queued ?? 0) > 0) lines.push(statusLine("queued", scheduler.queued ?? 0));
+	if (scheduler && (scheduler.failed ?? 0) > 0) lines.push(statusLine("failed", scheduler.failed ?? 0));
+	if (scheduler?.lastQueuedAt) lines.push(statusLine("last queued", scheduler.lastQueuedAt));
+	if (scheduler?.lastFailedAt) lines.push(statusLine("last failed", scheduler.lastFailedAt));
+	if (scheduler?.lastTaskId) lines.push(statusLine("last task", scheduler.lastTaskId));
+	lines.push(
 		statusLine("last schedule", await lastScheduleSignal(config)),
 		statusLine("logs", existsSync(logRoot(config)) ? logRoot(config) : "none"),
 		statusLine("doctor", "run: /coas-doctor"),
-	];
+	);
 	return { stdout: lines.join("\n"), stderr: "", code: 0 };
 }
 

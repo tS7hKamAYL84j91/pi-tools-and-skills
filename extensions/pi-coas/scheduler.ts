@@ -72,6 +72,11 @@ export class CoasInternalScheduler {
 	private enabledCount = 0;
 	private lastError: string | undefined;
 	private startedAt: string | undefined;
+	private queuedCount = 0;
+	private failedCount = 0;
+	private lastQueuedAt: string | undefined;
+	private lastFailedAt: string | undefined;
+	private lastTaskId: string | undefined;
 
 	constructor(private readonly pi: ExtensionAPI) {}
 
@@ -97,6 +102,11 @@ export class CoasInternalScheduler {
 		this.enabledCount = 0;
 		this.lastError = undefined;
 		this.startedAt = undefined;
+		this.queuedCount = 0;
+		this.failedCount = 0;
+		this.lastQueuedAt = undefined;
+		this.lastFailedAt = undefined;
+		this.lastTaskId = undefined;
 	}
 
 	async reconcile(config = this.config): Promise<void> {
@@ -123,6 +133,11 @@ export class CoasInternalScheduler {
 			activeRuns: this.activeRuns.size,
 			startedAt: this.startedAt,
 			lastError: this.lastError,
+			queued: this.queuedCount,
+			failed: this.failedCount,
+			lastQueuedAt: this.lastQueuedAt,
+			lastFailedAt: this.lastFailedAt,
+			lastTaskId: this.lastTaskId,
 		};
 	}
 
@@ -155,13 +170,31 @@ export class CoasInternalScheduler {
 		this.lastRun.set(schedule.taskId, key);
 		this.activeRuns.add(runKey);
 		try {
-			this.pi.sendUserMessage(renderScheduledPrompt(schedule), { deliverAs: "followUp" });
-			if (this.config) await appendScheduleLog(this.config, schedule.taskId, `QUEUED internal host=${hostname()}`);
-		} catch (error) {
-			this.lastError = (error as Error).message;
-			if (this.config) await appendScheduleLog(this.config, schedule.taskId, `FAILED internal ${(error as Error).message}`);
+			try {
+				this.pi.sendUserMessage(renderScheduledPrompt(schedule), { deliverAs: "followUp" });
+			} catch (error) {
+				this.failedCount++;
+				this.lastFailedAt = isoUtc();
+				this.lastTaskId = schedule.taskId;
+				this.lastError = (error as Error).message;
+				if (this.config) await this.appendScheduleLogBestEffort(schedule.taskId, `FAILED internal ${(error as Error).message}`);
+				return;
+			}
+			this.queuedCount++;
+			this.lastQueuedAt = isoUtc();
+			this.lastTaskId = schedule.taskId;
+			if (this.config) await this.appendScheduleLogBestEffort(schedule.taskId, `QUEUED internal host=${hostname()}`);
 		} finally {
 			this.activeRuns.delete(runKey);
+		}
+	}
+
+	private async appendScheduleLogBestEffort(taskId: string, message: string): Promise<void> {
+		if (!this.config) return;
+		try {
+			await appendScheduleLog(this.config, taskId, message);
+		} catch (error) {
+			this.lastError = (error as Error).message;
 		}
 	}
 }

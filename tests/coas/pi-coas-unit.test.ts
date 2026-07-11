@@ -9,6 +9,7 @@ import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
 import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
 import { addSchedule, validateCronExpr, formatScheduleList, renderInternalSchedulePlan } from "../../extensions/pi-coas/schedules.js";
+import { coasStatus } from "../../extensions/pi-coas/status.js";
 import { appendWorkspaceContext, createWorkspace, readWorkspaceContext } from "../../extensions/pi-coas/workspaces.js";
 import { ok, fail } from "../../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
@@ -300,6 +301,70 @@ describe("lifecycle", () => {
 				lastError: "boom",
 			})).toBe("coas: on ⚠");
 		});
+
+		it("includes queued telemetry in compact TUI status", () => {
+			expect(formatCoasStatusSlot("exec-office", {
+				running: true,
+				enabledSchedules: 3,
+				activeRuns: 1,
+				startedAt: "2026-01-01T00:00:00Z",
+				queued: 2,
+			})).toBe("coas: exec-office ✓ sch 3/1 q2");
+		});
+
+		it("includes failed telemetry only when non-zero", () => {
+			expect(formatCoasStatusSlot(undefined, {
+				running: true,
+				enabledSchedules: 1,
+				activeRuns: 0,
+				startedAt: "2026-01-01T00:00:00Z",
+				queued: 1,
+				failed: 1,
+			})).toBe("coas: on ✓ sch 1/0 q1 f1");
+		});
+	});
+
+	describe("coasStatus", () => {
+		it("discloses telemetry fields when scheduler snapshot includes them", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-status-telemetry-${process.pid}-${Date.now()}`);
+			try {
+				await mkdir(join(coasHome, "schedules"), { recursive: true });
+				const result = await coasStatus({ coasHome }, {
+					running: true,
+					enabledSchedules: 0,
+					activeRuns: 0,
+					queued: 3,
+					failed: 1,
+					lastQueuedAt: "2026-01-05T09:00:00Z",
+					lastFailedAt: "2026-01-05T09:01:00Z",
+					lastTaskId: "daily",
+				});
+
+				expect(result.stdout).toContain("queued             3");
+				expect(result.stdout).toContain("failed             1");
+				expect(result.stdout).toContain("last queued        2026-01-05T09:00:00Z");
+				expect(result.stdout).toContain("last failed        2026-01-05T09:01:00Z");
+				expect(result.stdout).toContain("last task          daily");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+
+		it("omits telemetry fields when scheduler snapshot is absent", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-status-no-telemetry-${process.pid}-${Date.now()}`);
+			try {
+				await mkdir(join(coasHome, "schedules"), { recursive: true });
+				const result = await coasStatus({ coasHome });
+
+				expect(result.stdout).not.toContain("queued");
+				expect(result.stdout).not.toContain("failed");
+				expect(result.stdout).not.toContain("last queued");
+				expect(result.stdout).not.toContain("last failed");
+				expect(result.stdout).not.toContain("last task");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
 	});
 });
 
@@ -328,6 +393,25 @@ describe("format", () => {
 			});
 			expect(rendered).toContain("running           yes");
 			expect(rendered).toContain("enabled schedules 2");
+		});
+
+		it("discloses telemetry fields only when present", () => {
+			const rendered = renderSchedulerSnapshot({
+				running: true,
+				enabledSchedules: 1,
+				activeRuns: 0,
+				startedAt: "2026-01-01T00:00:00Z",
+				queued: 3,
+				failed: 1,
+				lastQueuedAt: "2026-01-01T00:05:00Z",
+				lastFailedAt: "2026-01-01T00:06:00Z",
+				lastTaskId: "daily",
+			});
+			expect(rendered).toContain("queued            3");
+			expect(rendered).toContain("failed            1");
+			expect(rendered).toContain("last queued at    2026-01-01T00:05:00Z");
+			expect(rendered).toContain("last failed at    2026-01-01T00:06:00Z");
+			expect(rendered).toContain("last task id      daily");
 		});
 	});
 
@@ -446,7 +530,132 @@ describe("schedules", () => {
 				activeRuns: 0,
 				startedAt: undefined,
 				lastError: undefined,
+				queued: 0,
+				failed: 0,
+				lastQueuedAt: undefined,
+				lastFailedAt: undefined,
+				lastTaskId: undefined,
 			});
+		});
+
+		it("records queued telemetry on successful sendUserMessage", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-queued-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			const promptPath = join(schedulesDir, "daily.prompt");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(promptPath, "Do work.\n", "utf8");
+			await writeFile(join(schedulesDir, "daily.env"), [
+				"TASK_ID=daily",
+				"TASK_NAME=Daily",
+				"ROOM_ID=general",
+				"WORKSPACE_ID=room-a",
+				"CRON_EXPR=0 9 * * 1",
+				`PROMPT_FILE=${promptPath}`,
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const calls: string[] = [];
+			let activeDuringSend = 0;
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage(message: string) {
+					activeDuringSend = scheduler.snapshot().activeRuns;
+					calls.push(message);
+				},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+
+				const snapshot = scheduler.snapshot();
+				expect(snapshot.queued).toBe(1);
+				expect(snapshot.failed).toBe(0);
+				expect(snapshot.lastTaskId).toBe("daily");
+				expect(snapshot.lastQueuedAt).toMatch(/^\d{4}-/);
+				expect(snapshot.activeRuns).toBe(0);
+				expect(activeDuringSend).toBe(1);
+				expect(calls.length).toBe(1);
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+
+		it("records failed telemetry when sendUserMessage throws", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-failed-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			const promptPath = join(schedulesDir, "daily.prompt");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(promptPath, "Do work.\n", "utf8");
+			await writeFile(join(schedulesDir, "daily.env"), [
+				"TASK_ID=daily",
+				"TASK_NAME=Daily",
+				"ROOM_ID=general",
+				"WORKSPACE_ID=room-a",
+				"CRON_EXPR=0 9 * * 1",
+				`PROMPT_FILE=${promptPath}`,
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {
+					throw new Error("injection refused");
+				},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+
+				const snapshot = scheduler.snapshot();
+				expect(snapshot.queued).toBe(0);
+				expect(snapshot.failed).toBe(1);
+				expect(snapshot.lastTaskId).toBe("daily");
+				expect(snapshot.lastFailedAt).toMatch(/^\d{4}-/);
+				expect(snapshot.lastError).toBe("injection refused");
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
+		});
+
+		it("resets telemetry counters and timestamps on stop", async () => {
+			const coasHome = join(tmpdir(), `pi-coas-reset-${process.pid}-${Date.now()}`);
+			const schedulesDir = join(coasHome, "schedules");
+			const promptPath = join(schedulesDir, "daily.prompt");
+			await mkdir(schedulesDir, { recursive: true });
+			await writeFile(promptPath, "Do work.\n", "utf8");
+			await writeFile(join(schedulesDir, "daily.env"), [
+				"TASK_ID=daily",
+				"TASK_NAME=Daily",
+				"ROOM_ID=general",
+				"WORKSPACE_ID=room-a",
+				"CRON_EXPR=0 9 * * 1",
+				`PROMPT_FILE=${promptPath}`,
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const scheduler = new CoasInternalScheduler({
+				sendUserMessage() {},
+			} as never);
+			try {
+				await scheduler.reconcile({ coasHome });
+				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+				expect(scheduler.snapshot().queued).toBe(1);
+
+				scheduler.stop();
+
+				expect(scheduler.snapshot()).toEqual({
+					running: false,
+					enabledSchedules: 0,
+					activeRuns: 0,
+					startedAt: undefined,
+					lastError: undefined,
+					queued: 0,
+					failed: 0,
+					lastQueuedAt: undefined,
+					lastFailedAt: undefined,
+					lastTaskId: undefined,
+				});
+			} finally {
+				await rm(coasHome, { recursive: true, force: true });
+			}
 		});
 
 		it("records reconcile errors instead of silently hiding them", async () => {

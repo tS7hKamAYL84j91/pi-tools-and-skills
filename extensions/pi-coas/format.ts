@@ -48,7 +48,7 @@ export function shortCommandSummary(name: string, result: CommandResult, maxLine
 }
 
 export function renderSchedulerSnapshot(snapshot: SchedulerSnapshot): string {
-	return [
+	const lines = [
 		"CoAS internal scheduler",
 		"=======================",
 		`running           ${snapshot.running ? "yes" : "no"}`,
@@ -56,7 +56,13 @@ export function renderSchedulerSnapshot(snapshot: SchedulerSnapshot): string {
 		`active runs       ${snapshot.activeRuns}`,
 		`started at        ${snapshot.startedAt ?? "-"}`,
 		`last error        ${snapshot.lastError ?? "none"}`,
-	].join("\n");
+	];
+	if (snapshot.queued !== undefined && snapshot.queued > 0) lines.push(`queued            ${snapshot.queued}`);
+	if (snapshot.failed !== undefined && snapshot.failed > 0) lines.push(`failed            ${snapshot.failed}`);
+	if (snapshot.lastQueuedAt) lines.push(`last queued at    ${snapshot.lastQueuedAt}`);
+	if (snapshot.lastFailedAt) lines.push(`last failed at    ${snapshot.lastFailedAt}`);
+	if (snapshot.lastTaskId) lines.push(`last task id      ${snapshot.lastTaskId}`);
+	return lines.join("\n");
 }
 
 export function widgetLines(text: string, limit = 12): string[] {
