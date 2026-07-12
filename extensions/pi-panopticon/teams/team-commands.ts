@@ -11,6 +11,7 @@ import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLin
 import { formTeam } from "./team-form.js";
 import { projectBuiltinTeams, pruneBuiltinTeams } from "./team-projection.js";
 import { isTeamProfile, type TeamProfile } from "./team-profiles.js";
+import { directTeamResultBody } from "./team-result.js";
 import { requestTeamRunStop, runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 interface ParsedTeamRunArgs {
@@ -69,11 +70,12 @@ async function executeTeamRun(args: ExecuteTeamRunArgs): Promise<void> {
 			params: request,
 			ctx,
 			stateManager: registration.stateManager,
+			runtime: registration.runtime,
 		}).then((result) => {
-			const text = result.content.map((entry) => entry.text).join("\n");
-			pi.sendUserMessage(`[Team "${request.id}" async result · profile=${request.profile}]\n\n${text}`, { deliverAs: "followUp" });
+			const text = directTeamResultBody(request.id, result.content.map((entry) => entry.text).join("\n"));
+			pi.sendMessage({ customType: "pi-teams:result", content: `[Team "${request.id}" async result · profile=${request.profile}]\n\n${text}`, display: true, details: result.details }, { deliverAs: "followUp" });
 		}).catch((error: unknown) => {
-			pi.sendUserMessage(`[Team "${request.id}" async failed · profile=${request.profile}]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
+			pi.sendMessage({ customType: "pi-teams:result", content: `[Team "${request.id}" async failed · profile=${request.profile}]\n\n${error instanceof Error ? error.message : String(error)}`, display: true }, { deliverAs: "followUp" });
 		});
 		return;
 	}
@@ -81,11 +83,10 @@ async function executeTeamRun(args: ExecuteTeamRunArgs): Promise<void> {
 		params: request,
 		ctx,
 		stateManager: registration.stateManager,
+		runtime: registration.runtime,
 	});
-	const text = result.content.map((entry) => entry.text).join("\n");
-	pi.sendUserMessage(`[Team "${request.id}" result · profile=${request.profile}]\n\n${text}`, {
-		deliverAs: "followUp",
-	});
+	const text = directTeamResultBody(request.id, result.content.map((entry) => entry.text).join("\n"));
+	pi.sendMessage({ customType: "pi-teams:result", content: `[Team "${request.id}" result · profile=${request.profile}]\n\n${text}`, display: true, details: result.details }, { deliverAs: "followUp" });
 }
 
 export function teamDeleteConfirmationView(id: string): DestructiveConfirmationView {

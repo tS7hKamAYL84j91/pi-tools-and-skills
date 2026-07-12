@@ -3,6 +3,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildTeamContext } from "./team-context.js";
 import { resolveTeamProfile, type TeamProfile } from "./team-profiles.js";
+import { directTeamResultBody } from "./team-result.js";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 import { isTopology, type TeamRoute } from "./team-routes.js";
 
@@ -155,18 +156,6 @@ export function classifyTeamOutcome(details: TeamRunOutcomeDetails): { status: "
 	return { status: "ok", failedCount };
 }
 
-function directTeamResultBody(teamId: string, body: string): string {
-	if (teamId !== "fusion-analysis") return body;
-	try {
-		const parsed: unknown = JSON.parse(body);
-		if (typeof parsed !== "object" || parsed === null) return body;
-		const answer = (parsed as Record<string, unknown>).answer;
-		return typeof answer === "string" && answer.trim().length > 0 ? answer.trim() : body;
-	} catch {
-		return body;
-	}
-}
-
 /** Format the user-facing follow-up for a forced (`/team once`) run. Pure. */
 export function formatTeamModeResult(teamId: string, details: TeamRunOutcomeDetails, body: string): string {
 	const { status, failedCount } = classifyTeamOutcome(details);
@@ -245,11 +234,17 @@ export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunR
 		const teamId = state.topology;
 		const params = forcedRunParams(state, promptText, ctx);
 		void runTeam({ params, ctx, stateManager: registration.stateManager, runtime: registration.runtime })
-			.then((result) => pi.sendUserMessage(
-				formatTeamModeResult(teamId, result.details as TeamRunOutcomeDetails, result.content.map((entry) => entry.text).join("\n")),
-				{ deliverAs: "followUp" },
-			))
-			.catch((error: unknown) => pi.sendUserMessage(formatTeamModeError(teamId, error), { deliverAs: "followUp" }))
+			.then((result) => pi.sendMessage({
+				customType: "pi-teams:result",
+				content: formatTeamModeResult(teamId, result.details as TeamRunOutcomeDetails, result.content.map((entry) => entry.text).join("\n")),
+				display: true,
+				details: result.details,
+			}, { deliverAs: "followUp" }))
+			.catch((error: unknown) => pi.sendMessage({
+				customType: "pi-teams:result",
+				content: formatTeamModeError(teamId, error),
+				display: true,
+			}, { deliverAs: "followUp" }))
 			.finally(() => { inFlight = false; });
 		return pendingPrompt ? { action: "handled" as const, text: promptText, images: event.images } : { action: "handled" as const };
 	});

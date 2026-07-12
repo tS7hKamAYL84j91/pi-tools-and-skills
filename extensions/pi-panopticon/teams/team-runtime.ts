@@ -148,17 +148,16 @@ function refreshTeamWidget(ctx: ExtensionContext, stateManager: TeamStateManager
 		: `${run.status} in ${formatElapsed(run.startedAt, run.completedAt)}`;
 	const phase = run.phases.at(-1) ?? "starting";
 	const artifacts = run.details.filter((detail) => detail.kind === "artifact" && detail.artifactUri).map((detail) => detail.artifactUri);
-	const counts = classifyNodes(run.nodes);
-	const nodeLines = run.nodes.map((node) => {
-		const stall = computeNodeStall(node);
-		return `node: ${node.role} (${node.model}) ${node.status ?? (node.ok ? "completed" : "failed")} ${nodeElapsed(node)}${stall.stalled ? " STALLED" : ""}`;
-	});
+	const nodes = run.nodes.map((node) => {
+		const stalled = computeNodeStall(node).stalled;
+		const status = stalled ? "stalled" : node.status ?? (node.ok ? "completed" : "failed");
+		return `${node.role} (${node.model})=${status} ${nodeElapsed(node)}`;
+	}).join(" | ");
 
 	ctx.ui.setWidget(`team:${runId}`, [
-		`team: ${run.team} (${run.protocol}) | ${run.status} | phase: ${phase} | time: ${time}`,
-		`nodes: ${counts.total} running=${counts.running} stalled=${counts.stalled} done=${counts.done}`,
-		...nodeLines,
-		`artifacts: ${artifacts.length > 0 ? artifacts.join(", ") : "none"}`,
+		`${run.team} (${run.protocol}) · ${run.status} · ${phase} · ${time}`,
+		`nodes: ${nodes || "starting"}`,
+		...(artifacts.length > 0 ? [`artifacts: ${artifacts.join(", ")}`] : []),
 		`cancel: /teams stop ${runId}`,
 	]);
 }

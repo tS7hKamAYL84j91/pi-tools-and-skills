@@ -18,15 +18,15 @@ function setupCommand(): {
 	command: CommandDefinition;
 	ctx: ExtensionCommandContext;
 	notify: ReturnType<typeof vi.fn>;
-	sendUserMessage: ReturnType<typeof vi.fn>;
+	sendMessage: ReturnType<typeof vi.fn>;
 } {
 	let command: CommandDefinition | undefined;
-	const sendUserMessage = vi.fn();
+	const sendMessage = vi.fn();
 	const pi = {
 		registerCommand(name: string, definition: CommandDefinition) {
 			if (name === "teams") command = definition;
 		},
-		sendUserMessage,
+		sendMessage,
 	} as unknown as ExtensionAPI;
 	registerTeamCommands(pi, { stateManager: {} as never });
 	if (!command) throw new Error("teams command was not registered");
@@ -39,7 +39,7 @@ function setupCommand(): {
 		},
 		waitForIdle: vi.fn(async () => undefined),
 	} as unknown as ExtensionCommandContext;
-	return { command, ctx, notify, sendUserMessage };
+	return { command, ctx, notify, sendMessage };
 }
 
 describe("team command profile parsing", () => {
@@ -74,14 +74,14 @@ describe("team command profile parsing", () => {
 	});
 
 	it("passes the selected profile to synchronous team runs and status", async () => {
-		const { command, ctx, notify, sendUserMessage } = setupCommand();
+		const { command, ctx, notify, sendMessage } = setupCommand();
 		await command.handler("run navigator review this --profile fast", ctx);
 
 		expect(runTeamMock).toHaveBeenCalledWith(expect.objectContaining({
 			params: { id: "navigator", prompt: "review this", profile: "fast" },
 		}));
 		expect(notify).toHaveBeenCalledWith(expect.stringContaining("profile=fast"), "info");
-		expect(sendUserMessage).toHaveBeenCalledWith(expect.stringContaining("profile=fast"), { deliverAs: "followUp" });
+		expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("profile=fast"), display: true }), { deliverAs: "followUp" });
 	});
 
 	it("accepts profiles for asynchronous team runs", async () => {
