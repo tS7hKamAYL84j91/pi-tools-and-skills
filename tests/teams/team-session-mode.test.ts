@@ -113,9 +113,9 @@ describe("estimatedCallDescription", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "llm-council", maxModels: 3, approved: true })).toBe("members + critiques + synthesis (debate; multiple calls)");
 	});
 
-	it("reports panel + judge (analysis only) for fusion-analysis, capped at the override", () => {
-		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 2, approved: true })).toBe("2 panel + judge (structured analysis; outer model synthesizes answer)");
-		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 5, approved: true })).toBe("3 panel + judge (structured analysis; outer model synthesizes answer)");
+	it("reports panel + judge direct-answer delivery for fusion-analysis, capped at the override", () => {
+		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 2, approved: true })).toBe("2 panel + judge (direct answer with structured diagnostics)");
+		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 5, approved: true })).toBe("3 panel + judge (direct answer with structured diagnostics)");
 	});
 });
 
@@ -203,10 +203,30 @@ describe("buildTeamContext", () => {
 });
 
 describe("formatTeamModeResult / formatTeamModeError", () => {
-	it("formats an ok result with calls count and no degraded hint", () => {
-		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, "analysis text");
+	it("surfaces a valid Fusion judge answer instead of raw JSON", () => {
+		const body = JSON.stringify({ answer: "Ship the focused fix.", consensus: ["fix"], confidence: "high" });
+		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, body);
 		expect(out).toContain('[Team "fusion-analysis" result — status: ok · calls: 2]');
-		expect(out).toContain("analysis text");
+		expect(out).toContain("Ship the focused fix.");
+		expect(out).not.toContain('"consensus"');
+		expect(out).not.toContain("Degraded run");
+	});
+
+	it("preserves malformed Fusion JSON as a diagnostic fallback", () => {
+		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, "not json");
+		expect(out).toContain("not json");
+	});
+
+	it("preserves degraded Fusion fallback diagnostics when no answer is available", () => {
+		const body = JSON.stringify({ answer: "", blindSpots: ["judge returned invalid JSON"] });
+		const out = formatTeamModeResult("fusion-analysis", { failureReason: "invalid_judge_json", degraded: true, nodes: [{ ok: false }] }, body);
+		expect(out).toContain('"blindSpots"');
+		expect(out).toContain("Degraded run");
+	});
+
+	it("keeps Navigator results direct and unchanged", () => {
+		const out = formatTeamModeResult("navigator", { nodes: [{ ok: true }] }, "Fix the timeout guard.");
+		expect(out).toContain("Fix the timeout guard.");
 		expect(out).not.toContain("Degraded run");
 	});
 

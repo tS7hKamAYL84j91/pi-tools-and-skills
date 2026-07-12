@@ -41,7 +41,9 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 
 ### Profiles and precedence
 
-`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Fusion's legacy explicit `limits.maxLoops` remains a supported panel-size override and wins over the profile panel default. Fast Fusion prefers provider-diverse models from the configured order, bounds panel/judge output and judge input, and returns complete JSON with `answer`, `consensus`, `contradictions`, `partialCoverage`, `uniqueInsights`, `blindSpots`, `confidence`, and `missingEvidence`. Invalid judge JSON still produces a degraded structured fallback.
+`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Fusion's legacy explicit `limits.maxLoops` remains a supported panel-size override and wins over the profile panel default. Fast Fusion prefers provider-diverse models from the configured order, bounds panel/judge output and judge input, and returns complete JSON with `answer`, `consensus`, `contradictions`, `partialCoverage`, `uniqueInsights`, `blindSpots`, `confidence`, and `missingEvidence`. Deterministic `/team` Fusion mode displays the non-empty `answer` directly while retaining run diagnostics; invalid or empty-answer judge output keeps the degraded structured fallback. Navigator output remains direct.
+
+Canonical profile output caps are translated at the provider payload boundary: Google GenerateContent and Cloud Code Assist use `maxOutputTokens`, OpenAI Responses uses `max_output_tokens`, and message-based OpenAI-compatible payloads use `max_tokens`. Unrecognized payload shapes are left unchanged rather than receiving `maxTokens` blindly.
 
 Fast Navigator uses a compact prompt, no retries, a 30-second maximum node timeout, and bounded output. Explicit Fast timeout values can lower but not raise that safety cap.
 
@@ -50,7 +52,7 @@ Fast Navigator uses a compact prompt, no retries, a 30-second maximum node timeo
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
 | `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
-| `fusion-analysis` | Bounded panel + judge (analysis only) | OpenRouter-style deliberation: the team returns structured JSON analysis and the caller synthesizes the final answer. |
+| `fusion-analysis` | Bounded panel + judge | OpenRouter-style deliberation: the judge returns a direct `answer` plus structured diagnostics. |
 
 ### `/team on` / `/team once` context enrichment
 

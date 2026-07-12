@@ -207,6 +207,14 @@ describe("fusion-analysis handler", () => {
 		expect(result.details).toMatchObject({ degraded: true, failureReason: "invalid_judge_json" });
 	});
 
+	it("degrades a judge response with an empty answer", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: judgeJson(" ") });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ degraded: true, failureReason: "invalid_judge_json" });
+	});
+
 	it("parses judge JSON wrapped in markdown code fences (T-744 fix)", async () => {
 		responses.clear();
 		responses.set("judge", { ok: true, output: `\`\`\`json\n${judgeJson("panel agrees")}\n\`\`\`` });
@@ -214,7 +222,9 @@ describe("fusion-analysis handler", () => {
 
 		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });
-		expect(result.content.map((entry) => entry.text).join("")).toContain("consensus");
+		const output = result.content.map((entry) => entry.text).join("");
+		expect(output).toContain("consensus");
+		expect(output).not.toContain("```");
 	});
 
 	it("parses judge JSON wrapped in fences with language tag (T-744 fix)", async () => {

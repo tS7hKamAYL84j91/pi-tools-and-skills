@@ -58,7 +58,7 @@ function mergeCloudCodeAssistParameters(
 			...request,
 			generationConfig: {
 				...generationConfig,
-				...parameters,
+				...mapMaxTokens(parameters, "maxOutputTokens"),
 			},
 		},
 	};
@@ -76,7 +76,22 @@ function mergeOpenAiCompatibleParameters(
 	payload: Record<string, unknown>,
 	parameters: Record<string, GenerationParameterValue>,
 ): Record<string, unknown> {
-	return { ...payload, ...filterRootParameters(payload, parameters) };
+	const maxTokensKey = Object.hasOwn(payload, "input") ? "max_output_tokens" : "max_tokens";
+	return { ...payload, ...filterRootParameters(payload, mapMaxTokens(parameters, maxTokensKey)) };
+}
+
+function mapMaxTokens(
+	parameters: Record<string, GenerationParameterValue>,
+	providerKey: "maxOutputTokens" | "max_output_tokens" | "max_tokens",
+): Record<string, GenerationParameterValue> {
+	if (!Object.hasOwn(parameters, "maxTokens")) return parameters;
+	const mapped = { ...parameters };
+	const maxTokens = mapped.maxTokens;
+	delete mapped.maxTokens;
+	if (!Object.hasOwn(mapped, providerKey) && maxTokens !== undefined) {
+		mapped[providerKey] = maxTokens;
+	}
+	return mapped;
 }
 
 function filterRootParameters(
@@ -103,7 +118,7 @@ function mergeGoogleGenerateContentParameters(
 		...payload,
 		config: {
 			...config,
-			...parameters,
+			...mapMaxTokens(parameters, "maxOutputTokens"),
 		},
 	};
 }

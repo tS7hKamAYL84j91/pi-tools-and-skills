@@ -113,7 +113,7 @@ function fusionPanelSize(state: SessionTeamMode): number {
 export function estimatedCallDescription(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "1 model call (one focused review)";
 	if (state.topology === "llm-council") return "members + critiques + synthesis (debate; multiple calls)";
-	return `${fusionPanelSize(state)} panel + judge (structured analysis; outer model synthesizes answer)`;
+	return `${fusionPanelSize(state)} panel + judge (direct answer with structured diagnostics)`;
 }
 
 function statusLine(state: SessionTeamMode): string {
@@ -155,13 +155,25 @@ export function classifyTeamOutcome(details: TeamRunOutcomeDetails): { status: "
 	return { status: "ok", failedCount };
 }
 
+function directTeamResultBody(teamId: string, body: string): string {
+	if (teamId !== "fusion-analysis") return body;
+	try {
+		const parsed: unknown = JSON.parse(body);
+		if (typeof parsed !== "object" || parsed === null) return body;
+		const answer = (parsed as Record<string, unknown>).answer;
+		return typeof answer === "string" && answer.trim().length > 0 ? answer.trim() : body;
+	} catch {
+		return body;
+	}
+}
+
 /** Format the user-facing follow-up for a forced (`/team once`) run. Pure. */
 export function formatTeamModeResult(teamId: string, details: TeamRunOutcomeDetails, body: string): string {
 	const { status, failedCount } = classifyTeamOutcome(details);
 	const calls = details.nodes?.length ?? 0;
 	const header = `[Team "${teamId}" result — status: ${status} · calls: ${calls}${failedCount > 0 ? ` · failed: ${failedCount}` : ""}]`;
 	const tail = status === "ok" ? "" : `\n\n_Degraded run. Ask for "trace" for per-model details._`;
-	return `${header}\n\n${body}${tail}`;
+	return `${header}\n\n${directTeamResultBody(teamId, body)}${tail}`;
 }
 
 /** Format the user-facing follow-up when a forced run errors (fail-closed). Pure. */

@@ -216,7 +216,7 @@ function fusionAnalysisModelSlots(team: TeamSpec, models: TeamModels): TeamModel
 }
 
 export function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[], maxPromptChars: number, maxPanelChars: number): string {
-	const instruction = "Return only JSON with every key: answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence.";
+	const instruction = "Return only JSON with every key: answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence. answer must be a concise, self-contained final answer to the original prompt.";
 	const boundedOriginal = originalPrompt.slice(0, Math.max(0, Math.floor(maxPromptChars / 3)));
 	const panelText = participantsFromRuns(panelRuns)
 		.map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${run.output.slice(0, maxPanelChars)}`)
@@ -275,7 +275,7 @@ function isValidJudgeJson(text: string): boolean {
 		if (typeof parsed !== "object" || parsed === null) return false;
 		const record = parsed as Record<string, unknown>;
 		const arrayKeys = ["consensus", "contradictions", "partialCoverage", "uniqueInsights", "blindSpots", "missingEvidence"];
-		return typeof record.answer === "string" && typeof record.confidence === "string" && arrayKeys.every((key) => Array.isArray(record[key]));
+		return typeof record.answer === "string" && record.answer.trim().length > 0 && typeof record.confidence === "string" && arrayKeys.every((key) => Array.isArray(record[key]));
 	} catch {
 		return false;
 	}
@@ -304,7 +304,7 @@ async function runFusionAnalysis(args: TeamHandlerRunArgs): Promise<TeamHandlerR
 		return ok("Fusion analysis failed: no panel model produced usable output.", { team: args.team.id, ok: false, nodes: nodeDetails(allNodes), failureReason: "all_panels_failed" });
 	}
 	if (stopRequested(args)) return stoppedResult(args, allNodes);
-	const output = judge.ok ? judge.output : INVALID_JUDGE_FALLBACK;
+	const output = judge.ok ? stripMarkdownFences(judge.output) : INVALID_JUDGE_FALLBACK;
 	return ok(output, { team: args.team.id, ok: judge.ok && allNodes.every((node) => node.ok), nodes: nodeDetails(allNodes), analysis: true, degraded: !judge.ok || panelRuns.some((node) => !node.ok), ...(judge.ok ? {} : { failureReason: "invalid_judge_json" }) });
 }
 

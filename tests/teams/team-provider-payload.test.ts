@@ -38,12 +38,12 @@ describe("mergeGenerationParameters", () => {
 			},
 		};
 
-		expect(mergeGenerationParameters(payload, { temperature: 0.1 })).toEqual({
+		expect(mergeGenerationParameters(payload, { maxTokens: 600, temperature: 0.1 })).toEqual({
 			project: "project-id",
 			model: "gemini-2.5-flash",
 			request: {
 				contents: [],
-				generationConfig: { maxOutputTokens: 4096, temperature: 0.1 },
+				generationConfig: { maxOutputTokens: 600, temperature: 0.1 },
 			},
 		});
 	});
@@ -55,19 +55,20 @@ describe("mergeGenerationParameters", () => {
 			config: { systemInstruction: "system" },
 		};
 
-		expect(mergeGenerationParameters(payload, { temperature: 0.1 })).toEqual({
+		expect(mergeGenerationParameters(payload, { maxTokens: 600, temperature: 0.1 })).toEqual({
 			model: "gemini-2.5-flash",
 			contents: [],
-			config: { systemInstruction: "system", temperature: 0.1 },
+			config: { systemInstruction: "system", maxOutputTokens: 600, temperature: 0.1 },
 		});
 	});
 
 	it("keeps root-level parameters for OpenAI-compatible payloads", () => {
 		const payload = { model: "gpt-4.1", messages: [] };
 
-		expect(mergeGenerationParameters(payload, { temperature: 0.1 })).toEqual({
+		expect(mergeGenerationParameters(payload, { maxTokens: 600, temperature: 0.1 })).toEqual({
 			model: "gpt-4.1",
 			messages: [],
+			max_tokens: 600,
 			temperature: 0.1,
 		});
 	});
@@ -83,14 +84,14 @@ describe("mergeGenerationParameters", () => {
 		).toEqual({
 			model: "gpt-5.4-mini",
 			input: [],
-			maxTokens: 4096,
+			max_output_tokens: 4096,
 		});
 	});
 
 	it("leaves unknown payload shapes unchanged", () => {
 		const payload = { model: "custom", prompt: "hello" };
 
-		expect(mergeGenerationParameters(payload, { temperature: 0.1 })).toBe(payload);
+		expect(mergeGenerationParameters(payload, { maxTokens: 600, temperature: 0.1 })).toBe(payload);
 	});
 
 	it("leaves payload unchanged when parameters are empty", () => {
