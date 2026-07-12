@@ -7,7 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { RuntimeControlPlane, type RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { ok } from "../../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
-import type { TeamRunNodeRecord, TeamRunRecord } from "./types.js";
+import type { TeamRunNodeRecord, TeamRunRecord, TeamStopInput } from "./types.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
 import { formatElapsed } from "./team-handler-shared.js";
@@ -104,7 +104,7 @@ const TeamDeleteSchema = Type.Object({
 });
 
 const TeamStopSchema = Type.Object({
-	runId: Type.String({ description: "Team run id to mark stopped/failed." }),
+	runId: Type.Optional(Type.String({ description: "Team run id to stop. Omit to stop the newest active run." })),
 	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
 });
 
@@ -138,31 +138,28 @@ const TeamRunSchema = Type.Object({
 	})),
 });
 
-function refreshTeamWidget(ctx: ExtensionContext, stateManager: TeamStateManager, runId: string) {
+function refreshTeamWidget(ctx: ExtensionContext, stateManager: TeamStateManager, runId: string): void {
 	const run = stateManager.get(runId);
 	if (!run) return;
 
-	const time = run.status === "running" || run.status === "pending" || run.status === "stopping"
+	const isActive = run.status === "running" || run.status === "pending" || run.status === "stopping";
+	const time = isActive
 		? formatElapsed(run.startedAt)
-		: `completed in ${formatElapsed(run.startedAt, run.completedAt)}`;
-
-	const phase = run.phases.length > 0 ? run.phases[run.phases.length - 1] : "starting";
-	const artifacts = run.details.filter((d) => d.kind === "artifact" && d.artifactUri).map((d) => d.artifactUri);
-	const artifactsText = artifacts.length > 0 ? `artifacts: ${artifacts.join(", ")}` : "artifacts: none";
+		: `${run.status} in ${formatElapsed(run.startedAt, run.completedAt)}`;
+	const phase = run.phases.at(-1) ?? "starting";
+	const artifacts = run.details.filter((detail) => detail.kind === "artifact" && detail.artifactUri).map((detail) => detail.artifactUri);
 	const counts = classifyNodes(run.nodes);
-	const current = currentNode(run);
-	const currentLine = current
-		? `current: ${current.role} (${current.model}) ${nodeElapsed(current)}${computeNodeStall(current).stalled ? " \u26a0 STALLED" : ""}`
-		: "current: -";
+	const nodeLines = run.nodes.map((node) => {
+		const stall = computeNodeStall(node);
+		return `node: ${node.role} (${node.model}) ${node.status ?? (node.ok ? "completed" : "failed")} ${nodeElapsed(node)}${stall.stalled ? " STALLED" : ""}`;
+	});
 
-	ctx.ui.setWidget(TEAM_STATUS_KEY, [
-		`team: ${run.team} (${run.protocol})`,
-		`phase: ${run.status === "running" ? phase : run.status}`,
-		`time: ${time}`,
-		`nodes: ${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done})`,
-		currentLine,
-		artifactsText,
-		`cancel: /team stop ${runId}`
+	ctx.ui.setWidget(`team:${runId}`, [
+		`team: ${run.team} (${run.protocol}) | ${run.status} | phase: ${phase} | time: ${time}`,
+		`nodes: ${counts.total} running=${counts.running} stalled=${counts.stalled} done=${counts.done}`,
+		...nodeLines,
+		`artifacts: ${artifacts.length > 0 ? artifacts.join(", ") : "none"}`,
+		`cancel: /teams stop ${runId}`,
 	]);
 }
 
@@ -194,19 +191,17 @@ export async function runTeam(args: {
 	}
 	const startedAt = Date.now();
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
-	const controller = new AbortController();
-	args.stateManager.registerAbortController(runId, controller);
-	const runtimeRef = registerTeamRunRuntimeEntity(args.runtime, runId, team, (reason) => {
-		args.stateManager.requestStop(runId, reason);
-	});
-	args.runtime?.updateStatus(runtimeRef, "running");
-	
-	const progressInterval = setInterval(() => {
-		refreshTeamWidget(args.ctx, args.stateManager, runId);
-	}, 1000);
-	refreshTeamWidget(args.ctx, args.stateManager, runId);
+	const unsubscribe = args.stateManager.subscribe(runId, () => refreshTeamWidget(args.ctx, args.stateManager, runId));
+	let runtimeRef: RuntimeEntityRef | undefined;
 
 	try {
+		refreshTeamWidget(args.ctx, args.stateManager, runId);
+		const controller = new AbortController();
+		args.stateManager.registerAbortController(runId, controller);
+		runtimeRef = registerTeamRunRuntimeEntity(args.runtime, runId, team, (reason) => {
+			args.stateManager.requestStop(runId, reason);
+		});
+		args.runtime?.updateStatus(runtimeRef, "running");
 		const result = await handler.run({
 			team,
 			params: args.params,
@@ -219,19 +214,19 @@ export async function runTeam(args: {
 		if (args.stateManager.isStopRequested(runId) || result.details.stopped === true) {
 			const reason = typeof result.details.reason === "string" ? result.details.reason : args.stateManager.stopReason(runId) ?? "stop requested";
 			args.stateManager.recordRunStopped(runId, Date.now() - startedAt, reason, text);
-			args.runtime?.updateStatus(runtimeRef, "stopped");
+			if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "stopped");
 		} else {
 			args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
-			args.runtime?.updateStatus(runtimeRef, "completed");
+			if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "completed");
 		}
 		return result;
 	} catch (error) {
 		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
-		args.runtime?.updateStatus(runtimeRef, "failed");
+		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "failed");
 		throw error;
 	} finally {
-		clearInterval(progressInterval);
-		args.ctx.ui.setWidget(TEAM_STATUS_KEY, undefined);
+		unsubscribe();
+		args.ctx.ui.setWidget(`team:${runId}`, undefined);
 	}
 }
 
@@ -317,20 +312,22 @@ function formatTeamRunRuntimeLine(run: TeamRunSnapshot): string {
 	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
 }
 
-function requestTeamRunStop(stateManager: TeamStateManager, runtime: RuntimeControlPlane, runId: string, reason: string) {
-	const runtimeStopped = runtime.stopEntity({ kind: "team_run", id: runId }, reason);
-	const accepted = runtimeStopped || stateManager.requestStop(runId, reason);
-	if (!accepted) throw new Error(`No active team run ${runId}`);
-	const run = stateManager.get(runId);
+export function requestTeamRunStop(stateManager: TeamStateManager, runtime: RuntimeControlPlane, runId: string | undefined, reason: string) {
+	const resolvedRunId = runId ?? stateManager.newestActiveRun()?.id;
+	if (!resolvedRunId) throw new Error("No active team run");
+	const runtimeStopped = runtime.stopEntity({ kind: "team_run", id: resolvedRunId }, reason);
+	const accepted = runtimeStopped || stateManager.requestStop(resolvedRunId, reason);
+	if (!accepted) throw new Error(`No active team run ${resolvedRunId}`);
+	const run = stateManager.get(resolvedRunId);
 	const runningNodes = run?.nodes.filter((node) => node.status === "running") ?? [];
 	const nodeLines = runningNodes.map((node) => {
 		const stall = computeNodeStall(node);
 		return `${node.role} (${node.model}) ${nodeElapsed(node)}${stall.stalled ? ", stalled" : ""}`;
 	});
 	const text = nodeLines.length > 0
-		? `Team run ${runId} stopping: ${reason}\nRunning nodes: ${nodeLines.join(", ")}`
-		: `Team run ${runId} stopping: ${reason}`;
-	return ok(text, { kind: "team_run" as const, id: runId, runId, reason, status: "stopping" });
+		? `Team run ${resolvedRunId} stopping: ${reason}\nRunning nodes: ${nodeLines.join(", ")}`
+		: `Team run ${resolvedRunId} stopping: ${reason}`;
+	return ok(text, { kind: "team_run" as const, id: resolvedRunId, runId: resolvedRunId, reason, status: "stopping" });
 }
 
 function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManager, runtime: RuntimeControlPlane): void {
@@ -404,10 +401,10 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 	pi.registerTool({
 		name: "team_stop",
 		label: "Team Stop",
-		description: "Request a team run stop. Active pi subprocess child calls receive SIGTERM via AbortSignal; other protocols stop at safe phase boundaries.",
+		description: "Request a team run stop, defaulting to the newest active run when runId is omitted. Active pi subprocess child calls receive SIGTERM via AbortSignal; other protocols stop at safe phase boundaries.",
 		promptSnippet: "Request a team run stop and mark it stopping",
 		parameters: TeamStopSchema,
-		async execute(_id, params: { runId: string; reason?: string }) {
+		async execute(_id, params: TeamStopInput) {
 			return requestTeamRunStop(stateManager, runtime, params.runId, params.reason ?? "stop requested");
 		},
 	});

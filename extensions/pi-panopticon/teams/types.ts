@@ -2,6 +2,11 @@
 
 export type RunStatus = "pending" | "running" | "stopping" | "stopped" | "completed" | "failed";
 
+export interface TeamStopInput {
+	runId?: string;
+	reason?: string;
+}
+
 /** @public */
 export type GenerationParameterValue = string | number | boolean;
 

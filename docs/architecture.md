@@ -342,6 +342,24 @@ flowchart TD
 
 ---
 
+## Panopticon Team Run Progress Boundary
+
+```mermaid
+flowchart LR
+  Handler[Direct protocol handler] --> Events[Persisted team run events]
+  Events --> State[TeamStateManager applies event]
+  State --> Subscribers[Transient per-run subscribers]
+  Subscribers --> Widget[Compact team:runId widget\nall concurrent nodes]
+  Stop[team_stop or /teams stop] --> Select[Newest active selector\nstartedAt then id]
+  Select --> State
+  RuntimeStop[runtime_stop with required id] --> State
+  State -. no subscription events .-> Events
+```
+
+- Run events remain the only persisted team progress state; subscriptions are isolated, in-memory, and removed when each run settles.
+- Widgets use per-run keys so concurrent teams do not overwrite each other, and refresh only after state events rather than on a polling interval.
+- No-ID cancellation considers only `pending` and `running` records and deterministically chooses greatest `startedAt`, then lexicographically greatest id. `stopping` and terminal runs are excluded; `runtime_stop` remains explicit-id only.
+
 ## Panopticon Team Browser Render Boundary
 
 ```mermaid

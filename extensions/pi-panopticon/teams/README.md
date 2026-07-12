@@ -15,14 +15,15 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 | `team_delete` | Delete a user/project team. |
 | `team_run` | Run a team by `id` with optional `profile: fast | balanced | thorough`; choose the smallest sufficient route. |
 | `runtime_status` | Inspect team run entities from the unified runtime surface, including aggregate status/artifact counts. |
-| `runtime_stop` | Stop a team run entity through unified runtime semantics. |
+| `runtime_stop` | Stop an explicit team run entity by required `id` through unified runtime semantics. |
 | `team_runs` | Inspect active/recent team run state, including aggregate status/artifact counts. |
-| `team_stop` | Compatibility team-run stop surface; same stop semantics as `runtime_stop`. |
+| `team_stop` | Compatibility team-run stop surface; `runId` is optional and defaults deterministically to the newest pending/running run. |
 
 ### Commands
 
 - `/teams` — browse and run configured teams from the TUI.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
+- `/teams stop [runId]` — request cancellation of an explicit run, or the newest pending/running run when omitted.
 - `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `fusion-analysis` and `balanced`.
 
 ## Provisional Surfaces
@@ -60,7 +61,7 @@ Deterministic `balanced` team runs prepend at most the last five user/assistant 
 
 ## Configuration
 
-Team specs live under `extensions/pi-panopticon/teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. See ADR 026. Runtime state is persisted through pi session custom entries and reflected in a compact `teams:` status field. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status`.
+Team specs live under `extensions/pi-panopticon/teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. See ADR 026. Runtime state is persisted through pi session custom entries. Each active run owns a compact `team:<runId>` progress widget, refreshed by transient in-memory state subscriptions rather than polling; subscriptions themselves are never persisted. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`; peer agent health remains visible through Panopticon's `agent_status`.
 
 ## What this does NOT do
 

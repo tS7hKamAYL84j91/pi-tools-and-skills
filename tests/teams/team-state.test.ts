@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
 
@@ -49,6 +49,57 @@ describe("TeamStateManager", () => {
 			"node_completed",
 			"run_completed",
 		]);
+	});
+
+	it("notifies transient per-run subscribers with listener isolation and idempotent cleanup", () => {
+		const entries: CustomEntry[] = [];
+		const store = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const runId = store.startRun({ teamId: "team", protocol: "consult", prompt: "x" });
+		const persistedBeforeSubscribe = entries.length;
+		const isolatedListener = vi.fn(() => {
+			throw new Error("observer failed");
+		});
+		const listener = vi.fn();
+		const unsubscribeIsolated = store.subscribe(runId, isolatedListener);
+		const unsubscribe = store.subscribe(runId, listener);
+
+		expect(entries).toHaveLength(persistedBeforeSubscribe);
+		store.recordPhaseStarted(runId, "consult");
+		expect(isolatedListener).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledOnce();
+		expect(store.get(runId)?.status).toBe("running");
+
+		unsubscribeIsolated();
+		unsubscribe();
+		unsubscribe();
+		store.recordDetail(runId, { kind: "trace", message: "after cleanup" });
+		expect(isolatedListener).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledOnce();
+	});
+
+	it("selects the newest pending or running run by startedAt then id", () => {
+		const entries: CustomEntry[] = [];
+		const writer = new TeamStateManager({ appendEntry: appendTo(entries) });
+		const tiedA = writer.startRun({ teamId: "a", protocol: "consult", prompt: "x" });
+		const tiedB = writer.startRun({ teamId: "b", protocol: "consult", prompt: "x" });
+		const stopping = writer.startRun({ teamId: "stopping", protocol: "consult", prompt: "x" });
+		const terminal = writer.startRun({ teamId: "terminal", protocol: "consult", prompt: "x" });
+		writer.requestStop(stopping, "stop");
+		writer.recordRunCompleted(terminal, 1, "done");
+		for (const entry of entries) {
+			const event = entry.data as { kind?: string; runId?: string; timestamp?: number };
+			if (event.kind !== "run_started") continue;
+			if (event.runId === tiedA || event.runId === tiedB) event.timestamp = 100;
+			if (event.runId === stopping) event.timestamp = 200;
+			if (event.runId === terminal) event.timestamp = 300;
+		}
+		const reader = new TeamStateManager();
+		reader.rehydrateFromSession({ getBranch: () => entries });
+
+		expect(reader.newestActiveRun()?.id).toBe([tiedA, tiedB].sort().at(-1));
+		reader.requestStop(tiedA, "stop a");
+		reader.requestStop(tiedB, "stop b");
+		expect(reader.newestActiveRun()).toBeUndefined();
 	});
 
 	it("rehydrates only the current session branch", () => {

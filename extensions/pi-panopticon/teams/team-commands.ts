@@ -3,13 +3,14 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { RuntimeControlPlane } from "../../../lib/runtime-control-plane.js";
 import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../../lib/tui-confirmation.js";
 import { deleteTeamFiles } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
 import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLines } from "./team-overlay.js";
 import { formTeam } from "./team-form.js";
 import { projectBuiltinTeams, pruneBuiltinTeams } from "./team-projection.js";
-import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
+import { requestTeamRunStop, runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
 function parseRunArgs(rawArgs: string): { id: string; prompt: string } | undefined {
 	const [id, ...rest] = rawArgs.trim().split(/\s+/);
@@ -77,8 +78,9 @@ export function registerTeamCommands(
 	pi: ExtensionAPI,
 	registration: TeamRunRegistration,
 ): void {
+	const runtime = registration.runtime ?? new RuntimeControlPlane();
 	pi.registerCommand("teams", {
-		description: "Browse, describe, form, configure models, delete, seed, prune, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|prune|run [id] [prompt]|async [id] [prompt]]",
+		description: "Browse, describe, form, configure models, delete, seed, prune, stop, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|prune|stop [runId]|run [id] [prompt]|async [id] [prompt]]",
 		handler: async (rawArgs, ctx) => {
 			const trimmed = rawArgs.trim();
 			if (!trimmed || trimmed === "list") {
@@ -118,6 +120,11 @@ export function registerTeamCommands(
 				await pruneBuiltinTeamsCmd(ctx);
 				return;
 			}
+			if (command === "stop") {
+				const result = requestTeamRunStop(registration.stateManager, runtime, rest[0], "stop requested from /teams");
+				ctx.ui.notify(result.content[0]?.text ?? "Team run stopping", "info");
+				return;
+			}
 			const isAsyncRun = command === "async";
 			const parsed = parseRunArgs(command === "run" || isAsyncRun ? rest.join(" ") : trimmed);
 			const id = parsed?.id ?? await pickTeamId(ctx);
@@ -131,6 +138,7 @@ export function registerTeamCommands(
 					params: { id, prompt },
 					ctx,
 					stateManager: registration.stateManager,
+					runtime,
 				}).then((result) => {
 					const text = result.content.map((entry) => entry.text).join("\n");
 					pi.sendUserMessage(`[Team "${id}" async result]\n\n${text}`, { deliverAs: "followUp" });
@@ -144,6 +152,7 @@ export function registerTeamCommands(
 				params: { id, prompt },
 				ctx,
 				stateManager: registration.stateManager,
+				runtime,
 			});
 			const text = result.content.map((entry) => entry.text).join("\n");
 			pi.sendUserMessage(`[Team "${id}" result]\n\n${text}`, {

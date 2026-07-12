@@ -193,6 +193,26 @@ describe("team tools", () => {
 		]);
 	});
 
+	it("team_stop omits runId to stop the deterministic newest active run", async () => {
+		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
+		stateManager.startRun({ teamId: "older", protocol: "consult", prompt: "test" });
+		stateManager.startRun({ teamId: "newer", protocol: "consult", prompt: "test" });
+		stateManager.rehydrateFromSession({ getEntries: () => entries });
+		const expectedRunId = stateManager.newestActiveRun()?.id;
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager });
+		const stop = tools.get("team_stop");
+		if (!stop || !expectedRunId) throw new Error("team_stop setup failed");
+
+		const result = await stop.execute("test", {}, undefined, undefined, { cwd: process.cwd() });
+
+		expect(result.details).toEqual(expect.objectContaining({ runId: expectedRunId, status: "stopping" }));
+		expect(stateManager.get(expectedRunId)?.status).toBe("stopping");
+		const schema = stop.parameters as { required?: string[] };
+		expect(schema.required ?? []).not.toContain("runId");
+	});
+
 	it("runtime_status and runtime_stop expose team runs through unified runtime names", async () => {
 		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
 		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
@@ -204,6 +224,8 @@ describe("team tools", () => {
 		const status = tools.get("runtime_status");
 		const stop = tools.get("runtime_stop");
 		if (!status || !stop) throw new Error("runtime control tools missing");
+		const runtimeStopSchema = stop.parameters as { required?: string[] };
+		expect(runtimeStopSchema.required).toContain("id");
 
 		const statusResult = await status.execute("test", { kind: "team_run", id: runId } as never, undefined, undefined, { cwd: process.cwd() });
 		expect(statusResult.content[0]?.text).toContain(`team_run ${runId}`);

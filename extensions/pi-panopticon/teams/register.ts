@@ -39,7 +39,7 @@ export function registerTeams(pi: ExtensionAPI) {
 
 	registerTeamTools(pi);
 	registerTeamRunTool(pi, { stateManager, runtime });
-	registerTeamCommands(pi, { stateManager });
+	registerTeamCommands(pi, { stateManager, runtime });
 	registerTeamSessionMode(pi, { stateManager, runtime });
 }
 

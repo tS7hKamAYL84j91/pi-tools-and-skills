@@ -1,7 +1,7 @@
 /** Team run state manager — session-first protocol-neutral run events. */
-
 import { createHash, randomUUID } from "node:crypto";
 import { isPidAlive } from "../../../lib/agent-registry.js";
+import { notifyRunSubscribers, subscribeToRun } from "./run-subscriptions.js";
 import type { TeamParticipant, TeamRunDetailKind, TeamRunDetailRecord, TeamRunNodeRecord, TeamRunRecord } from "./types.js";
 
 /** @public */
@@ -12,7 +12,6 @@ export const TEAM_RUN_EVENT_SCHEMA_VERSION = 1;
 /** @public */
 export const TEAM_RUN_RECORD_VERSION = 1;
 const MAX_PERSISTED_OUTPUT_CHARS = 64_000;
-
 /** @public */
 export type TeamRunEventKind =
 	| "run_started"
@@ -377,6 +376,7 @@ export class TeamStateManager {
 		} as TeamRunEvent;
 		this.options.appendEntry?.(TEAM_RUN_CUSTOM_TYPE, full);
 		applyEvent(this.sessionRecords, full);
+		notifyRunSubscribers(this, event.runId);
 	}
 
 	startRun(args: StartRunArgs): string {
@@ -469,6 +469,23 @@ export class TeamStateManager {
 
 	get(id: string): TeamRunRecord | undefined {
 		return this.sessionRecords.get(id);
+	}
+
+	/** Subscribe to transient in-memory updates for one run. */
+	subscribe(runId: string, listener: () => void): () => void {
+		return subscribeToRun(this, runId, listener);
+	}
+
+	/** Return the newest pending/running run, with id as a stable tie-breaker. */
+	newestActiveRun(): TeamRunRecord | undefined {
+		let newest: TeamRunRecord | undefined;
+		for (const record of this.sessionRecords.values()) {
+			if (record.status !== "pending" && record.status !== "running") continue;
+			if (!newest || record.startedAt > newest.startedAt || (record.startedAt === newest.startedAt && record.id > newest.id)) {
+				newest = record;
+			}
+		}
+		return newest;
 	}
 
 	list(): TeamRunRecord[] {
