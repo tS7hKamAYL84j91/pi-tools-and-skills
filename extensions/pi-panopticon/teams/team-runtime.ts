@@ -12,6 +12,7 @@ import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormIn
 import { getTeamHandler, TEAM_STATUS_KEY, type TeamRunInput } from "./team-handlers.js";
 import { formatElapsed } from "./team-handler-shared.js";
 import { loadTeamRegistry } from "./team-registry.js";
+import type { TeamProfile } from "./team-profiles.js";
 import type { TeamSpec } from "./team-types.js";
 
 /** Stall detection thresholds (read-side only, not persisted). */
@@ -121,6 +122,7 @@ const RuntimeStopSchema = Type.Object({
 const TeamRunSchema = Type.Object({
 	id: Type.String({ description: "Team id to run, e.g. llm-council, navigator, deep-research." }),
 	prompt: Type.String({ description: "Task, question, or review request for the team." }),
+	profile: Type.Optional(Type.Unsafe<TeamProfile>({ type: "string", enum: ["fast", "balanced", "thorough"], description: "Latency/depth profile. Defaults to balanced; explicit models/limits take precedence." })),
 
 	async: Type.Optional(Type.Boolean({ description: "Return immediately and deliver the team result as a follow-up message." })),
 	models: Type.Optional(Type.Object({
@@ -132,7 +134,7 @@ const TeamRunSchema = Type.Object({
 	limits: Type.Optional(Type.Object({
 		timeoutMs: Type.Optional(Type.Number({ description: "Per-stage timeout in milliseconds." })),
 		maxRetries: Type.Optional(Type.Number({ description: "Bounded team node retries after child-call failure." })),
-		maxLoops: Type.Optional(Type.Number({ description: "Maximum research feedback loops for protocol=research. Default 2, capped at 5." })),
+		maxLoops: Type.Optional(Type.Number({ description: "Maximum research loops, or legacy Fusion panel-size override. Explicit values take precedence over profile defaults." })),
 	})),
 });
 

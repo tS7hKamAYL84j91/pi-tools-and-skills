@@ -9,15 +9,30 @@ interface MockNode {
 }
 
 const calls: string[] = [];
+const nodeArguments: Array<{ role: string; binding: TeamAgentBinding; model: string; prompt?: string }> = [];
 const responses = new Map<string, MockNode>();
+
+function judgeJson(answer = "ok"): string {
+	return JSON.stringify({
+		answer,
+		consensus: [answer],
+		contradictions: [],
+		partialCoverage: [],
+		uniqueInsights: [],
+		blindSpots: [],
+		confidence: "high",
+		missingEvidence: [],
+	});
+}
 
 vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => {
 	const actual = await vi.importActual<typeof import("../../extensions/pi-panopticon/teams/team-node-runner.js")>("../../extensions/pi-panopticon/teams/team-node-runner.js");
 	return {
 		...actual,
-		runTeamNode: async (args: { role: string; binding: TeamAgentBinding; model: string }) => {
+		runTeamNode: async (args: { role: string; binding: TeamAgentBinding; model: string; prompt?: string }) => {
 			calls.push(args.role);
-			const response = responses.get(args.role) ?? { ok: true, output: args.role === "judge" ? JSON.stringify({ consensus: ["ok"], blindSpots: [] }) : `output from ${args.role}` };
+			nodeArguments.push(args);
+			const response = responses.get(args.role) ?? { ok: true, output: args.role === "judge" ? judgeJson() : `output from ${args.role}` };
 			return {
 				role: args.role,
 				binding: args.binding,
@@ -33,7 +48,7 @@ vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => 
 });
 
 const { getTeamHandler } = await import("../../extensions/pi-panopticon/teams/team-handlers.js");
-const { planFusion } = await import("../../extensions/pi-panopticon/teams/team-handler-fusion-analysis.js");
+const { planFusion, renderJudgePrompt } = await import("../../extensions/pi-panopticon/teams/team-handler-fusion-analysis.js");
 
 function fusionAnalysisTeam(): TeamSpec {
 	return {
@@ -71,15 +86,16 @@ function fakeCtx() {
 	};
 }
 
-async function runFusionAnalysis(team = fusionAnalysisTeam()) {
+async function runFusionAnalysis(team = fusionAnalysisTeam(), overrides: { profile?: "fast" | "balanced" | "thorough"; limits?: { maxLoops?: number } } = {}) {
 	calls.length = 0;
+	nodeArguments.length = 0;
 	const stateManager = new TeamStateManager({ appendEntry() {} });
 	const runId = stateManager.startRun({ teamId: team.id, protocol: "fusion-analysis", prompt: "test prompt" });
 	const handler = getTeamHandler(team);
 	if (!handler) throw new Error("fusion-analysis handler missing");
 	return handler.run({
 		team,
-		params: { id: team.id, prompt: "test prompt" },
+		params: { id: team.id, prompt: "test prompt", ...overrides },
 		ctx: fakeCtx() as never,
 		stateManager,
 		runId,
@@ -107,6 +123,25 @@ describe("fusion-analysis planner", () => {
 		]);
 	});
 
+	it("selects provider-diverse Fast panels deterministically", () => {
+		const plan = planFusion({
+			configuredPanel: ["openai/a", "openai/b", "google/c", "anthropic/d"],
+			maxPanelModels: 2,
+			profile: "fast",
+		});
+
+		expect(plan.panel).toEqual(["openai/a", "google/c"]);
+	});
+
+	it("bounds the judge prompt while retaining the complete schema instruction", () => {
+		const binding: TeamAgentBinding = { role: "panel", subagent: "panel" };
+		const prompt = renderJudgePrompt("q".repeat(2_000), [{ role: "panel_1", binding, model: "test/a", ok: true, output: "x".repeat(5_000), durationMs: 1, attempts: 1 }], 1_000, 200);
+
+		expect(prompt.length).toBeLessThanOrEqual(1_000);
+		expect(prompt).toContain("answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence");
+		expect(prompt).not.toContain("x".repeat(201));
+	});
+
 	it("hard caps panel size at four and gates calls above threshold", () => {
 		const plan = planFusion({
 			configuredPanel: ["test/a", "test/b", "test/c", "test/d", "test/e"],
@@ -130,6 +165,17 @@ describe("fusion-analysis handler", () => {
 		expect(result.content.map((entry) => entry.text).join("")).toContain("consensus");
 	});
 
+	it("applies Fast output bounds and preserves explicit legacy maxLoops precedence", async () => {
+		responses.clear();
+		await runFusionAnalysis(fusionAnalysisTeam(), { profile: "fast" });
+		expect(calls).toEqual(["panel_1", "panel_2", "judge"]);
+		expect(nodeArguments[0]?.binding.parameters).toMatchObject({ maxTokens: 600 });
+		expect(nodeArguments[2]?.binding.parameters).toMatchObject({ maxTokens: 900 });
+
+		await runFusionAnalysis(fusionAnalysisTeam(), { profile: "fast", limits: { maxLoops: 1 } });
+		expect(calls).toEqual(["panel_1", "judge"]);
+	});
+
 	it("fails when all panel models fail", async () => {
 		responses.clear();
 		responses.set("panel_1", { ok: false, output: "", error: "fail" });
@@ -148,12 +194,22 @@ describe("fusion-analysis handler", () => {
 
 		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
 		expect(result.details).toMatchObject({ analysis: true, degraded: true, failureReason: "invalid_judge_json" });
-		expect(result.content.map((entry) => entry.text).join("")).toContain("judge returned invalid JSON");
+		const fallback = JSON.parse(result.content.map((entry) => entry.text).join("")) as Record<string, unknown>;
+		expect(fallback.answer).toBe("");
+		expect(fallback.blindSpots).toContain("judge returned invalid JSON");
+	});
+
+	it("degrades judge JSON that omits required answer/schema fields", async () => {
+		responses.clear();
+		responses.set("judge", { ok: true, output: JSON.stringify({ consensus: ["incomplete"], blindSpots: [] }) });
+		const result = await runFusionAnalysis();
+
+		expect(result.details).toMatchObject({ degraded: true, failureReason: "invalid_judge_json" });
 	});
 
 	it("parses judge JSON wrapped in markdown code fences (T-744 fix)", async () => {
 		responses.clear();
-		responses.set("judge", { ok: true, output: "```json\n{\"consensus\": [\"panel agrees\"], \"contradictions\": [], \"blindSpots\": []}\n```" });
+		responses.set("judge", { ok: true, output: `\`\`\`json\n${judgeJson("panel agrees")}\n\`\`\`` });
 		const result = await runFusionAnalysis();
 
 		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
@@ -163,7 +219,7 @@ describe("fusion-analysis handler", () => {
 
 	it("parses judge JSON wrapped in fences with language tag (T-744 fix)", async () => {
 		responses.clear();
-		responses.set("judge", { ok: true, output: "```\n{\"consensus\": [\"ok\"], \"blindSpots\": []}\n```" });
+		responses.set("judge", { ok: true, output: `\`\`\`\n${judgeJson()}\n\`\`\`` });
 		const result = await runFusionAnalysis();
 
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });
@@ -171,7 +227,7 @@ describe("fusion-analysis handler", () => {
 
 	it("parses bare JSON without fences (baseline)", async () => {
 		responses.clear();
-		responses.set("judge", { ok: true, output: "{\"consensus\": [\"bare\"], \"contradictions\": [], \"blindSpots\": []}" });
+		responses.set("judge", { ok: true, output: judgeJson("bare") });
 		const result = await runFusionAnalysis();
 
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });
@@ -180,7 +236,7 @@ describe("fusion-analysis handler", () => {
 
 	it("parses fence-wrapped JSON with extra whitespace (T-744 fix)", async () => {
 		responses.clear();
-		responses.set("judge", { ok: true, output: "\n\n```json\n  {\"consensus\": [\"whitespace\"], \"blindSpots\": []}  \n```\n\n" });
+		responses.set("judge", { ok: true, output: `\n\n\`\`\`json\n  ${judgeJson("whitespace")}  \n\`\`\`\n\n` });
 		const result = await runFusionAnalysis();
 
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });
@@ -188,7 +244,7 @@ describe("fusion-analysis handler", () => {
 
 	it("parses JSON in fences with prose before and after (T-744 fix)", async () => {
 		responses.clear();
-		responses.set("judge", { ok: true, output: "Here is the analysis\n\n```{\"consensus\": [\"prose-wrapped\"], \"contradictions\": [], \"blindSpots\": []}\n```\nLet me know if you need more." });
+		responses.set("judge", { ok: true, output: `Here is the analysis\n\n\`\`\`${judgeJson("prose-wrapped")}\n\`\`\`\nLet me know if you need more.` });
 		const result = await runFusionAnalysis();
 
 		expect(result.details).toMatchObject({ analysis: true, degraded: false });

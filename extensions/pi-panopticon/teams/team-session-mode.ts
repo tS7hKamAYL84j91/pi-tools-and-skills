@@ -1,6 +1,8 @@
 /** Session-only `/team` interaction mode for synthesis-first team assistance. */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { buildTeamContext } from "./team-context.js";
+import { resolveTeamProfile, type TeamProfile } from "./team-profiles.js";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 import { isTopology, type TeamRoute } from "./team-routes.js";
 
@@ -10,6 +12,8 @@ interface SessionTeamMode {
 	state: TeamModeState;
 	topology: TeamRoute;
 	maxModels: number;
+	maxModelsExplicit?: boolean;
+	profile?: TeamProfile;
 	approved: boolean;
 	prompt?: string;
 }
@@ -18,6 +22,7 @@ interface ParseResult {
 	action: "on" | "off" | "auto" | "once" | "status";
 	topology?: TeamRoute;
 	maxModels?: number;
+	profile?: TeamProfile;
 	prompt?: string;
 }
 
@@ -33,77 +38,9 @@ const DEFAULT_MAX_MODELS = 2;
 const OVERRIDE_MAX_MODELS = 3;
 const HARD_MAX_MODELS = 5;
 const LARGE_CONTEXT_CHARS = 12_000;
-const MAX_HISTORY_TURNS = 5;
-const MAX_HISTORY_CHARS = 4_000;
-
-interface SessionMessageEntry {
-	readonly type: "message";
-	readonly message: {
-		readonly role?: string;
-		readonly content?: string | readonly unknown[];
-	};
-}
-
-function isSessionMessageEntry(entry: unknown): entry is SessionMessageEntry {
-	return typeof entry === "object" && entry !== null && (entry as { type?: string }).type === "message" && typeof (entry as { message?: unknown }).message === "object";
-}
-
-function textContent(value: string | readonly unknown[] | undefined): string | undefined {
-	if (typeof value === "string") return value;
-	if (!Array.isArray(value)) return undefined;
-	return value
-		.filter((item): item is { type?: string; text?: string } => typeof item === "object" && item !== null)
-		.map((item) => item.text)
-		.filter((text): text is string => typeof text === "string")
-		.join("");
-}
-
-function looksLikeSecret(text: string): boolean {
-	// Heuristic: common secret-bearing tokens.
-	return /\b(?:api[_-]?key|token|password|secret|bearer)\b/gi.test(text) && /[a-zA-Z0-9+/=]{16,}/.test(text);
-}
-
-function isTextOnlyUserOrAssistant(role: string | undefined): boolean {
-	return role === "user" || role === "assistant";
-}
-
-export function buildTeamContext(ctx: ExtensionContext, currentPrompt: string): string {
-	const entries = (ctx.sessionManager?.getEntries?.() ?? []) as readonly unknown[];
-	const lines: string[] = [];
-	let charBudget = MAX_HISTORY_CHARS;
-	let turns = 0;
-	for (let index = entries.length - 1; index >= 0; index--) {
-		if (turns >= MAX_HISTORY_TURNS) break;
-		const entry = entries[index];
-		if (!isSessionMessageEntry(entry)) continue;
-		const role = entry.message.role;
-		if (!isTextOnlyUserOrAssistant(role)) continue;
-		const text = textContent(entry.message.content)?.trim();
-		if (!text || text === currentPrompt.trim()) continue;
-		if (looksLikeSecret(text)) {
-			lines.unshift(`[${role}]: [redacted: possible secret]`);
-			turns++;
-			continue;
-		}
-		const available = Math.min(charBudget, text.length);
-		const truncated = available < text.length ? `${text.slice(0, available)}\n[older message truncated]` : text;
-		lines.unshift(`[${role}]: ${truncated}`);
-		charBudget -= available;
-		turns++;
-		if (charBudget <= 0) break;
-	}
-	if (lines.length === 0) return currentPrompt;
-	return [
-		"Recent conversation context:",
-		...lines,
-		"",
-		"Current user prompt:",
-		currentPrompt,
-	].join("\n");
-}
 
 function defaultState(): SessionTeamMode {
-	return { state: "off", topology: DEFAULT_TOPOLOGY, maxModels: DEFAULT_MAX_MODELS, approved: false };
+	return { state: "off", topology: DEFAULT_TOPOLOGY, maxModels: DEFAULT_MAX_MODELS, maxModelsExplicit: false, profile: "balanced", approved: false };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -120,7 +57,7 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 	const headTokens = head.split(/\s+/).filter(Boolean);
 	const command = headTokens.shift() ?? "status";
 	if (command !== "on" && command !== "off" && command !== "auto" && command !== "once" && command !== "status") {
-		throw new Error("Usage: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]");
+		throw new Error("Usage: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]");
 	}
 	const inlinePrompt = headTokens.join(" ").trim() || undefined;
 	const result: ParseResult = { action: command, prompt: inlinePrompt };
@@ -139,6 +76,12 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 			result.maxModels = maxModels;
 			continue;
 		}
+		if (token === "--profile") {
+			const profile = tokens[++index];
+			if (profile !== "fast" && profile !== "balanced" && profile !== "thorough") throw new Error("--profile must be fast, balanced, or thorough");
+			result.profile = profile;
+			continue;
+		}
 		throw new Error(`Unknown /team option: ${token}`);
 	}
 	return result;
@@ -150,7 +93,8 @@ export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult):
 	const next: SessionTeamMode = {
 		...state,
 		...(parsed.topology ? { topology: parsed.topology } : {}),
-		...(parsed.maxModels !== undefined ? { maxModels: parsed.maxModels } : {}),
+		...(parsed.maxModels !== undefined ? { maxModels: parsed.maxModels, maxModelsExplicit: true } : {}),
+		...(parsed.profile ? { profile: parsed.profile } : {}),
 		...(parsed.prompt ? { prompt: parsed.prompt } : {}),
 	};
 	if (parsed.action === "on" || parsed.action === "auto" || parsed.action === "off" || parsed.action === "once") {
@@ -160,7 +104,8 @@ export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult):
 }
 
 function fusionPanelSize(state: SessionTeamMode): number {
-	return Math.min(state.maxModels, OVERRIDE_MAX_MODELS);
+	const configured = state.maxModelsExplicit === false ? resolveTeamProfile(state.profile).fusionPanelModels : state.maxModels;
+	return Math.min(configured, OVERRIDE_MAX_MODELS);
 }
 
 /** Human-readable estimate of model calls a `/team` run will make for the active
@@ -172,7 +117,7 @@ export function estimatedCallDescription(state: SessionTeamMode): string {
 }
 
 function statusLine(state: SessionTeamMode): string {
-	return `team mode: ${state.state} topology=${state.topology} maxModels=${state.maxModels} calls=${estimatedCallDescription(state)} approved=${state.approved ? "yes" : "no"}`;
+	return `team mode: ${state.state} topology=${state.topology} profile=${state.profile ?? "balanced"} maxModels=${state.maxModelsExplicit === false ? "profile" : state.maxModels} calls=${estimatedCallDescription(state)} approved=${state.approved ? "yes" : "no"}`;
 }
 
 function shouldBypass(text: string, source: string | undefined): boolean {
@@ -181,9 +126,10 @@ function shouldBypass(text: string, source: string | undefined): boolean {
 }
 
 function topologyInstruction(state: SessionTeamMode): string {
-	if (state.topology === "navigator") return "Use team_run with id=\"navigator\" for one focused review, then answer from the synthesis first.";
-	if (state.topology === "llm-council") return "Use team_run with id=\"llm-council\" for bounded debate, then answer from the synthesis first.";
-	return `Use team_run with id="fusion-analysis" and limits.maxLoops=${fusionPanelSize(state)} for bounded multi-model deliberation. The team returns structured JSON analysis (consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence). Synthesize the final answer yourself from that analysis.`;
+	if (state.topology === "navigator") return `Use team_run with id="navigator" and profile="${state.profile ?? "balanced"}" for one focused review, then answer from the synthesis first.`;
+	if (state.topology === "llm-council") return `Use team_run with id="llm-council" and profile="${state.profile ?? "balanced"}" for bounded debate, then answer from the synthesis first.`;
+	const legacyLimit = state.maxModelsExplicit === false ? "" : ` and limits.maxLoops=${fusionPanelSize(state)}`;
+	return `Use team_run with id="fusion-analysis", profile="${state.profile ?? "balanced"}"${legacyLimit} for bounded multi-model deliberation. The team returns structured JSON analysis including answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, and missingEvidence.`;
 }
 
 export function buildAutoModePrompt(text: string, state: SessionTeamMode): string {
@@ -241,16 +187,22 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 }
 
 /** Build the run params for a forced `/team once` or deterministic `/team on` run. Pure. */
-function forcedRunParams(state: SessionTeamMode, prompt: string, ctx: ExtensionContext): { id: string; prompt: string; limits?: { maxLoops: number } } {
-	const contextualPrompt = buildTeamContext(ctx, prompt);
-	return { id: state.topology, prompt: contextualPrompt, limits: { maxLoops: fusionPanelSize(state) } };
+function forcedRunParams(state: SessionTeamMode, prompt: string, ctx: ExtensionContext): { id: string; prompt: string; profile: TeamProfile; limits?: { maxLoops: number } } {
+	const profile = state.profile ?? "balanced";
+	const contextualPrompt = buildTeamContext(ctx, prompt, profile);
+	return {
+		id: state.topology,
+		prompt: contextualPrompt,
+		profile,
+		...(state.maxModelsExplicit === false ? {} : { limits: { maxLoops: fusionPanelSize(state) } }),
+	};
 }
 
 export function registerTeamSessionMode(pi: ExtensionAPI, registration: TeamRunRegistration): void {
 	const state = defaultState();
 	let inFlight = false;
 	pi.registerCommand("team", {
-		description: "Session-only team interaction mode: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]. on=deterministic, auto=assistant-mediated.",
+		description: "Session-only team mode: /team on|auto|off|status|once [prompt] [--topology ...] [--profile fast|balanced|thorough] [--max-models 1-5].",
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseTeamModeArgs(rawArgs);

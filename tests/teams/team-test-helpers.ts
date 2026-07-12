@@ -10,6 +10,7 @@ import type { ToolResult } from "../../lib/tool-result.js";
 
 interface RegisteredTool {
 	name: string;
+	parameters?: unknown;
 	execute: (
 		id: string,
 		params: { id?: string; prompt?: string; scope?: "user" | "project"; runId?: string; reason?: string },

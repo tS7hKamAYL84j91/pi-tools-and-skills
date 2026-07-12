@@ -32,8 +32,8 @@ Context bundle includes:
 If there is no prior conversation, the bundle is just the user prompt.
 
 Implementation:
-- Added `buildTeamContext(ctx, prompt)` helper in `team-session-mode.ts`.
-- `forcedRunParams` in `team-session-mode.ts` now calls `buildTeamContext` and passes the enriched prompt string to `team_run`.
+- Added `buildTeamContext(ctx, prompt)` helper, now isolated in `team-context.ts`.
+- `forcedRunParams` in `team-session-mode.ts` calls `buildTeamContext` and passes the enriched prompt string to `team_run`.
 - No `TeamRunInput` extension, schema change, or handler change was required; the protocol shape is unchanged.
 - Bounds: last 5 user/assistant turns, 4,000-character history budget, secret heuristics, skips tool results/system messages/non-text content.
 
@@ -108,5 +108,5 @@ UX if implemented:
 ## Decision log
 
 - 2026-06-21: Spec drafted by pi-tools-and-skills GM pending `llm-council` review.
-- 2026-06-21: Phase 1 implemented in `team-session-mode.ts` (`buildTeamContext`): last 5 user/assistant text turns, 4,000-character history budget, per-message truncation with `[older message truncated]` marker, and heuristic secret redaction. No `TeamRunInput` schema or handler change.
+- 2026-06-21: Phase 1 implemented (`buildTeamContext`, now in `team-context.ts`): last 5 user/assistant text turns, 4,000-character history budget, per-message truncation with `[older message truncated]` marker, and heuristic secret redaction.
 - <2026-06-21>: Phase 2 (`/team review`) deferred — `/team` currently supports subcommands `on`, `auto`, `once`, `seed`, `status`; a new `review` subcommand would be added later.

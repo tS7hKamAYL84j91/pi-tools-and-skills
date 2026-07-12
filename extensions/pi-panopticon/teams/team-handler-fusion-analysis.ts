@@ -7,6 +7,7 @@ import { bindingForRole, roleBindings } from "./team-bindings.js";
 import { nodeDetails, participantsFromRuns, type NodeRun } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs, TeamModelSlot } from "./team-handler-shared.js";
 import { TEAM_STATUS_KEY, chainText, memberModelSlots, promptChains, recordDetail, recordPhase, requireBinding, runAndRecordNode, stoppedResult, stopRequested } from "./team-handler-shared.js";
+import { resolveTeamProfile, type TeamProfile } from "./team-profiles.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
 
 const DEFAULT_MAX_PANEL_MODELS = 3;
@@ -15,6 +16,7 @@ const DEFAULT_APPROVAL_CALL_GATE = 4;
 const FUSION_ANALYSIS_PHASE = "fusion-analysis";
 
 const INVALID_JUDGE_FALLBACK = JSON.stringify({
+	answer: "",
 	consensus: [],
 	contradictions: [],
 	partialCoverage: [],
@@ -51,9 +53,16 @@ async function runPanel(ctx: SharedContext): Promise<{ panelRuns: NodeRun[]; usa
 	const { args, plan, parent, panelSource } = ctx;
 	const panelRuns = await Promise.all(plan.panel.map((model, index) => {
 		const source = roleBindings(args.team.agentBindings, ["panel", "member"])[index] ?? panelSource;
-		const binding = { ...source, role: `panel_${index + 1}`, label: source.label ?? `Panel ${index + 1}`, tools: [] };
+		const profile = resolveTeamProfile(args.params.profile);
+		const binding = {
+			...source,
+			role: `panel_${index + 1}`,
+			label: source.label ?? `Panel ${index + 1}`,
+			tools: [],
+			parameters: { ...source.parameters, maxTokens: profile.fusionPanelMaxTokens },
+		};
 		args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: ${binding.role}`);
-		return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently as a fusion panel member. Do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+		return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding, role: binding.role, model, prompt: args.params.prompt, systemPrompt: "Answer independently and concisely. Give only the strongest findings and evidence; do not mention other panelists.", ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 	}));
 	const usablePanel = panelRuns.filter((node) => node.ok && node.output.trim());
 	return { panelRuns, usablePanel };
@@ -63,7 +72,9 @@ async function runJudge(ctx: SharedContext, usablePanel: NodeRun[]): Promise<Nod
 	const { args, plan, parent, judgeSource } = ctx;
 	if (stopRequested(args)) throw new Error("stop requested");
 	args.ctx.ui.setStatus(TEAM_STATUS_KEY, `${args.team.id}: judge`);
-	return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding: { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [] }, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
+	const profile = resolveTeamProfile(args.params.profile);
+	const binding = { ...judgeSource, role: "judge", label: judgeSource.label ?? "Judge", tools: [], parameters: { ...judgeSource.parameters, maxTokens: profile.fusionJudgeMaxTokens } };
+	return runAndRecordNode(args, FUSION_ANALYSIS_PHASE, { binding, role: "judge", model: plan.judge, prompt: renderJudgePrompt(args.params.prompt, usablePanel, profile.fusionPromptMaxChars, profile.fusionPanelMaxChars), systemPrompt: chainText(promptChains(args.team, [{ id: "judge.system", kind: "system", defaultPromptId: "fusion/judge/system", roles: ["judge", "synthesis"] }]), "judge.system"), ctx: args.ctx, signal: args.signal, parentId: parent?.id, orchestratorName: parent?.name, timeoutMs: args.params.limits?.timeoutMs ?? args.team.limits.timeoutMs, maxRetries: args.params.limits?.maxRetries ?? args.team.limits.maxRetries });
 }
 
 function validateJudgeJson(judge: NodeRun, args: TeamHandlerRunArgs): NodeRun {
@@ -93,6 +104,7 @@ interface FusionPlanInput {
 	allowProviders?: readonly string[];
 	denyProviders?: readonly string[];
 	requireApprovalAboveCalls?: number;
+	profile?: TeamProfile;
 }
 
 interface FusionPlan {
@@ -139,7 +151,9 @@ function filterModels(args: FusionPlanInput, models: readonly string[], warnings
 export function planFusion(args: FusionPlanInput): FusionPlan {
 	const warnings: string[] = [];
 	const maxPanelModels = boundedPanelLimit(args.maxPanelModels);
-	const panel = filterModels(args, args.configuredPanel, warnings, "panel").slice(0, maxPanelModels);
+	const filteredPanel = filterModels(args, args.configuredPanel, warnings, "panel");
+	const orderedPanel = args.profile === "fast" ? providerDiverseModels(filteredPanel) : filteredPanel;
+	const panel = orderedPanel.slice(0, maxPanelModels);
 	if (panel.length === 0) throw new Error("fusion teams need at least one usable panel model.");
 	const firstPanel = panel[0];
 	if (!firstPanel) throw new Error("fusion teams need at least one usable panel model.");
@@ -156,6 +170,22 @@ export function planFusion(args: FusionPlanInput): FusionPlan {
 		estimatedCalls,
 		requiresApproval: estimatedCalls > gate,
 	};
+}
+
+function providerDiverseModels(models: readonly string[]): string[] {
+	const selected: string[] = [];
+	const deferred: string[] = [];
+	const providers = new Set<string>();
+	for (const model of models) {
+		const provider = providerOf(model);
+		if (providers.has(provider)) {
+			deferred.push(model);
+		} else {
+			providers.add(provider);
+			selected.push(model);
+		}
+	}
+	return [...selected, ...deferred];
 }
 
 function visibleTextModelIds(args: TeamHandlerRunArgs): string[] | undefined {
@@ -185,16 +215,15 @@ function fusionAnalysisModelSlots(team: TeamSpec, models: TeamModels): TeamModel
 	];
 }
 
-function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[]): string {
-	return [
-		"Original prompt:",
-		originalPrompt,
-		"",
-		"Panel responses:",
-		participantsFromRuns(panelRuns).map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${run.output}`).join("\n\n"),
-		"",
-		"Return structured JSON with keys: consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence.",
-	].join("\n");
+export function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[], maxPromptChars: number, maxPanelChars: number): string {
+	const instruction = "Return only JSON with every key: answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence.";
+	const boundedOriginal = originalPrompt.slice(0, Math.max(0, Math.floor(maxPromptChars / 3)));
+	const panelText = participantsFromRuns(panelRuns)
+		.map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${run.output.slice(0, maxPanelChars)}`)
+		.join("\n\n");
+	const body = ["Original prompt:", boundedOriginal, "", "Panel responses:", panelText].join("\n");
+	const bodyBudget = Math.max(0, maxPromptChars - instruction.length - 2);
+	return `${body.slice(0, bodyBudget)}\n\n${instruction}`;
 }
 
 function stripMarkdownFences(text: string): string {
@@ -242,8 +271,11 @@ function stripMarkdownFences(text: string): string {
 function isValidJudgeJson(text: string): boolean {
 	try {
 		const cleaned = stripMarkdownFences(text);
-		const parsed = JSON.parse(cleaned);
-		return typeof parsed === "object" && parsed !== null && ("consensus" in parsed || "contradictions" in parsed || "blindSpots" in parsed);
+		const parsed: unknown = JSON.parse(cleaned);
+		if (typeof parsed !== "object" || parsed === null) return false;
+		const record = parsed as Record<string, unknown>;
+		const arrayKeys = ["consensus", "contradictions", "partialCoverage", "uniqueInsights", "blindSpots", "missingEvidence"];
+		return typeof record.answer === "string" && typeof record.confidence === "string" && arrayKeys.every((key) => Array.isArray(record[key]));
 	} catch {
 		return false;
 	}
@@ -254,12 +286,14 @@ async function runFusionAnalysis(args: TeamHandlerRunArgs): Promise<TeamHandlerR
 	const settings = resolveTeamSettings();
 	const panelConfig = args.params.models?.members ?? args.team.models.members ?? settings.defaultMembers;
 	const judgeConfig = args.params.models?.synthesis ?? args.team.models.synthesis ?? panelConfig[0];
+	const profile = resolveTeamProfile(args.params.profile);
 	const plan = planFusion({
 		configuredPanel: panelConfig,
 		configuredJudge: judgeConfig,
 		configuredFallback: [],
 		visibleModels: visibleTextModelIds(args),
-		maxPanelModels: args.params.limits?.maxLoops ?? args.team.limits.maxLoops ?? DEFAULT_MAX_PANEL_MODELS,
+		maxPanelModels: args.params.limits?.maxLoops ?? profile.fusionPanelModels,
+		profile: args.params.profile,
 		...modelPolicy(args.team),
 	});
 	recordPhase(args, FUSION_ANALYSIS_PHASE);

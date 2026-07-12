@@ -238,6 +238,16 @@ describe("team tools", () => {
 		expect(runtime.inspectEntity({ kind: "team_run", id: "team-run-runtime-1" })?.status).toBe("stopping");
 	});
 
+	it("team_run exposes the shared typed profile schema", () => {
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
+		const run = tools.get("team_run");
+		if (!run) throw new Error("team_run missing");
+
+		const schema = run.parameters as { properties?: { profile?: { enum?: string[] } } };
+		expect(schema.properties?.profile?.enum).toEqual(["fast", "balanced", "thorough"]);
+	});
+
 	it("team_run rejects unknown team ids with a clear list", async () => {
 		const { api, tools } = createFakeApi();
 		registerTeamRunTool(api, { stateManager: new TeamStateManager() });

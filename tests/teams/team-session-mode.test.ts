@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyParsedCommand, buildAutoModePrompt, buildTeamContext, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import { buildTeamContext } from "../../extensions/pi-panopticon/teams/team-context.js";
+import { applyParsedCommand, buildAutoModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 describe("team session mode", () => {
@@ -9,7 +10,7 @@ describe("team session mode", () => {
 			topology: "llm-council",
 			maxModels: 3,
 		});
-		expect(parseTeamModeArgs("auto --topology navigator")).toEqual({ action: "auto", topology: "navigator" });
+		expect(parseTeamModeArgs("auto --topology navigator --profile fast")).toEqual({ action: "auto", topology: "navigator", profile: "fast" });
 		expect(parseTeamModeArgs("once --topology navigator")).toEqual({ action: "once", topology: "navigator" });
 		expect(parseTeamModeArgs("off")).toEqual({ action: "off" });
 		expect(parseTeamModeArgs("")).toEqual({ action: "status" });
@@ -18,6 +19,7 @@ describe("team session mode", () => {
 	it("rejects unsafe fanout and unknown topology", () => {
 		expect(() => parseTeamModeArgs("on --max-models 6")).toThrow(/1 to 5/);
 		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/fusion-analysis/);
+		expect(() => parseTeamModeArgs("on --profile instant")).toThrow(/fast, balanced, or thorough/);
 	});
 
 	it("parses inline prompt for once", () => {
@@ -80,6 +82,7 @@ describe("applyParsedCommand", () => {
 			state: "on",
 			topology: "navigator",
 			maxModels: 4,
+			maxModelsExplicit: true,
 			approved: false,
 		});
 	});
@@ -143,6 +146,12 @@ describe("buildTeamContext", () => {
 
 	it("returns just the current prompt when no history", () => {
 		expect(buildTeamContext(fakeCtx([]), "Do this")).toBe("Do this");
+	});
+
+	it("omits automatic history in Fast and retains bounded history in Balanced", () => {
+		const entries = [{ type: "message", message: { role: "assistant", content: "prior finding" } }];
+		expect(buildTeamContext(fakeCtx(entries), "Do this", "fast")).toBe("Do this");
+		expect(buildTeamContext(fakeCtx(entries), "Do this", "balanced")).toContain("prior finding");
 	});
 
 	it("prepends recent user/assistant turns", () => {

@@ -10,6 +10,7 @@ import { resolveTeamSettings } from "./settings.js";
 import type { TeamStateManager } from "./state.js";
 import { bindingForRole } from "./team-bindings.js";
 import { nodeDetails, type NodeRun, runTeamNode } from "./team-node-runner.js";
+import type { TeamProfile } from "./team-profiles.js";
 import type { TeamAgentBinding, TeamModelSlotSpec, TeamModels, TeamPromptRefs, TeamSpec } from "./team-types.js";
 
 export const TEAM_STATUS_KEY = "team";
@@ -31,6 +32,7 @@ export interface TeamRunLimits {
 export interface TeamRunInput {
 	id: string;
 	prompt: string;
+	profile?: TeamProfile;
 	files?: string[];
 	specPath?: string;
 	models?: TeamRunModels;

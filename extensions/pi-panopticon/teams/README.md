@@ -13,7 +13,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 | `team_form` | Create or replace a declarative team. |
 | `team_models` | Update model bindings for a team. |
 | `team_delete` | Delete a user/project team. |
-| `team_run` | Run a team by `id`; choose the smallest sufficient route such as `navigator`, `llm-council`, or `deep-research`. |
+| `team_run` | Run a team by `id` with optional `profile: fast | balanced | thorough`; choose the smallest sufficient route. |
 | `runtime_status` | Inspect team run entities from the unified runtime surface, including aggregate status/artifact counts. |
 | `runtime_stop` | Stop a team run entity through unified runtime semantics. |
 | `team_runs` | Inspect active/recent team run state, including aggregate status/artifact counts. |
@@ -23,7 +23,7 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 - `/teams` — browse and run configured teams from the TUI.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
-- `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic (every prompt runs the team with recent conversation context), `auto` is assistant-mediated (model decides), `once <prompt>` runs the team immediately with the same context enrichment as `on`. Defaults to `fusion-analysis`.
+- `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `fusion-analysis` and `balanced`.
 
 ## Provisional Surfaces
 
@@ -39,6 +39,12 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
 
+### Profiles and precedence
+
+`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Fusion's legacy explicit `limits.maxLoops` remains a supported panel-size override and wins over the profile panel default. Fast Fusion prefers provider-diverse models from the configured order, bounds panel/judge output and judge input, and returns complete JSON with `answer`, `consensus`, `contradictions`, `partialCoverage`, `uniqueInsights`, `blindSpots`, `confidence`, and `missingEvidence`. Invalid judge JSON still produces a degraded structured fallback.
+
+Fast Navigator uses a compact prompt, no retries, a 30-second maximum node timeout, and bounded output. Explicit Fast timeout values can lower but not raise that safety cap.
+
 | Built-in team | Protocol pattern | Use when |
 |---|---|---|
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
@@ -48,7 +54,7 @@ Choose the simplest protocol that can succeed. Use `async: true` for non-blockin
 
 ### `/team on` / `/team once` context enrichment
 
-Deterministic team runs (`on` and `once`) are no longer "blind" panels. Before the team prompt is sent, the last five user/assistant text turns are prepended to the prompt, up to a 4,000-character history budget. Each turn is truncated oldest-first; when a turn exceeds its remaining budget, the kept portion ends with `[older message truncated]`. Tool results, system messages, and non-text content are skipped; messages matching a heuristic secret pattern are redacted. This is implemented entirely in the session-mode handler (`buildTeamContext` in `team-session-mode.ts`), so the underlying team protocols remain unchanged.
+Deterministic `balanced` team runs prepend at most the last five user/assistant text turns and 4,000 history characters. `fast` sends only the current prompt; `thorough` permits at most eight turns and 8,000 characters. Turns are truncated oldest-first, non-user/assistant content is skipped, and likely secrets are redacted. Context assembly remains isolated in `buildTeamContext`.
 
 ## Configuration
 

@@ -88,6 +88,9 @@ flowchart TD
   Pi --> OllamaModels
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
+  TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
+  TeamProfiles --> Fusion[Fusion bounded panel + judge]
+  TeamProfiles --> Navigator[Navigator bounded consult]
   Pi --> Bionic
   Pi --> Doctor
   Pi --> Kanban
@@ -134,7 +137,7 @@ flowchart TD
 | Watched files | Owning user/workspace; `pi-file-watch` reads only | Explicit configured file paths, no recursive discovery or writes |
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
-| Team run state | Panopticon Teams module | Team run APIs and documented result paths |
+| Team run state | Panopticon Teams module | Team run APIs and documented result paths; profile selection is session-local/input-only |
 | Local model registry | `pi-ollama-models` for the `ollama` provider entry | Atomic full-file rewrite of pi `models.json`, preserving other providers |
 
 ### Trust boundaries
