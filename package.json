@@ -16,6 +16,7 @@
 		"test:coverage": "vitest run --coverage --testTimeout=15000",
 		"test:watch": "vitest",
 		"test:evals": "vitest run tests/evals",
+		"benchmark:teams:live": "node scripts/team-live-benchmark.mjs",
 		"knip": "knip"
 	},
 	"repository": {

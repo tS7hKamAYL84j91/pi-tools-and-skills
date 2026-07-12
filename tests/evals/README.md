@@ -1,14 +1,17 @@
 # Deterministic Evaluation Harness
 
-This directory contains the deterministic evaluation harness for tools, skills, and team protocols. 
-
-It is designed to run in CI without live LLM or network calls.
+This directory contains deterministic evaluation fixtures for tools, skills, team protocols, and team speed-profile contracts. It runs in CI without live LLM or network calls.
 
 ## Scope
-*   **Tool Executions:** Verify output bounds, false triggers, parameter handling, and adversarial resilience (path traversal, prompt injection proxies, oversize limits).
-*   **Team Protocols:** Verify correct routing for navigator, council, fusion, and deep-research built-in protocols.
 
-## Adding Tests
+- **Tool executions:** output bounds, false triggers, parameter handling, and adversarial resilience.
+- **Team protocols:** routing for Navigator, council, Fusion, and deep-research built-ins.
+- **Speed profiles:** representative Fusion and Navigator routing, bounds, result validity, and direct/degraded result behavior.
+
+## Adding tests
+
 1. Add fixtures simulating LLM output or user input.
-2. Ensure assertions are completely deterministic.
-3. If an intentional change breaks a fixture, update the fixture to reflect the new approved baseline.
+2. Keep assertions completely deterministic.
+3. Update a fixture only for an approved contract-baseline change.
+
+Live provider timing is deliberately separate. See `tests/evals/team-speed-profile-evaluation.md` and the explicitly opt-in `npm run benchmark:teams:live` command. Live results are not CI evidence and must not contain prompts, outputs, credentials, or private session data.

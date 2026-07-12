@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "rubric": {
+    "routing": "Selected topology equals the expected supported topology.",
+    "bounds": "Resolved calls, output, context, timeout, and retry values do not exceed the expected profile bounds.",
+    "validity": "Fusion has a non-empty answer and every diagnostic field; Navigator has non-empty direct text.",
+    "behavior": "Fusion exposes a valid direct answer or preserves degraded diagnostics; Navigator remains direct."
+  },
+  "cases": [
+    {
+      "id": "fusion-fast-valid",
+      "team": "fusion-analysis",
+      "profile": "fast",
+      "selectedRoute": "fusion-analysis",
+      "expected": {
+        "panelModels": 2,
+        "panelMaxTokens": 600,
+        "judgeMaxTokens": 900,
+        "panelMaxChars": 3000,
+        "promptMaxChars": 10000,
+        "historyTurns": 0,
+        "historyChars": 0,
+        "valid": true,
+        "directBody": "Use the bounded implementation."
+      },
+      "result": "{\"answer\":\"Use the bounded implementation.\",\"consensus\":[\"bounded\"],\"contradictions\":[],\"partialCoverage\":[],\"uniqueInsights\":[],\"blindSpots\":[],\"confidence\":\"high\",\"missingEvidence\":[]}"
+    },
+    {
+      "id": "fusion-fast-invalid",
+      "team": "fusion-analysis",
+      "profile": "fast",
+      "selectedRoute": "fusion-analysis",
+      "expected": {
+        "panelModels": 2,
+        "panelMaxTokens": 600,
+        "judgeMaxTokens": 900,
+        "panelMaxChars": 3000,
+        "promptMaxChars": 10000,
+        "historyTurns": 0,
+        "historyChars": 0,
+        "valid": false,
+        "directBody": "{\"answer\":\"\",\"blindSpots\":[\"judge returned invalid JSON\"]}"
+      },
+      "result": "{\"answer\":\"\",\"blindSpots\":[\"judge returned invalid JSON\"]}"
+    },
+    {
+      "id": "navigator-fast-direct",
+      "team": "navigator",
+      "profile": "fast",
+      "selectedRoute": "navigator",
+      "expected": {
+        "navigatorMaxTokens": 600,
+        "navigatorTimeoutMs": 30000,
+        "navigatorMaxRetries": 0,
+        "historyTurns": 0,
+        "historyChars": 0,
+        "valid": true,
+        "directBody": "One decisive finding."
+      },
+      "result": "One decisive finding."
+    },
+    {
+      "id": "navigator-balanced-default",
+      "team": "navigator",
+      "selectedRoute": "navigator",
+      "expected": {
+        "navigatorMaxTokens": 1200,
+        "navigatorTimeoutMs": 60000,
+        "navigatorMaxRetries": 1,
+        "historyTurns": 5,
+        "historyChars": 4000,
+        "valid": true,
+        "directBody": "Balanced review."
+      },
+      "result": "Balanced review."
+    }
+  ]
+}

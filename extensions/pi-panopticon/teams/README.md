@@ -50,6 +50,8 @@ Canonical profile output caps are translated at the provider payload boundary: G
 
 Fast Navigator uses a compact prompt, no retries, a 30-second maximum node timeout, and bounded output. Explicit Fast timeout values can lower but not raise that safety cap.
 
+Deterministic profile evaluation runs in normal CI from `tests/evals/fixtures/team-speed-profiles.json`; it verifies contracts and makes no live performance claim. Live provider timing is explicitly opt-in via `PI_TEAM_LIVE_BENCHMARK=1 npm run benchmark:teams:live -- ...` and records redacted end-to-end/per-node durations outside CI. See [`tests/evals/team-speed-profile-evaluation.md`](../../../tests/evals/team-speed-profile-evaluation.md) for baseline fields, median/P95 comparison, and promotion gates. **Balanced remains the default until both Fusion and Navigator live gates pass.**
+
 | Built-in team | Protocol pattern | Use when |
 |---|---|---|
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |

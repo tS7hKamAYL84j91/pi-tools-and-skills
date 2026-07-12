@@ -91,6 +91,8 @@ flowchart TD
   TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
   TeamProfiles --> Fusion[Fusion bounded panel + judge]
   TeamProfiles --> Navigator[Navigator bounded consult]
+  ProfileFixtures[Deterministic profile fixtures and rubric] -. validates contracts .-> TeamProfiles
+  LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
   Pi --> Bionic
   Pi --> Doctor
   Pi --> Kanban
@@ -383,6 +385,25 @@ flowchart LR
 - The focusable browser propagates focus only while its search input is visible, preserving IME cursor placement.
 - The Run action closes the browser before opening a native profile selector and prompt editor; its profile is one-shot input passed directly to `runTeam`, not session-mode state.
 - `tests/architecture/tui-render-paths.ts` guards team overlay render closures against synchronous registry/filesystem reads.
+
+## Panopticon Team Profile Evaluation Boundary
+
+```mermaid
+flowchart LR
+  Fixtures[Versioned deterministic fixtures] --> Rubric[Routing / bounds / validity / behavior rubric]
+  Rubric --> CI[Normal test:evals and npm test]
+  OptIn[PI_TEAM_LIVE_BENCHMARK=1] --> Harness[Live benchmark harness]
+  Providers[Configured live providers] --> Harness
+  Harness --> Metrics[Redacted JSON\nend-to-end + per-node durations]
+  Metrics --> Review[Median/P95 gate review]
+  Review -. gate not passed .-> Balanced[Balanced remains default]
+  CI -. no network calls .-> NoClaim[Contract evidence only\nno live benchmark claim]
+```
+
+- Deterministic speed-profile fixtures are CI-safe and contain only synthetic public inputs/results.
+- The live harness is outside normal CI, requires explicit opt-in, deletes raw session data, and does not retain prompts, outputs, or credentials.
+- Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
+- Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
 
 ## Panopticon Controls
 
