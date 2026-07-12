@@ -79,7 +79,7 @@ jobs:
       - name: Install gitleaks
         env:
           GITLEAKS_VERSION: 8.24.0
-          GITLEAKS_SHA256: 9f5b907a2b813c1c3f7dc5935339264b9e1bffc4aaeb5f6a72534e1bd1d04bd9
+          GITLEAKS_SHA256: cb49b7de5ee986510fe8666ca0273a6cc15eb82571f2f14832c9e8920751f3a4
         run: |
           curl -sSL -o gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
