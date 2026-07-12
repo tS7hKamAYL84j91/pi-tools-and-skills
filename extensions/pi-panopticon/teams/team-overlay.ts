@@ -2,12 +2,13 @@
  * Team TUI overlay helpers.
  */
 
-import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
-import { Container, type Component, type Focusable, fuzzyFilter, Input, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
-import { formatHiddenCountCue } from "../../../lib/tui-overflow.js";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, type Focusable, fuzzyFilter, Input, matchesKey } from "@earendil-works/pi-tui";
 import { deleteTeamFiles, formTeam } from "./team-form.js";
 import { selectTeamModels } from "./team-models.js";
-import { STATUS_SYMBOLS } from "./status-symbols.js";
+import { renderTeamBrowserOverlay, renderTeamOverlay } from "./team-overlay-render.js";
+import { chooseTeamProfile } from "./team-picker.js";
+import type { TeamProfile } from "./team-profiles.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
 
@@ -70,92 +71,15 @@ async function deleteTeam(ctx: ExtensionContext, team: TeamSpec): Promise<boolea
 }
 type TeamBrowserAction =
 	| { type: "form" }
-	| { type: "models"; id: string };
-const MAX_READ_ONLY_DETAIL_LINES = 15;
+	| { type: "models"; id: string }
+	| { type: "run"; id: string };
 
-function readOnlyDetailLines(lines: readonly string[]): string[] {
-	if (lines.length <= MAX_READ_ONLY_DETAIL_LINES) return [...lines];
-	const visibleCount = MAX_READ_ONLY_DETAIL_LINES - 1;
-	const hiddenCount = lines.length - visibleCount;
-	const hiddenCue = formatHiddenCountCue(hiddenCount, "line");
-	if (!hiddenCue) return [...lines.slice(0, visibleCount)];
-	return [
-		...lines.slice(0, visibleCount),
-		hiddenCue,
-	];
+interface TeamBrowserRunRequest {
+	id: string;
+	profile: TeamProfile;
+	prompt: string;
 }
-
-interface RenderTeamBrowserArgs {
-	teams: TeamSpec[];
-	selected: number;
-	theme: Theme;
-	width: number;
-	detailLines?: string[];
-	deletingId?: string;
-	searchActive?: boolean;
-	searchInput?: Component;
-	query?: string;
-}
-
-export function renderTeamBrowserOverlay(args: RenderTeamBrowserArgs): string[] {
-	const container = new Container();
-	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
-	container.addChild(border());
-	container.addChild(new Text(args.theme.fg("accent", args.theme.bold(args.detailLines ? " Team Detail" : " Teams")), 1, 0));
-	if (args.deletingId) {
-		container.addChild(new Text(`Delete team "${args.deletingId}"?`, 1, 0));
-		container.addChild(new Text(args.theme.fg("dim", " [y] confirm · [esc/n] cancel"), 1, 0));
-	} else if (args.detailLines) {
-		for (const line of readOnlyDetailLines(args.detailLines)) {
-			container.addChild(new Text(line, 1, 0));
-		}
-		container.addChild(new Text(args.theme.fg("dim", " f form · m models · d delete · backspace/← list · esc close"), 1, 0));
-	} else {
-		const visible = args.searchActive && args.query
-			? fuzzyFilter(args.teams, args.query.trim(), (team) =>
-				`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`)
-			: args.teams;
-		const selected = Math.min(args.selected, Math.max(visible.length - 1, 0));
-
-		if (args.searchActive && args.searchInput) {
-			container.addChild(args.searchInput);
-		}
-
-		if (visible.length === 0) {
-			container.addChild(new Text(args.theme.fg("dim", " No matching teams."), 1, 0));
-		} else {
-			for (const [index, team] of visible.entries()) {
-				const prefix = index === selected ? `${STATUS_SYMBOLS.selection} ` : "  ";
-				const content = truncateToWidth(`${team.id} · ${team.name} · ${team.protocol} · ${team.source}`, Math.max(18, args.width - 6));
-				container.addChild(new Text(index === selected ? `${prefix}${args.theme.fg("accent", args.theme.bold(content))}` : `${prefix}${content}`, 1, 0));
-			}
-		}
-
-		const description = visible[selected]?.description;
-		if (description) container.addChild(new Text(args.theme.fg("dim", truncateToWidth(description, Math.max(20, args.width - 4))), 1, 0));
-
-		if (args.searchActive) {
-			container.addChild(new Text(args.theme.fg("dim", " type to filter · ↑/↓ navigate · enter detail · esc clear"), 1, 0));
-		} else {
-			container.addChild(new Text(args.theme.fg("dim", " ↑/↓ navigate · enter detail · f form · m models · d delete · / filter · esc close"), 1, 0));
-		}
-	}
-	container.addChild(border());
-	return container.render(args.width);
-}
-
-export function renderTeamOverlay(title: string, lines: string[], theme: Theme, width: number): string[] {
-	const container = new Container();
-	const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-	container.addChild(border());
-	container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
-	for (const line of readOnlyDetailLines(lines)) {
-		container.addChild(new Text(line, 1, 0));
-	}
-	container.addChild(new Text(theme.fg("dim", " esc close"), 1, 0));
-	container.addChild(border());
-	return container.render(width);
-}
+export { renderTeamBrowserOverlay, renderTeamOverlay };
 
 class TeamBrowserState {
 	teams: TeamSpec[];
@@ -233,6 +157,8 @@ class TeamBrowserState {
 			this.done({ type: "form" });
 		} else if (data.toLowerCase() === "m") {
 			if (this.detailId) this.done({ type: "models", id: this.detailId });
+		} else if (data.toLowerCase() === "r") {
+			if (this.detailId) this.done({ type: "run", id: this.detailId });
 		} else if (data.toLowerCase() === "d") {
 			const team = this.teams.find((entry) => entry.id === this.detailId);
 			if (team) {
@@ -289,6 +215,12 @@ class TeamBrowserState {
 			const team = this.selectedTeam;
 			if (!team) return;
 			this.done({ type: "models", id: team.id });
+			return;
+		}
+		if (data.toLowerCase() === "r") {
+			const team = this.selectedTeam;
+			if (!team) return;
+			this.done({ type: "run", id: team.id });
 			return;
 		}
 		if (data.toLowerCase() === "d") {
@@ -392,17 +324,25 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 	});
 }
 
-export async function openTeamBrowserOverlay(ctx: ExtensionContext): Promise<void> {
+export async function openTeamBrowserOverlay(ctx: ExtensionContext): Promise<TeamBrowserRunRequest | undefined> {
 	let action = await openTeamBrowserOnce(ctx);
 	while (action) {
 		if (action.type === "form") {
 			const id = await formTeam(ctx);
 			if (id) await openTeamOverlay(ctx, "Team Created", teamDescriptionLines(ctx.cwd, id));
-		} else {
+		} else if (action.type === "models") {
 			await selectTeamModels(ctx, action.id);
+		} else {
+			const profile = await chooseTeamProfile(ctx, action.id);
+			if (profile) {
+				const promptInput = await ctx.ui.editor(`Run ${action.id} (${profile})`, "");
+				const prompt = promptInput?.trim();
+				if (prompt) return { id: action.id, profile, prompt };
+			}
 		}
 		action = await openTeamBrowserOnce(ctx);
 	}
+	return undefined;
 }
 
 export async function openTeamOverlay(

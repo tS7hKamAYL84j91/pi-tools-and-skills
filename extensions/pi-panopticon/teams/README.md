@@ -21,7 +21,9 @@ Declarative team workflows for lightweight review, council-style debate, and dee
 
 ### Commands
 
-- `/teams` — browse and run configured teams from the TUI.
+- `/teams` — browse configured teams; press `r` on the selected team, choose `fast`, `balanced`, or `thorough` in the native profile picker, then enter the one-shot prompt.
+- `/teams run [id] [prompt] [--profile fast|balanced|thorough]` — run synchronously (default profile: `balanced`). The option may appear before or after the prompt and also accepts `--profile=<value>`; use `--` before literal prompt text containing `--profile`.
+- `/teams async [id] [prompt] [--profile fast|balanced|thorough]` — start the same profiled run asynchronously and deliver its result as a follow-up.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
 - `/teams stop [runId]` — request cancellation of an explicit run, or the newest pending/running run when omitted.
 - `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `fusion-analysis` and `balanced`.

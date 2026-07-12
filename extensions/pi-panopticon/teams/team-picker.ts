@@ -5,6 +5,7 @@ import { Container, type Component, type Focusable, Input, matchesKey, type Sele
 import { availableLiveAgentNames } from "./live-agent.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { loadTeamRegistry } from "./team-registry.js";
+import type { TeamProfile } from "./team-profiles.js";
 
 interface TeamTargetChoice {
 	subagent: string;
@@ -94,6 +95,40 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 		overlay: true,
 		overlayOptions: { width: "80%", minWidth: 60, maxHeight: "80%", anchor: "center", margin: 2 },
 	});
+}
+
+export async function chooseTeamProfile(ctx: ExtensionContext, teamId: string): Promise<TeamProfile | undefined> {
+	const items: SelectItem[] = [
+		{ value: "balanced", label: "balanced", description: "Default bounded latency, depth, context, and retries" },
+		{ value: "fast", label: "fast", description: "Minimize calls, context, retries, and output" },
+		{ value: "thorough", label: "thorough", description: "Allow deeper bounded output and context" },
+	];
+	const selected = await ctx.ui.custom<TeamProfile | undefined>((tui, theme, _kb, done) => {
+		const list = new SelectList(items, items.length, searchableTheme(theme));
+		list.onSelect = (item) => {
+			if (item.value === "fast" || item.value === "balanced" || item.value === "thorough") done(item.value);
+		};
+		list.onCancel = () => done(undefined);
+		const container = new Container();
+		const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
+		container.addChild(border());
+		container.addChild(new Text(theme.fg("accent", theme.bold(` Run ${teamId}`)), 1, 0));
+		container.addChild(new Text(theme.fg("dim", " Select profile · ↑/↓ navigate · enter choose · esc cancel"), 1, 0));
+		container.addChild(list);
+		container.addChild(border());
+		return {
+			render: (width: number) => container.render(width),
+			invalidate: () => container.invalidate(),
+			handleInput(data: string) {
+				list.handleInput(data);
+				tui.requestRender();
+			},
+		};
+	}, {
+		overlay: true,
+		overlayOptions: { width: "70%", minWidth: 60, maxHeight: "80%", anchor: "center", margin: 2 },
+	});
+	return selected;
 }
 
 export async function chooseModel(ctx: ExtensionContext, label: string): Promise<string | undefined> {

@@ -2,7 +2,7 @@
  * `/teams` slash command registration and command flow.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RuntimeControlPlane } from "../../../lib/runtime-control-plane.js";
 import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../../lib/tui-confirmation.js";
 import { deleteTeamFiles } from "./team-form.js";
@@ -10,12 +10,82 @@ import { selectTeamModels } from "./team-models.js";
 import { openTeamBrowserOverlay, openTeamOverlay, pickTeamId, teamDescriptionLines } from "./team-overlay.js";
 import { formTeam } from "./team-form.js";
 import { projectBuiltinTeams, pruneBuiltinTeams } from "./team-projection.js";
+import { isTeamProfile, type TeamProfile } from "./team-profiles.js";
 import { requestTeamRunStop, runTeam, type TeamRunRegistration } from "./team-runtime.js";
 
-function parseRunArgs(rawArgs: string): { id: string; prompt: string } | undefined {
-	const [id, ...rest] = rawArgs.trim().split(/\s+/);
-	if (!id) return undefined;
-	return { id, prompt: rest.join(" ").trim() };
+interface ParsedTeamRunArgs {
+	id?: string;
+	prompt: string;
+	profile: TeamProfile;
+}
+
+export function parseTeamRunArgs(rawArgs: string): ParsedTeamRunArgs {
+	const tokens = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
+	const positional: string[] = [];
+	let profile: TeamProfile = "balanced";
+	let profileSeen = false;
+	let parseOptions = true;
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (!token) continue;
+		if (parseOptions && token === "--") {
+			parseOptions = false;
+			continue;
+		}
+		if (parseOptions && (token === "--profile" || token.startsWith("--profile="))) {
+			if (profileSeen) throw new Error("--profile may be specified only once");
+			const value = token === "--profile" ? tokens[++index] : token.slice("--profile=".length);
+			if (!value || !isTeamProfile(value)) {
+				throw new Error("--profile must be fast, balanced, or thorough");
+			}
+			profile = value;
+			profileSeen = true;
+			continue;
+		}
+		positional.push(token);
+	}
+	const [id, ...promptParts] = positional;
+	return {
+		...(id ? { id } : {}),
+		prompt: promptParts.join(" ").trim(),
+		profile,
+	};
+}
+
+interface ExecuteTeamRunArgs {
+	pi: ExtensionAPI;
+	registration: TeamRunRegistration;
+	ctx: ExtensionCommandContext;
+	request: { id: string; prompt: string; profile: TeamProfile };
+	asyncRun: boolean;
+}
+
+async function executeTeamRun(args: ExecuteTeamRunArgs): Promise<void> {
+	const { pi, registration, ctx, request, asyncRun } = args;
+	await ctx.waitForIdle();
+	ctx.ui.notify(`Running team "${request.id}" with profile=${request.profile}${asyncRun ? " asynchronously" : ""}`, "info");
+	if (asyncRun) {
+		void runTeam({
+			params: request,
+			ctx,
+			stateManager: registration.stateManager,
+		}).then((result) => {
+			const text = result.content.map((entry) => entry.text).join("\n");
+			pi.sendUserMessage(`[Team "${request.id}" async result · profile=${request.profile}]\n\n${text}`, { deliverAs: "followUp" });
+		}).catch((error: unknown) => {
+			pi.sendUserMessage(`[Team "${request.id}" async failed · profile=${request.profile}]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
+		});
+		return;
+	}
+	const result = await runTeam({
+		params: request,
+		ctx,
+		stateManager: registration.stateManager,
+	});
+	const text = result.content.map((entry) => entry.text).join("\n");
+	pi.sendUserMessage(`[Team "${request.id}" result · profile=${request.profile}]\n\n${text}`, {
+		deliverAs: "followUp",
+	});
 }
 
 export function teamDeleteConfirmationView(id: string): DestructiveConfirmationView {
@@ -80,11 +150,12 @@ export function registerTeamCommands(
 ): void {
 	const runtime = registration.runtime ?? new RuntimeControlPlane();
 	pi.registerCommand("teams", {
-		description: "Browse, describe, form, configure models, delete, seed, prune, stop, or run teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|prune|stop [runId]|run [id] [prompt]|async [id] [prompt]]",
+		description: "Browse, configure, run, or stop teams. Usage: /teams [list|describe [id]|form [id]|models [id]|delete [id]|seed [--force]|prune|stop [runId]|run [id] [prompt] [--profile fast|balanced|thorough]|async [id] [prompt] [--profile fast|balanced|thorough]]",
 		handler: async (rawArgs, ctx) => {
 			const trimmed = rawArgs.trim();
 			if (!trimmed || trimmed === "list") {
-				await openTeamBrowserOverlay(ctx);
+				const request = await openTeamBrowserOverlay(ctx);
+				if (request) await executeTeamRun({ pi, registration, ctx, request, asyncRun: false });
 				return;
 			}
 			const [command, ...rest] = trimmed.split(/\s+/);
@@ -126,37 +197,18 @@ export function registerTeamCommands(
 				return;
 			}
 			const isAsyncRun = command === "async";
-			const parsed = parseRunArgs(command === "run" || isAsyncRun ? rest.join(" ") : trimmed);
-			const id = parsed?.id ?? await pickTeamId(ctx);
+			const parsed = parseTeamRunArgs(command === "run" || isAsyncRun ? rest.join(" ") : trimmed);
+			const id = parsed.id ?? await pickTeamId(ctx);
 			if (!id) return;
-			const promptInput = parsed?.prompt || await ctx.ui.editor("Team prompt", "");
+			const promptInput = parsed.prompt || await ctx.ui.editor(`Run ${id} (${parsed.profile})`, "");
 			const prompt = promptInput?.trim() ?? "";
 			if (!prompt) return;
-			await ctx.waitForIdle();
-			if (isAsyncRun) {
-				void runTeam({
-					params: { id, prompt },
-					ctx,
-					stateManager: registration.stateManager,
-					runtime,
-				}).then((result) => {
-					const text = result.content.map((entry) => entry.text).join("\n");
-					pi.sendUserMessage(`[Team "${id}" async result]\n\n${text}`, { deliverAs: "followUp" });
-				}).catch((error: unknown) => {
-					pi.sendUserMessage(`[Team "${id}" async failed]\n\n${error instanceof Error ? error.message : String(error)}`, { deliverAs: "followUp" });
-				});
-				ctx.ui.notify(`Team "${id}" started asynchronously`, "info");
-				return;
-			}
-			const result = await runTeam({
-				params: { id, prompt },
+			await executeTeamRun({
+				pi,
+				registration: { ...registration, runtime },
 				ctx,
-				stateManager: registration.stateManager,
-				runtime,
-			});
-			const text = result.content.map((entry) => entry.text).join("\n");
-			pi.sendUserMessage(`[Team "${id}" result]\n\n${text}`, {
-				deliverAs: "followUp",
+				request: { id, prompt, profile: parsed.profile },
+				asyncRun: isAsyncRun,
 			});
 		},
 	});

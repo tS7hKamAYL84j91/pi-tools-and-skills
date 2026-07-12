@@ -58,6 +58,7 @@ describe("pi-teams overlay renderers", () => {
 
 			expect(lines.join("\n")).toContain(" Teams");
 			expect(lines.join("\n")).toContain("> consult");
+			expect(lines.join("\n")).toContain("r run");
 			expect(lines.join("\n")).toContain("/ filter");
 			expect(lines.join("\n")).toContain("esc");
 			expectWidthBounded(lines, width);
@@ -133,6 +134,31 @@ describe("pi-teams overlay renderers", () => {
 		expect(detail).toContain("backspace/← list");
 		expect(detail).not.toContain(CURSOR_MARKER);
 		expect(actions).toEqual([]);
+	});
+
+	it("exposes one-shot run actions from list and detail modes", () => {
+		const actions: Array<{ type: string; id?: string } | undefined> = [];
+		const createComponent = () => createTeamBrowserComponent({
+			ctx: {
+				cwd: "/tmp",
+				ui: { notify: () => undefined },
+			} as unknown as import("@earendil-works/pi-coding-agent").ExtensionContext,
+			tui: { requestRender: () => undefined },
+			theme: fakeTheme,
+			done: (action) => actions.push(action),
+			teams: [team("navigator")],
+		});
+
+		createComponent().handleInput?.("r");
+		const detailComponent = createComponent();
+		detailComponent.handleInput?.("\r");
+		expect(detailComponent.render(60).join("\n")).toContain("r run");
+		detailComponent.handleInput?.("r");
+
+		expect(actions).toEqual([
+			{ type: "run", id: "navigator" },
+			{ type: "run", id: "navigator" },
+		]);
 	});
 
 	it("cancels delete confirmation before running focused detail actions", () => {

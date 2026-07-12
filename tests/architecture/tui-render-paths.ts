@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 const TEAM_OVERLAY_FILES = [
 	"extensions/pi-panopticon/teams/team-overlay.ts",
+	"extensions/pi-panopticon/teams/team-overlay-render.ts",
 	"extensions/pi-panopticon/teams/team-picker.ts",
 ];
 

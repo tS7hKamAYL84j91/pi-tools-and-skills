@@ -371,12 +371,17 @@ flowchart LR
   Input[Keyboard / IME input] --> State
   State --> Render[Pure width-bounded render closure]
   Render --> Components[Native pi TUI components]
+  State --> RunAction[One-shot Run action]
+  RunAction --> ProfilePicker[Native SelectList\nfast / balanced / thorough]
+  ProfilePicker --> Prompt[Prompt editor]
+  Prompt --> TeamRun[runTeam input\nteam + profile + prompt]
   Fitness[Architecture fitness test] -. forbids registry and sync filesystem calls .-> Render
 ```
 
 - Registry snapshots and registry-derived detail lines are loaded before the browser render closure runs.
 - Browser render closures consume only in-memory state; explicit delete/reload actions refresh both the team snapshot and detail cache.
 - The focusable browser propagates focus only while its search input is visible, preserving IME cursor placement.
+- The Run action closes the browser before opening a native profile selector and prompt editor; its profile is one-shot input passed directly to `runTeam`, not session-mode state.
 - `tests/architecture/tui-render-paths.ts` guards team overlay render closures against synchronous registry/filesystem reads.
 
 ## Panopticon Controls

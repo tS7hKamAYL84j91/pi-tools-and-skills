@@ -1,6 +1,12 @@
 /** Shared latency/cost profiles for declarative team runs. */
 
-export type TeamProfile = "fast" | "balanced" | "thorough";
+export const TEAM_PROFILE_NAMES = ["fast", "balanced", "thorough"] as const;
+
+export type TeamProfile = typeof TEAM_PROFILE_NAMES[number];
+
+export function isTeamProfile(value: string): value is TeamProfile {
+	return TEAM_PROFILE_NAMES.some((profile) => profile === value);
+}
 
 interface TeamProfileConfig {
 	fusionPanelModels: number;
@@ -15,7 +21,7 @@ interface TeamProfileConfig {
 	historyChars: number;
 }
 
-const TEAM_PROFILES: Record<TeamProfile, TeamProfileConfig> = {
+const TEAM_PROFILE_CONFIGS: Record<TeamProfile, TeamProfileConfig> = {
 	fast: {
 		fusionPanelModels: 2,
 		fusionPanelMaxTokens: 600,
@@ -55,5 +61,5 @@ const TEAM_PROFILES: Record<TeamProfile, TeamProfileConfig> = {
 };
 
 export function resolveTeamProfile(profile?: TeamProfile): TeamProfileConfig {
-	return TEAM_PROFILES[profile ?? "balanced"];
+	return TEAM_PROFILE_CONFIGS[profile ?? "balanced"];
 }
