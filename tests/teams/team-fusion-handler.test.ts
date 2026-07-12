@@ -131,6 +131,7 @@ describe("fusion-analysis planner", () => {
 		});
 
 		expect(plan.panel).toEqual(["openai/a", "google/c"]);
+		expect(plan.panelSourceIndexes).toEqual([0, 2]);
 	});
 
 	it("bounds the judge prompt while retaining the complete schema instruction", () => {

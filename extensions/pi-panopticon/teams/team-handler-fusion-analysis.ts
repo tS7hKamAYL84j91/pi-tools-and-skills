@@ -51,8 +51,10 @@ async function buildSharedContext(args: TeamHandlerRunArgs): Promise<SharedConte
 
 async function runPanel(ctx: SharedContext): Promise<{ panelRuns: NodeRun[]; usablePanel: NodeRun[] }> {
 	const { args, plan, parent, panelSource } = ctx;
+	const panelBindings = roleBindings(args.team.agentBindings, ["panel", "member"]);
 	const panelRuns = await Promise.all(plan.panel.map((model, index) => {
-		const source = roleBindings(args.team.agentBindings, ["panel", "member"])[index] ?? panelSource;
+		const sourceIndex = plan.panelSourceIndexes[index] ?? index;
+		const source = panelBindings[sourceIndex] ?? panelSource;
 		const profile = resolveTeamProfile(args.params.profile);
 		const binding = {
 			...source,
@@ -109,6 +111,7 @@ interface FusionPlanInput {
 
 interface FusionPlan {
 	panel: string[];
+	panelSourceIndexes: number[];
 	judge: string;
 	fallback: string[];
 	warnings: string[];
@@ -164,6 +167,7 @@ export function planFusion(args: FusionPlanInput): FusionPlan {
 	const gate = args.requireApprovalAboveCalls ?? DEFAULT_APPROVAL_CALL_GATE;
 	return {
 		panel,
+		panelSourceIndexes: panel.map((model) => args.configuredPanel.indexOf(model)),
 		judge,
 		fallback,
 		warnings,

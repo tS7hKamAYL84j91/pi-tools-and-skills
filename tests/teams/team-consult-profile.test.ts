@@ -10,6 +10,7 @@ interface CapturedNodeArgs {
 	systemPrompt: string;
 	timeoutMs?: number;
 	maxRetries?: number;
+	signal?: AbortSignal;
 }
 
 let captured: CapturedNodeArgs | undefined;
@@ -43,7 +44,7 @@ function navigatorTeam(): TeamSpec {
 	};
 }
 
-async function runNavigator(profile: "fast" | "balanced", limits?: { timeoutMs?: number; maxRetries?: number }) {
+async function runNavigator(profile: "fast" | "balanced", limits?: { timeoutMs?: number; maxRetries?: number }, signal?: AbortSignal) {
 	captured = undefined;
 	const team = navigatorTeam();
 	const handler = getTeamHandler(team);
@@ -53,6 +54,7 @@ async function runNavigator(profile: "fast" | "balanced", limits?: { timeoutMs?:
 		params: { id: team.id, prompt: "Review this implementation", profile, limits },
 		ctx: { cwd: process.cwd(), ui: { setStatus() {} } } as never,
 		stateManager: new TeamStateManager({ appendEntry() {} }),
+		signal,
 	});
 }
 
@@ -65,6 +67,13 @@ describe("Navigator profiles", () => {
 		expect(captured?.prompt).toBe("Review briefly. Return a verdict, at most three prioritized findings, and one next action.\n\nReview this implementation");
 		expect(captured?.systemPrompt).toContain("Verdict: pass|revise");
 		expect(captured?.systemPrompt).toContain("up to three bullets");
+	});
+
+	it("propagates cancellation to the Navigator child", async () => {
+		const controller = new AbortController();
+		await runNavigator("fast", undefined, controller.signal);
+
+		expect(captured?.signal).toBe(controller.signal);
 	});
 
 	it("lets explicit Balanced limits override profile defaults", async () => {

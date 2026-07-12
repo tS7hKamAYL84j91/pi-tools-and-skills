@@ -194,22 +194,42 @@ async function main() {
 			const exitCode = await run("pi", args);
 			const endToEndDurationMs = Date.now() - startedAt;
 			const events = await readEvents(sessionPath);
-			const completedEvent = [...events]
-				.reverse()
-				.find((event) => event.kind === "run_completed");
+			const startedEvents = events.filter(
+				(event) => event.kind === "run_started",
+			);
+			const startedEvent =
+				startedEvents.length === 1 && startedEvents[0]?.teamId === options.team
+					? startedEvents[0]
+					: undefined;
+			const routingValid = startedEvent !== undefined;
+			const completedEvents = routingValid
+				? events.filter(
+						(event) =>
+							event.kind === "run_completed" &&
+							event.runId === startedEvent.runId,
+					)
+				: [];
+			const completedEvent =
+				completedEvents.length === 1 ? completedEvents[0] : undefined;
 			const nodes = events
-				.filter((event) => event.kind === "node_completed")
+				.filter(
+					(event) =>
+						event.kind === "node_completed" &&
+						event.runId === startedEvent?.runId,
+				)
 				.map((event) => ({
 					role: String(event.role ?? "unknown"),
 					model: String(event.model ?? "unknown"),
 					ok: event.ok === true,
 					durationMs: Number(event.durationMs) || 0,
 				}));
-			const resultValid = resultIsValid(options.team, completedEvent);
+			const resultValid =
+				routingValid && resultIsValid(options.team, completedEvent);
 			runs.push({
 				index: index + 1,
 				exitCode,
 				endToEndDurationMs,
+				routingValid,
 				teamDurationMs:
 					typeof completedEvent?.durationMs === "number"
 						? completedEvent.durationMs
@@ -218,11 +238,13 @@ async function main() {
 				failureCategory:
 					exitCode !== 0
 						? "pi_process_failed"
-						: completedEvent === undefined
-							? "team_completion_missing"
-							: resultValid
-								? null
-								: "invalid_result",
+						: !routingValid
+							? "team_routing_invalid"
+							: completedEvent === undefined
+								? "team_completion_missing_or_duplicate"
+								: resultValid
+									? null
+									: "invalid_result",
 				nodes,
 			});
 		}

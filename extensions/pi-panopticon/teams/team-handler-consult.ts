@@ -32,6 +32,7 @@ async function runConsult(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> 
 		prompt: isFast ? `Review briefly. Return a verdict, at most three prioritized findings, and one next action.\n\n${args.params.prompt}` : renderTemplate(chainText(chains, "navigator.template").split("\n"), { prompt: args.params.prompt }),
 		systemPrompt: isFast ? "Be a concise, skeptical reviewer. Do not restate the request. Use exactly: Verdict: pass|revise; Findings: up to three bullets; Next action: one sentence." : chainText(chains, "navigator.system"),
 		ctx: args.ctx,
+		signal: args.signal,
 		parentId: parent?.id,
 		orchestratorName: parent?.name,
 		timeoutMs,

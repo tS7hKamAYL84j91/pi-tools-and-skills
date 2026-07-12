@@ -42,7 +42,7 @@ Each JSON record contains:
 
 - schema version, UTC generation time, repository commit, pi version, Node version, and platform;
 - team, profile, run count, and optional outer model identifier;
-- per run: exit status, end-to-end wall duration, persisted team duration, result-validity flag, failure category, and per-node role/model/success/duration;
+- per run: exit status, end-to-end wall duration, persisted team duration, exactly-one matching route flag, result-validity flag, failure category, and per-node role/model/success/duration;
 - summary: successful/valid counts and median/P95 end-to-end and per-node durations.
 
 Provider credentials remain environment-owned and are never serialized. Raw session files are deleted after timing extraction.
