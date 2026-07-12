@@ -215,15 +215,27 @@ function fusionAnalysisModelSlots(team: TeamSpec, models: TeamModels): TeamModel
 	];
 }
 
+function truncateAtSemanticBoundary(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	if (maxChars <= 0) return "";
+	const marker = "\n[truncated]";
+	const contentBudget = Math.max(0, maxChars - marker.length);
+	const candidate = text.slice(0, contentBudget);
+	const minimumBoundary = Math.floor(contentBudget * 0.6);
+	const boundary = Math.max(candidate.lastIndexOf("\n\n"), candidate.lastIndexOf("\n"), candidate.lastIndexOf(". "), candidate.lastIndexOf(" "));
+	const content = boundary >= minimumBoundary ? candidate.slice(0, boundary + 1).trimEnd() : candidate;
+	return `${content}${marker}`.slice(0, maxChars);
+}
+
 export function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[], maxPromptChars: number, maxPanelChars: number): string {
 	const instruction = "Return only JSON with every key: answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence. answer must be a concise, self-contained final answer to the original prompt.";
-	const boundedOriginal = originalPrompt.slice(0, Math.max(0, Math.floor(maxPromptChars / 3)));
+	const boundedOriginal = truncateAtSemanticBoundary(originalPrompt, Math.max(0, Math.floor(maxPromptChars / 3)));
 	const panelText = participantsFromRuns(panelRuns)
-		.map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${run.output.slice(0, maxPanelChars)}`)
+		.map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${truncateAtSemanticBoundary(run.output, maxPanelChars)}`)
 		.join("\n\n");
 	const body = ["Original prompt:", boundedOriginal, "", "Panel responses:", panelText].join("\n");
 	const bodyBudget = Math.max(0, maxPromptChars - instruction.length - 2);
-	return `${body.slice(0, bodyBudget)}\n\n${instruction}`;
+	return `${truncateAtSemanticBoundary(body, bodyBudget)}\n\n${instruction}`;
 }
 
 function stripMarkdownFences(text: string): string {

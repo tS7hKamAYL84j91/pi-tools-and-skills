@@ -56,7 +56,7 @@ Fast passes a topology's live gate only when:
 1. at least 10 runs were attempted for both profiles;
 2. routing is correct and all successful outputs satisfy the deterministic validity rubric;
 3. Fast success and validity rates are no lower than Balanced;
-4. Fast median end-to-end duration is at most 80% of Balanced; and
-5. Fast P95 end-to-end duration is at most 90% of Balanced.
+4. Fusion Fast median end-to-end duration is at most 50% of Balanced and P95 is at most 60% of Balanced; and
+5. Navigator Fast median end-to-end duration is at most 60% of Balanced and P95 is at most 30 seconds.
 
-Both Fusion and Navigator must pass independently. Any provider/model/configuration change invalidates the comparison baseline. Until reviewed records satisfy every gate, Balanced remains the default and no speed, quality, or cost improvement should be claimed.
+Fusion and Navigator must pass independently. Any provider/model/configuration change invalidates the comparison baseline. Until reviewed records satisfy every gate, Balanced remains the default and no speed, quality, or cost improvement should be claimed.

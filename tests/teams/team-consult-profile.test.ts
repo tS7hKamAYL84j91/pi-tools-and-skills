@@ -62,8 +62,9 @@ describe("Navigator profiles", () => {
 
 		expect(captured).toMatchObject({ timeoutMs: 30_000, maxRetries: 0 });
 		expect(captured?.binding.parameters).toMatchObject({ maxTokens: 600 });
-		expect(captured?.prompt).toBe("Review briefly. Return only decisive findings and the next action.\n\nReview this implementation");
-		expect(captured?.systemPrompt).toBe("Be a concise, skeptical reviewer. Do not restate the request.");
+		expect(captured?.prompt).toBe("Review briefly. Return a verdict, at most three prioritized findings, and one next action.\n\nReview this implementation");
+		expect(captured?.systemPrompt).toContain("Verdict: pass|revise");
+		expect(captured?.systemPrompt).toContain("up to three bullets");
 	});
 
 	it("lets explicit Balanced limits override profile defaults", async () => {

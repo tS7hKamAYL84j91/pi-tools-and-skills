@@ -139,6 +139,7 @@ describe("fusion-analysis planner", () => {
 
 		expect(prompt.length).toBeLessThanOrEqual(1_000);
 		expect(prompt).toContain("answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence");
+		expect(prompt).toContain("[truncated]");
 		expect(prompt).not.toContain("x".repeat(201));
 	});
 
