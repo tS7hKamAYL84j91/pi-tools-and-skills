@@ -339,6 +339,25 @@ flowchart TD
 
 ---
 
+## Panopticon Team Browser Render Boundary
+
+```mermaid
+flowchart LR
+  Open[Open browser / explicit reload] --> Registry[Team registry filesystem read]
+  Registry --> Specs[Sorted TeamSpec snapshot]
+  Specs --> Cache[Precomputed detail-line cache]
+  Cache --> State[Focusable browser state]
+  Input[Keyboard / IME input] --> State
+  State --> Render[Pure width-bounded render closure]
+  Render --> Components[Native pi TUI components]
+  Fitness[Architecture fitness test] -. forbids registry and sync filesystem calls .-> Render
+```
+
+- Registry snapshots and registry-derived detail lines are loaded before the browser render closure runs.
+- Browser render closures consume only in-memory state; explicit delete/reload actions refresh both the team snapshot and detail cache.
+- The focusable browser propagates focus only while its search input is visible, preserving IME cursor placement.
+- `tests/architecture/tui-render-paths.ts` guards team overlay render closures against synchronous registry/filesystem reads.
+
 ## Panopticon Controls
 
 ```mermaid

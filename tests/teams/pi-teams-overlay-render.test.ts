@@ -2,10 +2,11 @@
  * Narrow-width render coverage for pi-teams overlays.
  */
 
-import { Input, visibleWidth } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import {
+	createTeamBrowserComponent,
 	renderTeamBrowserOverlay,
 	renderTeamOverlay,
 } from "../../extensions/pi-panopticon/teams/team-overlay.js";
@@ -77,7 +78,7 @@ describe("pi-teams overlay renderers", () => {
 
 			const body = lines.join("\n");
 			expect(body).toContain("llm-council");
-			expect(body).toContain("type to filter · ↑/↓ navigate · enter detail · esc close");
+			expect(body).toContain("type to filter · ↑/↓ navigate · enter detail · esc clear");
 			expectWidthBounded(lines, width);
 		});
 
@@ -107,4 +108,55 @@ describe("pi-teams overlay renderers", () => {
 			expectWidthBounded(lines, width);
 		});
 	}
+
+	it("keeps IME focus on search and clears it when opening detail", () => {
+		const actions: Array<{ type: string; id?: string } | undefined> = [];
+		const component = createTeamBrowserComponent({
+			// The component only uses cwd and ui.notify from this focused context fixture.
+			ctx: {
+				cwd: "/tmp",
+				ui: { notify: () => undefined },
+			} as unknown as import("@earendil-works/pi-coding-agent").ExtensionContext,
+			tui: { requestRender: () => undefined },
+			theme: fakeTheme,
+			done: (action) => actions.push(action),
+			teams: [team("project-team", { source: "project" })],
+		});
+
+		component.focused = true;
+		component.handleInput?.("/");
+		expect(component.render(60).join("\n")).toContain(CURSOR_MARKER);
+		component.handleInput?.("\r");
+
+		const detail = component.render(60).join("\n");
+		expect(detail).toContain("Team Detail");
+		expect(detail).toContain("backspace/← list");
+		expect(detail).not.toContain(CURSOR_MARKER);
+		expect(actions).toEqual([]);
+	});
+
+	it("cancels delete confirmation before running focused detail actions", () => {
+		const actions: Array<{ type: string; id?: string } | undefined> = [];
+		const component = createTeamBrowserComponent({
+			// The component only uses cwd and ui.notify from this focused context fixture.
+			ctx: {
+				cwd: "/tmp",
+				ui: { notify: () => undefined },
+			} as unknown as import("@earendil-works/pi-coding-agent").ExtensionContext,
+			tui: { requestRender: () => undefined },
+			theme: fakeTheme,
+			done: (action) => actions.push(action),
+			teams: [team("project-team", { source: "project" })],
+		});
+
+		component.handleInput?.("\r");
+		component.handleInput?.("d");
+		expect(component.render(60).join("\n")).toContain("Delete team");
+		component.handleInput?.("\x1b");
+		expect(component.render(60).join("\n")).toContain("Team Detail");
+		expect(actions).toEqual([]);
+
+		component.handleInput?.("m");
+		expect(actions).toEqual([{ type: "models", id: "project-team" }]);
+	});
 });

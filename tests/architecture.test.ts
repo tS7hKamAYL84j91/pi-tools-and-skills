@@ -9,6 +9,7 @@
 import "./architecture/api-contracts.js";
 import "./architecture/runtime-state-boundaries.js";
 import "./architecture/ux-tools-policy.js";
+import "./architecture/tui-render-paths.js";
 import "./architecture/tool-api-contracts.js";
 import "./architecture/lib-layering.js";
 import "./architecture/clean-code.js";

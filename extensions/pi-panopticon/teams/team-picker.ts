@@ -63,24 +63,19 @@ async function searchableSelect(ctx: ExtensionContext, title: string, items: Sel
 		};
 		list.onCancel = () => done(undefined);
 		list.onSelect = (item) => done(item);
+		const container = new Container();
+		const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
+		container.addChild(border());
+		container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
+		container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter choose · esc close"), 1, 0));
+		container.addChild(input);
+		container.addChild(list);
+		container.addChild(border());
 		const component: Component & Focusable = {
 			get focused() { return input.focused; },
 			set focused(value: boolean) { input.focused = value; },
-			render(width: number) {
-				const container = new Container();
-				const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
-				container.addChild(border());
-				container.addChild(new Text(theme.fg("accent", theme.bold(` ${title}`)), 1, 0));
-				container.addChild(new Text(theme.fg("dim", " type to filter · ↑/↓ navigate · enter choose · esc close"), 1, 0));
-				container.addChild(input);
-				container.addChild(list);
-				container.addChild(border());
-				return container.render(width);
-			},
-			invalidate() {
-				input.invalidate();
-				list.invalidate();
-			},
+			render: (width: number) => container.render(width),
+			invalidate: () => container.invalidate(),
 			handleInput(data: string) {
 				if (matchesKey(data, "up") || matchesKey(data, "down")) {
 					list.handleInput(data);

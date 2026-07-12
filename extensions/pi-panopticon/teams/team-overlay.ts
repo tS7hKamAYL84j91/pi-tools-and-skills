@@ -11,14 +11,7 @@ import { STATUS_SYMBOLS } from "./status-symbols.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamSpec } from "./team-types.js";
 
-export function teamDescriptionLines(cwd: string, id: string): string[] {
-	const registry = loadTeamRegistry(undefined, { cwd });
-	const team = registry.teams.get(id);
-	if (!team) {
-		throw new Error(
-			`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`,
-		);
-	}
+function descriptionLinesForTeam(team: TeamSpec): string[] {
 	const bindingLines = team.agentBindings.map((binding) => {
 		const model = binding.model ? ` model=${binding.model}` : "";
 		return `  - ${binding.role}: ${binding.subagent}${model}`;
@@ -32,7 +25,16 @@ export function teamDescriptionLines(cwd: string, id: string): string[] {
 		...(bindingLines.length > 0 ? ["Agent bindings:", ...bindingLines] : []),
 	];
 }
-
+export function teamDescriptionLines(cwd: string, id: string): string[] {
+	const registry = loadTeamRegistry(undefined, { cwd });
+	const team = registry.teams.get(id);
+	if (!team) {
+		throw new Error(
+			`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`,
+		);
+	}
+	return descriptionLinesForTeam(team);
+}
 function teamIds(cwd: string): string[] {
 	return [...loadTeamRegistry(undefined, { cwd }).teams.keys()].sort();
 }
@@ -47,7 +49,6 @@ export async function pickTeamId(ctx: ExtensionContext, requested?: string): Pro
 	if (ids.length === 1) return ids[0];
 	return ctx.ui.select("Team", ids);
 }
-
 function loadTeams(cwd: string): TeamSpec[] {
 	return [...loadTeamRegistry(undefined, { cwd }).teams.values()]
 		.sort((a, b) => a.id.localeCompare(b.id));
@@ -67,11 +68,9 @@ async function deleteTeam(ctx: ExtensionContext, team: TeamSpec): Promise<boolea
 		return false;
 	}
 }
-
 type TeamBrowserAction =
 	| { type: "form" }
 	| { type: "models"; id: string };
-
 const MAX_READ_ONLY_DETAIL_LINES = 15;
 
 function readOnlyDetailLines(lines: readonly string[]): string[] {
@@ -110,7 +109,7 @@ export function renderTeamBrowserOverlay(args: RenderTeamBrowserArgs): string[] 
 		for (const line of readOnlyDetailLines(args.detailLines)) {
 			container.addChild(new Text(line, 1, 0));
 		}
-		container.addChild(new Text(args.theme.fg("dim", " f form · m models · d delete · backspace back · esc close"), 1, 0));
+		container.addChild(new Text(args.theme.fg("dim", " f form · m models · d delete · backspace/← list · esc close"), 1, 0));
 	} else {
 		const visible = args.searchActive && args.query
 			? fuzzyFilter(args.teams, args.query.trim(), (team) =>
@@ -136,7 +135,7 @@ export function renderTeamBrowserOverlay(args: RenderTeamBrowserArgs): string[] 
 		if (description) container.addChild(new Text(args.theme.fg("dim", truncateToWidth(description, Math.max(20, args.width - 4))), 1, 0));
 
 		if (args.searchActive) {
-			container.addChild(new Text(args.theme.fg("dim", " type to filter · ↑/↓ navigate · enter detail · esc close"), 1, 0));
+			container.addChild(new Text(args.theme.fg("dim", " type to filter · ↑/↓ navigate · enter detail · esc clear"), 1, 0));
 		} else {
 			container.addChild(new Text(args.theme.fg("dim", " ↑/↓ navigate · enter detail · f form · m models · d delete · / filter · esc close"), 1, 0));
 		}
@@ -166,15 +165,20 @@ class TeamBrowserState {
 	searchActive = false;
 	focused = false;
 	searchInput = new Input();
+	private detailLinesById: Map<string, string[]>;
 
 	constructor(
 		private ctx: ExtensionContext,
 		private tui: { requestRender: () => void },
 		private done: (action: TeamBrowserAction | undefined) => void,
+		teams: TeamSpec[],
 	) {
-		this.teams = loadTeams(ctx.cwd);
+		this.teams = teams;
+		this.detailLinesById = new Map(teams.map((team) => [team.id, descriptionLinesForTeam(team)]));
 	}
-
+	get detailLines(): string[] | undefined {
+		return this.detailId ? this.detailLinesById.get(this.detailId) : undefined;
+	}
 	get displayedTeams(): TeamSpec[] {
 		if (!this.searchActive) return this.teams;
 		const query = this.searchInput.getValue().trim();
@@ -182,14 +186,13 @@ class TeamBrowserState {
 		return fuzzyFilter(this.teams, query, (team) =>
 			`${team.id} ${team.name} ${team.protocol} ${team.source} ${team.description ?? ""}`);
 	}
-
 	get selectedTeam(): TeamSpec | undefined {
 		if (this.detailId) return this.teams.find((team) => team.id === this.detailId);
 		return this.displayedTeams[this.selected];
 	}
-
 	reload() {
 		this.teams = loadTeams(this.ctx.cwd);
+		this.detailLinesById = new Map(this.teams.map((team) => [team.id, descriptionLinesForTeam(team)]));
 		this.selected = 0;
 		this.detailId = undefined;
 		this.deletingId = undefined;
@@ -197,7 +200,6 @@ class TeamBrowserState {
 		this.searchInput.setValue("");
 		this.searchInput.focused = false;
 	}
-
 	private handleEscape() {
 		if (this.searchActive) {
 			this.searchActive = false;
@@ -209,8 +211,12 @@ class TeamBrowserState {
 		}
 		this.done(undefined);
 	}
-
 	private async handleDeleteConfirmation(data: string) {
+		if (matchesKey(data, "escape") || data.toLowerCase() === "n") {
+			this.deletingId = undefined;
+			this.tui.requestRender();
+			return;
+		}
 		if (data.toLowerCase() === "y") {
 			const team = this.teams.find((entry) => entry.id === this.deletingId);
 			if (team && await deleteTeam(this.ctx, team)) this.reload();
@@ -218,12 +224,7 @@ class TeamBrowserState {
 			this.tui.requestRender();
 			return;
 		}
-		if (data.toLowerCase() === "n") {
-			this.deletingId = undefined;
-			this.tui.requestRender();
-		}
 	}
-
 	private handleDetailMode(data: string) {
 		if (matchesKey(data, "backspace") || matchesKey(data, "left")) {
 			this.detailId = undefined;
@@ -244,7 +245,6 @@ class TeamBrowserState {
 			}
 		}
 	}
-
 	private handleSearchMode(data: string) {
 		if (matchesKey(data, "up") && this.selected > 0) {
 			this.selected--;
@@ -263,6 +263,8 @@ class TeamBrowserState {
 			const visible = this.displayedTeams;
 			if (visible.length > 0) {
 				this.detailId = visible[this.selected]?.id;
+				this.searchActive = false;
+				this.searchInput.focused = false;
 				this.tui.requestRender();
 			}
 			return;
@@ -271,7 +273,6 @@ class TeamBrowserState {
 		this.selected = Math.min(this.selected, Math.max(this.displayedTeams.length - 1, 0));
 		this.tui.requestRender();
 	}
-
 	private handleBrowseMode(data: string) {
 		if (data === "/") {
 			this.searchActive = true;
@@ -317,14 +318,13 @@ class TeamBrowserState {
 			this.tui.requestRender();
 		}
 	}
-
 	async handleInput(data: string) {
-		if (matchesKey(data, "escape")) {
-			this.handleEscape();
-			return;
-		}
 		if (this.deletingId) {
 			await this.handleDeleteConfirmation(data);
+			return;
+		}
+		if (matchesKey(data, "escape")) {
+			this.handleEscape();
 			return;
 		}
 		if (this.detailId) {
@@ -339,6 +339,39 @@ class TeamBrowserState {
 	}
 }
 
+interface CreateTeamBrowserComponentArgs {
+	ctx: ExtensionContext;
+	tui: { requestRender: () => void };
+	theme: Theme;
+	done: (action: TeamBrowserAction | undefined) => void;
+	teams: TeamSpec[];
+}
+export function createTeamBrowserComponent(args: CreateTeamBrowserComponentArgs): Component & Focusable {
+	const state = new TeamBrowserState(args.ctx, args.tui, args.done, args.teams);
+	return {
+		get focused(): boolean {
+			return state.focused;
+		},
+		set focused(value: boolean) {
+			state.focused = value;
+			state.searchInput.focused = value && state.searchActive;
+		},
+		render: (width: number) => renderTeamBrowserOverlay({
+			teams: state.teams,
+			selected: state.selected,
+			theme: args.theme,
+			width,
+			...(state.detailLines ? { detailLines: state.detailLines } : {}),
+			...(state.deletingId ? { deletingId: state.deletingId } : {}),
+			searchActive: state.searchActive,
+			searchInput: state.searchInput,
+			query: state.searchInput.getValue(),
+		}),
+		invalidate: () => state.searchInput.invalidate(),
+		handleInput: (data: string) => state.handleInput(data),
+	};
+}
+
 async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAction | undefined> {
 	const teams = loadTeams(ctx.cwd);
 	if (teams.length === 0) {
@@ -346,32 +379,8 @@ async function openTeamBrowserOnce(ctx: ExtensionContext): Promise<TeamBrowserAc
 		return undefined;
 	}
 
-	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done): Component & Focusable => {
-		const state = new TeamBrowserState(ctx, tui, done);
-
-		return {
-			get focused(): boolean {
-				return state.focused;
-			},
-			set focused(value: boolean) {
-				state.focused = value;
-				state.searchInput.focused = value && state.searchActive;
-			},
-			render: (width: number) => renderTeamBrowserOverlay({
-				teams: state.teams,
-				selected: state.selected,
-				theme,
-				width,
-				...(state.detailId ? { detailLines: teamDescriptionLines(ctx.cwd, state.detailId) } : {}),
-				...(state.deletingId ? { deletingId: state.deletingId } : {}),
-				searchActive: state.searchActive,
-				searchInput: state.searchInput,
-				query: state.searchInput.getValue(),
-			}),
-			invalidate: () => state.searchInput.invalidate(),
-			handleInput: (data: string) => state.handleInput(data),
-		};
-	}, {
+	return ctx.ui.custom<TeamBrowserAction | undefined>((tui, theme, _kb, done) =>
+		createTeamBrowserComponent({ ctx, tui, theme, done, teams }), {
 		overlay: true,
 		overlayOptions: {
 			width: "70%",
