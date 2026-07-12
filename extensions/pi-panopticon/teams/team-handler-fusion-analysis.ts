@@ -4,31 +4,22 @@ import { ok } from "../../../lib/tool-result.js";
 import { currentPanopticonRecord } from "./runner.js";
 import { resolveTeamSettings } from "./settings.js";
 import { bindingForRole, roleBindings } from "./team-bindings.js";
-import { nodeDetails, participantsFromRuns, type NodeRun } from "./team-node-runner.js";
+import { INVALID_JUDGE_FALLBACK, isValidJudgeJson, renderJudgePrompt, stripMarkdownFences } from "./team-fusion-output.js";
+import { planFusion } from "./team-fusion-planner.js";
+import { nodeDetails, type NodeRun } from "./team-node-runner.js";
 import type { TeamHandler, TeamHandlerResult, TeamHandlerRunArgs, TeamModelSlot } from "./team-handler-shared.js";
 import { TEAM_STATUS_KEY, chainText, memberModelSlots, promptChains, recordDetail, recordPhase, requireBinding, runAndRecordNode, stoppedResult, stopRequested } from "./team-handler-shared.js";
-import { resolveTeamProfile, type TeamProfile } from "./team-profiles.js";
+import { resolveTeamProfile } from "./team-profiles.js";
 import type { TeamAgentBinding, TeamModels, TeamSpec } from "./team-types.js";
 
-const DEFAULT_MAX_PANEL_MODELS = 3;
-const HARD_MAX_PANEL_MODELS = 4;
-const DEFAULT_APPROVAL_CALL_GATE = 4;
-const FUSION_ANALYSIS_PHASE = "fusion-analysis";
+export { renderJudgePrompt } from "./team-fusion-output.js";
+export { planFusion } from "./team-fusion-planner.js";
 
-const INVALID_JUDGE_FALLBACK = JSON.stringify({
-	answer: "Fusion judge validation failed; review the degraded diagnostics before acting.",
-	consensus: [],
-	contradictions: [],
-	partialCoverage: [],
-	uniqueInsights: [],
-	blindSpots: ["judge returned invalid JSON"],
-	confidence: "low",
-	missingEvidence: ["judge analysis unavailable"],
-});
+const FUSION_ANALYSIS_PHASE = "fusion-analysis";
 
 interface SharedContext {
 	args: TeamHandlerRunArgs;
-	plan: FusionPlan;
+	plan: ReturnType<typeof planFusion>;
 	parent: { id?: string; name?: string } | undefined;
 	panelSource: TeamAgentBinding;
 	judgeSource: TeamAgentBinding;
@@ -46,7 +37,7 @@ async function buildSharedContext(args: TeamHandlerRunArgs): Promise<SharedConte
 	const sourcePanel = roleBindings(args.team.agentBindings, ["panel", "member"]);
 	const panelSource = sourcePanel[0] ?? requireBinding(args.team, ["panel", "member"]);
 	const judgeSource = bindingForRole(args.team.agentBindings, ["judge", "synthesis"]) ?? requireBinding(args.team, ["judge", "synthesis"]);
-	return { args, plan: undefined as unknown as FusionPlan, parent, panelSource, judgeSource };
+	return { args, plan: undefined as unknown as ReturnType<typeof planFusion>, parent, panelSource, judgeSource };
 }
 
 async function runPanel(ctx: SharedContext): Promise<{ panelRuns: NodeRun[]; usablePanel: NodeRun[] }> {
@@ -85,7 +76,7 @@ function validateJudgeJson(judge: NodeRun, args: TeamHandlerRunArgs): NodeRun {
 	return { ...judge, ok: false, error: "invalid judge JSON" };
 }
 
-async function runPanelAndJudge(args: TeamHandlerRunArgs, plan: FusionPlan): Promise<PanelAndJudgeResult> {
+async function runPanelAndJudge(args: TeamHandlerRunArgs, plan: ReturnType<typeof planFusion>): Promise<PanelAndJudgeResult> {
 	const ctx = await buildSharedContext(args);
 	ctx.plan = plan;
 	const { panelRuns, usablePanel } = await runPanel(ctx);
@@ -95,101 +86,6 @@ async function runPanelAndJudge(args: TeamHandlerRunArgs, plan: FusionPlan): Pro
 	if (stopRequested(args)) return { allNodes: [...panelRuns], judge: undefined as unknown as NodeRun, usablePanel, panelRuns };
 	const judge = validateJudgeJson(await runJudge(ctx, usablePanel), args);
 	return { allNodes: [...panelRuns, judge], judge, usablePanel, panelRuns };
-}
-
-interface FusionPlanInput {
-	configuredPanel: readonly string[];
-	configuredJudge?: string;
-	configuredFallback?: readonly string[];
-	visibleModels?: readonly string[];
-	maxPanelModels?: number;
-	allowProviders?: readonly string[];
-	denyProviders?: readonly string[];
-	requireApprovalAboveCalls?: number;
-	profile?: TeamProfile;
-}
-
-interface FusionPlan {
-	panel: string[];
-	panelSourceIndexes: number[];
-	judge: string;
-	fallback: string[];
-	warnings: string[];
-	estimatedCalls: number;
-	requiresApproval: boolean;
-}
-
-function providerOf(model: string): string {
-	return model.split("/")[0] ?? "";
-}
-
-function boundedPanelLimit(value: number | undefined): number {
-	if (value === undefined || !Number.isFinite(value)) return DEFAULT_MAX_PANEL_MODELS;
-	return Math.max(1, Math.min(HARD_MAX_PANEL_MODELS, Math.trunc(value)));
-}
-
-function providerAllowed(model: string, allowProviders: readonly string[] | undefined, denyProviders: readonly string[] | undefined): boolean {
-	const provider = providerOf(model);
-	if (denyProviders?.includes(provider)) return false;
-	return !allowProviders || allowProviders.length === 0 || allowProviders.includes(provider);
-}
-
-function filterModels(args: FusionPlanInput, models: readonly string[], warnings: string[], label: string): string[] {
-	const visible = args.visibleModels ? new Set(args.visibleModels) : undefined;
-	const out: string[] = [];
-	for (const model of models) {
-		if (!providerAllowed(model, args.allowProviders, args.denyProviders)) {
-			warnings.push(`${label} model filtered by provider policy: ${model}`);
-			continue;
-		}
-		if (visible && !visible.has(model)) {
-			warnings.push(`${label} model not visible to pi: ${model}`);
-			continue;
-		}
-		if (!out.includes(model)) out.push(model);
-	}
-	return out;
-}
-
-export function planFusion(args: FusionPlanInput): FusionPlan {
-	const warnings: string[] = [];
-	const maxPanelModels = boundedPanelLimit(args.maxPanelModels);
-	const filteredPanel = filterModels(args, args.configuredPanel, warnings, "panel");
-	const orderedPanel = args.profile === "fast" ? providerDiverseModels(filteredPanel) : filteredPanel;
-	const panel = orderedPanel.slice(0, maxPanelModels);
-	if (panel.length === 0) throw new Error("fusion teams need at least one usable panel model.");
-	const firstPanel = panel[0];
-	if (!firstPanel) throw new Error("fusion teams need at least one usable panel model.");
-	const judgeCandidates = args.configuredJudge ? [args.configuredJudge] : [firstPanel];
-	const judge = filterModels(args, judgeCandidates, warnings, "judge")[0] ?? firstPanel;
-	const fallback = filterModels(args, args.configuredFallback ?? [], warnings, "fallback");
-	const estimatedCalls = panel.length + 1;
-	const gate = args.requireApprovalAboveCalls ?? DEFAULT_APPROVAL_CALL_GATE;
-	return {
-		panel,
-		panelSourceIndexes: panel.map((model) => args.configuredPanel.indexOf(model)),
-		judge,
-		fallback,
-		warnings,
-		estimatedCalls,
-		requiresApproval: estimatedCalls > gate,
-	};
-}
-
-function providerDiverseModels(models: readonly string[]): string[] {
-	const selected: string[] = [];
-	const deferred: string[] = [];
-	const providers = new Set<string>();
-	for (const model of models) {
-		const provider = providerOf(model);
-		if (providers.has(provider)) {
-			deferred.push(model);
-		} else {
-			providers.add(provider);
-			selected.push(model);
-		}
-	}
-	return [...selected, ...deferred];
 }
 
 function visibleTextModelIds(args: TeamHandlerRunArgs): string[] | undefined {
@@ -217,84 +113,6 @@ function fusionAnalysisModelSlots(team: TeamSpec, models: TeamModels): TeamModel
 		}),
 		{ id: "judge", label: "Judge model", current: models.synthesis, kind: "synthesis" },
 	];
-}
-
-function truncateAtSemanticBoundary(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	if (maxChars <= 0) return "";
-	const marker = "\n[truncated]";
-	const contentBudget = Math.max(0, maxChars - marker.length);
-	const candidate = text.slice(0, contentBudget);
-	const minimumBoundary = Math.floor(contentBudget * 0.6);
-	const boundary = Math.max(candidate.lastIndexOf("\n\n"), candidate.lastIndexOf("\n"), candidate.lastIndexOf(". "), candidate.lastIndexOf(" "));
-	const content = boundary >= minimumBoundary ? candidate.slice(0, boundary + 1).trimEnd() : candidate;
-	return `${content}${marker}`.slice(0, maxChars);
-}
-
-export function renderJudgePrompt(originalPrompt: string, panelRuns: readonly NodeRun[], maxPromptChars: number, maxPanelChars: number): string {
-	const instruction = "Return only JSON with every key: answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, missingEvidence. answer must be a concise, self-contained final answer to the original prompt.";
-	const boundedOriginal = truncateAtSemanticBoundary(originalPrompt, Math.max(0, Math.floor(maxPromptChars / 3)));
-	const panelText = participantsFromRuns(panelRuns)
-		.map((run, index) => `--- Panel ${index + 1}: ${run.member.model} ---\n${truncateAtSemanticBoundary(run.output, maxPanelChars)}`)
-		.join("\n\n");
-	const body = ["Original prompt:", boundedOriginal, "", "Panel responses:", panelText].join("\n");
-	const bodyBudget = Math.max(0, maxPromptChars - instruction.length - 2);
-	return `${truncateAtSemanticBoundary(body, bodyBudget)}\n\n${instruction}`;
-}
-
-function stripMarkdownFences(text: string): string {
-	const trimmed = text.trim();
-	// Find all fence positions.
-	const fencePositions: number[] = [];
-	let idx = 0;
-	while (true) {
-		const next = trimmed.indexOf("```", idx);
-		if (next === -1) break;
-		fencePositions.push(next);
-		idx = next + 3;
-	}
-	// If we found at least two fences, try to extract a valid JSON object between the first and last fence.
-	if (fencePositions.length >= 2) {
-		const first = fencePositions[0];
-		const last = fencePositions[fencePositions.length - 1];
-		if (first !== undefined && last !== undefined) {
-			let content = trimmed.slice(first + 3, last).trim();
-			// Strip optional language tag line (e.g. ```json) if it appears on its own.
-			const firstNewline = content.indexOf("\n");
-			if (firstNewline !== -1) {
-				const firstLine = content.slice(0, firstNewline).trim();
-				if (/^[a-zA-Z0-9]+$/.test(firstLine) && firstLine.length <= 20) {
-					content = content.slice(firstNewline + 1).trim();
-				}
-			}
-			try {
-				JSON.parse(content);
-				return content;
-			} catch {
-				// Not JSON — fall through to original behavior.
-			}
-		}
-	}
-	// Original behavior: fence must be at the very start.
-	const openMatch = trimmed.match(/^```[a-zA-Z]*\n?/);
-	if (!openMatch) return trimmed;
-
-	const afterOpen = trimmed.slice(openMatch[0].length);
-	const closeIdx = afterOpen.lastIndexOf("\n```");
-	if (closeIdx === -1) return afterOpen.trim();
-	return afterOpen.slice(0, closeIdx).trim();
-}
-function isValidJudgeJson(text: string): boolean {
-	try {
-		const cleaned = stripMarkdownFences(text);
-		const parsed: unknown = JSON.parse(cleaned);
-		if (typeof parsed !== "object" || parsed === null) return false;
-		const record = parsed as Record<string, unknown>;
-		const arrayKeys = ["consensus", "contradictions", "partialCoverage", "uniqueInsights", "blindSpots", "missingEvidence"];
-		return typeof record.answer === "string" && record.answer.trim().length > 0 && typeof record.confidence === "string" && arrayKeys.every((key) => Array.isArray(record[key]));
-	} catch {
-		return false;
-	}
 }
 
 async function runFusionAnalysis(args: TeamHandlerRunArgs): Promise<TeamHandlerResult> {

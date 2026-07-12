@@ -89,7 +89,9 @@ flowchart TD
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
   TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
-  TeamProfiles --> Fusion[Fusion bounded panel + judge]
+  TeamProfiles --> Fusion[Fusion bounded panel + judge handler]
+  Fusion --> FusionPlanner[Pure model and call-budget planner]
+  Fusion --> FusionOutput[Pure prompt and judge-output helpers]
   TeamProfiles --> Navigator[Navigator bounded consult]
   ProfileFixtures[Deterministic profile fixtures and rubric] -. validates contracts .-> TeamProfiles
   LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
