@@ -16,7 +16,7 @@ const DEFAULT_APPROVAL_CALL_GATE = 4;
 const FUSION_ANALYSIS_PHASE = "fusion-analysis";
 
 const INVALID_JUDGE_FALLBACK = JSON.stringify({
-	answer: "",
+	answer: "Fusion judge validation failed; review the degraded diagnostics before acting.",
 	consensus: [],
 	contradictions: [],
 	partialCoverage: [],

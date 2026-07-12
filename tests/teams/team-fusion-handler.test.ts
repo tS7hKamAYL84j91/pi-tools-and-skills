@@ -197,7 +197,7 @@ describe("fusion-analysis handler", () => {
 		expect(calls).toEqual(["panel_1", "panel_2", "panel_3", "judge"]);
 		expect(result.details).toMatchObject({ analysis: true, degraded: true, failureReason: "invalid_judge_json" });
 		const fallback = JSON.parse(result.content.map((entry) => entry.text).join("")) as Record<string, unknown>;
-		expect(fallback.answer).toBe("");
+		expect(fallback.answer).toContain("judge validation failed");
 		expect(fallback.blindSpots).toContain("judge returned invalid JSON");
 	});
 
