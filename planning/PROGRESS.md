@@ -1,5 +1,14 @@
 # Progress Log
 
+## 2026-07-12 — Fusion live recovery
+
+- **Action**: Ran 10 Balanced and 10 Fast live Fusion benchmarks after explicit authorization.
+- **Result**: Fast improved median by 31.9% and P95 by 56.4%, but failed the median gate and every run was degraded; Codex panel/judge nodes failed 10/10 and Balanced Gemini 2.5 passed only 3/10.
+- **Action**: Reproduced a retained diagnostic run without recording prompts or provider output.
+- **Result**: `openai-codex/gpt-5.5` works standalone, but the team provider override sends unsupported `max_output_tokens`; the live harness also misclassifies structured degraded fallback JSON as valid.
+- **Action**: Council reviewed the repair strategy; wrote `planning/FUSION_RECOVERY.md`; delegated isolated provider-payload and benchmark-truthfulness patches to Jules sessions `3008121552037342351` and `4704459073431526928`.
+- **Next**: Review/integrate delegated patches, diagnose Gemini 2.5 with truthful error categories, validate, review, and rerun live promotion gates.
+
 ## 2026-07-12
 
 - **Action**: Audited the team TUI, Fusion handler, Navigator handler, session mode, model runner, prompts, progress widget, and team browser.

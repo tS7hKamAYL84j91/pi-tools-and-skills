@@ -102,11 +102,20 @@ function filterRootParameters(
 	if (modelDisallowsTemperature(payload.model) && Object.hasOwn(safeParameters, "temperature")) {
 		delete safeParameters.temperature;
 	}
+	if (isCodexPayload(payload) && Object.hasOwn(safeParameters, "max_output_tokens")) {
+		delete safeParameters.max_output_tokens;
+	}
 	return safeParameters;
 }
 
 function modelDisallowsTemperature(model: unknown): boolean {
 	return typeof model === "string" && model.toLowerCase().includes("gpt-5");
+}
+
+function isCodexPayload(payload: Record<string, unknown>): boolean {
+	// Pi's Codex transport emits both top-level instructions and text settings;
+	// standard Responses payloads may use either field independently.
+	return Object.hasOwn(payload, "instructions") && isRecord(payload.text);
 }
 
 function mergeGoogleGenerateContentParameters(

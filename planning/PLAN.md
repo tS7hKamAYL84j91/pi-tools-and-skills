@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and validated locally on 2026-07-12. Balanced remains the default. Live provider measurements are intentionally pending and must pass the documented promotion gates before Fast is recommended as the default.
+Core implementation was validated locally on 2026-07-12. The first live provider benchmark exposed degraded Fusion runs and activated the recovery plan in [`planning/FUSION_RECOVERY.md`](FUSION_RECOVERY.md). Balanced remains the default until the repaired, truthful benchmark passes every promotion gate.
 
 ## Goal
 

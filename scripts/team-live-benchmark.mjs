@@ -5,10 +5,16 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
+import {
+	OPT_IN_ENV,
+	DEFAULT_PROMPT,
+	categorizeError,
+	isDegraded,
+	judgeNode,
+	resultIsValid,
+	summarize,
+} from "./team-live-benchmark-helpers.mjs";
 
-const OPT_IN_ENV = "PI_TEAM_LIVE_BENCHMARK";
-const DEFAULT_PROMPT =
-	"Review whether a small code change is correct, bounded, and adequately tested. Return no secrets or private data.";
 const MAX_CAPTURE_BYTES = 1_000_000;
 
 function fail(message) {
@@ -80,7 +86,7 @@ async function commandVersion(command, args) {
 
 async function readEvents(sessionPath) {
 	try {
-		const text = await readFile(sessionPath, "utf8");
+		const text = await readFile(sessionPath, "utf-8");
 		const events = [];
 		for (const line of text.split("\n")) {
 			if (line.trim().length === 0) continue;
@@ -99,65 +105,6 @@ async function readEvents(sessionPath) {
 		return events;
 	} catch {
 		return [];
-	}
-}
-
-function percentile(values, percentileValue) {
-	if (values.length === 0) return null;
-	const sorted = [...values].sort((left, right) => left - right);
-	if (percentileValue === 0.5 && sorted.length % 2 === 0) {
-		const right = sorted.length / 2;
-		return Math.round(((sorted[right - 1] ?? 0) + (sorted[right] ?? 0)) / 2);
-	}
-	return (
-		sorted[Math.max(0, Math.ceil(percentileValue * sorted.length) - 1)] ?? null
-	);
-}
-
-function summarize(runs) {
-	const successful = runs.filter(
-		(runRecord) =>
-			runRecord.exitCode === 0 && runRecord.teamDurationMs !== null,
-	);
-	const endToEnd = successful.map((runRecord) => runRecord.endToEndDurationMs);
-	const nodes = successful.flatMap((runRecord) =>
-		runRecord.nodes.map((node) => node.durationMs),
-	);
-	return {
-		successfulRuns: successful.length,
-		validRuns: successful.filter((runRecord) => runRecord.resultValid).length,
-		medianEndToEndDurationMs: percentile(endToEnd, 0.5),
-		p95EndToEndDurationMs: percentile(endToEnd, 0.95),
-		medianNodeDurationMs: percentile(nodes, 0.5),
-		p95NodeDurationMs: percentile(nodes, 0.95),
-	};
-}
-
-function resultIsValid(team, completedEvent) {
-	if (
-		completedEvent === undefined ||
-		typeof completedEvent.summary !== "string"
-	)
-		return false;
-	if (team === "navigator") return completedEvent.summary.trim().length > 0;
-	try {
-		const value = JSON.parse(completedEvent.summary);
-		const arrayFields = [
-			"consensus",
-			"contradictions",
-			"partialCoverage",
-			"uniqueInsights",
-			"blindSpots",
-			"missingEvidence",
-		];
-		return (
-			typeof value?.answer === "string" &&
-			value.answer.trim().length > 0 &&
-			typeof value.confidence === "string" &&
-			arrayFields.every((field) => Array.isArray(value[field]))
-		);
-	} catch {
-		return false;
 	}
 }
 
@@ -222,9 +169,19 @@ async function main() {
 					model: String(event.model ?? "unknown"),
 					ok: event.ok === true,
 					durationMs: Number(event.durationMs) || 0,
+					...(typeof event.error === "string" && event.error.length > 0
+						? { errorCategory: categorizeError(event.error) }
+						: {}),
 				}));
-			const resultValid =
+			const schemaValid =
 				routingValid && resultIsValid(options.team, completedEvent);
+			const degraded =
+				routingValid && isDegraded(options.team, nodes, completedEvent);
+			const judge = judgeNode(nodes);
+			const judgeValid =
+				options.team === "fusion-analysis"
+					? Boolean(judge?.ok && schemaValid)
+					: schemaValid;
 			runs.push({
 				index: index + 1,
 				exitCode,
@@ -234,7 +191,10 @@ async function main() {
 					typeof completedEvent?.durationMs === "number"
 						? completedEvent.durationMs
 						: null,
-				resultValid,
+				schemaValid,
+				judgeValid,
+				degraded,
+				resultValid: schemaValid && !degraded,
 				failureCategory:
 					exitCode !== 0
 						? "pi_process_failed"
@@ -242,9 +202,11 @@ async function main() {
 							? "team_routing_invalid"
 							: completedEvent === undefined
 								? "team_completion_missing_or_duplicate"
-								: resultValid
-									? null
-									: "invalid_result",
+								: !schemaValid
+									? "invalid_result"
+									: degraded
+										? "degraded"
+										: null,
 				nodes,
 			});
 		}
@@ -252,7 +214,7 @@ async function main() {
 		await rm(tempDirectory, { recursive: true, force: true });
 	}
 	const report = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		generatedAt: new Date().toISOString(),
 		repositoryCommit: commit,
 		piVersion,
@@ -267,7 +229,7 @@ async function main() {
 			.digest("hex")
 			.slice(0, 16),
 		runs,
-		summary: summarize(runs),
+		summary: summarize(runs, options.team),
 	};
 	const outputPath = resolve(options.output);
 	await mkdir(dirname(outputPath), { recursive: true });

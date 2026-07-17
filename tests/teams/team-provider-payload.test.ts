@@ -88,6 +88,37 @@ describe("mergeGenerationParameters", () => {
 		});
 	});
 
+	it("omits the unsupported output cap from Codex payloads", () => {
+		const payload = {
+			model: "gpt-5.5",
+			input: [],
+			instructions: "Be concise.",
+			text: { verbosity: "low" },
+		};
+
+		expect(
+			mergeGenerationParameters(payload, {
+				maxTokens: 4096,
+				temperature: 0.1,
+			}),
+		).toEqual(payload);
+	});
+
+	it("preserves the output cap for standard OpenAI Responses payloads", () => {
+		const payload = { model: "gpt-4.1", input: [], text: { verbosity: "low" } };
+
+		expect(
+			mergeGenerationParameters(payload, {
+				maxTokens: 4096,
+				temperature: 0.1,
+			}),
+		).toEqual({
+			...payload,
+			max_output_tokens: 4096,
+			temperature: 0.1,
+		});
+	});
+
 	it("leaves unknown payload shapes unchanged", () => {
 		const payload = { model: "custom", prompt: "hello" };
 

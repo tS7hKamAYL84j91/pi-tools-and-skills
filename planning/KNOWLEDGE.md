@@ -12,6 +12,8 @@
 - Team progress uses a seven-line widget refreshed every second; cancellation requires copying a run ID.
 - `team-overlay.ts` reloads the team registry through `teamDescriptionLines()` inside the browser render closure.
 - Existing provider override plumbing can carry generation parameters, but output/reasoning caps require provider-shape tests.
+- Live Fusion diagnosis on 2026-07-12 showed the Codex transport rejects `max_output_tokens`; `openai-codex/gpt-5.5` succeeds without that injected field, so model availability is not the root cause.
+- A schema-valid Fusion fallback is not evidence of a valid judge run. Promotion metrics must exclude degraded runs and report judge/node health separately.
 
 ## Decisions
 
