@@ -69,16 +69,22 @@ export async function assertNoSymlinkComponents(root: string, target: string): P
 	assertInside(root, target);
 	const relativePath = relative(resolve(root), resolve(target));
 	let current = resolve(root);
+	const paths: string[] = [];
 	for (const part of relativePath.split(/[\\/]+/).filter((segment) => segment.length > 0)) {
 		current = join(current, part);
-		try {
-			const info = await lstat(current);
-			if (info.isSymbolicLink()) throw new Error(`Refusing symlinked CoAS path component: ${current}`);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-			throw error;
-		}
+		paths.push(current);
 	}
+	await Promise.all(
+		paths.map(async (p) => {
+			try {
+				const info = await lstat(p);
+				if (info.isSymbolicLink()) throw new Error(`Refusing symlinked CoAS path component: ${p}`);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+				throw error;
+			}
+		}),
+	);
 }
 
 export async function ensurePrivateDir(path: string): Promise<void> {
