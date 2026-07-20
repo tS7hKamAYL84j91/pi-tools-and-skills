@@ -165,13 +165,28 @@ async function checkScheduleLocks(config: CoasConfig): Promise<DoctorCheck[]> {
 	const nowSeconds = Math.floor(Date.now() / 1000);
 	const staleAfterSeconds = Number.parseInt(process.env.COAS_SCHEDULE_LOCK_STALE_SECONDS ?? "86400", 10);
 	const localHost = hostname();
-	for (const entry of entries) {
-		if (!entry.isDirectory() || !entry.name.endsWith(".lock")) continue;
-		total++;
+
+	const lockPromises = entries.map(async (entry) => {
+		if (!entry.isDirectory() || !entry.name.endsWith(".lock")) return null;
 		const lockPath = join(root, entry.name);
-		const pidText = (await readFile(join(lockPath, "pid"), "utf8").catch(() => "")).trim();
-		const hostText = (await readFile(join(lockPath, "host"), "utf8").catch(() => "")).trim();
-		const startedText = (await readFile(join(lockPath, "started_epoch"), "utf8").catch(() => "")).trim();
+		const [pidRaw, hostRaw, startedRaw] = await Promise.all([
+			readFile(join(lockPath, "pid"), "utf8").catch(() => ""),
+			readFile(join(lockPath, "host"), "utf8").catch(() => ""),
+			readFile(join(lockPath, "started_epoch"), "utf8").catch(() => ""),
+		]);
+		return {
+			pidText: pidRaw.trim(),
+			hostText: hostRaw.trim(),
+			startedText: startedRaw.trim(),
+		};
+	});
+
+	const results = await Promise.all(lockPromises);
+
+	for (const result of results) {
+		if (!result) continue;
+		total++;
+		const { pidText, hostText, startedText } = result;
 		if (!pidText || !/^\d+$/.test(startedText)) {
 			bad++;
 			continue;
