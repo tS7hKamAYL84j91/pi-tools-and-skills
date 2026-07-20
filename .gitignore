@@ -12,3 +12,5 @@ coverage/
 
 # Local Claude runtime locks
 .claude/*.lock
+test-coas-home-2/
+test-coas-home/

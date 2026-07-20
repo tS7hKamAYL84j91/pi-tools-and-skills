@@ -114,9 +114,11 @@ async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
 	const entries = await readdir(root, { withFileTypes: true });
 	let count = 0;
 	let bad = 0;
-	for (const entry of entries) {
-		if (!entry.isFile() || !entry.name.endsWith(".env")) continue;
-		count++;
+
+	const envEntries = entries.filter(e => e.isFile() && e.name.endsWith(".env"));
+	count = envEntries.length;
+
+	await Promise.all(envEntries.map(async (entry) => {
 		const envPath = join(root, entry.name);
 		const values = parseEnv(await readFile(envPath, "utf8"));
 		const taskId = values.TASK_ID ?? entry.name.replace(/\.env$/, "");
@@ -131,7 +133,8 @@ async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
 			bad++;
 			checks.push({ level: "warn", message: `invalid schedule ${taskId}: ${(error as Error).message}` });
 		}
-	}
+	}));
+
 	checks.push({ level: "ok", message: `schedule registry: ${count} schedule(s), ${bad} invalid` });
 	return checks;
 }
@@ -142,16 +145,18 @@ async function checkRecentScheduleFailures(config: CoasConfig): Promise<DoctorCh
 	const entries = await readdir(root, { withFileTypes: true });
 	const failures: string[] = [];
 	const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-	for (const entry of entries) {
-		if (!entry.isFile() || !entry.name.endsWith(".log")) continue;
+
+	const logEntries = entries.filter(e => e.isFile() && e.name.endsWith(".log"));
+	await Promise.all(logEntries.map(async (entry) => {
 		const path = join(root, entry.name);
 		const info = await stat(path);
-		if (info.mtimeMs < weekAgo) continue;
+		if (info.mtimeMs < weekAgo) return;
 		const text = await readFile(path, "utf8");
 		for (const line of text.split("\n")) {
 			if (/FAILED|SKIP busy/.test(line)) failures.push(`${entry.name}: ${line}`);
 		}
-	}
+	}));
+
 	if (failures.length === 0) return [{ level: "ok", message: "no recent schedule failures" }];
 	return [{ level: "warn", message: `recent schedule failures/skips detected: ${failures.slice(-5).join("; ")}` }];
 }
@@ -165,16 +170,25 @@ async function checkScheduleLocks(config: CoasConfig): Promise<DoctorCheck[]> {
 	const nowSeconds = Math.floor(Date.now() / 1000);
 	const staleAfterSeconds = Number.parseInt(process.env.COAS_SCHEDULE_LOCK_STALE_SECONDS ?? "86400", 10);
 	const localHost = hostname();
-	for (const entry of entries) {
-		if (!entry.isDirectory() || !entry.name.endsWith(".lock")) continue;
-		total++;
+
+	const lockEntries = entries.filter(e => e.isDirectory() && e.name.endsWith(".lock"));
+	total = lockEntries.length;
+
+	await Promise.all(lockEntries.map(async (entry) => {
 		const lockPath = join(root, entry.name);
-		const pidText = (await readFile(join(lockPath, "pid"), "utf8").catch(() => "")).trim();
-		const hostText = (await readFile(join(lockPath, "host"), "utf8").catch(() => "")).trim();
-		const startedText = (await readFile(join(lockPath, "started_epoch"), "utf8").catch(() => "")).trim();
+		const [pidTextRaw, hostTextRaw, startedTextRaw] = await Promise.all([
+			readFile(join(lockPath, "pid"), "utf8").catch(() => ""),
+			readFile(join(lockPath, "host"), "utf8").catch(() => ""),
+			readFile(join(lockPath, "started_epoch"), "utf8").catch(() => "")
+		]);
+
+		const pidText = pidTextRaw.trim();
+		const hostText = hostTextRaw.trim();
+		const startedText = startedTextRaw.trim();
+
 		if (!pidText || !/^\d+$/.test(startedText)) {
 			bad++;
-			continue;
+			return;
 		}
 		const pid = Number.parseInt(pidText, 10);
 		if (hostText === localHost) {
@@ -182,12 +196,13 @@ async function checkScheduleLocks(config: CoasConfig): Promise<DoctorCheck[]> {
 				process.kill(pid, 0);
 			} catch {
 				bad++;
-				continue;
+				return;
 			}
 		}
 		const ageSeconds = nowSeconds - Number.parseInt(startedText, 10);
 		if (ageSeconds > staleAfterSeconds) bad++;
-	}
+	}));
+
 	if (total === 0) return [{ level: "ok", message: "schedule locks: none" }];
 	return [{ level: bad === 0 ? "ok" : "warn", message: `schedule locks: ${total} lock(s), ${bad} stale/malformed` }];
 }
