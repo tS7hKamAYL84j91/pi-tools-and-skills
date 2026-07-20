@@ -46,6 +46,13 @@ function daysBetween(start: string, end: string): number {
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
+		path: "extensions/pi-coas/tools.ts",
+		maxLines: 500,
+		reason: "Refactored tools into individual factory functions.",
+		createdAt: "2026-07-20",
+		targetDate: "2026-10-13",
+	},
+	{
 		path: "extensions/pi-panopticon/teams/team-handler-fusion-analysis.ts",
 		maxLines: 360,
 		reason: "Fusion analysis protocol panel/judge helpers; extract a dedicated fusion-node module when adding another fusion-style protocol.",
@@ -165,6 +172,7 @@ const MODULES: ModuleDefinition[] = [
 	{ name: "panopticon-messaging", pathPrefix: "extensions/pi-panopticon/messaging/" },
 	{ name: "panopticon-spawner", pathPrefix: "extensions/pi-panopticon/spawner/" },
 	{ name: "panopticon-teams", pathPrefix: "extensions/pi-panopticon/teams/" },
+	{ name: "coas-tools", pathPrefix: "extensions/pi-coas/tools.ts" },
 	{ name: "kanban", pathPrefix: "extensions/pi-kanban/" },
 	{ name: "goal", pathPrefix: "extensions/pi-goal/" },
 	{ name: "matrix", pathPrefix: "extensions/pi-matrix/" },
