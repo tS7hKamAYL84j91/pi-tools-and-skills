@@ -64,17 +64,19 @@ function explicitFixturePath(cwd: string, path: string): string {
 export async function checkTemplateSafety(paths: readonly string[], cwd = process.cwd()): Promise<TemplateSafetyResult> {
 	const checked: string[] = [];
 	const findings: TemplateSafetyFinding[] = [];
-	for (const inputPath of paths) {
-		const absolute = explicitFixturePath(cwd, inputPath);
-		const visiblePath = displayPath(cwd, absolute);
-		checked.push(visiblePath);
-		const content = await readFile(absolute, "utf8");
-		for (const rule of RULES) {
-			for (const match of content.matchAll(rule.pattern)) {
-				findings.push({ path: visiblePath, ruleId: rule.id, message: rule.message, line: lineNumber(content, match.index ?? 0) });
+	await Promise.all(
+		paths.map(async (inputPath) => {
+			const absolute = explicitFixturePath(cwd, inputPath);
+			const visiblePath = displayPath(cwd, absolute);
+			checked.push(visiblePath);
+			const content = await readFile(absolute, "utf8");
+			for (const rule of RULES) {
+				for (const match of content.matchAll(rule.pattern)) {
+					findings.push({ path: visiblePath, ruleId: rule.id, message: rule.message, line: lineNumber(content, match.index ?? 0) });
+				}
 			}
-		}
-	}
+		}),
+	);
 	findings.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.ruleId.localeCompare(b.ruleId));
 	return { checked, findings };
 }
