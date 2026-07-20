@@ -140,18 +140,20 @@ async function checkRecentScheduleFailures(config: CoasConfig): Promise<DoctorCh
 	const root = scheduleLogRoot(config);
 	if (!existsSync(root)) return [{ level: "ok", message: "schedule logs: none" }];
 	const entries = await readdir(root, { withFileTypes: true });
-	const failures: string[] = [];
 	const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-	for (const entry of entries) {
-		if (!entry.isFile() || !entry.name.endsWith(".log")) continue;
+	const promises = entries.map(async (entry) => {
+		if (!entry.isFile() || !entry.name.endsWith(".log")) return [];
 		const path = join(root, entry.name);
 		const info = await stat(path);
-		if (info.mtimeMs < weekAgo) continue;
+		if (info.mtimeMs < weekAgo) return [];
 		const text = await readFile(path, "utf8");
+		const fileFailures: string[] = [];
 		for (const line of text.split("\n")) {
-			if (/FAILED|SKIP busy/.test(line)) failures.push(`${entry.name}: ${line}`);
+			if (/FAILED|SKIP busy/.test(line)) fileFailures.push(`${entry.name}: ${line}`);
 		}
-	}
+		return fileFailures;
+	});
+	const failures = (await Promise.all(promises)).flat();
 	if (failures.length === 0) return [{ level: "ok", message: "no recent schedule failures" }];
 	return [{ level: "warn", message: `recent schedule failures/skips detected: ${failures.slice(-5).join("; ")}` }];
 }
