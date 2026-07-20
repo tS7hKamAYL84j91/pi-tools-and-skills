@@ -113,4 +113,20 @@ describe("pi-kanban lifecycle compatibility diagnostics", () => {
 		expect(lifecycle.get("T-200")).toMatchObject({ state: "backlog", deleted: false });
 		expect(planTaskLifecycleTransition({ state: "todo" }, { event: "MOVE", to: "review" })).toMatchObject({ ok: false, reason: "MOVE requires a recognized target state" });
 	});
+
+	it("handles unrecognized priorities gracefully and falls back to medium if omitted", async () => {
+		const lines = [
+			'2026-01-01T00:00:00Z CREATE T-300 lead title="Unknown priority" priority="super-urgent" tags=""',
+			'2026-01-01T00:01:00Z CREATE T-301 lead title="No priority" tags=""',
+		];
+		writeLog(lines);
+
+		const board = await parseBoard();
+
+		// Unknown priority strings are preserved and handled gracefully by the parser
+		expect(board.tasks.get("T-300")?.priority).toBe("super-urgent");
+
+		// If omitted entirely, it defaults to medium per board.ts newTask()
+		expect(board.tasks.get("T-301")?.priority).toBe("medium");
+	});
 });
