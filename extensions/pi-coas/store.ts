@@ -118,9 +118,7 @@ export async function writePrivateFileAtomic(path: string, content: string): Pro
 }
 
 export async function removePrivateFiles(paths: string[]): Promise<void> {
-	for (const path of paths) {
-		await rm(path, { force: true });
-	}
+	await Promise.all(paths.map((path) => rm(path, { force: true })));
 }
 
 export async function countDirectories(path: string): Promise<number> {
