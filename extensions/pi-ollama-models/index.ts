@@ -168,11 +168,13 @@ export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
 		description: "Discover local Ollama models and update pi models.json; dry-run optional.",
 		parameters: Type.Object({
 			modelsPath: Type.Optional(Type.String({ description: "Override pi models.json path for tests/POCs." })),
-			ollamaCommand: Type.Optional(Type.String({ description: "Override ollama executable path." })),
 			dryRun: Type.Optional(Type.Boolean({ description: "Discover and report without writing models.json." })),
 		}),
 		async execute(_id, params: SyncOptions): Promise<ToolResult> {
-			return syncOllamaModels(params);
+			return syncOllamaModels({
+				modelsPath: params.modelsPath,
+				dryRun: params.dryRun,
+			});
 		},
 	});
 }
