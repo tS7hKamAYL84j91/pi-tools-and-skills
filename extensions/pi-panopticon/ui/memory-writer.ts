@@ -95,9 +95,9 @@ async function pruneArchives(archiveDir: string, retain: number): Promise<string
 			return { path, mtimeMs: stats.mtimeMs };
 		}));
 	const remove = files.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(Math.max(0, retain));
-	for (const file of remove) {
-		await rm(file.path, { force: true });
-	}
+	await Promise.all(
+		remove.map((file) => rm(file.path, { force: true }))
+	);
 	return remove.map((file) => file.path);
 }
 
