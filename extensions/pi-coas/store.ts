@@ -81,20 +81,22 @@ export async function assertNoSymlinkComponents(root: string, target: string): P
 	}
 }
 
-export async function ensurePrivateDir(path: string): Promise<void> {
+export async function ensurePrivateDir(config: CoasConfig, path: string): Promise<void> {
+	assertInside(config.coasHome, path);
 	await mkdir(path, { recursive: true, mode: 0o700 });
 	await chmod(path, 0o700).catch(() => undefined);
 }
 
 export async function ensureRuntimeDirs(config: CoasConfig): Promise<void> {
-	await ensurePrivateDir(config.coasHome);
-	await ensurePrivateDir(workspaceRoot(config));
-	await ensurePrivateDir(scheduleRoot(config));
-	await ensurePrivateDir(scheduleLogRoot(config));
-	await ensurePrivateDir(lockRoot(config));
+	await ensurePrivateDir(config, config.coasHome);
+	await ensurePrivateDir(config, workspaceRoot(config));
+	await ensurePrivateDir(config, scheduleRoot(config));
+	await ensurePrivateDir(config, scheduleLogRoot(config));
+	await ensurePrivateDir(config, lockRoot(config));
 }
 
-export async function fileExists(path: string): Promise<boolean> {
+export async function fileExists(config: CoasConfig, path: string): Promise<boolean> {
+	assertInside(config.coasHome, path);
 	try {
 		await access(path, constants.F_OK);
 		return true;
@@ -103,7 +105,8 @@ export async function fileExists(path: string): Promise<boolean> {
 	}
 }
 
-export async function readOptionalFile(path: string): Promise<string | undefined> {
+export async function readOptionalFile(config: CoasConfig, path: string): Promise<string | undefined> {
+	assertInside(config.coasHome, path);
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
@@ -112,24 +115,28 @@ export async function readOptionalFile(path: string): Promise<string | undefined
 	}
 }
 
-export async function writePrivateFileAtomic(path: string, content: string): Promise<void> {
-	await ensurePrivateDir(dirname(path));
+export async function writePrivateFileAtomic(config: CoasConfig, path: string, content: string): Promise<void> {
+	assertInside(config.coasHome, path);
+	await ensurePrivateDir(config, dirname(path));
 	await writeFileAtomic(path, content, { encoding: "utf8", mode: 0o600 });
 }
 
-export async function removePrivateFiles(paths: string[]): Promise<void> {
+export async function removePrivateFiles(config: CoasConfig, paths: string[]): Promise<void> {
 	for (const path of paths) {
+		assertInside(config.coasHome, path);
 		await rm(path, { force: true });
 	}
 }
 
-export async function countDirectories(path: string): Promise<number> {
+export async function countDirectories(config: CoasConfig, path: string): Promise<number> {
+	assertInside(config.coasHome, path);
 	if (!existsSync(path)) return 0;
 	const entries = await readdir(path, { withFileTypes: true });
 	return entries.filter((entry) => entry.isDirectory()).length;
 }
 
-export async function newestFile(path: string, suffix: string): Promise<string | undefined> {
+export async function newestFile(config: CoasConfig, path: string, suffix: string): Promise<string | undefined> {
+	assertInside(config.coasHome, path);
 	if (!existsSync(path)) return undefined;
 	const entries = await readdir(path, { withFileTypes: true });
 	let newest: { path: string; mtimeMs: number } | undefined;

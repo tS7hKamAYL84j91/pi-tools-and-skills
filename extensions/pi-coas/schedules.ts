@@ -123,7 +123,7 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 		promptFile,
 		createdAt: values.CREATED_AT,
 		updatedAt: values.UPDATED_AT,
-		prompt: await readOptionalFile(promptFile),
+		prompt: await readOptionalFile(config, promptFile),
 	};
 }
 
@@ -169,8 +169,8 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 	const now = isoUtc();
 	await withFileMutationQueue(envPath, async () => {
 		try {
-			await writePrivateFileAtomic(promptPath, `${input.prompt}\n`);
-			await writePrivateFileAtomic(envPath, formatEnv({
+			await writePrivateFileAtomic(config, promptPath, `${input.prompt}\n`);
+			await writePrivateFileAtomic(config, envPath, formatEnv({
 				TASK_ID: taskId,
 				TASK_NAME: input.name,
 				ROOM_ID: input.room,
@@ -182,7 +182,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				UPDATED_AT: now,
 			}));
 		} catch (error) {
-			await removePrivateFiles([promptPath]);
+			await removePrivateFiles(config, [promptPath]);
 			throw error;
 		}
 	});
@@ -191,7 +191,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 
 export async function removeSchedule(config: CoasConfig, taskId: string): Promise<string> {
 	assertSafeId("task id", taskId);
-	await removePrivateFiles([scheduleEnvPath(config, taskId), schedulePromptPath(config, taskId)]);
+	await removePrivateFiles(config, [scheduleEnvPath(config, taskId), schedulePromptPath(config, taskId)]);
 	return `coas-schedule: removed ${taskId}`;
 }
 

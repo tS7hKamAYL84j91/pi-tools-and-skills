@@ -53,11 +53,20 @@ function readSection(text: string, section: string): string | undefined {
 	return `${match[0]}\n${next ? rest.slice(0, next.index) : rest}`.trimEnd();
 }
 
-async function compactContextIfNeeded(dir: string, path: string, stamp: string, latestUpdate: string): Promise<void> {
+interface CompactContextOptions {
+	config: CoasConfig;
+	dir: string;
+	path: string;
+	stamp: string;
+	latestUpdate: string;
+}
+
+async function compactContextIfNeeded(options: CompactContextOptions): Promise<void> {
+	const { config, dir, path, stamp, latestUpdate } = options;
 	const info = await stat(path);
 	if (info.size <= ARCHIVE_THRESHOLD_BYTES) return;
 	const archiveDir = join(dir, "archive");
-	await ensurePrivateDir(archiveDir);
+	await ensurePrivateDir(config, archiveDir);
 	const archivePath = join(archiveDir, `CONTEXT.${stamp.replace(/[:]/g, "")}.md`);
 	await writeFileAtomic(archivePath, await readFile(path, "utf8"), { encoding: "utf8", mode: 0o600 });
 	await chmod(archivePath, 0o600).catch(() => undefined);
@@ -136,7 +145,7 @@ export async function appendWorkspaceContext(
 	await withFileMutationQueue(path, async () => {
 		const stamp = isoUtc();
 		await appendLogLine(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`, { encoding: "utf8", mode: 0o600 });
-		await compactContextIfNeeded(dir, path, stamp, text.trim());
+		await compactContextIfNeeded({ config, dir, path, stamp, latestUpdate: text.trim() });
 		await chmod(path, 0o600).catch(() => undefined);
 	});
 	const info = await stat(path);

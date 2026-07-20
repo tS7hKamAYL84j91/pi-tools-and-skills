@@ -29,11 +29,11 @@ export async function createWorkspace(config: CoasConfig, input: CreateWorkspace
 	if (input.dryRun) return { path: dir, workspaceId, dryRun: true };
 
 	await assertSafeWorkspaceDir(config, dir);
-	await ensurePrivateDir(dir);
-	await ensurePrivateDir(join(dir, ".pi"));
-	await ensurePrivateDir(join(dir, ".pi", "coas"));
-	await ensurePrivateDir(join(dir, "logs"));
-	await ensurePrivateDir(join(dir, "tmp"));
+	await ensurePrivateDir(config, dir);
+	await ensurePrivateDir(config, join(dir, ".pi"));
+	await ensurePrivateDir(config, join(dir, ".pi", "coas"));
+	await ensurePrivateDir(config, join(dir, "logs"));
+	await ensurePrivateDir(config, join(dir, "tmp"));
 
 	const now = isoUtc();
 	let createdAt = now;
@@ -63,7 +63,7 @@ export async function createWorkspace(config: CoasConfig, input: CreateWorkspace
 		].join("\n"), { encoding: "utf8", mode: 0o600 });
 		await chmod(contextPath, 0o600).catch(() => undefined);
 	}
-	await writeWorkspaceEnv(envPath, {
+	await writeWorkspaceEnv(config, envPath, {
 		WORKSPACE_ID: workspaceId,
 		ROOM_REF: input.room,
 		PURPOSE: input.purpose ?? "",
@@ -76,9 +76,9 @@ export async function createWorkspace(config: CoasConfig, input: CreateWorkspace
 	return { path: dir, workspaceId, dryRun: false };
 }
 
-async function writeWorkspaceEnv(path: string, values: Record<string, string>): Promise<void> {
+async function writeWorkspaceEnv(config: CoasConfig, path: string, values: Record<string, string>): Promise<void> {
 	await withFileMutationQueue(path, async () => {
-		await ensurePrivateDir(dirname(path));
+		await ensurePrivateDir(config, dirname(path));
 		await writeFileAtomic(path, formatEnv(values), { encoding: "utf8", mode: 0o600 });
 	});
 }

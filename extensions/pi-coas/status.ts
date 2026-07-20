@@ -45,7 +45,7 @@ async function checkCommand(name: string, critical = false): Promise<DoctorCheck
 }
 
 async function lastScheduleSignal(config: CoasConfig): Promise<string> {
-	const latest = await newestFile(scheduleLogRoot(config), ".log");
+	const latest = await newestFile(config, scheduleLogRoot(config), ".log");
 	if (!latest) return "none";
 	const lines = (await readFile(latest, "utf8")).trim().split("\n").slice(-5);
 	for (const line of [...lines].reverse()) {
@@ -60,7 +60,7 @@ export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapsh
 		"CoAS status",
 		"===========",
 		statusLine("data root", config.coasHome),
-		statusLine("workspaces", await countDirectories(workspaceRoot(config))),
+		statusLine("workspaces", await countDirectories(config, workspaceRoot(config))),
 		statusLine("enabled schedules", schedules.filter((schedule) => schedule.enabled).length),
 		statusLine("scheduler", scheduler?.running ? "running" : "stopped"),
 		statusLine("active runs", scheduler?.activeRuns ?? 0),
@@ -90,12 +90,12 @@ async function checkWorkspaceRegistry(config: CoasConfig): Promise<DoctorCheck[]
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(root, entry.name);
-		if (!await fileExists(join(dir, "CONTEXT.md"))) {
+		if (!await fileExists(config, join(dir, "CONTEXT.md"))) {
 			checks.push({ level: "warn", message: `workspace missing CONTEXT.md: ${dir}` });
 			bad++;
 		}
 		const metadataPath = join(dir, ".pi", "coas", "workspace.env");
-		if (!await fileExists(metadataPath)) {
+		if (!await fileExists(config, metadataPath)) {
 			checks.push({ level: "warn", message: `workspace missing metadata: ${dir}` });
 			bad++;
 		}
@@ -126,7 +126,7 @@ async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
 			assertSafeId("workspace id", values.WORKSPACE_ID ?? "missing");
 			validateCronExpr(values.CRON_EXPR);
 			assertInside(root, values.PROMPT_FILE);
-			if (!await fileExists(values.PROMPT_FILE)) throw new Error(`prompt missing: ${values.PROMPT_FILE}`);
+			if (!await fileExists(config, values.PROMPT_FILE)) throw new Error(`prompt missing: ${values.PROMPT_FILE}`);
 		} catch (error) {
 			bad++;
 			checks.push({ level: "warn", message: `invalid schedule ${taskId}: ${(error as Error).message}` });
