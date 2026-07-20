@@ -7,6 +7,20 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
 import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, queueBatchUpdate, startFileWatch, stopFileWatch } from "../extensions/pi-file-watch/watcher.js";
 
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		lstatSync: vi.fn((path: import("node:fs").PathLike, options?: import("node:fs").StatOptions) => {
+			if (path.toString().includes("unreadable.md")) {
+				throw new Error("EACCES: permission denied");
+			}
+			return actual.lstatSync(path, options);
+		}),
+	};
+});
+
 let workspace: string;
 let external: string;
 
@@ -33,6 +47,19 @@ afterEach(async () => {
 });
 
 describe("file watch config", () => {
+
+	it("emits error status when file system read fails (e.g., permission denied)", () => {
+		// Mock intercepts lstatSync for paths including "unreadable.md"
+		writeFileSync(join(workspace, "unreadable.md"), "secret");
+
+		const config = parseFileWatchConfig({ watch: ["unreadable.md"] });
+		const files = describeWatchedFiles(workspace, config);
+
+		expect(files).toHaveLength(1);
+		expect(files[0]?.status).toBe("error");
+		expect(files[0]?.error).toContain("EACCES: permission denied");
+	});
+
 	it("defaults to no paths", () => {
 		const parsed = parseFileWatchConfig(undefined);
 
