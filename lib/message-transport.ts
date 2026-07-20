@@ -95,14 +95,15 @@ function getChannelMap(): Map<string, MessageTransport> {
 	const g = globalThis as any;
 	if (!g[CHANNEL_KEY]) {
 		g[CHANNEL_KEY] = new Map<string, MessageTransport>();
-		// Diagnostic: trace who initialized the global registry
-		// console.debug("[MessageTransport] Initialized globalThis channel registry.");
 	}
 	return g[CHANNEL_KEY] as Map<string, MessageTransport>;
 }
 
 /** Register a named messaging channel (e.g. "agent", "matrix"). */
-export function registerChannel(name: string, transport: MessageTransport): void {
+export function registerChannel(
+	name: string,
+	transport: MessageTransport,
+): void {
 	getChannelMap().set(name, transport);
 }
 
@@ -126,7 +127,9 @@ export function getChannel(name: string): MessageTransport {
 	if (transport) return transport;
 
 	// Explicit fallback for missing transports
-	console.warn(`[MessageTransport] WARNING: Channel "${name}" requested but not registered. Returning fallback transport.`);
+	console.warn(
+		`[MessageTransport] WARNING: Channel "${name}" requested but not registered. Returning fallback transport.`,
+	);
 	return {
 		send: async () => ({
 			accepted: false,
