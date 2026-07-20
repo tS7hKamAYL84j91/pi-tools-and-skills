@@ -96,21 +96,22 @@ export async function listWorkspaces(config: CoasConfig): Promise<WorkspaceSumma
 	const root = workspaceRoot(config);
 	if (!existsSync(root)) return [];
 	const entries = await readdir(root, { withFileTypes: true });
-	const summaries: WorkspaceSummary[] = [];
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-		const dir = join(root, entry.name);
-		const metadata = await readWorkspaceEnv(dir);
-		summaries.push({
-			id: metadata.WORKSPACE_ID ?? entry.name,
-			path: dir,
-			roomRef: metadata.ROOM_REF,
-			purpose: metadata.PURPOSE,
-			isolated: metadata.ISOLATED,
-			updatedAt: metadata.UPDATED_AT,
-			hasContext: existsSync(join(dir, "CONTEXT.md")),
+	const promises = entries
+		.filter((entry) => entry.isDirectory())
+		.map(async (entry) => {
+			const dir = join(root, entry.name);
+			const metadata = await readWorkspaceEnv(dir);
+			return {
+				id: metadata.WORKSPACE_ID ?? entry.name,
+				path: dir,
+				roomRef: metadata.ROOM_REF,
+				purpose: metadata.PURPOSE,
+				isolated: metadata.ISOLATED,
+				updatedAt: metadata.UPDATED_AT,
+				hasContext: existsSync(join(dir, "CONTEXT.md")),
+			};
 		});
-	}
+	const summaries = await Promise.all(promises);
 	return summaries.sort((a, b) => a.id.localeCompare(b.id));
 }
 
