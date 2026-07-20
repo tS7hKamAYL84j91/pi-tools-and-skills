@@ -66,9 +66,11 @@ export async function deleteGeneratedSubagents(team: TeamSpec, cwd: string): Pro
 			.flatMap((entry) => entry.agents),
 	);
 	const agentsDir = dirsForTeamScope(team.source, cwd).agents;
-	for (const subagent of team.agents) {
-		if (referenced.has(subagent) || isLiveAgentRef(subagent)) continue;
-		const path = join(agentsDir, `${subagent}.md`);
-		if (await isGeneratedSubagent(path)) await rm(path).catch(() => {});
-	}
+	await Promise.all(
+		team.agents.map(async (subagent) => {
+			if (referenced.has(subagent) || isLiveAgentRef(subagent)) return;
+			const path = join(agentsDir, `${subagent}.md`);
+			if (await isGeneratedSubagent(path)) await rm(path).catch(() => {});
+		}),
+	);
 }
