@@ -132,12 +132,20 @@ export async function countDirectories(path: string): Promise<number> {
 export async function newestFile(path: string, suffix: string): Promise<string | undefined> {
 	if (!existsSync(path)) return undefined;
 	const entries = await readdir(path, { withFileTypes: true });
+
+	const stats = await Promise.all(
+		entries
+			.filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
+			.map(async (entry) => {
+				const fullPath = join(path, entry.name);
+				const info = await stat(fullPath);
+				return { path: fullPath, mtimeMs: info.mtimeMs };
+			}),
+	);
+
 	let newest: { path: string; mtimeMs: number } | undefined;
-	for (const entry of entries) {
-		if (!entry.isFile() || !entry.name.endsWith(suffix)) continue;
-		const fullPath = join(path, entry.name);
-		const info = await stat(fullPath);
-		if (!newest || info.mtimeMs > newest.mtimeMs) newest = { path: fullPath, mtimeMs: info.mtimeMs };
+	for (const info of stats) {
+		if (!newest || info.mtimeMs > newest.mtimeMs) newest = info;
 	}
 	return newest?.path;
 }
