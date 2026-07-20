@@ -14,7 +14,11 @@ import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../../lib/file-persistence.js";
-import { DEFAULT_CONFIG_JSON, dirsForTeamScope, teamDirectories } from "./team-paths.js";
+import {
+	DEFAULT_CONFIG_JSON,
+	dirsForTeamScope,
+	teamDirectories,
+} from "./team-paths.js";
 
 /** Index of the builtin source within `teamDirectories()` output. */
 const BUILTIN_SOURCE_INDEX = 0;
@@ -68,7 +72,9 @@ function withSeedMarker(raw: string, id: string): string {
 	return `${before}\n${seedMarker(id)}\n\n${after}`;
 }
 
-function builtinTeamFiles(configPath: string = DEFAULT_CONFIG_JSON): BuiltinTeamFile[] {
+function builtinTeamFiles(
+	configPath: string = DEFAULT_CONFIG_JSON,
+): BuiltinTeamFile[] {
 	const dirs = teamDirectories(configPath, { roots: [] });
 	const builtin = dirs[BUILTIN_SOURCE_INDEX];
 	if (!builtin || !existsSync(builtin.teams)) return [];
@@ -77,7 +83,11 @@ function builtinTeamFiles(configPath: string = DEFAULT_CONFIG_JSON): BuiltinTeam
 		.sort()
 		.map((file) => {
 			const path = join(builtin.teams, file);
-			return { id: file.slice(0, -".md".length), path, raw: readFileSync(path, "utf8") };
+			return {
+				id: file.slice(0, -".md".length),
+				path,
+				raw: readFileSync(path, "utf8"),
+			};
 		});
 }
 
@@ -86,8 +96,12 @@ function builtinTeamFiles(configPath: string = DEFAULT_CONFIG_JSON): BuiltinTeam
  * built-in seed set. Returns the list of removed ids. Safe to call repeatedly:
  * idsempotent and limited to the user scope.
  */
-export async function pruneBuiltinTeams(ctx: ExtensionContext, options: ProjectOptions = {}): Promise<{ readonly removed: readonly string[] }> {
-	const destTeamsDir = options.userTeamsDir ?? dirsForTeamScope("user", ctx.cwd).teams;
+export async function pruneBuiltinTeams(
+	ctx: ExtensionContext,
+	options: ProjectOptions = {},
+): Promise<{ readonly removed: readonly string[] }> {
+	const destTeamsDir =
+		options.userTeamsDir ?? dirsForTeamScope("user", ctx.cwd).teams;
 	const seeds = builtinTeamFiles(options.configPath);
 	const seedIds = new Set(seeds.map((seed) => seed.id));
 	const removed: string[] = [];
@@ -114,23 +128,36 @@ export async function pruneBuiltinTeams(ctx: ExtensionContext, options: ProjectO
  * (used by the explicit `/teams seed --force` reset path). Writes go through
  * the shared `writeFileAtomic` helper (same-directory temp + rename).
  */
-export async function projectBuiltinTeams(ctx: ExtensionContext, options: ProjectOptions = {}): Promise<ProjectionResult> {
-	const destTeamsDir = options.userTeamsDir ?? dirsForTeamScope("user", ctx.cwd).teams;
+export async function projectBuiltinTeams(
+	ctx: ExtensionContext,
+	options: ProjectOptions = {},
+): Promise<ProjectionResult> {
+	const destTeamsDir =
+		options.userTeamsDir ?? dirsForTeamScope("user", ctx.cwd).teams;
 	const seeds = builtinTeamFiles(options.configPath);
+	if (seeds.length === 0)
+		return { projected: [], skipped: [], overwritten: [] };
+
+	const results = await Promise.all(
+		seeds.map(async (seed) => {
+			const target = join(destTeamsDir, `${seed.id}.md`);
+			const exists = existsSync(target);
+			if (exists && !options.force) {
+				return { type: "skipped" as const, id: seed.id };
+			}
+			await writeFileAtomic(target, withSeedMarker(seed.raw, seed.id));
+			if (exists) return { type: "overwritten" as const, id: seed.id };
+			return { type: "projected" as const, id: seed.id };
+		}),
+	);
+
 	const projected: string[] = [];
 	const skipped: string[] = [];
 	const overwritten: string[] = [];
-	if (seeds.length === 0) return { projected, skipped, overwritten };
-	for (const seed of seeds) {
-		const target = join(destTeamsDir, `${seed.id}.md`);
-		const exists = existsSync(target);
-		if (exists && !options.force) {
-			skipped.push(seed.id);
-			continue;
-		}
-		await writeFileAtomic(target, withSeedMarker(seed.raw, seed.id));
-		if (exists) overwritten.push(seed.id);
-		else projected.push(seed.id);
+	for (const res of results) {
+		if (res.type === "skipped") skipped.push(res.id);
+		else if (res.type === "overwritten") overwritten.push(res.id);
+		else projected.push(res.id);
 	}
 	return { projected, skipped, overwritten };
 }
