@@ -5,8 +5,21 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadFileWatchConfig, parseFileWatchConfig } from "../extensions/pi-file-watch/config.js";
-import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, queueBatchUpdate, startFileWatch, stopFileWatch } from "../extensions/pi-file-watch/watcher.js";
+import type { WatchedFileDescription } from "../extensions/pi-file-watch/types.js";
+import { buildFirewatchUpdate, createRuntimeState, describeWatchedFiles, formatChangeMessage, formatWatchList, renderStatus, queueBatchUpdate, startFileWatch, stopFileWatch } from "../extensions/pi-file-watch/watcher.js";
 
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		lstatSync: vi.fn((path: import("node:fs").PathLike, options?: import("node:fs").StatOptions) => {
+			if (path.toString().includes("unreadable.md")) {
+				throw new Error("EACCES: permission denied");
+			}
+			return actual.lstatSync(path, options);
+		}),
+	};
+});
 let workspace: string;
 let external: string;
 
@@ -157,6 +170,36 @@ describe("file watch config", () => {
 		expect(file).toBeDefined();
 		if (!file) return;
 		expect(formatWatchList(files)).toContain("missing.md");
+	});
+
+	it("renders watch status correctly", () => {
+		const config = parseFileWatchConfig({ watch: ["one.md", "two.md", "three.md"] });
+		const state = createRuntimeState();
+		state.eventCount = 42;
+
+		const files: WatchedFileDescription[] = [
+			{ configuredPath: "one.md", absolutePath: "/one.md", exists: true, status: "watching", external: false, symlink: false },
+			{ configuredPath: "two.md", absolutePath: "/two.md", exists: true, status: "watching", external: false, symlink: false },
+			{ configuredPath: "three.md", absolutePath: "/three.md", exists: false, status: "missing", external: false, symlink: false },
+		];
+
+		const status = renderStatus(config, files, state);
+		expect(status).toBe("File watch: 2/3 watching, events=42");
+
+		const emptyStatus = renderStatus(parseFileWatchConfig({ watch: [] }), [], state);
+		expect(emptyStatus).toBe("File watch: 0/0 watching, events=42");
+	});
+
+	it("emits error status when file system read fails (e.g., permission denied)", () => {
+		// Mock intercepts lstatSync for paths including "unreadable.md"
+		writeFileSync(join(workspace, "unreadable.md"), "secret");
+
+		const config = parseFileWatchConfig({ watch: ["unreadable.md"] });
+		const files = describeWatchedFiles(workspace, config);
+
+		expect(files).toHaveLength(1);
+		expect(files[0]?.status).toBe("error");
+		expect(files[0]?.error).toContain("EACCES: permission denied");
 	});
 
 	it("reports target content changes through a configured symlink path", async () => {
