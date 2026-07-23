@@ -12,7 +12,6 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	readFileSync,
 	readdirSync,
-	renameSync,
 	rmSync,
 	unlinkSync,
 } from "node:fs";
@@ -26,12 +25,13 @@ import {
 	runAgentCleanup,
 	reapOrphanedMailboxes,
 } from "../../../lib/agent-registry.js";
-import { assertPrivateFileTarget, ensurePrivateFileForRead, writeNewPrivateFileSync } from "../../../lib/private-local-mode.js";
+import { ensurePrivateFileForRead } from "../../../lib/private-local-mode.js";
+import { flushRecord } from "./registry-persistence.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
-	PANOPTICON_VISIBILITY_ENV,
 	PANOPTICON_SPAWN_NAME_ENV,
+	PANOPTICON_VISIBILITY_ENV,
 } from "../../../lib/agent-registry.js";
 
 // ── Constants ───────────────────────────────────────────────────
@@ -284,7 +284,9 @@ export default class Registry implements RegistryInterface {
 
 		this.record = undefined;
 	}
-
+	isRootSession(): boolean {
+		return !this.record?.parentId;
+	}
 	setStatus(status: AgentStatus): void {
 		if (this.record) {
 			this.record.status = status;
@@ -327,19 +329,7 @@ export default class Registry implements RegistryInterface {
 	}
 
 	flush(): void {
-		if (!this.record) return;
-		try {
-			ensureRegistryDir();
-			const path = join(REGISTRY_DIR, `${this.record.id}.json`);
-			const tmpPath = `${path}.${process.pid}.tmp`;
-			assertPrivateFileTarget(tmpPath);
-			// Heavily justified: called synchronously on agent shutdown to update status to terminated.
-			writeNewPrivateFileSync(tmpPath, JSON.stringify(this.record, null, 2));
-			assertPrivateFileTarget(path);
-			renameSync(tmpPath, path);
-		} catch {
-			// best-effort
-		}
+		flushRecord(this.record);
 	}
 
 	/**

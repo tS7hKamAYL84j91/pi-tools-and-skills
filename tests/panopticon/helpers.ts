@@ -33,6 +33,7 @@ export function makeRegistry(self: AgentRecord | undefined, peers: AgentRecord[]
 		updatePendingMessages: vi.fn(),
 		readAllPeers: vi.fn(() => peers),
 		flush: vi.fn(),
+		isRootSession: vi.fn(() => true),
 	};
 }
 

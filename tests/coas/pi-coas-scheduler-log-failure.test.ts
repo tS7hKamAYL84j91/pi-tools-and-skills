@@ -33,6 +33,9 @@ describe("CoasInternalScheduler log-write failure", () => {
 			sendUserMessage(message: string) {
 				calls.push(message);
 			},
+			getSessionName() {
+				return undefined;
+			},
 		} as never);
 		try {
 			await scheduler.reconcile({ coasHome });

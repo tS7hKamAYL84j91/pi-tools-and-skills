@@ -52,6 +52,7 @@ function makeRegistry(records: AgentRecord[] = []): Registry {
 		updatePendingMessages: vi.fn(),
 		readAllPeers: vi.fn(() => records),
 		flush: vi.fn(),
+		isRootSession: vi.fn(() => true),
 	};
 }
 

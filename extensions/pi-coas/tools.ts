@@ -186,6 +186,7 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 			cron: Type.String({ description: "Five-field schedule expression." }),
 			prompt: Type.String({ description: "Prompt to run on schedule." }),
 			workspace: Type.Optional(Type.String({ description: "Workspace id/name." })),
+			targetAgent: Type.Optional(Type.String({ description: "Explicit target agent name for cross-agent delivery. Requires Gravitas/Principal approval." })),
 			disabled: Type.Optional(Type.Boolean({ description: "Create disabled schedule." })),
 			cwd: Type.Optional(Type.String({ description: "Working directory to resolve COAS_HOME from. Defaults to current workspace." })),
 		}),

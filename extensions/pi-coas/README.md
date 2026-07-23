@@ -153,3 +153,4 @@ The tool returns purely advisory metadata; it never alters the active session mo
 - Workspace context updates use pi's file mutation queue, reject symlinked `CONTEXT.md` files, and archive before compacting oversized active context.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.
 - Tool output is truncated before entering model context.
+- The internal scheduler implements an ADR-0008 delivery guard: it checks the active conversation's workspace identity and spawned-agent scope before injecting a scheduled prompt. Workspace schedules are dropped (and logged) when the active session is a task-scoped spawned agent or belongs to a different workspace, unless the schedule has an explicit `TARGET_AGENT` that matches the active agent. Dropped cycles increment `droppedScheduleRuns` in the scheduler snapshot and TUI status slot.

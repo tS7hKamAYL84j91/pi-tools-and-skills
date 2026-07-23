@@ -10,10 +10,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { chmod, mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 import { appendLogLine } from "../../lib/file-persistence.js";
 import { isoUtc, scheduleLogRoot } from "./store.js";
 import { cronExpressionError, cronFieldMatches, listSchedules } from "./schedules.js";
+import { currentWorkspaceLabel } from "./workspace-paths.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
+
+const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
 const TICK_MS = 60_000;
 
@@ -74,6 +78,7 @@ export class CoasInternalScheduler {
 	private startedAt: string | undefined;
 	private queuedCount = 0;
 	private failedCount = 0;
+	private droppedScheduleRuns = 0;
 	private lastQueuedAt: string | undefined;
 	private lastFailedAt: string | undefined;
 	private lastTaskId: string | undefined;
@@ -104,6 +109,7 @@ export class CoasInternalScheduler {
 		this.startedAt = undefined;
 		this.queuedCount = 0;
 		this.failedCount = 0;
+		this.droppedScheduleRuns = 0;
 		this.lastQueuedAt = undefined;
 		this.lastFailedAt = undefined;
 		this.lastTaskId = undefined;
@@ -135,6 +141,7 @@ export class CoasInternalScheduler {
 			lastError: this.lastError,
 			queued: this.queuedCount,
 			failed: this.failedCount,
+			droppedScheduleRuns: this.droppedScheduleRuns,
 			lastQueuedAt: this.lastQueuedAt,
 			lastFailedAt: this.lastFailedAt,
 			lastTaskId: this.lastTaskId,
@@ -164,12 +171,55 @@ export class CoasInternalScheduler {
 		}
 	}
 
+	private activeIdentity(): { workspaceId: string; agentName: string; scope: "workspace" | "task" | "unknown" } {
+		const scopeRaw = process.env[PANOPTICON_SCOPE_ENV];
+		const scope: "workspace" | "task" | "unknown" = scopeRaw === "task" ? "task" : scopeRaw === "workspace" ? "workspace" : "unknown";
+		return {
+			workspaceId: process.env.COAS_WORKSPACE_ID ?? currentWorkspaceLabel(process.cwd()) ?? "",
+			agentName: process.env[PANOPTICON_SPAWN_NAME_ENV] ?? this.pi.getSessionName() ?? "",
+			scope,
+		};
+	}
+
+	private shouldDeliver(schedule: ScheduleEntry): { deliver: boolean; reason: string } {
+		const identity = this.activeIdentity();
+
+		if (schedule.targetAgent) {
+			if (identity.agentName && identity.agentName === schedule.targetAgent) {
+				return { deliver: true, reason: `targetAgent match: ${schedule.targetAgent}` };
+			}
+			return { deliver: false, reason: `targetAgent ${schedule.targetAgent} does not match active agent ${identity.agentName || "(unknown)"}` };
+		}
+
+		if (identity.scope === "task") {
+			return { deliver: false, reason: "active session is task-scoped" };
+		}
+
+		if (identity.workspaceId && identity.workspaceId !== schedule.workspaceId) {
+			return { deliver: false, reason: `workspace mismatch: active ${identity.workspaceId} != schedule ${schedule.workspaceId}` };
+		}
+
+		return { deliver: true, reason: "workspace/root identity matches" };
+	}
+
 	private async runOncePerMinute(schedule: ScheduleEntry, key: string): Promise<void> {
 		const runKey = `${schedule.taskId}:${key}`;
 		if (this.lastRun.get(schedule.taskId) === key || this.activeRuns.has(runKey)) return;
 		this.lastRun.set(schedule.taskId, key);
 		this.activeRuns.add(runKey);
 		try {
+			const { deliver, reason } = this.shouldDeliver(schedule);
+			const identity = this.activeIdentity();
+			const identityLog = `session=${identity.agentName || "unknown"} workspace=${identity.workspaceId || "unknown"} scope=${identity.scope}`;
+			if (!deliver) {
+				this.droppedScheduleRuns++;
+				this.lastTaskId = schedule.taskId;
+				this.lastFailedAt = isoUtc();
+				if (this.config) {
+					await this.appendScheduleLogBestEffort(schedule.taskId, `DROPPED ${identityLog} reason=${reason}`);
+				}
+				return;
+			}
 			try {
 				this.pi.sendUserMessage(renderScheduledPrompt(schedule), { deliverAs: "followUp" });
 			} catch (error) {
@@ -183,7 +233,7 @@ export class CoasInternalScheduler {
 			this.queuedCount++;
 			this.lastQueuedAt = isoUtc();
 			this.lastTaskId = schedule.taskId;
-			if (this.config) await this.appendScheduleLogBestEffort(schedule.taskId, `QUEUED internal host=${hostname()}`);
+			if (this.config) await this.appendScheduleLogBestEffort(schedule.taskId, `QUEUED ${identityLog} host=${hostname()}`);
 		} finally {
 			this.activeRuns.delete(runKey);
 		}

@@ -33,6 +33,9 @@ export interface Registry {
 	/** Update pending message count and flush. */
 	updatePendingMessages(count: number): void;
 
+	/** Return true if this agent has no parent (manual/root session). */
+	isRootSession(): boolean;
+
 	/** Read all live agent records (reaps dead ones). */
 	readAllPeers(): AgentRecord[];
 	/** Flush the in-memory record to disk. */

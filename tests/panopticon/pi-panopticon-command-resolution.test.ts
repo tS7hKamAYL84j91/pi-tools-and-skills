@@ -53,6 +53,7 @@ function createRegistry(self: AgentRecord, peers: AgentRecord[]): Registry {
 		updatePendingMessages: () => undefined,
 		readAllPeers: () => peers,
 		flush: () => undefined,
+		isRootSession: () => true,
 	};
 }
 

@@ -4,16 +4,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { writeFileAtomic } from "../../../lib/file-persistence.js";
+import { mkdirSync } from "node:fs";
 import { ok, fail, type ToolResult } from "../types.js";
-import {
-	PANOPTICON_PARENT_ID_ENV,
-	PANOPTICON_VISIBILITY_ENV,
-	PANOPTICON_SPAWN_NAME_ENV,
-} from "../../../lib/agent-registry.js";
 import {
 	buildArgList,
 	spawnChild,
@@ -30,6 +22,11 @@ import {
 	createResultEnvelope,
 	prepareSpawnAgentArguments,
 } from "./spawner-utils.js";
+import {
+	buildSpawnEnv,
+	cleanupTempDir,
+	prepareSystemPromptTempDir,
+} from "./spawner-launch.js";
 import type { SpawnerContext } from "./spawner-types.js";
 
 // ── spawn_agent ─────────────────────────────────────────────
@@ -50,6 +47,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
 			"Or use agent_send once it registers in panopticon (takes 1–2 seconds).",
 			"Use agent_peek to monitor its activity log.",
+			"scope: 'workspace' (default) receives workspace-level schedules; 'task' excludes the agent from workspace schedule delivery per ADR-0008.",
 		],
 		parameters: Type.Object({
 			name: Type.String({
@@ -75,6 +73,15 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			),
 			sessionDir: Type.Optional(
 				Type.String({ description: "Session directory for persistence" }),
+			),
+			scope: Type.Optional(
+				Type.Union(
+					[Type.Literal("workspace"), Type.Literal("task")],
+					{
+						description: "Schedule delivery scope. 'workspace' (default) allows workspace schedules to deliver here; 'task' excludes this agent from workspace schedule delivery per ADR-0008.",
+						default: "workspace",
+					},
+				),
 			),
 		}),
 		prepareArguments: prepareSpawnAgentArguments,
@@ -109,33 +116,22 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 
 			const agentCwd = params.cwd ?? process.cwd();
 			const args = buildArgList(params);
-			let tempDir: string | undefined;
-
-			if (params.systemPrompt) {
-				tempDir = mkdtempSync(join(tmpdir(), "pi-spawn-"));
-				chmodSync(tempDir, 0o700);
-				const promptPath = join(tempDir, "system-prompt.md");
-				await writeFileAtomic(promptPath, params.systemPrompt, { mode: 0o600 });
-				args.push("--append-system-prompt", promptPath);
-			}
+			const { tempDir, args: systemPromptArgs } = prepareSystemPromptTempDir(params.systemPrompt);
+			args.push(...systemPromptArgs);
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true, mode: 0o700 });
 
+			const agentScope = params.scope ?? "workspace";
 			const agent = spawnChild({
 				name: params.name,
 				cwd: agentCwd,
 				args,
 				model: params.model,
 				tempDir,
-				env: {
-					...process.env,
-					[PANOPTICON_PARENT_ID_ENV]: ctx.registry.selfId,
-					[PANOPTICON_VISIBILITY_ENV]: "scoped",
-					[PANOPTICON_SPAWN_NAME_ENV]: params.name,
-				},
+				env: buildSpawnEnv(ctx.registry.selfId, params.name, agentScope),
 			});
 			if (!agent.pid) {
-				if (tempDir) try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+				cleanupTempDir(tempDir);
 				return fail(`Failed to spawn agent "${params.name}".`, {
 					error: "spawn_failed",
 					code: "internal",

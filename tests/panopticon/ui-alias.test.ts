@@ -28,6 +28,7 @@ function makeRegistry(): Registry {
 		updatePendingMessages: vi.fn(),
 		readAllPeers: vi.fn(() => []),
 		flush: vi.fn(),
+		isRootSession: vi.fn(() => true),
 	};
 }
 

@@ -519,6 +519,9 @@ describe("schedules", () => {
 		it("clears runtime state on stop", () => {
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
+				getSessionName() {
+					return undefined;
+				},
 			} as never);
 			scheduler.start({ coasHome: join(tmpdir(), "missing-coas-home") });
 
@@ -532,6 +535,7 @@ describe("schedules", () => {
 				lastError: undefined,
 				queued: 0,
 				failed: 0,
+				droppedScheduleRuns: 0,
 				lastQueuedAt: undefined,
 				lastFailedAt: undefined,
 				lastTaskId: undefined,
@@ -560,6 +564,9 @@ describe("schedules", () => {
 				sendUserMessage(message: string) {
 					activeDuringSend = scheduler.snapshot().activeRuns;
 					calls.push(message);
+				},
+				getSessionName() {
+					return undefined;
 				},
 			} as never);
 			try {
@@ -599,6 +606,9 @@ describe("schedules", () => {
 				sendUserMessage() {
 					throw new Error("injection refused");
 				},
+				getSessionName() {
+					return undefined;
+				},
 			} as never);
 			try {
 				await scheduler.reconcile({ coasHome });
@@ -633,6 +643,9 @@ describe("schedules", () => {
 			].join("\n"));
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
+				getSessionName() {
+					return undefined;
+				},
 			} as never);
 			try {
 				await scheduler.reconcile({ coasHome });
@@ -649,6 +662,7 @@ describe("schedules", () => {
 					lastError: undefined,
 					queued: 0,
 					failed: 0,
+					droppedScheduleRuns: 0,
 					lastQueuedAt: undefined,
 					lastFailedAt: undefined,
 					lastTaskId: undefined,
@@ -665,6 +679,9 @@ describe("schedules", () => {
 			await writeFile(join(schedulesDir, "bad.env"), "TASK_ID=bad\nCRON_EXPR=not-enough\nPROMPT_FILE=bad.prompt\nWORKSPACE_ID=room-a\n");
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
+				getSessionName() {
+					return undefined;
+				},
 			} as never);
 			try {
 				await scheduler.reconcile({ coasHome });
@@ -694,6 +711,9 @@ describe("schedules", () => {
 			].join("\n"));
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
+				getSessionName() {
+					return undefined;
+				},
 			} as never);
 			try {
 				await scheduler.reconcile({ coasHome });

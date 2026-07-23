@@ -124,6 +124,7 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 		createdAt: values.CREATED_AT,
 		updatedAt: values.UPDATED_AT,
 		prompt: await readOptionalFile(promptFile),
+		targetAgent: values.TARGET_AGENT,
 	};
 }
 
@@ -140,12 +141,13 @@ export async function listSchedules(config: CoasConfig): Promise<ScheduleEntry[]
 }
 
 export function formatScheduleList(schedules: ScheduleEntry[]): string {
-	const header = `${"TASK".padEnd(24)} ${"ENABLED".padEnd(7)} ${"CRON".padEnd(15)} ${"WORKSPACE".padEnd(18)} NAME`;
+	const header = `${"TASK".padEnd(24)} ${"ENABLED".padEnd(7)} ${"CRON".padEnd(15)} ${"WORKSPACE".padEnd(18)} ${"TARGET".padEnd(16)} NAME`;
 	const rows = schedules.map((schedule) => [
 		schedule.taskId.padEnd(24),
 		(schedule.enabled ? "1" : "0").padEnd(7),
 		schedule.cronExpr.padEnd(15),
 		schedule.workspaceId.padEnd(18),
+		(schedule.targetAgent ?? "").padEnd(16),
 		schedule.taskName,
 	].join(" "));
 	return [header, ...rows].join("\n");
@@ -178,6 +180,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				CRON_EXPR: input.cron,
 				ENABLED: input.disabled ? "0" : "1",
 				PROMPT_FILE: promptPath,
+				...(input.targetAgent ? { TARGET_AGENT: input.targetAgent } : {}),
 				CREATED_AT: now,
 				UPDATED_AT: now,
 			}));

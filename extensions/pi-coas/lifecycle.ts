@@ -19,7 +19,9 @@ export function formatCoasStatusSlot(workspace?: string, scheduler?: SchedulerSn
 	const failed = scheduler.failed ?? 0;
 	const queueText = queued > 0 ? ` q${queued}` : "";
 	const failText = failed > 0 ? ` f${failed}` : "";
-	return `coas: ${scope} ${health}${scheduleText}${queueText}${failText}`;
+	const dropped = scheduler.droppedScheduleRuns ?? 0;
+	const droppedText = dropped > 0 ? ` d${dropped}` : "";
+	return `coas: ${scope} ${health}${scheduleText}${queueText}${failText}${droppedText}`;
 }
 
 function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): void {

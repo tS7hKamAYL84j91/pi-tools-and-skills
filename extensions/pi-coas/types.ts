@@ -60,6 +60,8 @@ export interface ScheduleEntry {
 	createdAt?: string;
 	updatedAt?: string;
 	prompt?: string;
+	/** Optional explicit target agent for cross-agent schedules (requires Gravitas/Principal approval). */
+	targetAgent?: string;
 }
 
 export interface ScheduleAddInput {
@@ -69,6 +71,8 @@ export interface ScheduleAddInput {
 	prompt: string;
 	workspace?: string;
 	disabled?: boolean;
+	/** Optional explicit target agent for cross-agent schedules (requires Gravitas/Principal approval). */
+	targetAgent?: string;
 }
 
 export interface SchedulerSnapshot {
@@ -79,6 +83,7 @@ export interface SchedulerSnapshot {
 	lastError?: string;
 	queued?: number;
 	failed?: number;
+	droppedScheduleRuns?: number;
 	lastQueuedAt?: string;
 	lastFailedAt?: string;
 	lastTaskId?: string;
