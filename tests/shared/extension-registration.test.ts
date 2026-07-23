@@ -180,6 +180,7 @@ describe("extension registration smoke tests", () => {
 
 		expectRegistered(registrations.tools, [
 			"coas_doctor",
+			"coas_governance_resolve",
 			"coas_schedule_add",
 			"coas_schedule_list",
 			"coas_schedule_preview",

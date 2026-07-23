@@ -7,6 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
+import { registerGovernanceTools } from "./governance-tools.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
 import { addSchedule, formatScheduleList, listSchedules, removeSchedule, renderInternalSchedulePlan, runSchedule } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
@@ -256,4 +257,6 @@ export function registerCoasTools(pi: ExtensionAPI, scheduler: CoasInternalSched
 			}
 		},
 	});
+
+	registerGovernanceTools(pi, configFor);
 }

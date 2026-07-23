@@ -29,6 +29,7 @@ CoAS rather than `pi-kanban`.
 | `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler when targeting the current runtime; optional `cwd` adds to another project |
 | `coas_schedule_run` | Dry-run a schedule; optional `cwd` targets another project's runtime |
 | `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler when targeting the current runtime; optional `cwd` removes from another project |
+| `coas_governance_resolve` | Classify input against privacy keywords and advise on LLM model routing. Advisory only. |
 
 ### Commands
 
@@ -81,6 +82,45 @@ Optional `.pi/settings.json` override:
 ```
 
 `COAS_HOME` wins over all discovery. Project-local discovery wins over user/global settings so EO repo-local CoAS state is preferred by default.
+
+## Governance Policy
+
+Workload governance maps input classified as secret-adjacent/credential/pii/workspace-private to local-only advisory models, and routes public input by intent. It is driven by the `coasProfile` top-level setting:
+
+```json
+{
+  "coasProfile": {
+    "localOnlyTriggers": ["secret-adjacent", "credential", "private-key", "password", "pii", "workspace-private"],
+    "modelRoutingPolicy": {
+      "localPrivateFallback": "ollama/gemma4:26b",
+      "localTriageOnly": "ollama/lfm2.5:latest",
+      "gmReviewedSimpleCode": "ollama/gemma4:26b",
+      "navigator": "ollama/gemma4:31b",
+      "advisoryFallbackChain": ["ollama/gemma4:31b", "ollama/qwen3.6:latest"]
+    },
+    "escalationThresholds": {
+      "noToolActivitySeconds": 120,
+      "repeatedProviderFailures": 2,
+      "repeatedCompactions": 2,
+      "validationFailures": 2,
+      "authorityWaitMinutes": 1440
+    },
+    "requiresLocalOnlyForPrivateInput": true
+  }
+}
+```
+
+The `coas_governance_resolve` tool classifies input against `localOnlyTriggers` and resolves an advisory model based on the intent-to-policy mapping:
+
+| Intent | Public input source | Private input fallback |
+|---|---|---|
+| `triage` | `modelRoutingPolicy.localTriageOnly` | `advisoryFallbackChain[0]`, then `localPrivateFallback`, then escalate |
+| `code` | `modelRoutingPolicy.gmReviewedSimpleCode` | same |
+| `navigator` | `modelRoutingPolicy.navigator` | same |
+| `review` | `modelRoutingPolicy.navigator` | same |
+| `unknown` | none | `advisoryFallbackChain[0]`, then `localPrivateFallback`, then escalate |
+
+The tool returns purely advisory metadata; it never alters the active session model. Escalation records are appended to the active CoAS workspace `CONTEXT.md`, or to `${COAS_HOME}/governance/escalation.log` if no workspace is active, and never contain the input text.
 
 ## Workspace Context Policy
 
