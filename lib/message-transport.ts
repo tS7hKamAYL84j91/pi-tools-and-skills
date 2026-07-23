@@ -80,13 +80,6 @@ export interface MessageTransport {
 	cleanup(agentId: string): void;
 }
 
-// ── Global Scope Types ─────────────────────────────────────────
-
-declare global {
-	var __pi_messaging_channels__: Map<string, MessageTransport> | undefined;
-	var __pi_channel_notify__: (() => void) | undefined;
-}
-
 // ── Channel registry ───────────────────────────────────────────
 /**
  * Uses globalThis so the registry is shared across extension module
@@ -95,13 +88,17 @@ declare global {
  * singleton pattern. `globalThis` ensures exactly one registry exists
  * process-wide, mitigating the risk of segmented module caches.
  */
+const CHANNEL_KEY = "__pi_messaging_channels__";
+
 function getChannelMap(): Map<string, MessageTransport> {
-	if (!globalThis.__pi_messaging_channels__) {
-		globalThis.__pi_messaging_channels__ = new Map<string, MessageTransport>();
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis registry for cross-module sharing
+	const g = globalThis as any;
+	if (!g[CHANNEL_KEY]) {
+		g[CHANNEL_KEY] = new Map<string, MessageTransport>();
 		// Diagnostic: trace who initialized the global registry
 		// console.debug("[MessageTransport] Initialized globalThis channel registry.");
 	}
-	return globalThis.__pi_messaging_channels__;
+	return g[CHANNEL_KEY] as Map<string, MessageTransport>;
 }
 
 /** Register a named messaging channel (e.g. "agent", "matrix"). */
@@ -149,18 +146,23 @@ export function getChannel(name: string): MessageTransport {
 // Channels call notifyChannel() when they have new messages.
 // The messaging module registers a listener via onChannelNotify().
 
+const NOTIFY_KEY = "__pi_channel_notify__";
+
 type ChannelNotifyFn = () => void;
 
 function getNotifyFn(): ChannelNotifyFn | undefined {
-	return globalThis.__pi_channel_notify__;
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis for cross-module sharing
+	return (globalThis as any)[NOTIFY_KEY] as ChannelNotifyFn | undefined;
 }
 
 /** Register a poke trigger. The disposer clears it only when still current. */
 export function onChannelNotify(fn: ChannelNotifyFn): () => void {
-	globalThis.__pi_channel_notify__ = fn;
+	// biome-ignore lint/suspicious/noExplicitAny: globalThis for cross-module sharing
+	const globalState = globalThis as any;
+	globalState[NOTIFY_KEY] = fn;
 	return () => {
-		if (globalThis.__pi_channel_notify__ === fn) {
-			globalThis.__pi_channel_notify__ = undefined;
+		if (globalState[NOTIFY_KEY] === fn) {
+			delete globalState[NOTIFY_KEY];
 		}
 	};
 }

@@ -128,7 +128,8 @@ async function executeDelete(
 	);
 }
 
-function registerKanbanSnapshot(pi: ExtensionAPI): void {
+export function registerBoardTools(pi: ExtensionAPI): void {
+	// ── kanban_snapshot ─────────────────────────────────────────
 	pi.registerTool({
 		name: "kanban_snapshot",
 		label: "Kanban Snapshot",
@@ -163,9 +164,8 @@ function registerKanbanSnapshot(pi: ExtensionAPI): void {
 			);
 		},
 	});
-}
 
-function registerKanbanExportJson(pi: ExtensionAPI): void {
+	// ── kanban_export_json ───────────────────────────────────────
 	pi.registerTool({
 		name: "kanban_export_json",
 		label: "Kanban Export JSON",
@@ -177,9 +177,8 @@ function registerKanbanExportJson(pi: ExtensionAPI): void {
 			return executeExportJson();
 		},
 	});
-}
 
-function registerKanbanUnblock(pi: ExtensionAPI): void {
+	// ── kanban_unblock ──────────────────────────────────────────
 	pi.registerTool({
 		name: "kanban_unblock",
 		label: "Kanban Unblock",
@@ -200,9 +199,8 @@ function registerKanbanUnblock(pi: ExtensionAPI): void {
 			return executeUnblock(params.task_id, params.agent, params.reason);
 		},
 	});
-}
 
-function registerKanbanMove(pi: ExtensionAPI): void {
+	// ── kanban_move ─────────────────────────────────────────────
 	pi.registerTool({
 		name: "kanban_move",
 		label: "Kanban Move",
@@ -221,9 +219,8 @@ function registerKanbanMove(pi: ExtensionAPI): void {
 			return executeMove(params.task_id, params.agent, params.to);
 		},
 	});
-}
 
-function registerKanbanDelete(pi: ExtensionAPI): void {
+	// ── kanban_delete ───────────────────────────────────────────
 	pi.registerTool({
 		name: "kanban_delete",
 		label: "Kanban Delete",
@@ -251,12 +248,4 @@ function registerKanbanDelete(pi: ExtensionAPI): void {
 			return executeDelete(params.task_id, params.agent, params.reason);
 		},
 	});
-}
-
-export function registerBoardTools(pi: ExtensionAPI): void {
-	registerKanbanSnapshot(pi);
-	registerKanbanExportJson(pi);
-	registerKanbanUnblock(pi);
-	registerKanbanMove(pi);
-	registerKanbanDelete(pi);
 }
