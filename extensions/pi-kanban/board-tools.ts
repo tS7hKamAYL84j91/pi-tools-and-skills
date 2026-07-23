@@ -128,8 +128,7 @@ async function executeDelete(
 	);
 }
 
-export function registerBoardTools(pi: ExtensionAPI): void {
-	// ── kanban_snapshot ─────────────────────────────────────────
+function registerKanbanSnapshot(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_snapshot",
 		label: "Kanban Snapshot",
@@ -164,8 +163,9 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			);
 		},
 	});
+}
 
-	// ── kanban_export_json ───────────────────────────────────────
+function registerKanbanExportJson(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_export_json",
 		label: "Kanban Export JSON",
@@ -177,8 +177,9 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			return executeExportJson();
 		},
 	});
+}
 
-	// ── kanban_unblock ──────────────────────────────────────────
+function registerKanbanUnblock(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_unblock",
 		label: "Kanban Unblock",
@@ -199,8 +200,9 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			return executeUnblock(params.task_id, params.agent, params.reason);
 		},
 	});
+}
 
-	// ── kanban_move ─────────────────────────────────────────────
+function registerKanbanMove(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_move",
 		label: "Kanban Move",
@@ -219,8 +221,9 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			return executeMove(params.task_id, params.agent, params.to);
 		},
 	});
+}
 
-	// ── kanban_delete ───────────────────────────────────────────
+function registerKanbanDelete(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "kanban_delete",
 		label: "Kanban Delete",
@@ -248,4 +251,12 @@ export function registerBoardTools(pi: ExtensionAPI): void {
 			return executeDelete(params.task_id, params.agent, params.reason);
 		},
 	});
+}
+
+export function registerBoardTools(pi: ExtensionAPI): void {
+	registerKanbanSnapshot(pi);
+	registerKanbanExportJson(pi);
+	registerKanbanUnblock(pi);
+	registerKanbanMove(pi);
+	registerKanbanDelete(pi);
 }
