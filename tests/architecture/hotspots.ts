@@ -344,18 +344,73 @@ function changedModulesByCommit(): Map<string, Set<string>> {
 	const commits = gitLines([
 		"log",
 		"--since=90 days ago",
-		"--format=%H",
+		"--format=%H %P %s",
 		"--",
 		"extensions",
 		"lib",
 	]);
+
+	// Build a set of commit hashes that are mechanical reverts of another
+	// commit in the window. We identify reverts by:
+	//   - subject line starting with "revert:" (case-insensitive), and
+	//   - the reverted commit's subject appears in the revert subject, or the
+	//     revert subject includes the reverted commit's short hash.
+	// Such pairs cancel out in temporal-coupling counts because a revert is a
+	// deliberate undo, not co-evolution of two modules.
+	const commitInfo = new Map<string, { parents: string[]; subject: string }>();
+	for (const line of commits) {
+		const hash = line.slice(0, 40);
+		const rest = line.slice(41);
+		const parentsEnd = rest.indexOf(" ");
+		const parentsText = parentsEnd === -1 ? rest : rest.slice(0, parentsEnd);
+		const parents = parentsText.split(" ");
+		const subject = parentsEnd === -1 ? "" : rest.slice(parentsEnd + 1);
+		commitInfo.set(hash, { parents, subject });
+	}
+
+	const skipped = new Set<string>();
+	for (const [hash, info] of commitInfo.entries()) {
+		if (!info.subject.toLowerCase().startsWith("revert:")) continue;
+		// Scan all subjects for the original commit reference; fall back to the
+		// first parent if no explicit hash appears in the subject.
+		const revertSubject = info.subject.toLowerCase();
+		let originalHash: string | undefined;
+		for (const [candidateHash, candidateInfo] of commitInfo.entries()) {
+			if (candidateHash === hash) continue;
+			const candidateSubject = candidateInfo.subject.toLowerCase();
+			if (
+				revertSubject.includes(candidateHash.slice(0, 7)) ||
+				(candidateSubject.length > 0 && revertSubject.includes(candidateSubject.slice(0, 60)))
+			) {
+				originalHash = candidateHash;
+				break;
+			}
+		}
+		if (!originalHash && info.parents[0] && commitInfo.has(info.parents[0])) {
+			const parentInfo = commitInfo.get(info.parents[0]);
+			const parentSubject = parentInfo?.subject.toLowerCase() ?? "";
+			if (
+				parentSubject.length > 0 &&
+				(revertSubject.includes(parentSubject.slice(0, 60)) ||
+					revertSubject.includes(info.parents[0].slice(0, 7)))
+			) {
+				originalHash = info.parents[0];
+			}
+		}
+		if (originalHash) {
+			skipped.add(hash);
+			skipped.add(originalHash);
+		}
+	}
+
 	const result = new Map<string, Set<string>>();
-	for (const commit of commits) {
+	for (const [hash, _info] of commitInfo.entries()) {
+		if (skipped.has(hash)) continue;
 		const files = gitLines([
 			"show",
 			"--name-only",
 			"--format=",
-			commit,
+			hash,
 			"--",
 			"extensions",
 			"lib",
@@ -367,7 +422,7 @@ function changedModulesByCommit(): Map<string, Set<string>> {
 				modules.add(module);
 			}
 		}
-		result.set(commit, modules);
+		result.set(hash, modules);
 	}
 	return result;
 }
