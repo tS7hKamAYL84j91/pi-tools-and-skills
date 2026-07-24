@@ -94,40 +94,4 @@ export interface DoctorCheck {
 	message: string;
 }
 
-export type GovernanceIntent = "triage" | "code" | "navigator" | "review" | "unknown";
-
-export interface ModelRoutingPolicy {
-	requiresLocalOnlyForPrivateInput: boolean;
-	localPrivateFallback?: string;
-	localTriageOnly?: string;
-	gmReviewedSimpleCode?: string;
-	navigator?: string;
-	advisoryFallbackChain?: string[];
-}
-
-export interface GovernanceConfig {
-	localOnlyTriggers?: string[];
-	modelRoutingPolicy?: ModelRoutingPolicy;
-	escalationThresholds?: Record<string, number>;
-	requiresLocalOnlyForPrivateInput?: boolean;
-}
-
-export interface InputClassification {
-	classification: "private" | "public";
-	matchedTriggers: string[];
-	reason: string;
-}
-
-export type ModelResolutionSource =
-	| "advisoryFallbackChain"
-	| "localPrivateFallback"
-	| "policyIntent"
-	| "none";
-
-export interface ModelResolution {
-	resolvedModel?: string;
-	source: ModelResolutionSource;
-	escalate: boolean;
-	reason: string;
-	fallbackChain?: string[];
-}
+export type { ModelRoutingPolicy } from "../../lib/coas-governance.js";
