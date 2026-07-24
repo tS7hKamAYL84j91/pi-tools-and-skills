@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (design approved by llm-council; awaiting Principal sign-off before implementation)
+Accepted (Principal sign-off 2026-07-24; design approved by llm-council). Hard dependencies landed: ADR-035 implemented (commit 3163d1a) and CoAS ADR-0008 / T-791 delivery guard implemented (commit 6bfcaa8). `/swarm` is now a live pattern; implementation proceeds under its own gates.
 
 ## Context
 
