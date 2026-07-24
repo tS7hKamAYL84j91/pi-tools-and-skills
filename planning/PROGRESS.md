@@ -1,13 +1,15 @@
 # Progress Log
 
-## 2026-07-24 — /swarm implementation authorized
+## 2026-07-24 — /swarm implementation complete
 
 - **Action**: Principal signed off ADR-036 (`1a388e1`). Hard dependencies ADR-035 (`3163d1a`) and ADR-0008/T-791 (`6bfcaa8`) are landed; #46 merged (`afbf2b7`).
 - **Action**: Drafted implementation plan at `planning/SWARM.md`.
-- **Action**: Spawned `swarm-builder` agent to implement the plan under GM oversight.
-- **Next**: Monitor worker progress, validate phases, integrate, and run `npm run check` / `npm test`.
+- **Action**: Spawned `swarm-builder` agent to implement the plan under GM oversight; redirected away from Jules delegation, monitored per-phase validation, and integrated/rebased the final patch.
+- **Result**: `/swarm` feature implemented in `extensions/pi-panopticon/swarm/` and pushed to main as `7d769f3`. Includes Phase 0 governance extraction (`87080f1`, `3334561`), deterministic planner, WIP≤3 task-scoped runner, artifact/stacked-review gates, bounded reconciliation, tools/commands, runtime-entity integration, shutdown teardown, E2E tests, and updated architecture docs.
+- **Result**: `npm run check` and `npm test` pass (126 files / 999 tests). Architecture fitness passed with no exemptions; temporal-coupling gate required splitting the governance extraction from the swarm feature into separate commits.
+- **Next**: Close worker; report DONE to Gravitas-Pending.
 
-## 2026-07-12 — Fusion live recovery
+## 2026-07-24 — /swarm implementation authorized
 
 - **Action**: Ran 10 Balanced and 10 Fast live Fusion benchmarks after explicit authorization.
 - **Result**: Fast improved median by 31.9% and P95 by 56.4%, but failed the median gate and every run was degraded; Codex panel/judge nodes failed 10/10 and Balanced Gemini 2.5 passed only 3/10.
