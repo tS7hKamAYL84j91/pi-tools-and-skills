@@ -1,6 +1,6 @@
 /** Narrow Panopticon runtime entity control-plane adapter. */
 
-export type RuntimeEntityKind = "agent" | "team_run" | "child_process";
+export type RuntimeEntityKind = "agent" | "team_run" | "child_process" | "swarm";
 export type RuntimeEntityStatus = "pending" | "running" | "stopping" | "stopped" | "completed" | "failed";
 
 export interface RuntimeEntityRef {

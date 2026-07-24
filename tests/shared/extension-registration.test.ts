@@ -244,6 +244,10 @@ describe("extension registration smoke tests", () => {
 			"runtime_stop",
 			"set_name",
 			"spawn_agent",
+			"swarm_list",
+			"swarm_run",
+			"swarm_status",
+			"swarm_stop",
 			"team_delete",
 			"team_describe",
 			"team_form",
@@ -258,6 +262,7 @@ describe("extension registration smoke tests", () => {
 			"agents",
 			"agents-mode",
 			"send",
+			"swarm",
 			"team",
 			"teams",
 		]);

@@ -12,11 +12,11 @@ import { registerTeamRunTool } from "./team-runtime.js";
 import { registerTeamSessionMode } from "./team-session-mode.js";
 import { registerTeamTools } from "./team-tools.js";
 
-export function registerTeams(pi: ExtensionAPI) {
+export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPlane) {
 	const stateManager = new TeamStateManager({
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 	});
-	const runtime = new RuntimeControlPlane();
+	const runtime = sharedRuntime ?? new RuntimeControlPlane();
 
 	pi.on("before_provider_request", (event) => omitEmptyTools(event.payload));
 	pi.on("session_start", async (event, ctx) => {

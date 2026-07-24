@@ -1,7 +1,4 @@
-/**
- * Mutating team tools and execution dispatch for declarative team specs.
- */
-
+/** Mutating team tools and execution dispatch for declarative team specs. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { RuntimeControlPlane, type RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
@@ -14,11 +11,10 @@ import { formatElapsed } from "./team-handler-shared.js";
 import { loadTeamRegistry } from "./team-registry.js";
 import type { TeamProfile } from "./team-profiles.js";
 import type { TeamSpec } from "./team-types.js";
-
+import { inspectSwarmRuntime, stopSwarmRuntime } from "../swarm/swarm-runtime.js";
 /** Stall detection thresholds (read-side only, not persisted). */
 const NO_HEARTBEAT_THRESHOLD_MS = 30_000;
 const IDLE_STALL_THRESHOLD_MS = 60_000;
-
 interface NodeStallResult {
 	stalled: boolean;
 	reason?: string;
@@ -108,13 +104,13 @@ const TeamStopSchema = Type.Object({
 	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
 });
 
+const RuntimeKindSchema = Type.Union([Type.Literal("team_run"), Type.Literal("swarm")]);
 const RuntimeStatusSchema = Type.Object({
-	kind: Type.Optional(Type.Union([Type.Literal("team_run")], { description: "Runtime entity kind to inspect. Currently supports team_run entities from pi-teams." })),
-	id: Type.Optional(Type.String({ description: "Runtime entity id to inspect. Omit to list current team run entities." })),
+	kind: Type.Optional(RuntimeKindSchema),
+	id: Type.Optional(Type.String({ description: "Runtime entity id to inspect. Omit to list entities." })),
 });
-
 const RuntimeStopSchema = Type.Object({
-	kind: Type.Optional(Type.Union([Type.Literal("team_run")], { description: "Runtime entity kind to stop. Currently supports team_run entities from pi-teams." })),
+	kind: Type.Optional(RuntimeKindSchema),
 	id: Type.String({ description: "Runtime entity id to stop." }),
 	reason: Type.Optional(Type.String({ description: "Reason to record for the stop request." })),
 });
@@ -336,7 +332,8 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		description: "Inspect runtime entities from the unified runtime surface. This pi-teams slice exposes team run entities; peer agent health remains available via agent_status.",
 		promptSnippet: "Inspect runtime entities",
 		parameters: RuntimeStatusSchema,
-		async execute(_id, params: { kind?: "team_run"; id?: string }) {
+		async execute(_id, params: { kind?: "team_run" | "swarm"; id?: string }) {
+			if (params.kind === "swarm") return inspectSwarmRuntime(runtime, params.id);
 			const runs = stateManager.list();
 			const entities = runtime.listEntities().filter((entity) => entity.kind === "team_run");
 			if (params.id) {
@@ -376,8 +373,10 @@ function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamStateManag
 		description: "Request stop for a runtime entity. This pi-teams slice supports team_run entities and uses the same semantics as team_stop.",
 		promptSnippet: "Request a runtime entity stop",
 		parameters: RuntimeStopSchema,
-		async execute(_id, params: { kind?: "team_run"; id: string; reason?: string }) {
-			return requestTeamRunStop(stateManager, runtime, params.id, params.reason ?? "stop requested");
+		async execute(_id, params: { kind?: "team_run" | "swarm"; id: string; reason?: string }) {
+			const reason = params.reason ?? "stop requested";
+			if (params.kind === "swarm") return stopSwarmRuntime(runtime, params.id, reason);
+			return requestTeamRunStop(stateManager, runtime, params.id, reason);
 		},
 	});
 	pi.registerTool({

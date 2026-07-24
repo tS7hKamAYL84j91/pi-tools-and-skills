@@ -63,6 +63,7 @@ flowchart TD
   subgraph SharedLib[Shared lib layer]
     Core[Pure contracts and render helpers]
     Runtime[Runtime/session/persistence helpers]
+    Governance[CoAS governance classification and routing]
     Transports[Transport adapters]
     Core --> Runtime
     Core --> Transports
@@ -88,6 +89,11 @@ flowchart TD
   Pi --> OllamaModels
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
+  Panopticon --> Swarm[bounded swarm worker pool]
+  Swarm --> SwarmWorkers[task-scoped workers, WIP at most 3]
+  Swarm --> RuntimePlane[shared runtime control plane]
+  Swarm --> Governance[shared CoAS governance routing]
+  TeamsModule --> RuntimePlane
   TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
   TeamProfiles --> Fusion[Fusion bounded panel + judge handler]
   Fusion --> FusionPlanner[Pure model and call-budget planner]

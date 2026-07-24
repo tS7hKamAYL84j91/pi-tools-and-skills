@@ -1,5 +1,12 @@
 # Progress Log
 
+## 2026-07-24 — /swarm implementation authorized
+
+- **Action**: Principal signed off ADR-036 (`1a388e1`). Hard dependencies ADR-035 (`3163d1a`) and ADR-0008/T-791 (`6bfcaa8`) are landed; #46 merged (`afbf2b7`).
+- **Action**: Drafted implementation plan at `planning/SWARM.md`.
+- **Action**: Spawned `swarm-builder` agent to implement the plan under GM oversight.
+- **Next**: Monitor worker progress, validate phases, integrate, and run `npm run check` / `npm test`.
+
 ## 2026-07-12 — Fusion live recovery
 
 - **Action**: Ran 10 Balanced and 10 Fast live Fusion benchmarks after explicit authorization.
