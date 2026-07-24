@@ -20,6 +20,7 @@ const CORE_LIB_FILES = new Set([
 const IO_LIB_FILES = new Set([
 	"agent-api.ts",
 	"agent-registry.ts",
+	"coas-governance.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
 	"pi-settings.ts",
