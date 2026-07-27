@@ -1,0 +1,48 @@
+rules:
+  - id: tspi-unsafe-eval-typescript
+    languages: [typescript, javascript]
+    message: "eval(), new Function(), or dynamic import of user-controlled input can lead to arbitrary code execution."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-94"
+      references:
+        - "https://cwe.mitre.org/data/definitions/94.html"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              eval($X)
+          - pattern: |
+              new Function($X)
+          - pattern: |
+              new Function($X, $Y)
+          - pattern: |
+              import($X)
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not: |
+                "..."
+
+  - id: tspi-unsafe-eval-python
+    languages: [python]
+    message: "eval(), exec(), ast.literal_eval on untrusted input, or compile() of user-controlled code is dangerous."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-94"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              eval($X)
+          - pattern: |
+              exec($X)
+          - pattern: |
+              compile($X, ...)
+          - pattern: |
+              ast.literal_eval($X)
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not: |
+                "..."

@@ -1,0 +1,79 @@
+rules:
+  - id: tspi-path-traversal-fs-read
+    languages: [typescript, javascript]
+    message: "Reading a file from a path derived from external input without normalization/sandboxing is a path traversal risk."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-22"
+      references:
+        - "https://cwe.mitre.org/data/definitions/22.html"
+    patterns:
+      - pattern-inside: |
+          import * as fs from "...";
+          ...
+      - pattern-either:
+          - pattern: |
+              fs.readFileSync($PATH, ...)
+          - pattern: |
+              fs.promises.readFile($PATH, ...)
+          - pattern: |
+              fs.createReadStream($PATH, ...)
+          - pattern: |
+              fs.open($PATH, ...)
+          - pattern: |
+              fs.openAsBlob($PATH, ...)
+      - metavariable-pattern:
+          metavariable: $PATH
+          patterns:
+            - pattern-not: |
+                "..."
+
+  - id: tspi-path-traversal-fs-write
+    languages: [typescript, javascript]
+    message: "Writing to a path derived from external input without normalization/sandboxing is a path traversal risk."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-22"
+    patterns:
+      - pattern-inside: |
+          import * as fs from "...";
+          ...
+      - pattern-either:
+          - pattern: |
+              fs.writeFileSync($PATH, ...)
+          - pattern: |
+              fs.promises.writeFile($PATH, ...)
+          - pattern: |
+              fs.createWriteStream($PATH, ...)
+          - pattern: |
+              fs.mkdir($PATH, ...)
+          - pattern: |
+              fs.mkdirSync($PATH, ...)
+      - metavariable-pattern:
+          metavariable: $PATH
+          patterns:
+            - pattern-not: |
+                "..."
+
+  - id: tspi-path-traversal-python
+    languages: [python]
+    message: "File operations on a path derived from external input are a path traversal risk. Validate and sandbox the path."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-22"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              open($PATH, ...)
+          - pattern: |
+              pathlib.Path($PATH).read_text(...)
+          - pattern: |
+              pathlib.Path($PATH).write_text(...)
+      - metavariable-pattern:
+          metavariable: $PATH
+          patterns:
+            - pattern-not: |
+                "..."

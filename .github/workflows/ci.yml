@@ -73,6 +73,16 @@ jobs:
       - name: Hydrate dependencies
         run: npm ci
 
+      - name: Install Semgrep
+        run: |
+          python3 -m venv .venv-semgrep
+          .venv-semgrep/bin/pip install semgrep==1.171.0
+
+      - name: Run custom Semgrep scan
+        env:
+          SEMGREP_BIN: .venv-semgrep/bin/semgrep
+        run: npm run security:semgrep
+
       - name: Run production dependency audit
         run: npm audit --omit=dev --audit-level=high
 

@@ -1,0 +1,56 @@
+rules:
+  - id: tspi-command-injection-shell-string
+    languages: [typescript, javascript]
+    message: "Passing a string or interpolated value to a shell subprocess is a command injection risk. Use array args or sanitize input."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78"
+      references:
+        - "https://cwe.mitre.org/data/definitions/78.html"
+    patterns:
+      - pattern-either:
+          - pattern: $X.exec($CMD, ...)
+          - pattern: $X.spawn($CMD, ...)
+          - pattern: $X.execFile($CMD, ...)
+          - pattern: $X.execSync($CMD, ...)
+          - pattern: $X.spawnSync($CMD, ...)
+      - metavariable-pattern:
+          metavariable: $CMD
+          patterns:
+            - pattern-either:
+                - pattern: |
+                    `...${$Y}...`
+                - pattern: |
+                    $Y + ...
+                - pattern: |
+                    ... + $Y
+
+  - id: tspi-command-injection-shell-true
+    languages: [typescript, javascript]
+    message: "shell: true enables shell interpretation of arguments and can lead to command injection."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78"
+    patterns:
+      - pattern: |
+          { ..., shell: true, ... }
+
+  - id: tspi-command-injection-python-shell-true
+    languages: [python]
+    message: "subprocess calls with shell=True are dangerous; command injection risk."
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              subprocess.run(..., shell=True, ...)
+          - pattern: |
+              subprocess.Popen(..., shell=True, ...)
+          - pattern: |
+              subprocess.call(..., shell=True, ...)
+          - pattern: |
+              subprocess.check_output(..., shell=True, ...)
