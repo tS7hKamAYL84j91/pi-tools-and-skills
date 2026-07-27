@@ -94,6 +94,8 @@ flowchart TD
   Swarm --> RuntimePlane[shared runtime control plane]
   Swarm --> Governance[shared CoAS governance routing]
   TeamsModule --> RuntimePlane
+  TeamsModule --> TeamChild[one-shot pi --print child]
+  TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane
   TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
   TeamProfiles --> Fusion[Fusion bounded panel + judge handler]
   Fusion --> FusionPlanner[Pure model and call-budget planner]

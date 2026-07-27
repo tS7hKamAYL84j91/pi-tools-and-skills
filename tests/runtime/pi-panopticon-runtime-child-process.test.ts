@@ -17,6 +17,24 @@ describe("spawnRuntimeChildProcess", () => {
 		expect(result.exitCode).toBe(0);
 	});
 
+	it("writes supplied stdin and closes it while preserving output streams", async () => {
+		const result = await spawnRuntimeChildProcess({
+			label: "node stdin smoke test",
+			command: execPath,
+			args: [
+				"-e",
+				"process.stdin.on('data', chunk => process.stdout.write(chunk)); process.stdin.on('end', () => process.stderr.write('eof\\n'))",
+			],
+			cwd: process.cwd(),
+			stdin: "exact payload\nwith another line",
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.stdout).toBe("exact payload\nwith another line");
+		expect(result.stderr).toBe("eof\n");
+		expect(result.exitCode).toBe(0);
+	});
+
 	it("resolves cancelled runs without throwing", async () => {
 		const controller = new AbortController();
 		const pending = spawnRuntimeChildProcess({

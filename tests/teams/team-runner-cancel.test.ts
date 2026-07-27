@@ -1,7 +1,7 @@
 /**
  * Cancellation tests for pi-teams subprocess model runner.
  */
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ vi.mock("../../lib/spawn-service.js", () => ({
 afterEach(() => {
 	vi.useRealTimers();
 	delete process.env.PI_TEAMS_TEST_PI_BINARY;
+	delete process.env.PI_TEAMS_TEST_TERM_FILE;
 	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -23,13 +24,15 @@ describe("team runner cancellation", () => {
 		const dir = mkdtempSync(join(tmpdir(), "pi-teams-cancel-"));
 		tempDirs.push(dir);
 		const script = join(dir, "fake-pi.js");
+		const termFile = join(dir, "term");
 		writeFileSync(script, [
 			"#!/usr/bin/env node",
-			"process.on('SIGTERM', () => { process.stderr.write('terminated\\n'); process.exit(143); });",
+			"process.on('SIGTERM', () => { require('node:fs').writeFileSync(process.env.PI_TEAMS_TEST_TERM_FILE, 'TERM'); process.exit(143); });",
 			"setTimeout(() => { process.stdout.write('late output\\n'); process.exit(0); }, 10000);",
 		].join("\n"), "utf8");
 		chmodSync(script, 0o755);
 		process.env.PI_TEAMS_TEST_PI_BINARY = script;
+		process.env.PI_TEAMS_TEST_TERM_FILE = termFile;
 		const { runMember } = await import("../../extensions/pi-panopticon/teams/runner.js");
 		const controller = new AbortController();
 		const startedAt = Date.now();
@@ -45,6 +48,7 @@ describe("team runner cancellation", () => {
 
 		expect(result.ok).toBe(false);
 		expect(result.error).toBe("cancelled");
+		await vi.waitFor(() => expect(readFileSync(termFile, "utf8")).toBe("TERM"));
 		expect(Date.now() - startedAt).toBeLessThan(5000);
 	});
 });

@@ -185,7 +185,6 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		"--no-session",
 		"--system-prompt",
 		args.systemPrompt,
-		args.prompt,
 	];
 
 	return spawnRuntimeChildProcess({
@@ -193,6 +192,7 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		command: resolvePiBinary(),
 		args: piArgs,
 		cwd: args.cwd,
+		stdin: args.prompt,
 		signal: args.signal,
 		env: {
 			// Team member/synthesis nodes are stateless `--print --no-session`

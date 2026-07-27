@@ -2,10 +2,10 @@
  * Shared test helpers for pi-teams registry/tool tests.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ToolResult } from "../../lib/tool-result.js";
 
 interface RegisteredTool {
@@ -13,14 +13,24 @@ interface RegisteredTool {
 	parameters?: unknown;
 	execute: (
 		id: string,
-		params: { id?: string; prompt?: string; scope?: "user" | "project"; runId?: string; reason?: string },
+		params: {
+			id?: string;
+			prompt?: string;
+			async?: boolean;
+			profile?: "fast" | "balanced" | "thorough";
+			scope?: "user" | "project";
+			runId?: string;
+			reason?: string;
+		},
 		signal?: AbortSignal,
 		onUpdate?: unknown,
 		ctx?: unknown,
 	) => Promise<ToolResult>;
 }
 
-export function withTempConfig(fn: (configPath: string, root: string) => void): void {
+export function withTempConfig(
+	fn: (configPath: string, root: string) => void,
+): void {
 	const root = mkdtempSync(join(tmpdir(), "team-registry-"));
 	try {
 		mkdirSync(join(root, "agents"));
@@ -33,7 +43,10 @@ export function withTempConfig(fn: (configPath: string, root: string) => void): 
 	}
 }
 
-export async function withTempProjectRoot(prefix: string, fn: (project: string) => void | Promise<void>): Promise<void> {
+export async function withTempProjectRoot(
+	prefix: string,
+	fn: (project: string) => void | Promise<void>,
+): Promise<void> {
 	const project = mkdtempSync(join(tmpdir(), prefix));
 	try {
 		writeFileSync(join(project, "package.json"), "{}", "utf8");
@@ -47,11 +60,15 @@ function writeMarkdown(path: string, lines: string[]): void {
 	writeFileSync(path, lines.join("\n"), "utf8");
 }
 
-export function writeSubagent(root: string, name: string): void {
+export function writeSubagent(
+	root: string,
+	name: string,
+	promptId: string | null = `${name}System`,
+): void {
 	writeMarkdown(join(root, "agents", `${name}.md`), [
 		"---",
 		`name: "${name}"`,
-		`promptId: "${name}System"`,
+		...(promptId ? [`promptId: "${promptId}"`] : []),
 		"---",
 		"Subagent body.",
 	]);
@@ -72,13 +89,49 @@ export function writeTeam(root: string, id: string, agent: string): void {
 	]);
 }
 
-export function createFakeApi(): { tools: Map<string, RegisteredTool>; api: ExtensionAPI } {
+export function writeConsultTeam(
+	root: string,
+	id: string,
+	agent: string,
+	model: string,
+): void {
+	writeMarkdown(join(root, "teams", `${id}.md`), [
+		"---",
+		"schemaVersion: 2",
+		`id: "${id}"`,
+		`name: "${id}"`,
+		'protocol: "consult"',
+		"models:",
+		`  navigator: "${model}"`,
+		"agents:",
+		'  - role: "navigator"',
+		`    subagent: "${agent}"`,
+		"---",
+		"Team body.",
+	]);
+}
+
+interface UserMessage {
+	message: string;
+	options?: unknown;
+}
+
+export function createFakeApi(): {
+	tools: Map<string, RegisteredTool>;
+	api: ExtensionAPI;
+	userMessages: UserMessage[];
+} {
 	const tools = new Map<string, RegisteredTool>();
+	const userMessages: UserMessage[] = [];
 	return {
 		tools,
+		userMessages,
 		api: {
 			registerTool(tool: RegisteredTool) {
 				tools.set(tool.name, tool);
+			},
+			sendUserMessage(message: string, options?: unknown) {
+				userMessages.push({ message, options });
 			},
 		} as unknown as ExtensionAPI,
 	};

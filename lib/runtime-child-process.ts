@@ -14,6 +14,7 @@ export interface RuntimeChildProcessRequest {
 	readonly args: string[];
 	readonly cwd: string;
 	readonly env?: Record<string, string>;
+	readonly stdin?: string;
 	readonly signal?: AbortSignal;
 }
 
@@ -40,7 +41,7 @@ export function spawnRuntimeChildProcess(
 	return new Promise((resolve) => {
 		const child = spawn(request.command, request.args, {
 			cwd: request.cwd,
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: [request.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 			env: {
 				...process.env,
 				...request.env,
@@ -73,6 +74,9 @@ export function spawnRuntimeChildProcess(
 		};
 
 		request.signal?.addEventListener("abort", abort, { once: true });
+		if (request.stdin !== undefined) {
+			child.stdin?.end(request.stdin);
+		}
 		child.stdout?.on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
 		});
