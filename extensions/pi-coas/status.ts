@@ -27,15 +27,16 @@ function statusLine(label: string, value: string | number): string {
 }
 
 async function commandExists(name: string): Promise<boolean> {
-	const dirs = (process.env.PATH ?? "").split(":").filter(Boolean);
-	if (dirs.length === 0) return false;
-
-	try {
-		await Promise.any(dirs.map((dir) => access(join(dir, name), constants.X_OK)));
-		return true;
-	} catch {
-		return false;
+	for (const dir of (process.env.PATH ?? "").split(":")) {
+		if (!dir) continue;
+		try {
+			await access(join(dir, name), constants.X_OK);
+			return true;
+		} catch {
+			// Keep looking.
+		}
 	}
+	return false;
 }
 
 async function checkCommand(name: string, critical = false): Promise<DoctorCheck> {
