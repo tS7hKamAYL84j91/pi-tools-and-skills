@@ -55,6 +55,18 @@ sequenceDiagram
 6. `async:false`: await terminal lifecycle and return the same final summary directly. No infinite wait: ADR-036 profile TTL is enforced.
 7. `swarm_status`/`swarm_list` remain read-only views of this same record.
 
+## Council clarification — 2026-07-28
+
+Council confirmed an ADR-036 amendment, not a new ADR. Before implementation:
+
+- verify `pi.sendUserMessage(..., { deliverAs: "followUp" })` from the swarm tool context with a deterministic fake API test;
+- retain explicit stall detection (`agent_status`/`agent_peek`) or record a conscious TTL-only v1 decision;
+- serialize completion, cancellation, TTL, and gate-result mutation through a per-swarm queue/mutex;
+- make terminal state first-writer-wins and ignore late worker/gate results;
+- block a silent worker exit without a valid DONE/BLOCKED signal;
+- enforce parallel-write isolation in `claimAvailable`, not only through planner dependencies;
+- clean worker handles/listeners/timers and `activeSwarmId` on every terminal path.
+
 ## Bounds and safety
 
 - WIP hard cap remains 3; no dynamic decomposition.
@@ -62,6 +74,7 @@ sequenceDiagram
 - Progress messages contain only compact state/evidence summaries, never raw worker briefs, prompts, or artifacts.
 - Cancellation and session shutdown win over pending completion events and produce one terminal `aborted` state.
 - One completion observer per worker; listener/timer cleanup is mandatory.
+- Async final follow-ups are lost on session shutdown by design; v1 has no resume.
 
 ## Test matrix
 

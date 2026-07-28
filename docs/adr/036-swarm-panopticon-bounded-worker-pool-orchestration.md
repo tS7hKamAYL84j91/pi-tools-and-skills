@@ -115,6 +115,18 @@ Each swarm card carries a `swarm:<swarmId>` tag. Worker briefs are stored in `pi
 - CoAS ADR-0008 (T-791) prevents workspace schedules from hijacking swarm workers.
 - The per-swarm claim budget avoids raising the global kanban WIP limit for non-swarm users.
 
+## Lifecycle implementation clarification — 2026-07-28
+
+Council review confirmed that automatic completion/teardown implements this ADR; it does not require a new ADR.
+
+- `async:false` waits for a terminal swarm state, bounded by the profile TTL and cancellable through the tool abort signal.
+- `async:true` returns the swarm id immediately, emits bounded progress updates, and sends exactly one redacted final follow-up through `pi.sendUserMessage(..., { deliverAs: "followUp" })`. Follow-ups are not durable across session shutdown because v1 has no `swarm_resume`.
+- Worker completion is observed through the worker-handle abstraction. Silent exit without a valid completion signal blocks the task.
+- Per-swarm completion reconciliation is serialized. Terminal state is first-writer-wins; late completion/gate results are ignored.
+- Every terminal path clears active swarm ownership, releases worker handles/listeners, sets `finishedAt`, and updates runtime status.
+- A TTL timer starts at `running`, stops workers on expiry, and is cleared on every terminal path.
+- The runner must enforce parallel-write isolation: it may not launch two write-enabled tasks concurrently. Read-only work may run alongside a write task only within the WIP cap.
+
 ## Dependencies
 
 - **ADR-035** (workload-governance/model-routing consumer in pi-coas) must be implemented first, because `/swarm` is its first concrete `maybeGovernanceRoute` caller.
