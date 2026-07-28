@@ -24,18 +24,11 @@ Implement `protocol: "hierarchical-swarm"` as a Teams protocol backed by runtime
 
 Leaf tool allowlists exclude spawn, team, and swarm-management tools. Communication is strictly parent/child; no peer mesh.
 
-### Bounds
+### Configurable limits
 
-| Limit | Default | Hard cap |
-| --- | ---:| ---:|
-| Depth | 2 | 3 |
-| Children per node | 3 | 3 |
-| Total runtime nodes | 8 | 12 |
-| WIP | inherited | 3 |
-| Repair cycles | 3 | 3 |
-| TTL | profile wall-clock budget | ADR-036 profile ceiling |
+The built-in manifest supplies conservative defaults for depth, children per node, total nodes, WIP, repair cycles, and TTL. Users/project manifests may override or omit those numeric limits; the platform imposes no immutable numeric ceiling at this stage.
 
-A child inherits `remainingTtl`, available WIP, remaining depth, model safety policy, and write-isolation policy. It cannot mint capacity. Write isolation is tree-global: only one write-enabled node runs at a time unless an approved worktree policy applies.
+When a parent declares a limit, its children inherit the remaining capacity and cannot mint more of that parent-declared capacity. Model-safety policy and write-isolation policy are always inherited. Write isolation is tree-global: only one write-enabled node runs at a time unless an approved worktree policy applies.
 
 ### Model safety
 
@@ -61,13 +54,13 @@ At every spawn boundary, ADR-035 classification produces an eligible model set. 
 ## Supersession
 
 - ADR-035 is unchanged and remains the outer model-safety policy.
-- ADR-036 is partially superseded for placement, flat-pool topology, and its prohibition on dynamic decomposition. Its bounds, gates, provenance, write isolation, and safety constraints remain inherited.
+- ADR-036 is partially superseded for placement, flat-pool topology, its prohibition on dynamic decomposition, and immutable numeric ceilings. Its gates, provenance, write isolation, and model-safety constraints remain inherited.
 - ADR-039 is fully superseded before implementation.
 
 ## Validation
 
 - Spawn-boundary model eligibility and leaf tool-denial tests.
-- Depth/child/total-node/WIP/TTL inherited-capacity tests.
+- Configured depth/child/total-node/WIP/TTL inheritance tests, including omitted-limit behavior.
 - Parent-child-only communication and root-only terminal state tests.
 - Three-tier gate, cancellation, late-completion, write-isolation, and alias compatibility tests.
 - `npm run check`, `npm test`, and `npm run security:semgrep` pass without exemptions.
