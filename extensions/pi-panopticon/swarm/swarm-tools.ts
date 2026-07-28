@@ -4,6 +4,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { RuntimeControlPlane, RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { fail, ok } from "../../../lib/tool-result.js";
+import {
+	formatSwarmDryRun,
+	formatSwarmList,
+	formatSwarmProgress,
+} from "./swarm-format.js";
 import { planSwarm } from "./swarm-planner.js";
 import type { SwarmRunner } from "./swarm-runner.js";
 import type { SwarmProfile, SwarmRecord } from "./swarm-types.js";
@@ -53,7 +58,9 @@ export function registerSwarmTools(pi: ExtensionAPI, registration: SwarmRegistra
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const profile = (params.profile ?? "balanced") as SwarmProfile;
 			const plan = planSwarm(params.goal, profile);
-			if (params.dry_run !== false) return ok("Swarm plan created; no workers spawned.", { plan, dryRun: true });
+			if (params.dry_run !== false) {
+				return ok(formatSwarmDryRun(plan, params.wip), { plan, dryRun: true });
+			}
 			try {
 				const record = registration.runner.start(plan, ctx.cwd, params.wip);
 				registerRuntime(registration, record);
@@ -71,7 +78,9 @@ export function registerSwarmTools(pi: ExtensionAPI, registration: SwarmRegistra
 		parameters: Type.Object({ swarmId: Type.String() }),
 		async execute(_id, params) {
 			const record = registration.runner.get(params.swarmId);
-			return record ? ok(`Swarm ${params.swarmId}: ${record.state}`, { record }) : fail(`Unknown swarm '${params.swarmId}'.`, { code: "validation" });
+			return record
+				? ok(formatSwarmProgress(record), { record })
+				: fail(`Unknown swarm '${params.swarmId}'.`, { code: "validation" });
 		},
 	});
 
@@ -82,7 +91,7 @@ export function registerSwarmTools(pi: ExtensionAPI, registration: SwarmRegistra
 		parameters: Type.Object({ activeOnly: Type.Optional(Type.Boolean()) }),
 		async execute(_id, params) {
 			const records = registration.runner.list().filter((record) => !params.activeOnly || record.state === "running");
-			return ok(`${records.length} swarm(s).`, { records });
+			return ok(formatSwarmList(records), { records });
 		},
 	});
 
