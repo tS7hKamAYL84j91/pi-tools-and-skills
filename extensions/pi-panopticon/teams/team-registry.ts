@@ -4,14 +4,10 @@ import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
 import { findAgentByName, listLiveAgents } from "../../../lib/agent-api.js";
 import { isLiveAgentRef, liveAgentName } from "./live-agent.js";
+import { compileHierarchicalSwarmConfig } from "./team-hierarchical-swarm-config.js";
 import { validateTeamManifest } from "./team-manifest.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
-	HierarchicalSwarmConfig,
-	HierarchicalSwarmReviewBinding,
-	HierarchicalSwarmRole,
-	HierarchicalSwarmRoleTemplate,
-	HierarchicalSwarmWriteIsolation,
 	SubagentSpec,
 	TeamAgentBinding,
 	TeamModelSlotKind,
@@ -209,56 +205,6 @@ function modelSlots(value: unknown): TeamModelSlotSpec[] | undefined {
 	return slots.length > 0 ? slots : undefined;
 }
 
-function hierarchicalSwarmRole(value: unknown): HierarchicalSwarmRole | undefined {
-	const role = optionalString(value);
-	return role === "root" || role === "manager" || role === "worker" ? role : undefined;
-}
-
-function hierarchicalSwarmConfig(value: unknown): HierarchicalSwarmConfig | undefined {
-	if (!isRecord(value) || !Array.isArray(value.roleTemplates) || !isRecord(value.bounds)) return undefined;
-	const parsedTemplates = value.roleTemplates.map((entry) => {
-		if (!isRecord(entry)) return undefined;
-		const role = hierarchicalSwarmRole(entry.role);
-		const bindingRole = optionalString(entry.bindingRole);
-		const review = isRecord(entry.review) ? entry.review : entry;
-		const reviewerRole = hierarchicalSwarmRole(review.reviewerRole);
-		const required = review.required ?? entry.reviewRequired;
-		if (!role || !bindingRole || (reviewerRole !== "root" && reviewerRole !== "manager") || typeof required !== "boolean") return undefined;
-		const reviewBinding: HierarchicalSwarmReviewBinding = { reviewerRole, required };
-		const template: HierarchicalSwarmRoleTemplate = { role, bindingRole, review: reviewBinding };
-		return template;
-	});
-	const roleTemplates = parsedTemplates.filter((template): template is HierarchicalSwarmRoleTemplate => template !== undefined);
-	if (roleTemplates.length !== value.roleTemplates.length) return undefined;
-	const bounds = value.bounds;
-	const maxDepth = optionalNumber(bounds.maxDepth);
-	const maxChildrenPerNode = optionalNumber(bounds.maxChildrenPerNode);
-	const maxTotalNodes = optionalNumber(bounds.maxTotalNodes);
-	const maxWip = optionalNumber(bounds.maxWip);
-	const maxRepairCycles = optionalNumber(bounds.maxRepairCycles);
-	const ttlMs = optionalNumber(bounds.ttlMs);
-	const writeIsolation = isRecord(bounds.writeIsolation) ? bounds.writeIsolation : undefined;
-	const mode = optionalString(writeIsolation?.mode ?? bounds.writeIsolationMode);
-	if (mode !== "tree-global-exclusive") return undefined;
-	const approvedWorktreePolicy = optionalString(writeIsolation?.approvedWorktreePolicy ?? bounds.approvedWorktreePolicy);
-	const writeIsolationPolicy: HierarchicalSwarmWriteIsolation = {
-		mode,
-		...(approvedWorktreePolicy ? { approvedWorktreePolicy } : {}),
-	};
-	return {
-		roleTemplates,
-		bounds: {
-			...(maxDepth !== undefined ? { maxDepth } : {}),
-			...(maxChildrenPerNode !== undefined ? { maxChildrenPerNode } : {}),
-			...(maxTotalNodes !== undefined ? { maxTotalNodes } : {}),
-			...(maxWip !== undefined ? { maxWip } : {}),
-			...(maxRepairCycles !== undefined ? { maxRepairCycles } : {}),
-			...(ttlMs !== undefined ? { ttlMs } : {}),
-			writeIsolation: writeIsolationPolicy,
-		},
-	};
-}
-
 function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string[], source: TeamSource): TeamSpec | undefined {
 	const frontMatter = descriptor.frontMatter;
 	const id = optionalString(frontMatter.id) ?? descriptorIdFromPath(descriptor.path);
@@ -291,7 +237,7 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		warnings.push(`${id}: modelSlots entries must include id and kind`);
 		return undefined;
 	}
-	const hierarchy = hierarchicalSwarmConfig(frontMatter.hierarchicalSwarm ?? {
+	const hierarchy = compileHierarchicalSwarmConfig(frontMatter.hierarchicalSwarm ?? {
 		roleTemplates: frontMatter.hierarchicalSwarmRoleTemplates,
 		bounds: frontMatter.hierarchicalSwarmBounds,
 	});

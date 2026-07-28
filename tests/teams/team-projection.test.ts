@@ -8,7 +8,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { projectBuiltinTeams, pruneBuiltinTeams } from "../../extensions/pi-panopticon/teams/team-projection.js";
 
-const BUILTIN_IDS = ["deep-research", "fusion-analysis", "llm-council", "navigator"];
+const BUILTIN_IDS = ["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council", "navigator"];
 
 function fakeCtx(cwd: string): ExtensionContext {
 	return { cwd } as unknown as ExtensionContext;
@@ -50,7 +50,7 @@ describe("projectBuiltinTeams", () => {
 		const result = await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
 
 		expect(result.skipped).toContain("navigator");
-		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "llm-council"]);
+		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council"]);
 		const nav = readFileSync(join(dest, "navigator.md"), "utf8");
 		expect(nav).toContain("my/custom-edit");
 		expect(nav).not.toContain("seed projection");
@@ -73,7 +73,7 @@ describe("projectBuiltinTeams", () => {
 		const result = await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest, force: true });
 
 		expect(result.overwritten).toContain("navigator");
-		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "llm-council"]);
+		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council"]);
 		const nav = readFileSync(join(dest, "navigator.md"), "utf8");
 		expect(nav).not.toContain("CUSTOM");
 		expect(nav).toContain("seed projection");
