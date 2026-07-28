@@ -57,6 +57,7 @@ Add a bounded Semgrep OSS scan step to `pi-tools-and-skills`:
 - `npm run check` and `npm test` pass with no architecture-fitness exemptions.
 - New `npm run security:semgrep` runs locally and in CI.
 - Any findings on current `main` triaged before the `--error` hard-fail is enforced.
+- `scripts/pi-package-settings.py` suppresses `tspi-path-traversal-python` on its two `settings_path` opens with inline `nosemgrep` justifications: `setup-pi` supplies this trusted local settings path. This narrow exception does not authorize arbitrary tool-supplied paths; path confinement remains a follow-up if that invocation boundary changes.
 
 ## Follow-ups
 

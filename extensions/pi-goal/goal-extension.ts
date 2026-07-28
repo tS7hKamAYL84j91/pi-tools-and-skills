@@ -4,6 +4,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok } from "../../lib/tool-result.js";
+import { continuationMarker, continuationMarkerComment, extractContinuationMarker } from "./goal-continuation.js";
 import { showGoalOverlay } from "./goal-overlay.js";
 import { continuationPrompt, goalContextMessage, kickoffPrompt } from "./prompts.js";
 import {
@@ -22,7 +23,6 @@ import {
 
 const DEFAULT_TURNS = 3;
 const UNTIL_COMPLETE_TURNS = 20;
-const CONTINUATION_MARKER_PREFIX = "pi-goal-continuation:";
 const MAX_CANCELLED_MARKERS = 20;
 const GOAL_HELP_COMMANDS = [
 	"/goal help — show this command summary",
@@ -462,19 +462,6 @@ function getGoalRuntime(): GoalRuntime {
 		} satisfies GoalRuntime;
 	}
 	return globals[GOAL_RUNTIME_KEY] as GoalRuntime;
-}
-
-function continuationMarker(goalId: string, iteration: number): string {
-	return `${goalId}:${iteration}`;
-}
-
-function continuationMarkerComment(marker: string): string {
-	return `<!-- ${CONTINUATION_MARKER_PREFIX}${marker} -->`;
-}
-
-function extractContinuationMarker(prompt: string): string | undefined {
-	const match = prompt.match(/<!--\s*pi-goal-continuation:([^>]+)\s*-->/);
-	return match?.[1]?.trim();
 }
 
 function cancelContinuationPending(runtime: GoalRuntime): void {
