@@ -89,10 +89,11 @@ flowchart TD
   Pi --> OllamaModels
   Pi --> Panopticon
   Panopticon --> TeamsModule[teams module]
-  TeamsModule --> Swarm[protocol: swarm]
-  Swarm --> SwarmWorkers[manifest-bound task workers, WIP at most 3]
-  Swarm --> RuntimePlane[shared runtime control plane]
-  Swarm --> Governance[ADR-035 eligible model routing]
+  TeamsModule --> Swarm[protocol: hierarchical-swarm]
+  Swarm --> Managers[manifest-bound orchestrator nodes]
+  Managers --> SwarmWorkers[bounded manager or leaf-worker children]
+  SwarmWorkers --> RuntimePlane[shared runtime child entities]
+  Swarm --> Governance[ADR-035 eligible model routing at each spawn]
   TeamsModule --> RuntimePlane
   TeamsModule --> TeamChild[one-shot pi --print child]
   TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane

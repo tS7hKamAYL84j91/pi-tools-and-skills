@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Principal sign-off 2026-07-24; design approved by llm-council). Hard dependencies landed: ADR-035 implemented (commit 3163d1a) and CoAS ADR-0008 / T-791 delivery guard implemented (commit 6bfcaa8). `/swarm` is now a live pattern; implementation proceeds under its own gates.
+Partially superseded by ADR-040 for placement, flat-pool topology, and the prohibition on dynamic decomposition. Its bounds, gates, provenance, write isolation, and safety constraints remain inherited. Original status: Accepted (Principal sign-off 2026-07-24; design approved by llm-council).
 
 ## Context
 
@@ -105,6 +105,8 @@ Each swarm card carries a `swarm:<swarmId>` tag. Worker briefs are stored in `pi
 - No `swarm_resume` interrupted-recovery feature.
 - No concurrent multi-swarm semantics; v1 runs one swarm at a time per GM session.
 - No per-token cost ceiling; TTL + worker-minutes cap cover v1.
+
+> **Supersession note:** ADR-040 replaces this ADR's standalone placement, flat-pool topology, and one-time-only decomposition. The listed bounds remain mandatory.
 - No replacement of kanban/STATE authority; Gravitas remains single-writer.
 
 ## Consequences

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — council recommendation adopted on user authorization, 2026-07-28.
+Superseded by ADR-040 before implementation. ADR-039's fixed declarative protocol did not satisfy the required bounded manager/worker hierarchy.
 
 ## Context
 
