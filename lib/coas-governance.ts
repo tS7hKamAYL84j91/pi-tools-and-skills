@@ -7,6 +7,8 @@ export type GovernanceIntent = "triage" | "code" | "navigator" | "review" | "unk
 
 export interface ModelRoutingPolicy {
 	requiresLocalOnlyForPrivateInput: boolean;
+	/** Explicitly verified local model IDs; advisory fallbacks never imply locality. */
+	localModelIds?: string[];
 	localPrivateFallback?: string;
 	localTriageOnly?: string;
 	gmReviewedSimpleCode?: string;
@@ -35,6 +37,18 @@ export interface ModelResolution {
 	fallbackChain?: string[];
 }
 
+/** Explicit locality evidence accepted at a private-input spawn boundary. */
+export interface ModelEligibilityPolicy {
+	localModelIds?: readonly string[];
+	isModelLocal?: (model: string) => boolean;
+}
+
+export interface ModelEligibilityResolution {
+	eligibleModels: string[];
+	escalate: boolean;
+	reason: string;
+}
+
 const ALL_INTENTS: GovernanceIntent[] = ["triage", "code", "navigator", "review", "unknown"];
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -51,6 +65,7 @@ function readModelRoutingPolicy(value: unknown): ModelRoutingPolicy | undefined 
 	const policy = value as Record<string, unknown>;
 	return {
 		requiresLocalOnlyForPrivateInput: Boolean(policy.requiresLocalOnlyForPrivateInput),
+		localModelIds: asStringArray(policy.localModelIds),
 		localPrivateFallback: optionalString(policy.localPrivateFallback),
 		localTriageOnly: optionalString(policy.localTriageOnly),
 		gmReviewedSimpleCode: optionalString(policy.gmReviewedSimpleCode),
@@ -99,6 +114,30 @@ export function classifyInput(text: string, triggers: string[] = []): InputClass
 				reason: `matched local-only triggers: ${matchedTriggers.join(", ")}`,
 			}
 		: { classification: "public", matchedTriggers: [], reason: "no local-only triggers matched" };
+}
+
+/**
+ * Filters model candidates at a spawn boundary.
+ *
+ * Private input is eligible only with explicit locality evidence. In particular,
+ * advisoryFallbackChain and model naming conventions are not locality evidence.
+ */
+export function eligibleModelsFor(
+	classification: InputClassification,
+	candidates: readonly string[],
+	policy: ModelEligibilityPolicy = {},
+): ModelEligibilityResolution {
+	const uniqueCandidates = [...new Set(candidates)];
+	if (classification.classification === "public") {
+		return { eligibleModels: uniqueCandidates, escalate: false, reason: "public input permits supplied candidates" };
+	}
+	const configuredLocalModels = new Set(policy.localModelIds ?? []);
+	const eligibleModels = uniqueCandidates.filter(
+		(model) => configuredLocalModels.has(model) || policy.isModelLocal?.(model) === true,
+	);
+	return eligibleModels.length > 0
+		? { eligibleModels, escalate: false, reason: "private input limited to explicitly local models" }
+		: { eligibleModels: [], escalate: true, reason: "private input has no explicitly local eligible model" };
 }
 
 function intentPolicyField(intent: GovernanceIntent): "localTriageOnly" | "gmReviewedSimpleCode" | "navigator" | undefined {

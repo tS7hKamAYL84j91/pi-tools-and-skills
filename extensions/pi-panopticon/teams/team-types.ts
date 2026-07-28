@@ -72,6 +72,65 @@ export interface TeamLimits {
 	maxLoops?: number;
 }
 
+/** Authority assigned to a node in a hierarchical swarm tree. */
+export type HierarchicalSwarmRole = "root" | "manager" | "worker";
+
+/** Review required before a node's result may be accepted by its parent. */
+export interface HierarchicalSwarmReviewBinding {
+	reviewerRole: "root" | "manager";
+	required: boolean;
+}
+
+/** Maps a runtime role to an existing manifest agent binding. */
+export interface HierarchicalSwarmRoleTemplate {
+	role: HierarchicalSwarmRole;
+	bindingRole: string;
+	review: HierarchicalSwarmReviewBinding;
+}
+
+/** The tree-wide write policy; a worktree exception requires explicit approval. */
+export interface HierarchicalSwarmWriteIsolation {
+	mode: "tree-global-exclusive";
+	approvedWorktreePolicy?: string;
+}
+
+/** User-configurable limits; an omitted numeric value is unbounded. */
+export interface HierarchicalSwarmBounds {
+	maxDepth?: number;
+	maxChildrenPerNode?: number;
+	maxTotalNodes?: number;
+	maxWip?: number;
+	maxRepairCycles?: number;
+	ttlMs?: number;
+	writeIsolation: HierarchicalSwarmWriteIsolation;
+}
+
+/** Manifest contract for the bounded hierarchical-swarm protocol. */
+export interface HierarchicalSwarmConfig {
+	roleTemplates: HierarchicalSwarmRoleTemplate[];
+	bounds: HierarchicalSwarmBounds;
+}
+
+/** @public Capacity passed from a parent to a runtime child; children cannot increase it. */
+export interface HierarchicalSwarmInheritedCapacity {
+	remainingDepth?: number;
+	remainingChildren?: number;
+	remainingTotalNodes?: number;
+	availableWip?: number;
+	remainingTtlMs?: number;
+	remainingRepairCycles?: number;
+	writeIsolation: HierarchicalSwarmWriteIsolation;
+}
+
+/** @public Runtime-tree contract only; Phase 0 does not create or execute these nodes. */
+export interface HierarchicalSwarmRuntimeNode {
+	id: string;
+	parentId?: string;
+	role: HierarchicalSwarmRole;
+	capacity: HierarchicalSwarmInheritedCapacity;
+	review: HierarchicalSwarmReviewBinding;
+}
+
 export interface TeamSpec {
 	schemaVersion: 2;
 	id: string;
@@ -81,6 +140,7 @@ export interface TeamSpec {
 	prompts: TeamPromptRefs;
 	promptContracts?: TeamPromptContract[];
 	modelSlots?: TeamModelSlotSpec[];
+	hierarchicalSwarm?: HierarchicalSwarmConfig;
 	agents: string[];
 	agentBindings: TeamAgentBinding[];
 	models: TeamModels;
