@@ -3,6 +3,7 @@ import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js"
 import type { TeamAgentBinding, TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
 
 const calls: Array<{ role: string; nodeId?: string; parentId?: string; orchestratorName?: string; prompt: string }> = [];
+let rootDelegatedPrompt = "coordinate";
 
 vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => {
 	const actual = await vi.importActual<typeof import("../../extensions/pi-panopticon/teams/team-node-runner.js")>("../../extensions/pi-panopticon/teams/team-node-runner.js");
@@ -11,7 +12,7 @@ vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => 
 		runTeamNode: async (args: { role: string; nodeId?: string; parentId?: string; orchestratorName?: string; binding: TeamAgentBinding; model: string; prompt: string }) => {
 			calls.push(args);
 			const output = args.role === "root" && !args.prompt.includes("Review these")
-				? "```json\n{\"children\":[{\"role\":\"manager\",\"prompt\":\"coordinate\"}]}\n```"
+				? `\`\`\`json\n{"children":[{"role":"manager","prompt":${JSON.stringify(rootDelegatedPrompt)}}]}\n\`\`\``
 				: args.role === "manager" && !args.prompt.includes("Review these")
 					? "```json\n{\"children\":[{\"role\":\"worker\",\"prompt\":\"implement\"}]}\n```"
 					: args.role === "worker" ? "artifact" : `${args.role} review`;
@@ -58,5 +59,23 @@ describe("hierarchical swarm executor", () => {
 		const run = stateManager.get(runId);
 		expect(run?.nodes.map((node) => node.nodeId).sort()).toEqual(["root", "root.1", "root.1.1"]);
 		expect(run?.details.find((detail) => detail.nodeId === "root.1" && detail.message === "hierarchical child created")?.data).toMatchObject({ parentId: "root", inheritedWip: 1 });
+	});
+
+	it("classifies the complete delegated child brief before model eligibility", async () => {
+		calls.length = 0;
+		rootDelegatedPrompt = "workspace-private delegated detail";
+		try {
+			const stateManager = new TeamStateManager();
+			const spec = team();
+			const runId = stateManager.startRun({ teamId: spec.id, protocol: spec.protocol, prompt: "public task" });
+			await hierarchicalSwarmHandler.run({
+				team: spec, params: { id: spec.id, prompt: "public task" }, stateManager, runId,
+				ctx: { cwd: process.cwd(), ui: { setStatus() {} } } as never,
+			});
+			expect(calls.map((call) => call.role)).toEqual(["root"]);
+			expect(stateManager.get(runId)?.details.find((detail) => detail.nodeId === "root.1" && detail.message === "child model eligibility escalation")?.data).toMatchObject({ classification: "private" });
+		} finally {
+			rootDelegatedPrompt = "coordinate";
+		}
 	});
 });

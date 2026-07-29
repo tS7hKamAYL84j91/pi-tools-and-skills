@@ -67,6 +67,16 @@ describe("hierarchical-swarm manifest", () => {
 		expect(() => validateTeamManifest(invalidDepth)).toThrow(/maxDepth/);
 	});
 
+	it("rejects worker bindings with spawn-capable tools", () => {
+		for (const tool of ["spawn_agent", "team_run", "swarm_run"]) {
+			const unsafeWorker = hierarchicalTeam();
+			const worker = unsafeWorker.agentBindings.find((binding) => binding.role === "leaf_worker");
+			if (!worker) throw new Error("worker binding missing");
+			worker.tools = ["read", tool];
+			expect(() => validateTeamManifest(unsafeWorker)).toThrow(/worker binding must not expose/);
+		}
+	});
+
 	it("requires the hierarchy contract only for the hierarchical protocol", () => {
 		const missingContract = hierarchicalTeam();
 		missingContract.hierarchicalSwarm = undefined;

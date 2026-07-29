@@ -1,6 +1,6 @@
 /** Dynamic, single-lifecycle execution of an ADR-040 hierarchical swarm tree. */
 
-import { eligibleModelsFor, classifyInput, loadGovernanceConfig } from "../../../../lib/coas-governance.js";
+import { eligibleModelsFor, classifyInput, loadGovernanceConfig, type InputClassification } from "../../../../lib/coas-governance.js";
 import { runAndRecordNode, recordDetail, stopRequested } from "../team-handler-shared.js";
 import type { TeamHandlerRunArgs } from "../team-handler-shared.js";
 import type { NodeRun } from "../team-node-runner.js";
@@ -19,13 +19,15 @@ interface TreeNode {
 	capacity: HierarchicalCapacity;
 	binding: TeamAgentBinding;
 	model: string;
+	classification: InputClassification;
 }
 
 interface ExecutionState {
 	args: TeamHandlerRunArgs;
 	startedAt: number;
 	totalRemaining?: number;
-	classification: ReturnType<typeof classifyInput>;
+	classification: InputClassification;
+	localOnlyTriggers: string[];
 	localModelIds: string[];
 	childrenPerNode?: number;
 }
@@ -50,16 +52,16 @@ function stopped(state: ExecutionState): boolean {
 	return stopRequested(state.args) || state.args.signal?.aborted === true || ttlExpired;
 }
 
-function modelFor(state: ExecutionState, binding: TeamAgentBinding, nodeId: string): string | undefined {
+function modelFor(state: ExecutionState, binding: TeamAgentBinding, nodeId: string, classification: InputClassification): string | undefined {
 	const model = binding.model;
 	if (!model) return undefined;
-	const eligibility = eligibleModelsFor(state.classification, [model], { localModelIds: state.localModelIds });
+	const eligibility = eligibleModelsFor(classification, [model], { localModelIds: state.localModelIds });
 	recordDetail(state.args, {
 		kind: eligibility.escalate ? "error" : "trace",
 		phaseId: PHASE_ID,
 		nodeId,
 		message: eligibility.escalate ? "child model eligibility escalation" : "child model eligibility accepted",
-		data: { classification: state.classification.classification, model, localityEvidence: state.localModelIds, reason: eligibility.reason },
+		data: { classification: classification.classification, model, localityEvidence: state.localModelIds, reason: eligibility.reason },
 	});
 	return eligibility.eligibleModels[0];
 }
@@ -77,7 +79,7 @@ function nodeSystemPrompt(node: TreeNode): string {
 }
 
 async function callNode(state: ExecutionState, node: TreeNode, prompt: string, review = false): Promise<NodeRun> {
-	const model = modelFor(state, node.binding, node.id);
+	const model = modelFor(state, node.binding, node.id, node.classification);
 	if (!model) {
 		return { role: node.role, nodeId: node.id, binding: node.binding, model: node.model, ok: false, output: "", durationMs: 0, attempts: 0, error: "model eligibility escalation" };
 	}
@@ -118,14 +120,16 @@ async function executeNode(state: ExecutionState, node: TreeNode, prompt: string
 		if (!canSpawn(node.capacity, state.totalRemaining) || stopped(state)) break;
 		const childId = `${node.id}.${++childIndex}`;
 		const binding = bindingForRole(state.args, request.role);
-		const model = modelFor(state, binding, childId);
+		const prompt = childPrompt(state.args.params.prompt, node, request);
+		const classification = classifyInput(prompt, state.localOnlyTriggers);
+		const model = modelFor(state, binding, childId, classification);
 		if (!model) continue;
 		if (state.totalRemaining !== undefined) state.totalRemaining--;
 		node.capacity.remainingChildren = node.capacity.remainingChildren === undefined ? undefined : node.capacity.remainingChildren - 1;
 		const capacity = childCapacity(node.capacity, state.totalRemaining, Date.now(), state.childrenPerNode);
-		const child: TreeNode = { id: childId, name: childId, parentId: node.id, parentName: node.name, role: request.role, capacity, binding, model };
-		recordDetail(state.args, { kind: "trace", phaseId: PHASE_ID, nodeId: childId, message: "hierarchical child created", data: { parentId: node.id, parentName: node.name, role: request.role, inheritedWip: capacity.availableWip, capacity } });
-		children.push(await executeNode(state, child, childPrompt(state.args.params.prompt, node, request)));
+		const child: TreeNode = { id: childId, name: childId, parentId: node.id, parentName: node.name, role: request.role, capacity, binding, model, classification };
+		recordDetail(state.args, { kind: "trace", phaseId: PHASE_ID, nodeId: childId, message: "hierarchical child created", data: { parentId: node.id, parentName: node.name, role: request.role, classification: classification.classification, inheritedWip: capacity.availableWip, capacity } });
+		children.push(await executeNode(state, child, prompt));
 	}
 	if (children.length === 0 || stopped(state)) return initial;
 	recordDetail(state.args, { kind: "trace", phaseId: PHASE_ID, nodeId: node.id, message: "parent review started", data: { childIds: children.map((child) => child.nodeId) } });
@@ -142,13 +146,14 @@ export async function executeHierarchicalTree(args: TeamHandlerRunArgs): Promise
 		startedAt: Date.now(),
 		...(hierarchy.bounds.maxTotalNodes === undefined ? {} : { totalRemaining: hierarchy.bounds.maxTotalNodes - 1 }),
 		classification: classifyInput(args.params.prompt, config.localOnlyTriggers ?? []),
+		localOnlyTriggers: config.localOnlyTriggers ?? [],
 		localModelIds: [...(config.modelRoutingPolicy?.localModelIds ?? [])],
 		...(hierarchy.bounds.maxChildrenPerNode === undefined ? {} : { childrenPerNode: hierarchy.bounds.maxChildrenPerNode }),
 	};
 	const binding = bindingForRole(args, "root");
-	const model = modelFor(state, binding, "root");
+	const model = modelFor(state, binding, "root", state.classification);
 	if (!model) throw new Error("hierarchical-swarm root has no eligible model; escalation required.");
-	const root: TreeNode = { id: "root", name: "root", role: "root", capacity: rootCapacity(hierarchy.bounds, state.startedAt), binding, model };
+	const root: TreeNode = { id: "root", name: "root", role: "root", capacity: rootCapacity(hierarchy.bounds, state.startedAt), binding, model, classification: state.classification };
 	recordDetail(args, { kind: "trace", phaseId: PHASE_ID, nodeId: "root", message: "hierarchical root created", data: { capacity: root.capacity, classification: state.classification.classification } });
 	return executeNode(state, root, args.params.prompt);
 }

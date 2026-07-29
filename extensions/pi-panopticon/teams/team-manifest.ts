@@ -4,6 +4,7 @@ import type {
 	HierarchicalSwarmBounds,
 	HierarchicalSwarmConfig,
 	HierarchicalSwarmRole,
+	TeamAgentBinding,
 	TeamApprovalConfig,
 	TeamModelSlotSpec,
 	TeamModels,
@@ -96,6 +97,13 @@ function validateHierarchicalBounds(bounds: HierarchicalSwarmBounds): void {
 	}
 }
 
+function validateWorkerCapabilities(binding: TeamAgentBinding): void {
+	const forbidden = binding.tools?.find((tool) => /spawn|team|swarm/i.test(tool));
+	if (forbidden) {
+		throw new Error(`hierarchicalSwarm worker binding must not expose spawn/team/swarm capability "${forbidden}".`);
+	}
+}
+
 function validateHierarchicalSwarm(config: HierarchicalSwarmConfig, team: TeamSpec): void {
 	const roles: HierarchicalSwarmRole[] = ["root", "manager", "worker"];
 	assertUnique(config.roleTemplates.map((template) => template.role), "hierarchicalSwarm.roleTemplates");
@@ -114,6 +122,10 @@ function validateHierarchicalSwarm(config: HierarchicalSwarmConfig, team: TeamSp
 			throw new Error(`hierarchicalSwarm.roleTemplates.${role}.review.required must be true.`);
 		}
 	}
+	const workerTemplate = config.roleTemplates.find((entry) => entry.role === "worker");
+	const workerBinding = workerTemplate && team.agentBindings.find((binding) => binding.role === workerTemplate.bindingRole);
+	if (!workerBinding) throw new Error("hierarchicalSwarm worker binding is unavailable.");
+	validateWorkerCapabilities(workerBinding);
 	validateHierarchicalBounds(config.bounds);
 }
 
