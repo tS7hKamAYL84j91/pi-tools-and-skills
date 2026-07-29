@@ -60,8 +60,8 @@ export default function (pi: ExtensionAPI) {
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
 	const runtime = new RuntimeControlPlane();
-	registerTeams(pi, runtime);
-	const swarm = setupSwarm(pi, selfId, runtime);
+	const teams = registerTeams(pi, runtime);
+	const swarm = setupSwarm(pi, teams);
 	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage, stopAgent });
 
 	// ── Lifecycle: start ────────────────────────────────────────

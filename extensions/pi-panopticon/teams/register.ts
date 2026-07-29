@@ -8,11 +8,21 @@ import { omitEmptyTools } from "./provider-payload.js";
 import { TeamStateManager } from "./state.js";
 import { registerTeamCommands } from "./team-commands.js";
 import { projectBuiltinTeams } from "./team-projection.js";
-import { registerTeamRunTool } from "./team-runtime.js";
+import { registerTeamRunTool, runTeam } from "./team-runtime.js";
+import { startTeamRunAsync } from "./team-async.js";
+import type { TeamRunInput } from "./team-handlers.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerTeamSessionMode } from "./team-session-mode.js";
 import { registerTeamTools } from "./team-tools.js";
 
-export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPlane) {
+export interface TeamsFacade {
+	stateManager: TeamStateManager;
+	runtime: RuntimeControlPlane;
+	run(params: TeamRunInput, ctx: ExtensionContext): ReturnType<typeof runTeam>;
+	runAsync(params: TeamRunInput, ctx: ExtensionContext): ReturnType<typeof startTeamRunAsync>;
+}
+
+export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPlane): TeamsFacade {
 	const stateManager = new TeamStateManager({
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 	});
@@ -41,5 +51,15 @@ export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPl
 	registerTeamRunTool(pi, { stateManager, runtime });
 	registerTeamCommands(pi, { stateManager, runtime });
 	registerTeamSessionMode(pi, { stateManager, runtime });
+	return {
+		stateManager,
+		runtime,
+		run(params, ctx) {
+			return runTeam({ params, ctx, stateManager, runtime });
+		},
+		runAsync(params, ctx) {
+			return startTeamRunAsync({ pi, params, ctx, run: (runParams) => runTeam({ params: runParams, ctx, stateManager, runtime }) });
+		},
+	};
 }
 

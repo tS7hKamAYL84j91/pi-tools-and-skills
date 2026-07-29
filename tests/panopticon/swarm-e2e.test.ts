@@ -1,86 +1,31 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
-import { formatCompletionSignal } from "../../lib/completion-signal.js";
-import { reconcileCompletion } from "../../extensions/pi-panopticon/swarm/swarm-reconciler.js";
-import { SwarmRunner } from "../../extensions/pi-panopticon/swarm/swarm-runner.js";
-import { registerSwarmTools } from "../../extensions/pi-panopticon/swarm/swarm-tools.js";
-import type {
-	SwarmPlan,
-	SwarmReviewAdapter,
-	SwarmWorkerAdapter,
-} from "../../extensions/pi-panopticon/swarm/swarm-types.js";
+import { ok } from "../../lib/tool-result.js";
+import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
+import { registerSwarmCommand } from "../../extensions/pi-panopticon/swarm/swarm-commands.js";
 
-interface RegisteredTool {
+interface RegisteredCommand {
 	name: string;
-	execute: (...args: unknown[]) => Promise<unknown>;
+	handler: (raw: string | undefined, ctx: { cwd: string; ui: { notify(message: string, level: "info" | "warning"): void } }) => Promise<void>;
 }
 
-function resultDetails(result: unknown): Record<string, unknown> {
-	if (!result || typeof result !== "object" || !("details" in result)) throw new Error("missing tool details");
-	return (result as { details: Record<string, unknown> }).details;
-}
-
-describe("swarm end-to-end orchestration", () => {
-	it("plans dry, bounds task workers, gates artifacts, and tears down", async () => {
-		const tools = new Map<string, RegisteredTool>();
-		const stops: Array<ReturnType<typeof vi.fn>> = [];
-		const adapter: SwarmWorkerAdapter = {
-			spawn(request) {
-				const stop = vi.fn(async () => {});
-				stops.push(stop);
-				expect(request.scope).toBe("task");
-				return { name: request.name, stop };
-			},
-		};
-		const runner = new SwarmRunner(adapter);
-		const api = {
-			registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); },
-		};
-		// The fake intentionally implements only the registration surface under test.
-		registerSwarmTools(api as unknown as ExtensionAPI, {
-			runner,
-			runtime: new RuntimeControlPlane(),
+describe("swarm command compatibility", () => {
+	it("keeps dry-run-first UX and executes through the Teams facade", async () => {
+		let command: RegisteredCommand | undefined;
+		const run = vi.fn(async () => ok("root response", { team: "hierarchical-swarm-default" }));
+		registerSwarmCommand({ registerCommand(name: string, value: Omit<RegisteredCommand, "name">) { command = { name, ...value }; } } as unknown as ExtensionAPI, {
+			stateManager: new TeamStateManager(), runtime: new RuntimeControlPlane(), run, runAsync: vi.fn(),
 		});
-		const runTool = tools.get("swarm_run");
-		if (!runTool) throw new Error("swarm_run was not registered");
-		const dryResult = await runTool.execute(
-			"call",
-			{ goal: "inspect one; inspect two; inspect three; inspect four", dry_run: true },
-			new AbortController().signal,
-			undefined,
-			{ cwd: "/repo" },
-		);
-		const plan = resultDetails(dryResult).plan as SwarmPlan;
-		expect(resultDetails(dryResult).dryRun).toBe(true);
-		expect(stops).toHaveLength(0);
+		if (!command) throw new Error("swarm command was not registered");
+		const notify = vi.fn();
+		const ctx = { cwd: process.cwd(), ui: { notify } };
 
-		for (const task of plan.tasks) task.dependencies = [];
-		const record = runner.start(plan, "/repo", 9);
-		expect(record.plan.tasks.filter((task) => task.state === "in_progress")).toHaveLength(3);
+		await command.handler("inspect API --profile fast", ctx);
+		expect(notify).toHaveBeenLastCalledWith(expect.stringContaining("Swarm dry run; no workers spawned."), "info");
+		expect(run).not.toHaveBeenCalled();
 
-		const first = record.plan.tasks[0];
-		if (!first) throw new Error("missing planned task");
-		const reviewer: SwarmReviewAdapter = {
-			async review(teamId) { return { teamId, verdict: "pass", summary: "passed" }; },
-		};
-		const signal = formatCompletionSignal({
-			version: 1,
-			taskId: first.id,
-			status: "done",
-			summary: "implemented",
-			artifacts: ["result.txt"],
-		});
-		const reconciled = await reconcileCompletion(
-			record.plan,
-			signal,
-			[{ command: "npm test", evidence: "tests passed" }],
-			reviewer,
-		);
-		expect(reconciled.gate?.verdict).toBe("pass");
-
-		await runner.stop(plan.swarmId, "test teardown");
-		expect(record.state).toBe("aborted");
-		expect(stops.filter((stop) => stop.mock.calls.length > 0)).toHaveLength(2);
+		await command.handler("inspect API --profile fast --execute", ctx);
+		expect(run).toHaveBeenCalledWith({ id: "hierarchical-swarm-default", prompt: "inspect API", profile: "fast" }, ctx);
 	});
 });

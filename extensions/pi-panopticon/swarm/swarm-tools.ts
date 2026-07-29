@@ -1,17 +1,10 @@
-/** Tool registration for swarm planning and lifecycle control. */
+/** ADR-040 Teams compatibility aliases for legacy swarm tools. */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { RuntimeControlPlane, RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { fail, ok } from "../../../lib/tool-result.js";
-import {
-	formatSwarmDryRun,
-	formatSwarmList,
-	formatSwarmProgress,
-} from "./swarm-format.js";
-import { planSwarm } from "./swarm-planner.js";
-import type { SwarmRunner } from "./swarm-runner.js";
-import type { SwarmProfile, SwarmRecord } from "./swarm-types.js";
+import type { TeamsFacade } from "../teams/register.js";
+import { HIERARCHICAL_SWARM_TEAM_ID, preflightHierarchicalSwarm } from "./swarm-compat.js";
 
 const ProfileSchema = Type.Union([
 	Type.Literal("fast"),
@@ -20,34 +13,19 @@ const ProfileSchema = Type.Union([
 ]);
 
 interface SwarmRegistration {
-	runner: SwarmRunner;
-	runtime: RuntimeControlPlane;
+	teams: TeamsFacade;
 }
 
-function registerRuntime(
-	registration: SwarmRegistration,
-	record: SwarmRecord,
-): RuntimeEntityRef {
-	const ref: RuntimeEntityRef = { id: record.plan.swarmId, kind: "swarm" };
-	registration.runtime.registerEntity({
-		...ref,
-		label: record.plan.goal,
-		status: record.state === "running" ? "running" : "failed",
-		stop: (reason) => {
-			void registration.runner.stop(record.plan.swarmId, reason).then(() => {
-				registration.runtime.updateStatus(ref, "stopped");
-			});
-		},
-	});
-	return ref;
+function compatibilityRuns(registration: SwarmRegistration) {
+	return registration.teams.stateManager.list().filter((run) => run.team === HIERARCHICAL_SWARM_TEAM_ID);
 }
 
-/** Registers swarm_run, swarm_status, swarm_list, and swarm_stop. */
+/** Registers swarm aliases that share the Teams run lifecycle. */
 export function registerSwarmTools(pi: ExtensionAPI, registration: SwarmRegistration): void {
 	pi.registerTool({
 		name: "swarm_run",
 		label: "Run Swarm",
-		description: "Plan or execute one deterministic bounded worker pool. Dry-run defaults to true.",
+		description: "Compatibility alias for team_run hierarchical-swarm-default. Dry-run defaults to true.",
 		parameters: Type.Object({
 			goal: Type.String(),
 			profile: Type.Optional(ProfileSchema),
@@ -56,61 +34,62 @@ export function registerSwarmTools(pi: ExtensionAPI, registration: SwarmRegistra
 			async: Type.Optional(Type.Boolean({ default: false })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const profile = (params.profile ?? "balanced") as SwarmProfile;
-			const plan = planSwarm(params.goal, profile);
+			if (params.wip !== undefined) {
+				return fail("swarm_run wip is unsupported by the compatibility alias; configure hierarchical-swarm bounds in the team manifest.", { code: "validation" });
+			}
+			const profile = params.profile ?? "balanced";
 			if (params.dry_run !== false) {
-				return ok(formatSwarmDryRun(plan, params.wip), { plan, dryRun: true });
+				try {
+					const preflight = preflightHierarchicalSwarm({ cwd: ctx.cwd, goal: params.goal, profile });
+					return ok(preflight.text, { team: preflight.team.id, dryRun: true, compatibility: "hierarchical-swarm" });
+				} catch (error) {
+					return fail(error instanceof Error ? error.message : String(error), { code: "validation" });
+				}
 			}
-			try {
-				const record = registration.runner.start(plan, ctx.cwd, params.wip);
-				registerRuntime(registration, record);
-				return ok(`Swarm ${plan.swarmId} ${record.state}.`, { record, async: params.async ?? false });
-			} catch (error) {
-				return fail(error instanceof Error ? error.message : String(error), { code: "validation" });
-			}
+			const teamParams = { id: HIERARCHICAL_SWARM_TEAM_ID, prompt: params.goal, profile, ...(params.async ? { async: true } : {}) };
+			return params.async ? registration.teams.runAsync(teamParams, ctx) : registration.teams.run(teamParams, ctx);
 		},
 	});
 
 	pi.registerTool({
 		name: "swarm_status",
 		label: "Swarm Status",
-		description: "Inspect one session-local swarm.",
+		description: "Compatibility view of a hierarchical-swarm Teams run.",
 		parameters: Type.Object({ swarmId: Type.String() }),
 		async execute(_id, params) {
-			const record = registration.runner.get(params.swarmId);
-			return record
-				? ok(formatSwarmProgress(record), { record })
-				: fail(`Unknown swarm '${params.swarmId}'.`, { code: "validation" });
+			const run = registration.teams.stateManager.get(params.swarmId);
+			if (!run || run.team !== HIERARCHICAL_SWARM_TEAM_ID) {
+				return fail(`No hierarchical-swarm team run "${params.swarmId}". Legacy swarm IDs are not available; use team_runs.`, { code: "validation" });
+			}
+			return ok(`${run.id} ${run.status} nodes=${run.nodes.length}`, { run, compatibility: "hierarchical-swarm" });
 		},
 	});
 
 	pi.registerTool({
 		name: "swarm_list",
 		label: "List Swarms",
-		description: "List session-local swarm records.",
+		description: "Compatibility list of hierarchical-swarm Teams runs.",
 		parameters: Type.Object({ activeOnly: Type.Optional(Type.Boolean()) }),
 		async execute(_id, params) {
-			const records = registration.runner.list().filter((record) => !params.activeOnly || record.state === "running");
-			return ok(formatSwarmList(records), { records });
+			const runs = compatibilityRuns(registration).filter((run) => !params.activeOnly || run.status === "pending" || run.status === "running" || run.status === "stopping");
+			return ok(runs.length === 0 ? "No hierarchical-swarm team runs." : runs.map((run) => `${run.id} ${run.status} nodes=${run.nodes.length}`).join("\n"), { runs, compatibility: "hierarchical-swarm" });
 		},
 	});
 
 	pi.registerTool({
 		name: "swarm_stop",
 		label: "Stop Swarm",
-		description: "Cancel a swarm and tear down its workers.",
-		parameters: Type.Object({
-			swarmId: Type.String(),
-			reason: Type.Optional(Type.String()),
-		}),
+		description: "Compatibility stop for a hierarchical-swarm Teams run.",
+		parameters: Type.Object({ swarmId: Type.String(), reason: Type.Optional(Type.String()) }),
 		async execute(_id, params) {
-			try {
-				const record = await registration.runner.stop(params.swarmId, params.reason);
-				registration.runtime.updateStatus({ id: params.swarmId, kind: "swarm" }, "stopped");
-				return ok(`Swarm ${params.swarmId} stopped.`, { record });
-			} catch (error) {
-				return fail(error instanceof Error ? error.message : String(error), { code: "validation" });
+			const run = registration.teams.stateManager.get(params.swarmId);
+			if (!run || run.team !== HIERARCHICAL_SWARM_TEAM_ID) {
+				return fail(`No hierarchical-swarm team run "${params.swarmId}". Legacy swarm IDs cannot be stopped.`, { code: "validation" });
 			}
+			const stopped = registration.teams.stateManager.requestStop(run.id, params.reason ?? "cancelled by swarm compatibility alias");
+			return stopped
+				? ok(`Team run ${run.id} stopping.`, { runId: run.id, compatibility: "hierarchical-swarm" })
+				: fail(`Team run ${run.id} is not active.`, { code: "validation" });
 		},
 	});
 }

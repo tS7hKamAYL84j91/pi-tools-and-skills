@@ -1,69 +1,42 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
-import { SwarmRunner } from "../../extensions/pi-panopticon/swarm/swarm-runner.js";
+import { ok } from "../../lib/tool-result.js";
+import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
 import { registerSwarmTools } from "../../extensions/pi-panopticon/swarm/swarm-tools.js";
-import type { SwarmWorkerAdapter } from "../../extensions/pi-panopticon/swarm/swarm-types.js";
 
 interface RegisteredTool {
 	name: string;
 	execute: (...args: unknown[]) => Promise<unknown>;
 }
 
-interface ToolResponse {
-	content: Array<{ type: string; text: string }>;
-	details: Record<string, unknown>;
+function response(result: unknown): { content: Array<{ text: string }>; details: Record<string, unknown> } {
+	if (!result || typeof result !== "object" || !("content" in result) || !("details" in result)) throw new Error("missing tool response");
+	return result as { content: Array<{ text: string }>; details: Record<string, unknown> };
 }
 
-function asToolResponse(result: unknown): ToolResponse {
-	if (
-		!result ||
-		typeof result !== "object" ||
-		!("content" in result) ||
-		!("details" in result)
-	) {
-		throw new Error("missing tool response");
-	}
-	return result as ToolResponse;
-}
-
-describe("swarm_run dry output", () => {
-	it("keeps structured dry-run details while presenting the overview", async () => {
+describe("swarm Teams compatibility tools", () => {
+	it("formats a manifest preflight and delegates execution to hierarchical-swarm-default", async () => {
 		const tools = new Map<string, RegisteredTool>();
-		const spawn = vi.fn();
-		const adapter: SwarmWorkerAdapter = { spawn };
-		const api = {
-			registerTool(tool: RegisteredTool) {
-				tools.set(tool.name, tool);
-			},
-		};
-		registerSwarmTools(api as unknown as ExtensionAPI, {
-			runner: new SwarmRunner(adapter),
-			runtime: new RuntimeControlPlane(),
+		const run = vi.fn(async () => ok("root result", { team: "hierarchical-swarm-default" }));
+		const runAsync = vi.fn(() => ok("started", { team: "hierarchical-swarm-default", async: true }));
+		registerSwarmTools({ registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); } } as unknown as ExtensionAPI, {
+			teams: { stateManager: new TeamStateManager(), runtime: new RuntimeControlPlane(), run, runAsync },
 		});
-		const runTool = tools.get("swarm_run");
-		if (!runTool) throw new Error("swarm_run was not registered");
+		const swarmRun = tools.get("swarm_run");
+		if (!swarmRun) throw new Error("swarm_run was not registered");
 
-		const response = asToolResponse(
-			await runTool.execute(
-				"call",
-				{ goal: "inspect API; implement fix", profile: "fast", wip: 2 },
-				new AbortController().signal,
-				undefined,
-				{ cwd: "/repo" },
-			),
-		);
+		const rejectedWip = response(await swarmRun.execute("call", { goal: "inspect API", wip: 9 }, new AbortController().signal, undefined, { cwd: process.cwd() }));
+		expect(rejectedWip.content[0]?.text).toContain("wip is unsupported");
+		const dry = response(await swarmRun.execute("call", { goal: "inspect API", profile: "fast" }, new AbortController().signal, undefined, { cwd: process.cwd() }));
+		expect(dry.content[0]?.text).toContain("Swarm dry run; no workers spawned.");
+		expect(dry.content[0]?.text).toContain("Team: hierarchical-swarm-default (hierarchical-swarm).");
+		expect(run).not.toHaveBeenCalled();
 
-		expect(response.details).toEqual({
-			plan: expect.objectContaining({
-				goal: "inspect API; implement fix",
-				profile: "fast",
-			}),
-			dryRun: true,
-		});
-		expect(response.content[0]?.text).toContain(
-			"Swarm dry run; no workers spawned.",
-		);
-		expect(spawn).not.toHaveBeenCalled();
+		await swarmRun.execute("call", { goal: "inspect API", profile: "fast", dry_run: false }, new AbortController().signal, undefined, { cwd: process.cwd() });
+		expect(run).toHaveBeenCalledWith({ id: "hierarchical-swarm-default", prompt: "inspect API", profile: "fast" }, expect.objectContaining({ cwd: process.cwd() }));
+		const asyncResult = response(await swarmRun.execute("call", { goal: "inspect API", profile: "fast", dry_run: false, async: true }, new AbortController().signal, undefined, { cwd: process.cwd() }));
+		expect(asyncResult.details.async).toBe(true);
+		expect(runAsync).toHaveBeenCalledWith({ id: "hierarchical-swarm-default", prompt: "inspect API", profile: "fast", async: true }, expect.objectContaining({ cwd: process.cwd() }));
 	});
 });
