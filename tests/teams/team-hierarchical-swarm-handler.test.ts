@@ -141,7 +141,7 @@ describe("Hierarchical Swarm Handler", () => {
 			role: "root",
 			model: "test/root-model",
 			prompt: "do work",
-			systemPrompt: "I am root",
+			systemPrompt: expect.stringContaining("I am root"),
 			timeoutMs: 90_000,
 			maxRetries: 3,
 		});

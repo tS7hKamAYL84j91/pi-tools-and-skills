@@ -10,6 +10,8 @@ import type { ModelRun } from "./types.js";
 const NODE_HEARTBEAT_INTERVAL_MS = 5_000;
 
 export interface NodeRun {
+	/** Stable runtime-tree path; defaults to the node role outside hierarchical swarms. */
+	nodeId?: string;
 	role: string;
 	binding: TeamAgentBinding;
 	model: string;
@@ -49,6 +51,8 @@ export function nodeDetails(nodes: readonly NodeRun[]): Array<Record<string, unk
 }
 
 export async function runTeamNode(args: {
+	/** State-only identity; execution uses the semantic role. */
+	nodeId?: string;
 	binding: TeamAgentBinding;
 	role: string;
 	model: string;

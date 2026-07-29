@@ -110,7 +110,7 @@ function recordNode(args: TeamHandlerRunArgs, phaseId: string, node: NodeRun): v
 	if (!args.runId) return;
 	args.stateManager.recordNodeCompleted(args.runId, {
 		phaseId,
-		nodeId: node.role,
+		nodeId: node.nodeId ?? node.role,
 		role: node.binding.role,
 		model: node.model,
 		ok: node.ok,
@@ -126,7 +126,7 @@ export async function runAndRecordNode(
 	phaseId: string,
 	nodeArgs: Omit<Parameters<typeof runTeamNode>[0], "onHeartbeat">,
 ): Promise<NodeRun> {
-	const nodeId = nodeArgs.role;
+	const nodeId = nodeArgs.nodeId ?? nodeArgs.role;
 	const role = nodeArgs.binding.role;
 	const model = nodeArgs.model;
 	const runId = args.runId;
@@ -141,8 +141,9 @@ export async function runAndRecordNode(
 			},
 		} : {}),
 	});
-	recordNode(args, phaseId, node);
-	return node;
+	const recordedNode = { ...node, nodeId };
+	recordNode(args, phaseId, recordedNode);
+	return recordedNode;
 }
 
 

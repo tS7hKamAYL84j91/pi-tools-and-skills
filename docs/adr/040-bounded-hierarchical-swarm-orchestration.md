@@ -32,7 +32,7 @@ When a parent declares a limit, its children inherit the remaining capacity and 
 
 ### Model safety
 
-At every spawn boundary, ADR-035 classification produces an eligible model set. Manifest role preference selects only within that set. A private child brief without an eligible local model is blocked/escalated; it never falls back to cloud.
+At every spawn boundary, ADR-035 classification produces an eligible model set. Manifest role preference selects only within that set. Private eligibility requires explicit operator-provided `modelRoutingPolicy.localModelIds` locality evidence; model names and advisory fallback order are not evidence. A private child brief without an eligible local model is blocked/escalated; it never falls back to cloud.
 
 ### Lifecycle and review
 
