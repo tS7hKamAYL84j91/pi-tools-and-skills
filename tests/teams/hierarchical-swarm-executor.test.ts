@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
 import type { TeamAgentBinding, TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
@@ -64,17 +67,26 @@ describe("hierarchical swarm executor", () => {
 	it("classifies the complete delegated child brief before model eligibility", async () => {
 		calls.length = 0;
 		rootDelegatedPrompt = "workspace-private delegated detail";
+		const cwd = mkdtempSync(join(tmpdir(), "hierarchical-swarm-private-"));
 		try {
+			mkdirSync(join(cwd, ".pi"));
+			writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({
+				coasProfile: {
+					localOnlyTriggers: ["workspace-private"],
+					modelRoutingPolicy: { requiresLocalOnlyForPrivateInput: true },
+				},
+			}), "utf8");
 			const stateManager = new TeamStateManager();
 			const spec = team();
 			const runId = stateManager.startRun({ teamId: spec.id, protocol: spec.protocol, prompt: "public task" });
 			await hierarchicalSwarmHandler.run({
 				team: spec, params: { id: spec.id, prompt: "public task" }, stateManager, runId,
-				ctx: { cwd: process.cwd(), ui: { setStatus() {} } } as never,
+				ctx: { cwd, ui: { setStatus() {} } } as never,
 			});
 			expect(calls.map((call) => call.role)).toEqual(["root"]);
 			expect(stateManager.get(runId)?.details.find((detail) => detail.nodeId === "root.1" && detail.message === "child model eligibility escalation")?.data).toMatchObject({ classification: "private" });
 		} finally {
+			rmSync(cwd, { recursive: true, force: true });
 			rootDelegatedPrompt = "coordinate";
 		}
 	});
