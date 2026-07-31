@@ -4,7 +4,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isLiveAgentRef, liveAgentModel, runLiveAgentNode } from "./live-agent.js";
 import { runMember } from "./runner.js";
 import type { TeamAgentBinding } from "./team-types.js";
-import type { ModelRun } from "./types.js";
+import type { ForkTurnsMode, ModelRun } from "./types.js";
 
 /** Heartbeat emission interval in milliseconds while a node is in flight. */
 const NODE_HEARTBEAT_INTERVAL_MS = 5_000;
@@ -64,6 +64,7 @@ export async function runTeamNode(args: {
 	orchestratorName?: string;
 	timeoutMs?: number;
 	maxRetries?: number;
+	forkTurns?: ForkTurnsMode;
 	onHeartbeat?: (elapsedMs: number, runningWorkers: number) => void;
 }): Promise<NodeRun> {
 	const startedAt = Date.now();
@@ -121,6 +122,7 @@ async function runRoleCall(args: Parameters<typeof runTeamNode>[0] & { signal: A
 		cwd: args.ctx.cwd,
 		signal: args.signal,
 		parentId: args.parentId,
+		forkTurns: args.forkTurns,
 	});
 }
 

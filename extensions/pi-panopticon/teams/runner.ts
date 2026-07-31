@@ -16,7 +16,7 @@ import {
 import { resolvePiBinary } from "../../../lib/spawn-service.js";
 import { spawnRuntimeChildProcess } from "../../../lib/runtime-child-process.js";
 import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
-import type { TeamParticipant, GenerationParameterValue, ModelRun } from "./types.js";
+import type { TeamParticipant, GenerationParameterValue, ForkTurnsMode, ModelRun } from "./types.js";
 
 interface PanopticonRecord {
 	id: string;
@@ -42,6 +42,7 @@ interface RunModelArgs {
 	parentId?: string;
 	tools?: string[];
 	parameters?: Record<string, GenerationParameterValue>;
+	forkTurns?: ForkTurnsMode;
 }
 
 interface PiModelResult {
@@ -170,6 +171,48 @@ export function mapSpawnResultToModelRun(
 	};
 }
 
+function renderForkContext(mode: ForkTurnsMode): string {
+	switch (mode.mode) {
+		case "none":
+			return "";
+		case "summary":
+			return `Parent context (summary):\n\n${mode.summary}`;
+		case "lastN": {
+			const turns = mode.turns.slice(-Math.max(1, mode.n));
+			const rendered = turns.map((turn) => renderParentTurn(turn)).join("\n");
+			return `Parent context (last ${turns.length} turn${turns.length === 1 ? "" : "s"}):\n\n${rendered}`;
+		}
+	}
+}
+
+function renderParentTurn(turn: unknown): string {
+	const message = asRecord(turn);
+	if (!message) return String(turn);
+	const role = typeof message.role === "string" ? message.role : "unknown";
+	const text = extractTextContent(message);
+	return `[${role}] ${text ?? ""}`;
+}
+
+function extractTextContent(message: Record<string, unknown>): string | undefined {
+	if (typeof message.content === "string") return message.content;
+	if (Array.isArray(message.content)) {
+		return message.content
+			.map((block) => {
+				const item = asRecord(block);
+				return item?.type === "text" && typeof item.text === "string" ? item.text : "";
+			})
+			.join("");
+	}
+	return undefined;
+}
+
+function buildStdin(args: RunModelArgs): string {
+	const mode = args.forkTurns;
+	if (!mode || mode.mode === "none") return args.prompt;
+	const context = renderForkContext(mode);
+	return `${context}\n\n---\n\n${args.prompt}`;
+}
+
 function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	const parameters = args.parameters;
 	const hasParameters = parameters !== undefined && Object.keys(parameters).length > 0;
@@ -192,7 +235,7 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		command: resolvePiBinary(),
 		args: piArgs,
 		cwd: args.cwd,
-		stdin: args.prompt,
+		stdin: buildStdin(args),
 		signal: args.signal,
 		env: {
 			// Team member/synthesis nodes are stateless `--print --no-session`
@@ -224,6 +267,7 @@ export async function runMember(
 		...args,
 		tools: args.tools !== undefined ? args.tools : member.tools,
 		parameters: args.parameters !== undefined ? args.parameters : member.parameters,
+		forkTurns: args.forkTurns !== undefined ? args.forkTurns : member.forkTurns,
 	});
 	return { member, ...result };
 }

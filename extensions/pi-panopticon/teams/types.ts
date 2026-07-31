@@ -10,9 +10,15 @@ export interface TeamStopInput {
 /** @public */
 export type GenerationParameterValue = string | number | boolean;
 
+export type ForkTurnsMode =
+	| { mode: "none" }
+	| { mode: "summary"; summary: string }
+	| { mode: "lastN"; turns: readonly unknown[]; n: number };
+
 export interface GenerationConfig {
 	tools?: string[];
 	parameters?: Record<string, GenerationParameterValue>;
+	forkTurns?: ForkTurnsMode;
 }
 
 export interface TeamParticipant extends GenerationConfig {
