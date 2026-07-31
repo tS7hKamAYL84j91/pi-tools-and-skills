@@ -63,4 +63,8 @@ export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalS
 		if (!instruction) return undefined;
 		return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
 	});
+
+	pi.on("agent_end", async (event, _ctx) => {
+		await scheduler.handleAgentEnd(event.messages);
+	});
 }

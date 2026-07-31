@@ -539,6 +539,8 @@ describe("schedules", () => {
 				lastQueuedAt: undefined,
 				lastFailedAt: undefined,
 				lastTaskId: undefined,
+				continuationSchedules: 0,
+				continuationReady: 0,
 			});
 		});
 
@@ -666,6 +668,8 @@ describe("schedules", () => {
 					lastQueuedAt: undefined,
 					lastFailedAt: undefined,
 					lastTaskId: undefined,
+					continuationSchedules: 0,
+					continuationReady: 0,
 				});
 			} finally {
 				await rm(coasHome, { recursive: true, force: true });

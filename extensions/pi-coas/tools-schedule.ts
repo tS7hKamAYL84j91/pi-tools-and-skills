@@ -122,6 +122,12 @@ export function registerCoasScheduleAddTool(
 			disabled: Type.Optional(
 				Type.Boolean({ description: "Create disabled schedule." }),
 			),
+			continuation: Type.Optional(
+				Type.Boolean({
+					description:
+						"Opt-in resumable continuation. Persist a bounded prior-run summary and inject it into the next trigger.",
+				}),
+			),
 			cwd: Type.Optional(
 				Type.String({
 					description:

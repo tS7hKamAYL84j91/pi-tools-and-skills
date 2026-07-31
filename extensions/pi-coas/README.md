@@ -59,6 +59,14 @@ coas: <workspace|on> <✓|idle|⚠> [sch enabled/active] [q<queued>] [f<failed>]
 
 This is intentionally operational state only: workspace/scheduler health, enabled schedules, active runs, and ephemeral queue-level telemetry. The `q` and `f` suffixes appear only when non-zero. Counters reset when the scheduler stops (session close / pi exit).
 
+## Schedule continuation (opt-in)
+
+A schedule created with `continuation=true` (serialized as `CONTINUATION=1` in its `.env` file) persists a single bounded, non-secret summary of its most recent completed run under `${COAS_HOME}/schedule-runs/{taskId}.json`. On the next trigger, the scheduler claim-checks that the file exists, the run is complete, and the summary is not stale (≤7 days) before injecting a compacted prior-run block at the top of the scheduled prompt.
+
+The run-state file contains no history array; each successful capture overwrites the prior state so the injected continuation block stays constant-size. The summary and next-action fields are capped, and interrupted runs are not injected as prior context. Run state is removed when the schedule is removed or continuation is disabled.
+
+Continuation schedules remain subject to the ADR-0008 delivery guard: they are only injected when workspace/target-agent scoping matches.
+
 ## Configuration
 
 Resolution order:

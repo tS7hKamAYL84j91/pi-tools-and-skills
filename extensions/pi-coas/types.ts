@@ -62,6 +62,8 @@ export interface ScheduleEntry {
 	prompt?: string;
 	/** Optional explicit target agent for cross-agent schedules (requires Gravitas/Principal approval). */
 	targetAgent?: string;
+	/** Opt-in resumable continuation: persist a bounded prior-run summary and inject it into the next trigger. */
+	continuation?: boolean;
 }
 
 export interface ScheduleAddInput {
@@ -73,6 +75,8 @@ export interface ScheduleAddInput {
 	disabled?: boolean;
 	/** Optional explicit target agent for cross-agent schedules (requires Gravitas/Principal approval). */
 	targetAgent?: string;
+	/** Opt-in resumable continuation for this schedule. */
+	continuation?: boolean;
 }
 
 export interface SchedulerSnapshot {
@@ -87,6 +91,10 @@ export interface SchedulerSnapshot {
 	lastQueuedAt?: string;
 	lastFailedAt?: string;
 	lastTaskId?: string;
+	/** Number of continuation-enabled schedules currently loaded. */
+	continuationSchedules?: number;
+	/** Number of continuation summaries ready for injection on the next trigger. */
+	continuationReady?: number;
 }
 
 export interface DoctorCheck {

@@ -200,6 +200,7 @@ describe("extension registration smoke tests", () => {
 			"coas-workspaces",
 		]);
 		expectRegistered(registrations.events, [
+			"agent_end",
 			"before_agent_start",
 			"session_shutdown",
 			"session_start",

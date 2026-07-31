@@ -44,6 +44,15 @@ function scheduleLogPath(config: CoasConfig, taskId: string): string {
 	return join(scheduleLogRoot(config), `${taskId}.log`);
 }
 
+function scheduleRunsRoot(config: CoasConfig): string {
+	return join(config.coasHome, "schedule-runs");
+}
+
+export function scheduleRunsPath(config: CoasConfig, taskId: string): string {
+	assertSafeId("task id", taskId);
+	return join(scheduleRunsRoot(config), `${taskId}.json`);
+}
+
 interface FieldSpec {
 	values?: Set<number>;
 	any: boolean;
@@ -125,6 +134,7 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 		updatedAt: values.UPDATED_AT,
 		prompt: await readOptionalFile(promptFile),
 		targetAgent: values.TARGET_AGENT,
+		continuation: (values.CONTINUATION ?? "0") === "1",
 	};
 }
 
@@ -181,6 +191,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				ENABLED: input.disabled ? "0" : "1",
 				PROMPT_FILE: promptPath,
 				...(input.targetAgent ? { TARGET_AGENT: input.targetAgent } : {}),
+				...(input.continuation ? { CONTINUATION: "1" } : {}),
 				CREATED_AT: now,
 				UPDATED_AT: now,
 			}));
@@ -194,7 +205,11 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 
 export async function removeSchedule(config: CoasConfig, taskId: string): Promise<string> {
 	assertSafeId("task id", taskId);
-	await removePrivateFiles([scheduleEnvPath(config, taskId), schedulePromptPath(config, taskId)]);
+	await removePrivateFiles([
+		scheduleEnvPath(config, taskId),
+		schedulePromptPath(config, taskId),
+		scheduleRunsPath(config, taskId),
+	]);
 	return `coas-schedule: removed ${taskId}`;
 }
 
