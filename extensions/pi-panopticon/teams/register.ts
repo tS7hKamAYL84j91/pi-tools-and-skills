@@ -9,6 +9,7 @@ import { TeamStateManager } from "./state.js";
 import { registerTeamCommands } from "./team-commands.js";
 import { projectBuiltinTeams } from "./team-projection.js";
 import { registerTeamRunTool, runTeam } from "./team-runtime.js";
+import type { TeamRunToolResult } from "./team-run-completion.js";
 import { startTeamRunAsync } from "./team-async.js";
 import type { TeamRunInput } from "./team-handlers.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -18,7 +19,7 @@ import { registerTeamTools } from "./team-tools.js";
 export interface TeamsFacade {
 	stateManager: TeamStateManager;
 	runtime: RuntimeControlPlane;
-	run(params: TeamRunInput, ctx: ExtensionContext): ReturnType<typeof runTeam>;
+	run(params: TeamRunInput, ctx: ExtensionContext): Promise<TeamRunToolResult>;
 	runAsync(params: TeamRunInput, ctx: ExtensionContext): ReturnType<typeof startTeamRunAsync>;
 }
 
@@ -58,7 +59,7 @@ export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPl
 			return runTeam({ params, ctx, stateManager, runtime });
 		},
 		runAsync(params, ctx) {
-			return startTeamRunAsync({ pi, params, ctx, run: (runParams) => runTeam({ params: runParams, ctx, stateManager, runtime }) });
+			return startTeamRunAsync({ pi, params, ctx, run: (runParams) => runTeam({ params: runParams, ctx, stateManager, runtime }) as unknown as Promise<TeamRunToolResult> });
 		},
 	};
 }

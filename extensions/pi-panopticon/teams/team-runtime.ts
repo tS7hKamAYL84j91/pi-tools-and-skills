@@ -3,6 +3,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "@sinclair/typebox";
 import { RuntimeControlPlane, type RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { ok } from "../../../lib/tool-result.js";
+import type { TeamRunToolResult } from "./team-run-completion.js";
+import { completeRun, coerceTeamRunResult, resolveTeamRunStateRoot } from "./team-run-completion.js";
+
 import type { TeamStateManager } from "./state.js";
 import type { TeamRunNodeRecord, TeamRunRecord, TeamStopInput } from "./types.js";
 import { createTeamFiles, deleteTeamFiles, type TeamDeleteInput, type TeamFormInput, type TeamModelsInput, updateTeamModels } from "./team-form.js";
@@ -178,7 +181,7 @@ export async function runTeam(args: {
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
 	runtime?: RuntimeControlPlane;
-}) {
+}): Promise<TeamRunToolResult> {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
 	const handler = getTeamHandler(team);
 	if (!handler) {
@@ -206,17 +209,26 @@ export async function runTeam(args: {
 			signal: controller.signal,
 		});
 		const text = result.content[0]?.text;
-		if (args.stateManager.isStopRequested(runId) || result.details.stopped === true) {
-			const reason = typeof result.details.reason === "string" ? result.details.reason : args.stateManager.stopReason(runId) ?? "stop requested";
-			args.stateManager.recordRunStopped(runId, Date.now() - startedAt, reason, text);
-			if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "stopped");
-		} else {
-			args.stateManager.recordRunCompleted(runId, Date.now() - startedAt, text);
-			if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "completed");
-		}
-		return result;
+		const stopped = args.stateManager.isStopRequested(runId) || result.details.stopped === true;
+		const reason = typeof result.details.reason === "string"
+			? result.details.reason
+			: args.stateManager.stopReason(runId) ?? "stop requested";
+		const stateRoot = resolveTeamRunStateRoot();
+		const completion = await completeRun({
+			runId,
+			teamId: team.id,
+			startedAt,
+			text: text ?? "",
+			stopped,
+			reason,
+			stateManager: args.stateManager,
+			stateRoot,
+		});
+		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, completion.status);
+		return coerceTeamRunResult(result, runId);
 	} catch (error) {
-		args.stateManager.recordRunFailed(runId, error instanceof Error ? error.message : String(error));
+		const message = error instanceof Error ? error.message : String(error);
+		args.stateManager.recordRunFailed(runId, message);
 		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "failed");
 		throw error;
 	} finally {

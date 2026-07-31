@@ -18,7 +18,7 @@ function response(result: unknown): { content: Array<{ text: string }>; details:
 describe("swarm Teams compatibility tools", () => {
 	it("formats a manifest preflight and delegates execution to hierarchical-swarm-default", async () => {
 		const tools = new Map<string, RegisteredTool>();
-		const run = vi.fn(async () => ok("root result", { team: "hierarchical-swarm-default" }));
+		const run = vi.fn(async () => ok("root result", { team: "hierarchical-swarm-default", runId: "run-test-1" }) as unknown as import("../../extensions/pi-panopticon/teams/team-run-completion.js").TeamRunToolResult);
 		const runAsync = vi.fn(() => ok("started", { team: "hierarchical-swarm-default", async: true }));
 		registerSwarmTools({ registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); } } as unknown as ExtensionAPI, {
 			teams: { stateManager: new TeamStateManager(), runtime: new RuntimeControlPlane(), run, runAsync },

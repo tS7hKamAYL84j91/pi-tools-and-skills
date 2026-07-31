@@ -13,7 +13,7 @@ interface RegisteredCommand {
 describe("swarm command compatibility", () => {
 	it("keeps dry-run-first UX and executes through the Teams facade", async () => {
 		let command: RegisteredCommand | undefined;
-		const run = vi.fn(async () => ok("root response", { team: "hierarchical-swarm-default" }));
+		const run = vi.fn(async () => ok("root response", { team: "hierarchical-swarm-default", runId: "run-test-1" }) as unknown as import("../../extensions/pi-panopticon/teams/team-run-completion.js").TeamRunToolResult);
 		registerSwarmCommand({ registerCommand(name: string, value: Omit<RegisteredCommand, "name">) { command = { name, ...value }; } } as unknown as ExtensionAPI, {
 			stateManager: new TeamStateManager(), runtime: new RuntimeControlPlane(), run, runAsync: vi.fn(),
 		});

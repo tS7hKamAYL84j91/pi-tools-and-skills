@@ -103,8 +103,8 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	},
 	{
 		path: "extensions/pi-panopticon/teams/state.ts",
-		maxLines: 540,
-		reason: "Team run state serialization expanded for ADR 027 node observability; extract versioned codecs on the next schema change.",
+		maxLines: 560,
+		reason: "Team run state serialization expanded for ADR 027 node observability and T-805 artifact claim-check events; extract versioned codecs on the next schema change.",
 		createdAt: "2026-06-24",
 		targetDate: "2026-09-22",
 	},

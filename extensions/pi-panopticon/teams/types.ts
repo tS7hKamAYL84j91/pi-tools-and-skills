@@ -106,4 +106,17 @@ export interface TeamRunRecord {
 	summary?: string;
 	error?: string;
 	stopReason?: string;
+	/** Path to the durable result artifact, set only after a successful write. */
+	resultArtifactPath?: string;
+}
+
+/** Serialized payload for a durable team-run result artifact. */
+export interface TeamRunResultArtifact {
+	version: 1;
+	runId: string;
+	team: string;
+	status: "completed" | "stopped";
+	ok: boolean;
+	result: string;
+	writtenAt: number;
 }

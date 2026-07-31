@@ -111,6 +111,7 @@ export interface TeamRunStoppedEvent extends TeamRunEventBase {
 	reason: string;
 	durationMs: number;
 	summary?: string;
+	resultArtifactPath?: string;
 }
 
 /** @public */
@@ -119,6 +120,7 @@ export interface TeamRunCompletedEvent extends TeamRunEventBase {
 	ok: true;
 	durationMs: number;
 	summary?: string;
+	resultArtifactPath?: string;
 }
 
 /** @public */
@@ -327,11 +329,13 @@ function applyEvent(records: Map<string, TeamRunRecord>, event: TeamRunEvent): v
 		record.stopReason = event.reason;
 		record.completedAt = event.timestamp;
 		if (event.summary) record.summary = event.summary;
+		if (event.resultArtifactPath) record.resultArtifactPath = event.resultArtifactPath;
 	} else if (event.kind === "run_completed") {
 		record.status = "completed";
 		delete record.stopReason;
 		record.completedAt = event.timestamp;
 		if (event.summary) record.summary = event.summary;
+		if (event.resultArtifactPath) record.resultArtifactPath = event.resultArtifactPath;
 	} else if (event.kind === "run_failed") {
 		record.status = "failed";
 		delete record.stopReason;
@@ -434,10 +438,10 @@ export class TeamStateManager {
 		});
 	}
 
-	recordRunCompleted(runId: string, durationMs: number, summary?: string): void {
+	recordRunCompleted(runId: string, durationMs: number, summary?: string, resultArtifactPath?: string): void {
 		this.abortControllers.delete(runId);
 		this.stopReasons.delete(runId);
-		this.appendEvent({ kind: "run_completed", runId, ok: true, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
+		this.appendEvent({ kind: "run_completed", runId, ok: true, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}), ...(resultArtifactPath ? { resultArtifactPath } : {}) });
 	}
 
 	recordRunFailed(runId: string, error: string): void {
@@ -446,10 +450,10 @@ export class TeamStateManager {
 		this.appendEvent({ kind: "run_failed", runId, ok: false, error });
 	}
 
-	recordRunStopped(runId: string, durationMs: number, reason: string, summary?: string): void {
+	recordRunStopped(runId: string, durationMs: number, reason: string, summary?: string, resultArtifactPath?: string): void {
 		this.abortControllers.delete(runId);
 		this.stopReasons.delete(runId);
-		this.appendEvent({ kind: "run_stopped", runId, reason, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}) });
+		this.appendEvent({ kind: "run_stopped", runId, reason, durationMs, ...(summary ? { summary: summary.slice(0, MAX_PERSISTED_OUTPUT_CHARS) } : {}), ...(resultArtifactPath ? { resultArtifactPath } : {}) });
 	}
 
 	rehydrateFromSession(sessionManager: SessionManagerLike): void {
