@@ -130,10 +130,14 @@ async function runCompaction(
 				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=blocked`);
 				break;
 			case "done":
+			{
+				const checksPart = task.checks.length > 0 ? ` checks="${escapeLogValue(JSON.stringify(task.checks.map((c) => ({ command: c.command, result: c.result, exit_code: c.exitCode }))))}"` : "";
+				const verificationPart = task.verificationRequired ? ` verification_required=true` : "";
 				newLines.push(
-					`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}`,
+					`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}${verificationPart}${checksPart}`,
 				);
-				break;
+			}
+			break;
 		}
 
 		const keepAllNotes = task.col !== "done";

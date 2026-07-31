@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
+import { applyEvent, parseKV } from "./board-event-handlers.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ export async function writeTaskFile(
 		priority: string;
 		tags: string;
 		agent: string;
+		verificationRequired?: boolean;
 	},
 	notes: string[] = [],
 	created?: string,
@@ -114,9 +116,11 @@ export async function writeTaskFile(
 		`tags: ${formatTagsYaml(meta.tags)}`,
 		`agent: ${meta.agent}`,
 		`created: ${created ?? nowZ()}`,
-		"---",
-		"",
 	];
+	if (meta.verificationRequired) {
+		lines.push("verification_required: true");
+	}
+	lines.push("---", "");
 	if (meta.description) {
 		lines.push(meta.description, "");
 	}
@@ -193,26 +197,9 @@ export async function rewriteTaskFile(
 
 // ── Types ───────────────────────────────────────────────────────
 
-export interface TaskState {
-	id: string;
-	col: string;
-	deleted: boolean;
-	title: string;
-	priority: string;
-	tags: string;
-	description: string;
-	agent: string;
-	claimed: boolean;
-	claimAgent: string;
-	model: string;
-	expires: string;
-	reason: string;
-	notes: string[];
-	completedAt: string;
-	duration: string;
-	doneAgent: string;
-	createdAt: string;
-}
+type TaskState = import("./board-event-handlers.js").TaskState;
+export type { TaskVerificationCheck } from "./board-event-handlers.js";
+export type { TaskState } from "./board-event-handlers.js";
 
 export interface BoardState {
 	tasks: Map<string, TaskState>;
@@ -243,106 +230,9 @@ function newTask(id: string, ts: string): TaskState {
 		completedAt: "",
 		duration: "",
 		doneAgent: "",
+		verificationRequired: false,
+		checks: [],
 	};
-}
-
-/** Parse key=value pairs (with quoted values) from log fields. */
-function parseKV(fields: string[]): Record<string, string> {
-	const kv: Record<string, string> = {};
-	let i = 0;
-	while (i < fields.length) {
-		const field = fields[i] ?? "";
-		const eq = field.indexOf("=");
-		if (eq <= 0) {
-			i++;
-			continue;
-		}
-		const key = field.slice(0, eq);
-		let val = field.slice(eq + 1);
-		if (val.startsWith('"')) {
-			val = val.slice(1);
-			while (!val.endsWith('"') && i + 1 < fields.length) {
-				i++;
-				val += ` ${fields[i] ?? ""}`;
-			}
-			if (val.endsWith('"')) val = val.slice(0, -1);
-		}
-		kv[key] = val;
-		i++;
-	}
-	return kv;
-}
-
-interface BoardEvent {
-	task: TaskState;
-	event: string;
-	agent: string;
-	timestamp: string;
-	payload: Record<string, string>;
-}
-
-/** Apply a single event to a task accumulator. */
-function applyEvent(boardEvent: BoardEvent): void {
-	const { task, event, agent, timestamp, payload } = boardEvent;
-	switch (event) {
-		case "CREATE":
-			if (payload.title) task.title = payload.title;
-			if (payload.priority) task.priority = payload.priority;
-			if (payload.tags) task.tags = payload.tags;
-			if (payload.description) task.description = payload.description;
-			task.createdAt = timestamp;
-			task.agent = agent;
-			break;
-		case "MOVE":
-			if (payload.to) task.col = payload.to;
-			break;
-		case "CLAIM":
-			if (!task.claimed) {
-				task.claimed = true;
-				task.claimAgent = agent;
-				task.col = "in-progress";
-				if (payload.expires) task.expires = payload.expires;
-				if (payload.model) task.model = payload.model;
-			}
-			break;
-		case "UNCLAIM":
-		case "EXPIRE":
-			task.claimed = false;
-			task.claimAgent = "";
-			task.expires = "";
-			break;
-		case "COMPLETE":
-			task.claimed = false;
-			task.claimAgent = "";
-			task.expires = "";
-			task.completedAt = timestamp;
-			task.col = "done";
-			if (payload.duration) task.duration = payload.duration;
-			task.doneAgent = agent;
-			break;
-		case "BLOCK":
-			task.claimed = false;
-			task.claimAgent = "";
-			task.col = "blocked";
-			if (payload.reason) task.reason = payload.reason;
-			break;
-		case "UNBLOCK":
-			task.reason = "";
-			task.col = "todo";
-			break;
-		case "NOTE":
-			task.notes.push(`${timestamp} [${agent}] ${payload.text ?? ""}`);
-			break;
-		case "DELETE":
-			task.deleted = true;
-			break;
-		case "EDIT":
-			if (payload.title) task.title = payload.title;
-			if (payload.priority) task.priority = payload.priority;
-			if (payload.tags) task.tags = payload.tags;
-			if (payload.description) task.description = payload.description;
-			break;
-	}
 }
 
 /** Parse board.log into fully materialised board state. */

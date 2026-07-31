@@ -14,6 +14,8 @@ interface KanbanExportTask {
 	blockedReason?: string;
 	createdAt?: string;
 	completedAt?: string;
+	verificationRequired?: boolean;
+	checks?: { command: string; result: string; exit_code: number }[];
 }
 
 interface KanbanExport {
@@ -29,7 +31,7 @@ function tags(value: string): string[] {
 
 function exportTask(task: TaskState): KanbanExportTask {
 	const agent = task.claimAgent || task.doneAgent || task.agent;
-	return {
+	const result: KanbanExportTask = {
 		id: task.id,
 		column: task.col,
 		priority: task.priority,
@@ -41,6 +43,15 @@ function exportTask(task: TaskState): KanbanExportTask {
 		...(task.createdAt ? { createdAt: task.createdAt } : {}),
 		...(task.completedAt ? { completedAt: task.completedAt } : {}),
 	};
+	if (task.verificationRequired || task.checks.length > 0) {
+		result.verificationRequired = task.verificationRequired;
+		result.checks = task.checks.map((c) => ({
+			command: c.command,
+			result: c.result,
+			exit_code: c.exitCode,
+		}));
+	}
+	return result;
 }
 
 /** Build a stable, read-only JSON export from reconstructed board state. */

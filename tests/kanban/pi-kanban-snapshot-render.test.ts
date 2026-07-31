@@ -59,6 +59,8 @@ describe("kanban snapshot/overlay rendering", () => {
 		completedAt: string;
 		duration: string;
 		doneAgent: string;
+		verificationRequired: boolean;
+		checks: never[];
 		createdAt: string;
 	} {
 		return {
@@ -79,6 +81,8 @@ describe("kanban snapshot/overlay rendering", () => {
 			completedAt: "",
 			duration: "",
 			doneAgent: "",
+			verificationRequired: false,
+			checks: [],
 			createdAt: "2026-01-01T00:00:00Z",
 		};
 	}
@@ -173,6 +177,8 @@ describe("kanban snapshot/overlay rendering", () => {
 			completedAt: "",
 			duration: "",
 			doneAgent: "",
+			verificationRequired: false,
+			checks: [],
 			createdAt: "2026-01-01T00:00:00Z",
 		};
 

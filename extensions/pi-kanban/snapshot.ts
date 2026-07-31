@@ -160,6 +160,16 @@ function taskDetailLines(task: TaskState): string[] {
 		`- Blocked reason: ${task.reason || "—"}`,
 		"",
 	];
+	if (task.verificationRequired || task.checks.length > 0) {
+		lines.push(`- Verification required: ${task.verificationRequired ? "yes" : "no"}`, "");
+		if (task.checks.length > 0) {
+			lines.push("## Verification evidence", "");
+			for (const check of task.checks) {
+				lines.push(`- command: ${check.command}`, `  result: ${check.result}`, `  exit_code: ${check.exitCode}`);
+			}
+			lines.push("");
+		}
+	}
 	if (task.description) lines.push("## Description", "", task.description, "");
 	if (task.notes.length > 0)
 		lines.push("## Notes", "", ...task.notes.map((note) => `- ${note}`), "");

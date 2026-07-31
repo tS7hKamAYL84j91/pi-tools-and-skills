@@ -65,6 +65,14 @@ Files written:
 - `snapshot.md` — regenerated on `kanban_snapshot` with the same view requested: compact by default, full only for `detail="full"`, or one-card detail for `task_id`
 - `board.log.bak.<timestamp>` — created before compaction
 
+### Verification gate
+
+`kanban_complete` enforces the documented owner check (`agent` must equal the task's `claimAgent`) before any write.
+
+When a task is created with `verification_required=true`, or when `KANBAN_REQUIRE_CHECK_EVIDENCE=1` is set, completion requires a `checks` array of `{command, result, exit_code}` evidence. The tool hard-blocks (throws) if evidence is missing or any `exit_code` is not `0`. The evidence is persisted on the `COMPLETE` event, in `TaskState`, and in JSON export; task detail and snapshot views render it under **Verification evidence**.
+
+This is an auditable evidence gate, not an execution verifier: the agent runs the command and reports the result. The extension does not execute arbitrary shell commands from `kanban_complete`.
+
 ## Stable Tools/Commands
 
 External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a board API, but `pi-kanban` does not own the cadence or policy that decides when to call them.

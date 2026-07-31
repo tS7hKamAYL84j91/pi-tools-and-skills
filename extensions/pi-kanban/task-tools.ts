@@ -17,8 +17,8 @@ import {
 	validateTaskId,
 	writeTaskFile,
 } from "./board.js";
-import { compactIfNeeded } from "./compaction.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
+import { registerKanbanComplete } from "./complete-tool.js";
 
 function registerKanbanCreate(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -83,51 +83,6 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 				priority,
 				tags,
 				description,
-			});
-		},
-	});
-}
-
-function registerKanbanComplete(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: "kanban_complete",
-		label: "Kanban Complete",
-		description:
-			"Mark an in-progress task as done. Optionally provide how long the task took (e.g. '45m', '2h').",
-		promptSnippet: "Mark a kanban task as completed",
-		parameters: Type.Object({
-			task_id: TASK_ID_SCHEMA,
-			agent: Type.String({
-				description:
-					"Agent name that completed the task (must match the claiming agent)",
-			}),
-			duration: Type.Optional(
-				Type.String({
-					description: 'Optional duration string (e.g. "45m", "2h", "107m")',
-					default: "unknown",
-				}),
-			),
-		}),
-		async execute(_id, params, _signal): Promise<ToolResult> {
-			const { task_id, agent } = params;
-			const duration = params.duration ?? "unknown";
-			const task = await getTask(task_id);
-			if (task.col !== "in-progress")
-				throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
-			const ts = nowZ();
-			await logAppend(
-				`${ts} COMPLETE ${task_id} ${sanitiseAgent(agent)} duration=${duration}`,
-			);
-			await logAppend(
-				`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=in-progress to=done`,
-			);
-			// Auto-compaction checkpoint: completing a task is a natural housekeeping moment
-			const boardAfter = await parseBoard();
-			await compactIfNeeded(boardAfter, boardAfter.totalEvents, "complete");
-			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, {
-				task_id,
-				agent,
-				duration,
 			});
 		},
 	});
