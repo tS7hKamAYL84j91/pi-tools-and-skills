@@ -214,6 +214,8 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.tools, [
 			"goal_complete",
 			"goal_get",
+			"goal_plan",
+			"goal_verify",
 		]);
 		expectRegistered(registrations.commands, ["goal", "goal-clear"]);
 		expectRegistered(registrations.events, [

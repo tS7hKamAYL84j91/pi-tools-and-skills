@@ -2,24 +2,19 @@
  * Registers the pi-goal command, tools, lifecycle hooks, and UI status.
  */
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { ok } from "../../lib/tool-result.js";
 import { continuationMarker, continuationMarkerComment, extractContinuationMarker } from "./goal-continuation.js";
 import { showGoalOverlay } from "./goal-overlay.js";
 import { continuationPrompt, goalContextMessage, kickoffPrompt } from "./prompts.js";
 import {
-	clearGoal,
-	createFileGoal,
-	createFileTodoGoal,
-	createTextGoal,
-	loadGoal,
-	renderGoalSummary,
-	saveGoal,
+	approvePlan,
+	generatePlanState,
+	invalidatePlan,
 	startRun,
 	updateGoal,
-	writeGoalIteration,
-	type GoalState,
-} from "./state.js";
+} from "./goal-plan.js";
+import { loadGoal, saveGoal, clearGoal, createFileGoal, createFileTodoGoal, createTextGoal, writeGoalIteration } from "./goal-persist.js";
+import { registerGoalTools, type GoalRuntime } from "./goal-tools.js";
+import type { GoalState } from "./goal-types.js";
 
 const DEFAULT_TURNS = 3;
 const UNTIL_COMPLETE_TURNS = 20;
@@ -29,12 +24,14 @@ const GOAL_HELP_COMMANDS = [
 	"/goal status — show the current goal",
 	"/goal <text> — create a text goal and start a bounded run",
 	"/goal file <path> [goal start|--until-complete] — create a file-backed goal",
+	"/goal plan [milestone title] — generate a reviewable plan and pause for approval",
+	"/goal approve — accept the generated plan and allow implementation",
 	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
 	"/goal pause | resume | stop — manage the current goal run",
-	"/goal edit <text> — update the objective of the active goal",
+	"/goal edit <text> — update the objective of the active goal (invalidates the plan)",
 	"/goal clear — remove .pi/goal/ state and local run artifacts for this workspace",
 ] as const;
-const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "pause", "resume", "clear", "run", "stop", "edit"]);
+const KNOWN_ACTIONS = new Set(["show", "status", "help", "file", "plan", "approve", "pause", "resume", "clear", "run", "stop", "edit"]);
 const GOAL_RUNTIME_KEY = Symbol.for("pi-goal.runtime");
 
 export default function goalExtension(pi: ExtensionAPI): void {
@@ -81,6 +78,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
 	}
 
 	async function runGoalLoop(ctx: ExtensionCommandContext, initialState: GoalState): Promise<void> {
+		if (initialState.planRequired && !initialState.planApproved) {
+			ctx.ui.notify("Plan required but not approved. Run /goal plan first, then /goal approve or /goal run.", "warning");
+			return;
+		}
 		let activeCtx: ExtensionCommandContext = ctx;
 		let state = initialState;
 		await activeCtx.waitForIdle();
@@ -187,6 +188,40 @@ export default function goalExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
+			if (parsed.action === "plan") {
+				const state = await requireGoal(ctx.cwd);
+				cancelContinuationPending(runtime);
+				runtime.stopRequested = false;
+				const milestones = parseMilestonesFromRest(parsed.rest);
+				const planned = generatePlanState(
+					state,
+					milestones?.map((m) => ({ ...m })),
+				);
+				await saveGoal(ctx.cwd, planned);
+				await refreshUi(ctx, planned);
+				ctx.ui.notify("Plan generated. Review .pi/goal/PLAN.md, then run /goal approve or /goal run.", "info");
+				try {
+					await pi.sendUserMessage(buildPlanReviewPrompt(planned), { deliverAs: "followUp" });
+				} catch {
+					// Follow-up delivery is best-effort.
+				}
+				return;
+			}
+
+			if (parsed.action === "approve") {
+				const state = await requireGoal(ctx.cwd);
+				if (!state.planRequired) {
+					ctx.ui.notify("No plan is pending approval.", "info");
+					return;
+				}
+				cancelContinuationPending(runtime);
+				const approved = approvePlan(state);
+				await saveGoal(ctx.cwd, approved);
+				await refreshUi(ctx, approved);
+				ctx.ui.notify("Plan approved. Use /goal run to start implementation.", "info");
+				return;
+			}
+
 			if (parsed.action === "goal") {
 				if (!(await startAllowed(ctx))) return;
 				runtime.stopRequested = false;
@@ -206,17 +241,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
 					return;
 				}
 				cancelContinuationPending(runtime);
-				const next = updateGoal(state, { objective: trimmed });
+				const next = invalidatePlan(updateGoal(state, { objective: trimmed }));
 				await saveGoal(ctx.cwd, next);
 				await refreshUi(ctx, next);
-				ctx.ui.notify("Goal updated.", "info");
-				if (next.status === "active") {
-					try {
-						await pi.sendUserMessage(buildObjectiveUpdatedPrompt(next), { deliverAs: "followUp" });
-					} catch {
-						// Follow-up delivery is best-effort; ignore errors.
-					}
-				}
+				ctx.ui.notify("Goal updated. The plan has been invalidated; run /goal plan to replan.", "info");
 				return;
 			}
 
@@ -254,10 +282,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			if (parsed.action === "run") {
 				if (!(await startAllowed(ctx))) return;
 				runtime.stopRequested = false;
-				const state = await requireGoal(ctx.cwd);
+				let state = await requireGoal(ctx.cwd);
 				if (state.status === "complete") {
 					ctx.ui.notify("Goal is already complete.", "info");
 					return;
+				}
+				if (state.planRequired && !state.planApproved) {
+					state = approvePlan(state);
+					await saveGoal(ctx.cwd, state);
 				}
 				const turns = parseTurns(parsed.rest);
 				const next = startRun(state, turns);
@@ -302,52 +334,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
-		name: "goal_get",
-		label: "Goal Get",
-		description: "Read the current project-local pi goal state.",
-		promptSnippet: "Read the active project goal, source file, run status, and completion requirements.",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const state = await loadGoal(ctx.cwd);
-			const details = state ? { ...state } : {};
-			return ok(state ? renderGoalSummary(state) : "No pi goal is set.", details);
-		},
-	});
-
-	pi.registerTool({
-		name: "goal_complete",
-		label: "Goal Complete",
-		description: "Mark the current pi goal complete. Requires concrete evidence.",
-		promptSnippet: "Mark the active project goal complete after the completion audit passes.",
-		promptGuidelines: [
-			"Use goal_complete only after auditing the active goal against current repository/filesystem state and include concrete evidence.",
-		],
-		parameters: Type.Object({
-			evidence: Type.String({ description: "Concrete completion evidence and validation summary." }),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const evidence = params.evidence.trim();
-			if (!evidence) {
-				throw new Error("goal_complete requires non-empty evidence");
-			}
-			const state = await requireGoal(ctx.cwd);
-			if (state.status !== "active") {
-				throw new Error(`Cannot complete a ${state.status} goal`);
-			}
-			const next = updateGoal(state, {
-				status: "complete",
-				runActive: false,
-				completionEvidence: evidence,
-			});
-			await saveGoal(ctx.cwd, next);
-			await refreshUi(ctx, next);
-			return {
-				...ok(`Goal complete. Evidence: ${evidence}`, { ...next }),
-				terminate: true,
-			};
-		},
-	});
+	registerGoalTools(pi, runtime, refreshUi);
 
 	pi.on("session_start", async (_event, ctx) => {
 		await refreshUi(ctx);
@@ -362,7 +349,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
 	pi.on("before_agent_start", async (_event, ctx) => {
 		const state = await loadGoal(ctx.cwd);
-		if (!state || state.status !== "active") {
+		if (!state || (state.status !== "active" && state.status !== "planning")) {
 			return;
 		}
 		return {
@@ -406,7 +393,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		const state = await loadGoal(ctx.cwd);
-		if (!state || state.status !== "active" || !state.runActive) {
+		if (!state || (state.status !== "active" && state.status !== "planning") || !state.runActive) {
 			await refreshUi(ctx, state);
 			return;
 		}
@@ -442,13 +429,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			ctx.ui.notify(`Goal continuation fell back to single-run mode: ${message}`, "warning");
 		}
 	});
-}
-
-interface GoalRuntime {
-	resolve: ((messages: readonly unknown[]) => void) | null;
-	stopRequested: boolean;
-	pendingMarker: string | null;
-	cancelledMarkers: Set<string>;
 }
 
 function getGoalRuntime(): GoalRuntime {
@@ -495,8 +475,23 @@ function findFinalAssistantMessage(messages: readonly unknown[]): { role: string
 	return undefined;
 }
 
-function buildObjectiveUpdatedPrompt(state: GoalState): string {
-	return `The goal objective has been updated:\n\n${state.objective}\n\nContinue working toward the revised objective.`;
+function buildPlanReviewPrompt(state: GoalState): string {
+	const milestoneList = state.milestones
+		.map((m, i) => `${i + 1}. ${m.title}\n   Validate: \`${m.validationCommand}\``)
+		.join("\n");
+	return `A reviewable plan has been generated for this goal.\n\n${milestoneList}\n\nReview or edit .pi/goal/PLAN.md, then run /goal approve or /goal run to start implementation.`;
+}
+
+function parseMilestonesFromRest(rest: string): { id: string; title: string; validationCommand: string; status: "pending" }[] | undefined {
+	const trimmed = rest.trim();
+	if (!trimmed) return undefined;
+	const lines = trimmed.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+	return lines.map((line, index) => ({
+		id: `m-${index + 1}`,
+		title: line,
+		validationCommand: "npm run check && npm test",
+		status: "pending" as const,
+	}));
 }
 
 function goalStoppedMessage(state: GoalState): string {

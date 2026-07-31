@@ -77,7 +77,7 @@ describe("pi-goal extension", () => {
 		goalExtension(pi as unknown as ExtensionAPI);
 
 		expect(pi.commands.has("goal")).toBe(true);
-		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete"]);
+		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_plan", "goal_verify", "goal_complete"]);
 	});
 
 	it("/goal with no args shows command help", async () => {
@@ -233,7 +233,7 @@ describe("pi-goal extension", () => {
 		expect(persisted.objective).toBe("revised objective text");
 		expect(persisted.turnsUsed).toBe(2);
 		expect(persisted.turnBudget).toBe(5);
-		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated.", level: "info" });
+		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated. The plan has been invalidated; run /goal plan to replan.", level: "info" });
 		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: running 2/5 · /goal status for details"]);
 	});
 
