@@ -27,6 +27,7 @@ import {
 } from "../../../lib/agent-registry.js";
 import { ensurePrivateFileForRead } from "../../../lib/private-local-mode.js";
 import { flushRecord } from "./registry-persistence.js";
+import { auditRegistryRelease } from "./registry-audit.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
@@ -38,7 +39,6 @@ import {
 
 const HEARTBEAT_MS = 5_000;
 const ORPHAN_REAP_MS = 60_000;
-
 export const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "R",
 	waiting: "W",
@@ -60,8 +60,11 @@ export function classifyRecord(
 	now: number,
 	pidAlive: boolean,
 ): "live" | "stalled" | "dead" {
+	// A dead PID is definitive: reap immediately regardless of heartbeat freshness.
+	// Only use heartbeat staleness to distinguish active from stalled processes.
+	if (!pidAlive) return "dead";
 	if (now - record.heartbeat <= STALE_MS) return "live";
-	return pidAlive ? "stalled" : "dead";
+	return "stalled";
 }
 
 /**
@@ -170,6 +173,7 @@ function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 		}
 		const cls = classifyRecord(record, now, isPidAlive(record.pid));
 		if (cls === "dead") {
+			auditRegistryRelease(record.id, record.name, `pid_dead:${record.pid}`);
 			try { unlinkSync(fullPath); } catch { /* already gone */ }
 			runAgentCleanup(record.id);
 			return null;

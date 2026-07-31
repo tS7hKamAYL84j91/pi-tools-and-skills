@@ -40,9 +40,14 @@ function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
 // ── classifyRecord ───────────────────────────────────────────────
 
 describe("classifyRecord", () => {
-	it("returns 'live' when heartbeat is fresh", () => {
+	it("returns 'live' when heartbeat is fresh and pid is alive", () => {
 		const rec = makeRecord({ heartbeat: Date.now() - 1000 });
-		expect(classifyRecord(rec, Date.now(), false)).toBe("live");
+		expect(classifyRecord(rec, Date.now(), true)).toBe("live");
+	});
+
+	it("returns 'dead' when pid is dead even if heartbeat is fresh", () => {
+		const rec = makeRecord({ heartbeat: Date.now() - 1000 });
+		expect(classifyRecord(rec, Date.now(), false)).toBe("dead");
 	});
 
 	it("returns 'stalled' when heartbeat is stale but pid is alive", () => {
@@ -55,11 +60,10 @@ describe("classifyRecord", () => {
 		expect(classifyRecord(rec, Date.now(), false)).toBe("dead");
 	});
 
-	it("returns 'live' when heartbeat is exactly at the boundary", () => {
+	it("returns 'dead' at the boundary when pid is dead", () => {
 		const now = Date.now();
 		const rec = makeRecord({ heartbeat: now - STALE_MS });
-		// boundary: now - heartbeat === STALE_MS → ≤ STALE_MS → live
-		expect(classifyRecord(rec, now, false)).toBe("live");
+		expect(classifyRecord(rec, now, false)).toBe("dead");
 	});
 });
 
