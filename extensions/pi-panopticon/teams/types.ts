@@ -18,6 +18,8 @@ export type ForkTurnsMode =
 export interface GenerationConfig {
 	tools?: string[];
 	parameters?: Record<string, GenerationParameterValue>;
+	/** Optional per-run narrowing beneath the profile tool ceiling. */
+	toolSubset?: string[];
 	forkTurns?: ForkTurnsMode;
 }
 

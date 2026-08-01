@@ -42,6 +42,7 @@ interface RunModelArgs {
 	parentId?: string;
 	tools?: string[];
 	parameters?: Record<string, GenerationParameterValue>;
+	toolSubset?: string[];
 	forkTurns?: ForkTurnsMode;
 }
 
@@ -258,6 +259,24 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 	);
 }
 
+export function resolveToolSubset(
+	profileTools: string[] | undefined,
+	toolSubset: string[] | undefined,
+): string[] | undefined {
+	if (toolSubset === undefined || profileTools === undefined) return toolSubset ?? profileTools;
+	const allowed = new Set(profileTools);
+	const resolved = toolSubset.filter((tool) => allowed.has(tool));
+	const rejectedCount = toolSubset.length - resolved.length;
+	if (rejectedCount > 0) {
+		console.warn(`[pi-panopticon] toolSubset rejected ${rejectedCount} tool(s) outside profile whitelist`);
+	}
+	return resolved;
+}
+
+function resolveTools(args: RunModelArgs, member: TeamParticipant): string[] | undefined {
+	return resolveToolSubset(args.tools !== undefined ? args.tools : member.tools, args.toolSubset);
+}
+
 /** Run a single member and package the result into a ModelRun. */
 export async function runMember(
 	member: TeamParticipant,
@@ -265,7 +284,7 @@ export async function runMember(
 ): Promise<ModelRun> {
 	const result = await runPiModel(member.model, {
 		...args,
-		tools: args.tools !== undefined ? args.tools : member.tools,
+		tools: resolveTools(args, member),
 		parameters: args.parameters !== undefined ? args.parameters : member.parameters,
 		forkTurns: args.forkTurns !== undefined ? args.forkTurns : member.forkTurns,
 	});

@@ -64,6 +64,7 @@ export async function runTeamNode(args: {
 	orchestratorName?: string;
 	timeoutMs?: number;
 	maxRetries?: number;
+	toolSubset?: string[];
 	forkTurns?: ForkTurnsMode;
 	onHeartbeat?: (elapsedMs: number, runningWorkers: number) => void;
 }): Promise<NodeRun> {
@@ -122,6 +123,7 @@ async function runRoleCall(args: Parameters<typeof runTeamNode>[0] & { signal: A
 		cwd: args.ctx.cwd,
 		signal: args.signal,
 		parentId: args.parentId,
+		toolSubset: args.toolSubset,
 		forkTurns: args.forkTurns,
 	});
 }
