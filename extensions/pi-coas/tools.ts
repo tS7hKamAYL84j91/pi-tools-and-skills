@@ -11,6 +11,7 @@ import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
 import { registerGovernanceTools } from "./governance-tools.js";
+import { registerCoasApprovalTools } from "./tools-approval.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import type { CoasConfig } from "./types.js";
@@ -101,5 +102,6 @@ export function registerCoasTools(
 	registerCoasScheduleAddTool(pi, scheduler);
 	registerCoasScheduleRunTool(pi);
 	registerCoasScheduleRemoveTool(pi, scheduler);
+	registerCoasApprovalTools(pi);
 	registerGovernanceTools(pi, configFor);
 }

@@ -128,6 +128,7 @@ export function registerCoasScheduleAddTool(
 						"Opt-in resumable continuation. Persist a bounded prior-run summary and inject it into the next trigger.",
 				}),
 			),
+			approvalRequired: Type.Optional(Type.Boolean({ description: "Park each run in the principal approval inbox before delivery." })),
 			cwd: Type.Optional(
 				Type.String({
 					description:

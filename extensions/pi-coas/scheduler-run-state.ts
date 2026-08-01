@@ -15,11 +15,12 @@ const MAX_INJECTED_CHARS = 750;
 export interface ScheduleRunState {
 	readonly taskId: string;
 	readonly runId: string;
-	readonly status: "running" | "complete" | "interrupted";
+	readonly status: "running" | "awaiting-approval" | "complete" | "failed" | "stopped" | "interrupted";
 	readonly startedAt: string;
 	readonly completedAt?: string;
 	readonly summary?: string;
 	readonly nextAction?: string;
+	readonly reason?: string;
 	readonly lastUpdatedAt: string;
 }
 
@@ -29,8 +30,8 @@ export interface PriorSummary {
 	readonly stale: boolean;
 }
 
-function isRunStatus(value: unknown): value is "running" | "complete" | "interrupted" {
-	return value === "running" || value === "complete" || value === "interrupted";
+function isRunStatus(value: unknown): value is ScheduleRunState["status"] {
+	return value === "running" || value === "awaiting-approval" || value === "complete" || value === "failed" || value === "stopped" || value === "interrupted";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,6 +61,7 @@ export async function loadRunState(path: string): Promise<ScheduleRunState | und
 			completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
 			summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
 			nextAction: typeof parsed.nextAction === "string" ? parsed.nextAction : undefined,
+			reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
 			lastUpdatedAt: parsed.lastUpdatedAt,
 		};
 	} catch {

@@ -20,6 +20,7 @@ import {
 import { markActiveRunsInterrupted, recoverInterruptedRuns, writeInterrupted } from "./scheduler-recovery.js";
 import { countContinuationReady, readPriorSummary, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
 import { isoUtc } from "./store.js";
+import { claimApproval, readApprovalArtifact, writeApprovalArtifact } from "./approval-inbox.js";
 import { cronExpressionError, listSchedules, scheduleRunsPath } from "./schedules.js";
 import { minuteKey, newRunId, scheduleMatchesDate } from "./scheduler-util.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
@@ -28,11 +29,17 @@ export { renderScheduledPrompt } from "./scheduler-prompt.js";
 export { scheduleMatchesDate } from "./scheduler-util.js";
 
 const TICK_MS = 60_000;
+const SENSITIVE_SCHEDULE_PATTERN = /\b(send\s+(?:an?\s+)?(?:email|message|request)|(?:git\s+)?(?:push|commit|merge)|(?:access|read|use|retrieve)\s+(?:the\s+)?(?:secret|credential|token|password)|repo(?:sitory)?\s+mutation)\b/i;
+
+function requiresPrincipalApproval(schedule: ScheduleEntry, prompt: string): boolean {
+	return schedule.approvalRequired === true || SENSITIVE_SCHEDULE_PATTERN.test(prompt);
+}
 
 interface ActiveScheduledRun {
 	readonly taskId: string;
 	readonly runId: string;
 	readonly startedAt: string;
+	readonly approvalRequestId?: string;
 }
 
 export class CoasInternalScheduler {
@@ -195,6 +202,12 @@ export class CoasInternalScheduler {
 		} catch (error) {
 			this.lastError = (error as Error).message;
 		}
+		if (active.approvalRequestId && this.config) {
+			const approval = await readApprovalArtifact(this.config, active.approvalRequestId);
+			if (approval?.status === "approved") {
+				await writeApprovalArtifact(this.config, { ...approval, status: status === "complete" ? "completed" : "deferred", updatedAt: isoUtc() });
+			}
+		}
 		this.activeScheduledRuns.delete(active.runId);
 	}
 
@@ -232,8 +245,24 @@ export class CoasInternalScheduler {
 				: undefined;
 			const runId = newRunId();
 			const prompt = renderPromptWithMarker(schedule, runId, priorSummary);
+			let approvalRequestId: string | undefined;
+			if (requiresPrincipalApproval(schedule, prompt) && this.config) {
+				approvalRequestId = `${schedule.taskId}-${key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+				const gate = await claimApproval({ config: this.config, required: true, taskId: schedule.taskId, key, runId, prompt });
+				if (gate.parked) {
+					const startedAt = isoUtc(now);
+					await saveRunState(scheduleRunsPath(this.config, schedule.taskId), { taskId: schedule.taskId, runId, status: "awaiting-approval", startedAt, lastUpdatedAt: startedAt });
+					await this.appendScheduleLogBestEffort(schedule.taskId, `PARKED awaiting-approval request=${approvalRequestId}`);
+					this.lastRun.delete(schedule.taskId);
+					return;
+				}
+				if (!gate.approved) {
+					this.lastRun.delete(schedule.taskId);
+					return;
+				}
+			}
 
-			if (schedule.continuation && this.config) {
+			if ((schedule.continuation || approvalRequestId) && this.config) {
 				const path = scheduleRunsPath(this.config, schedule.taskId);
 				const startedAt = isoUtc(now);
 				await saveRunState(path, {
@@ -247,6 +276,7 @@ export class CoasInternalScheduler {
 					taskId: schedule.taskId,
 					runId,
 					startedAt,
+					approvalRequestId,
 				});
 			}
 
@@ -257,7 +287,7 @@ export class CoasInternalScheduler {
 				this.lastFailedAt = isoUtc();
 				this.lastTaskId = schedule.taskId;
 				this.lastError = (error as Error).message;
-				if (schedule.continuation && this.config) {
+				if ((schedule.continuation || approvalRequestId) && this.config) {
 					const path = scheduleRunsPath(this.config, schedule.taskId);
 					const startedAt = isoUtc(now);
 					await writeInterrupted(path, {

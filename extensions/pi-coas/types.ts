@@ -64,6 +64,8 @@ export interface ScheduleEntry {
 	targetAgent?: string;
 	/** Opt-in resumable continuation: persist a bounded prior-run summary and inject it into the next trigger. */
 	continuation?: boolean;
+	/** Require principal approval before each scheduled run is delivered. */
+	approvalRequired?: boolean;
 }
 
 export interface ScheduleAddInput {
@@ -77,6 +79,8 @@ export interface ScheduleAddInput {
 	targetAgent?: string;
 	/** Opt-in resumable continuation for this schedule. */
 	continuation?: boolean;
+	/** Require principal approval before each scheduled run is delivered. */
+	approvalRequired?: boolean;
 }
 
 export interface SchedulerSnapshot {

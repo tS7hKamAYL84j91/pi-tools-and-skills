@@ -135,6 +135,7 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 		prompt: await readOptionalFile(promptFile),
 		targetAgent: values.TARGET_AGENT,
 		continuation: (values.CONTINUATION ?? "0") === "1",
+		approvalRequired: (values.APPROVAL_REQUIRED ?? "0") === "1",
 	};
 }
 
@@ -192,6 +193,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				PROMPT_FILE: promptPath,
 				...(input.targetAgent ? { TARGET_AGENT: input.targetAgent } : {}),
 				...(input.continuation ? { CONTINUATION: "1" } : {}),
+				...(input.approvalRequired ? { APPROVAL_REQUIRED: "1" } : {}),
 				CREATED_AT: now,
 				UPDATED_AT: now,
 			}));
