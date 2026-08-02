@@ -1,7 +1,7 @@
 /** Durable approval-inbox claim-check artifacts for gated CoAS runs. */
 
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { assertSafeId, ensurePrivateDir, isoUtc } from "./store.js";
@@ -9,6 +9,8 @@ import type { CoasConfig } from "./types.js";
 
 const INBOX_DIR = "schedule-runs/awaiting-approval";
 const VERSION = 1;
+const RETENTION_DAYS = 30;
+const MAX_TERMINAL_ARTIFACTS = 100;
 
 type ApprovalStatus = "awaiting-approval" | "approved" | "rejected" | "deferred" | "completed";
 
@@ -33,20 +35,40 @@ function isStatus(value: unknown): value is ApprovalStatus {
 	return value === "awaiting-approval" || value === "approved" || value === "rejected" || value === "deferred" || value === "completed";
 }
 
+function isSafeRunId(value: string): boolean {
+	return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) && !value.includes("..");
+}
+
+function sanitizeText(value: string, maxChars: number): string {
+	const withoutControls = [...value].map((character) => {
+		const code = character.charCodeAt(0);
+		return code < 0x20 || code === 0x7f ? " " : character;
+	}).join("");
+	return withoutControls
+		.replace(/((?:api[_ -]?key|token|password|secret|credential)\s*[:=]\s*)\S+/gi, "$1[REDACTED]")
+		.slice(0, maxChars);
+}
+
 function parseArtifact(value: unknown, requestId: string): ApprovalArtifact | undefined {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
 	const item = value as Record<string, unknown>;
 	if (item.version !== VERSION || item.requestId !== requestId || typeof item.taskId !== "string" || typeof item.runId !== "string" || !isStatus(item.status) || typeof item.prompt !== "string" || typeof item.createdAt !== "string" || typeof item.updatedAt !== "string") return undefined;
+	try {
+		assertSafeId("task id", item.taskId);
+		if (!isSafeRunId(item.runId)) throw new Error("unsafe run id");
+	} catch {
+		return undefined;
+	}
 	return {
 		version: VERSION,
 		requestId,
 		taskId: item.taskId,
 		runId: item.runId,
 		status: item.status,
-		prompt: item.prompt.slice(0, 4_000),
+		prompt: sanitizeText(item.prompt, 4_000),
 		createdAt: item.createdAt,
 		updatedAt: item.updatedAt,
-		decision: typeof item.decision === "string" ? item.decision.slice(0, 500) : undefined,
+		decision: typeof item.decision === "string" ? sanitizeText(item.decision, 500) : undefined,
 	};
 }
 
@@ -75,8 +97,8 @@ interface ApprovalRequest {
 interface ApprovalGateRequest {
 	readonly config: CoasConfig;
 	readonly required: boolean;
+	readonly requestId: string;
 	readonly taskId: string;
-	readonly key: string;
 	readonly runId: string;
 	readonly prompt: string;
 }
@@ -89,7 +111,7 @@ interface ApprovalGateResult {
 
 export async function claimApproval(request: ApprovalGateRequest): Promise<ApprovalGateResult> {
 	if (!request.required) return { parked: false, approved: true };
-	const requestId = `${request.taskId}-${request.key.replace(/[^a-z0-9._-]/gi, "-").toLowerCase()}`;
+	const requestId = request.requestId;
 	const approval = await readApprovalArtifact(request.config, requestId);
 	if (!approval) {
 		await parkApproval({ ...request, requestId });
@@ -103,7 +125,9 @@ export async function parkApproval(request: ApprovalRequest): Promise<ApprovalAr
 	const existing = await readApprovalArtifact(request.config, requestId);
 	if (existing) return existing;
 	const now = isoUtc();
-	const artifact: ApprovalArtifact = { version: VERSION, requestId, taskId: request.taskId, runId: request.runId, status: "awaiting-approval", prompt: request.prompt.slice(0, 4_000), createdAt: now, updatedAt: now };
+	assertSafeId("task id", request.taskId);
+	if (!isSafeRunId(request.runId)) throw new Error(`Invalid run id: ${request.runId}`);
+	const artifact: ApprovalArtifact = { version: VERSION, requestId, taskId: request.taskId, runId: request.runId, status: "awaiting-approval", prompt: sanitizeText(request.prompt, 4_000), createdAt: now, updatedAt: now };
 	await writeApprovalArtifact(request.config, artifact);
 	return artifact;
 }
@@ -112,8 +136,9 @@ async function decide(config: CoasConfig, requestId: string, status: ApprovalSta
 	if (!isPrincipal()) throw new Error("Approval decisions require principal authority");
 	const current = await readApprovalArtifact(config, requestId);
 	if (!current) throw new Error(`Unknown approval request: ${requestId}`);
-	if (current.status === "completed" || current.status === "rejected") return current;
-	const next: ApprovalArtifact = { ...current, status, updatedAt: isoUtc(), ...(decision ? { decision: decision.slice(0, 500) } : {}) };
+	if (current.status === "completed" || current.status === "rejected" || current.status === "deferred" || (current.status === "approved" && status !== "approved")) return current;
+	if (current.status === status) return current;
+	const next: ApprovalArtifact = { ...current, status, updatedAt: isoUtc(), ...(decision ? { decision: sanitizeText(decision, 500) } : {}) };
 	await writeApprovalArtifact(config, next);
 	return next;
 }
@@ -139,6 +164,20 @@ export async function deferApproval(config: CoasConfig, requestId: string, decis
 	return decide(config, requestId, "deferred", decision);
 }
 
+export async function countAwaitingApprovals(config: CoasConfig): Promise<number> {
+	const artifacts = await listApprovalArtifacts(config);
+	return artifacts.filter((artifact) => artifact.status === "awaiting-approval" || artifact.status === "deferred").length;
+}
+
+export async function removeApprovalArtifactsForTask(config: CoasConfig, taskId: string): Promise<void> {
+	assertSafeId("task id", taskId);
+	const root = join(config.coasHome, INBOX_DIR);
+	if (!existsSync(root)) return;
+	for (const artifact of await listApprovalArtifacts(config)) {
+		if (artifact.taskId === taskId) await rm(approvalArtifactPath(config, artifact.requestId), { force: true });
+	}
+}
+
 export async function listApprovalArtifacts(config: CoasConfig): Promise<ApprovalArtifact[]> {
 	const root = join(config.coasHome, INBOX_DIR);
 	if (!existsSync(root)) return [];
@@ -150,5 +189,15 @@ export async function listApprovalArtifacts(config: CoasConfig): Promise<Approva
 		const artifact = await readApprovalArtifact(config, requestId);
 		if (artifact) items.push(artifact);
 	}
-	return items.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+	const sorted = items.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+	const cutoff = Date.now() - RETENTION_DAYS * 86_400_000;
+	const terminal = sorted.filter((item) => item.status === "completed" || item.status === "rejected");
+	const retainedTerminal = terminal.slice(-MAX_TERMINAL_ARTIFACTS);
+	const retained = new Set(retainedTerminal.map((item) => item.requestId));
+	for (const item of terminal) {
+		if (!retained.has(item.requestId) || Date.parse(item.updatedAt) < cutoff) {
+			await rm(approvalArtifactPath(config, item.requestId), { force: true });
+		}
+	}
+	return sorted.filter((item) => item.status !== "completed" && item.status !== "rejected" || retained.has(item.requestId));
 }

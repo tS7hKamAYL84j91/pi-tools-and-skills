@@ -43,9 +43,18 @@ describe("CoAS approval inbox", () => {
 		if (!requestId) throw new Error("approval artifact was not created");
 		const artifact = await readApprovalArtifact({ coasHome: home }, requestId);
 		expect(artifact?.status).toBe("awaiting-approval");
+		expect(requestId).toContain(`-${artifact?.runId}`);
+		expect(scheduler.snapshot().awaitingApprovalCount).toBe(1);
 		expect(calls).toHaveLength(0);
 		expect(scheduler.snapshot().queued).toBe(0);
 		expect(await readFile(join(home, "schedule-runs", "awaiting-approval", `${requestId}.json`), "utf8")).toContain("awaiting-approval");
+		process.env.PI_PRINCIPAL = "1";
+		expect((await approveApproval({ coasHome: home }, requestId)).status).toBe("approved");
+		expect(await scheduler.resumeApprovedRun({ coasHome: home }, requestId)).toBe(true);
+		expect(calls).toHaveLength(1);
+		await scheduler.handleAgentEnd([{ role: "user", content: calls[0] }, { role: "assistant", content: "DONE: gated work." }]);
+		expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("completed");
+		expect(scheduler.snapshot().awaitingApprovalCount).toBe(0);
 		scheduler.stop();
 	});
 

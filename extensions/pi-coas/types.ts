@@ -99,6 +99,8 @@ export interface SchedulerSnapshot {
 	continuationSchedules?: number;
 	/** Number of continuation summaries ready for injection on the next trigger. */
 	continuationReady?: number;
+	/** Durable approvals awaiting a principal decision. */
+	awaitingApprovalCount?: number;
 }
 
 export interface DoctorCheck {

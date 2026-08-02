@@ -102,6 +102,6 @@ export function registerCoasTools(
 	registerCoasScheduleAddTool(pi, scheduler);
 	registerCoasScheduleRunTool(pi);
 	registerCoasScheduleRemoveTool(pi, scheduler);
-	registerCoasApprovalTools(pi);
+	registerCoasApprovalTools(pi, (config, requestId) => scheduler.resumeApprovedRun(config, requestId));
 	registerGovernanceTools(pi, configFor);
 }

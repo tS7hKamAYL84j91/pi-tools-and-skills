@@ -646,3 +646,28 @@ flowchart TD
 - Project-local `.pi/coas/workspace/<id>` is the standard workspace root when present; existing plural `workspaces/` roots remain readable for migration compatibility.
 - `coas_workspace_read` never returns full context by default; full and section modes are explicit and size guarded.
 - `coas_workspace_update` archives before compacting oversized active context and preserves private permissions.
+
+---
+
+## CoAS scheduled approval and scheduler split
+
+```mermaid
+flowchart LR
+  Tick[Scheduler tick] --> Guard[Delivery guard]
+  Guard --> Gate[Approval claim-check]
+  Gate -->|awaiting| Parked[(One requestId + run-state snapshot)]
+  Gate -->|approved| Run[Run-once delivery]
+  Parked -->|Principal approval| Resume[Direct resume callback]
+  Resume --> Run
+  Run --> End[agent_end]
+  End --> Terminal[completed / interrupted]
+  Remove[removeSchedule] --> Cleanup[Schedule, run-state, approval cleanup]
+```
+
+`pi-coas` keeps scheduler orchestration separate from run-once delivery,
+approval transitions, recovery, and run-state persistence. A parked approval is
+resumed with its original request and run identity; it is not re-triggered as a
+new cron delivery. Approval artifacts are bounded private claim-checks with
+sanitized content and terminal retention cleanup. The architecture fitness suite
+therefore checks module budgets without exemptions while continuation state stays
+one bounded snapshot per task.

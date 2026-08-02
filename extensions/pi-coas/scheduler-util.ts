@@ -29,5 +29,5 @@ export function scheduleMatchesDate(expr: string, date: Date): boolean {
 }
 
 export function newRunId(): string {
-	return `run-${isoUtc().replace(/[:T-]/g, "")}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+	return `run-${isoUtc().replace(/[:T-]/g, "").toLowerCase()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 }

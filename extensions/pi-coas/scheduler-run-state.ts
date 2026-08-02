@@ -15,6 +15,8 @@ const MAX_INJECTED_CHARS = 750;
 export interface ScheduleRunState {
 	readonly taskId: string;
 	readonly runId: string;
+	/** Approval claim-check identity, when this run is gated. */
+	readonly requestId?: string;
 	readonly status: "running" | "awaiting-approval" | "complete" | "failed" | "stopped" | "interrupted";
 	readonly startedAt: string;
 	readonly completedAt?: string;
@@ -56,6 +58,7 @@ export async function loadRunState(path: string): Promise<ScheduleRunState | und
 		return {
 			taskId: parsed.taskId,
 			runId: parsed.runId,
+			requestId: typeof parsed.requestId === "string" ? parsed.requestId : undefined,
 			status: parsed.status,
 			startedAt: parsed.startedAt,
 			completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,

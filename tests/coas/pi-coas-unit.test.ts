@@ -541,6 +541,7 @@ describe("schedules", () => {
 				lastTaskId: undefined,
 				continuationSchedules: 0,
 				continuationReady: 0,
+				awaitingApprovalCount: 0,
 			});
 		});
 
@@ -670,6 +671,7 @@ describe("schedules", () => {
 					lastTaskId: undefined,
 					continuationSchedules: 0,
 					continuationReady: 0,
+					awaitingApprovalCount: 0,
 				});
 			} finally {
 				await rm(coasHome, { recursive: true, force: true });

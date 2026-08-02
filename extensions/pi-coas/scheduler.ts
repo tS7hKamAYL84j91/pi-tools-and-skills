@@ -14,8 +14,9 @@ import {
 	findScheduledRunMarker,
 } from "./scheduler-prompt.js";
 import { finalizeApproval } from "./scheduler-approval.js";
+import { countAwaitingApprovals, readApprovalArtifact } from "./approval-inbox.js";
 import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-recovery.js";
-import { countContinuationReady, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
+import { countContinuationReady, loadRunState, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
 import { runOncePerMinute, type RunOnceMetrics } from "./scheduler-run-once.js";
 import { isoUtc } from "./store.js";
 import { cronExpressionError, listSchedules, scheduleRunsPath } from "./schedules.js";
@@ -48,6 +49,7 @@ export class CoasInternalScheduler {
 	private enabledCount = 0;
 	private continuationCount = 0;
 	private continuationReady = 0;
+	private awaitingApprovalCount = 0;
 
 	get coasHome(): string | undefined {
 		return this.config?.coasHome;
@@ -88,6 +90,7 @@ export class CoasInternalScheduler {
 		this.enabledCount = 0;
 		this.continuationCount = 0;
 		this.continuationReady = 0;
+		this.awaitingApprovalCount = 0;
 		this.startedAt = undefined;
 	}
 
@@ -99,6 +102,7 @@ export class CoasInternalScheduler {
 			this.enabledCount = schedules.filter((schedule) => schedule.enabled).length;
 			this.continuationCount = schedules.filter((schedule) => schedule.enabled && schedule.continuation).length;
 			this.continuationReady = await countContinuationReady(config, schedules);
+			this.awaitingApprovalCount = await countAwaitingApprovals(config);
 			this.metrics.lastError = undefined;
 		} catch (error) {
 			this.enabledCount = 0;
@@ -123,6 +127,7 @@ export class CoasInternalScheduler {
 			lastTaskId: this.metrics.lastTaskId,
 			continuationSchedules: this.continuationCount,
 			continuationReady: this.continuationReady,
+			awaitingApprovalCount: this.awaitingApprovalCount,
 		};
 	}
 
@@ -141,6 +146,7 @@ export class CoasInternalScheduler {
 		this.enabledCount = schedules.length;
 		this.continuationCount = schedules.filter((schedule) => schedule.continuation).length;
 		this.continuationReady = await countContinuationReady(this.config, schedules);
+		this.awaitingApprovalCount = await countAwaitingApprovals(this.config);
 		for (const schedule of schedules) {
 			const error = cronExpressionError(schedule.cronExpr);
 			if (error) {
@@ -150,6 +156,35 @@ export class CoasInternalScheduler {
 			if (scheduleMatchesDate(schedule.cronExpr, now)) {
 				await this.runOncePerMinute(schedule, minuteKey(now), now);
 			}
+		}
+	}
+
+	async resumeApprovedRun(config: CoasConfig, requestId: string): Promise<boolean> {
+		const approval = await readApprovalArtifact(config, requestId);
+		if (!approval || approval.status !== "approved") return false;
+		const state = await loadRunState(scheduleRunsPath(config, approval.taskId));
+		if (!state || state.status !== "awaiting-approval" || state.runId !== approval.runId || (state.requestId ?? requestId) !== requestId) return false;
+		this.awaitingApprovalCount = Math.max(0, this.awaitingApprovalCount - 1);
+		const schedules = await listSchedules(config);
+		const schedule = schedules.find((candidate) => candidate.taskId === approval.taskId);
+		if (!schedule) return false;
+		this.config = config;
+		const startedAt = state.startedAt;
+		await saveRunState(scheduleRunsPath(config, schedule.taskId), { ...state, requestId, status: "running", lastUpdatedAt: isoUtc() });
+		this.activeScheduledRuns.set(state.runId, { taskId: schedule.taskId, runId: state.runId, startedAt, approvalRequestId: requestId });
+		try {
+			this.pi.sendUserMessage(approval.prompt, { deliverAs: "followUp" });
+			this.metrics.queuedCount++;
+			this.metrics.lastQueuedAt = isoUtc();
+			this.metrics.lastTaskId = schedule.taskId;
+			return true;
+		} catch (error) {
+			await saveRunState(scheduleRunsPath(config, schedule.taskId), { ...state, requestId, status: "interrupted", reason: `resume_failed: ${(error as Error).message}`, lastUpdatedAt: isoUtc() });
+			this.activeScheduledRuns.delete(state.runId);
+			this.metrics.failedCount++;
+			this.metrics.lastFailedAt = isoUtc();
+			this.metrics.lastError = (error as Error).message;
+			return false;
 		}
 	}
 
@@ -211,14 +246,13 @@ export class CoasInternalScheduler {
 				pi: this.pi,
 				config: this.config,
 				schedule,
-				key,
 				now,
 				registerActiveRun: (runId, startedAt, approvalRequestId) => {
 					this.activeScheduledRuns.set(runId, { taskId: schedule.taskId, runId, startedAt, approvalRequestId });
 				},
 			}, this.metrics);
-			if (result.queued && result.runId && (schedule.continuation || result.approvalRequestId)) {
-				// already registered by runOncePerMinute on success
+			if (result.approvalRequestId && !result.queued) {
+				this.awaitingApprovalCount++;
 			}
 		} finally {
 			this.activeRuns.delete(runKey);

@@ -24,18 +24,17 @@ export async function openApprovalGate(
 		pi: ExtensionAPI;
 		config: CoasConfig;
 		schedule: ScheduleEntry;
-		key: string;
 		runId: string;
 		prompt: string;
 		now: Date;
 	},
 ): Promise<ApprovalGateResult> {
-	const approvalRequestId = `${args.schedule.taskId}-${args.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+	const approvalRequestId = `${args.schedule.taskId}-${args.runId}`;
 	const gate = await claimApproval({
 		config: args.config,
 		required: true,
+		requestId: approvalRequestId,
 		taskId: args.schedule.taskId,
-		key: args.key,
 		runId: args.runId,
 		prompt: args.prompt,
 	});
@@ -44,6 +43,7 @@ export async function openApprovalGate(
 		await saveRunState(scheduleRunsPath(args.config, args.schedule.taskId), {
 			taskId: args.schedule.taskId,
 			runId: args.runId,
+			requestId: approvalRequestId,
 			status: "awaiting-approval",
 			startedAt,
 			lastUpdatedAt: startedAt,

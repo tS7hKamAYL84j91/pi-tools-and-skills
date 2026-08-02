@@ -179,6 +179,10 @@ describe("extension registration smoke tests", () => {
 		coasExtension(api);
 
 		expectRegistered(registrations.tools, [
+			"coas_approval_approve",
+			"coas_approval_defer",
+			"coas_approval_inbox_list",
+			"coas_approval_reject",
 			"coas_doctor",
 			"coas_governance_resolve",
 			"coas_schedule_add",

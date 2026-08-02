@@ -16,7 +16,6 @@ interface RunOnceContext {
 	readonly pi: ExtensionAPI;
 	readonly config: CoasConfig;
 	readonly schedule: ScheduleEntry;
-	readonly key: string;
 	readonly now: Date;
 	readonly registerActiveRun: (runId: string, startedAt: string, approvalRequestId?: string) => void;
 }
@@ -38,7 +37,7 @@ interface RunOnceResult {
 }
 
 export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetrics): Promise<RunOnceResult> {
-	const { pi, config, schedule, key, now, registerActiveRun } = ctx;
+	const { pi, config, schedule, now, registerActiveRun } = ctx;
 	const identity = activeIdentity(pi);
 	const { deliver, reason } = shouldDeliver(schedule, identity);
 	const identityLog = `session=${identity.agentName || "unknown"} workspace=${identity.workspaceId || "unknown"} scope=${identity.scope}`;
@@ -55,7 +54,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	const prompt = renderPromptWithMarker(schedule, runId, priorSummary);
 	let approvalRequestId: string | undefined;
 	if (requiresPrincipalApproval(schedule, prompt)) {
-		const gate = await openApprovalGate({ pi, config, schedule, key, runId, prompt, now });
+		const gate = await openApprovalGate({ pi, config, schedule, runId, prompt, now });
 		if (gate.parked) return { queued: false, runId, approvalRequestId: gate.approvalRequestId };
 		if (!gate.approved) return { queued: false };
 		approvalRequestId = gate.approvalRequestId;
@@ -67,6 +66,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		await saveRunState(path, {
 			taskId: schedule.taskId,
 			runId,
+			...(approvalRequestId ? { requestId: approvalRequestId } : {}),
 			status: "running",
 			startedAt,
 			lastUpdatedAt: startedAt,
@@ -82,7 +82,15 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		metrics.lastTaskId = schedule.taskId;
 		metrics.lastError = (error as Error).message;
 		if (schedule.continuation || approvalRequestId) {
-			registerActiveRun(runId, isoUtc(now), approvalRequestId);
+			await saveRunState(scheduleRunsPath(config, schedule.taskId), {
+				taskId: schedule.taskId,
+				runId,
+				...(approvalRequestId ? { requestId: approvalRequestId } : {}),
+				status: "interrupted",
+				startedAt: isoUtc(now),
+				reason: `send_failed: ${(error as Error).message}`,
+				lastUpdatedAt: isoUtc(),
+			});
 		}
 		await appendScheduleLogBestEffort(config, schedule.taskId, `FAILED internal ${(error as Error).message}`, metrics);
 		return { queued: false, runId, approvalRequestId };

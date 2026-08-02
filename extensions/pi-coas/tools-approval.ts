@@ -17,7 +17,10 @@ function requirePrincipal(): void {
 	if (!isPrincipal()) throw new Error("Approval decisions require principal authority");
 }
 
-export function registerCoasApprovalTools(pi: ExtensionAPI): void {
+export function registerCoasApprovalTools(
+	pi: ExtensionAPI,
+	resumeApprovedRun: (config: Awaited<ReturnType<typeof configFor>>, requestId: string) => Promise<boolean>,
+): void {
 	pi.registerTool({
 		name: "coas_approval_inbox_list",
 		label: "CoAS Approval Inbox",
@@ -43,7 +46,9 @@ export function registerCoasApprovalTools(pi: ExtensionAPI): void {
 					requirePrincipal();
 					const config = await configFor(ctx, params.cwd);
 					const artifact = await handler(config, params.requestId, params.reason);
-					if (artifact.status === "rejected" || artifact.status === "deferred") {
+					if (artifact.status === "approved") {
+						await resumeApprovedRun(config, artifact.requestId);
+					} else if (artifact.status === "rejected" || artifact.status === "deferred") {
 						const path = scheduleRunsPath(config, artifact.taskId);
 						const state = await loadRunState(path);
 						if (state?.runId === artifact.runId && state.status === "awaiting-approval") {

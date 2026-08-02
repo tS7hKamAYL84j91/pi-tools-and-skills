@@ -27,6 +27,7 @@ import {
 	workspaceIdFromRoom,
 	writePrivateFileAtomic,
 } from "./store.js";
+import { removeApprovalArtifactsForTask } from "./approval-inbox.js";
 import type { CoasConfig, CommandResult, ScheduleAddInput, ScheduleEntry } from "./types.js";
 
 function scheduleEnvPath(config: CoasConfig, taskId: string): string {
@@ -212,6 +213,7 @@ export async function removeSchedule(config: CoasConfig, taskId: string): Promis
 		schedulePromptPath(config, taskId),
 		scheduleRunsPath(config, taskId),
 	]);
+	await removeApprovalArtifactsForTask(config, taskId);
 	return `coas-schedule: removed ${taskId}`;
 }
 
