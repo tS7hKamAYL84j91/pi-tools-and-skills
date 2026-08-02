@@ -47,7 +47,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
 			"Or use agent_send once it registers in panopticon (takes 1–2 seconds).",
 			"Use agent_peek to monitor its activity log.",
-			"scope: 'workspace' (default) receives workspace-level schedules; 'task' excludes the agent from workspace schedule delivery per ADR-0008.",
+			"scope: 'task' (default) excludes the agent from workspace schedule delivery; 'workspace' opts in to receive workspace-level schedules per ADR-0008.",
 		],
 		parameters: Type.Object({
 			name: Type.String({
@@ -78,8 +78,8 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				Type.Union(
 					[Type.Literal("workspace"), Type.Literal("task")],
 					{
-						description: "Schedule delivery scope. 'workspace' (default) allows workspace schedules to deliver here; 'task' excludes this agent from workspace schedule delivery per ADR-0008.",
-						default: "workspace",
+						description: "Schedule delivery scope. 'task' (default) excludes this agent from workspace schedule delivery; 'workspace' opts in to receive workspace-level schedules per ADR-0008.",
+						default: "task",
 					},
 				),
 			),
@@ -121,7 +121,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true, mode: 0o700 });
 
-			const agentScope = params.scope ?? "workspace";
+			const agentScope = params.scope ?? "task";
 			const agent = spawnChild({
 				name: params.name,
 				cwd: agentCwd,

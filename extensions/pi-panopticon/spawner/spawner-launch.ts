@@ -44,6 +44,6 @@ export function buildSpawnEnv(
 		[PANOPTICON_PARENT_ID_ENV]: registrySelfId,
 		[PANOPTICON_VISIBILITY_ENV]: "scoped",
 		[PANOPTICON_SPAWN_NAME_ENV]: spawnName,
-		[PANOPTICON_SCOPE_ENV]: scope ?? "workspace",
+		[PANOPTICON_SCOPE_ENV]: scope ?? "task",
 	};
 }
