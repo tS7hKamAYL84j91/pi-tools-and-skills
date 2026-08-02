@@ -32,7 +32,7 @@ export async function markActiveRunsInterrupted(
 	}
 }
 
-export async function writeInterrupted(path: string, state: ScheduleRunState, reason: string): Promise<void> {
+async function writeInterrupted(path: string, state: ScheduleRunState, reason: string): Promise<void> {
 	await saveRunState(path, {
 		...state,
 		status: "interrupted",
