@@ -49,7 +49,9 @@ Use this skill for requests containing or implying:
    - Elegant: boundary fit, naming, composition, error semantics, docs/test alignment.
 
 4. **Assign verdict**
-   - Use the verdict semantics below. Tie every non-PASS to concrete evidence.
+   - Use the verdict semantics below. Tie every non-PASS and every CONDITIONAL-PASS condition to concrete evidence from a check, file, or command.
+   - Before issuing `BLOCKED` or `NOT REVIEWED`, state the escalation boundary: the owner, repo, or authority needed to resolve the blocker or close the evidence gap.
+   - Do not issue `PASS` when required evidence is missing; use `NOT REVIEWED` instead.
    - Separate release blockers from follow-ups.
 
 5. **Verify**
@@ -70,6 +72,7 @@ Collect enough evidence to support the verdict:
 - [ ] Dependency, network, subprocess, filesystem, and secret-handling changes checked when relevant.
 - [ ] Test/validation commands and results.
 - [ ] Release blockers, no-go conditions, and follow-ups separated.
+- [ ] Each material finding carries a P0–P3 priority and a High/Medium/Low confidence.
 
 ## Verdict semantics
 
@@ -79,7 +82,32 @@ Collect enough evidence to support the verdict:
 - **BLOCKED** — unsafe to ship or merge. Use for secret exposure, data loss risk, broken core checks, unclear ownership with conflicting changes, missing required evidence, or architecture/security regression.
 - **NOT REVIEWED** — scope or evidence was insufficient; do not imply readiness.
 
+### Verdict contract
+
+Every verdict must be evidence-backed and include an escalation boundary when appropriate:
+
+1. **Evidence-backed** — each verdict, and each condition attached to `CONDITIONAL PASS`, must cite at least one concrete artifact or check (file path, diff range, command output, test result, log excerpt, or prior accepted review).
+2. **Escalation boundary** — before issuing `BLOCKED` or `NOT REVIEWED`, explicitly name the owner, repo, or authority required to resolve the gap. Do not issue a blocking verdict without stating who can unblock it.
+3. **No verdict without evidence** — if the required evidence is missing, choose `NOT REVIEWED` over `PASS` or `BLOCKED`.
+4. **Preserve semantics** — these five verdicts (`PASS`, `PASS with follow-ups`, `CONDITIONAL PASS`, `BLOCKED`, `NOT REVIEWED`) are the only allowed labels; do not collapse them into a simpler `PASS/REVISE/BLOCKED` scale.
+
 Severity labels: `Critical`, `High`, `Medium`, `Low`, `Positive`.
+
+### Priority and confidence (per finding)
+
+Borrowed from omp's `/review` pattern: every material finding carries a **priority** and a **confidence**, so release decisions tackle the highest-impact issues first and nothing important hides in a wall of prose.
+
+- **Priority** ranks release impact, not just severity:
+  - `P0` — release blocker; must fix before ship. Maps to `Critical`.
+  - `P1` — ship-affecting; fix now or document an accepted, bounded deferral. Maps to `High`.
+  - `P2` — should-fix; track as a follow-up, not a blocker. Maps to `Medium`.
+  - `P3` — nice-to-have / cosmetic / `Positive` note. Maps to `Low` / `Positive`.
+- **Confidence** records how sure you are the finding is real and correctly scoped:
+  - `High` — reproduced / directly evidenced by a command, file, or diff.
+  - `Medium` — evidenced by reading but not independently verified.
+  - `Low` — inferred / heuristic / needs a second pass; state what would raise it.
+
+A `P0` with `Low` confidence is a flag to verify before blocking; a `P2` with `High` confidence is a safe accepted follow-up. Separate `P0` release blockers from `P2`/`P3` follow-ups in the report — never let a blocker hide among routine cleanups.
 
 ## Verification guidance
 
@@ -104,7 +132,7 @@ Use bounded secret scans over touched paths, not broad crawls through excluded p
 # FIRE Review — <target>
 
 Date: <YYYY-MM-DD>
-Verdict: <PASS | PASS with follow-ups | CONDITIONAL PASS | BLOCKED | NOT REVIEWED>
+Verdict: <PASS | PASS with follow-ups | CONDITIONAL PASS | BLOCKED | NOT REVIEWED> — state the ship decision explicitly ("ships" / "ships with follow-ups" / "ships only if <conditions>" / "do not ship — blocked" / "not reviewed")
 Baseline: <branch/commit/diff/status>
 Scope: <included paths>; Exclusions: <excluded paths>
 
@@ -122,9 +150,9 @@ Scope: <included paths>; Exclusions: <excluded paths>
 
 ## Material findings
 
-| Finding | Severity | Evidence | Recommendation |
-|---|---:|---|---|
-| <finding> | <severity> | <path/command> | <action> |
+| Finding | Priority | Severity | Confidence | Evidence | Recommendation |
+|---|---|---|---|---|---|
+| <finding> | <P0–P3> | <Critical/High/Medium/Low/Positive> | <High/Medium/Low> | <path/command> | <action> |
 
 ## No-go conditions
 
