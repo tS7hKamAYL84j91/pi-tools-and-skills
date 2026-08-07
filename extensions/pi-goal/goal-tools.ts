@@ -4,6 +4,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok } from "../../lib/tool-result.js";
+import { runGateCommand } from "../../lib/gate-command.js";
 import { loadGoal, saveGoal } from "./goal-persist.js";
 import {
 	generatePlanState,
@@ -141,11 +142,20 @@ export function registerGoalTools(
 		],
 		parameters: Type.Object({
 			evidence: Type.String({ description: "Concrete completion evidence and validation summary." }),
+			gate_command: Type.Optional(Type.String({ description: "Optional command that must exit 0 before the goal is marked complete." })),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const evidence = params.evidence.trim();
 			if (!evidence) {
 				throw new Error("goal_complete requires non-empty evidence");
+			}
+			if (params.gate_command) {
+				const gate = await runGateCommand(params.gate_command, ctx.cwd, signal);
+				if (!gate.passed) {
+					throw new Error(
+						`goal_complete gate failed (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
+					);
+				}
 			}
 			const state = await requireGoal(ctx.cwd);
 			if (state.status !== "active" && state.status !== "planning") {

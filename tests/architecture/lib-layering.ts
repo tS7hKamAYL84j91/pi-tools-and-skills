@@ -23,6 +23,7 @@ const IO_LIB_FILES = new Set([
 	"coas-governance.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
+	"gate-command.ts",
 	"pi-settings.ts",
 	"private-local-mode.ts",
 	"session-hook-installer-cli.ts",

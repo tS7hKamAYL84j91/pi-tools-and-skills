@@ -1,6 +1,7 @@
 /**
  * Kanban complete tool registration.
  */
+import { runGateCommand } from "../../lib/gate-command.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
@@ -65,6 +66,11 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 						"Optional verification evidence. Required when task.verificationRequired is true or KANBAN_REQUIRE_CHECK_EVIDENCE=1.",
 				}),
 			),
+			gate_command: Type.Optional(
+				Type.String({
+					description: "Optional command that must exit 0 before the task is marked complete.",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent } = params;
@@ -82,6 +88,14 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 				throw new Error(
 					`Task ${task_id} requires verification evidence with all exit_code=0 before completion`,
 				);
+			}
+			if (params.gate_command) {
+				const gate = await runGateCommand(params.gate_command, process.cwd(), _signal);
+				if (!gate.passed) {
+					throw new Error(
+						`kanban_complete gate failed for ${task_id} (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
+					);
+				}
 			}
 			const ts = nowZ();
 			const verificationPayload = task.verificationRequired || requireVerificationEvidence(task, checks)

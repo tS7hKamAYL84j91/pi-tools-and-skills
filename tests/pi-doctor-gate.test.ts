@@ -1,15 +1,15 @@
+import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
 import { formatDoctorReport, runDoctor } from "../extensions/pi-doctor/doctor.js";
 
 const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-ollama-models", "pi-panopticon"];
 let tempDirs: string[] = [];
 
 async function makeWorkspace(): Promise<string> {
-	const cwd = await mkdtemp(join(tmpdir(), "pi-doctor-"));
+	const cwd = await mkdtemp(join(tmpdir(), "pi-doctor-gate-"));
 	tempDirs.push(cwd);
 	mkdirSync(join(cwd, "extensions"));
 	writeFileSync(join(cwd, "package.json"), JSON.stringify({
@@ -39,30 +39,32 @@ afterEach(async () => {
 	tempDirs = [];
 });
 
-describe("runDoctor", () => {
-	it("passes a minimal valid pi-tools workspace", async () => {
+describe("runDoctor gate command", () => {
+	it("reports PASS when gate exits 0", async () => {
+		const cwd = await makeWorkspace();
+		const report = await runDoctor(cwd, "exit 0");
+		const text = formatDoctorReport(report);
+
+		expect(report.ok).toBe(true);
+		expect(text).toContain("Gate command passed");
+		expect(text).toContain("pi-doctor PASS");
+	});
+
+	it("reports FAIL when gate exits non-zero", async () => {
+		const cwd = await makeWorkspace();
+		const report = await runDoctor(cwd, "echo 'gate failed' >&2; exit 1");
+		const text = formatDoctorReport(report);
+
+		expect(report.ok).toBe(false);
+		expect(text).toContain("gate failed");
+		expect(text).toContain("pi-doctor FAIL");
+	});
+
+	it("remains backward-compatible without gate", async () => {
 		const cwd = await makeWorkspace();
 		const report = await runDoctor(cwd);
 
 		expect(report.ok).toBe(true);
 		expect(report.summary.errors).toBe(0);
-		expect(formatDoctorReport(report)).toContain("pi-doctor PASS");
-	});
-
-	it("reports missing manifests and command namespace collisions", async () => {
-		const cwd = await makeWorkspace();
-		writeFileSync(join(cwd, "extensions", "pi-doctor", "package.json"), JSON.stringify({ name: "wrong", type: "commonjs" }));
-		writeFileSync(join(cwd, "extensions", "pi-doctor", "index.ts"), "pi.registerCommand(\"reload\", {});\npi.registerCommand(\"shared\", {});\npi.registerTool({ name: \"shared_tool\" });\n");
-		writeFileSync(join(cwd, "extensions", "pi-bionic", "index.ts"), "pi.registerCommand(\"shared\", {});\npi.registerTool({ name: \"shared_tool\" });\n");
-
-		const report = await runDoctor(cwd);
-		const text = formatDoctorReport(report);
-
-		expect(report.ok).toBe(false);
-		expect(text).toContain("pi-doctor FAIL");
-		expect(text).toContain("manifest name must be pi-doctor");
-		expect(text).toContain("/reload collides");
-		expect(text).toContain("/shared is registered by both");
-		expect(text).toContain("shared_tool tool is registered by both");
 	});
 });

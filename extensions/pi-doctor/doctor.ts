@@ -3,6 +3,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
+import { runGateCommand } from "../../lib/gate-command.js";
 
 type DoctorSeverity = "ok" | "warning" | "error";
 
@@ -131,12 +132,20 @@ function collectNamespaceFindings(cwd: string): DoctorFinding[] {
 	return findings.length > 0 ? findings : [finding("ok", "namespace", `No duplicate or reserved slash commands found across ${seenCommands.size} commands; no duplicate tool names found across ${seenTools.size} tools.`)];
 }
 
-export function runDoctor(cwd: string): DoctorReport {
+export async function runDoctor(cwd: string, gateCommand?: string): Promise<DoctorReport> {
 	const findings = [
 		...checkRootPackage(cwd),
 		...EXTENSIONS.flatMap((name) => checkExtensionPackage(cwd, name)),
 		...collectNamespaceFindings(cwd),
 	];
+	if (gateCommand) {
+		const gateResult = await runGateCommand(gateCommand, cwd);
+		if (!gateResult.passed) {
+			findings.push(finding("error", "gate-command", `Gate command failed (exitCode=${gateResult.exitCode}): ${gateResult.stderrSummary || gateResult.stdoutSummary}`));
+		} else {
+			findings.push(finding("ok", "gate-command", `Gate command passed: ${gateCommand}`));
+		}
+	}
 	const summary = {
 		ok: findings.filter((item) => item.severity === "ok").length,
 		warnings: findings.filter((item) => item.severity === "warning").length,
