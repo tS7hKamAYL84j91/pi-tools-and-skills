@@ -1,5 +1,7 @@
 # Project Agent Guidelines
 
+**On startup, read `../working-notes/executive-office/chief-of-staff/STATE.md` first** (current mission state, WIP, decisions, blockers) — per `briefs/2026-08-05-state-md-convention.md`.
+
 ## Directives (Highest Priority)
 - **No Fitness-Test Exemptions:** Do not add exceptions to architecture fitness tests to avoid refactoring. A failing fitness test is a signal to split, simplify, or use shared helpers — never to add the module to an exception list.
 - **Output Efficiency:** Lead with the action or answer, not the reasoning. Skip preambles and restatements.
