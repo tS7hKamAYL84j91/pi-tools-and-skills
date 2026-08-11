@@ -1,7 +1,6 @@
 /**
  * Agent detail overlay component.
  */
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text, matchesKey } from "@earendil-works/pi-tui";
 import { readSessionLog, type SessionEvent } from "../../../lib/session-log.js";
@@ -14,6 +13,7 @@ import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../../lib/tui-confirmation.js";
 import { projectWorkSummary } from "./summary-projection.js";
 import { renderSummarySection } from "./agent-summary-render.js";
+import { accentBorder } from "./ui-format.js";
 
 
 interface RenderAgentDetailOverlayArgs {
@@ -75,13 +75,12 @@ export function isAgentDetailBackInput(data: string): boolean {
 
 export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): string[] {
 	const container = new Container();
-	const border = () => new DynamicBorder((s: string) => args.theme.fg("accent", s));
 	const add = (s: string) => container.addChild(new Text(s, 1, 0));
 	const row = (label: string, value: string) =>
 		add(`  ${args.theme.fg("dim", label.padEnd(12))} ${args.theme.fg("text", value)}`);
 	const isSelf = args.record.id === args.selfId;
 
-	container.addChild(border());
+	container.addChild(accentBorder(args.theme));
 	add(`  ${STATUS_SYMBOL[args.record.status]} ${args.theme.fg("accent", args.theme.bold(args.record.name))}${isSelf ? args.theme.fg("dim", " (you)") : ""}  ${args.theme.fg("muted", args.record.status)}`);
 
 	for (const [label, value] of agentDetailRows(args.record)) {
@@ -110,7 +109,7 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 	}
 
 	add(`\n  ${args.theme.fg("dim", ["backspace/← list", "esc close", ...(!isSelf ? ["c direct message", "m send message", "s stop", "k kill"] : [])].join(" · "))}`);
-	container.addChild(border());
+	container.addChild(accentBorder(args.theme));
 	return container.render(args.width);
 }
 

@@ -12,6 +12,7 @@ import {
 	nowZ,
 	parseBoard,
 	sanitiseAgent,
+	type TaskState,
 	type TaskVerificationCheck,
 } from "./board.js";
 import { formatChecks } from "./board-event-handlers.js";
@@ -34,9 +35,57 @@ function hasPassingChecks(checks: TaskVerificationCheck[]): boolean {
 	return checks.length > 0 && checks.every((c) => c.exitCode === 0);
 }
 
-function requireVerificationEvidence(task: { verificationRequired: boolean }, explicitChecks?: TaskVerificationCheck[]): boolean {
-	if (task.verificationRequired || process.env.KANBAN_REQUIRE_CHECK_EVIDENCE === "1") return true;
-	return Boolean(explicitChecks && explicitChecks.length > 0);
+function verificationRequired(task: TaskState, explicitChecks?: TaskVerificationCheck[]): boolean {
+	return task.verificationRequired || process.env.KANBAN_REQUIRE_CHECK_EVIDENCE === "1" || Boolean(explicitChecks?.length);
+}
+
+interface ValidateOptions {
+	readonly gateCommand?: string;
+	readonly signal?: AbortSignal;
+}
+
+async function validateTaskComplete(
+	taskId: string,
+	agent: string,
+	checks: TaskVerificationCheck[],
+	options: ValidateOptions = {},
+): Promise<TaskState> {
+	const task = await getTask(taskId);
+	if (task.col !== "in-progress")
+		throw new Error(`Task ${taskId} is not in-progress (col=${task.col})`);
+	if (task.claimAgent !== sanitiseAgent(agent)) {
+		throw new Error(
+			`Agent ${agent} is not the claimed owner of ${taskId} (claimed by ${task.claimAgent || "nobody"})`,
+		);
+	}
+	if (verificationRequired(task, checks) && !hasPassingChecks(checks)) {
+		throw new Error(
+			`Task ${taskId} requires verification evidence with all exit_code=0 before completion`,
+		);
+	}
+	if (options.gateCommand) {
+		const gate = await runGateCommand(options.gateCommand, process.cwd(), options.signal);
+		if (!gate.passed) {
+			throw new Error(
+				`kanban_complete gate failed for ${taskId} (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
+			);
+		}
+	}
+	return task;
+}
+
+interface LogLineInputs {
+	readonly taskId: string;
+	readonly agent: string;
+	readonly duration: string;
+	readonly needsVerification: boolean;
+	readonly checks: TaskVerificationCheck[];
+}
+
+function completeLogLine(inputs: LogLineInputs): string {
+	const verificationPayload = inputs.needsVerification ? " verification_required=true" : "";
+	const checkPayload = inputs.checks.length > 0 ? ` checks="${escapeLogValue(formatChecks(inputs.checks))}"` : "";
+	return `${nowZ()} COMPLETE ${inputs.taskId} ${sanitiseAgent(inputs.agent)} duration=${inputs.duration}${verificationPayload}${checkPayload}`;
 }
 
 export function registerKanbanComplete(pi: ExtensionAPI): void {
@@ -76,34 +125,14 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 			const { task_id, agent } = params;
 			const duration = params.duration ?? "unknown";
 			const checks = normalizeChecks(params.checks);
-			const task = await getTask(task_id);
-			if (task.col !== "in-progress")
-				throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
-			if (task.claimAgent !== sanitiseAgent(agent)) {
-				throw new Error(
-					`Agent ${agent} is not the claimed owner of ${task_id} (claimed by ${task.claimAgent || "nobody"})`,
-				);
-			}
-			if (requireVerificationEvidence(task, checks) && !hasPassingChecks(checks)) {
-				throw new Error(
-					`Task ${task_id} requires verification evidence with all exit_code=0 before completion`,
-				);
-			}
-			if (params.gate_command) {
-				const gate = await runGateCommand(params.gate_command, process.cwd(), _signal);
-				if (!gate.passed) {
-					throw new Error(
-						`kanban_complete gate failed for ${task_id} (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
-					);
-				}
-			}
+			const task = await validateTaskComplete(task_id, agent, checks, {
+				gateCommand: params.gate_command,
+				signal: _signal,
+			});
+			const needsVerification = verificationRequired(task, checks);
 			const ts = nowZ();
-			const verificationPayload = task.verificationRequired || requireVerificationEvidence(task, checks)
-				? ` verification_required=true`
-				: "";
-			const checkPayload = checks.length > 0 ? ` checks="${escapeLogValue(formatChecks(checks))}"` : "";
 			await logAppend(
-				`${ts} COMPLETE ${task_id} ${sanitiseAgent(agent)} duration=${duration}${verificationPayload}${checkPayload}`,
+				completeLogLine({ taskId: task_id, agent, duration, needsVerification, checks }),
 			);
 			await logAppend(
 				`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=in-progress to=done`,

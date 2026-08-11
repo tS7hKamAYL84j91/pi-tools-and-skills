@@ -1,7 +1,7 @@
 /**
  * Agent list overlay component.
  */
-import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	type Component,
@@ -17,7 +17,7 @@ import { formatAge, sortRecords, STATUS_SYMBOL } from "../registry/registry.js";
 import type { AgentRecord } from "../types.js";
 import { agentDisplayName } from "./display-name.js";
 import { filterAgentList } from "../registry/visibility.js";
-import { buildStatusSegments } from "./ui-format.js";
+import { accentBorder, buildStatusSegments } from "./ui-format.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 
 interface MutableSelectListInternals {
@@ -126,8 +126,7 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 		},
 		render: (width: number) => {
 			const container = new Container();
-			const accentBorder = new DynamicBorder((s: string) => args.theme.fg("accent", s));
-			container.addChild(accentBorder);
+			container.addChild(accentBorder(args.theme));
 			container.addChild(
 				new Text(
 					args.theme.fg("accent", args.theme.bold(" Agent Panopticon")) +
@@ -145,7 +144,7 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 			container.addChild(new Text(args.theme.fg("dim", searchActive
 				? "  type to filter · ↑/↓ navigate · enter detail · esc clear"
 				: "  ↑/↓ navigate · enter detail · / filter · esc close · unread first"), 1, 0));
-			container.addChild(accentBorder);
+			container.addChild(accentBorder(args.theme));
 			return container.render(width);
 		},
 		invalidate: () => {

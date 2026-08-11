@@ -33,14 +33,7 @@ async function executeSnapshot(
 	const board = await parseBoard();
 	const snapshotOptions = { showAllDone: show_all_done ?? false };
 	const view = task_id ? "task" : (detail ?? "compact");
-	let returnedView: string;
-	if (task_id) {
-		returnedView = generateTaskDetail(board, task_id);
-	} else if (view === "full") {
-		returnedView = generateSnapshot(board, snapshotOptions);
-	} else {
-		returnedView = generateSnapshotSummary(board, snapshotOptions);
-	}
+	const returnedView = selectSnapshotView(board, view, snapshotOptions, task_id);
 	const sp = snapshotPath();
 	await writeFileAtomic(sp, returnedView);
 	await logAppend(
@@ -52,11 +45,8 @@ async function executeSnapshot(
 		board.totalEvents,
 		"snapshot",
 	);
-	const compactNote = compactResult.ran
-		? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
-		: "";
 	return ok(
-		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nPersisted/returned view: ${view}${compactNote}\n\n---\n\n${returnedView}`,
+		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nPersisted/returned view: ${view}${formatCompactNote(compactResult)}\n\n---\n\n${returnedView}`,
 		{
 			snapshotPath: sp,
 			totalEvents: board.totalEvents,
@@ -64,6 +54,23 @@ async function executeSnapshot(
 			view,
 		},
 	);
+}
+
+function selectSnapshotView(
+	board: Awaited<ReturnType<typeof parseBoard>>,
+	view: string,
+	options: { showAllDone: boolean },
+	taskId?: string,
+): string {
+	if (taskId) return generateTaskDetail(board, taskId);
+	if (view === "full") return generateSnapshot(board, options);
+	return generateSnapshotSummary(board, options);
+}
+
+function formatCompactNote(compactResult: { ran: boolean; eventsBefore?: number; eventsAfter?: number }): string {
+	return compactResult.ran
+		? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
+		: "";
 }
 
 async function executeExportJson(): Promise<ToolResult> {

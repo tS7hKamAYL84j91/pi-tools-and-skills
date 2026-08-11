@@ -11,6 +11,7 @@ import {
 	getCurrentMilestone,
 	updateGoal,
 } from "./goal-plan.js";
+import { requireGoal } from "./goal-helpers.js";
 import { renderGoalSummary } from "./goal-render.js";
 import type { GoalState } from "./goal-types.js";
 
@@ -240,16 +241,6 @@ export function registerGoalTools(
 			};
 		},
 	});
-
-	function requireGoal(cwd: string): Promise<GoalState> {
-		return loadGoal(cwd).then((state) => {
-			if (!state) {
-				throw new Error("No pi goal is set. Use /goal file <path> first.");
-			}
-			return state;
-		});
-	}
-
 	// Keep lint happy: runtime is used by callers via the shared global runtime object,
 	// but this registration function receives it for potential future use.
 	void runtime;

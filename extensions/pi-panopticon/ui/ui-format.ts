@@ -2,7 +2,8 @@
  * Shared pi-panopticon UI formatting helpers.
  */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { agentDisplayName } from "./display-name.js";
@@ -18,6 +19,11 @@ export const STATUS_LABEL: Record<AgentStatus, string> = {
 	terminated: "dead",
 	unknown: "?",
 };
+
+/** Build a top/bottom accent border for overlay containers. */
+export function accentBorder(theme: Theme): DynamicBorder {
+	return new DynamicBorder((s: string) => theme.fg("accent", s));
+}
 
 export type ThemeColor = Parameters<ExtensionContext["ui"]["theme"]["fg"]>[0];
 

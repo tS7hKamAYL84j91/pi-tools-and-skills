@@ -87,10 +87,7 @@ export class CoasInternalScheduler {
 		this.activeRuns.clear();
 		this.activeScheduledRuns.clear();
 		this.metrics = { droppedScheduleRuns: 0, failedCount: 0, queuedCount: 0 };
-		this.enabledCount = 0;
-		this.continuationCount = 0;
-		this.continuationReady = 0;
-		this.awaitingApprovalCount = 0;
+		this.resetCounts();
 		this.startedAt = undefined;
 	}
 
@@ -99,15 +96,10 @@ export class CoasInternalScheduler {
 		this.config = config;
 		try {
 			const schedules = await listSchedules(config);
-			this.enabledCount = schedules.filter((schedule) => schedule.enabled).length;
-			this.continuationCount = schedules.filter((schedule) => schedule.enabled && schedule.continuation).length;
-			this.continuationReady = await countContinuationReady(config, schedules);
-			this.awaitingApprovalCount = await countAwaitingApprovals(config);
+			this.updateCounts(schedules, config);
 			this.metrics.lastError = undefined;
 		} catch (error) {
-			this.enabledCount = 0;
-			this.continuationCount = 0;
-			this.continuationReady = 0;
+			this.resetCounts();
 			this.metrics.lastError = (error as Error).message;
 		}
 	}
@@ -133,20 +125,9 @@ export class CoasInternalScheduler {
 
 	async tick(now: Date): Promise<void> {
 		if (!this.config) return;
-		let schedules: ScheduleEntry[];
-		try {
-			schedules = (await listSchedules(this.config)).filter((schedule) => schedule.enabled);
-		} catch (error) {
-			this.enabledCount = 0;
-			this.continuationCount = 0;
-			this.continuationReady = 0;
-			this.metrics.lastError = (error as Error).message;
-			return;
-		}
-		this.enabledCount = schedules.length;
-		this.continuationCount = schedules.filter((schedule) => schedule.continuation).length;
-		this.continuationReady = await countContinuationReady(this.config, schedules);
-		this.awaitingApprovalCount = await countAwaitingApprovals(this.config);
+		const schedules = await this.loadEnabledSchedules();
+		if (schedules === undefined) return;
+		await this.updateCounts(schedules, this.config);
 		for (const schedule of schedules) {
 			const error = cronExpressionError(schedule.cronExpr);
 			if (error) {
@@ -223,6 +204,31 @@ export class CoasInternalScheduler {
 			this.metrics.lastError = (error as Error).message;
 		}
 		this.activeScheduledRuns.delete(active.runId);
+	}
+
+	private async loadEnabledSchedules(): Promise<ScheduleEntry[] | undefined> {
+		if (!this.config) return undefined;
+		try {
+			return (await listSchedules(this.config)).filter((schedule) => schedule.enabled);
+		} catch (error) {
+			this.resetCounts();
+			this.metrics.lastError = (error as Error).message;
+			return undefined;
+		}
+	}
+
+	private async updateCounts(schedules: ScheduleEntry[], config: CoasConfig): Promise<void> {
+		this.enabledCount = schedules.length;
+		this.continuationCount = schedules.filter((schedule) => schedule.continuation).length;
+		this.continuationReady = await countContinuationReady(config, schedules);
+		this.awaitingApprovalCount = await countAwaitingApprovals(config);
+	}
+
+	private resetCounts(): void {
+		this.enabledCount = 0;
+		this.continuationCount = 0;
+		this.continuationReady = 0;
+		this.awaitingApprovalCount = 0;
 	}
 
 	private async recoverInterruptedRuns(config: CoasConfig): Promise<void> {
