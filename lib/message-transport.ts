@@ -62,19 +62,19 @@ export interface MessageTransport {
 	): Promise<DeliveryResult>;
 
 	/** Return all pending inbound messages for `agentId`, oldest first. */
-	receive(agentId: string): InboundMessage[];
+	receive(agentId: string, mailboxPath?: string): InboundMessage[];
 
 	/** Mark a received message as processed. */
-	ack(agentId: string, messageId: string): void;
+	ack(agentId: string, messageId: string, mailboxPath?: string): void;
 
 	/** Remove old acknowledged messages (housekeeping). */
-	prune(agentId: string): void;
+	prune(agentId: string, mailboxPath?: string): void;
 
 	/** Ensure the transport is ready for the given agent (create queues, dirs, etc.). */
 	init(agentId: string): void;
 
 	/** Return the number of pending inbound messages for `agentId`. */
-	pendingCount(agentId: string): number;
+	pendingCount(agentId: string, mailboxPath?: string): number;
 
 	/** Remove all transport storage for a dead agent (inbox dirs, queues, etc.). */
 	cleanup(agentId: string): void;

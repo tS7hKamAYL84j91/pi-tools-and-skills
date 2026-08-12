@@ -11,6 +11,7 @@ import { registerAgentsCommand } from "./agents-command.js";
 import { registerNameControls } from "./name-controls.js";
 import { registerAgentListModeControls } from "./list-mode-command.js";
 import { createAgentStatusWidget, type UIModule } from "./status-widget.js";
+import { registerExternalAgentCommands } from "./external-agent-command.js";
 
 export function setupUI(
 	pi: ExtensionAPI,
@@ -19,5 +20,6 @@ export function setupUI(
 	registerNameControls(pi, deps.registry);
 	registerAgentListModeControls(pi, deps.registry, deps.listMode);
 	registerAgentsCommand(pi, deps);
+	registerExternalAgentCommands(pi);
 	return createAgentStatusWidget(deps.registry, deps.selfId, deps.listMode);
 }

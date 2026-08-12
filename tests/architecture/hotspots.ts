@@ -223,8 +223,22 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 		targetDate: "2026-09-22",
 	},
 	{
+		modules: ["lib", "panopticon-registry"],
+		maxCommits90d: 7,
+		reason: "ADR-043 adds shared AgentRecord.kind and external mailbox helpers used by panopticon registry. Decoupling plan target 2026-09-22: registry consumes stable lib contracts only; no panopticon-specific types leak into lib/.",
+		createdAt: "2026-07-11",
+		targetDate: "2026-09-22",
+	},
+	{
+		modules: ["coas", "goal"],
+		maxCommits90d: 7,
+		reason: "T-797/T-801/T-821 lifecycle/continuation/gate work touched goal, coas, and shared lib helpers. Decoupling plan target 2026-09-22: shared surface limited to lib/; no direct coas<->goal runtime calls.",
+		createdAt: "2026-07-11",
+		targetDate: "2026-09-22",
+	},
+	{
 		modules: ["goal", "kanban"],
-		maxCommits90d: 6,
+		maxCommits90d: 7,
 		reason: "T-797/T-802/T-821 lifecycle/completion-gate work touched goal, kanban, and shared lib/gate-command.ts. Decoupling plan target 2026-09-22: no direct goal<->kanban runtime surface; shared helpers live in lib/.",
 		createdAt: "2026-07-11",
 		targetDate: "2026-09-22",

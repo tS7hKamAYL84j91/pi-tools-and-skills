@@ -250,11 +250,9 @@ describe("init", () => {
 		expect(mockChmodSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox", 0o700);
 	});
 
-	it("hardens inbox subdirectories via ensureInbox", () => {
+	it("validates the agent id but no longer creates a root inbox", () => {
 		transport.init("my-id");
-		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/tmp", 0o700);
-		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/new", 0o700);
-		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/cur", 0o700);
+		expect(mockChmodSync).not.toHaveBeenCalled();
 	});
 });
 

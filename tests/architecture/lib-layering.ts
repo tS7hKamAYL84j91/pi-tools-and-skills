@@ -21,6 +21,7 @@ const IO_LIB_FILES = new Set([
 	"agent-api.ts",
 	"agent-registry.ts",
 	"coas-governance.ts",
+	"coas-home.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
 	"gate-command.ts",
@@ -41,6 +42,8 @@ const IO_LIB_FILES = new Set([
 	"runtime-child-process.ts",
 	"template-safety.ts",
 	"maildir.ts",
+	"maildir-inbox.ts",
+	"external-mailbox.ts",
 ]);
 
 const PURE_RUNTIME_LIB_FILES = new Set(["runtime-agent-messaging.ts", "runtime-control-plane.ts", "session-journal.ts"]);

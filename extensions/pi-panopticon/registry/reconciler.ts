@@ -67,6 +67,18 @@ interface ReconcilerModule {
 // ── Heuristic: stale/silent workers ─────────────────────────────
 
 function confirmedPeerState(peer: RegistryPeer): ConfirmedPeerState {
+	if (peer.kind === "external") {
+		return {
+			id: peer.id,
+			name: peer.name,
+			pid: 0,
+			alive: true,
+			heartbeatAge: 0,
+			status: peer.status === "waiting" ? "waiting" : (peer.status ?? "waiting"),
+			pendingMessages: peer.pendingMessages ?? 0,
+			confirmed: true,
+		};
+	}
 	const info = findAgentByName(peer.name);
 	if (info?.id === peer.id) {
 		return {
@@ -111,7 +123,7 @@ function actionableAgentFindings(peer: RegistryPeer, confirmed: ConfirmedPeerSta
 		});
 	}
 
-	if (confirmed.confirmed && !confirmed.alive && peer.status !== "terminated" && peer.status !== "done") {
+	if (confirmed.confirmed && !confirmed.alive && peer.status !== "terminated" && peer.status !== "done" && peer.kind !== "external") {
 		findings.push({
 			heuristic: "silent-done",
 			summary: `Agent "${confirmed.name}" (pid ${confirmed.pid}) appears terminated but registry still shows status="${peer.status}".`,

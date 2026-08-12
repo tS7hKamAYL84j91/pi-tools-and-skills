@@ -265,6 +265,9 @@ describe("extension registration smoke tests", () => {
 			"team_stop",
 		]);
 		expectRegistered(registrations.commands, [
+			"agent-external-list",
+			"agent-external-register",
+			"agent-external-remove",
 			"agent-list-mode",
 			"agents",
 			"agents-mode",

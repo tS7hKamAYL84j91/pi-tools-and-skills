@@ -31,6 +31,7 @@ import { stopPeerAgent } from "./spawner/agent-stop.js";
 import { registerTeams } from "./teams/register.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import setupSwarm from "./swarm/index.js";
+import { loadExternalAgents } from "./registry/external-registrar.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -80,6 +81,10 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
 		registry.register(ctx);
 		operationalState.restore(ctx, event);
+		const externalAgents = await loadExternalAgents({});
+		for (const external of externalAgents) {
+			maildir.init(external.id);
+		}
 		messaging.init(ctx);
 		reconciler.start(ctx);
 		if (ctx.hasUI) {

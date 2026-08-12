@@ -46,6 +46,8 @@ export type AgentVisibility = "global" | "scoped";
 
 export type AgentNameSource = "spawn" | "user" | "programmatic" | "generated";
 
+export type AgentKind = "pi" | "external";
+
 export interface AgentRecord {
 	id: string;
 	name: string;
@@ -53,6 +55,8 @@ export interface AgentRecord {
 	spawn_name?: string;
 	/** Source of the active registry/display name. */
 	name_source?: AgentNameSource;
+	/** Agent kind: pi (default) or external non-pi peer. */
+	kind?: AgentKind;
 	pid: number;
 	cwd: string;
 	model: string;
@@ -67,6 +71,8 @@ export interface AgentRecord {
 	pendingMessages?: number;
 	sessionDir?: string;
 	sessionFile?: string;
+	/** Durable mailbox path for external agents (kind === 'external'). */
+	mailboxPath?: string;
 }
 
 // ── Dead-agent cleanup hooks ────────────────────────────────────

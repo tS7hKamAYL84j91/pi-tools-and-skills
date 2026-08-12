@@ -1,7 +1,7 @@
 # ADR 043: External Agent Mailbox Registration in Panopticon
 
 ## Status
-Proposed — 2026-08-12
+Accepted — 2026-08-12
 
 ## Context
 Pi agents communicate via a local registry (`~/.pi/agents/`) and a Maildir-style inbox under that directory. This works for peer pi sessions, but prevents integration with external, long-running, or non-pi processes that need to exchange messages with pi agents without running the pi runtime themselves.
@@ -9,21 +9,21 @@ Pi agents communicate via a local registry (`~/.pi/agents/`) and a Maildir-style
 Working-notes issue #13 requests explicit support for external agents: durable registration, mailbox delivery, and visibility in Panopticon without requiring the external peer to maintain a pi registry heartbeat or process ID.
 
 ## Decision
-Introduce `kind: "external"` alongside the existing `kind: "pi"` (default) in `AgentRecord`. External agents are registered via a new `external-registrar.ts` module, stored in a durable external-agent manifest outside the volatile registry directory, and delivered to via a persistent mailbox path (conventionally under `/persist`) using the existing `MaildirTransport`.
+Introduce `kind: "external"` alongside the existing `kind: "pi"` (default) in `AgentRecord`. External agents are registered via a new `external-registrar.ts` module, stored in a durable external-agent manifest outside the volatile registry directory (`<workspace>/external-agents.json`), and delivered to via a persistent mailbox path (conventionally under `~/.pi/persist/external-agents/<id>/inbox`) using the existing `MaildirTransport`.
 
 ### 1. `AgentRecord.kind`
 - Add optional `kind?: "pi" | "external"` to `AgentRecord` in `lib/agent-registry.ts`.
 - Existing records without `kind` are treated as `"pi"` on read.
-- `pid` remains required for type compatibility, but external records may set it to `0` or omit it when loaded by the registrar.
+- `pid` remains required for type compatibility, but external records set it to `0` when loaded by the registrar.
 
 ### 2. External registrar
 Create `extensions/pi-panopticon/registry/external-registrar.ts`:
-- `registerExternalAgent(config, { name, mailboxPath })` — create a durable external record with a stable UUID id, write it to `~/.pi/agents/external.json`, and ensure its mailbox directory.
-- `loadExternalAgents(config)` — load all external agents from `~/.pi/agents/external.json` at startup.
+- `registerExternalAgent(config, { name, mailboxPath })` — create a durable external record with a stable UUID id, write it to `<workspaceRoot>/external-agents.json`, and ensure its mailbox directory.
+- `loadExternalAgents(config)` — load all external agents from the manifest at startup.
 - `listExternalAgents(config)` — return currently registered external agents.
 - `unregisterExternalAgent(config, id)` — remove an external agent from the manifest.
 
-The manifest is a single JSON array, private (`0o600`), versioned (`version: 1`).
+The manifest is a single JSON array, private (`0o600`), versioned (`version: 1`). Configuration uses `workspaceRoot` (or falls back to `COAS_HOME`) so the file is written into the workspace/project runtime directory rather than the global `~/.pi/agents/` registry.
 
 ### 3. External mailbox path
 - External agents carry a durable `mailboxPath` field (absolute path, typically under a host `/persist` directory).
@@ -38,14 +38,14 @@ The manifest is a single JSON array, private (`0o600`), versioned (`version: 1`)
 
 ### 5. Broadcast and namespace
 - External agents participate in `agent_broadcast` by default unless they lack a `mailboxPath`.
-- Names are shared across pi and external agents. Registration rejects collisions with existing pi or external names.
+- Names are shared across pi and external agents. Registration rejects collisions with existing external names.
 - No prefix is added to user-facing names.
 
 ### 6. CLI surface
 Add Panopticon commands:
-- `/agent external register <name> [--mailbox <path>]` — register an external agent; default mailbox path under `~/.pi/persist/external-agents/<name>`.
-- `/agent external list` — list external agents and their mailbox paths.
-- `/agent external remove <name>` — unregister an external agent.
+- `/agent-external-register <name>` — register an external agent; default mailbox path under `~/.pi/persist/external-agents/<id>/inbox`.
+- `/agent-external-list` — list external agents and their mailbox paths.
+- `/agent-external-remove <name>` — unregister an external agent.
 
 ## Consequences
 - External agents appear transparently alongside pi agents in `agent_send`, `agent_broadcast`, `agent_peek`, and `agent_status`.

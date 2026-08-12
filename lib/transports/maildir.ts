@@ -6,159 +6,49 @@
  * Survives crashes, sleep, and agent restarts.
  */
 
-import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, renameSync, rmSync, unlinkSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRecord } from "../agent-registry.js";
-import { REGISTRY_DIR, ensureRegistryDir } from "../agent-registry.js";
-import { assertPrivateFileTarget, ensurePrivateDirectory, ensurePrivateFileForRead, writeNewPrivateFileSync } from "../private-local-mode.js";
+import { REGISTRY_DIR } from "../agent-registry.js";
 import type { DeliveryResult, InboundMessage, MessageTransport } from "../message-transport.js";
-
-// ── Maildir inbox helpers (private) ────────────────────────────
-
-function assertSafeAgentId(agentId: string): void {
-	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(agentId)) {
-		throw new Error(`invalid agent id for Maildir path: ${agentId || "(empty)"}`);
-	}
-}
-
-function inboxPaths(agentId: string) {
-	assertSafeAgentId(agentId);
-	const base = join(REGISTRY_DIR, agentId, "inbox");
-	return { base, tmp: join(base, "tmp"), new: join(base, "new"), cur: join(base, "cur") };
-}
-
-function ensureInbox(agentId: string): string {
-	ensureRegistryDir();
-	const paths = inboxPaths(agentId);
-	const agentDir = join(REGISTRY_DIR, agentId);
-	for (const dir of [agentDir, paths.base, paths.tmp, paths.new, paths.cur]) {
-		ensurePrivateDirectory(dir);
-	}
-	return paths.base;
-}
-
-function inboxReadNew(
-	agentId: string,
-): { filename: string; message: InboundMessage }[] {
-	try {
-		const { new: newDir } = inboxPaths(agentId);
-		return readdirSync(newDir)
-			.filter((f) => f.endsWith(".json"))
-			.sort()
-			.flatMap((f) => {
-				try {
-					return [
-						{
-							filename: f,
-							message: (() => {
-								const messagePath = join(newDir, f);
-								ensurePrivateFileForRead(messagePath);
-								return JSON.parse(readFileSync(messagePath, "utf-8")) as InboundMessage;
-							})(),
-						},
-					];
-				} catch {
-					/* skip unreadable/corrupt message */
-					return [];
-				}
-			});
-	} catch {
-		/* inbox dir may not exist */
-		return [];
-	}
-}
-
-function inboxAcknowledge(agentId: string, filename: string): void {
-	try {
-		const paths = inboxPaths(agentId);
-		renameSync(
-			join(paths.new, filename),
-			join(paths.cur, filename),
-		);
-	} catch {
-		/* best-effort: message may already be moved */
-	}
-}
-
-function inboxPruneCur(agentId: string, keep = 50): void {
-	try {
-		const { cur: curDir } = inboxPaths(agentId);
-		const files = readdirSync(curDir)
-			.filter((f) => f.endsWith(".json"))
-			.sort();
-		for (const f of files.slice(0, files.length - keep)) {
-			try {
-				unlinkSync(join(curDir, f));
-			} catch {
-				/* best-effort: file may already be gone */
-			}
-		}
-	} catch {
-		/* best-effort: cur dir may not exist */
-	}
-}
-
-// ── Atomic Maildir write (tmp/ → new/) ─────────────────────────
-
-function durableWrite(
-	targetId: string,
-	from: string,
-	text: string,
-): DeliveryResult {
-	try {
-		const inboxBase = ensureInbox(targetId);
-		const ts = Date.now();
-		const uuid = randomUUID();
-		const filename = `${ts}-${uuid}.json`;
-
-		const tmpPath = join(inboxBase, "tmp", filename);
-		assertPrivateFileTarget(tmpPath);
-		writeNewPrivateFileSync(tmpPath, JSON.stringify({ id: uuid, from, text, ts }));
-
-		const newPath = join(inboxBase, "new", filename);
-		assertPrivateFileTarget(newPath);
-		renameSync(tmpPath, newPath);
-
-		return { accepted: true, immediate: false, reference: filename };
-	} catch (err) {
-		return { accepted: false, immediate: false, error: String(err) };
-	}
-}
-
-// ── MaildirTransport ────────────────────────────────────────────
+import {
+	assertSafeAgentId,
+	durableWrite,
+	inboxAcknowledge,
+	inboxPruneCur,
+	inboxReadNew,
+	inboxPaths,
+} from "./maildir-inbox.js";
 
 class MaildirTransport implements MessageTransport {
-	async send(
-		peer: AgentRecord,
-		from: string,
-		message: string,
-	): Promise<DeliveryResult> {
-		return durableWrite(peer.id, from, message);
+	async send(peer: AgentRecord, from: string, message: string): Promise<DeliveryResult> {
+		return durableWrite(peer.id, from, message, peer.mailboxPath);
 	}
 
-	receive(agentId: string): InboundMessage[] {
-		return inboxReadNew(agentId).map(({ filename, message }) => ({
+	receive(agentId: string, mailboxPath?: string): InboundMessage[] {
+		return inboxReadNew(agentId, mailboxPath).map(({ filename, message }) => ({
 			...message,
 			id: filename,
 		}));
 	}
 
-	ack(agentId: string, messageId: string): void {
-		inboxAcknowledge(agentId, messageId);
+	ack(agentId: string, messageId: string, mailboxPath?: string): void {
+		inboxAcknowledge(agentId, messageId, mailboxPath);
 	}
 
-	prune(agentId: string): void {
-		inboxPruneCur(agentId);
+	prune(agentId: string, mailboxPath?: string): void {
+		inboxPruneCur(agentId, 50, mailboxPath);
 	}
 
 	init(agentId: string): void {
-		ensureInbox(agentId);
+		// For external records the caller ensures the mailbox separately;
+		// this method remains compatible with the MessageTransport interface.
+		assertSafeAgentId(agentId);
 	}
 
-	pendingCount(agentId: string): number {
+	pendingCount(agentId: string, mailboxPath?: string): number {
 		try {
-			return readdirSync(inboxPaths(agentId).new).filter(
+			return readdirSync(inboxPaths(agentId, mailboxPath).new).filter(
 				(f) => f.endsWith(".json"),
 			).length;
 		} catch {
@@ -169,20 +59,25 @@ class MaildirTransport implements MessageTransport {
 	cleanup(agentId: string): void {
 		try {
 			assertSafeAgentId(agentId);
-			rmSync(join(REGISTRY_DIR, agentId), {
-				recursive: true,
-				force: true,
-			});
+			const target = join(REGISTRY_DIR, agentId);
+			// Guard: only delete paths under the volatile registry directory.
+			if (!target.startsWith(REGISTRY_DIR)) {
+				return;
+			}
+			rmSync(target, { recursive: true, force: true });
 		} catch {
 			/* best-effort */
 		}
 	}
 }
 
-// ── Factory + singleton ────────────────────────────────────────
+// Re-export helper that callers (including external registrar) need for record setup.
+export { ensureInboxForRecord } from "./maildir-inbox.js";
 
 /** Create a fresh instance — use for tests and separate-process scripts. */
-export function createMaildirTransport(): MessageTransport { return new MaildirTransport(); }
+export function createMaildirTransport(): MessageTransport {
+	return new MaildirTransport();
+}
 
 let shared: MessageTransport | undefined;
 /** Shared singleton for in-process use (extensions, agent-api). */
