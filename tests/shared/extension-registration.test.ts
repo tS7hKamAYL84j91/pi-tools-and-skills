@@ -16,13 +16,20 @@ import panopticonExtension from "../../extensions/pi-panopticon/index.js";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
 import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
+import doctorExtension from "../../extensions/pi-doctor/index.js";
+
+interface ToolParameters {
+	properties?: Record<string, unknown>;
+}
 
 interface NamedRegistration {
 	name: string;
+	parameters?: ToolParameters;
 }
 
 interface CapturedRegistrations {
 	tools: Set<string>;
+	toolParameters: Map<string, ToolParameters>;
 	commands: Set<string>;
 	shortcuts: Set<string>;
 	flags: Set<string>;
@@ -46,6 +53,7 @@ function createFakeApi(): {
 } {
 	const registrations: CapturedRegistrations = {
 		tools: new Set<string>(),
+		toolParameters: new Map<string, ToolParameters>(),
 		commands: new Set<string>(),
 		shortcuts: new Set<string>(),
 		flags: new Set<string>(),
@@ -54,6 +62,9 @@ function createFakeApi(): {
 	const api: FakeExtensionApi = {
 		registerTool(definition) {
 			registrations.tools.add(definition.name);
+			if (definition.parameters) {
+				registrations.toolParameters.set(definition.name, definition.parameters);
+			}
 		},
 		registerCommand(name) {
 			registrations.commands.add(name);
@@ -86,7 +97,34 @@ function expectRegistered(actual: Set<string>, expected: string[]): void {
 	expect([...actual].sort()).toEqual([...expected].sort());
 }
 
+function expectDeprecatedGateParameter(
+	registrations: CapturedRegistrations,
+	toolName: string,
+	parameterName: "gateCommand" | "gate_command",
+): void {
+	const parameters = registrations.toolParameters.get(toolName);
+	expect(parameters, `${toolName} parameters`).toBeDefined();
+	const property = parameters?.properties?.[parameterName];
+	expect(property, `${toolName}.${parameterName}`).toMatchObject({
+		deprecated: true,
+		description: expect.stringMatching(/ignored.*never executed/i),
+	});
+}
+
 describe("extension registration smoke tests", () => {
+	it("retains deprecated, ignored gate inputs in Doctor, Goal, and Kanban public schemas", () => {
+		const doctor = createFakeApi();
+		doctorExtension(doctor.api);
+		expectDeprecatedGateParameter(doctor.registrations, "pi_doctor", "gateCommand");
+
+		const goal = createFakeApi();
+		goalExtension(goal.api);
+		expectDeprecatedGateParameter(goal.registrations, "goal_complete", "gate_command");
+
+		const kanban = createFakeApi();
+		kanbanExtension(kanban.api);
+		expectDeprecatedGateParameter(kanban.registrations, "kanban_complete", "gate_command");
+	});
 	it("team extension registers its tools, commands, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
 

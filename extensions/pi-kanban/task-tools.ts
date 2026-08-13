@@ -8,15 +8,13 @@ import { ok, type ToolResult } from "../../lib/tool-result.js";
 import {
 	appendTaskNote,
 	escapeLogValue,
-	getTask,
-	logAppend,
 	nowZ,
-	parseBoard,
 	rewriteTaskFile,
 	sanitiseAgent,
 	validateTaskId,
 	writeTaskFile,
 } from "./board.js";
+import { withBoardTransaction } from "./board-transactions.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 import { registerKanbanComplete } from "./complete-tool.js";
 
@@ -60,15 +58,20 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 			const tags = params.tags ?? "";
 			const description = params.description ?? "";
 			validateTaskId(task_id);
-			const existing = await parseBoard();
-			if (existing.tasks.has(task_id))
-				throw new Error(`Task ID ${task_id} already exists`);
-			const descPart = description
-				? ` description="${escapeLogValue(description)}"`
-				: "";
-			await logAppend(
-				`${nowZ()} CREATE ${task_id} ${sanitiseAgent(agent)} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`,
-			);
+			await withBoardTransaction((board) => {
+				if (board.tasks.has(task_id)) {
+					throw new Error(`Task ID ${task_id} already exists`);
+				}
+				const descPart = description
+					? ` description="${escapeLogValue(description)}"`
+					: "";
+				return {
+					events: [
+						`${nowZ()} CREATE ${task_id} ${sanitiseAgent(agent)} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`,
+					],
+					result: undefined,
+				};
+			});
 			// Write task markdown file
 			await writeTaskFile(task_id, {
 				title,
@@ -106,16 +109,26 @@ function registerKanbanBlock(pi: ExtensionAPI): void {
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, reason } = params;
-			const task = await getTask(task_id);
-			if (task.col !== "in-progress")
-				throw new Error(`Task ${task_id} is not in-progress (col=${task.col})`);
-			const ts = nowZ();
-			await logAppend(
-				`${ts} BLOCK ${task_id} ${sanitiseAgent(agent)} reason="${escapeLogValue(reason)}"`,
-			);
-			await logAppend(
-				`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=in-progress to=blocked`,
-			);
+			await withBoardTransaction((board) => {
+				const task = board.tasks.get(task_id);
+				if (!task) {
+					throw new Error(`Task ${task_id} not found`);
+				}
+				if (task.col !== "in-progress") {
+					throw new Error(
+						`Task ${task_id} is not in-progress (col=${task.col})`,
+					);
+				}
+				const timestamp = nowZ();
+				const safeAgent = sanitiseAgent(agent);
+				return {
+					events: [
+						`${timestamp} BLOCK ${task_id} ${safeAgent} reason="${escapeLogValue(reason)}"`,
+						`${timestamp} MOVE ${task_id} ${safeAgent} from=in-progress to=blocked`,
+					],
+					result: undefined,
+				};
+			});
 			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});
@@ -142,20 +155,20 @@ async function performEdit(
 		);
 	}
 
-	const task = await getTask(task_id);
-	const hasMetadataEdits = title || priority || tags || description;
+	const hasMetadataEdits = Boolean(title || priority || tags || description);
+	const mutation = await withBoardTransaction((board) => {
+		const task = board.tasks.get(task_id);
+		if (!task) {
+			throw new Error(`Task ${task_id} not found`);
+		}
+		if (hasMetadataEdits && !["backlog", "todo"].includes(task.col)) {
+			throw new Error(
+				`Task ${task_id} is in '${task.col}' column. Metadata edits (title/priority/tags/description) are only allowed for tasks in backlog or todo. Use notes (note=...) for in-progress, blocked, or done tasks.`,
+			);
+		}
 
-	if (hasMetadataEdits && !["backlog", "todo"].includes(task.col)) {
-		throw new Error(
-			`Task ${task_id} is in '${task.col}' column. Metadata edits (title/priority/tags/description) are only allowed for tasks in backlog or todo. Use notes (note=...) for in-progress, blocked, or done tasks.`,
-		);
-	}
-
-	const changes: string[] = [];
-	const changed: Record<string, string> = {};
-
-	// 1. Handle Metadata Edits
-	if (hasMetadataEdits) {
+		const changes: string[] = [];
+		const changed: Record<string, string> = {};
 		if (title && title !== task.title) {
 			changes.push(`title="${escapeLogValue(title)}"`);
 			changed.title = title;
@@ -172,29 +185,45 @@ async function performEdit(
 			changes.push(`description="${escapeLogValue(description)}"`);
 			changed.description = description;
 		}
-
-		if (changes.length > 0) {
-			await logAppend(
-				`${nowZ()} EDIT ${task_id} ${sanitiseAgent(agent)} ${changes.join(" ")}`,
-			);
-			const updatedTask = await getTask(task_id);
-			await rewriteTaskFile(task_id, {
-				title: updatedTask.title,
-				description: updatedTask.description,
-				priority: updatedTask.priority,
-				tags: updatedTask.tags,
-				agent: updatedTask.agent,
-			});
+		if (note) {
+			changed.note = note;
 		}
-	}
 
-	// 2. Handle Note
+		const timestamp = nowZ();
+		const safeAgent = sanitiseAgent(agent);
+		const events: string[] = [];
+		if (changes.length > 0) {
+			events.push(`${timestamp} EDIT ${task_id} ${safeAgent} ${changes.join(" ")}`);
+		}
+		if (note) {
+			events.push(
+				`${timestamp} NOTE ${task_id} ${safeAgent} text="${escapeLogValue(note)}"`,
+			);
+		}
+		return {
+			events,
+			result: {
+				changed,
+				changes,
+				metadata:
+					changes.length > 0
+						? {
+								title: changed.title ?? task.title,
+								description: changed.description ?? task.description,
+								priority: changed.priority ?? task.priority,
+								tags: changed.tags ?? task.tags,
+								agent: task.agent,
+							}
+						: undefined,
+			},
+		};
+	});
+	const { changed, changes, metadata } = mutation;
+	if (metadata) {
+		await rewriteTaskFile(task_id, metadata);
+	}
 	if (note) {
-		await logAppend(
-			`${nowZ()} NOTE ${task_id} ${sanitiseAgent(agent)} text="${escapeLogValue(note)}"`,
-		);
 		await appendTaskNote(task_id, agent, note);
-		changed.note = note;
 	}
 
 	if (changes.length === 0 && !note) {

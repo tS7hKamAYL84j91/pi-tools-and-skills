@@ -1,32 +1,23 @@
-/**
- * External agent mailbox path helpers.
- *
- * External agents keep their durable mailbox outside the volatile
- * `~/.pi/agents/` registry directory so it survives registry wipes.
- */
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+/** Persistent external-agent mailbox path helpers. */
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { ensurePrivateDirectory } from "../private-local-mode.js";
 
-/** Default base directory for persistent external agent mailboxes. */
+/** Default root for persistent external-agent mailboxes. */
 export function defaultPersistDir(): string {
 	return join(homedir(), ".pi", "persist", "external-agents");
 }
 
-/** Resolve an external agent mailbox path. */
-export function externalMailboxPath(agentId: string, baseDir?: string): string {
-	return resolve(baseDir ?? defaultPersistDir(), agentId, "inbox");
+/** Return the final Maildir inbox path for an external agent. */
+export function externalMailboxPath(agentId: string, mailboxRoot = defaultPersistDir()): string {
+	return resolve(mailboxRoot, agentId, "inbox");
 }
 
-/** Ensure the external mailbox directory tree exists. */
-export async function ensureExternalMailbox(agentId: string, baseDir?: string): Promise<string> {
-	const base = externalMailboxPath(agentId, baseDir);
-	const dirs = [base, join(base, "tmp"), join(base, "new"), join(base, "cur")];
-	for (const dir of dirs) {
-		if (!existsSync(dir)) {
-			await mkdir(dir, { recursive: true, mode: 0o700 });
-		}
+/** Ensure a final Maildir inbox path without adding agent-id/inbox segments. */
+export function ensureExternalMailbox(mailboxPath: string): string {
+	const base = resolve(mailboxPath);
+	for (const dir of [base, join(base, "tmp"), join(base, "new"), join(base, "cur")]) {
+		ensurePrivateDirectory(dir);
 	}
 	return base;
 }

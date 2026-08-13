@@ -17,6 +17,7 @@ const mockSetTask = vi.fn();
 const mockGetRecord = vi.fn((): { task: string | undefined; sessionFile: string } => ({ task: undefined, sessionFile: "/tmp/s.jsonl" }));
 const mockFlush = vi.fn();
 const mockReadAllPeers = vi.fn(() => []);
+const mockSetExternalPeers = vi.fn();
 
 vi.mock("../../extensions/pi-panopticon/registry/registry.js", () => {
 	return {
@@ -29,6 +30,7 @@ vi.mock("../../extensions/pi-panopticon/registry/registry.js", () => {
 			setTask = mockSetTask;
 			getRecord = mockGetRecord;
 			flush = mockFlush;
+			setExternalPeers = mockSetExternalPeers;
 			readAllPeers = mockReadAllPeers;
 		},
 	};
@@ -41,6 +43,13 @@ const mockMessagingDispose = vi.fn();
 
 vi.mock("../../extensions/pi-panopticon/messaging/messaging.js", () => ({
 	createMessaging: vi.fn(() => vi.fn(() => ({ init: mockMessagingInit, pokePending: mockPokePending, drainAll: mockDrainAll, dispose: mockMessagingDispose }))),
+}));
+
+const externalRegistrarMocks = vi.hoisted(() => ({
+	load: vi.fn(async () => [{ id: "ext-1", kind: "external" }]),
+}));
+vi.mock("../../extensions/pi-panopticon/registry/external-registrar.js", () => ({
+	loadExternalAgents: externalRegistrarMocks.load,
 }));
 
 vi.mock("../../lib/transports/maildir.js", () => ({
@@ -139,6 +148,7 @@ let pi: ReturnType<typeof makeMockPI>;
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	externalRegistrarMocks.load.mockResolvedValue([]);
 	mockGetRecord.mockReturnValue({ task: undefined, sessionFile: "/tmp/s.jsonl" });
 	pi = makeMockPI();
 	piAgents(pi as unknown as Parameters<typeof piAgents>[0]);
@@ -166,15 +176,27 @@ describe("missing completion warning", () => {
 });
 
 describe("session_start", () => {
-	it("calls register → messaging.init in order", async () => {
+	it("loads workspace external peers before register → messaging.init", async () => {
 		const order: string[] = [];
+		externalRegistrarMocks.load.mockImplementation(async () => {
+			order.push("loadExternalAgents");
+			return [{ id: "ext-1", kind: "external" }];
+		});
+		mockSetExternalPeers.mockImplementation(() => order.push("setExternalPeers"));
 		mockRegister.mockImplementation(() => order.push("register"));
 		mockMessagingInit.mockImplementation(() => order.push("messaging.init"));
 		mockReconcilerStart.mockImplementation(() => order.push("reconciler.start"));
 
 		await fire(pi, "session_start", {}, makeMockCtx());
 
-		expect(order).toEqual(["register", "messaging.init", "reconciler.start"]);
+		expect(externalRegistrarMocks.load).toHaveBeenCalledWith({ workspaceRoot: "/tmp/project" });
+		expect(order).toEqual([
+			"loadExternalAgents",
+			"setExternalPeers",
+			"register",
+			"messaging.init",
+			"reconciler.start",
+		]);
 	});
 
 	it("starts UI when ctx.hasUI is true", async () => {

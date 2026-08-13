@@ -2,16 +2,11 @@
 
 import type { ToolResult } from "../../../lib/tool-result.js";
 import type { TeamStateManager } from "./state.js";
+import { resolveTeamResultRoot } from "./team-paths.js";
 import { writeTeamRunResultArtifact, type TeamRunResultArtifactMetadata } from "./team-result-artifact.js";
 
 /** Result shape for team_run that includes the generated run id. */
 export type TeamRunToolResult = ToolResult & { details: { runId: string } };
-
-/** Resolve the state root directory for team-run result artifacts from the process environment. */
-const TEAM_RUN_STATE_ENV = "COAS_" + "HOME";
-export function resolveTeamRunStateRoot(): string {
-	return process.env[TEAM_RUN_STATE_ENV] ?? "";
-}
 
 /** Coerce a generic handler result into a team_run result carrying runId. */
 export function coerceTeamRunResult(result: ToolResult, runId: string): TeamRunToolResult {
@@ -22,23 +17,32 @@ interface CompleteRunArgs {
 	runId: string;
 	teamId: string;
 	startedAt: number;
-	text: string;
-	stopped: boolean;
-	reason: string;
+	result: ToolResult;
 	stateManager: TeamStateManager;
-	stateRoot: string;
+	cwd: string;
+	resultRoot?: string;
 }
 
 /** Write the result artifact and emit the terminal state event. */
 export async function completeRun(args: CompleteRunArgs): Promise<{ path: string; status: "stopped" | "completed" }> {
-	const status = args.stopped ? "stopped" : "completed";
+	const text = args.result.content[0]?.text ?? "";
+	const stopped = args.stateManager.isStopRequested(args.runId) || args.result.details.stopped === true;
+	const reason = typeof args.result.details.reason === "string"
+		? args.result.details.reason
+		: args.stateManager.stopReason(args.runId) ?? "stop requested";
+	const status = stopped ? "stopped" : "completed";
 	const metadata: TeamRunResultArtifactMetadata = { team: args.teamId, status, ok: true };
-	const artifact = await writeTeamRunResultArtifact(args.runId, args.text, metadata, args.stateRoot);
+	const artifact = await writeTeamRunResultArtifact(
+		args.runId,
+		text,
+		metadata,
+		args.resultRoot ?? resolveTeamResultRoot(args.cwd),
+	);
 	const durationMs = Date.now() - args.startedAt;
-	if (args.stopped) {
-		args.stateManager.recordRunStopped(args.runId, durationMs, args.reason, args.text, artifact.path);
+	if (stopped) {
+		args.stateManager.recordRunStopped(args.runId, durationMs, reason, text, artifact.path);
 	} else {
-		args.stateManager.recordRunCompleted(args.runId, durationMs, args.text, artifact.path);
+		args.stateManager.recordRunCompleted(args.runId, durationMs, text, artifact.path);
 	}
 	return { path: artifact.path, status };
 }

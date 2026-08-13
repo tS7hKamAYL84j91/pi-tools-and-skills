@@ -1,9 +1,7 @@
 /**
  * Continuation run-state persistence for the pi-coas internal scheduler.
  */
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { writeFileAtomic } from "../../lib/file-persistence.js";
+import { ConfinedStore } from "./store.js";
 import type { CoasConfig, ScheduleEntry } from "./types.js";
 import { scheduleRunsPath } from "./schedules.js";
 
@@ -40,10 +38,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function loadRunState(path: string): Promise<ScheduleRunState | undefined> {
-	if (!existsSync(path)) return undefined;
+export async function loadRunState(config: CoasConfig, taskId: string): Promise<ScheduleRunState | undefined> {
+	const store = await ConfinedStore.openCoasHome(config);
+	if (!store) return undefined;
+	const raw = await store.readOptionalFile(scheduleRunsPath(config, taskId));
+	if (raw === undefined) return undefined;
 	try {
-		const raw = await readFile(path, "utf8");
 		const parsed = JSON.parse(raw) as unknown;
 		if (!isRecord(parsed)) return undefined;
 		if (
@@ -72,8 +72,9 @@ export async function loadRunState(path: string): Promise<ScheduleRunState | und
 	}
 }
 
-export async function saveRunState(path: string, state: ScheduleRunState): Promise<void> {
-	await writeFileAtomic(path, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+export async function saveRunState(config: CoasConfig, taskId: string, state: ScheduleRunState): Promise<void> {
+	const store = await ConfinedStore.createCoasHome(config);
+	await store.writePrivateFileAtomic(scheduleRunsPath(config, taskId), `${JSON.stringify(state, null, 2)}\n`);
 }
 
 export async function readPriorSummary(
@@ -82,8 +83,7 @@ export async function readPriorSummary(
 	now: Date,
 ): Promise<PriorSummary | undefined> {
 	if (!schedule.continuation) return undefined;
-	const path = scheduleRunsPath(config, schedule.taskId);
-	const state = await loadRunState(path);
+	const state = await loadRunState(config, schedule.taskId);
 	if (!state || state.status !== "complete" || !state.summary) return undefined;
 
 	const nowMs = now.getTime();
@@ -105,7 +105,7 @@ export async function countContinuationReady(config: CoasConfig, schedules: Sche
 	let ready = 0;
 	for (const schedule of schedules) {
 		if (!schedule.continuation) continue;
-		const state = await loadRunState(scheduleRunsPath(config, schedule.taskId));
+		const state = await loadRunState(config, schedule.taskId);
 		if (state?.status === "complete" && state.summary) ready++;
 	}
 	return ready;

@@ -13,12 +13,14 @@ import type {
 	MatrixMembershipEvent,
 	SyncStateStore,
 } from "./adapter.js";
+import { BoundedTaskSet } from "./resource-bounds.js";
 import type { MatrixConfig } from "./types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: matrix-js-sdk types loaded dynamically
 type AnySdk = any;
 
 const SYNC_TIMEOUT_MS = 30_000;
+const MAX_CALLBACK_TASKS = 8;
 
 export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private client?: AnySdk;
@@ -26,6 +28,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private callbacks?: MatrixAdapterCallbacks;
 	private syncState: SyncStateStore;
 	private pendingToken: string | null = null;
+	private readonly callbackTasks = new BoundedTaskSet(MAX_CALLBACK_TASKS);
 
 	crypto = null;
 
@@ -34,6 +37,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	}
 
 	async start(config: MatrixConfig, callbacks: MatrixAdapterCallbacks): Promise<void> {
+		this.callbackTasks.open();
 		this.callbacks = callbacks;
 		const sdk = await this.loadSdk();
 
@@ -60,12 +64,15 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	}
 
 	async stop(): Promise<void> {
-		if (!this.client) return;
-		try {
-			await this.client.stopClient();
-		} catch {
-			/* non-fatal */
+		const drainCallbacks = this.callbackTasks.closeAndDrain();
+		if (this.client) {
+			try {
+				await this.client.stopClient();
+			} catch {
+				/* non-fatal */
+			}
 		}
+		await drainCallbacks;
 		this.client = undefined;
 		this.connected = false;
 		this.callbacks?.onConnectionChange?.(false);
@@ -149,7 +156,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 				userId: config.userId,
 				membership,
 			};
-			void callbacks.onMembership(normalised);
+			this.runCallback("membership", callbacks, () => callbacks.onMembership(normalised));
 		});
 	}
 
@@ -173,8 +180,25 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 				isHistorical: false,
 				isLocalEcho,
 			};
-			void callbacks.onMessage(normalised);
+			this.runCallback("timeline", callbacks, () => callbacks.onMessage(normalised));
 		});
+	}
+
+	private runCallback(
+		kind: "membership" | "timeline",
+		callbacks: MatrixAdapterCallbacks,
+		operation: () => void | Promise<void>,
+	): void {
+		const accepted = this.callbackTasks.tryRun(
+			operation,
+			(error) => callbacks.onLog?.(
+				`Matrix ${kind} callback failed: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			),
+		);
+		if (!accepted) {
+			callbacks.onLog?.(`Matrix ${kind} event dropped: callback work limit reached.`, "warning");
+		}
 	}
 
 	private waitForPrepared(sdk: AnySdk, timeoutMs: number): Promise<void> {

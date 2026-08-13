@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 import { RuntimeControlPlane, type RuntimeEntityRef } from "../../../lib/runtime-control-plane.js";
 import { ok } from "../../../lib/tool-result.js";
 import type { TeamRunToolResult } from "./team-run-completion.js";
-import { completeRun, coerceTeamRunResult, resolveTeamRunStateRoot } from "./team-run-completion.js";
+import { completeRun, coerceTeamRunResult } from "./team-run-completion.js";
 
 import type { TeamStateManager } from "./state.js";
 import type { TeamRunNodeRecord, TeamRunRecord, TeamStopInput } from "./types.js";
@@ -181,6 +181,7 @@ export async function runTeam(args: {
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
 	runtime?: RuntimeControlPlane;
+	resultRoot?: string;
 }): Promise<TeamRunToolResult> {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
 	const handler = getTeamHandler(team);
@@ -208,21 +209,14 @@ export async function runTeam(args: {
 			runId,
 			signal: controller.signal,
 		});
-		const text = result.content[0]?.text;
-		const stopped = args.stateManager.isStopRequested(runId) || result.details.stopped === true;
-		const reason = typeof result.details.reason === "string"
-			? result.details.reason
-			: args.stateManager.stopReason(runId) ?? "stop requested";
-		const stateRoot = resolveTeamRunStateRoot();
 		const completion = await completeRun({
 			runId,
 			teamId: team.id,
 			startedAt,
-			text: text ?? "",
-			stopped,
-			reason,
+			result,
 			stateManager: args.stateManager,
-			stateRoot,
+			cwd: args.ctx.cwd,
+			resultRoot: args.resultRoot,
 		});
 		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, completion.status);
 		return coerceTeamRunResult(result, runId);
@@ -458,7 +452,7 @@ export function registerTeamRunTool(
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {
 			if (params.async) {
-				return startTeamRunAsync({ pi, params, ctx, run: (runParams) => runTeam({ params: runParams, ctx, stateManager: registration.stateManager, runtime }) });
+				return startTeamRunAsync({ pi, params, ctx, run: (runParams, resultRoot) => runTeam({ params: runParams, ctx, stateManager: registration.stateManager, runtime, resultRoot }) });
 			}
 			try {
 				return await runTeam({ params, ctx, stateManager: registration.stateManager, runtime });

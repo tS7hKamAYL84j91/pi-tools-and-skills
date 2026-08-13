@@ -6,16 +6,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
+import { nowZ, parseBoard, sanitiseAgent, snapshotPath } from "./board.js";
 import {
 	deleteTask,
-	getTask,
 	logAppend,
 	moveTask,
-	nowZ,
-	parseBoard,
-	sanitiseAgent,
-	snapshotPath,
-} from "./board.js";
+	withBoardTransaction,
+} from "./board-transactions.js";
 import { compactIfNeeded } from "./compaction.js";
 import { exportBoardJson } from "./export.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
@@ -85,18 +82,26 @@ async function executeUnblock(
 	reason?: string,
 ): Promise<ToolResult> {
 	const resolvedReason = reason ?? "";
-	const task = await getTask(task_id);
-	if (task.col !== "blocked")
-		throw new Error(
-			`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
-		);
-	const ts = nowZ();
-	await logAppend(
-		`${ts} UNBLOCK ${task_id} ${sanitiseAgent(agent)} resolution="${resolvedReason}"`,
-	);
-	await logAppend(
-		`${ts} MOVE ${task_id} ${sanitiseAgent(agent)} from=blocked to=todo`,
-	);
+	await withBoardTransaction((board) => {
+		const task = board.tasks.get(task_id);
+		if (!task) {
+			throw new Error(`Task ${task_id} not found`);
+		}
+		if (task.col !== "blocked") {
+			throw new Error(
+				`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
+			);
+		}
+		const timestamp = nowZ();
+		const safeAgent = sanitiseAgent(agent);
+		return {
+			events: [
+				`${timestamp} UNBLOCK ${task_id} ${safeAgent} resolution="${resolvedReason}"`,
+				`${timestamp} MOVE ${task_id} ${safeAgent} from=blocked to=todo`,
+			],
+			result: undefined,
+		};
+	});
 	return ok(`Unblocked ${task_id}, moved to todo`, {
 		task_id,
 		agent,

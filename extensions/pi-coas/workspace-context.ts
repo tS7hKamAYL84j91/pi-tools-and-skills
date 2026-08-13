@@ -1,18 +1,11 @@
-/**
- * CoAS workspace CONTEXT.md read, append, and compaction helpers.
- */
+/** CoAS workspace CONTEXT.md read, append, and compaction helpers. */
 
-import { chmod, mkdir, open, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
-import { ensurePrivateDir, isoUtc } from "./store.js";
-import {
-	assertNotSymlink,
-	assertSafeWorkspaceDir,
-	resolveWorkspacePath,
-} from "./workspace-paths.js";
+import { dirname, join } from "node:path";
+import { isoUtc } from "./store-paths.js";
+import { resolveWorkspace } from "./workspace-paths.js";
 import type { CoasConfig, WorkspaceReadOptions } from "./types.js";
+import type { ConfinedStore } from "./store.js";
 
 const SUMMARY_HEAD_BYTES = 12 * 1024;
 const LARGE_CONTEXT_BYTES = 64 * 1024;
@@ -20,9 +13,7 @@ const FULL_READ_MAX_BYTES = 128 * 1024;
 const ARCHIVE_THRESHOLD_BYTES = 64 * 1024;
 
 function contextHeadings(text: string): string[] {
-	return text.split("\n")
-		.filter((line) => /^#{1,3}\s+/.test(line))
-		.slice(0, 40);
+	return text.split("\n").filter((line) => /^#{1,3}\s+/.test(line)).slice(0, 40);
 }
 
 function renderContextSummary(path: string, size: number, text: string, truncated: boolean): string {
@@ -48,19 +39,22 @@ function readSection(text: string, section: string): string | undefined {
 	if (!match || match.index === undefined) return undefined;
 	const level = match[1]?.length ?? 1;
 	const rest = text.slice(match.index + match[0].length + 1);
-	const nextPattern = new RegExp(`^#{1,${level}}\\s+`, "im");
-	const next = nextPattern.exec(rest);
+	const next = new RegExp(`^#{1,${level}}\\s+`, "im").exec(rest);
 	return `${match[0]}\n${next ? rest.slice(0, next.index) : rest}`.trimEnd();
 }
 
-async function compactContextIfNeeded(dir: string, path: string, stamp: string, latestUpdate: string): Promise<void> {
-	const info = await stat(path);
-	if (info.size <= ARCHIVE_THRESHOLD_BYTES) return;
-	const archiveDir = join(dir, "archive");
-	await ensurePrivateDir(archiveDir);
+async function compactContextIfNeeded(
+	store: ConfinedStore,
+	path: string,
+	stamp: string,
+	latestUpdate: string,
+): Promise<void> {
+	const content = await store.readRequiredFile(path);
+	if (Buffer.byteLength(content, "utf8") <= ARCHIVE_THRESHOLD_BYTES) return;
+	const archiveDir = join(dirname(path), "archive");
+	await store.ensurePrivateDir(archiveDir);
 	const archivePath = join(archiveDir, `CONTEXT.${stamp.replace(/[:]/g, "")}.md`);
-	await writeFileAtomic(archivePath, await readFile(path, "utf8"), { encoding: "utf8", mode: 0o600 });
-	await chmod(archivePath, 0o600).catch(() => undefined);
+	await store.writePrivateFileAtomic(archivePath, content);
 	const compact = [
 		"# CoAS Workspace Context (SPR)",
 		"",
@@ -77,7 +71,7 @@ async function compactContextIfNeeded(dir: string, path: string, stamp: string, 
 		`- ${stamp}: ${archivePath}`,
 		"",
 	].join("\n");
-	await writeFileAtomic(path, compact, { encoding: "utf8", mode: 0o600 });
+	await store.writePrivateFileAtomic(path, compact);
 }
 
 export async function readWorkspaceContext(
@@ -86,39 +80,33 @@ export async function readWorkspaceContext(
 	cwd: string,
 	options: WorkspaceReadOptions = {},
 ): Promise<{ path: string; text: string; mode: string; bytes: number }> {
-	const dir = resolveWorkspacePath(config, selector, cwd);
-	const path = join(dir, "CONTEXT.md");
-	await assertSafeWorkspaceDir(config, dir);
-	await assertNotSymlink(path);
-	const info = await stat(path);
+	const workspace = await resolveWorkspace(config, selector, cwd);
+	const path = join(workspace.path, "CONTEXT.md");
+	const info = await workspace.store.fileStat(path);
 	const mode = options.mode ?? "summary";
 	if (mode === "full") {
 		if (info.size > FULL_READ_MAX_BYTES) {
 			throw new Error(`CONTEXT.md is ${info.size} bytes; full reads are limited to ${FULL_READ_MAX_BYTES} bytes. Use mode=summary or mode=section.`);
 		}
-		return { path, text: await readFile(path, "utf8"), mode, bytes: info.size };
+		return { path, text: await workspace.store.readRequiredFile(path), mode, bytes: info.size };
 	}
 	if (mode === "section") {
 		if (info.size > FULL_READ_MAX_BYTES) {
 			throw new Error(`CONTEXT.md is ${info.size} bytes; section reads are limited to ${FULL_READ_MAX_BYTES} bytes until archived/compacted.`);
 		}
 		if (!options.section || options.section.trim().length === 0) throw new Error("section is required when mode=section");
-		const text = await readFile(path, "utf8");
-		const section = readSection(text, options.section.trim());
+		const section = readSection(await workspace.store.readRequiredFile(path), options.section.trim());
 		if (!section) throw new Error(`Section not found in CONTEXT.md: ${options.section}`);
 		if (Buffer.byteLength(section, "utf8") > FULL_READ_MAX_BYTES) throw new Error(`Section is too large to return safely; refine the heading: ${options.section}`);
 		return { path, text: section, mode, bytes: info.size };
 	}
-	const handle = await open(path, "r");
-	try {
-		const length = Math.min(info.size, SUMMARY_HEAD_BYTES);
-		const buffer = Buffer.alloc(length);
-		await handle.read(buffer, 0, length, 0);
-		const preview = buffer.toString("utf8");
-		return { path, text: renderContextSummary(path, info.size, preview, info.size > length), mode: "summary", bytes: info.size };
-	} finally {
-		await handle.close();
-	}
+	const preview = await workspace.store.readFilePrefix(path, SUMMARY_HEAD_BYTES);
+	return {
+		path,
+		text: renderContextSummary(path, preview.size, preview.text, preview.size > Buffer.byteLength(preview.text, "utf8")),
+		mode: "summary",
+		bytes: preview.size,
+	};
 }
 
 export async function appendWorkspaceContext(
@@ -128,17 +116,13 @@ export async function appendWorkspaceContext(
 	text: string,
 ): Promise<{ path: string; bytes: number }> {
 	if (text.trim().length === 0) throw new Error("Context update text must not be empty");
-	const dir = resolveWorkspacePath(config, selector, cwd);
-	const path = join(dir, "CONTEXT.md");
-	await assertSafeWorkspaceDir(config, dir);
-	await mkdir(dir, { recursive: true, mode: 0o700 });
-	await assertNotSymlink(path);
+	const workspace = await resolveWorkspace(config, selector, cwd);
+	const path = join(workspace.path, "CONTEXT.md");
+	await workspace.store.ensurePrivateDir(workspace.path);
 	await withFileMutationQueue(path, async () => {
 		const stamp = isoUtc();
-		await appendLogLine(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`, { encoding: "utf8", mode: 0o600 });
-		await compactContextIfNeeded(dir, path, stamp, text.trim());
-		await chmod(path, 0o600).catch(() => undefined);
+		await workspace.store.appendPrivateLog(path, `\n\n## Update ${stamp}\n\n${text.trim()}\n`);
+		await compactContextIfNeeded(workspace.store, path, stamp, text.trim());
 	});
-	const info = await stat(path);
-	return { path, bytes: info.size };
+	return { path, bytes: (await workspace.store.fileStat(path)).size };
 }

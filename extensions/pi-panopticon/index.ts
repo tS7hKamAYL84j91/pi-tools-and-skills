@@ -79,12 +79,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (event, ctx) => {
+		const externalAgents = await loadExternalAgents({ workspaceRoot: ctx.cwd });
+		registry.setExternalPeers(externalAgents);
 		registry.register(ctx);
 		operationalState.restore(ctx, event);
-		const externalAgents = await loadExternalAgents({});
-		for (const external of externalAgents) {
-			maildir.init(external.id);
-		}
 		messaging.init(ctx);
 		reconciler.start(ctx);
 		if (ctx.hasUI) {

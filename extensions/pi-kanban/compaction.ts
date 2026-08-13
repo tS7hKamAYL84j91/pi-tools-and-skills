@@ -24,6 +24,7 @@ import {
 	nowZ,
 	parseBoard,
 } from "./board.js";
+import { withBoardLock } from "./board-transactions.js";
 
 // ── Re-entrance guard ────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ interface CompactionResult {
  *                    ("compact" for manual, "auto-compact" for automatic)
  * @param triggerParam  Optional trigger reason appended as trigger=<value>
  */
-async function runCompaction(
+async function runCompactionLocked(
 	agentLabel: string,
 	triggerParam?: string,
 ): Promise<CompactionResult> {
@@ -164,6 +165,13 @@ async function runCompaction(
 	await writeFileAtomic(logPath, `${newLines.join("\n")}\n`, { encoding: "utf-8" });
 
 	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
+}
+
+async function runCompaction(
+	agentLabel: string,
+	triggerParam?: string,
+): Promise<CompactionResult> {
+	return withBoardLock(() => runCompactionLocked(agentLabel, triggerParam));
 }
 
 // ── Public entry points ──────────────────────────────────────────

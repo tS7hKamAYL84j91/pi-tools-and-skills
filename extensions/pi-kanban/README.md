@@ -1,6 +1,6 @@
 # Kanban Extension
 
-A pi extension that turns an append-only `board.log` into a kanban board with 10 model-visible tools, an auto-refreshing TUI widget, log compaction, and gradual-disclosure snapshots.
+A pi extension that turns an append-only `board.log` into a kanban board with 11 model-visible tools, an auto-refreshing TUI widget, log compaction, and gradual-disclosure snapshots.
 
 `pi-kanban` is a reusable board/tooling/event surface. It does not own cron, recurring schedules, morning briefs, state capture cadence, recurring reviews, or CoAS operational policy; those belong in `pi-coas` schedules that may call `kanban_*` tools.
 
@@ -71,7 +71,9 @@ Files written:
 
 When a task is created with `verification_required=true`, or when `KANBAN_REQUIRE_CHECK_EVIDENCE=1` is set, completion requires a `checks` array of `{command, result, exit_code}` evidence. The tool hard-blocks (throws) if evidence is missing or any `exit_code` is not `0`. The evidence is persisted on the `COMPLETE` event, in `TaskState`, and in JSON export; task detail and snapshot views render it under **Verification evidence**.
 
-This is an auditable evidence gate, not an execution verifier: the agent runs the command and reports the result. The extension does not execute arbitrary shell commands from `kanban_complete`.
+This is an auditable evidence gate, not an execution verifier: the agent runs the check and reports the result.
+
+Separately, an operator may set `KANBAN_GATE_COMMAND` before starting pi. When configured, `kanban_complete` runs that command in the active workspace and blocks completion on failure with bounded diagnostics. With no configured gate, completion behavior is unchanged. The public tool schema retains deprecated `gate_command` only as ignored compatibility input; its value is never executed and cannot select or override the trusted operator command.
 
 ## Stable Tools/Commands
 
@@ -98,7 +100,7 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 |-------------------|-------------------------------------------------|------------------------------------------------|
 | `kanban_create`   | `task_id`, `agent`, `title`, `priority`, `tags?`, `description?` | Creates in backlog. task_id must be unique T-NNN |
 | `kanban_claim`    | `task_id?`, `agent`, `model?`                   | Claims specific task, reassigns in-progress, or automatically picks highest-priority todo if task_id is omitted |
-| `kanban_complete` | `task_id`, `agent`, `duration?`                 | Marks in-progress task done                    |
+| `kanban_complete` | `task_id`, `agent`, `duration?`, `checks?`      | Marks in-progress task done; may enforce the operator-configured environment gate |
 | `kanban_block`    | `task_id`, `agent`, `reason`                    | Moves in-progress task to blocked, frees WIP   |
 | `kanban_unblock`  | `task_id`, `agent`, `reason?`                   | Moves blocked task back to todo                |
 | `kanban_move`     | `task_id`, `agent`, `to`                        | Moves between backlog and todo only            |

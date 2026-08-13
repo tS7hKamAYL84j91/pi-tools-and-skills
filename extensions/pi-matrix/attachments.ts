@@ -9,6 +9,8 @@ import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import type { InboundAttachment } from "../../lib/message-transport.js";
+import { withDownloadedMatrixMedia } from "./attachment-download.js";
+import type { AttachmentDownloadResources } from "./resource-bounds.js";
 import type { MatrixConfig } from "./types.js";
 
 const UNSAFE_FILENAME_RE = /[^\w .@()+,=-]/g;
@@ -47,6 +49,16 @@ export interface MatrixDownloadClient {
 	crypto?: {
 		decryptMedia(file: MatrixEncryptedFile): Promise<Buffer>;
 	} | null;
+}
+
+interface ExtractMatrixAttachmentOptions {
+	config: MatrixConfig;
+	client: MatrixDownloadClient;
+	roomId: string;
+	event: MatrixRoomMessageEvent;
+	downloadResources?: AttachmentDownloadResources;
+	lifecycleSignal?: AbortSignal;
+	timeoutMs?: number;
 }
 
 export function isMatrixMediaMsgtype(msgtype: string): msgtype is MatrixMediaMsgtype {
@@ -140,17 +152,28 @@ async function writeAttachment(config: MatrixConfig, attachment: InboundAttachme
 	return localPath;
 }
 
-export async function extractMatrixAttachment(
+export function extractMatrixAttachment(
+	options: ExtractMatrixAttachmentOptions,
+): Promise<InboundAttachment | null>;
+export function extractMatrixAttachment(
 	config: MatrixConfig,
 	client: MatrixDownloadClient,
 	roomId: string,
 	event: MatrixRoomMessageEvent,
+): Promise<InboundAttachment | null>;
+export async function extractMatrixAttachment(
+	optionsOrConfig: ExtractMatrixAttachmentOptions | MatrixConfig,
+	client?: MatrixDownloadClient,
+	roomId?: string,
+	event?: MatrixRoomMessageEvent,
 ): Promise<InboundAttachment | null> {
-	const content = event.content;
+	const options = resolveExtractionOptions(optionsOrConfig, client, roomId, event);
+	const { config, client: downloadClient, downloadResources, lifecycleSignal, timeoutMs } = options;
+	const content = options.event.content;
 	const msgtype = content?.msgtype;
 	if (!content || !msgtype || !isMatrixMediaMsgtype(msgtype)) return null;
 
-	const attachment = baseAttachment(roomId, event, content, msgtype);
+	const attachment = baseAttachment(options.roomId, options.event, content, msgtype);
 	if (!attachment.mxcUrl) {
 		return {
 			...attachment,
@@ -179,7 +202,9 @@ export async function extractMatrixAttachment(
 	}
 
 	if (attachment.encrypted) {
-		const cryptoStatus = client.crypto?.decryptMedia ? "SDK crypto is available, but" : "SDK crypto is unavailable and";
+		const cryptoStatus = downloadClient.crypto?.decryptMedia
+			? "SDK crypto is available, but"
+			: "SDK crypto is unavailable and";
 		return {
 			...attachment,
 			error: attachmentError(
@@ -191,32 +216,39 @@ export async function extractMatrixAttachment(
 	}
 
 	try {
-		const data = await downloadUnencryptedMedia(config, attachment.mxcUrl);
-		const mimeType = attachment.mimeType ?? data.contentType;
-		if (!isAllowedMimeType(data.contentType, config.allowedMimePrefixes)) {
-			const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
-			return {
-				...failedAttachment,
-				error: attachmentError(
-					failedAttachment,
-					`MIME type not allowed (${data.contentType ?? "missing"})`,
-					"update pi-matrix.allowedMimePrefixes or ask for an allowed file type",
-				),
-			};
-		}
-		if (data.buffer.length > config.maxAttachmentBytes) {
-			const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
-			return {
-				...failedAttachment,
-				error: attachmentError(
-					failedAttachment,
-					`size exceeds maxAttachmentBytes (${data.buffer.length} > ${config.maxAttachmentBytes})`,
-					`ask the sender to resend below ${formatBytes(config.maxAttachmentBytes)} or raise pi-matrix.maxAttachmentBytes`,
-				),
-			};
-		}
-		const localPath = await writeAttachment(config, attachment, data.buffer);
-		return { ...attachment, mimeType, sizeBytes: data.buffer.length, localPath };
+		return await withDownloadedMatrixMedia({
+			config,
+			mxcUrl: attachment.mxcUrl,
+			downloadResources,
+			lifecycleSignal,
+			timeoutMs,
+		}, async (data) => {
+			const mimeType = attachment.mimeType ?? data.contentType;
+			if (!isAllowedMimeType(data.contentType, config.allowedMimePrefixes)) {
+				const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
+				return {
+					...failedAttachment,
+					error: attachmentError(
+						failedAttachment,
+						`MIME type not allowed (${data.contentType ?? "missing"})`,
+						"update pi-matrix.allowedMimePrefixes or ask for an allowed file type",
+					),
+				};
+			}
+			if (data.buffer.length > config.maxAttachmentBytes) {
+				const failedAttachment = { ...attachment, mimeType, sizeBytes: data.buffer.length };
+				return {
+					...failedAttachment,
+					error: attachmentError(
+						failedAttachment,
+						`size exceeds maxAttachmentBytes (${data.buffer.length} > ${config.maxAttachmentBytes})`,
+						`ask the sender to resend below ${formatBytes(config.maxAttachmentBytes)} or raise pi-matrix.maxAttachmentBytes`,
+					),
+				};
+			}
+			const localPath = await writeAttachment(config, attachment, data.buffer);
+			return { ...attachment, mimeType, sizeBytes: data.buffer.length, localPath };
+		});
 	} catch (err) {
 		return {
 			...attachment,
@@ -229,51 +261,15 @@ export async function extractMatrixAttachment(
 	}
 }
 
-async function downloadUnencryptedMedia(
-	config: MatrixConfig,
-	mxcUrl: string,
-): Promise<{ buffer: Buffer; contentType?: string }> {
-	const mediaUrl = matrixMediaDownloadUrl(config.homeserver, mxcUrl);
-	const response = await fetch(mediaUrl, {
-		headers: { Authorization: `Bearer ${config.accessToken}` },
-	});
-	if (!response.ok) throw new Error(`Matrix media download failed: HTTP ${response.status}`);
-
-	const declaredLength = Number(response.headers.get("content-length"));
-	if (Number.isFinite(declaredLength) && declaredLength > config.maxAttachmentBytes) {
-		throw new Error(`Attachment exceeds maxAttachmentBytes (${declaredLength} > ${config.maxAttachmentBytes}).`);
+function resolveExtractionOptions(
+	optionsOrConfig: ExtractMatrixAttachmentOptions | MatrixConfig,
+	client?: MatrixDownloadClient,
+	roomId?: string,
+	event?: MatrixRoomMessageEvent,
+): ExtractMatrixAttachmentOptions {
+	if ("config" in optionsOrConfig) return optionsOrConfig;
+	if (client === undefined || roomId === undefined || event === undefined) {
+		throw new Error("Matrix attachment extraction requires a client, room ID, and event.");
 	}
-	if (!response.body) throw new Error("Matrix media download response did not include a body.");
-
-	const chunks: Buffer[] = [];
-	let totalBytes = 0;
-	const reader = response.body.getReader();
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		totalBytes += value.byteLength;
-		if (totalBytes > config.maxAttachmentBytes) {
-			throw new Error(`Attachment exceeds maxAttachmentBytes (${totalBytes} > ${config.maxAttachmentBytes}).`);
-		}
-		chunks.push(Buffer.from(value));
-	}
-
-	return {
-		buffer: Buffer.concat(chunks, totalBytes),
-		contentType: response.headers.get("content-type") ?? undefined,
-	};
-}
-
-function matrixMediaDownloadUrl(homeserver: string, mxcUrl: string): string {
-	if (!mxcUrl.toLowerCase().startsWith("mxc://")) throw new Error("Matrix media URL must start with mxc://.");
-	const withoutScheme = mxcUrl.slice("mxc://".length);
-	const separatorIndex = withoutScheme.indexOf("/");
-	if (separatorIndex <= 0 || separatorIndex === withoutScheme.length - 1) {
-		throw new Error("Matrix media URL must include a server name and media id.");
-	}
-	const serverName = withoutScheme.slice(0, separatorIndex);
-	const mediaId = withoutScheme.slice(separatorIndex + 1).split("/")[0];
-	if (!mediaId) throw new Error("Matrix media URL must include a media id.");
-	const baseUrl = homeserver.replace(/\/+$/, "");
-	return `${baseUrl}/_matrix/client/v1/media/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}?allow_remote=true`;
+	return { config: optionsOrConfig, client, roomId, event };
 }

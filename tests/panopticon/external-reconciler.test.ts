@@ -18,6 +18,7 @@ function makeRegistry(selfId: string, peers: AgentRecord[]): Registry {
 		setName: vi.fn(),
 		updatePendingMessages: vi.fn(),
 		isRootSession: vi.fn(() => true),
+		setExternalPeers: vi.fn(),
 		readAllPeers: vi.fn(() => peers),
 		flush: vi.fn(),
 	};

@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -24,9 +27,9 @@ function makeState(
 	};
 }
 
-function makeCtx(entries: unknown[] = []) {
+function makeCtx(entries: unknown[] = [], cwd = "/tmp/project") {
 	return {
-		cwd: "/tmp/project",
+		cwd,
 		sessionManager: {
 			getEntries: () => entries,
 			getSessionFile: () => "/tmp/session.jsonl",
@@ -108,5 +111,25 @@ describe("OperationalStateStore", () => {
 
 		expect(store.getState()?.workspaceId).toBe("matrix:jim");
 		expect(appendEntry).toHaveBeenCalled();
+	});
+
+	it("does not store a Kanban snapshot path", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "panopticon-state-"));
+		try {
+			await mkdir(join(cwd, "journals"));
+			await mkdir(join(cwd, "pi-kanban"));
+			await writeFile(join(cwd, "pi-kanban", "snapshot.md"), "private state", "utf8");
+			const store = new OperationalStateStore({ appendEntry: vi.fn() } as never);
+
+			store.restore(makeCtx([], cwd) as never);
+
+			expect(store.getState()?.linkedPaths).toEqual({
+				cwd,
+				sessionFile: "/tmp/session.jsonl",
+				journalDir: join(cwd, "journals"),
+			});
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
 	});
 });

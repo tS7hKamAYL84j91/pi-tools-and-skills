@@ -1,12 +1,13 @@
 /**
  * Direct behavior tests for the pi-goal extension.
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
+import { createFileGoal, createFileTodoGoal } from "../../extensions/pi-goal/goal-persist.js";
 import { createTextGoal, saveGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
 
 interface RegisteredCommand {
@@ -117,6 +118,24 @@ describe("pi-goal extension", () => {
 		await expect(readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
+	it("/goal file <path> awaits file-goal creation before persistence", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		await writeFile(join(tempDir, "goal.txt"), "Ship the file-backed goal.", "utf8");
+
+		await runGoalCommand(pi, "file goal.txt", ctx);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
+			objective: string;
+			sourcePath: string;
+		};
+		expect(persisted).toMatchObject({
+			objective: "Complete the work described by goal.txt",
+			sourcePath: "goal.txt",
+		});
+	});
+
 	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
@@ -136,6 +155,34 @@ describe("pi-goal extension", () => {
 		const todo = await readFile(join(tempDir, ".pi/goal", "TODO.md"), "utf8");
 		expect(persisted).toMatchObject({ runActive: false, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
+	});
+
+	it("rejects direct goal source symlinks that escape the project", async () => {
+		const outside = await mkdtemp(join(tmpdir(), "pi-goal-outside-"));
+		try {
+			await writeFile(join(outside, "secret.txt"), "outside content", "utf8");
+			await symlink(join(outside, "secret.txt"), join(tempDir, "goal-link.txt"));
+
+			await expect(createFileGoal(tempDir, "goal-link.txt"))
+				.rejects.toThrow("Goal source must not contain symlink components");
+		} finally {
+			await rm(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects intermediate goal source symlinks before reading outside content", async () => {
+		const outside = await mkdtemp(join(tmpdir(), "pi-goal-outside-dir-"));
+		try {
+			await mkdir(join(outside, "nested"));
+			await writeFile(join(outside, "nested", "secret.txt"), "outside content", "utf8");
+			await symlink(join(outside, "nested"), join(tempDir, "linked-dir"));
+
+			await expect(createFileTodoGoal(tempDir, "linked-dir/secret.txt"))
+				.rejects.toThrow("Goal source must not contain symlink components");
+			await expect(readFile(join(tempDir, ".pi", "goal", "TODO.md"), "utf8")).rejects.toThrow();
+		} finally {
+			await rm(outside, { recursive: true, force: true });
+		}
 	});
 
 	it("/goal stop shuts down the active run immediately", async () => {

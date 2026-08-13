@@ -27,7 +27,11 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 	{
 		owner: "pi-kanban",
 		label: "Kanban state",
-		patterns: [/["'`]pi-kanban[\\/]/, /\bboard\.log\b/],
+		patterns: [
+			/["'`]pi-kanban[\\/]/,
+			/(?:join|resolve)\([^)]*["'`]pi-kanban["'`]/,
+			/\bboard\.log\b/,
+		],
 	},
 	{
 		owner: "pi-matrix",

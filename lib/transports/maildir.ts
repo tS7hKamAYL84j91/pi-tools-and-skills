@@ -18,11 +18,20 @@ import {
 	inboxPruneCur,
 	inboxReadNew,
 	inboxPaths,
+	ensurePiInbox,
 } from "./maildir-inbox.js";
 
 class MaildirTransport implements MessageTransport {
 	async send(peer: AgentRecord, from: string, message: string): Promise<DeliveryResult> {
-		return durableWrite(peer.id, from, message, peer.mailboxPath);
+		if (peer.kind === "external" && !peer.mailboxPath) {
+			return {
+				accepted: false,
+				immediate: false,
+				error: `External agent ${peer.id} has no mailbox path`,
+			};
+		}
+		const mailboxPath = peer.kind === "external" ? peer.mailboxPath : undefined;
+		return durableWrite(peer.id, from, message, mailboxPath);
 	}
 
 	receive(agentId: string, mailboxPath?: string): InboundMessage[] {
@@ -41,9 +50,7 @@ class MaildirTransport implements MessageTransport {
 	}
 
 	init(agentId: string): void {
-		// For external records the caller ensures the mailbox separately;
-		// this method remains compatible with the MessageTransport interface.
-		assertSafeAgentId(agentId);
+		ensurePiInbox(agentId);
 	}
 
 	pendingCount(agentId: string, mailboxPath?: string): number {
@@ -70,9 +77,6 @@ class MaildirTransport implements MessageTransport {
 		}
 	}
 }
-
-// Re-export helper that callers (including external registrar) need for record setup.
-export { ensureInboxForRecord } from "./maildir-inbox.js";
 
 /** Create a fresh instance — use for tests and separate-process scripts. */
 export function createMaildirTransport(): MessageTransport {

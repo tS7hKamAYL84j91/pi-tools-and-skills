@@ -1,18 +1,16 @@
 /**
  * Maildir inbox path helpers and read/write primitives.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { REGISTRY_DIR, ensureRegistryDir } from "../agent-registry.js";
-import type { AgentRecord } from "../agent-registry.js";
 import {
 	assertPrivateFileTarget,
 	ensurePrivateDirectory,
 	ensurePrivateFileForRead,
 	writeNewPrivateFileSync,
 } from "../private-local-mode.js";
-import { externalMailboxPath } from "./external-mailbox.js";
 import type { DeliveryResult, InboundMessage } from "../message-transport.js";
 
 export function assertSafeAgentId(agentId: string): void {
@@ -31,24 +29,9 @@ export function inboxPaths(agentId: string, mailboxPath?: string) {
 	return { base, tmp: join(base, "tmp"), new: join(base, "new"), cur: join(base, "cur") };
 }
 
-export function ensureInboxForRecord(record: AgentRecord): string {
-	if (record.kind === "external") {
-		return ensureExternalMailboxSync(record.id, record.mailboxPath);
-	}
-	return ensurePiInbox(record.id);
-}
-
-function ensureExternalMailboxSync(agentId: string, mailboxPath?: string): string {
-	const base = mailboxPath ? resolve(mailboxPath) : externalMailboxPath(agentId);
-	for (const dir of [base, join(base, "tmp"), join(base, "new"), join(base, "cur")]) {
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true, mode: 0o700 });
-		}
-	}
-	return base;
-}
-
-function ensurePiInbox(agentId: string): string {
+/** Ensure the volatile Maildir inbox used by a pi agent. */
+export function ensurePiInbox(agentId: string): string {
+	assertSafeAgentId(agentId);
 	ensureRegistryDir();
 	const paths = inboxPaths(agentId);
 	const agentDir = join(REGISTRY_DIR, agentId);

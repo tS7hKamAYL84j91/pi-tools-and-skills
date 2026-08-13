@@ -1,18 +1,6 @@
 /**
- * Agent Health Assessment Module
- *
- * Provides structured agent health monitoring with sleep-aware stall
- * detection and extended status taxonomy.
- *
- * Implements:
- * - T-135: agent_status tool (structured health API)
- * - T-136: Sleep-aware stall detection
- * - T-137: Extended status taxonomy (active/stalled/sleeping/terminated/api_error/blocked/waiting)
- * - T-138: urgent nudge tool removed; use agent_send
- *
- * The health assessment is stateful — stall tracking uses an in-memory
- * Map that accumulates across calls. Call agent_status periodically
- * for stall detection to work.
+ * Structured agent health with sleep-aware stall detection.
+ * Stall tracking is stateful across assessments.
  */
 
 import { createHash } from "node:crypto";
@@ -140,10 +128,25 @@ export function assessHealth(
 	threshold: number = DEFAULT_STALL_THRESHOLD,
 ): AgentHealth {
 	const now = Date.now();
-	const alive = isPidAlive(record.pid);
 	const heartbeatAge = now - record.heartbeat;
-	const sock = agentSocketPath(record.id);
 
+	if (record.kind === "external") {
+		stallTracker.delete(record.id);
+		return {
+			name: record.name,
+			pid: record.pid,
+			alive: true,
+			status: record.status === "blocked" ? "blocked" : "waiting",
+			heartbeatAge,
+			stallCycles: 0,
+			model: record.model,
+			pendingMessages: record.pendingMessages ?? 0,
+			socket: record.mailboxPath ?? agentSocketPath(record.id),
+		};
+	}
+
+	const alive = isPidAlive(record.pid);
+	const sock = agentSocketPath(record.id);
 	const health: AgentHealth = {
 		name: record.name,
 		pid: record.pid,
@@ -291,8 +294,6 @@ export function setupHealth(
 	listMode: AgentListModeStore,
 ): HealthModule {
 	const stallTracker = new Map<string, StallState>();
-
-
 
 	// ── T-135: agent_status tool ───────────────────────────────
 

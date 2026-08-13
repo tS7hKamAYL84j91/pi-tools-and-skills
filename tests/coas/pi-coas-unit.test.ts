@@ -2,11 +2,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../../extensions/pi-coas/format.js";
 import { resolveCoasConfig, resolveCoasConfigForCwd } from "../../extensions/pi-coas/config.js";
-import { formatCoasStatusSlot } from "../../extensions/pi-coas/lifecycle.js";
-import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store.js";
+import { formatCoasStatusSlot, registerCoasLifecycle } from "../../extensions/pi-coas/lifecycle.js";
+import { assertSafeId, formatEnv, parseEnv, pathInside, slugify, workspaceIdFromRoom } from "../../extensions/pi-coas/store-paths.js";
 import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } from "../../extensions/pi-coas/scheduler.js";
 import { addSchedule, validateCronExpr, formatScheduleList, renderInternalSchedulePlan } from "../../extensions/pi-coas/schedules.js";
 import { coasStatus } from "../../extensions/pi-coas/status.js";
@@ -274,6 +274,32 @@ describe("workspaces", () => {
 });
 
 describe("lifecycle", () => {
+	it("awaits scheduler stop before clearing shutdown status", async () => {
+		let releaseStop: (() => void) | undefined;
+		const stopPending = new Promise<void>((resolve) => {
+			releaseStop = resolve;
+		});
+		const handlers = new Map<string, (event: unknown, ctx: { ui: { setStatus: (key: string, value: string | undefined) => void } }) => Promise<unknown>>();
+		const setStatus = vi.fn();
+		const stop = vi.fn(() => stopPending);
+		registerCoasLifecycle({
+			on(event: string, handler: (event: unknown, ctx: { ui: { setStatus: (key: string, value: string | undefined) => void } }) => Promise<unknown>) {
+				handlers.set(event, handler);
+			},
+		} as never, { stop } as never);
+		const shutdown = handlers.get("session_shutdown");
+		if (!shutdown) throw new Error("session_shutdown handler was not registered");
+
+		const shutdownPending = shutdown({}, { ui: { setStatus } });
+		await Promise.resolve();
+		expect(stop).toHaveBeenCalledOnce();
+		expect(setStatus).not.toHaveBeenCalled();
+
+		releaseStop?.();
+		await shutdownPending;
+		expect(setStatus).toHaveBeenCalledWith("coas", undefined);
+	});
+
 	describe("formatCoasStatusSlot", () => {
 		it("uses extension-prefixed status text", () => {
 			expect(formatCoasStatusSlot()).toBe("coas: on ✓");
@@ -516,7 +542,7 @@ describe("schedules", () => {
 	});
 
 	describe("CoasInternalScheduler", () => {
-		it("clears runtime state on stop", () => {
+		it("clears runtime state on stop", async () => {
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
 				getSessionName() {
@@ -525,7 +551,7 @@ describe("schedules", () => {
 			} as never);
 			scheduler.start({ coasHome: join(tmpdir(), "missing-coas-home") });
 
-			scheduler.stop();
+			await scheduler.stop();
 
 			expect(scheduler.snapshot()).toEqual({
 				running: false,
@@ -655,7 +681,7 @@ describe("schedules", () => {
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
 				expect(scheduler.snapshot().queued).toBe(1);
 
-				scheduler.stop();
+				await scheduler.stop();
 
 				expect(scheduler.snapshot()).toEqual({
 					running: false,

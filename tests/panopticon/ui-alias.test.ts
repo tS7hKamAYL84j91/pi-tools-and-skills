@@ -26,6 +26,7 @@ function makeRegistry(): Registry {
 		setTask: vi.fn(),
 		setName: vi.fn(),
 		updatePendingMessages: vi.fn(),
+		setExternalPeers: vi.fn(),
 		readAllPeers: vi.fn(() => []),
 		flush: vi.fn(),
 		isRootSession: vi.fn(() => true),

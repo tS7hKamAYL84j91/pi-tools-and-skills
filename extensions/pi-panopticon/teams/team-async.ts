@@ -6,20 +6,22 @@ import { TEAM_STATUS_KEY } from "./team-handler-shared.js";
 import type { TeamRunInput } from "./team-handlers.js";
 
 import { readTeamRunResultArtifact } from "./team-result-artifact.js";
-import { resolveTeamRunStateRoot } from "./team-run-completion.js";
+import { resolveTeamResultRoot } from "./team-paths.js";
 
 /** Starts a team run and delivers its terminal result using pi follow-up semantics. */
 export function startTeamRunAsync(args: {
 	pi: Pick<ExtensionAPI, "sendUserMessage">;
 	params: TeamRunInput;
 	ctx: ExtensionContext;
-	run: (params: TeamRunInput) => Promise<import("./team-run-completion.js").TeamRunToolResult>;
+	resultRoot?: string;
+	run: (params: TeamRunInput, resultRoot: string) => Promise<import("./team-run-completion.js").TeamRunToolResult>;
 }): ToolResult {
-	void args.run({ ...args.params, async: undefined })
+	const resultRoot = args.resultRoot ?? resolveTeamResultRoot(args.ctx.cwd);
+	void args.run({ ...args.params, async: undefined }, resultRoot)
 		.then(async (result) => {
 			const text = result.content.map((entry) => entry.text).join("\n");
 			const runId = result.details.runId;
-			const artifact = await readTeamRunResultArtifact(runId, resolveTeamRunStateRoot());
+			const artifact = await readTeamRunResultArtifact(runId, resultRoot);
 			if (artifact) {
 				args.pi.sendUserMessage(`[Team "${args.params.id}" async result]\n\n${artifact.result}`, { deliverAs: "followUp" });
 				return;

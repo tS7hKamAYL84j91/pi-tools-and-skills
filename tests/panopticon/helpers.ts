@@ -31,6 +31,7 @@ export function makeRegistry(self: AgentRecord | undefined, peers: AgentRecord[]
 		setTask: vi.fn(),
 		setName: vi.fn(),
 		updatePendingMessages: vi.fn(),
+		setExternalPeers: vi.fn(),
 		readAllPeers: vi.fn(() => peers),
 		flush: vi.fn(),
 		isRootSession: vi.fn(() => true),

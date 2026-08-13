@@ -9,7 +9,7 @@ interface SwarmModule {
 	shutdown(): Promise<void>;
 }
 
-/** Registers aliases without constructing the retired standalone SwarmRunner. */
+/** Registers legacy aliases through the canonical Teams lifecycle only. */
 export default function setupSwarm(pi: ExtensionAPI, teams: TeamsFacade): SwarmModule {
 	registerSwarmTools(pi, { teams });
 	registerSwarmCommand(pi, teams);

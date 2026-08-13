@@ -1,10 +1,9 @@
 /** Durable approval-inbox claim-check artifacts for gated CoAS runs. */
 
-import { existsSync } from "node:fs";
-import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { writeFileAtomic } from "../../lib/file-persistence.js";
-import { assertSafeId, ensurePrivateDir, isoUtc } from "./store.js";
+import { withAdvisoryLock } from "../../lib/file-lock.js";
+import { ConfinedStore } from "./store.js";
+import { assertSafeId, isoUtc } from "./store-paths.js";
 import type { CoasConfig } from "./types.js";
 
 const INBOX_DIR = "schedule-runs/awaiting-approval";
@@ -73,17 +72,23 @@ function parseArtifact(value: unknown, requestId: string): ApprovalArtifact | un
 }
 
 export async function readApprovalArtifact(config: CoasConfig, requestId: string): Promise<ApprovalArtifact | undefined> {
+	const store = await ConfinedStore.openCoasHome(config);
+	if (!store) return undefined;
+	const raw = await store.readOptionalFile(approvalArtifactPath(config, requestId));
+	if (raw === undefined) return undefined;
 	try {
-		return parseArtifact(JSON.parse(await readFile(approvalArtifactPath(config, requestId), "utf8")) as unknown, requestId);
+		return parseArtifact(JSON.parse(raw) as unknown, requestId);
 	} catch {
 		return undefined;
 	}
 }
 
 export async function writeApprovalArtifact(config: CoasConfig, artifact: ApprovalArtifact): Promise<void> {
-	const path = approvalArtifactPath(config, artifact.requestId);
-	await ensurePrivateDir(join(config.coasHome, INBOX_DIR));
-	await writeFileAtomic(path, `${JSON.stringify(artifact, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+	const store = await ConfinedStore.createCoasHome(config);
+	await store.writePrivateFileAtomic(
+		approvalArtifactPath(config, artifact.requestId),
+		`${JSON.stringify(artifact, null, 2)}\n`,
+	);
 }
 
 interface ApprovalRequest {
@@ -134,13 +139,15 @@ export async function parkApproval(request: ApprovalRequest): Promise<ApprovalAr
 
 async function decide(config: CoasConfig, requestId: string, status: ApprovalStatus, decision?: string): Promise<ApprovalArtifact> {
 	if (!isPrincipal()) throw new Error("Approval decisions require principal authority");
-	const current = await readApprovalArtifact(config, requestId);
-	if (!current) throw new Error(`Unknown approval request: ${requestId}`);
-	if (current.status === "completed" || current.status === "rejected" || current.status === "deferred" || (current.status === "approved" && status !== "approved")) return current;
-	if (current.status === status) return current;
-	const next: ApprovalArtifact = { ...current, status, updatedAt: isoUtc(), ...(decision ? { decision: sanitizeText(decision, 500) } : {}) };
-	await writeApprovalArtifact(config, next);
-	return next;
+	return withAdvisoryLock(approvalArtifactPath(config, requestId), async () => {
+		const current = await readApprovalArtifact(config, requestId);
+		if (!current) throw new Error(`Unknown approval request: ${requestId}`);
+		if (current.status === "completed" || current.status === "rejected" || current.status === "deferred" || (current.status === "approved" && status !== "approved")) return current;
+		if (current.status === status) return current;
+		const next: ApprovalArtifact = { ...current, status, updatedAt: isoUtc(), ...(decision ? { decision: sanitizeText(decision, 500) } : {}) };
+		await writeApprovalArtifact(config, next);
+		return next;
+	});
 }
 
 export function isPrincipal(): boolean {
@@ -171,33 +178,33 @@ export async function countAwaitingApprovals(config: CoasConfig): Promise<number
 
 export async function removeApprovalArtifactsForTask(config: CoasConfig, taskId: string): Promise<void> {
 	assertSafeId("task id", taskId);
-	const root = join(config.coasHome, INBOX_DIR);
-	if (!existsSync(root)) return;
-	for (const artifact of await listApprovalArtifacts(config)) {
-		if (artifact.taskId === taskId) await rm(approvalArtifactPath(config, artifact.requestId), { force: true });
-	}
+	const store = await ConfinedStore.openCoasHome(config);
+	if (!store) return;
+	const paths = (await listApprovalArtifacts(config))
+		.filter((artifact) => artifact.taskId === taskId)
+		.map((artifact) => approvalArtifactPath(config, artifact.requestId));
+	await store.removePrivateFiles(paths);
 }
 
 export async function listApprovalArtifacts(config: CoasConfig): Promise<ApprovalArtifact[]> {
+	const store = await ConfinedStore.openCoasHome(config);
 	const root = join(config.coasHome, INBOX_DIR);
-	if (!existsSync(root)) return [];
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!store || !await store.fileExists(root)) return [];
 	const items: ApprovalArtifact[] = [];
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
 		const requestId = entry.name.slice(0, -5);
 		const artifact = await readApprovalArtifact(config, requestId);
 		if (artifact) items.push(artifact);
 	}
-	const sorted = items.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+	const sorted = items.sort((first, second) => first.updatedAt.localeCompare(second.updatedAt));
 	const cutoff = Date.now() - RETENTION_DAYS * 86_400_000;
 	const terminal = sorted.filter((item) => item.status === "completed" || item.status === "rejected");
 	const retainedTerminal = terminal.slice(-MAX_TERMINAL_ARTIFACTS);
 	const retained = new Set(retainedTerminal.map((item) => item.requestId));
-	for (const item of terminal) {
-		if (!retained.has(item.requestId) || Date.parse(item.updatedAt) < cutoff) {
-			await rm(approvalArtifactPath(config, item.requestId), { force: true });
-		}
-	}
+	const expiredPaths = terminal
+		.filter((item) => !retained.has(item.requestId) || Date.parse(item.updatedAt) < cutoff)
+		.map((item) => approvalArtifactPath(config, item.requestId));
+	await store.removePrivateFiles(expiredPaths);
 	return sorted.filter((item) => item.status !== "completed" && item.status !== "rejected" || retained.has(item.requestId));
 }

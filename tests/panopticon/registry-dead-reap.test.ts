@@ -38,6 +38,7 @@ vi.mock("../../../lib/private-local-mode.js", () => ({
 }));
 
 import * as nodefs from "node:fs";
+import { onAgentCleanup, type AgentRecord } from "../../lib/agent-registry.js";
 import Registry from "../../extensions/pi-panopticon/registry/registry.js";
 
 const mockReaddirSync = nodefs.readdirSync as MockedFunction<typeof nodefs.readdirSync>;
@@ -80,21 +81,77 @@ function makeRecord(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 describe("Registry.readAllPeers dead-agent reaping", () => {
-	it("drops a terminated agent even when its heartbeat is still fresh", () => {
-		const deadPid = 99_999;
-		const agentId = "dead-agent-123";
-		const record = makeRecord({ id: agentId, name: "dead-agent", pid: deadPid });
-
+	it("rejects external records injected through the volatile registry", () => {
+		const agentId = "forged-external";
+		const record = makeRecord({
+			id: agentId,
+			kind: "external",
+			pid: process.pid,
+			mailboxPath: "/tmp/forged-external-mailbox",
+		});
 		mockReaddirSync.mockReturnValue([`${agentId}.json`] as unknown as ReturnType<typeof nodefs.readdirSync>);
 		mockReadFileSync.mockReturnValue(JSON.stringify(record) as unknown as ReturnType<typeof nodefs.readFileSync>);
 
 		const registry = new Registry("self-id");
-		const peers = registry.readAllPeers();
 
-		expect(peers).toHaveLength(0);
-		expect(mockUnlinkSync).toHaveBeenCalledTimes(1);
+		expect(registry.readAllPeers()).toEqual([]);
 		expect(mockUnlinkSync).toHaveBeenCalledWith(expect.stringContaining(`${agentId}.json`));
-		expect(mockAppendFileSync).toHaveBeenCalled();
+	});
+
+	it("includes the current workspace external peer snapshot", () => {
+		const external: AgentRecord = {
+			id: "ext-agent-123",
+			name: "external-worker",
+			kind: "external",
+			pid: 0,
+			cwd: "/persist/external-worker/inbox",
+			model: "external",
+			startedAt: 1,
+			heartbeat: 1,
+			status: "waiting",
+			mailboxPath: "/persist/external-worker/inbox",
+		};
+		const registry = new Registry("self-id");
+		registry.setExternalPeers([external]);
+
+		expect(registry.readAllPeers()).toContainEqual(external);
+	});
+
+	it("drops a terminated agent even when its heartbeat is still fresh", () => {
+		const deadPid = 99_999;
+		const agentId = "dead-agent-123";
+		const record = makeRecord({ id: agentId, name: "dead-agent", pid: deadPid });
+		const cleanupHook = vi.fn();
+		const disposeCleanupHook = onAgentCleanup(cleanupHook);
+
+		mockReaddirSync.mockReturnValue([`${agentId}.json`] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValue(JSON.stringify(record) as unknown as ReturnType<typeof nodefs.readFileSync>);
+
+		try {
+			const registry = new Registry("self-id");
+			const peers = registry.readAllPeers();
+
+			expect(peers).toHaveLength(0);
+			expect(mockUnlinkSync).toHaveBeenCalledTimes(1);
+			expect(mockUnlinkSync).toHaveBeenCalledWith(expect.stringContaining(`${agentId}.json`));
+			expect(mockAppendFileSync).toHaveBeenCalled();
+			expect(cleanupHook).toHaveBeenCalledWith(agentId);
+		} finally {
+			disposeCleanupHook();
+		}
+	});
+
+	it("marks a stale record with a live process as stalled", () => {
+		const livePid = 99_996;
+		alivePids.add(livePid);
+		const record = makeRecord({ heartbeat: Date.now() - 31_000, pid: livePid });
+		mockReaddirSync.mockReturnValue(["agent-123.json"] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValue(JSON.stringify(record) as unknown as ReturnType<typeof nodefs.readFileSync>);
+
+		const registry = new Registry("self-id");
+
+		expect(registry.readAllPeers()).toEqual([expect.objectContaining({ status: "stalled" })]);
+		expect(mockUnlinkSync).not.toHaveBeenCalled();
 	});
 
 	it("keeps a live agent with a fresh heartbeat", () => {

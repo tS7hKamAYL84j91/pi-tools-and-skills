@@ -1,33 +1,22 @@
-/**
- * TypeScript CoAS schedule registry.
- *
- * This manages schedule metadata. Runtime execution is owned by the pi-hosted
- * internal scheduler while a pi session is alive.
- */
+/** CoAS schedule registry; runtime execution is owned by the pi-hosted scheduler. */
 
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
-import { chmod, mkdir, readdir, readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
-import { appendLogLine } from "../../lib/file-persistence.js";
+import { removeApprovalArtifactsForTask } from "./approval-inbox.js";
+import { ConfinedStore, ensureRuntimeDirs } from "./store.js";
 import {
 	assertInside,
 	assertSafeId,
-	ensureRuntimeDirs,
 	formatEnv,
 	isoUtc,
 	lockRoot,
 	parseEnv,
-	readOptionalFile,
-	removePrivateFiles,
 	scheduleLogRoot,
 	scheduleRoot,
 	slugify,
 	workspaceIdFromRoom,
-	writePrivateFileAtomic,
-} from "./store.js";
-import { removeApprovalArtifactsForTask } from "./approval-inbox.js";
+} from "./store-paths.js";
 import type { CoasConfig, CommandResult, ScheduleAddInput, ScheduleEntry } from "./types.js";
 
 function scheduleEnvPath(config: CoasConfig, taskId: string): string {
@@ -86,17 +75,13 @@ function cronFieldError(label: string, field: string, min: number, max: number):
 export function cronExpressionError(expr: string): string | undefined {
 	if (/\r|\n/.test(expr)) return "Cron expression must have exactly five fields";
 	const fields = expr.trim().split(" ");
-	if (fields.length !== 5 || fields.some((field) => field.length === 0)) {
-		return "Cron expression must have exactly five fields";
-	}
+	if (fields.length !== 5 || fields.some((field) => field.length === 0)) return "Cron expression must have exactly five fields";
 	const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
-	return (
-		cronFieldError("minute", minute ?? "", 0, 59) ??
+	return cronFieldError("minute", minute ?? "", 0, 59) ??
 		cronFieldError("hour", hour ?? "", 0, 23) ??
 		cronFieldError("day-of-month", dayOfMonth ?? "", 1, 31) ??
 		cronFieldError("month", month ?? "", 1, 12) ??
-		cronFieldError("day-of-week", dayOfWeek ?? "", 0, 7)
-	);
+		cronFieldError("day-of-week", dayOfWeek ?? "", 0, 7);
 }
 
 export function cronFieldMatches(field: string, value: number, min: number, max: number): boolean {
@@ -109,8 +94,8 @@ export function validateCronExpr(expr: string): void {
 	if (error) throw new Error(error);
 }
 
-async function parseSchedule(config: CoasConfig, envPath: string): Promise<ScheduleEntry> {
-	const values = parseEnv(await readFile(envPath, "utf8"));
+async function parseSchedule(config: CoasConfig, store: ConfinedStore, envPath: string): Promise<ScheduleEntry> {
+	const values = parseEnv(await store.readRequiredFile(envPath));
 	const taskId = values.TASK_ID ?? basename(envPath, ".env");
 	assertSafeId("task id", taskId);
 	const cronExpr = values.CRON_EXPR ?? "";
@@ -133,7 +118,7 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 		promptFile,
 		createdAt: values.CREATED_AT,
 		updatedAt: values.UPDATED_AT,
-		prompt: await readOptionalFile(promptFile),
+		prompt: await store.readOptionalFile(promptFile),
 		targetAgent: values.TARGET_AGENT,
 		continuation: (values.CONTINUATION ?? "0") === "1",
 		approvalRequired: (values.APPROVAL_REQUIRED ?? "0") === "1",
@@ -141,15 +126,16 @@ async function parseSchedule(config: CoasConfig, envPath: string): Promise<Sched
 }
 
 export async function listSchedules(config: CoasConfig): Promise<ScheduleEntry[]> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
 	const root = scheduleRoot(config);
-	if (!existsSync(root)) return [];
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!homeStore || !await homeStore.fileExists(root)) return [];
+	const store = await ConfinedStore.forScheduleRoot(config);
 	const schedules: ScheduleEntry[] = [];
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isFile() || !entry.name.endsWith(".env")) continue;
-		schedules.push(await parseSchedule(config, join(root, entry.name)));
+		schedules.push(await parseSchedule(config, store, join(root, entry.name)));
 	}
-	return schedules.sort((a, b) => a.taskId.localeCompare(b.taskId));
+	return schedules.sort((first, second) => first.taskId.localeCompare(second.taskId));
 }
 
 export function formatScheduleList(schedules: ScheduleEntry[]): string {
@@ -166,25 +152,22 @@ export function formatScheduleList(schedules: ScheduleEntry[]): string {
 }
 
 export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): Promise<ScheduleEntry> {
-	if (!input.room || !input.name || !input.cron || !input.prompt) {
-		throw new Error("Schedule add requires room, name, cron, and prompt");
-	}
+	if (!input.room || !input.name || !input.cron || !input.prompt) throw new Error("Schedule add requires room, name, cron, and prompt");
 	validateCronExpr(input.cron);
 	const taskId = slugify(input.name, "task");
 	assertSafeId("task id", taskId);
 	const workspaceId = input.workspace ? slugify(input.workspace) : workspaceIdFromRoom(input.room);
 	assertSafeId("workspace id", workspaceId);
 	await ensureRuntimeDirs(config);
+	const store = await ConfinedStore.forScheduleRoot(config);
 	const envPath = scheduleEnvPath(config, taskId);
 	const promptPath = schedulePromptPath(config, taskId);
-	if (existsSync(envPath) || existsSync(promptPath)) {
-		throw new Error(`Schedule already exists: ${taskId}`);
-	}
+	if (await store.fileExists(envPath) || await store.fileExists(promptPath)) throw new Error(`Schedule already exists: ${taskId}`);
 	const now = isoUtc();
 	await withFileMutationQueue(envPath, async () => {
 		try {
-			await writePrivateFileAtomic(promptPath, `${input.prompt}\n`);
-			await writePrivateFileAtomic(envPath, formatEnv({
+			await store.writePrivateFileAtomic(promptPath, `${input.prompt}\n`);
+			await store.writePrivateFileAtomic(envPath, formatEnv({
 				TASK_ID: taskId,
 				TASK_NAME: input.name,
 				ROOM_ID: input.room,
@@ -199,16 +182,17 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				UPDATED_AT: now,
 			}));
 		} catch (error) {
-			await removePrivateFiles([promptPath]);
+			await store.removePrivateFiles([promptPath]);
 			throw error;
 		}
 	});
-	return parseSchedule(config, envPath);
+	return parseSchedule(config, store, envPath);
 }
 
 export async function removeSchedule(config: CoasConfig, taskId: string): Promise<string> {
 	assertSafeId("task id", taskId);
-	await removePrivateFiles([
+	const store = await ConfinedStore.createCoasHome(config);
+	await store.removePrivateFiles([
 		scheduleEnvPath(config, taskId),
 		schedulePromptPath(config, taskId),
 		scheduleRunsPath(config, taskId),
@@ -218,19 +202,17 @@ export async function removeSchedule(config: CoasConfig, taskId: string): Promis
 }
 
 async function readSchedule(config: CoasConfig, taskId: string): Promise<ScheduleEntry> {
+	const store = await ConfinedStore.forScheduleRoot(config);
 	const envPath = scheduleEnvPath(config, taskId);
-	if (!existsSync(envPath)) throw new Error(`Unknown schedule task: ${taskId}`);
-	return parseSchedule(config, envPath);
+	if (!await store.fileExists(envPath)) throw new Error(`Unknown schedule task: ${taskId}`);
+	return parseSchedule(config, store, envPath);
 }
 
 async function logTask(config: CoasConfig, taskId: string, message: string): Promise<void> {
-	await mkdir(scheduleLogRoot(config), { recursive: true, mode: 0o700 });
-	const path = scheduleLogPath(config, taskId);
-	await appendLogLine(path, `[${isoUtc()}] ${message}\n`, {
-		encoding: "utf8",
-		mode: 0o600,
-	});
-	await chmod(path, 0o600).catch(() => undefined);
+	const homeStore = await ConfinedStore.createCoasHome(config);
+	await homeStore.ensurePrivateDir(scheduleLogRoot(config));
+	const store = await ConfinedStore.forScheduleLogRoot(config);
+	await store.appendPrivateLog(scheduleLogPath(config, taskId), `[${isoUtc()}] ${message}\n`);
 }
 
 export async function runSchedule(config: CoasConfig, taskId: string, dryRun: boolean): Promise<CommandResult> {
@@ -239,9 +221,7 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 	const logFile = scheduleLogPath(config, schedule.taskId);
 	const lockPath = join(lockRoot(config), `${schedule.workspaceId}.lock`);
 	const prompt = schedule.prompt ?? "";
-	if (!schedule.enabled) {
-		return { code: 0, stdout: "", stderr: `coas-schedule: task disabled: ${schedule.taskId}` };
-	}
+	if (!schedule.enabled) return { code: 0, stdout: "", stderr: `coas-schedule: task disabled: ${schedule.taskId}` };
 	if (dryRun) {
 		return {
 			code: 0,
@@ -260,11 +240,7 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 	}
 	await ensureRuntimeDirs(config);
 	await logTask(config, schedule.taskId, `SKIP execution unsupported host=${hostname()}`);
-	return {
-		code: 1,
-		stdout: "",
-		stderr: "coas-schedule: direct execution is disabled; enabled schedules run through the pi-hosted internal scheduler",
-	};
+	return { code: 1, stdout: "", stderr: "coas-schedule: direct execution is disabled; enabled schedules run through the pi-hosted internal scheduler" };
 }
 
 export async function renderInternalSchedulePlan(config: CoasConfig): Promise<CommandResult> {
@@ -272,9 +248,5 @@ export async function renderInternalSchedulePlan(config: CoasConfig): Promise<Co
 	const body = schedules.length > 0
 		? schedules.map((schedule) => `${schedule.cronExpr} ${schedule.taskId} -> pi internal scheduler`).join("\n")
 		: "no enabled CoAS schedules";
-	return {
-		code: 0,
-		stderr: "",
-		stdout: ["CoAS internal scheduler plan", "============================", body].join("\n"),
-	};
+	return { code: 0, stderr: "", stdout: ["CoAS internal scheduler plan", "============================", body].join("\n") };
 }

@@ -2,7 +2,7 @@
  * Tests for team file mutation helpers.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../../extensions/pi-panopticon/teams/team-form.js";
@@ -23,6 +23,20 @@ function requireTeam(registry: ReturnType<typeof loadTeamRegistry>, id: string):
 	const team = registry.teams.get(id);
 	if (!team) throw new Error(`Missing team ${id}`);
 	return team;
+}
+
+function teamAuthority(id: string, subagent = "safe_navigator"): string {
+	return [
+		"---",
+		"schemaVersion: 2",
+		`id: "${id}"`,
+		'protocol: "consult"',
+		"agents:",
+		'  - role: "navigator"',
+		`    subagent: "${subagent}"`,
+		"---",
+		"Confined team.",
+	].join("\n");
 }
 
 describe("team file mutations", () => {
@@ -70,6 +84,147 @@ describe("team file mutations", () => {
 		});
 	});
 
+	it("team_form rejects unsafe generated subagent ids before creating files", async () => {
+		await withTempProjectRoot("team-form-confinement-", async (project) => {
+			const unsafeIds = [
+				"../escaped",
+				"nested/agent",
+				"nested\\agent",
+				join(project, "absolute-agent"),
+				"%2e%2e%2fescaped",
+				".hidden",
+				"trailing.",
+				"-leading",
+				"trailing-",
+			];
+
+			for (const [index, subagent] of unsafeIds.entries()) {
+				await expect(createTeamFiles({
+					id: `unsafe-${index}`,
+					protocol: "consult",
+					agents: [subagent],
+					scope: "project",
+				}, project)).rejects.toThrow("Invalid generated subagent id");
+			}
+
+			expect(existsSync(join(project, ".pi", "teams", "escaped.md"))).toBe(false);
+			expect(existsSync(join(project, "absolute-agent.md"))).toBe(false);
+		});
+	});
+
+	it("team_form preserves safe dotted generated subagent ids", async () => {
+		await withTempProjectRoot("team-form-dotted-id-", async (project) => {
+			const result = await createTeamFiles({
+				id: "dotted-review",
+				protocol: "consult",
+				agents: ["review.v2"],
+				scope: "project",
+			}, project);
+
+			expect(result.subagentPaths).toEqual([
+				join(project, ".pi", "teams", "agents", "review.v2.md"),
+			]);
+		});
+	});
+
+	it("rejects a symlinked generated-agents directory before create or delete access", async () => {
+		await withTempProjectRoot("team-form-agents-symlink-", async (project) => {
+			const teamsRoot = join(project, ".pi", "teams");
+			const redirectedAgents = join(project, "redirected-agents");
+			const agentsDir = join(teamsRoot, "agents");
+			mkdirSync(join(teamsRoot, "teams"), { recursive: true });
+			mkdirSync(redirectedAgents);
+			symlinkSync(redirectedAgents, agentsDir, "dir");
+
+			await expect(createTeamFiles({
+				id: "symlink-review",
+				protocol: "consult",
+				agents: ["safe_navigator"],
+				scope: "project",
+			}, project)).rejects.toThrow(/symlink/);
+			expect(existsSync(join(redirectedAgents, "safe_navigator.md"))).toBe(false);
+
+			const teamPath = join(teamsRoot, "teams", "symlink-review.md");
+			const redirectedSubagent = join(redirectedAgents, "safe_navigator.md");
+			writeFileSync(redirectedSubagent, 'generatedBy: "pi-teams"\n', "utf8");
+			writeFileSync(teamPath, [
+				"---",
+				"schemaVersion: 2",
+				'id: "symlink-review"',
+				'protocol: "consult"',
+				"agents:",
+				'  - role: "navigator"',
+				'    subagent: "safe_navigator"',
+				"---",
+				"Symlinked agents directory team.",
+			].join("\n"), "utf8");
+
+			await expect(deleteTeamFiles({ id: "symlink-review", scope: "project" }, project))
+				.rejects.toThrow(/symlink/);
+			expect(existsSync(teamPath)).toBe(true);
+			expect(existsSync(redirectedSubagent)).toBe(true);
+		});
+	});
+
+	it("rejects a symlinked teams directory for create, update, and delete", async () => {
+		await withTempProjectRoot("team-form-teams-root-symlink-", async (project) => {
+			const teamsRoot = join(project, ".pi", "teams");
+			const teamsDir = join(teamsRoot, "teams");
+			const redirectedTeams = join(project, "redirected-teams");
+			mkdirSync(teamsRoot, { recursive: true });
+			mkdirSync(redirectedTeams);
+			symlinkSync(redirectedTeams, teamsDir, "dir");
+
+			await expect(createTeamFiles({
+				id: "create-review",
+				protocol: "consult",
+				agents: ["safe_navigator"],
+				scope: "project",
+			}, project)).rejects.toThrow(/symlink/);
+
+			const authorityPath = join(redirectedTeams, "linked-review.md");
+			const authority = teamAuthority("linked-review");
+			writeFileSync(authorityPath, authority, "utf8");
+			await expect(updateTeamModels({
+				id: "linked-review",
+				models: { navigator: "test/model" },
+				scope: "project",
+			}, project)).rejects.toThrow(/symlink/);
+			await expect(deleteTeamFiles({ id: "linked-review", scope: "project" }, project))
+				.rejects.toThrow(/symlink/);
+			expect(readFileSync(authorityPath, "utf8")).toBe(authority);
+		});
+	});
+
+	it("rejects a symlinked final team file for create, update, and delete", async () => {
+		await withTempProjectRoot("team-form-team-file-symlink-", async (project) => {
+			const teamsDir = join(project, ".pi", "teams", "teams");
+			mkdirSync(teamsDir, { recursive: true });
+			const authorityPath = join(project, "foreign-team.md");
+			const authority = teamAuthority("linked-review");
+			writeFileSync(authorityPath, authority, "utf8");
+			const teamPath = join(teamsDir, "linked-review.md");
+			symlinkSync(authorityPath, teamPath);
+
+			await expect(createTeamFiles({
+				id: "linked-review",
+				protocol: "consult",
+				agents: ["safe_navigator"],
+				scope: "project",
+				overwrite: true,
+			}, project)).rejects.toThrow(/symlink/);
+			await expect(updateTeamModels({
+				id: "linked-review",
+				models: { navigator: "test/model" },
+				scope: "project",
+			}, project)).rejects.toThrow(/symlink/);
+			await expect(deleteTeamFiles({ id: "linked-review", scope: "project" }, project))
+				.rejects.toThrow(/symlink/);
+			expect(readFileSync(authorityPath, "utf8")).toBe(authority);
+			expect(existsSync(teamPath)).toBe(true);
+		});
+	});
+
 	it("team_form preserves live-agent refs without creating subagent stubs", async () => {
 		await withTempProjectRoot("team-form-live-", async (project) => {
 			const result = await createTeamFiles({
@@ -100,6 +255,39 @@ describe("team file mutations", () => {
 
 			expect(existsSync(result.teamPath)).toBe(false);
 			expect(existsSync(subagentPath)).toBe(false);
+		});
+	});
+
+	it("team_delete rejects traversal in generated subagent ids without deleting the escaped file", async () => {
+		await withTempProjectRoot("team-delete-confinement-", async (project) => {
+			const teamsRoot = join(project, ".pi", "teams");
+			const escapedPath = join(teamsRoot, "escaped.md");
+			mkdirSync(join(teamsRoot, "agents"), { recursive: true });
+			mkdirSync(join(teamsRoot, "teams"), { recursive: true });
+			writeFileSync(escapedPath, 'generatedBy: "pi-teams"\n', "utf8");
+			writeFileSync(
+				join(teamsRoot, "teams", "unsafe-delete.md"),
+				[
+					"---",
+					"schemaVersion: 2",
+					'id: "unsafe-delete"',
+					'protocol: "consult"',
+					"agents:",
+					'  - role: "navigator"',
+					'    subagent: "../escaped"',
+					"---",
+					"Unsafe team.",
+				].join("\n"),
+				"utf8",
+			);
+
+			expect(loadTeamRegistry(undefined, { cwd: project }).teams.get("unsafe-delete")).toMatchObject({
+				source: "project",
+				agents: ["../escaped"],
+			});
+			await expect(deleteTeamFiles({ id: "unsafe-delete", scope: "project" }, project))
+				.rejects.toThrow("Invalid generated subagent id");
+			expect(readFileSync(escapedPath, "utf8")).toContain('generatedBy: "pi-teams"');
 		});
 	});
 

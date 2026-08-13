@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { applyEvent, parseKV } from "./board-event-handlers.js";
 
 // ── Constants ───────────────────────────────────────────────────
@@ -44,13 +44,6 @@ function kanbanDir(): string {
 export const boardLogPath = (): string => join(kanbanDir(), "board.log");
 export const snapshotPath = (): string => join(kanbanDir(), "snapshot.md");
 export const nowZ = (): string => new Date().toISOString();
-// Lines appended by this process (for watcher self-detection)
-export const selfAppendedLines = new Set<string>();
-
-export const logAppend = async (line: string): Promise<void> => {
-	selfAppendedLines.add(line);
-	await appendLogLine(boardLogPath(), line);
-};
 
 /**
  * Escape a value for inclusion in a quote-wrapped log field (e.g. `text="..."`).
@@ -277,67 +270,4 @@ export async function getTask(taskId: string): Promise<TaskState> {
 	const task = board.tasks.get(taskId);
 	if (!task) throw new Error(`Task ${taskId} not found`);
 	return task;
-}
-
-// ── Mutation helpers ────────────────────────────────────────────
-//
-// Single source of truth for the log-line format and column-rule validation
-// of DELETE and MOVE events. Both the kanban_delete/kanban_move tools and
-// the TUI overlay route through these — keeping the log vocabulary, the
-// quote-escape pattern, and the column invariants in one place.
-
-/**
- * Append a DELETE event for `taskId`, validating that the task exists,
- * is not already deleted, and is in a column that permits deletion
- * (in-progress and blocked tasks must be completed/unblocked first).
- *
- * Throws on validation failure or filesystem error.
- */
-export async function deleteTask(
-	taskId: string,
-	agent: string,
-	reason: string = "",
-): Promise<{ task_id: string; previousCol: string; reason: string }> {
-	validateTaskId(taskId);
-	const task = await getTask(taskId);
-	if (task.deleted) throw new Error(`Task ${taskId} has already been deleted`);
-	if (["in-progress", "blocked"].includes(task.col)) {
-		throw new Error(
-			`Cannot delete task ${taskId}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`,
-		);
-	}
-	const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
-	await logAppend(
-		`${nowZ()} DELETE ${taskId} ${sanitiseAgent(agent)}${reasonSuffix}`,
-	);
-	return { task_id: taskId, previousCol: task.col, reason };
-}
-
-/**
- * Append a MOVE event for `taskId`, validating that the task exists and is
- * currently in a column that may be moved (only `backlog` and `todo` —
- * in-progress, blocked, and done tasks are owned by other lifecycle events).
- *
- * Throws on validation failure or filesystem error.
- */
-export async function moveTask(
-	taskId: string,
-	agent: string,
-	to: "backlog" | "todo",
-): Promise<{ task_id: string; from: string; to: string }> {
-	validateTaskId(taskId);
-	const task = await getTask(taskId);
-	if (["in-progress", "blocked", "done"].includes(task.col)) {
-		throw new Error(
-			`Cannot move task ${taskId} from '${task.col}' column. Can only move from backlog or todo.`,
-		);
-	}
-	const from = task.col;
-	if (from === to) {
-		throw new Error(`Task ${taskId} is already in ${to}.`);
-	}
-	await logAppend(
-		`${nowZ()} MOVE ${taskId} ${sanitiseAgent(agent)} from=${from} to=${to}`,
-	);
-	return { task_id: taskId, from, to };
 }

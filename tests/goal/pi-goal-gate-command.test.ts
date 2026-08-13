@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadGoal, saveGoal } from "../../extensions/pi-goal/goal-persist.js";
@@ -7,6 +7,7 @@ import { registerGoalTools } from "../../extensions/pi-goal/goal-tools.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
 const tempDirs: string[] = [];
+const originalGateCommand = process.env.PI_GOAL_GATE_COMMAND;
 
 function makeGoal(): GoalState {
 	return {
@@ -50,11 +51,12 @@ async function makeWorkspace(): Promise<{ cwd: string; goal: GoalState }> {
 	return { cwd, goal };
 }
 
-describe("goal_complete gate_command", () => {
+describe("goal_complete operator-configured gate", () => {
 	let runtime: ReturnType<typeof mockPi>;
 	let refreshCalls: Array<GoalState | null | undefined>;
 
 	beforeEach(() => {
+		delete process.env.PI_GOAL_GATE_COMMAND;
 		runtime = mockPi();
 		refreshCalls = [];
 		registerGoalTools(runtime as never, { resolve: null, stopRequested: false, pendingMarker: null, cancelledMarkers: new Set() }, async (_ctx, state) => {
@@ -63,14 +65,19 @@ describe("goal_complete gate_command", () => {
 	});
 
 	afterEach(() => {
+		if (originalGateCommand === undefined) {
+			delete process.env.PI_GOAL_GATE_COMMAND;
+		} else {
+			process.env.PI_GOAL_GATE_COMMAND = originalGateCommand;
+		}
 		for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 	});
 
-	it("completes when gate exits 0", async () => {
+	it("completes when the configured gate exits 0", async () => {
 		const { cwd } = await makeWorkspace();
+		process.env.PI_GOAL_GATE_COMMAND = "exit 0";
 		const result = await runtime.callTool("goal_complete", {
 			evidence: "All checks passed",
-			gate_command: "exit 0",
 		}, cwd);
 		expect(result).toBeDefined();
 		const state = await loadGoal(cwd);
@@ -78,12 +85,12 @@ describe("goal_complete gate_command", () => {
 		expect(state?.completionEvidence).toContain("All checks passed");
 	});
 
-	it("blocks completion when gate exits non-zero", async () => {
+	it("blocks completion when the configured gate exits non-zero", async () => {
 		const { cwd } = await makeWorkspace();
+		process.env.PI_GOAL_GATE_COMMAND = "echo 'gate failed' >&2; exit 1";
 		await expect(
 			runtime.callTool("goal_complete", {
 				evidence: "Should not persist",
-				gate_command: "echo 'gate failed' >&2; exit 1",
 			}, cwd),
 		).rejects.toThrow(/gate failed/);
 		const state = await loadGoal(cwd);
@@ -91,12 +98,24 @@ describe("goal_complete gate_command", () => {
 		expect(state?.completionEvidence).toBeUndefined();
 	});
 
-	it("remains backward-compatible without gate_command", async () => {
+	it("completes without a configured gate", async () => {
 		const { cwd } = await makeWorkspace();
 		const result = await runtime.callTool("goal_complete", { evidence: "No gate" }, cwd);
 		expect(result).toBeDefined();
 		const state = await loadGoal(cwd);
 		expect(state?.status).toBe("complete");
 		expect(state?.completionEvidence).toBe("No gate");
+	});
+
+	it("ignores a model-supplied gate_command extra field", async () => {
+		const { cwd } = await makeWorkspace();
+		const marker = join(cwd, "model-command-ran");
+		await runtime.callTool("goal_complete", {
+			evidence: "Extra fields are inert",
+			gate_command: `touch "${marker}"`,
+		}, cwd);
+
+		expect(existsSync(marker)).toBe(false);
+		expect((await loadGoal(cwd))?.status).toBe("complete");
 	});
 });

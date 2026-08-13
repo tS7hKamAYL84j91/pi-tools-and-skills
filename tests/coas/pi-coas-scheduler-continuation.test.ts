@@ -101,7 +101,7 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(pi.sent[1]?.message).toContain("reviewed 3 PRs");
 			expect(pi.sent[1]?.message).toContain("check dependencies");
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -118,7 +118,7 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(pi.sent.length).toBe(1);
 			expect(pi.sent[0]?.message).not.toContain("Prior run");
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -152,7 +152,7 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(raw).toContain("cycle 2");
 			expect(raw).not.toContain("cycle 0");
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -186,7 +186,7 @@ describe("CoasInternalScheduler continuation", () => {
 				expect(Math.abs(length - first)).toBeLessThanOrEqual(10);
 			}
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -218,7 +218,31 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(pi.sent.length).toBe(1);
 			expect(pi.sent[0]?.message).toContain("may be stale");
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
+			await rm(coasHome, { recursive: true, force: true });
+		}
+	});
+
+	it("persists active runs as interrupted before stop resets scheduler state", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
+		const coasHome = join(tmpdir(), `pi-coas-stop-${process.pid}-${Date.now()}`);
+		const pi = makePi();
+		const scheduler = new CoasInternalScheduler(pi as never);
+		try {
+			await writeSchedule(coasHome, "daily", "admin-assistant", true);
+			await scheduler.reconcile({ coasHome });
+			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			const runStatePath = join(coasHome, "schedule-runs", "daily.json");
+			expect(JSON.parse(await readFile(runStatePath, "utf8"))).toMatchObject({ status: "running" });
+
+			await scheduler.stop();
+
+			expect(JSON.parse(await readFile(runStatePath, "utf8"))).toMatchObject({
+				status: "interrupted",
+				summary: "Run interrupted: session_shutdown",
+			});
+			expect(scheduler.snapshot()).toMatchObject({ running: false, enabledSchedules: 0, activeRuns: 0 });
+		} finally {
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -240,7 +264,7 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(pi.sent.length).toBe(2);
 			expect(pi.sent[1]?.message).not.toContain("Prior run");
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -259,7 +283,7 @@ describe("CoasInternalScheduler continuation", () => {
 
 			expect(existsSync(join(coasHome, "schedule-runs", "daily.json"))).toBe(false);
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -280,7 +304,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await removeSchedule({ coasHome }, "daily");
 			expect(existsSync(join(coasHome, "schedule-runs", "daily.json"))).toBe(false);
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});
@@ -297,7 +321,7 @@ describe("CoasInternalScheduler continuation", () => {
 			expect(pi.sent.length).toBe(0);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(1);
 		} finally {
-			scheduler.stop();
+			await scheduler.stop();
 			await rm(coasHome, { recursive: true, force: true });
 		}
 	});

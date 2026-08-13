@@ -140,7 +140,7 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 
 		expect(pi.sent.length).toBe(1);
 		expect(pi.sent[0]?.message).toContain("catchup-task");
-		scheduler.stop();
+		await scheduler.stop();
 	});
 
 	it("catchup prevents duplicate fire on the first tick", async () => {

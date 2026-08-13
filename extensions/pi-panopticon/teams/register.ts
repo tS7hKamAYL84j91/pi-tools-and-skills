@@ -59,7 +59,12 @@ export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPl
 			return runTeam({ params, ctx, stateManager, runtime });
 		},
 		runAsync(params, ctx) {
-			return startTeamRunAsync({ pi, params, ctx, run: (runParams) => runTeam({ params: runParams, ctx, stateManager, runtime }) as unknown as Promise<TeamRunToolResult> });
+			return startTeamRunAsync({
+				pi,
+				params,
+				ctx,
+				run: (runParams, resultRoot) => runTeam({ params: runParams, ctx, stateManager, runtime, resultRoot }) as Promise<TeamRunToolResult>,
+			});
 		},
 	};
 }

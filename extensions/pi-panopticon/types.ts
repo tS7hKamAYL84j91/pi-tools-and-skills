@@ -35,6 +35,8 @@ export interface Registry {
 
 	/** Return true if this agent has no parent (manual/root session). */
 	isRootSession(): boolean;
+	/** Replace the workspace-scoped external peer snapshot. */
+	setExternalPeers(records: AgentRecord[]): void;
 
 	/** Read all live agent records (reaps dead ones). */
 	readAllPeers(): AgentRecord[];

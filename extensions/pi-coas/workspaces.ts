@@ -1,16 +1,10 @@
-/**
- * CoAS workspace filesystem operations.
- */
+/** CoAS workspace filesystem operations. */
 
-import { existsSync } from "node:fs";
-import { chmod, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
-import { ensurePrivateDir, formatEnv, isoUtc, parseEnv, slugify } from "./store.js";
+import { join } from "node:path";
+import { formatEnv, isoUtc, parseEnv, slugify } from "./store-paths.js";
 import {
-	assertNotSymlink,
-	assertSafeWorkspaceDir,
+	createManagedWorkspaceStore,
 	currentWorkspaceLabel,
 	listWorkspaces,
 	workspaceMetadataPath,
@@ -21,29 +15,26 @@ import type { CoasConfig, CreateWorkspaceInput, WorkspaceSummary } from "./types
 
 export { appendWorkspaceContext, currentWorkspaceLabel, listWorkspaces, readWorkspaceContext };
 
-export async function createWorkspace(config: CoasConfig, input: CreateWorkspaceInput): Promise<{ path: string; workspaceId: string; dryRun: boolean }> {
+export async function createWorkspace(
+	config: CoasConfig,
+	input: CreateWorkspaceInput,
+): Promise<{ path: string; workspaceId: string; dryRun: boolean }> {
 	const workspaceId = slugify(input.workspace);
 	const dir = workspacePath(config, workspaceId);
 	const envPath = workspaceMetadataPath(dir);
 	const contextPath = join(dir, "CONTEXT.md");
 	if (input.dryRun) return { path: dir, workspaceId, dryRun: true };
 
-	await assertSafeWorkspaceDir(config, dir);
-	await ensurePrivateDir(dir);
-	await ensurePrivateDir(join(dir, ".pi"));
-	await ensurePrivateDir(join(dir, ".pi", "coas"));
-	await ensurePrivateDir(join(dir, "logs"));
-	await ensurePrivateDir(join(dir, "tmp"));
+	const store = await createManagedWorkspaceStore(config);
+	for (const path of [dir, join(dir, ".pi"), join(dir, ".pi", "coas"), join(dir, "logs"), join(dir, "tmp")]) {
+		await store.ensurePrivateDir(path);
+	}
 
 	const now = isoUtc();
-	let createdAt = now;
-	if (existsSync(envPath)) {
-		const existing = parseEnv(await readFile(envPath, "utf8"));
-		createdAt = existing.CREATED_AT ?? now;
-	}
-	await assertNotSymlink(contextPath);
-	if (!existsSync(contextPath)) {
-		await appendLogLine(contextPath, [
+	const existing = await store.readOptionalFile(envPath);
+	const createdAt = existing === undefined ? now : parseEnv(existing).CREATED_AT ?? now;
+	if (!await store.fileExists(contextPath)) {
+		await store.appendPrivateLog(contextPath, [
 			`# CoAS Workspace: ${workspaceId}`,
 			"",
 			`- Room/reference: ${input.room || "unknown"}`,
@@ -60,27 +51,21 @@ export async function createWorkspace(config: CoasConfig, input: CreateWorkspace
 			"",
 			"- (empty)",
 			"",
-		].join("\n"), { encoding: "utf8", mode: 0o600 });
-		await chmod(contextPath, 0o600).catch(() => undefined);
+		].join("\n"));
 	}
-	await writeWorkspaceEnv(envPath, {
-		WORKSPACE_ID: workspaceId,
-		ROOM_REF: input.room,
-		PURPOSE: input.purpose ?? "",
-		ISOLATED: input.isolated ? "1" : "0",
-		WORKSPACE_DIR: dir,
-		CONTEXT_FILE: contextPath,
-		CREATED_AT: createdAt,
-		UPDATED_AT: now,
+	await withFileMutationQueue(envPath, async () => {
+		await store.writePrivateFileAtomic(envPath, formatEnv({
+			WORKSPACE_ID: workspaceId,
+			ROOM_REF: input.room,
+			PURPOSE: input.purpose ?? "",
+			ISOLATED: input.isolated ? "1" : "0",
+			WORKSPACE_DIR: dir,
+			CONTEXT_FILE: contextPath,
+			CREATED_AT: createdAt,
+			UPDATED_AT: now,
+		}));
 	});
 	return { path: dir, workspaceId, dryRun: false };
-}
-
-async function writeWorkspaceEnv(path: string, values: Record<string, string>): Promise<void> {
-	await withFileMutationQueue(path, async () => {
-		await ensurePrivateDir(dirname(path));
-		await writeFileAtomic(path, formatEnv(values), { encoding: "utf8", mode: 0o600 });
-	});
 }
 
 export function formatWorkspaceList(workspaces: WorkspaceSummary[]): string {

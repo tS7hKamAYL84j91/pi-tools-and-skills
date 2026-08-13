@@ -2,10 +2,10 @@
  * CoAS extension lifecycle hooks.
  */
 
-import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveCoasConfig } from "./config.js";
-import { pathInside, workspaceRoot } from "./store.js";
+import { pathInside, workspaceRoot } from "./store-paths.js";
+import { ConfinedStore } from "./store.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
 import type { SchedulerSnapshot } from "./types.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
@@ -24,19 +24,19 @@ export function formatCoasStatusSlot(workspace?: string, scheduler?: SchedulerSn
 	return `coas: ${scope} ${health}${scheduleText}${queueText}${failText}${droppedText}`;
 }
 
-function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): void {
+async function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): Promise<void> {
 	const config = resolveCoasConfig(ctx.cwd);
-	const workspace = currentWorkspaceLabel(ctx.cwd);
-	if (!workspace && !existsSync(config.coasHome)) {
+	const workspace = await currentWorkspaceLabel(config, ctx.cwd);
+	if (!workspace && !await ConfinedStore.openCoasHome(config)) {
 		ctx.ui.setStatus("coas", undefined);
 		return;
 	}
 	ctx.ui.setStatus("coas", formatCoasStatusSlot(workspace, scheduler.snapshot()));
 }
 
-function contextInstruction(ctx: ExtensionContext): string | undefined {
-	const workspace = currentWorkspaceLabel(ctx.cwd);
+async function contextInstruction(ctx: ExtensionContext): Promise<string | undefined> {
 	const config = resolveCoasConfig(ctx.cwd);
+	const workspace = await currentWorkspaceLabel(config, ctx.cwd);
 	const inWorkspaceRoot = pathInside(workspaceRoot(config), ctx.cwd);
 	if (!workspace && !inWorkspaceRoot) return undefined;
 	return [
@@ -49,17 +49,17 @@ function contextInstruction(ctx: ExtensionContext): string | undefined {
 export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
 	pi.on("session_start", async (_event, ctx) => {
 		scheduler.start(resolveCoasConfig(ctx.cwd));
-		updateStatus(ctx, scheduler);
+		await updateStatus(ctx, scheduler);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		scheduler.stop();
+		await scheduler.stop();
 		ctx.ui.setStatus("coas", undefined);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		updateStatus(ctx, scheduler);
-		const instruction = contextInstruction(ctx);
+		await updateStatus(ctx, scheduler);
+		const instruction = await contextInstruction(ctx);
 		if (!instruction) return undefined;
 		return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
 	});

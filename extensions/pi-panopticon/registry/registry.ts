@@ -9,31 +9,21 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-	readFileSync,
-	readdirSync,
-	rmSync,
-	unlinkSync,
-} from "node:fs";
+import { rmSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AgentNameSource, AgentRecord, AgentStatus } from "../../../lib/agent-registry.js";
-import {
-	REGISTRY_DIR,
-	STALE_MS,
-	isPidAlive,
-	ensureRegistryDir,
-	runAgentCleanup,
-	reapOrphanedMailboxes,
-} from "../../../lib/agent-registry.js";
-import { ensurePrivateFileForRead } from "../../../lib/private-local-mode.js";
-import { flushRecord } from "./registry-persistence.js";
-import { auditRegistryRelease } from "./registry-audit.js";
-import type { Registry as RegistryInterface } from "../types.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_SPAWN_NAME_ENV,
 	PANOPTICON_VISIBILITY_ENV,
+	reapOrphanedMailboxes,
+	REGISTRY_DIR,
 } from "../../../lib/agent-registry.js";
+import type { Registry as RegistryInterface } from "../types.js";
+import { flushRecord } from "./registry-persistence.js";
+import { readVolatileRegistryRecords } from "./registry-reader.js";
+
+export { classifyRecord } from "./registry-reader.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -50,22 +40,6 @@ export const STATUS_SYMBOL: Record<AgentStatus, string> = {
 };
 
 // ── Pure functions (exported for tests) ─────────────────────────
-
-/**
- * Classify an agent record's lifecycle state.
- * @internal exported for tests
- */
-export function classifyRecord(
-	record: AgentRecord,
-	now: number,
-	pidAlive: boolean,
-): "live" | "stalled" | "dead" {
-	// A dead PID is definitive: reap immediately regardless of heartbeat freshness.
-	// Only use heartbeat staleness to distinguish active from stalled processes.
-	if (!pidAlive) return "dead";
-	if (now - record.heartbeat <= STALE_MS) return "live";
-	return "stalled";
-}
 
 /**
  * Build a record with updated heartbeat, status, and task.
@@ -159,34 +133,6 @@ export function sortRecords(
 	});
 }
 
-/**
- * Parse a single registry JSON file and classify it.
- * Returns the record if live/stalled, or null if dead/corrupt.
- * Side effect: deletes files for dead/corrupt records and fires cleanup hooks.
- */
-function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
-	try {
-		ensurePrivateFileForRead(fullPath);
-		const record: AgentRecord = JSON.parse(readFileSync(fullPath, "utf-8"));
-		if (!record.name) {
-			record.name = basename(record.cwd) || record.id.slice(0, 8);
-		}
-		const cls = classifyRecord(record, now, isPidAlive(record.pid));
-		if (cls === "dead") {
-			auditRegistryRelease(record.id, record.name, `pid_dead:${record.pid}`);
-			try { unlinkSync(fullPath); } catch { /* already gone */ }
-			runAgentCleanup(record.id);
-			return null;
-		}
-		if (cls === "stalled") record.status = "stalled";
-		return record;
-	} catch {
-		/* Corrupt or unreadable — remove it */
-		try { unlinkSync(fullPath); } catch { /* already gone */ }
-		return null;
-	}
-}
-
 // ── Registry class ──────────────────────────────────────────────
 
 /**
@@ -196,6 +142,7 @@ function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 export default class Registry implements RegistryInterface {
 	readonly selfId: string;
 	private record: AgentRecord | undefined;
+	private externalPeers: AgentRecord[] = [];
 	private lastSyncedSessionName: string | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
@@ -332,6 +279,10 @@ export default class Registry implements RegistryInterface {
 		}
 	}
 
+	setExternalPeers(records: AgentRecord[]): void {
+		this.externalPeers = records.filter((record) => record.kind === "external");
+	}
+
 	flush(): void {
 		flushRecord(this.record);
 	}
@@ -341,21 +292,7 @@ export default class Registry implements RegistryInterface {
 	 * Reaps dead agents (deletes their files + runs cleanup hooks).
 	 */
 	readAllPeers(): AgentRecord[] {
-		try {
-			ensureRegistryDir();
-			const now = Date.now();
-			const files = readdirSync(REGISTRY_DIR).filter(
-				(f) => typeof f === "string" && f.endsWith(".json"),
-			);
-			const records: AgentRecord[] = [];
-			for (const file of files) {
-				const rec = parseRegistryFile(join(REGISTRY_DIR, file), now);
-				if (rec) records.push(rec);
-			}
-			return records;
-		} catch {
-			return [];
-		}
+		return [...this.externalPeers, ...readVolatileRegistryRecords()];
 	}
 
 	// ── Internal: Heartbeat ──────────────────────────────────────

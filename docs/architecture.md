@@ -95,6 +95,8 @@ flowchart TD
   SwarmWorkers --> RuntimePlane[shared runtime child entities]
   Swarm --> Governance[ADR-035 eligible model routing at each spawn]
   TeamsModule --> RuntimePlane
+  TeamsModule --> TeamResults[Private team result root\nuser team root/results]
+  TeamResults --> AsyncDelivery[Claim-check async delivery]
   TeamsModule --> TeamChild[one-shot pi --print child]
   TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane
   TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
@@ -152,7 +154,7 @@ flowchart TD
 | Watched files | Owning user/workspace; `pi-file-watch` reads only | Explicit configured file paths, no recursive discovery or writes |
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
-| Team run state | Panopticon Teams module | Team run APIs and documented result paths; profile selection is session-local/input-only |
+| Team run state | Panopticon Teams module | Session events plus private artifacts under the configured user team root's `results/` directory; profile selection is session-local/input-only |
 | Local model registry | `pi-ollama-models` for the `ollama` provider entry | Atomic full-file rewrite of pi `models.json`, preserving other providers |
 
 ### Trust boundaries
@@ -173,9 +175,31 @@ flowchart LR
 - Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
 - `pi-file-watch` may observe symlinked or external files only when each configured path explicitly opts into that trust boundary; it does not recursively scan or write watched paths.
 - Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
-- `pi-ollama-models` trusts only the local `ollama` executable name and writes no credentials; other model providers in `models.json` remain outside its ownership.
+- `pi-ollama-models` executes only an operator-configured absolute `PI_OLLAMA_COMMAND` whose basename is `ollama`, or a fixed standard absolute candidate (`/usr/local/bin/ollama`, `/usr/bin/ollama`). Deprecated public `modelsPath` and `ollamaCommand` fields are accepted but ignored. It never executes caller commands, resolves through PATH, `which`, cwd, or project files, and writes no credentials; other model providers in `models.json` remain outside its ownership.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
 - Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
+- Team result claim-checks are Panopticon-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or CoAS state.
+
+### Completion gate trust boundary
+
+```mermaid
+flowchart LR
+  Model[Model / tool caller] --> GoalTool[goal_complete\nevidence only]
+  Model --> KanbanTool[kanban_complete\ntask data + check evidence]
+  Model --> Doctor[pi_doctor\nread-only diagnostics]
+  Operator[Trusted operator environment] --> GoalConfig[PI_GOAL_GATE_COMMAND]
+  Operator --> KanbanConfig[KANBAN_GATE_COMMAND]
+  GoalConfig --> GoalTool
+  KanbanConfig --> KanbanTool
+  GoalTool --> Runner[Bounded shared gate runner]
+  KanbanTool --> Runner
+  Runner --> Shell[Workspace-local child process]
+```
+
+- Public Doctor, Goal completion, and Kanban completion schemas retain their previous gate fields as deprecated, ignored compatibility inputs. Caller values never reach the gate runner and cannot select or override a command.
+- `/pi-doctor --gate` remains accepted with a deprecation notice, but `pi-doctor` has no gate path and never spawns a command.
+- Goal and Kanban execute a completion gate only when their trusted operator environment variable is configured. These environment variables are operator configuration, not model/tool input. Gate failure blocks completion and reports bounded diagnostics; no configured gate preserves existing completion behavior.
+- Structured milestone/task check evidence remains model-visible data and is not treated as proof that the extension executed the reported command.
 
 ### Current risks and validation anchors
 
@@ -318,17 +342,20 @@ Detailed TUI consistency, command/tool namespace, confirmation, overflow, and ra
 flowchart TD
   User[Human / orchestrator] --> Pi[pi agent session]
   CoAS[pi-coas scheduler\nrecurring operational policy owner] -->|scheduled prompt may call kanban_* tools| Pi
-  Pi --> Tools[Kanban tool adapters\n10 model-visible tools]
+  Pi --> Tools[Kanban tool adapters\n11 model-visible tools]
   Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
   Overlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
   Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
-  Tools --> Board[board.ts event-sourced board model]
+  Tools --> Tx[board-transactions.ts\nread/validate/event batch]
+  Overlay --> Tx
+  Tx --> Lock[board.log.lock\none advisory lock]
+  Lock --> Board[board.ts event-sourced board model]
+  Lock --> Log[(pi-kanban/board.log\nauthority)]
+  Compaction[compaction.ts\nbackup + atomic replacement] --> Lock
   Watcher --> Board
-  Overlay --> Board
-  Board --> Log[(pi-kanban/board.log)]
-  Board --> Tasks[(pi-kanban/tasks/T-NNN.md)]
+  Board --> Tasks[(pi-kanban/tasks/T-NNN.md\nderived)]
 
   Tools --> Snapshot[snapshot.ts renderers]
   Snapshot --> Compact[Compact summary\nIDs + short status only]
@@ -347,6 +374,11 @@ flowchart TD
 
 - LLM-visible surface unified around `kanban_claim` (pick/claim/reassign) and
   `kanban_edit` (metadata/notes).
+- Ordinary appends, read-validation-event transactions, and compaction use the
+  same `board.log.lock` advisory lock. Multi-event transitions append one ordered
+  batch; compaction holds the lock while reading, backing up, and replacing the
+  authoritative log.
+- Task Markdown and snapshots are derived state; `board.log` remains authority.
 - Watcher injects guidance only; does not inject board contents.
 - `/kanban` uses pi's active TUI theme with a restrained `KANBAN_BOARD_THEME` semantic remap (`default`, `focus`, `mono`).
 - `kanban_snapshot` defaults to compact output: counts, card IDs, short
@@ -442,6 +474,28 @@ flowchart TD
   Classifier -->|idle healthy peers| Suppress[Suppress idle noise]
 ```
 
+### External-agent mailbox flow
+
+```mermaid
+flowchart LR
+  Startup[Panopticon session_start] --> Workspace[ctx.cwd/external-agents.json]
+  Command[External-agent register/remove command] --> Lock[Manifest advisory lock]
+  Lock --> Workspace
+  Workspace --> ExternalPeers[In-memory external peers]
+  ExternalPeers --> Unified[Registry.readAllPeers]
+  PiRegistry[Volatile pi registry] --> Unified
+  Unified --> Send[agent_send / broadcast / peek / status]
+  Command --> Mailbox[Confined persistent Maildir\n~/.pi/persist/external-agents]
+  Send --> Mailbox
+  Mailbox --> Process[External process]
+  Process --> PiInbox[Pi Maildir inbox]
+  PiInbox --> Read[message_read]
+```
+
+- Startup loads the workspace manifest before pi name selection; register and remove commands refresh the same in-memory external-peer snapshot immediately.
+- Manifest updates use an advisory lock, while mailbox paths are absolute, root-confined, and created without following symlinks.
+- Removing an external registration does not remove its persistent Maildir contents.
+
 ### Context policy
 
 - `set_name` and `get_name` are the only model-visible naming tools.
@@ -467,7 +521,7 @@ flowchart TD
   Formatter --> Plain[Plain-text fallback]
   Html --> Content[m.text content\nformat=org.matrix.custom.html]
   Plain --> Content
-  Content --> SDK[matrix-bot-sdk sendMessage]
+  Content --> SDK[matrix-js-sdk sendMessage]
   SDK --> Client[Matrix client rendering]
 ```
 
@@ -484,7 +538,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   Human[Human Matrix client] --> HS[Homeserver media repository]
-  HS --> SDK[matrix-bot-sdk sync loop]
+  HS --> SDK[matrix-js-sdk sync loop]
   SDK --> Matrix[pi-matrix MatrixBridgeClient]
   Matrix --> Diagnostics[Safe status / recovery diagnostics]
   Matrix --> Filter[trusted sender + msgtype filter]
@@ -567,6 +621,27 @@ flowchart TD
 
 ---
 
+## CoAS Confined Filesystem Boundary
+
+```mermaid
+flowchart LR
+  Consumers[Schedule / status / workspace / approval consumers] --> Paths[store-paths.ts\npure validated paths, IDs, env format]
+  Consumers --> Store[ConfinedStore\nconfig or authorized-root bound]
+  Paths --> Store
+  Store --> Guard[Absolute containment + no symlink components]
+  Guard --> Home[(COAS_HOME managed roots)]
+  External[Explicit external workspace] --> Metadata[.pi/coas/workspace.env authorization]
+  Metadata --> ExternalStore[ConfinedStore bound to validated real root]
+  ExternalStore --> ExternalGuard[Absolute containment + no symlink components]
+  ExternalGuard --> ExternalRoot[(Authorized external workspace root)]
+```
+
+- `store-paths.ts` performs no IO; it owns lexical path construction, ID validation, and schedule/workspace env formatting.
+- `ConfinedStore` is the sole CoAS-owned filesystem primitive boundary. It validates the complete absolute path chain, binds an authorized root, rejects symlink components and directory entries, and validates a deletion batch before mutation.
+- `COAS_HOME` bootstrap creates one path component at a time without following symlinks. Managed schedule, log, lock, run-state, approval, and workspace IO uses a config-bound store.
+- External workspaces remain available only when their validated root contains a non-symlinked `.pi/coas/workspace.env`; context IO stays confined to that root.
+- `tests/architecture/coas-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
+
 ## CoAS Internal Scheduler
 
 ### Goal
@@ -592,13 +667,15 @@ C4Component
     Container(pi, "pi session", "Extension host", "Runs extension lifecycle and message injection")
     Component(coas, "pi-coas", "Extension", "Owns schedule tools, commands, and lifecycle")
     Component(files, "Schedule files", ".pi/coas/schedules or COAS_HOME/schedules", "Desired schedule state")
+    Component(store, "ConfinedStore", "Root-bound filesystem capability", "Rejects path escapes and symlink components")
     Component(scheduler, "Internal scheduler", "Timer loop", "Reconciles enabled schedules and queues due prompts")
     Component(agent, "Pi agent turn", "LLM runtime", "Executes scheduled prompt as normal user message")
     Component(kanban, "pi-kanban tools", "Board surface", "Reusable board state/actions; no recurring schedule ownership")
     Rel(pi, coas, "loads")
-    Rel(coas, files, "reads/writes")
+    Rel(coas, store, "requests config-bound IO")
+    Rel(store, files, "reads/writes after confinement checks")
     Rel(coas, scheduler, "starts/stops/reconciles")
-    Rel(scheduler, files, "polls desired state")
+    Rel(scheduler, store, "polls desired state through")
     Rel(scheduler, agent, "sendUserMessage")
     Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
 ```

@@ -18,8 +18,13 @@ import type {
 } from "./adapter.js";
 import { extractMatrixAttachment, isMatrixMediaMsgtype } from "./attachments.js";
 import type { MatrixRoomMessageEvent } from "./attachments.js";
+import { createAttachmentDownloadResources } from "./attachment-download.js";
 import { markdownToMatrixContent } from "./markdown.js";
+import { BoundedRecentSet } from "./resource-bounds.js";
+import type { AttachmentDownloadResources } from "./resource-bounds.js";
 import type { MatrixConfig } from "./types.js";
+
+const MAX_SEEN_EVENT_IDS = 10_000;
 
 // ── Public types ────────────────────────────────────────────────
 
@@ -53,18 +58,23 @@ export class MatrixBridgeClient {
 	private connected = false;
 	private onInbound?: InboundHandler;
 	private notifyFn?: NotifyFn;
-	private seenEventIds = new Set<string>();
+	private readonly seenEventIds = new BoundedRecentSet(MAX_SEEN_EVENT_IDS);
+	private readonly downloadResources: AttachmentDownloadResources;
+	private lifecycleController = new AbortController();
 
 	constructor(
 		private config: MatrixConfig,
 		private adapter: MatrixClientAdapter,
-	) {}
+	) {
+		this.downloadResources = createAttachmentDownloadResources(config);
+	}
 
 	/**
 	 * Start the adapter and begin processing inbound events.
 	 * Throws if the access token is rejected or the homeserver is unreachable.
 	 */
 	async start(onInbound: InboundHandler, notify?: NotifyFn): Promise<void> {
+		if (this.lifecycleController.signal.aborted) this.lifecycleController = new AbortController();
 		this.onInbound = onInbound;
 		this.notifyFn = notify;
 
@@ -138,7 +148,14 @@ export class MatrixBridgeClient {
 			content,
 		};
 		const attachments = isMatrixMediaMsgtype(msgtype)
-			? [await extractMatrixAttachment(this.config, this.adapter, event.roomId, rawEvent)]
+			? [await extractMatrixAttachment({
+					config: this.config,
+					client: this.adapter,
+					roomId: event.roomId,
+					event: rawEvent,
+					downloadResources: this.downloadResources,
+					lifecycleSignal: this.lifecycleController.signal,
+				})]
 					.filter((attachment): attachment is InboundAttachment => attachment !== null)
 			: [];
 		if (!isTextLike && attachments.length === 0) return null;
@@ -174,6 +191,7 @@ export class MatrixBridgeClient {
 	}
 
 	async stop(): Promise<void> {
+		this.lifecycleController.abort(new Error("Matrix client stopped during attachment download."));
 		await this.adapter.stop();
 		this.connected = false;
 	}

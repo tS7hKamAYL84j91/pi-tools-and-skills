@@ -51,6 +51,7 @@ function createRegistry(self: AgentRecord, peers: AgentRecord[]): Registry {
 		setTask: () => undefined,
 		setName: () => undefined,
 		updatePendingMessages: () => undefined,
+		setExternalPeers: () => undefined,
 		readAllPeers: () => peers,
 		flush: () => undefined,
 		isRootSession: () => true,

@@ -6,8 +6,7 @@ import { activeIdentity, shouldDeliver } from "./scheduler-delivery.js";
 import { appendScheduleLog } from "./scheduler-log.js";
 import { renderPromptWithMarker } from "./scheduler-prompt.js";
 import { saveRunState } from "./scheduler-run-state.js";
-import { scheduleRunsPath } from "./schedules.js";
-import { isoUtc } from "./store.js";
+import { isoUtc } from "./store-paths.js";
 import { openApprovalGate, requiresPrincipalApproval } from "./scheduler-approval.js";
 import { newRunId } from "./scheduler-util.js";
 import type { CoasConfig, ScheduleEntry } from "./types.js";
@@ -17,6 +16,7 @@ interface RunOnceContext {
 	readonly config: CoasConfig;
 	readonly schedule: ScheduleEntry;
 	readonly now: Date;
+	readonly canDispatch: () => boolean;
 	readonly registerActiveRun: (runId: string, startedAt: string, approvalRequestId?: string) => void;
 }
 
@@ -38,7 +38,7 @@ interface RunOnceResult {
 
 export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetrics): Promise<RunOnceResult> {
 	const { pi, config, schedule, now, registerActiveRun } = ctx;
-	const identity = activeIdentity(pi);
+	const identity = await activeIdentity(pi, config);
 	const { deliver, reason } = shouldDeliver(schedule, identity);
 	const identityLog = `session=${identity.agentName || "unknown"} workspace=${identity.workspaceId || "unknown"} scope=${identity.scope}`;
 	if (!deliver) {
@@ -61,9 +61,8 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	}
 
 	if (schedule.continuation || approvalRequestId) {
-		const path = scheduleRunsPath(config, schedule.taskId);
 		const startedAt = isoUtc(now);
-		await saveRunState(path, {
+		await saveRunState(config, schedule.taskId, {
 			taskId: schedule.taskId,
 			runId,
 			...(approvalRequestId ? { requestId: approvalRequestId } : {}),
@@ -74,6 +73,10 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		registerActiveRun(runId, startedAt, approvalRequestId);
 	}
 
+	if (!ctx.canDispatch()) {
+		return { queued: false, runId, approvalRequestId };
+	}
+
 	try {
 		pi.sendUserMessage(prompt, { deliverAs: "followUp" });
 	} catch (error) {
@@ -82,7 +85,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		metrics.lastTaskId = schedule.taskId;
 		metrics.lastError = (error as Error).message;
 		if (schedule.continuation || approvalRequestId) {
-			await saveRunState(scheduleRunsPath(config, schedule.taskId), {
+			await saveRunState(config, schedule.taskId, {
 				taskId: schedule.taskId,
 				runId,
 				...(approvalRequestId ? { requestId: approvalRequestId } : {}),

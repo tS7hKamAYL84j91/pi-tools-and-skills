@@ -34,6 +34,54 @@ function makeStallTracker(): Map<string, { lastHash: string; stallCount: number 
 	return new Map();
 }
 
+// ── assessHealth: external agents ───────────────────────────────
+
+describe("assessHealth — external agents", () => {
+	it("treats a registered external peer as alive without PID or stall checks", () => {
+		mockIsPidAlive.mockClear();
+		mockIsPidAlive.mockReturnValue(false);
+		const mailboxPath = "/persist/external-worker/inbox";
+		const record = makeAgentRecord({
+			kind: "external",
+			pid: 0,
+			status: "waiting",
+			pendingMessages: 4,
+			mailboxPath,
+		});
+		const tracker = makeStallTracker();
+		tracker.set(record.id, { lastHash: "unchanged", stallCount: 99 });
+
+		const health = assessHealth(record, tracker);
+
+		expect(health).toMatchObject({
+			alive: true,
+			status: "waiting",
+			stallCycles: 0,
+			pendingMessages: 4,
+			socket: mailboxPath,
+		});
+		expect(mockIsPidAlive).not.toHaveBeenCalled();
+		expect(tracker.has(record.id)).toBe(false);
+	});
+
+	it("preserves an external peer's blocked status without checking its PID", () => {
+		mockIsPidAlive.mockClear();
+		mockIsPidAlive.mockReturnValue(false);
+		const record = makeAgentRecord({
+			kind: "external",
+			pid: 0,
+			status: "blocked",
+			mailboxPath: "/persist/blocked-worker/inbox",
+		});
+
+		const health = assessHealth(record, makeStallTracker());
+
+		expect(health.status).toBe("blocked");
+		expect(health.alive).toBe(true);
+		expect(mockIsPidAlive).not.toHaveBeenCalled();
+	});
+});
+
 // ── assessHealth: terminated ────────────────────────────────────
 
 describe("assessHealth — terminated", () => {

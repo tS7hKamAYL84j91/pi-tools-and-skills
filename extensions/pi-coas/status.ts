@@ -1,25 +1,21 @@
-/**
- * TypeScript CoAS status and diagnostics.
- */
+/** TypeScript CoAS status and diagnostics. */
 
-import { existsSync } from "node:fs";
 import { constants } from "node:fs";
-import { access, readdir, readFile, stat, statfs } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { listSchedules, validateCronExpr } from "./schedules.js";
+import { ConfinedStore } from "./store.js";
 import {
 	assertInside,
 	assertSafeId,
-	countDirectories,
-	fileExists,
 	lockRoot,
 	logRoot,
-	newestFile,
 	parseEnv,
 	scheduleLogRoot,
+	scheduleRoot,
 	workspaceRoot,
-} from "./store.js";
+} from "./store-paths.js";
 import type { CoasConfig, CommandResult, DoctorCheck, SchedulerSnapshot } from "./types.js";
 
 function statusLine(label: string, value: string | number): string {
@@ -33,7 +29,7 @@ async function commandExists(name: string): Promise<boolean> {
 			await access(join(dir, name), constants.X_OK);
 			return true;
 		} catch {
-			// Keep looking.
+			// Keep looking outside CoAS-owned storage.
 		}
 	}
 	return false;
@@ -45,22 +41,35 @@ async function checkCommand(name: string, critical = false): Promise<DoctorCheck
 }
 
 async function lastScheduleSignal(config: CoasConfig): Promise<string> {
-	const latest = await newestFile(scheduleLogRoot(config), ".log");
+	const homeStore = await ConfinedStore.openCoasHome(config);
+	const root = scheduleLogRoot(config);
+	if (!homeStore || !await homeStore.fileExists(root)) return "none";
+	const store = await ConfinedStore.forScheduleLogRoot(config);
+	const latest = await store.newestFile(root, ".log");
 	if (!latest) return "none";
-	const lines = (await readFile(latest, "utf8")).trim().split("\n").slice(-5);
+	const lines = (await store.readRequiredFile(latest)).trim().split("\n").slice(-5);
 	for (const line of [...lines].reverse()) {
 		if (/FAILED|SKIP|OK/.test(line)) return line;
 	}
 	return `see ${latest}`;
 }
 
+async function workspaceCount(config: CoasConfig): Promise<number> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
+	const root = workspaceRoot(config);
+	if (!homeStore || !await homeStore.fileExists(root)) return 0;
+	return (await ConfinedStore.forWorkspaceRoot(config)).countDirectories(root);
+}
+
 export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapshot): Promise<CommandResult> {
-	const schedules = await listSchedules(config).catch(() => []);
+	const schedules = await listSchedules(config);
+	const homeStore = await ConfinedStore.openCoasHome(config);
+	const logsExist = homeStore ? await homeStore.fileExists(logRoot(config)) : false;
 	const lines = [
 		"CoAS status",
 		"===========",
 		statusLine("data root", config.coasHome),
-		statusLine("workspaces", await countDirectories(workspaceRoot(config))),
+		statusLine("workspaces", await workspaceCount(config)),
 		statusLine("enabled schedules", schedules.filter((schedule) => schedule.enabled).length),
 		statusLine("scheduler", scheduler?.running ? "running" : "stopped"),
 		statusLine("active runs", scheduler?.activeRuns ?? 0),
@@ -72,7 +81,7 @@ export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapsh
 	if (scheduler?.lastTaskId) lines.push(statusLine("last task", scheduler.lastTaskId));
 	lines.push(
 		statusLine("last schedule", await lastScheduleSignal(config)),
-		statusLine("logs", existsSync(logRoot(config)) ? logRoot(config) : "none"),
+		statusLine("logs", logsExist ? logRoot(config) : "none"),
 		statusLine("doctor", "run: /coas-doctor"),
 	);
 	return { stdout: lines.join("\n"), stderr: "", code: 0 };
@@ -80,45 +89,40 @@ export async function coasStatus(config: CoasConfig, scheduler?: SchedulerSnapsh
 
 async function checkWorkspaceRegistry(config: CoasConfig): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];
+	const homeStore = await ConfinedStore.openCoasHome(config);
 	const root = workspaceRoot(config);
-	if (!existsSync(root)) {
-		checks.push({ level: "ok", message: `workspace registry: none at ${root}` });
-		return checks;
-	}
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!homeStore || !await homeStore.fileExists(root)) return [{ level: "ok", message: `workspace registry: none at ${root}` }];
+	const store = await ConfinedStore.forWorkspaceRoot(config);
 	let bad = 0;
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(root, entry.name);
-		if (!await fileExists(join(dir, "CONTEXT.md"))) {
+		if (!await store.fileExists(join(dir, "CONTEXT.md"))) {
 			checks.push({ level: "warn", message: `workspace missing CONTEXT.md: ${dir}` });
 			bad++;
 		}
 		const metadataPath = join(dir, ".pi", "coas", "workspace.env");
-		if (!await fileExists(metadataPath)) {
+		if (!await store.fileExists(metadataPath)) {
 			checks.push({ level: "warn", message: `workspace missing metadata: ${dir}` });
 			bad++;
 		}
 	}
-	checks.push({
-		level: "ok",
-		message: bad === 0 ? `workspace metadata consistent at ${root}` : `workspace registry checked at ${root}`,
-	});
+	checks.push({ level: "ok", message: bad === 0 ? `workspace metadata consistent at ${root}` : `workspace registry checked at ${root}` });
 	return checks;
 }
 
 async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
+	const root = scheduleRoot(config);
+	if (!homeStore || !await homeStore.fileExists(root)) return [{ level: "ok", message: "schedule registry: none" }];
+	const store = await ConfinedStore.forScheduleRoot(config);
 	const checks: DoctorCheck[] = [];
-	const root = join(config.coasHome, "schedules");
-	if (!existsSync(root)) return [{ level: "ok", message: "schedule registry: none" }];
-	const entries = await readdir(root, { withFileTypes: true });
 	let count = 0;
 	let bad = 0;
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isFile() || !entry.name.endsWith(".env")) continue;
 		count++;
-		const envPath = join(root, entry.name);
-		const values = parseEnv(await readFile(envPath, "utf8"));
+		const values = parseEnv(await store.readRequiredFile(join(root, entry.name)));
 		const taskId = values.TASK_ID ?? entry.name.replace(/\.env$/, "");
 		try {
 			if (!values.TASK_ID || !values.CRON_EXPR || !values.PROMPT_FILE) throw new Error("missing required field");
@@ -126,7 +130,7 @@ async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
 			assertSafeId("workspace id", values.WORKSPACE_ID ?? "missing");
 			validateCronExpr(values.CRON_EXPR);
 			assertInside(root, values.PROMPT_FILE);
-			if (!await fileExists(values.PROMPT_FILE)) throw new Error(`prompt missing: ${values.PROMPT_FILE}`);
+			if (!await store.fileExists(values.PROMPT_FILE)) throw new Error(`prompt missing: ${values.PROMPT_FILE}`);
 		} catch (error) {
 			bad++;
 			checks.push({ level: "warn", message: `invalid schedule ${taskId}: ${(error as Error).message}` });
@@ -137,18 +141,17 @@ async function checkSchedules(config: CoasConfig): Promise<DoctorCheck[]> {
 }
 
 async function checkRecentScheduleFailures(config: CoasConfig): Promise<DoctorCheck[]> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
 	const root = scheduleLogRoot(config);
-	if (!existsSync(root)) return [{ level: "ok", message: "schedule logs: none" }];
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!homeStore || !await homeStore.fileExists(root)) return [{ level: "ok", message: "schedule logs: none" }];
+	const store = await ConfinedStore.forScheduleLogRoot(config);
 	const failures: string[] = [];
 	const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isFile() || !entry.name.endsWith(".log")) continue;
 		const path = join(root, entry.name);
-		const info = await stat(path);
-		if (info.mtimeMs < weekAgo) continue;
-		const text = await readFile(path, "utf8");
-		for (const line of text.split("\n")) {
+		if ((await store.fileStat(path)).mtimeMs < weekAgo) continue;
+		for (const line of (await store.readRequiredFile(path)).split("\n")) {
 			if (/FAILED|SKIP busy/.test(line)) failures.push(`${entry.name}: ${line}`);
 		}
 	}
@@ -157,36 +160,35 @@ async function checkRecentScheduleFailures(config: CoasConfig): Promise<DoctorCh
 }
 
 async function checkScheduleLocks(config: CoasConfig): Promise<DoctorCheck[]> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
 	const root = lockRoot(config);
-	if (!existsSync(root)) return [{ level: "ok", message: "schedule locks: none" }];
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!homeStore || !await homeStore.fileExists(root)) return [{ level: "ok", message: "schedule locks: none" }];
+	const store = await ConfinedStore.forLockRoot(config);
 	let total = 0;
 	let bad = 0;
 	const nowSeconds = Math.floor(Date.now() / 1000);
 	const staleAfterSeconds = Number.parseInt(process.env.COAS_SCHEDULE_LOCK_STALE_SECONDS ?? "86400", 10);
 	const localHost = hostname();
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isDirectory() || !entry.name.endsWith(".lock")) continue;
 		total++;
 		const lockPath = join(root, entry.name);
-		const pidText = (await readFile(join(lockPath, "pid"), "utf8").catch(() => "")).trim();
-		const hostText = (await readFile(join(lockPath, "host"), "utf8").catch(() => "")).trim();
-		const startedText = (await readFile(join(lockPath, "started_epoch"), "utf8").catch(() => "")).trim();
+		const pidText = (await store.readOptionalFile(join(lockPath, "pid")) ?? "").trim();
+		const hostText = (await store.readOptionalFile(join(lockPath, "host")) ?? "").trim();
+		const startedText = (await store.readOptionalFile(join(lockPath, "started_epoch")) ?? "").trim();
 		if (!pidText || !/^\d+$/.test(startedText)) {
 			bad++;
 			continue;
 		}
-		const pid = Number.parseInt(pidText, 10);
 		if (hostText === localHost) {
 			try {
-				process.kill(pid, 0);
+				process.kill(Number.parseInt(pidText, 10), 0);
 			} catch {
 				bad++;
 				continue;
 			}
 		}
-		const ageSeconds = nowSeconds - Number.parseInt(startedText, 10);
-		if (ageSeconds > staleAfterSeconds) bad++;
+		if (nowSeconds - Number.parseInt(startedText, 10) > staleAfterSeconds) bad++;
 	}
 	if (total === 0) return [{ level: "ok", message: "schedule locks: none" }];
 	return [{ level: bad === 0 ? "ok" : "warn", message: `schedule locks: ${total} lock(s), ${bad} stale/malformed` }];
@@ -194,17 +196,16 @@ async function checkScheduleLocks(config: CoasConfig): Promise<DoctorCheck[]> {
 
 async function checkDisk(config: CoasConfig): Promise<DoctorCheck[]> {
 	try {
-		const info = await stat(config.coasHome);
-		if (!info.isDirectory()) return [{ level: "critical", message: `data root not directory: ${config.coasHome}` }];
-		const fsInfo = await statfs(config.coasHome);
+		const store = await ConfinedStore.openCoasHome(config);
+		if (!store) return [{ level: "warn", message: `data root does not exist yet: ${config.coasHome}` }];
+		const fsInfo = await store.fileSystemStat(config.coasHome);
 		const freeKb = Math.floor((fsInfo.bavail * fsInfo.bsize) / 1024);
-		const diskLevel: DoctorCheck["level"] = freeKb < 1048576 ? "warn" : "ok";
 		return [
 			{ level: "ok", message: `data root directory: ${config.coasHome}` },
-			{ level: diskLevel, message: `disk space under ${config.coasHome}: ${freeKb} KB available` },
+			{ level: freeKb < 1048576 ? "warn" : "ok", message: `disk space under ${config.coasHome}: ${freeKb} KB available` },
 		];
-	} catch {
-		return [{ level: "warn", message: `data root does not exist yet: ${config.coasHome}` }];
+	} catch (error) {
+		return [{ level: "critical", message: `unsafe data root ${config.coasHome}: ${(error as Error).message}` }];
 	}
 }
 
@@ -227,16 +228,10 @@ export async function coasDoctor(config: CoasConfig, scheduler?: SchedulerSnapsh
 	];
 	const warnings = checks.filter((check) => check.level === "warn").length;
 	const criticals = checks.filter((check) => check.level === "critical").length;
-	const lines = [
-		"CoAS doctor",
-		"===========",
-		...checks.map((check) => `${check.level === "ok" ? "✓" : check.level === "warn" ? "⚠" : "✗"} ${check.message}`),
-	];
+	const lines = ["CoAS doctor", "===========", ...checks.map((check) => `${check.level === "ok" ? "✓" : check.level === "warn" ? "⚠" : "✗"} ${check.message}`)];
 	const code = criticals > 0 ? 2 : warnings > 0 ? 1 : 0;
 	const stderr = criticals > 0
 		? `coas-doctor: ${criticals} critical, ${warnings} warning(s)`
-		: warnings > 0
-			? `coas-doctor: ${warnings} warning(s)`
-			: "coas-doctor: healthy";
+		: warnings > 0 ? `coas-doctor: ${warnings} warning(s)` : "coas-doctor: healthy";
 	return { stdout: lines.join("\n"), stderr, code };
 }

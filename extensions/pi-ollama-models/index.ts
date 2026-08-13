@@ -1,9 +1,10 @@
 /** Auto-sync local Ollama models into pi's models.json on session start/reload. */
 
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -15,6 +16,7 @@ const DEFAULT_MODELS_PATH = join(homedir(), ".pi", "agent", "models.json");
 const DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const DEFAULT_CONTEXT_WINDOW = 8192; // Conservative fallback to prevent context overflow on small local models
 const DEFAULT_MAX_TOKENS = 4096; // Standard max output token limit for stable completions
+const STANDARD_OLLAMA_COMMANDS = ["/usr/local/bin/ollama", "/usr/bin/ollama"] as const;
 
 interface PiModelConfig {
 	providers?: Record<string, PiProviderConfig>;
@@ -41,6 +43,11 @@ interface PiModel {
 }
 
 interface SyncOptions {
+	modelsPath?: string;
+	dryRun?: boolean;
+}
+
+interface SyncToolParams {
 	modelsPath?: string;
 	ollamaCommand?: string;
 	dryRun?: boolean;
@@ -106,14 +113,46 @@ async function readExistingConfig(path: string): Promise<PiModelConfig> {
 }
 
 function validateOllamaCommand(command: string): void {
+	if (!isAbsolute(command)) {
+		throw new Error("Security validation failed: PI_OLLAMA_COMMAND must be an absolute path");
+	}
 	const name = basename(command);
-	if (name !== "ollama" && name !== "ollama.exe") {
-		throw new Error(`Security validation failed: command executable must be 'ollama', received '${name}'`);
+	if (name !== "ollama") {
+		throw new Error(`Security validation failed: command executable basename must be 'ollama', received '${name}'`);
 	}
 }
 
+async function isExecutable(path: string): Promise<boolean> {
+	try {
+		const metadata = await stat(path);
+		if (!metadata.isFile()) {
+			return false;
+		}
+		await access(path, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function resolveOllamaCommand(): Promise<string> {
+	const configuredCommand = process.env.PI_OLLAMA_COMMAND;
+	if (configuredCommand !== undefined) {
+		validateOllamaCommand(configuredCommand);
+		if (!(await isExecutable(configuredCommand))) {
+			throw new Error(`Configured Ollama executable is not executable: ${configuredCommand}`);
+		}
+		return configuredCommand;
+	}
+	for (const candidate of STANDARD_OLLAMA_COMMANDS) {
+		if (await isExecutable(candidate)) {
+			return candidate;
+		}
+	}
+	throw new Error(`No Ollama executable found at approved standard paths: ${STANDARD_OLLAMA_COMMANDS.join(", ")}`);
+}
+
 async function discoverOllamaModels(command: string): Promise<PiModel[]> {
-	validateOllamaCommand(command);
 	try {
 		const { stdout } = await execFileAsync(command, ["list"], { timeout: 10_000, maxBuffer: 1024 * 1024 });
 		const ids = parseOllamaList(stdout);
@@ -136,7 +175,7 @@ export function modelIdsChanged(existing: PiModelConfig, models: PiModel[]): boo
 
 async function syncOllamaModels(options: SyncOptions = {}): Promise<ToolResult> {
 	const modelsPath = options.modelsPath ?? process.env.PI_OLLAMA_MODELS_PATH ?? DEFAULT_MODELS_PATH;
-	const command = options.ollamaCommand ?? process.env.PI_OLLAMA_COMMAND ?? "ollama";
+	const command = await resolveOllamaCommand();
 	const models = await discoverOllamaModels(command);
 	const existing = await readExistingConfig(modelsPath);
 	const changed = modelIdsChanged(existing, models);
@@ -167,12 +206,18 @@ export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
 		label: "Pi Ollama Sync Models",
 		description: "Discover local Ollama models and update pi models.json; dry-run optional.",
 		parameters: Type.Object({
-			modelsPath: Type.Optional(Type.String({ description: "Override pi models.json path for tests/POCs." })),
-			ollamaCommand: Type.Optional(Type.String({ description: "Override ollama executable path." })),
+			modelsPath: Type.Optional(Type.String({
+				description: "Deprecated compatibility input. Ignored; model callers cannot select the output path.",
+				deprecated: true,
+			})),
+			ollamaCommand: Type.Optional(Type.String({
+				description: "Deprecated compatibility input. Ignored and never executed; only PI_OLLAMA_COMMAND configures the executable.",
+				deprecated: true,
+			})),
 			dryRun: Type.Optional(Type.Boolean({ description: "Discover and report without writing models.json." })),
-		}),
-		async execute(_id, params: SyncOptions): Promise<ToolResult> {
-			return syncOllamaModels(params);
+		}, { additionalProperties: false }),
+		async execute(_id, params: SyncToolParams): Promise<ToolResult> {
+			return syncOllamaModels({ dryRun: params.dryRun });
 		},
 	});
 }

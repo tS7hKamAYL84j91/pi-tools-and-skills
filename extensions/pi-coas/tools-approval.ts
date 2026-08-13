@@ -6,8 +6,7 @@ import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { approveApproval, deferApproval, isPrincipal, listApprovalArtifacts, rejectApproval } from "./approval-inbox.js";
 import { resolveCoasConfigForCwd } from "./config.js";
 import { loadRunState, saveRunState } from "./scheduler-run-state.js";
-import { scheduleRunsPath } from "./schedules.js";
-import { isoUtc } from "./store.js";
+import { isoUtc } from "./store-paths.js";
 
 async function configFor(ctx: ExtensionContext, cwd?: string) {
 	return resolveCoasConfigForCwd(ctx.cwd, cwd);
@@ -47,12 +46,14 @@ export function registerCoasApprovalTools(
 					const config = await configFor(ctx, params.cwd);
 					const artifact = await handler(config, params.requestId, params.reason);
 					if (artifact.status === "approved") {
-						await resumeApprovedRun(config, artifact.requestId);
+						const resumed = await resumeApprovedRun(config, artifact.requestId);
+						if (!resumed) {
+							return fail(`Approval recorded, but scheduled run could not be resumed: ${artifact.requestId}`, { artifact });
+						}
 					} else if (artifact.status === "rejected" || artifact.status === "deferred") {
-						const path = scheduleRunsPath(config, artifact.taskId);
-						const state = await loadRunState(path);
+						const state = await loadRunState(config, artifact.taskId);
 						if (state?.runId === artifact.runId && state.status === "awaiting-approval") {
-							await saveRunState(path, { ...state, status: "failed", reason: params.reason ?? artifact.status, lastUpdatedAt: isoUtc() });
+							await saveRunState(config, artifact.taskId, { ...state, status: "failed", reason: params.reason ?? artifact.status, lastUpdatedAt: isoUtc() });
 						}
 					}
 					return ok(JSON.stringify(artifact), { artifact });

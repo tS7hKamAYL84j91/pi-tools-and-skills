@@ -117,6 +117,31 @@ describe("send", () => {
 		expect(result.error).toContain("invalid agent id");
 	});
 
+	it("ignores mailbox paths on volatile pi records", async () => {
+		const forgedMailbox = "/tmp/forged-external-mailbox";
+		const result = await transport.send(
+			{ ...PEER, kind: "pi", mailboxPath: forgedMailbox },
+			"me",
+			"hello",
+		);
+
+		expect(result.accepted).toBe(true);
+		expect(mockChmodSync).not.toHaveBeenCalledWith(forgedMailbox, 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/peer-id/inbox", 0o700);
+	});
+
+	it("rejects external peers without a validated mailbox path", async () => {
+		const result = await transport.send(
+			{ ...PEER, kind: "external" },
+			"me",
+			"hello",
+		);
+
+		expect(result.accepted).toBe(false);
+		expect(result.error).toContain("has no mailbox path");
+		expect(mockWriteFileSync).not.toHaveBeenCalled();
+	});
+
 	it("hardens the correct peer inbox", async () => {
 		await transport.send(PEER, "me", "hello");
 		expect(mockChmodSync).toHaveBeenCalledWith(expect.stringContaining("peer-id"), 0o700);
@@ -250,9 +275,13 @@ describe("init", () => {
 		expect(mockChmodSync).not.toHaveBeenCalledWith("/fake/.pi/agents/inbox", 0o700);
 	});
 
-	it("validates the agent id but no longer creates a root inbox", () => {
+	it("creates the complete pi inbox before a watcher starts", () => {
 		transport.init("my-id");
-		expect(mockChmodSync).not.toHaveBeenCalled();
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/tmp", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/new", 0o700);
+		expect(mockChmodSync).toHaveBeenCalledWith("/fake/.pi/agents/my-id/inbox/cur", 0o700);
 	});
 });
 

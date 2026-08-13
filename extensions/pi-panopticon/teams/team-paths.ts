@@ -14,6 +14,7 @@ export const DEFAULT_CONFIG_JSON = join(EXTENSION_DIR, "config", "config.json");
 const DEFAULT_AGENT_DIRECTORY = "agents";
 const DEFAULT_PROMPT_DIRECTORY = "prompts";
 const DEFAULT_TEAM_DIRECTORY = "teams";
+const DEFAULT_RESULT_DIRECTORY = "results";
 const DEFAULT_USER_ROOT = join(homedir(), ".pi", "agent");
 const DEFAULT_USER_TEAM_ROOT = join(DEFAULT_USER_ROOT, "teams");
 const PROJECT_SETTINGS_PATH = join(".pi", "settings.json");
@@ -85,6 +86,15 @@ export function teamDirectories(
 	const projectRoots = configuredRoots(join(projectRoot, PROJECT_SETTINGS_PATH), projectRoot) ?? [join(projectRoot, PROJECT_TEAM_ROOT)];
 	for (const root of projectRoots) dirs.push(directoriesForRoot(root, "project"));
 	return dirs;
+}
+
+/** Resolve the private user-owned root for durable team-run results. */
+export function resolveTeamResultRoot(
+	cwd: string,
+	settingsPath: string = PI_SETTINGS_PATH,
+): string {
+	const userRoot = configuredRoots(settingsPath, cwd)?.[0] ?? DEFAULT_USER_TEAM_ROOT;
+	return join(userRoot, DEFAULT_RESULT_DIRECTORY);
 }
 
 export function dirsForTeamScope(scope: TeamWritableSource, cwd: string): { teams: string; agents: string; prompts: string } {

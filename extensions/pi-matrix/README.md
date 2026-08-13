@@ -7,7 +7,7 @@ The user types or attaches files in a Matrix client → message arrives via `Mat
 ## Architecture
 
 ```text
-Matrix client → Homeserver → Bot (matrix-bot-sdk)
+Matrix client → Homeserver → Bot (`matrix-js-sdk`)
                               ↓
               text/media filter + safe attachment cache
                               ↓
@@ -21,7 +21,7 @@ Matrix client → Homeserver → Bot (matrix-bot-sdk)
 | File | Purpose |
 |------|---------|
 | `index.ts` | Extension entry — lifecycle, channel registration, status bar, `/matrix` command |
-| `client.ts` | matrix-bot-sdk wrapper — sync loop, message/media filtering, reconnection |
+| `client.ts` | Matrix bridge policy — sync callbacks, message/media filtering, deduplication |
 | `attachments.ts` | Attachment MIME/size gates, MXC download, encrypted-media helper use, cache writes |
 | `transport.ts` | `MessageTransport` implementation — buffers inbound, wraps send |
 | `config.ts` | Config loader — reads `.pi/settings.json`, reads the configured token env var |
@@ -121,7 +121,7 @@ Skipped attachments include the filename, MIME type, size when known, concise re
 
 Matrix messages and attachments are external input. This extension filters senders, wraps inbound messages before putting them in model context, stores attachments as inert files, and never executes or parses them automatically. Keep `trustedSenders`, `maxAttachmentBytes`, and `allowedMimePrefixes` restrictive for shared rooms.
 
-Encrypted room events require matrix-bot-sdk crypto configuration before the SDK can emit decrypted `m.room.message` events. Encrypted media blobs (`content.file`) are currently deferred because matrix-bot-sdk `decryptMedia()` downloads the encrypted blob before callers can enforce this extension's size limit; `message_read` surfaces an attachment error with the MXC/event metadata instead of silently dropping it.
+Encrypted room events require `matrix-js-sdk` crypto configuration before the SDK can emit decrypted `m.room.message` events. Encrypted media blobs (`content.file`) remain deferred because decryption downloads the encrypted blob before callers can enforce this extension's size limit; `message_read` surfaces an attachment error with the MXC/event metadata instead of silently dropping it.
 
 ## What this does NOT do
 

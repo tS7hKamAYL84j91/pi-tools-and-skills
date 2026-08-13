@@ -4,11 +4,10 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { appendLogLine } from "../../lib/file-persistence.js";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
-import { isoUtc } from "./store.js";
+import { ConfinedStore } from "./store.js";
+import { isoUtc } from "./store-paths.js";
 import type { CoasConfig } from "./types.js";
 import { maybeGovernanceRoute, normaliseIntent } from "./governance.js";
 import { appendWorkspaceContext } from "./workspaces.js";
@@ -50,12 +49,8 @@ export function registerGovernanceTools(
 					try {
 						await appendWorkspaceContext(config, undefined, ctx.cwd, alert);
 					} catch {
-						const logDir = join(config.coasHome, "governance");
-						await mkdir(logDir, { recursive: true, mode: 0o700 });
-						await appendLogLine(join(logDir, "escalation.log"), `[${isoUtc()}] ${alert}\n`, {
-							encoding: "utf8",
-							mode: 0o600,
-						});
+						const store = await ConfinedStore.createCoasHome(config);
+						await store.appendPrivateLog(join(config.coasHome, "governance", "escalation.log"), `[${isoUtc()}] ${alert}\n`);
 					}
 				}
 

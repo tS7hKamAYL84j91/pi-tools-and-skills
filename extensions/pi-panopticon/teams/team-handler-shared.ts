@@ -33,8 +33,6 @@ export interface TeamRunInput {
 	id: string;
 	prompt: string;
 	profile?: TeamProfile;
-	files?: string[];
-	specPath?: string;
 	models?: TeamRunModels;
 	limits?: TeamRunLimits;
 	async?: boolean;

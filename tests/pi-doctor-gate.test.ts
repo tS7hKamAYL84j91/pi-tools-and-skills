@@ -1,15 +1,38 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatDoctorReport, runDoctor } from "../extensions/pi-doctor/doctor.js";
+import { afterEach, describe, expect, it } from "vitest";
+import piDoctorExtension from "../extensions/pi-doctor/index.js";
 
 const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-ollama-models", "pi-panopticon"];
-let tempDirs: string[] = [];
+const tempDirs: string[] = [];
+
+interface DoctorToolResult {
+	content: Array<{ type: "text"; text: string }>;
+	details: Record<string, unknown>;
+}
+
+interface DoctorTool {
+	execute: (
+		id: string,
+		params: Record<string, unknown>,
+		signal: AbortSignal,
+		onUpdate: undefined,
+		ctx: { cwd: string },
+	) => Promise<DoctorToolResult>;
+}
+
+interface DoctorCommand {
+	handler: (args: string, ctx: {
+		cwd: string;
+		ui: { notify: (message: string, level: "info" | "warning") => void };
+	}) => Promise<void>;
+}
 
 async function makeWorkspace(): Promise<string> {
-	const cwd = await mkdtemp(join(tmpdir(), "pi-doctor-gate-"));
+	const cwd = await mkdtemp(join(tmpdir(), "pi-doctor-read-only-"));
 	tempDirs.push(cwd);
 	mkdirSync(join(cwd, "extensions"));
 	writeFileSync(join(cwd, "package.json"), JSON.stringify({
@@ -34,37 +57,63 @@ async function makeWorkspace(): Promise<string> {
 	return cwd;
 }
 
+function captureDoctorSurfaces(): { tool: DoctorTool; command: DoctorCommand } {
+	let tool: DoctorTool | undefined;
+	let command: DoctorCommand | undefined;
+	const api = {
+		registerTool(definition: DoctorTool) {
+			tool = definition;
+		},
+		registerCommand(_name: string, definition: DoctorCommand) {
+			command = definition;
+		},
+	};
+	piDoctorExtension(api as unknown as ExtensionAPI);
+	if (!tool || !command) {
+		throw new Error("pi-doctor surfaces were not registered");
+	}
+	return { tool, command };
+}
+
 afterEach(async () => {
-	for (const dir of tempDirs) await rm(dir, { recursive: true, force: true });
-	tempDirs = [];
+	for (const dir of tempDirs.splice(0)) {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
 
-describe("runDoctor gate command", () => {
-	it("reports PASS when gate exits 0", async () => {
+describe("pi-doctor read-only contract", () => {
+	it("ignores command-like extra tool parameters", async () => {
 		const cwd = await makeWorkspace();
-		const report = await runDoctor(cwd, "exit 0");
-		const text = formatDoctorReport(report);
+		const marker = join(cwd, "tool-command-ran");
+		const { tool } = captureDoctorSurfaces();
 
-		expect(report.ok).toBe(true);
-		expect(text).toContain("Gate command passed");
-		expect(text).toContain("pi-doctor PASS");
+		const result = await tool.execute("id", {
+			includeFindings: true,
+			gateCommand: `touch "${marker}"`,
+		}, new AbortController().signal, undefined, { cwd });
+
+		expect(existsSync(marker)).toBe(false);
+		expect(result.content[0]?.text).toContain("Deprecated gateCommand was ignored");
+		expect(result.details.deprecatedGateCommandIgnored).toBe(true);
 	});
 
-	it("reports FAIL when gate exits non-zero", async () => {
+	it("does not parse or execute a --gate slash-command argument", async () => {
 		const cwd = await makeWorkspace();
-		const report = await runDoctor(cwd, "echo 'gate failed' >&2; exit 1");
-		const text = formatDoctorReport(report);
+		const marker = join(cwd, "slash-command-ran");
+		const { command } = captureDoctorSurfaces();
+		let notification = "";
 
-		expect(report.ok).toBe(false);
-		expect(text).toContain("gate failed");
-		expect(text).toContain("pi-doctor FAIL");
-	});
+		await command.handler(`--gate 'touch "${marker}"'`, {
+			cwd,
+			ui: {
+				notify(message) {
+					notification = message;
+				},
+			},
+		});
 
-	it("remains backward-compatible without gate", async () => {
-		const cwd = await makeWorkspace();
-		const report = await runDoctor(cwd);
-
-		expect(report.ok).toBe(true);
-		expect(report.summary.errors).toBe(0);
+		expect(existsSync(marker)).toBe(false);
+		expect(notification).toContain("Deprecated /pi-doctor --gate input was ignored");
+		expect(notification).toContain("pi-doctor PASS");
 	});
 });

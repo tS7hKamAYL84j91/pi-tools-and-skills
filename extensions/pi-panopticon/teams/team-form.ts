@@ -4,12 +4,12 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "../../../lib/file-persistence.js";
 import { isLiveAgentRef } from "./live-agent.js";
 import { applyModelsToBindings, defaultAgentBindings } from "./team-form-bindings.js";
-import { deleteGeneratedSubagents, ensureSubagentFile } from "./team-form-files.js";
+import { assertGeneratedSubagentsDirectory, assertSafeGeneratedSubagentId, assertTeamDefinitionFile, assertTeamDefinitionsDirectory, deleteGeneratedSubagents, ensureGeneratedSubagentsDirectory, ensureSubagentFile, ensureTeamDefinitionsDirectory } from "./team-form-files.js";
 import { loadBuiltinTeamIds, loadTeamRegistry } from "./team-registry.js";
 import { dirsForTeamScope } from "./team-paths.js";
 import { chooseModel, chooseTeamTarget } from "./team-picker.js";
@@ -114,13 +114,17 @@ export async function createTeamFiles(input: TeamFormInput, cwd: string): Promis
 	validateFormInput(input);
 	const scope = input.scope ?? "user";
 	const dirs = dirsForTeamScope(scope, cwd);
-	await mkdir(dirs.teams, { recursive: true });
+	const bindings = defaultAgentBindings({ ...input, id });
+	const generatedBindings = bindings.filter((binding) => !isLiveAgentRef(binding.subagent));
+	for (const binding of generatedBindings) assertSafeGeneratedSubagentId(binding.subagent);
+	ensureTeamDefinitionsDirectory(dirs.teams);
 	const teamPath = join(dirs.teams, `${id}.md`);
+	assertTeamDefinitionFile(teamPath);
+	if (generatedBindings.length > 0) ensureGeneratedSubagentsDirectory(dirs.agents);
 	const overwrote = existsSync(teamPath);
 	if (overwrote && !input.overwrite) {
 		throw new Error(`Team "${id}" already exists at ${teamPath}. Pass overwrite=true to replace it.`);
 	}
-	const bindings = defaultAgentBindings({ ...input, id });
 	const knownSubagents = loadTeamRegistry(undefined, { cwd }).subagents;
 	const subagentIds = [...new Set(bindings.map((binding) => binding.subagent))];
 	const subagentPaths = await Promise.all(subagentIds
@@ -145,6 +149,7 @@ export async function updateTeamModels(input: TeamModelsInput, cwd: string): Pro
 	const registry = loadTeamRegistry(undefined, { cwd });
 	const team = registry.teams.get(id);
 	if (!team) throw new Error(`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
+	if (team.source !== "builtin") assertTeamDefinitionFile(team.path);
 	return createTeamFiles({
 		id,
 		name: team.name,
@@ -163,22 +168,28 @@ export async function updateTeamModels(input: TeamModelsInput, cwd: string): Pro
 export async function deleteTeamFiles(input: TeamDeleteInput, cwd: string): Promise<TeamDeleteResult> {
 	const id = normalizeTeamId(input.id);
 	if (!id) throw new Error("Team id is required.");
-	const registry = loadTeamRegistry(undefined, { cwd });
-	const team = registry.teams.get(id);
 	if (input.scope) {
-		const teamPath = join(dirsForTeamScope(input.scope, cwd).teams, `${id}.md`);
+		const dirs = dirsForTeamScope(input.scope, cwd);
+		assertGeneratedSubagentsDirectory(dirs.agents);
+		assertTeamDefinitionsDirectory(dirs.teams);
+		const teamPath = join(dirs.teams, `${id}.md`);
+		assertTeamDefinitionFile(teamPath);
 		if (!existsSync(teamPath)) throw new Error(`No ${input.scope} team "${id}" at ${teamPath}.`);
-		await rm(teamPath).catch(() => {});
+		const team = loadTeamRegistry(undefined, { cwd }).teams.get(id);
 		if (team?.source === input.scope) await deleteGeneratedSubagents(team, cwd);
+		await rm(teamPath).catch(() => {});
 		return { id, teamPath, source: input.scope };
 	}
+	const registry = loadTeamRegistry(undefined, { cwd });
+	const team = registry.teams.get(id);
 	if (loadBuiltinTeamIds().has(id)) {
 		throw new Error(`Team "${id}" is a built-in default id. Pass scope=user or scope=project to delete only an override.`);
 	}
 	if (!team) throw new Error(`No team "${id}". Known: ${[...registry.teams.keys()].join(", ") || "(none)"}`);
 	if (team.source === "builtin") throw new Error(`Built-in team "${id}" cannot be deleted.`);
-	await rm(team.path).catch(() => {});
+	assertTeamDefinitionFile(team.path);
 	await deleteGeneratedSubagents(team, cwd);
+	await rm(team.path).catch(() => {});
 	return { id, teamPath: team.path, source: team.source };
 }
 

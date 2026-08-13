@@ -7,7 +7,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, parse, resolve } from "node:path";
 import { readPiSettingsKey } from "../../lib/pi-settings.js";
-import { pathInside } from "./store.js";
+import { pathInside } from "./store-paths.js";
 import type { CoasConfig, RawCoasSettings } from "./types.js";
 
 function optionalString(value: unknown): string | undefined {

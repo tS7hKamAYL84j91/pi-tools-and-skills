@@ -11,34 +11,35 @@ interface PiDoctorInput {
 	gateCommand?: string;
 }
 
-function doctorResult(cwd: string, input: PiDoctorInput): Promise<ToolResult> {
-	return runDoctor(cwd, input.gateCommand).then((report) =>
-		ok(formatDoctorReport(report), {
-			ok: report.ok,
-			summary: report.summary,
-			...(input.includeFindings ? { findings: report.findings } : {}),
-		}),
-	);
+async function doctorResult(cwd: string, input: PiDoctorInput): Promise<ToolResult> {
+	const report = await runDoctor(cwd);
+	const deprecation = input.gateCommand === undefined
+		? ""
+		: "Deprecated gateCommand was ignored; pi-doctor never executes commands.\n";
+	return ok(`${deprecation}${formatDoctorReport(report)}`, {
+		ok: report.ok,
+		summary: report.summary,
+		...(input.gateCommand === undefined ? {} : { deprecatedGateCommandIgnored: true }),
+		...(input.includeFindings ? { findings: report.findings } : {}),
+	});
 }
 
-function parseGateCommand(args: string): string | undefined {
-	const tokens = args.trim().split(/\s+/);
-	const index = tokens.indexOf("--gate");
-	if (index >= 0 && tokens[index + 1]) {
-		return tokens[index + 1];
-	}
-	return undefined;
+function usesDeprecatedGateArgument(args: unknown): boolean {
+	return typeof args === "string" && /(?:^|\s)--gate(?:\s|=|$)/.test(args);
 }
 
 export default function piDoctorExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "pi_doctor",
 		label: "Pi Doctor",
-		description: "Read-only diagnostics for pi-tools extension manifests, command namespaces, and required package scripts/dependencies. Optionally run a gate command that must exit 0 before PASS.",
+		description: "Read-only diagnostics for pi-tools extension manifests, command namespaces, and required package scripts/dependencies.",
 		promptSnippet: "Run read-only pi extension diagnostics",
 		parameters: Type.Object({
 			includeFindings: Type.Optional(Type.Boolean({ description: "Include structured finding details in tool metadata." })),
-			gateCommand: Type.Optional(Type.String({ description: "Optional command that must exit 0 before reporting PASS." })),
+			gateCommand: Type.Optional(Type.String({
+				description: "Deprecated compatibility input. Ignored and never executed.",
+				deprecated: true,
+			})),
 		}),
 		async execute(_id, params: PiDoctorInput, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			return doctorResult(ctx.cwd, params);
@@ -46,11 +47,14 @@ export default function piDoctorExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("pi-doctor", {
-		description: "Run read-only pi-tools extension diagnostics. Use --gate <command> to require a passing gate before PASS.",
-		handler: async (_args, ctx) => {
-			const gateCommand = parseGateCommand(typeof _args === "string" ? _args : "");
-			const report = await runDoctor(ctx.cwd, gateCommand);
-			ctx.ui.notify(formatDoctorReport(report), report.ok ? "info" : "warning");
+		description: "Run read-only pi-tools extension diagnostics. Deprecated --gate input is accepted but ignored.",
+		handler: async (args, ctx) => {
+			const report = await runDoctor(ctx.cwd);
+			const deprecatedGate = usesDeprecatedGateArgument(args);
+			const deprecation = deprecatedGate
+				? "Deprecated /pi-doctor --gate input was ignored; no command was executed.\n"
+				: "";
+			ctx.ui.notify(`${deprecation}${formatDoctorReport(report)}`, deprecatedGate || !report.ok ? "warning" : "info");
 		},
 	});
 }

@@ -22,9 +22,9 @@ import {
 	type BoardState,
 	boardLogPath,
 	parseBoard,
-	selfAppendedLines,
 	WIP_LIMIT,
 } from "./board.js";
+import { selfAppendedLines } from "./board-transactions.js";
 import { openKanbanOverlay } from "./overlay.js";
 
 // ── Constants ───────────────────────────────────────────────

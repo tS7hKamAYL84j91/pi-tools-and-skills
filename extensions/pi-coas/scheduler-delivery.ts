@@ -4,7 +4,7 @@
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 import { currentWorkspaceLabel } from "./workspace-paths.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { ScheduleEntry } from "./types.js";
+import type { CoasConfig, ScheduleEntry } from "./types.js";
 
 const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
@@ -14,12 +14,12 @@ interface DeliveryIdentity {
 	readonly scope: "workspace" | "task" | "unknown";
 }
 
-export function activeIdentity(pi: ExtensionAPI): DeliveryIdentity {
+export async function activeIdentity(pi: ExtensionAPI, config: CoasConfig): Promise<DeliveryIdentity> {
 	const scopeRaw = process.env[PANOPTICON_SCOPE_ENV];
 	const scope: "workspace" | "task" | "unknown" =
 		scopeRaw === "task" ? "task" : scopeRaw === "workspace" ? "workspace" : "unknown";
 	return {
-		workspaceId: process.env.COAS_WORKSPACE_ID ?? currentWorkspaceLabel(process.cwd()) ?? "",
+		workspaceId: process.env.COAS_WORKSPACE_ID ?? await currentWorkspaceLabel(config, process.cwd()) ?? "",
 		agentName: process.env[PANOPTICON_SPAWN_NAME_ENV] ?? pi.getSessionName() ?? "",
 		scope,
 	};

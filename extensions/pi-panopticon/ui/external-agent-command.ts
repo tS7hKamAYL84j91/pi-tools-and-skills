@@ -7,16 +7,21 @@ import {
 	registerExternalAgent,
 	unregisterExternalAgent,
 } from "../registry/external-registrar.js";
+import type { Registry } from "../types.js";
 
 interface ExternalRuntimeConfig {
-	workspaceRoot?: string;
+	workspaceRoot: string;
 }
 
 function configFromCwd(cwd: string): ExternalRuntimeConfig {
 	return { workspaceRoot: cwd };
 }
 
-export function registerExternalAgentCommands(pi: ExtensionAPI): void {
+async function refreshExternalPeers(registry: Registry, config: ExternalRuntimeConfig): Promise<void> {
+	registry.setExternalPeers(await listExternalAgents(config));
+}
+
+export function registerExternalAgentCommands(pi: ExtensionAPI, registry: Registry): void {
 	pi.registerCommand("agent-external-register", {
 		description: "Register an external (non-pi) agent mailbox",
 		handler: async (args, ctx) => {
@@ -26,7 +31,9 @@ export function registerExternalAgentCommands(pi: ExtensionAPI): void {
 				return;
 			}
 			try {
-				const record = await registerExternalAgent(configFromCwd(ctx.cwd), { name });
+				const config = configFromCwd(ctx.cwd);
+				const record = await registerExternalAgent(config, { name }, registry.readAllPeers());
+				await refreshExternalPeers(registry, config);
 				ctx.ui.notify(
 					`Registered external agent "${record.name}" at ${record.mailboxPath}`,
 					"info",
@@ -41,7 +48,9 @@ export function registerExternalAgentCommands(pi: ExtensionAPI): void {
 	pi.registerCommand("agent-external-list", {
 		description: "List registered external agents",
 		handler: async (_args, ctx) => {
-			const agents = await listExternalAgents(configFromCwd(ctx.cwd));
+			const config = configFromCwd(ctx.cwd);
+			const agents = await listExternalAgents(config);
+			registry.setExternalPeers(agents);
 			if (agents.length === 0) {
 				ctx.ui.notify("No external agents registered", "info");
 				return;
@@ -65,7 +74,9 @@ export function registerExternalAgentCommands(pi: ExtensionAPI): void {
 				ctx.ui.notify(`No external agent named "${name}"`, "warning");
 				return;
 			}
-			await unregisterExternalAgent(configFromCwd(ctx.cwd), match.id);
+			const config = configFromCwd(ctx.cwd);
+			await unregisterExternalAgent(config, match.id);
+			await refreshExternalPeers(registry, config);
 			ctx.ui.notify(`Removed external agent "${match.name}"`, "info");
 		},
 	});

@@ -20,6 +20,6 @@ export function setupUI(
 	registerNameControls(pi, deps.registry);
 	registerAgentListModeControls(pi, deps.registry, deps.listMode);
 	registerAgentsCommand(pi, deps);
-	registerExternalAgentCommands(pi);
+	registerExternalAgentCommands(pi, deps.registry);
 	return createAgentStatusWidget(deps.registry, deps.selfId, deps.listMode);
 }

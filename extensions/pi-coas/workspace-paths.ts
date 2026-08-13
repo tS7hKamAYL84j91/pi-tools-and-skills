@@ -1,19 +1,9 @@
-/**
- * CoAS workspace path resolution and validation helpers.
- */
+/** CoAS workspace path resolution through confined capabilities. */
 
-import { existsSync } from "node:fs";
-import { lstat, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import {
-	assertInside,
-	assertNoSymlinkComponents,
-	assertSafeId,
-	parseEnv,
-	pathInside,
-	workspaceRoot,
-} from "./store.js";
+import { ConfinedStore, ensureRuntimeDirs } from "./store.js";
+import { assertSafeId, parseEnv, pathInside, workspaceRoot } from "./store-paths.js";
 import type { CoasConfig, WorkspaceSummary } from "./types.js";
 
 function expandHome(path: string): string {
@@ -31,76 +21,73 @@ export function workspaceMetadataPath(dir: string): string {
 	return join(dir, ".pi", "coas", "workspace.env");
 }
 
-function hasWorkspaceMetadata(dir: string): boolean {
-	return existsSync(workspaceMetadataPath(dir));
-}
-
-function assertAllowedWorkspacePath(config: CoasConfig, dir: string): void {
+async function openManagedWorkspaceStore(config: CoasConfig): Promise<ConfinedStore | undefined> {
+	const homeStore = await ConfinedStore.openCoasHome(config);
 	const root = workspaceRoot(config);
-	try {
-		assertInside(root, dir);
-		if (resolve(dir) !== resolve(root)) return;
-	} catch {
-		// Fall through to metadata check for explicitly selected external-but-real
-		// workspaces. This preserves compatibility without allowing arbitrary paths.
-	}
-	if (hasWorkspaceMetadata(dir)) return;
-	throw new Error(`Workspace path must be under ${root} or contain .pi/coas/workspace.env: ${dir}`);
+	if (!homeStore || !await homeStore.fileExists(root)) return undefined;
+	return ConfinedStore.forWorkspaceRoot(config);
 }
 
-export function resolveWorkspacePath(config: CoasConfig, selector: string | undefined, cwd: string): string {
+async function openWorkspaceStore(config: CoasConfig, dir: string): Promise<ConfinedStore | undefined> {
+	const root = workspaceRoot(config);
+	if (pathInside(root, dir) && resolve(dir) !== resolve(root)) return openManagedWorkspaceStore(config);
+	return ConfinedStore.openExternalWorkspace(dir);
+}
+
+export async function createManagedWorkspaceStore(config: CoasConfig): Promise<ConfinedStore> {
+	await ensureRuntimeDirs(config);
+	return ConfinedStore.forWorkspaceRoot(config);
+}
+
+interface ResolvedWorkspace {
+	readonly path: string;
+	readonly store: ConfinedStore;
+}
+
+export async function resolveWorkspace(
+	config: CoasConfig,
+	selector: string | undefined,
+	cwd: string,
+): Promise<ResolvedWorkspace> {
 	if (!selector || selector.trim().length === 0) {
-		if (existsSync(join(cwd, "CONTEXT.md"))) {
-			assertAllowedWorkspacePath(config, cwd);
-			return cwd;
-		}
+		const cwdStore = await openWorkspaceStore(config, cwd);
+		if (cwdStore && await cwdStore.fileExists(join(cwd, "CONTEXT.md"))) return { path: cwd, store: cwdStore };
 		const envId = process.env.COAS_WORKSPACE_ID;
-		if (envId) return workspacePath(config, envId);
+		if (envId) {
+			const path = workspacePath(config, envId);
+			const store = await openManagedWorkspaceStore(config);
+			if (!store) throw new Error(`CoAS workspace root does not exist: ${workspaceRoot(config)}`);
+			return { path, store };
+		}
 		throw new Error("No workspace selected and cwd is not a CoAS workspace");
 	}
-	if (selector.startsWith("/") || selector.startsWith("~/") || selector.startsWith(".")) {
-		const expanded = expandHome(selector);
-		const dir = isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded);
-		assertAllowedWorkspacePath(config, dir);
-		return dir;
+	const path = selector.startsWith("/") || selector.startsWith("~/") || selector.startsWith(".")
+		? (() => {
+			const expanded = expandHome(selector);
+			return isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded);
+		})()
+		: workspacePath(config, selector);
+	const store = await openWorkspaceStore(config, path);
+	if (!store) {
+		throw new Error(`Workspace path must be under ${workspaceRoot(config)} or contain .pi/coas/workspace.env: ${path}`);
 	}
-	return workspacePath(config, selector);
+	return { path, store };
 }
 
-export async function assertNotSymlink(path: string): Promise<void> {
-	try {
-		const info = await lstat(path);
-		if (info.isSymbolicLink()) throw new Error(`Refusing CoAS workspace symlink: ${path}`);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-		throw error;
-	}
-}
-
-export async function assertSafeWorkspaceDir(config: CoasConfig, dir: string): Promise<void> {
-	if (pathInside(workspaceRoot(config), dir)) {
-		await assertNoSymlinkComponents(workspaceRoot(config), dir);
-		return;
-	}
-	await assertNotSymlink(dir);
-}
-
-async function readWorkspaceEnv(dir: string): Promise<Record<string, string>> {
-	const envPath = workspaceMetadataPath(dir);
-	if (!existsSync(envPath)) return {};
-	await assertNotSymlink(envPath);
-	return parseEnv(await readFile(envPath, "utf8"));
+async function readWorkspaceEnv(store: ConfinedStore, dir: string): Promise<Record<string, string>> {
+	const content = await store.readOptionalFile(workspaceMetadataPath(dir));
+	return content === undefined ? {} : parseEnv(content);
 }
 
 export async function listWorkspaces(config: CoasConfig): Promise<WorkspaceSummary[]> {
+	const store = await openManagedWorkspaceStore(config);
 	const root = workspaceRoot(config);
-	if (!existsSync(root)) return [];
-	const entries = await readdir(root, { withFileTypes: true });
+	if (!store) return [];
 	const summaries: WorkspaceSummary[] = [];
-	for (const entry of entries) {
+	for (const entry of await store.readDirectory(root)) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(root, entry.name);
-		const metadata = await readWorkspaceEnv(dir);
+		const metadata = await readWorkspaceEnv(store, dir);
 		summaries.push({
 			id: metadata.WORKSPACE_ID ?? entry.name,
 			path: dir,
@@ -108,13 +95,14 @@ export async function listWorkspaces(config: CoasConfig): Promise<WorkspaceSumma
 			purpose: metadata.PURPOSE,
 			isolated: metadata.ISOLATED,
 			updatedAt: metadata.UPDATED_AT,
-			hasContext: existsSync(join(dir, "CONTEXT.md")),
+			hasContext: await store.fileExists(join(dir, "CONTEXT.md")),
 		});
 	}
-	return summaries.sort((a, b) => a.id.localeCompare(b.id));
+	return summaries.sort((first, second) => first.id.localeCompare(second.id));
 }
 
-export function currentWorkspaceLabel(cwd: string): string | undefined {
-	if (existsSync(join(cwd, "CONTEXT.md"))) return basename(cwd);
+export async function currentWorkspaceLabel(config: CoasConfig, cwd: string): Promise<string | undefined> {
+	const store = await openWorkspaceStore(config, cwd);
+	if (store && await store.fileExists(join(cwd, "CONTEXT.md"))) return basename(cwd);
 	return process.env.COAS_WORKSPACE_ID;
 }

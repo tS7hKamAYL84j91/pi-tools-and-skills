@@ -168,9 +168,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		if (file.untilComplete && !(await startAllowed(ctx))) return;
-		const state = file.untilComplete
-			? await createFileTodoGoal(ctx.cwd, file.path)
-			: createFileGoal(ctx.cwd, file.path);
+		const state = file.untilComplete ? await createFileTodoGoal(ctx.cwd, file.path) : await createFileGoal(ctx.cwd, file.path);
 		const next = file.untilComplete ? startRun(state, UNTIL_COMPLETE_TURNS) : state;
 		runtime.stopRequested = false;
 		await saveGoal(ctx.cwd, next);

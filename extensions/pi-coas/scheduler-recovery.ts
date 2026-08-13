@@ -1,20 +1,15 @@
-/**
- * Recovery helpers for continuation schedules across session restarts and shutdowns.
- */
-import { isoUtc } from "./store.js";
-import { listSchedules, scheduleRunsPath } from "./schedules.js";
+/** Recovery helpers for continuation schedules across session restarts and shutdowns. */
+
+import { listSchedules } from "./schedules.js";
 import { loadRunState, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
+import { isoUtc } from "./store-paths.js";
 import type { CoasConfig } from "./types.js";
 
 export async function recoverInterruptedRuns(config: CoasConfig): Promise<void> {
-	const schedules = await listSchedules(config);
-	for (const schedule of schedules) {
+	for (const schedule of await listSchedules(config)) {
 		if (!schedule.continuation) continue;
-		const path = scheduleRunsPath(config, schedule.taskId);
-		const state = await loadRunState(path);
-		if (state?.status === "running") {
-			await writeInterrupted(path, state, "session_restart");
-		}
+		const state = await loadRunState(config, schedule.taskId);
+		if (state?.status === "running") await writeInterrupted(config, schedule.taskId, state, "session_restart");
 	}
 }
 
@@ -24,16 +19,20 @@ export async function markActiveRunsInterrupted(
 	reason: string,
 ): Promise<void> {
 	for (const active of activeRuns) {
-		const path = scheduleRunsPath(config, active.taskId);
-		const state = await loadRunState(path);
+		const state = await loadRunState(config, active.taskId);
 		if (state?.status === "running" && state.runId === active.runId) {
-			await writeInterrupted(path, state, reason);
+			await writeInterrupted(config, active.taskId, state, reason);
 		}
 	}
 }
 
-async function writeInterrupted(path: string, state: ScheduleRunState, reason: string): Promise<void> {
-	await saveRunState(path, {
+async function writeInterrupted(
+	config: CoasConfig,
+	taskId: string,
+	state: ScheduleRunState,
+	reason: string,
+): Promise<void> {
+	await saveRunState(config, taskId, {
 		...state,
 		status: "interrupted",
 		completedAt: isoUtc(),

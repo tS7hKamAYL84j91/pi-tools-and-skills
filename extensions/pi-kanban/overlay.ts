@@ -17,11 +17,10 @@ import { matchesKey } from "@earendil-works/pi-tui";
 import {
 	type BoardState,
 	boardLogPath,
-	deleteTask,
-	moveTask,
 	parseBoard,
 	type TaskState,
 } from "./board.js";
+import { deleteTask, moveTask } from "./board-transactions.js";
 import {
 	COLUMNS,
 	type Column,

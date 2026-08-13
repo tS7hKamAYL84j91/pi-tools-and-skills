@@ -23,12 +23,14 @@ make setup-package PACKAGE=pi-ollama-models
 
 Then run `pi`. Normal sync status appears as `ollama: synced N`; a notification is shown only when the discovered model inventory changes or sync fails. If synced models are missing from the picker, run `/reload`.
 
+The extension executes Ollama only through an approved absolute path. Set `PI_OLLAMA_COMMAND` to an absolute executable whose basename is exactly `ollama`, or leave it unset to try only `/usr/local/bin/ollama` and `/usr/bin/ollama`. If none is executable, sync is skipped. PATH, `which`, the current directory, and project-local bare commands are never used for resolution.
+
 ## Tool
 
 - `pi_ollama_sync_models`
   - `dryRun:true` discovers and reports without writing.
-  - `modelsPath` and `ollamaCommand` allow fixture/sandbox testing.
-  - Env overrides: `PI_OLLAMA_MODELS_PATH`, `PI_OLLAMA_COMMAND`.
+  - Trusted operator env overrides: `PI_OLLAMA_MODELS_PATH`, `PI_OLLAMA_COMMAND`.
+  - Deprecated `modelsPath` and `ollamaCommand` fields remain accepted as ignored compatibility input. They cannot change the output path, and caller-provided commands are never executed.
 
 ## What this does NOT do
 
@@ -39,7 +41,8 @@ Then run `pi`. Normal sync status appears as `ollama: synced N`; a notification 
 
 ## Security
 
-- The `ollama` executable name is validated; arbitrary commands are rejected.
+- `PI_OLLAMA_COMMAND` must be an absolute executable path with basename `ollama`; relative and bare names are rejected.
+- Without an override, only fixed standard absolute candidates are considered. PATH and workspace resolution are never used.
 - `models.json` is written atomically (temp + rename) with mode `0o600`.
 - Parse failures throw rather than overwriting the existing config blindly.
 - No credentials are stored; the API key is the placeholder `ollama`.

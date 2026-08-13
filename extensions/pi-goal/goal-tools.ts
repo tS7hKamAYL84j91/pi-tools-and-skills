@@ -143,15 +143,19 @@ export function registerGoalTools(
 		],
 		parameters: Type.Object({
 			evidence: Type.String({ description: "Concrete completion evidence and validation summary." }),
-			gate_command: Type.Optional(Type.String({ description: "Optional command that must exit 0 before the goal is marked complete." })),
+			gate_command: Type.Optional(Type.String({
+				description: "Deprecated compatibility input. Ignored and never executed; only PI_GOAL_GATE_COMMAND configures the trusted gate.",
+				deprecated: true,
+			})),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const evidence = params.evidence.trim();
 			if (!evidence) {
 				throw new Error("goal_complete requires non-empty evidence");
 			}
-			if (params.gate_command) {
-				const gate = await runGateCommand(params.gate_command, ctx.cwd, signal);
+			const gateCommand = process.env.PI_GOAL_GATE_COMMAND;
+			if (gateCommand !== undefined) {
+				const gate = await runGateCommand(gateCommand, ctx.cwd, signal);
 				if (!gate.passed) {
 					throw new Error(
 						`goal_complete gate failed (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
