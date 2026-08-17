@@ -1,9 +1,10 @@
-/** Test-first regression tests for T-812 spawn-don't-await + run-once-catch-up. */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+/** Deterministic tests for ADR-044 spawn-don't-await scheduled runs with startup catchup. */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 
 interface SentPrompt {
 	message: string;
@@ -11,6 +12,7 @@ interface SentPrompt {
 }
 
 const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
+const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 const tempDirs: string[] = [];
 
 function makePi(sessionName?: string): { sendUserMessage: (message: string, options?: unknown) => void; getSessionName: () => string | undefined; sent: SentPrompt[] } {
@@ -48,15 +50,20 @@ function writeSchedule(coasHome: string, taskId: string, workspaceId: string, cr
 	writeFileSync(join(schedulesDir, `${taskId}.env`), lines.join("\n"), "utf8");
 }
 
-describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
+describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
 		PI_PRINCIPAL: process.env.PI_PRINCIPAL,
+		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
+		[PANOPTICON_SPAWN_NAME_ENV]: process.env[PANOPTICON_SPAWN_NAME_ENV],
 	};
 
 	beforeEach(() => {
 		delete process.env[COAS_WORKSPACE_ID_ENV];
 		delete process.env.PI_PRINCIPAL;
+		delete process.env[PANOPTICON_SCOPE_ENV];
+		delete process.env[PANOPTICON_SPAWN_NAME_ENV];
+		vi.useFakeTimers();
 	});
 
 	afterEach(() => {
@@ -68,6 +75,7 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 				process.env[key] = value;
 			}
 		}
+		vi.useRealTimers();
 	});
 
 	function makeCoasHome(): string {
@@ -88,15 +96,11 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const scheduler = new CoasInternalScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
+		expect(scheduler.snapshot().spawnedRuns).toBeGreaterThan(0);
+		await scheduler.flush();
 
-		expect(pi.sent.length).toBe(2);
-		const sentTasks = pi.sent.map((s) => {
-			const match = s.message.match(/Run (\S+)\./);
-			return match?.[1] ?? "";
-		});
-		expect(sentTasks).toContain("approval-task");
-		expect(sentTasks).toContain("sibling-task");
+		expect(pi.sent.length).toBe(1);
+		expect(pi.sent[0]?.message).toContain("sibling-task");
 	});
 
 	it("snapshot reflects spawned runs during in-flight send and zero after flush", async () => {
@@ -111,32 +115,33 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 			...pi,
 			sendUserMessage(message: string, options?: unknown) {
 				activeDuringSend = scheduler.snapshot().activeRuns;
-				spawnedDuringSend = (scheduler as { snapshot(): { spawnedRuns?: number } }).snapshot().spawnedRuns ?? 0;
+				spawnedDuringSend = scheduler.snapshot().spawnedRuns ?? 0;
 				pi.sendUserMessage(message, options);
 			},
 		} as never);
 
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
+		await scheduler.flush();
 
 		expect(activeDuringSend).toBeGreaterThan(0);
 		expect(spawnedDuringSend).toBeGreaterThan(0);
 
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
 		const snapshot = scheduler.snapshot();
 		expect(snapshot.activeRuns).toBe(0);
-		expect((snapshot as { spawnedRuns?: number }).spawnedRuns).toBe(0);
+		expect(snapshot.spawnedRuns).toBe(0);
 	});
 
 	it("start() catchup fires a missed run immediately", async () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+		vi.setSystemTime("2026-01-06T09:00:00Z");
 		const coasHome = makeCoasHome();
 		const pi = makePi();
 		writeSchedule(coasHome, "catchup-task", "room-a", "0 9 * * 1");
 
 		const scheduler = new CoasInternalScheduler(pi as never);
-		scheduler.start({ coasHome });
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
+		await scheduler.start({ coasHome });
+		await scheduler.flush();
 
 		expect(pi.sent.length).toBe(1);
 		expect(pi.sent[0]?.message).toContain("catchup-task");
@@ -152,9 +157,9 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const scheduler = new CoasInternalScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
+		await scheduler.flush();
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
+		await scheduler.flush();
 
 		expect(pi.sent.length).toBe(1);
 	});
@@ -171,7 +176,7 @@ describe.skip("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const tickPromise = scheduler.tick(new Date("2026-01-05T09:00:00"));
 		expect(pi.sent.length).toBe(0);
 		await tickPromise;
-		await (scheduler as { flush?(): Promise<void> }).flush?.();
+		await scheduler.flush();
 		expect(pi.sent.length).toBe(1);
 	});
 });

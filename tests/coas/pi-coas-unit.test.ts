@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderSchedulerSnapshot, shortCommandSummary, truncateText } from "../../extensions/pi-coas/format.js";
 import { resolveCoasConfig, resolveCoasConfigForCwd } from "../../extensions/pi-coas/config.js";
 import { formatCoasStatusSlot, registerCoasLifecycle } from "../../extensions/pi-coas/lifecycle.js";
@@ -11,6 +11,7 @@ import { CoasInternalScheduler, renderScheduledPrompt, scheduleMatchesDate } fro
 import { addSchedule, validateCronExpr, formatScheduleList, renderInternalSchedulePlan } from "../../extensions/pi-coas/schedules.js";
 import { coasStatus } from "../../extensions/pi-coas/status.js";
 import { appendWorkspaceContext, createWorkspace, readWorkspaceContext } from "../../extensions/pi-coas/workspaces.js";
+import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 import { ok, fail } from "../../lib/tool-result.js";
 import type { CommandResult, ScheduleEntry } from "../../extensions/pi-coas/types.js";
 
@@ -542,6 +543,30 @@ describe("schedules", () => {
 	});
 
 	describe("CoasInternalScheduler", () => {
+		const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
+		const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
+		const previousEnv: Record<string, string | undefined> = {
+			[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
+			[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
+			[PANOPTICON_SPAWN_NAME_ENV]: process.env[PANOPTICON_SPAWN_NAME_ENV],
+		};
+
+		beforeEach(() => {
+			process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+			delete process.env[PANOPTICON_SCOPE_ENV];
+			delete process.env[PANOPTICON_SPAWN_NAME_ENV];
+		});
+
+		afterEach(() => {
+			for (const [key, value] of Object.entries(previousEnv)) {
+				if (value === undefined) {
+					delete process.env[key];
+				} else {
+					process.env[key] = value;
+				}
+			}
+		});
+
 		it("clears runtime state on stop", async () => {
 			const scheduler = new CoasInternalScheduler({
 				sendUserMessage() {},
@@ -568,6 +593,7 @@ describe("schedules", () => {
 				continuationSchedules: 0,
 				continuationReady: 0,
 				awaitingApprovalCount: 0,
+				spawnedRuns: 0,
 			});
 		});
 
@@ -601,6 +627,7 @@ describe("schedules", () => {
 			try {
 				await scheduler.reconcile({ coasHome });
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+				await scheduler.flush();
 
 				const snapshot = scheduler.snapshot();
 				expect(snapshot.queued).toBe(1);
@@ -642,6 +669,7 @@ describe("schedules", () => {
 			try {
 				await scheduler.reconcile({ coasHome });
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+				await scheduler.flush();
 
 				const snapshot = scheduler.snapshot();
 				expect(snapshot.queued).toBe(0);
@@ -679,6 +707,7 @@ describe("schedules", () => {
 			try {
 				await scheduler.reconcile({ coasHome });
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+				await scheduler.flush();
 				expect(scheduler.snapshot().queued).toBe(1);
 
 				await scheduler.stop();
@@ -698,6 +727,7 @@ describe("schedules", () => {
 					continuationSchedules: 0,
 					continuationReady: 0,
 					awaitingApprovalCount: 0,
+				spawnedRuns: 0,
 				});
 			} finally {
 				await rm(coasHome, { recursive: true, force: true });
@@ -750,6 +780,7 @@ describe("schedules", () => {
 			try {
 				await scheduler.reconcile({ coasHome });
 				await scheduler.tick(new Date("2026-01-05T09:00:00"));
+				await scheduler.flush();
 
 				expect(scheduler.snapshot().lastError).toContain("schedule bad");
 				expect(scheduler.snapshot().lastError).toContain("minute field is invalid");

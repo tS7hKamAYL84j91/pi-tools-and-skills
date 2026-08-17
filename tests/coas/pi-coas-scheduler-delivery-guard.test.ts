@@ -73,6 +73,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent).toBe(1);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(0);
 			expect(scheduler.snapshot().queued).toBe(1);
@@ -92,6 +93,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent).toBe(0);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(1);
 			expect(scheduler.snapshot().queued).toBe(0);
@@ -109,6 +111,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent).toBe(0);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(1);
 		} finally {
@@ -127,6 +130,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", "authorized-worker");
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent).toBe(1);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(0);
 			expect(scheduler.snapshot().queued).toBe(1);
@@ -146,6 +150,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", "authorized-worker");
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent).toBe(0);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(1);
 		} finally {

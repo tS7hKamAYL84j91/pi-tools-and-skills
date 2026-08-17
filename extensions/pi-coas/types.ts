@@ -101,6 +101,8 @@ export interface SchedulerSnapshot {
 	continuationReady?: number;
 	/** Durable approvals awaiting a principal decision. */
 	awaitingApprovalCount?: number;
+	/** Number of spawned runs currently pending in the scheduler queue. */
+	spawnedRuns?: number;
 }
 
 export interface DoctorCheck {

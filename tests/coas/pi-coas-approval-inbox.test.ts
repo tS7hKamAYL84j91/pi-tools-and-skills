@@ -7,9 +7,13 @@ import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
 import { approveApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-coas/approval-inbox.js";
 import { ConfinedStore } from "../../extensions/pi-coas/store.js";
 import { registerCoasApprovalTools } from "../../extensions/pi-coas/tools-approval.js";
+import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 import type { ToolResult } from "../../lib/tool-result.js";
 
 const homes: string[] = [];
+
+const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
+const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
 interface Deferred {
 	readonly promise: Promise<void>;
@@ -43,7 +47,9 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 	delete process.env.PI_PRINCIPAL;
-	delete process.env.COAS_WORKSPACE_ID;
+	delete process.env[COAS_WORKSPACE_ID_ENV];
+	delete process.env[PANOPTICON_SCOPE_ENV];
+	delete process.env[PANOPTICON_SPAWN_NAME_ENV];
 });
 
 describe("CoAS approval inbox", () => {
@@ -66,10 +72,13 @@ describe("CoAS approval inbox", () => {
 			"",
 		].join("\n"));
 		process.env.COAS_WORKSPACE_ID = "room-a";
+		delete process.env[PANOPTICON_SCOPE_ENV];
+		delete process.env[PANOPTICON_SPAWN_NAME_ENV];
 		const calls: string[] = [];
 		const scheduler = new CoasInternalScheduler({ sendUserMessage(message: string) { calls.push(message); }, getSessionName() { return undefined; } } as never);
 		await scheduler.reconcile({ coasHome: home });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 		const artifacts = await listApprovalArtifacts({ coasHome: home });
 		expect(artifacts).toHaveLength(1);
 		const requestId = artifacts[0]?.requestId;

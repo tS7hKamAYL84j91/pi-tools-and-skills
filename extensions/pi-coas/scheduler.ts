@@ -5,7 +5,6 @@
  * state aligned while pi is running and injects due schedule prompts as user
  * messages. It never reads or writes user crontab.
  */
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	extractBoundedSummary,
@@ -14,19 +13,20 @@ import {
 	findScheduledRunMarker,
 } from "./scheduler-prompt.js";
 import { finalizeApproval } from "./scheduler-approval.js";
-import { countAwaitingApprovals, readApprovalArtifact } from "./approval-inbox.js";
+import { resumeApprovedRunTracked, type ResumeContext } from "./scheduler-resume.js";
+import { countAwaitingApprovals } from "./approval-inbox.js";
 import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-recovery.js";
-import { countContinuationReady, loadRunState, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
+import { countContinuationReady, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
 import { runOncePerMinute, type RunOnceMetrics } from "./scheduler-run-once.js";
 import { isoUtc } from "./store-paths.js";
 import { cronExpressionError, listSchedules } from "./schedules.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
+import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
 import { SchedulerWorkTracker } from "./scheduler-work-tracker.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
 
 export { renderScheduledPrompt } from "./scheduler-prompt.js";
 export { scheduleMatchesDate } from "./scheduler-util.js";
-
 const TICK_MS = 60_000;
 
 interface ActiveScheduledRun {
@@ -39,9 +39,8 @@ interface ActiveScheduledRun {
 export class CoasInternalScheduler {
 	private config: CoasConfig | undefined;
 	private interval: NodeJS.Timeout | undefined;
-	private lastRun = new Map<string, string>();
-	private activeRuns = new Set<string>();
-	private activeScheduledRuns = new Map<string, ActiveScheduledRun>();
+	private readonly activeScheduledRuns = new Map<string, ActiveScheduledRun>();
+	private readonly runQueue = new SchedulerRunQueue();
 	private metrics: RunOnceMetrics = {
 		droppedScheduleRuns: 0,
 		failedCount: 0,
@@ -60,16 +59,23 @@ export class CoasInternalScheduler {
 
 	constructor(private readonly pi: ExtensionAPI) {}
 
-	start(config: CoasConfig): void {
+	async start(config: CoasConfig): Promise<void> {
 		if (!this.work.start()) return;
 		this.config = config;
 		this.startedAt = this.startedAt ?? isoUtc();
 		this.work.track(this.recoverInterruptedRuns(config)).catch((error: unknown) => {
 			this.metrics.lastError = (error as Error).message;
 		});
-		this.reconcile().catch((error: unknown) => {
+		try {
+			await this.reconcile(config);
+		} catch (error) {
 			this.metrics.lastError = (error as Error).message;
-		});
+		}
+		try {
+			await this.work.track(this.catchup(new Date()));
+		} catch (error) {
+			this.metrics.lastError = (error as Error).message;
+		}
 		this.interval ??= setInterval(() => {
 			this.tick(new Date()).catch((error: unknown) => {
 				this.metrics.lastError = (error as Error).message;
@@ -93,7 +99,8 @@ export class CoasInternalScheduler {
 		return {
 			running: Boolean(this.interval && this.config),
 			enabledSchedules: this.enabledCount,
-			activeRuns: this.activeRuns.size,
+			activeRuns: this.runQueue.activeRunsCount,
+			spawnedRuns: this.runQueue.spawnedRuns,
 			startedAt: this.startedAt,
 			lastError: this.metrics.lastError,
 			queued: this.metrics.queuedCount,
@@ -113,39 +120,26 @@ export class CoasInternalScheduler {
 		return this.work.track(this.tickTracked(now));
 	}
 
-	resumeApprovedRun(config: CoasConfig, requestId: string): Promise<boolean> {
-		if (!this.work.accepting) return Promise.resolve(false);
-		return this.work.track(this.resumeApprovedRunTracked(config, requestId));
+	async flush(): Promise<void> {
+		return this.runQueue.flush();
 	}
 
-	private async resumeApprovedRunTracked(config: CoasConfig, requestId: string): Promise<boolean> {
-		const approval = await readApprovalArtifact(config, requestId);
-		if (!approval || approval.status !== "approved") return false;
-		const state = await loadRunState(config, approval.taskId);
-		if (!state || state.status !== "awaiting-approval" || state.runId !== approval.runId || (state.requestId ?? requestId) !== requestId) return false;
-		this.awaitingApprovalCount = Math.max(0, this.awaitingApprovalCount - 1);
-		const schedules = await listSchedules(config);
-		const schedule = schedules.find((candidate) => candidate.taskId === approval.taskId);
-		if (!schedule) return false;
-		this.config = config;
-		const startedAt = state.startedAt;
-		await saveRunState(config, schedule.taskId, { ...state, requestId, status: "running", lastUpdatedAt: isoUtc() });
-		this.activeScheduledRuns.set(state.runId, { taskId: schedule.taskId, runId: state.runId, startedAt, approvalRequestId: requestId });
-		try {
-			if (!this.work.accepting) return false;
-			this.pi.sendUserMessage(approval.prompt, { deliverAs: "followUp" });
-			this.metrics.queuedCount++;
-			this.metrics.lastQueuedAt = isoUtc();
-			this.metrics.lastTaskId = schedule.taskId;
-			return true;
-		} catch (error) {
-			await saveRunState(config, schedule.taskId, { ...state, requestId, status: "interrupted", reason: `resume_failed: ${(error as Error).message}`, lastUpdatedAt: isoUtc() });
-			this.activeScheduledRuns.delete(state.runId);
-			this.metrics.failedCount++;
-			this.metrics.lastFailedAt = isoUtc();
-			this.metrics.lastError = (error as Error).message;
-			return false;
-		}
+	resumeApprovedRun(config: CoasConfig, requestId: string): Promise<boolean> {
+		if (!this.work.accepting) return Promise.resolve(false);
+		return this.work.track(resumeApprovedRunTracked(this.resumeContext, config, requestId));
+	}
+
+	private get resumeContext(): ResumeContext {
+		return {
+			pi: this.pi,
+			config: this.config,
+			workAccepting: () => this.work.accepting,
+			metrics: this.metrics,
+			activeScheduledRuns: this.activeScheduledRuns,
+			decrementAwaitingApproval: () => {
+				this.awaitingApprovalCount = Math.max(0, this.awaitingApprovalCount - 1);
+			},
+		};
 	}
 
 	async handleAgentEnd(messages: readonly unknown[]): Promise<void> {
@@ -195,8 +189,7 @@ export class CoasInternalScheduler {
 			}
 		}
 		this.config = undefined;
-		this.lastRun.clear();
-		this.activeRuns.clear();
+		this.runQueue.clear();
 		this.activeScheduledRuns.clear();
 		this.metrics = { droppedScheduleRuns: 0, failedCount: 0, queuedCount: 0 };
 		this.resetCounts();
@@ -227,7 +220,7 @@ export class CoasInternalScheduler {
 				continue;
 			}
 			if (scheduleMatchesDate(schedule.cronExpr, now)) {
-				await this.runOncePerMinute(schedule, minuteKey(now), now);
+				void this.runQueue.spawn(schedule, minuteKey(now), now, this.runExecutor);
 			}
 		}
 	}
@@ -267,13 +260,21 @@ export class CoasInternalScheduler {
 		this.activeScheduledRuns.clear();
 	}
 
-	private async runOncePerMinute(schedule: ScheduleEntry, key: string, now: Date): Promise<void> {
-		const runKey = `${schedule.taskId}:${key}`;
-		if (this.lastRun.get(schedule.taskId) === key || this.activeRuns.has(runKey)) return;
-		this.lastRun.set(schedule.taskId, key);
-		this.activeRuns.add(runKey);
+	private async catchup(now: Date): Promise<void> {
+		if (!this.config) return;
+		await this.runQueue.catchup(now, () => this.loadEnabledSchedules(), this.runExecutor, cronExpressionError);
+	}
+
+	private get runExecutor(): RunExecutor {
+		return {
+			execute: (schedule, now) => this.runBody(schedule, now),
+			track: (work) => this.work.track(work),
+		};
+	}
+
+	private async runBody(schedule: ScheduleEntry, now: Date): Promise<void> {
+		if (!this.config) return;
 		try {
-			if (!this.config) return;
 			const result = await runOncePerMinute({
 				pi: this.pi,
 				config: this.config,
@@ -287,8 +288,11 @@ export class CoasInternalScheduler {
 			if (result.approvalRequestId && !result.queued) {
 				this.awaitingApprovalCount++;
 			}
-		} finally {
-			this.activeRuns.delete(runKey);
+		} catch (error) {
+			this.metrics.failedCount++;
+			this.metrics.lastFailedAt = isoUtc();
+			this.metrics.lastTaskId = schedule.taskId;
+			this.metrics.lastError = (error as Error).message;
 		}
 	}
 }

@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 
 const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
 
@@ -57,13 +58,19 @@ function userMessage(text: string): { role: string; content: string } {
 	return { role: "user", content: text };
 }
 
+const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
+
 describe("CoasInternalScheduler continuation", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
+		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
+		[PANOPTICON_SPAWN_NAME_ENV]: process.env[PANOPTICON_SPAWN_NAME_ENV],
 	};
 
 	beforeEach(() => {
 		delete process.env[COAS_WORKSPACE_ID_ENV];
+		delete process.env[PANOPTICON_SCOPE_ENV];
+		delete process.env[PANOPTICON_SPAWN_NAME_ENV];
 	});
 
 	afterEach(() => {
@@ -87,6 +94,7 @@ describe("CoasInternalScheduler continuation", () => {
 
 			// First trigger: no prior summary yet.
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(1);
 			expect(pi.sent[0]?.message).not.toContain("Prior run");
 
@@ -96,6 +104,7 @@ describe("CoasInternalScheduler continuation", () => {
 
 			// Second trigger one week later: prior summary injected.
 			await scheduler.tick(new Date("2026-01-12T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(2);
 			expect(pi.sent[1]?.message).toContain("Prior run");
 			expect(pi.sent[1]?.message).toContain("reviewed 3 PRs");
@@ -115,6 +124,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(1);
 			expect(pi.sent[0]?.message).not.toContain("Prior run");
 		} finally {
@@ -135,6 +145,7 @@ describe("CoasInternalScheduler continuation", () => {
 			for (let i = 0; i < 3; i++) {
 				const day = 5 + i * 7;
 				await scheduler.tick(new Date(`2026-01-${day.toString().padStart(2, "0")}T09:00:00`));
+				await scheduler.flush();
 				if (i > 0) {
 					const prompt = pi.sent.at(-1)?.message ?? "";
 					await scheduler.handleAgentEnd([userMessage(prompt), assistantMessage(`DONE: cycle ${i}. NEXT: more work.`)]);
@@ -170,6 +181,7 @@ describe("CoasInternalScheduler continuation", () => {
 			for (let i = 0; i < 5; i++) {
 				const day = 5 + i * 7;
 				await scheduler.tick(new Date(`2026-01-${day.toString().padStart(2, "0")}T09:00:00`));
+				await scheduler.flush();
 				const message = pi.sent.at(-1)?.message ?? "";
 				const priorStart = message.indexOf("Prior run");
 				const priorBlock = priorStart >= 0 ? message.slice(priorStart, message.indexOf("---", priorStart)) : "";
@@ -215,6 +227,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await scheduler.reconcile({ coasHome });
 
 			await scheduler.tick(new Date("2026-01-19T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(1);
 			expect(pi.sent[0]?.message).toContain("may be stale");
 		} finally {
@@ -232,6 +245,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			const runStatePath = join(coasHome, "schedule-runs", "daily.json");
 			expect(JSON.parse(await readFile(runStatePath, "utf8"))).toMatchObject({ status: "running" });
 
@@ -257,10 +271,12 @@ describe("CoasInternalScheduler continuation", () => {
 			await scheduler.reconcile({ coasHome });
 
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			const prompt = pi.sent[0]?.message ?? "";
 			await scheduler.handleAgentEnd([userMessage(prompt), { role: "assistant", content: "Oops.", stopReason: "error", errorMessage: "model error" }]);
 
 			await scheduler.tick(new Date("2026-01-12T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(2);
 			expect(pi.sent[1]?.message).not.toContain("Prior run");
 		} finally {
@@ -278,6 +294,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", false);
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			const prompt = pi.sent[0]?.message ?? "";
 			await scheduler.handleAgentEnd([userMessage(prompt), assistantMessage("DONE: work.")]);
 
@@ -297,6 +314,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			const prompt = pi.sent[0]?.message ?? "";
 			await scheduler.handleAgentEnd([userMessage(prompt), assistantMessage("DONE: work.")]);
 
@@ -318,6 +336,7 @@ describe("CoasInternalScheduler continuation", () => {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
 			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
 			expect(pi.sent.length).toBe(0);
 			expect(scheduler.snapshot().droppedScheduleRuns).toBe(1);
 		} finally {
