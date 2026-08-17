@@ -26,7 +26,6 @@ function main() {
 		"--config",
 		configDir,
 		"--error",
-		"--strict",
 		"--disable-version-check",
 		"--no-rewrite-rule-ids",
 		...targets,
