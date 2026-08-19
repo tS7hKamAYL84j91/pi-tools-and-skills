@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — council-reviewed design PASS; implementation remains prohibited until this ADR is accepted.
+Accepted — 2026-08-19 (independent council PASS at `b1166d4`); implementation remains separately gated by review.
 
 ## Context
 
@@ -93,7 +93,7 @@ The framing and explicit boost prompt are capped together at 2,048 UTF-8 bytes f
 - The external-model route is explicitly Principal-authorized, one-at-a-time, bounded to three human yields, governance-classified, auditable without prompt retention, and non-sticky.
 - A failed GLM restoration stops all model dispatch for its subject, favoring a visible safe failure over silent model drift.
 - Adding actual model identifiers requires later approved configuration work; this ADR makes no configuration change.
-- `/boost` remains unavailable until this ADR is accepted and implementation receives separate authorization.
+- `/boost` remains unavailable until implementation review passes and receives separate authorization.
 
 ## Required implementation evidence
 
