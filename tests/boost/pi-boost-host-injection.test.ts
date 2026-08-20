@@ -44,7 +44,7 @@ function bridgeFake(): LiveBoostRuntimeBridge {
 }
 
 const registry = {
-	isRootSession: () => true,
+	isPrincipalSession: () => true,
 	selfId: SUBJECT.subjectId,
 };
 const context = {
@@ -71,7 +71,7 @@ describe("T-843 host injection boundary", () => {
 		).toEqual({ ok: false, reason: "runtime-unavailable" });
 
 		const source = readFileSync("extensions/pi-boost/index.ts", "utf8");
-		expect(source).toContain("createPanopticonExtension");
+		expect(source).toContain("createBoostExtension");
 		expect(source).not.toMatch(
 			/as unknown as.*ExtensionAPI|process\.env.*boost|globalThis.*boost/i,
 		);

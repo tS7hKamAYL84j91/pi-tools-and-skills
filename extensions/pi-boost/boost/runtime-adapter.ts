@@ -1,13 +1,13 @@
-/** Panopticon command adapter for an explicitly host-injected boost bridge. */
+/** Command adapter for an explicitly host-injected Boost bridge. */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type {
 	LiveBoostLeaseStatus,
 	LiveBoostResult,
 	LiveBoostRuntimeBridge,
-} from "./live-boost-bridge-contract.js";
-import type { QBoostControlReference } from "./q-boost-control-contract.js";
-import type { Registry } from "../../pi-panopticon/types.js";
+} from "../live-boost-bridge-contract.js";
+import type { QBoostControlReference } from "../q-boost-control-contract.js";
+import type { BoostIdentitySource } from "./identity-source.js";
 import type {
 	BoostCommandDeps,
 	BoostCommandDispatchDecision,
@@ -29,7 +29,7 @@ export interface LiveBoostHostInjection {
 
 /** Default command dependencies: visible denial and no reservation mutation. */
 export function createUnavailableBoostCommandDeps(
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 ): BoostCommandDeps {
 	const unavailable = <T>(): BoostResult<T> => ({
 		ok: false,
@@ -37,7 +37,7 @@ export function createUnavailableBoostCommandDeps(
 	});
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) => principalIdentity(ctx, registry),
+		identity: (ctx) => principalIdentity(ctx, identitySource),
 		authority: {
 			reserve: unavailable,
 			getStatus: unavailable,
@@ -50,12 +50,12 @@ export function createUnavailableBoostCommandDeps(
 
 /** Adapt only the injected bridge and immutable logical Q reference. */
 export function createHostBoostCommandDeps(
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 	injection: LiveBoostHostInjection,
 ): BoostCommandDeps {
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) => principalIdentity(ctx, registry),
+		identity: (ctx) => principalIdentity(ctx, identitySource),
 		authority: {
 			reserve: async (input) =>
 				mapStatus(
@@ -70,7 +70,7 @@ export function createHostBoostCommandDeps(
 				mapStatus(
 					await injection.bridge.getStatus({
 						caller: actor,
-						subjectId: registry.selfId,
+						subjectId: identitySource.selfId,
 					}),
 				),
 			reset: async (input) => {
@@ -112,16 +112,16 @@ export function createHostBoostCommandDeps(
 
 function principalIdentity(
 	ctx: ExtensionCommandContext,
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 ): BoostCommandIdentity | undefined {
-	if (!registry.isRootSession()) {
+	if (!identitySource.isPrincipalSession()) {
 		return undefined;
 	}
 	const sessionId = ctx.sessionManager.getSessionId();
 	return {
 		actor: { kind: "principal", issuerId: sessionId },
 		subject: {
-			subjectId: registry.selfId,
+			subjectId: identitySource.selfId,
 			workspace: { workspaceId: sessionId, root: ctx.cwd },
 		},
 	};

@@ -1,18 +1,30 @@
-/** Standalone Principal-only boost extension. */
-import type {ExtensionFactory} from "@earendil-works/pi-coding-agent";
-import {setupBoostRuntime, type LiveBoostHostInjection} from "./boost-extension-wiring.js";
-import type {Registry} from "../pi-panopticon/types.js";
+/** Standalone Principal-only Boost extension. */
 
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { PANOPTICON_PARENT_ID_ENV } from "../../lib/agent-registry.js";
+import type { BoostIdentitySource } from "./boost/identity-source.js";
+import {
+	setupBoostRuntime,
+	type LiveBoostHostInjection,
+} from "./boost-extension-wiring.js";
+
+/** Create Boost with an optional host capability and explicit identity boundary. */
 export function createBoostExtension(
 	injection?: LiveBoostHostInjection,
-	registry?: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource = createDefaultIdentitySource(),
 ): ExtensionFactory {
 	return (pi) => {
-		const lifecycle = setupBoostRuntime(pi, registry ?? {
-			isRootSession: () => true,
-			selfId: `principal-${process.pid}`,
-		}, injection);
+		const lifecycle = setupBoostRuntime(pi, identitySource, injection);
 		pi.on("session_shutdown", async () => lifecycle.shutdown());
+	};
+}
+
+function createDefaultIdentitySource(): BoostIdentitySource {
+	return {
+		selfId: `principal-${process.pid}`,
+		isPrincipalSession: () =>
+			process.env.PI_PRINCIPAL === "1" &&
+			process.env[PANOPTICON_PARENT_ID_ENV] === undefined,
 	};
 }
 

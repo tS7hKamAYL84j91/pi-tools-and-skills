@@ -7,20 +7,20 @@ import {
 	createUnavailableBoostCommandDeps,
 	type LiveBoostHostInjection,
 } from "./boost/runtime-adapter.js";
-import type { Registry } from "../pi-panopticon/types.js";
+import type { BoostIdentitySource } from "./boost/identity-source.js";
 
 export type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
 
 export function setupBoostRuntime(
 	pi: ExtensionAPI,
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 	injection?: LiveBoostHostInjection,
 ): { readonly shutdown: () => Promise<void> } {
 	registerBoostCommand(
 		pi,
 		injection
-			? createHostBoostCommandDeps(registry, injection)
-			: createUnavailableBoostCommandDeps(registry),
+			? createHostBoostCommandDeps(identitySource, injection)
+			: createUnavailableBoostCommandDeps(identitySource),
 	);
 	return {
 		shutdown: async () => {

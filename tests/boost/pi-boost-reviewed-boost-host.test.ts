@@ -4,9 +4,9 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/runtime-adapter.js";
-import defaultPanopticonExtension from "../../extensions/pi-panopticon/index.js";
+import defaultBoostExtension from "../../extensions/pi-boost/index.js";
 import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
 	Q_BOOST_BASELINE_KEY,
@@ -109,6 +109,13 @@ function createCommandContext(
 }
 
 describe("reviewed boost production host", () => {
+	beforeEach(() => {
+		process.env.PI_PRINCIPAL = "1";
+	});
+
+	afterEach(() => {
+		delete process.env.PI_PRINCIPAL;
+	});
 	it("attests the reviewed source identity", () => {
 		const source = readFileSync(REVIEWED_BOOST_CONTRACT_PATH, "utf8");
 		expect(createHash("sha256").update(source).digest("hex")).toBe(
@@ -159,7 +166,7 @@ describe("reviewed boost production host", () => {
 		expect(injected.notifications.join(" ")).toContain("runtime unavailable");
 
 		const inert = createFakeApi();
-		defaultPanopticonExtension(inert.api);
+		defaultBoostExtension(inert.api);
 		const inertBoost = inert.commands.get("boost");
 		if (!inertBoost) {
 			throw new Error("Missing inert boost command");
@@ -241,7 +248,7 @@ describe("reviewed boost production host", () => {
 			"extensions/pi-boost/reviewed-boost-host.ts",
 			"utf8",
 		);
-		expect(source).toContain("createPanopticonExtension(injection)");
+		expect(source).toContain("createBoostExtension(injection)");
 		expect(source).not.toMatch(
 			/from\s+["'][^"']*(provider|config|scheduler)[^"']*["']|process\.env|apiKey|configPath|defaultModel/i,
 		);

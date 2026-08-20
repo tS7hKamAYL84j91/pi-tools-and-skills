@@ -185,12 +185,12 @@ describe("ADR-045 boost authority", () => {
 			"extensions/pi-boost/boost-extension-wiring.ts",
 			"utf8",
 		);
-		expect(runtimeSource).toContain("createPanopticonExtension()");
+		expect(runtimeSource).toContain("createBoostExtension()");
 		expect(boostWiring).toContain(
-			"createUnavailableBoostCommandDeps(registry)",
+			"createUnavailableBoostCommandDeps(identitySource)",
 		);
 		expect(boostWiring).toContain(
-			"createHostBoostCommandDeps(registry, injection)",
+			"createHostBoostCommandDeps(identitySource, injection)",
 		);
 		expect(`${runtimeSource}\n${boostWiring}`).not.toMatch(
 			/process\.env.*boost|globalThis.*boost|as unknown as.*ExtensionAPI/i,

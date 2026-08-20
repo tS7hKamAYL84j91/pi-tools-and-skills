@@ -3,7 +3,7 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	DaemonBoostWal,
 	DaemonBoostWalRecord,
@@ -200,6 +200,13 @@ function createContext(notifications: string[]): ExtensionCommandContext {
 }
 
 describe("production Q boost host", () => {
+	beforeEach(() => {
+		process.env.PI_PRINCIPAL = "1";
+	});
+
+	afterEach(() => {
+		delete process.env.PI_PRINCIPAL;
+	});
 	it("constructs cold from a valid Q control without provider or WAL mutation", async () => {
 		const fixture = createInput(record());
 

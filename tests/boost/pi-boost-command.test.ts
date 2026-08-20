@@ -17,7 +17,7 @@ import {
 describe("phase-2 inert /boost command", () => {
 	it("constructs only the inert runtime command capabilities", () => {
 		const deps = createInertBoostCommandDeps({
-			isRootSession: () => true,
+			isPrincipalSession: () => true,
 			selfId: "subject-runtime",
 		});
 		const context = {

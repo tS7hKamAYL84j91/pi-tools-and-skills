@@ -329,7 +329,6 @@ describe("extension registration smoke tests", () => {
 			"agent-list-mode",
 			"agents",
 			"agents-mode",
-			"boost",
 			"send",
 			"swarm",
 			"team",

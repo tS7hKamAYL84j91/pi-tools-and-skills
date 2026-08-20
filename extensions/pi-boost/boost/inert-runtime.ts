@@ -1,7 +1,7 @@
 /** Capability-free runtime construction for phase-2 boost reservations. */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Registry } from "../../pi-panopticon/types.js";
+import type { BoostIdentitySource } from "./identity-source.js";
 import {
 	type BoostCommandDeps,
 	type BoostCommandIdentity,
@@ -31,7 +31,7 @@ const INERT_LEASE_MODEL: BoostModelIdentity = Object.freeze({
 
 /** Construct every capability available to the phase-2 command registration. */
 export function createInertBoostCommandDeps(
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 ): BoostCommandDeps {
 	const authority = createInertBoostAuthority();
 	return {
@@ -41,7 +41,7 @@ export function createInertBoostCommandDeps(
 			getStatus: (actor) => authority.getStatus(actor),
 			reset: (input) => authority.reset(input),
 		},
-		identity: (ctx) => principalIdentity(ctx, registry),
+		identity: (ctx) => principalIdentity(ctx, identitySource),
 		notify: (ctx, message, level) => ctx.ui.notify(message, level),
 		dispatch: new InertBoostDispatch(),
 	};
@@ -49,16 +49,16 @@ export function createInertBoostCommandDeps(
 
 function principalIdentity(
 	ctx: ExtensionCommandContext,
-	registry: Pick<Registry, "isRootSession" | "selfId">,
+	identitySource: BoostIdentitySource,
 ): BoostCommandIdentity | undefined {
-	if (!registry.isRootSession()) {
+	if (!identitySource.isPrincipalSession()) {
 		return undefined;
 	}
 	const sessionId = ctx.sessionManager.getSessionId();
 	return {
 		actor: { kind: "principal", issuerId: sessionId },
 		subject: {
-			subjectId: registry.selfId,
+			subjectId: identitySource.selfId,
 			workspace: { workspaceId: sessionId, root: ctx.cwd },
 		},
 	};

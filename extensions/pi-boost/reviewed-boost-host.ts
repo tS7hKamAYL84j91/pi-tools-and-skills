@@ -116,9 +116,11 @@ function createIdempotentShutdown(
 ): () => Promise<void> {
 	let shutdown: Promise<void> | undefined;
 	return () => {
-		shutdown ??= injection.bridge.shutdown({
-			choice: injection.shutdownChoice,
-		});
+		if (shutdown === undefined) {
+			shutdown = injection.bridge.shutdown({
+				choice: injection.shutdownChoice,
+			});
+		}
 		return shutdown;
 	};
 }
