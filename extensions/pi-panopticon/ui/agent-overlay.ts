@@ -12,6 +12,7 @@ export {
 } from "./agent-list.js";
 export {
 	renderAgentDetailOverlay,
+	showAgentDetail,
 	isAgentDetailBackInput,
 	agentStopConfirmationView,
 } from "./agent-detail.js";

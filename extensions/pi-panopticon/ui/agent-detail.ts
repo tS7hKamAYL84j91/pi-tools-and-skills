@@ -14,7 +14,14 @@ import { confirmDestructiveAction, type DestructiveConfirmationView } from "../.
 import { projectWorkSummary } from "./summary-projection.js";
 import { renderSummarySection } from "./agent-summary-render.js";
 import { accentBorder } from "./ui-format.js";
-
+import {
+	approveAgentApproval,
+	deferAgentApproval,
+	isPrincipal,
+	listAgentApprovals,
+	rejectAgentApproval,
+	type PendingApproval,
+} from "../../../lib/coas-approval-inbox.js";
 
 interface RenderAgentDetailOverlayArgs {
 	record: AgentRecord;
@@ -22,6 +29,8 @@ interface RenderAgentDetailOverlayArgs {
 	sessionEvents: SessionEvent[];
 	theme: Theme;
 	width: number;
+	pendingApprovals?: PendingApproval[];
+	selectedApprovalIndex?: number;
 }
 
 function agentDetailRows(record: AgentRecord): [string, string][] {
@@ -108,7 +117,26 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 		add(line);
 	}
 
-	add(`\n  ${args.theme.fg("dim", ["backspace/← list", "esc close", ...(!isSelf ? ["c direct message", "m send message", "s stop", "k kill"] : [])].join(" · "))}`);
+	const pendingApprovals = args.pendingApprovals ?? [];
+	const selectedIndex = Math.max(0, Math.min(args.selectedApprovalIndex ?? 0, pendingApprovals.length - 1));
+	if (pendingApprovals.length > 0) {
+		add(`\n  ${args.theme.fg("accent", args.theme.bold("Pending Approvals"))} ${args.theme.fg("dim", `(${pendingApprovals.length})`)}`);
+		for (let index = 0; index < pendingApprovals.length; index++) {
+			const approval = pendingApprovals[index];
+			if (!approval) continue;
+			const marker = index === selectedIndex ? "> " : "  ";
+			add(`  ${marker}${approval.taskId.slice(0, 24)} · ${approval.runId.slice(0, 24)} · ${approval.prompt.slice(0, 80)} · ${approval.createdAt}`);
+		}
+	}
+
+	const hints = ["backspace/← list", "esc close"];
+	if (!isSelf) {
+		hints.push("c direct message", "m send message", "s stop", "k kill");
+	}
+	if (pendingApprovals.length > 0) {
+		hints.push(isPrincipal() ? "a approve · r reject · d defer" : "Principal authority required for approvals");
+	}
+	add(`\n  ${args.theme.fg("dim", hints.join(" · "))}`);
 	container.addChild(accentBorder(args.theme));
 	return container.render(args.width);
 }
@@ -146,7 +174,7 @@ async function confirmAndStopAgent(
 	}
 }
 
-type AgentDetailAction = "back" | "close" | "message" | "compose" | "stop" | "kill";
+export type AgentDetailAction = "back" | "close" | "message" | "compose" | "stop" | "kill";
 
 export async function showAgentDetail(
 	ctx: ExtensionContext,
@@ -163,9 +191,39 @@ export async function showAgentDetail(
 
 	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
+	const config = deps.getCoasConfig?.(ctx);
+	const approvals = config ? await listAgentApprovals(config, rec, deps.selfId) : [];
+	const pendingApprovals: PendingApproval[] = [...approvals];
+	let selectedApprovalIndex = 0;
 	let action: AgentDetailAction | undefined;
 
-	await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+		const applyDecision = async (decision: "approve" | "reject" | "defer"): Promise<void> => {
+			if (!config) return;
+			const approval = pendingApprovals[selectedApprovalIndex];
+			if (!approval) return;
+			try {
+				if (decision === "approve") {
+					await approveAgentApproval(config, approval.requestId);
+					if (deps.resumeApprovedRun) {
+						const resumed = await deps.resumeApprovedRun(config, approval.requestId);
+						if (!resumed) {
+							ctx.ui.notify(`Approval recorded but scheduled run could not be resumed: ${approval.requestId}`, "warning");
+						}
+					}
+				} else if (decision === "reject") {
+					await rejectAgentApproval(config, approval.requestId);
+				} else {
+					await deferAgentApproval(config, approval.requestId);
+				}
+				pendingApprovals.splice(selectedApprovalIndex, 1);
+				selectedApprovalIndex = Math.max(0, Math.min(selectedApprovalIndex, pendingApprovals.length - 1));
+				tui.requestRender();
+			} catch (err) {
+				ctx.ui.notify(String(err), "error");
+			}
+		};
+
 		return {
 			render: (w: number) => renderAgentDetailOverlay({
 				record: rec,
@@ -173,6 +231,8 @@ export async function showAgentDetail(
 				sessionEvents,
 				theme,
 				width: w,
+				pendingApprovals,
+				selectedApprovalIndex,
 			}),
 			invalidate: () => undefined,
 			handleInput: (data: string) => {
@@ -193,6 +253,22 @@ export async function showAgentDetail(
 				} else if (!isSelf && (data === "k" || data === "K")) {
 					action = "kill";
 					done();
+				} else if (pendingApprovals.length > 0) {
+					if (matchesKey(data, "up")) {
+						selectedApprovalIndex = Math.max(0, selectedApprovalIndex - 1);
+						tui.requestRender();
+					} else if (matchesKey(data, "down")) {
+						selectedApprovalIndex = Math.min(pendingApprovals.length - 1, selectedApprovalIndex + 1);
+						tui.requestRender();
+					} else if ((data === "a" || data === "A") && isPrincipal()) {
+						void applyDecision("approve");
+					} else if ((data === "r" || data === "R") && isPrincipal()) {
+						void applyDecision("reject");
+					} else if ((data === "d" || data === "D") && isPrincipal()) {
+						void applyDecision("defer");
+					} else if (data === "a" || data === "A" || data === "r" || data === "R" || data === "d" || data === "D") {
+						ctx.ui.notify("Approval decisions require principal authority", "warning");
+					}
 				}
 			},
 		};

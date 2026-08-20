@@ -1,8 +1,12 @@
 /** Panopticon extension entrypoint and explicit host-injection factory. */
+
 import type {
 	ExtensionAPI,
 	ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
+import { resumeAgentApproval } from "../../lib/coas-approval-inbox.js";
+import { resolveCoasConfig } from "../../lib/coas-config.js";
+import type { CoasConfig } from "../../lib/coas-types.js";
 import {
 	registerChannel,
 	unregisterChannel,
@@ -57,6 +61,10 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	};
 	const stopAgent: AgentStopper = async (peer, force) =>
 		stopPeerAgent(peer, selfId, force ?? false);
+	const resumeApprovedRun = async (
+		config: CoasConfig,
+		requestId: string,
+	): Promise<boolean> => resumeAgentApproval(pi, config, requestId);
 	const messaging = createMessaging({
 		send: maildir,
 		broadcast: maildir,
@@ -74,6 +82,8 @@ function setupPanopticon(pi: ExtensionAPI): void {
 		listMode,
 		sendAgentMessage,
 		stopAgent,
+		getCoasConfig: (ctx) => resolveCoasConfig(ctx.cwd),
+		resumeApprovedRun,
 	});
 
 	// ── Lifecycle: start ────────────────────────────────────────
