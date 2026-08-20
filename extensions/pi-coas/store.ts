@@ -1,40 +1,15 @@
 /** Confined filesystem capabilities for the TypeScript CoAS runtime. */
 
-import { constants } from "node:fs";
+import { lstat, stat, statfs } from "node:fs/promises";
 import type { Dirent, Stats, StatsFs } from "node:fs";
-import { access, chmod, lstat, mkdir, open, readdir, readFile, rm, stat, statfs } from "node:fs/promises";
-import { parse as parsePath, dirname, isAbsolute, join, resolve } from "node:path";
-import { appendLogLine, writeFileAtomic } from "../../lib/file-persistence.js";
-import { assertInside, lockRoot, scheduleLogRoot, scheduleRoot, workspaceRoot } from "./store-paths.js";
+import { parse as parsePath, isAbsolute, join, resolve } from "node:path";
+import { ConfinedStore as GenericConfinedStore } from "../../lib/confined-store.js";
+import { pathInside } from "../../lib/path-inside.js";
+import { lockRoot, scheduleLogRoot, scheduleRoot, workspaceRoot } from "./store-paths.js";
 import type { CoasConfig } from "./types.js";
-
-const PRIVATE_DIR_MODE = 0o700;
-const PRIVATE_FILE_MODE = 0o600;
 
 function assertAbsolutePath(label: string, path: string): void {
 	if (!isAbsolute(path)) throw new Error(`${label} must be absolute: ${path}`);
-}
-
-async function inspectDirectoryChain(path: string, create: boolean): Promise<boolean> {
-	assertAbsolutePath("CoAS root", path);
-	const absolutePath = resolve(path);
-	const filesystemRoot = parsePath(absolutePath).root;
-	let current = filesystemRoot;
-	for (const segment of absolutePath.slice(filesystemRoot.length).split(/[\\/]+/).filter(Boolean)) {
-		current = join(current, segment);
-		let info: Stats;
-		try {
-			info = await lstat(current);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-			if (!create) return false;
-			await mkdir(current, { mode: PRIVATE_DIR_MODE });
-			info = await lstat(current);
-		}
-		if (info.isSymbolicLink()) throw new Error(`Refusing symlinked CoAS path component: ${current}`);
-		if (!info.isDirectory()) throw new Error(`CoAS path component is not a directory: ${current}`);
-	}
-	return true;
 }
 
 async function assertRootNotSymlink(path: string): Promise<void> {
@@ -62,30 +37,32 @@ async function assertNoSymlinkPath(path: string): Promise<void> {
 	}
 }
 
-/** An internal filesystem capability confined to one validated absolute root. */
-export class ConfinedStore {
-	private constructor(private readonly root: string) {}
+/** CoAS-root-bound filesystem capability. */
+export class ConfinedStore extends GenericConfinedStore {
+	private constructor(root: string) {
+		super(root);
+	}
 
 	static async forCoasHome(config: CoasConfig): Promise<ConfinedStore> {
 		await assertRootNotSymlink(config.coasHome);
-		if (!await inspectDirectoryChain(config.coasHome, false)) {
-			throw Object.assign(new Error(`CoAS root does not exist: ${config.coasHome}`), { code: "ENOENT" });
-		}
-		return new ConfinedStore(resolve(config.coasHome));
+		const root = resolve(config.coasHome);
+		const store = await GenericConfinedStore.openRoot(root);
+		if (!store) throw Object.assign(new Error(`CoAS root does not exist: ${config.coasHome}`), { code: "ENOENT" });
+		return new ConfinedStore(store.getRoot());
 	}
 
 	static async openCoasHome(config: CoasConfig): Promise<ConfinedStore | undefined> {
 		await assertRootNotSymlink(config.coasHome);
-		return await inspectDirectoryChain(config.coasHome, false)
-			? new ConfinedStore(resolve(config.coasHome))
-			: undefined;
+		const root = resolve(config.coasHome);
+		const store = await GenericConfinedStore.openRoot(root);
+		return store ? new ConfinedStore(store.getRoot()) : undefined;
 	}
 
 	static async createCoasHome(config: CoasConfig): Promise<ConfinedStore> {
 		await assertRootNotSymlink(config.coasHome);
-		await inspectDirectoryChain(config.coasHome, true);
-		await chmod(config.coasHome, PRIVATE_DIR_MODE);
-		return new ConfinedStore(resolve(config.coasHome));
+		const root = resolve(config.coasHome);
+		const store = await GenericConfinedStore.createRoot(root);
+		return new ConfinedStore(store.getRoot());
 	}
 
 	static async forScheduleRoot(config: CoasConfig): Promise<ConfinedStore> {
@@ -104,22 +81,18 @@ export class ConfinedStore {
 		return ConfinedStore.forManagedRoot(config, lockRoot(config));
 	}
 
-	private static async forManagedRoot(config: CoasConfig, root: string): Promise<ConfinedStore> {
-		const homeStore = await ConfinedStore.forCoasHome(config);
-		await homeStore.guard(root);
-		const info = await lstat(root);
-		if (!info.isDirectory()) throw new Error(`CoAS root is not a directory: ${root}`);
-		return new ConfinedStore(resolve(root));
-	}
-
 	static async openExternalWorkspace(root: string): Promise<ConfinedStore | undefined> {
-		if (!await inspectDirectoryChain(root, false)) return undefined;
-		const store = new ConfinedStore(resolve(root));
-		const metadataPath = join(root, ".pi", "coas", "workspace.env");
-		if (!await store.fileExists(metadataPath)) return undefined;
-		const metadata = await store.fileStat(metadataPath);
-		if (!metadata.isFile()) throw new Error(`External workspace is not authorized: ${root}`);
-		return store;
+		try {
+			const metadataPath = join(root, ".pi", "coas", "workspace.env");
+			const store = await GenericConfinedStore.openAuthorizedRoot(root, metadataPath);
+			return store ? new ConfinedStore(store.getRoot()) : undefined;
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked path component")) {
+				throw new Error(message.replace("Refusing symlinked path component", "Refusing symlinked CoAS path component"));
+			}
+			throw error;
+		}
 	}
 
 	static async forExternalWorkspace(root: string): Promise<ConfinedStore> {
@@ -128,77 +101,12 @@ export class ConfinedStore {
 		return store;
 	}
 
-	async ensurePrivateDir(path: string): Promise<void> {
-		await this.guard(path);
-		await mkdir(path, { recursive: true, mode: PRIVATE_DIR_MODE });
-		await chmod(path, PRIVATE_DIR_MODE);
-	}
-
-	async fileExists(path: string): Promise<boolean> {
-		await this.guard(path);
-		try {
-			await access(path, constants.F_OK);
-			return true;
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-			throw error;
-		}
-	}
-
-	async readOptionalFile(path: string): Promise<string | undefined> {
-		await this.guard(path);
-		try {
-			return await readFile(path, "utf8");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-			throw error;
-		}
-	}
-
-	async readRequiredFile(path: string): Promise<string> {
-		await this.guard(path);
-		return readFile(path, "utf8");
-	}
-
-	async readFilePrefix(path: string, maxBytes: number): Promise<{ readonly size: number; readonly text: string }> {
-		const info = await this.fileStat(path);
-		const length = Math.min(info.size, maxBytes);
-		const handle = await open(path, "r");
-		try {
-			const buffer = Buffer.alloc(length);
-			await handle.read(buffer, 0, length, 0);
-			return { size: info.size, text: buffer.toString("utf8") };
-		} finally {
-			await handle.close();
-		}
-	}
-
-	async writePrivateFileAtomic(path: string, content: string): Promise<void> {
-		await this.guard(path);
-		await this.ensurePrivateDir(dirname(path));
-		await writeFileAtomic(path, content, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
-		await chmod(path, PRIVATE_FILE_MODE);
-	}
-
-	async appendPrivateLog(path: string, line: string): Promise<void> {
-		await this.guard(path);
-		await this.ensurePrivateDir(dirname(path));
-		await appendLogLine(path, line, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
-		await chmod(path, PRIVATE_FILE_MODE);
-	}
-
-	async removePrivateFiles(paths: readonly string[]): Promise<void> {
-		for (const path of paths) await this.guard(path);
-		for (const path of paths) await rm(path, { force: true });
-	}
-
-	async readDirectory(path: string): Promise<Dirent[]> {
-		await this.guard(path);
-		const entries = await readdir(path, { withFileTypes: true });
-		for (const entry of entries) {
-			if (entry.isSymbolicLink()) throw new Error(`Refusing symlinked CoAS directory entry: ${join(path, entry.name)}`);
-		}
-		return entries;
+	private static async forManagedRoot(config: CoasConfig, root: string): Promise<ConfinedStore> {
+		const homeStore = await ConfinedStore.forCoasHome(config);
+		await homeStore.guard(root);
+		const info = await lstat(root);
+		if (!info.isDirectory()) throw new Error(`CoAS root is not a directory: ${root}`);
+		return new ConfinedStore(resolve(root));
 	}
 
 	async countDirectories(path: string): Promise<number> {
@@ -218,19 +126,31 @@ export class ConfinedStore {
 		return newest?.path;
 	}
 
-	async fileStat(path: string): Promise<Stats> {
-		await this.guard(path);
-		return stat(path);
-	}
-
 	async fileSystemStat(path: string): Promise<StatsFs> {
 		await this.guard(path);
 		return statfs(path);
 	}
 
-	private async guard(path: string): Promise<void> {
+	async fileStat(path: string): Promise<Stats> {
+		await this.guard(path);
+		return stat(path);
+	}
+
+	async readDirectory(path: string): Promise<Dirent[]> {
+		try {
+			return await super.readDirectory(path);
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked directory entry")) {
+				throw new Error(message.replace("Refusing symlinked directory entry", "Refusing symlinked CoAS directory entry"));
+			}
+			throw error;
+		}
+	}
+
+	async guard(path: string): Promise<void> {
 		assertAbsolutePath("CoAS target", path);
-		assertInside(this.root, path);
+		if (!pathInside(this.getRoot(), path)) throw new Error(`Path escapes ${this.getRoot()}: ${path}`);
 		await assertNoSymlinkPath(path);
 	}
 }

@@ -1,13 +1,11 @@
 /** Pure CoAS identifiers, paths, and environment-file formatting. */
 
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join } from "node:path";
+import { assertInside, pathInside } from "../../lib/path-inside.js";
+import { assertSafeId, isoUtc } from "../../lib/coas-paths.js";
 import type { CoasConfig } from "./types.js";
 
-const SAFE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
-
-export function isoUtc(date = new Date()): string {
-	return date.toISOString().replace(/\.\d{3}Z$/, "Z");
-}
+export { assertInside, assertSafeId, isoUtc, pathInside };
 
 export function slugify(value: string, fallback = "workspace"): string {
 	const slug = value.trim().toLowerCase()
@@ -19,10 +17,6 @@ export function slugify(value: string, fallback = "workspace"): string {
 
 export function workspaceIdFromRoom(room: string): string {
 	return `room-${slugify(room)}`;
-}
-
-export function assertSafeId(label: string, value: string): void {
-	if (!SAFE_ID_PATTERN.test(value) || value.includes("..")) throw new Error(`Invalid ${label}: ${value}`);
 }
 
 export function workspaceRoot(config: CoasConfig): string {
@@ -43,15 +37,6 @@ export function scheduleLogRoot(config: CoasConfig): string {
 
 export function lockRoot(config: CoasConfig): string {
 	return join(config.coasHome, "locks", "schedules");
-}
-
-export function pathInside(parent: string, child: string): boolean {
-	const pathFromParent = relative(resolve(parent), resolve(child));
-	return pathFromParent === "" || (!pathFromParent.startsWith("..") && !isAbsolute(pathFromParent));
-}
-
-export function assertInside(parent: string, child: string): void {
-	if (!pathInside(parent, child)) throw new Error(`Path escapes ${parent}: ${child}`);
 }
 
 function shellQuote(value: string): string {
