@@ -450,6 +450,26 @@ flowchart LR
 - Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
 - Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
 
+## Panopticon Boost Lease Mock Boundary
+
+ADR-045 is represented only as an inert, dependency-injected domain under `extensions/pi-panopticon/boost/`. It is not imported by the Panopticon entrypoint and does not register `/boost`, dispatch a model, call a provider or network, or mutate model routing, defaults, configuration, transcripts, schedules, or runtime session state.
+
+```mermaid
+flowchart LR
+  Tests[Boost domain tests] --> Parser[Pure ADR-045 parser]
+  Tests --> Authority[In-memory lease authority]
+  Authority --> Slot[Injected process-local atomic slot]
+  Authority --> Governance[Injected classifier fake]
+  Authority --> ModelPolicy[Injected resolver/select/restore fake]
+  Authority --> Isolation[Injected transient-context fake]
+  Authority --> Audit[Injected append-only audit fake]
+  Authority --> Grant[Inert activation grant]
+  Grant -. no runtime dispatch .-> Boundary[Mock-only boundary]
+  Runtime[Panopticon runtime entrypoint] -. does not import .-> Authority
+```
+
+The authority captures the baseline identity, classifies the fixed frame plus explicit prompt, restores after every human yield, expires or resets in memory, and blocks its subject after `RevertFailed`. Clean/fresh contexts carry captured Principal/workspace identity and prohibit history inheritance, merge-back, and sublease authority. Audit records contain only opaque identities and bounded transition metadata; injected fakes provide all effects.
+
 ## Panopticon Controls
 
 ```mermaid
