@@ -31,10 +31,10 @@ FC_SEED=<reported-seed> FC_PATH=<reported-path> npx vitest run <failing-property
 ## Validation
 
 ```text
-npx vitest run tests/panopticon/pi-panopticon-boost.property.test.ts tests/coas/pi-coas-paths.property.test.ts
+npx vitest run tests/boost/pi-boost-property.test.ts tests/coas/pi-coas-paths.property.test.ts
 # 2 files passed; 7 tests passed
 
-FC_SEED=123456 npx vitest run tests/panopticon/pi-panopticon-boost.property.test.ts tests/coas/pi-coas-paths.property.test.ts
+FC_SEED=123456 npx vitest run tests/boost/pi-boost-property.test.ts tests/coas/pi-coas-paths.property.test.ts
 # 2 files passed; 7 tests passed
 
 npm run typecheck

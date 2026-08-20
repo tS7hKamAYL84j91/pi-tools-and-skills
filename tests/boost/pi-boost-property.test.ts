@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import type {
 	BoostIsolationMode,
 	BoostTerminalOutcome,
-} from "../../extensions/pi-panopticon/boost/contracts.js";
+} from "../../extensions/pi-boost/boost/contracts.js";
 import {
 	BOOST_REVIEW_FRAME,
 	combineBoostInput,
 	MAX_BOOST_INPUT_BYTES,
 	parseBoostCommand,
-} from "../../extensions/pi-panopticon/boost/parser.js";
+} from "../../extensions/pi-boost/boost/parser.js";
 import { assertProperty } from "../lib/fast-check.js";
 import {
 	activate,
