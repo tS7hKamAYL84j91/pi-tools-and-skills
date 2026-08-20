@@ -1,19 +1,35 @@
-import { vi } from "vitest";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
+import { type MockedFunction, vi } from "vitest";
+import {
+	type BoostCommandIdentity,
+	registerBoostCommand,
+} from "../../extensions/pi-panopticon/boost/command.js";
 import type {
 	BoostActor,
 	BoostAuditRecord,
 	BoostGovernanceDecision,
 	BoostIsolationAdapter,
 	BoostLeaseDependencies,
+	BoostLeaseStatus,
 	BoostModelIdentity,
 	BoostRequest,
+	BoostResult,
 	BoostSubject,
 	BoostTransientContext,
 	IsolationContextRequest,
+	ReserveBoostInput,
+	ResetBoostInput,
 } from "../../extensions/pi-panopticon/boost/contracts.js";
 import { BoostGlobalLeaseSlot } from "../../extensions/pi-panopticon/boost/global-slot.js";
 import { BoostLeaseAuthority } from "../../extensions/pi-panopticon/boost/lease-authority.js";
-import { combineBoostInput } from "../../extensions/pi-panopticon/boost/parser.js";
+import {
+	type BoostParseResult,
+	combineBoostInput,
+	parseBoostCommand,
+} from "../../extensions/pi-panopticon/boost/parser.js";
 
 export const PRINCIPAL: BoostActor = {
 	kind: "principal",
@@ -190,4 +206,107 @@ export function activate(
 		leaseId,
 		...(prompt ? { prompt } : {}),
 	});
+}
+
+interface CommandDefinition {
+	handler: (
+		args: string | undefined,
+		ctx: ExtensionCommandContext,
+	) => Promise<void>;
+}
+
+interface CommandHarnessOverrides {
+	identity?: BoostCommandIdentity;
+	parse?: (input: string) => BoostParseResult;
+	reserve?: (input: ReserveBoostInput) => BoostResult<BoostLeaseStatus>;
+	reset?: (input: ResetBoostInput) => BoostResult<BoostLeaseStatus>;
+	status?: (actor: BoostActor) => BoostResult<BoostLeaseStatus>;
+}
+
+interface CommandNotification {
+	message: string;
+	level: "info" | "warning" | "error";
+}
+
+interface BoostCommandHarness {
+	authority: {
+		reserve: MockedFunction<
+			(input: ReserveBoostInput) => BoostResult<BoostLeaseStatus>
+		>;
+		reset: MockedFunction<
+			(input: ResetBoostInput) => BoostResult<BoostLeaseStatus>
+		>;
+		getStatus: MockedFunction<
+			(actor: BoostActor) => BoostResult<BoostLeaseStatus>
+		>;
+	};
+	dispatch: MockedFunction<
+		(status: BoostLeaseStatus) => { dispatched: false; kind: "reserved" }
+	>;
+	execute(args?: string): Promise<void>;
+	identity: MockedFunction<() => BoostCommandIdentity | undefined>;
+	notifications: CommandNotification[];
+	parse: MockedFunction<(input: string) => BoostParseResult>;
+}
+
+export function createBoostCommandHarness(
+	overrides: CommandHarnessOverrides = {},
+): BoostCommandHarness {
+	let definition: CommandDefinition | undefined;
+	const api = {
+		registerCommand: (name: string, command: CommandDefinition) => {
+			if (name === "boost") {
+				definition = command;
+			}
+		},
+	} as unknown as ExtensionAPI;
+	const notifications: CommandNotification[] = [];
+	const parse = vi.fn(overrides.parse ?? parseBoostCommand);
+	const identity = vi.fn(() =>
+		Object.hasOwn(overrides, "identity")
+			? overrides.identity
+			: { actor: PRINCIPAL, subject: SUBJECT },
+	);
+	const defaultReservation = (): BoostResult<BoostLeaseStatus> => ({
+		ok: true,
+		value: {
+			state: "Reserved",
+			leaseId: "lease-command",
+			remainingYields: 1,
+			expiresAt: 2_000,
+		},
+	});
+	const defaultReset = (): BoostResult<BoostLeaseStatus> => ({
+		ok: true,
+		value: { state: "Idle" },
+	});
+	const authority: BoostCommandHarness["authority"] = {
+		reserve: vi.fn(overrides.reserve ?? defaultReservation),
+		reset: vi.fn(overrides.reset ?? defaultReset),
+		getStatus: vi.fn(overrides.status ?? defaultReservation),
+	};
+	const dispatch = vi.fn(() => ({
+		dispatched: false as const,
+		kind: "reserved" as const,
+	}));
+	registerBoostCommand(api, {
+		parse,
+		identity,
+		authority,
+		notify: (_ctx, message, level) => notifications.push({ message, level }),
+		dispatch: { recordReservation: dispatch },
+	});
+	return {
+		authority,
+		dispatch,
+		identity,
+		notifications,
+		parse,
+		execute: async (args) => {
+			if (!definition) {
+				throw new Error("Boost command was not registered");
+			}
+			await definition.handler(args, {} as ExtensionCommandContext);
+		},
+	};
 }

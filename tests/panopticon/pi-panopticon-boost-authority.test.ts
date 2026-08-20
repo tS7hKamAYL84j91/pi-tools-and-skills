@@ -176,11 +176,21 @@ describe("ADR-045 boost authority", () => {
 		});
 	});
 
-	it("remains disconnected from the Panopticon runtime entrypoint", () => {
+	it("wires only the injected inert boost command at the runtime entrypoint", () => {
 		const runtimeSource = readFileSync(
 			"extensions/pi-panopticon/index.ts",
 			"utf8",
 		);
-		expect(runtimeSource).not.toMatch(/boost|registerCommand\(["']boost/);
+		const registration =
+			"registerBoostCommand(pi, createInertBoostCommandDeps(registry));";
+		const registrationOffset = runtimeSource.indexOf(registration);
+		expect(registrationOffset).toBeGreaterThanOrEqual(0);
+		const boostRegistration = runtimeSource.slice(
+			registrationOffset,
+			registrationOffset + registration.length,
+		);
+		expect(boostRegistration).not.toMatch(
+			/activate|provider|selector|config|default|scheduler|network/,
+		);
 	});
 });

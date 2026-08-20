@@ -14,24 +14,32 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import Registry from "./registry/registry.js";
-import { createMessaging } from "./messaging/messaging.js";
-import { setupSpawner } from "./spawner/spawner.js";
-import { setupPeek } from "./registry/peek.js";
-import { setupHealth } from "./registry/health.js";
-import { createAgentListModeStore } from "./ui/list-mode.js";
-import type { AgentMessageSender, AgentStopper } from "./ui/agent-overlay-types.js";
-import { getSelfName } from "./registry/peers.js";
-import { setupUI } from "./ui/ui.js";
-import { OperationalStateStore } from "./registry/state.js";
-import { setupReconciler } from "./registry/reconciler.js";
-import { getMaildirTransport } from "../../lib/transports/maildir.js";
-import { registerChannel, unregisterChannel } from "../../lib/message-transport.js";
-import { stopPeerAgent } from "./spawner/agent-stop.js";
-import { registerTeams } from "./teams/register.js";
+import {
+	registerChannel,
+	unregisterChannel,
+} from "../../lib/message-transport.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
-import setupSwarm from "./swarm/index.js";
+import { getMaildirTransport } from "../../lib/transports/maildir.js";
+import { registerBoostCommand } from "./boost/command.js";
+import { createInertBoostCommandDeps } from "./boost/inert-runtime.js";
+import { createMessaging } from "./messaging/messaging.js";
 import { loadExternalAgents } from "./registry/external-registrar.js";
+import { setupHealth } from "./registry/health.js";
+import { setupPeek } from "./registry/peek.js";
+import { getSelfName } from "./registry/peers.js";
+import { setupReconciler } from "./registry/reconciler.js";
+import Registry from "./registry/registry.js";
+import { OperationalStateStore } from "./registry/state.js";
+import { stopPeerAgent } from "./spawner/agent-stop.js";
+import { setupSpawner } from "./spawner/spawner.js";
+import setupSwarm from "./swarm/index.js";
+import { registerTeams } from "./teams/register.js";
+import type {
+	AgentMessageSender,
+	AgentStopper,
+} from "./ui/agent-overlay-types.js";
+import { createAgentListModeStore } from "./ui/list-mode.js";
+import { setupUI } from "./ui/ui.js";
 
 export default function (pi: ExtensionAPI) {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
@@ -51,7 +59,8 @@ export default function (pi: ExtensionAPI) {
 			...(result.reference ? { reference: result.reference } : {}),
 		};
 	};
-	const stopAgent: AgentStopper = async (peer, force) => stopPeerAgent(peer, selfId, force ?? false);
+	const stopAgent: AgentStopper = async (peer, force) =>
+		stopPeerAgent(peer, selfId, force ?? false);
 	const messaging = createMessaging({
 		send: maildir,
 		broadcast: maildir,
@@ -60,10 +69,17 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
+	registerBoostCommand(pi, createInertBoostCommandDeps(registry));
 	const runtime = new RuntimeControlPlane();
 	const teams = registerTeams(pi, runtime);
 	const swarm = setupSwarm(pi, teams);
-	const ui = setupUI(pi, { selfId, registry, listMode, sendAgentMessage, stopAgent });
+	const ui = setupUI(pi, {
+		selfId,
+		registry,
+		listMode,
+		sendAgentMessage,
+		stopAgent,
+	});
 
 	// ── Lifecycle: start ────────────────────────────────────────
 
@@ -73,7 +89,7 @@ export default function (pi: ExtensionAPI) {
 		const mins = Math.round(durationMs / 60_000);
 		pi.sendUserMessage(
 			`⚠️ Agent "${agentName}" (pid ${pid}) exited (code ${exitCode ?? "unknown"}) after ${mins}m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
-			`Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.`,
+				`Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.`,
 			{ deliverAs: "followUp" },
 		);
 	});
