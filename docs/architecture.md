@@ -450,6 +450,28 @@ flowchart LR
 - Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
 - Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
 
+## Panopticon Inert Boost Command Boundary
+
+ADR-045 phase 2 registers `/boost` from the Panopticon entrypoint through `registerBoostCommand`. The command receives its parser, Principal/session/workspace identity resolver, narrow lease authority, notifier, and `InertBoostDispatch` as explicit dependencies. Requests may reserve only; the command authority type exposes no activation method, and the stateless dispatch boundary returns `dispatched: false`.
+
+```mermaid
+flowchart LR
+  Principal[Principal slash command] --> Command[registerBoostCommand]
+  Command --> Parser[Injected pure parser]
+  Command --> Identity[Injected root-session identity]
+  Command --> Authority[Injected narrow lease authority]
+  Command --> Notify[Bounded local notifier]
+  Authority --> Reserved[In-memory Reserved status]
+  Reserved --> Inert[InertBoostDispatch]
+  Inert -. dispatched false .-> NoDispatch[No activation or provider call]
+  Command -. cannot access .-> Forbidden[Model selector, provider, config/defaults, scheduler, network]
+  Tests[Command fakes] -. verify routing and redaction .-> Command
+```
+
+Status and reset call only their injected authority methods. Feedback is limited to state, remaining yields, expiry, and a validated opaque lease id; prompts, model/provider data, workspace details, and internal failure fields are not rendered. The runtime authority uses only in-memory inert adapters: reservation/reset can update its process-local lease state, while activation, context creation, model selection, configuration/default mutation, scheduling, and network behavior remain unavailable.
+
+The underlying authority captures the baseline identity, classifies the fixed frame plus explicit prompt, restores after every human yield, expires or resets in memory, and blocks its subject after `RevertFailed` in domain tests. Clean/fresh contexts carry captured Principal/workspace identity and prohibit history inheritance, merge-back, and sublease authority. Audit records contain only opaque identities and bounded transition metadata; injected fakes provide all effects.
+
 ## Panopticon Controls
 
 ```mermaid
