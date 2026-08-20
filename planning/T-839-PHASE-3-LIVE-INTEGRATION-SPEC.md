@@ -59,13 +59,18 @@ Phase 3 replaces only the phase-2 inert adapters with injected interfaces:
 - `GovernanceClassifier` (ADR-035 combined-input classification)
 - `LeaseBudgetAuthority` (Q record decision/recheck)
 - `LeaseAuditSink` (redacted, append-only local record)
+- `LiveIsolationAdapter` (creates/disposes `--clean`/`--fresh` contexts without history or hidden-state inheritance)
+- `LiveWorkspaceValidator` (revalidates the captured workspace identity before every activation)
 - `LiveDispatchBoundary` (the sole provider-dispatch seam)
+
+`BoostModelAdapter` splits into the read-only `LiveModelResolver` and the subject-scoped `LiveModelSelector`. The added immutable selector handle plus locality/provider/residency metadata are new phase-3 contract types; they require independent type/API review and cannot be inferred from the current `BoostModelIdentity`.
 
 The command module must continue to depend only on narrow interfaces. Provider SDKs, credentials, raw model configuration, schedules, and network clients remain outside its dependency graph.
 
 ## Budget, audit, and reversion
 
-- Check Q budget at reservation and before every activation. A denial consumes neither budget nor human yield.
+- Check Q budget at reservation and before every activation. The Q record's allowed lease key must exactly equal the `principalBoostLease` key resolved by the Teams adapter; a mismatch is a fail-closed denial. A denial consumes neither budget nor human yield.
+- Cancelled, failed, tool-only, and suppressed-never-yielded dispatches consume neither budget yield nor human-yield count. Only a terminal response available to the human decrements the lease.
 - The audit record contains opaque ids, logical policy keys, state transitions, yields, enablement id, and bounded failure category; never prompt, output, provider error body, token payload, credential, or workspace contents.
 - After every terminal human-visible yield, restore the captured baseline before another dispatch. Re-check Principal/Q/governance/budget before reactivation.
 - A selection, dispatch, audit-finalization, cleanup, or restore failure enters `RevertFailed`, blocks subject dispatch, and requires Principal reset after Q enablement is revalidated.
@@ -82,13 +87,24 @@ The command module must continue to depend only on narrow interfaces. Provider S
 | Baseline restore failure | `RevertFailed`; block subject until Principal reset |
 | Q rollback | restore prior Q mapping/record version; invoke reversion for active lease; verify inert fallback |
 
+## Required live contracts
+
+### Teams model adapter
+
+The Q control plan must define a read-only `LiveTeamsModelAdapter.resolve(key)` result: exact logical key, registered provider/id/family, verified locality/residency metadata, immutable selector handle, mapping version, and expiry. It must reject missing, duplicate, stale, family-mismatched, or Q-key-inconsistent results. The adapter never writes configuration or probes providers.
+
+### Live dispatch boundary
+
+The Q control plan must define `LiveDispatchBoundary.dispatch(grant)` and its terminal callback contract: subject/activation generation binding, one terminal outcome, human-visible-yield signal, bounded failure category, cancellation handling, and mandatory baseline restoration sequencing before any subsequent dispatch. It cannot receive raw Q credentials or configuration.
+
 ## Q control plan required before implementation
 
-1. Q identifies the Teams configuration owner/path and records the approved logical-key mapping, provider/residency evidence, expiry, and rollback version.
+1. Q identifies the Teams configuration owner/path, Q-record storage and signing/verification mechanism, and records the approved logical-key mapping, provider/residency evidence, expiry, budget-ceiling composition with the three-yield cap, and rollback version.
 2. Q prepares a dry-run validation that resolves both keys without selecting or calling a provider.
 3. Q obtains Principal confirmation for the specific enablement window and budget ceiling.
 4. Q supplies a rollback runbook: disable record, revoke lease key, restore prior mapping, verify no active lease, and retain audit evidence without secrets.
-5. Council reviews this specification plus Q's control plan before any configuration mutation or real dispatch test.
+5. Q documents controlled-real fixture vetting and the Principal reset ceremony/audit evidence required after `RevertFailed`.
+6. Council reviews this specification plus Q's control plan before any configuration mutation or real dispatch test.
 
 ## Tests
 
