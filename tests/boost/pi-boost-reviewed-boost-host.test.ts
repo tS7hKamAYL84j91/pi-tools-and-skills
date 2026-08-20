@@ -5,6 +5,7 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PANOPTICON_PARENT_ID_ENV } from "../../lib/agent-registry.js";
 import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/runtime-adapter.js";
 import defaultBoostExtension from "../../extensions/pi-boost/index.js";
 import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
@@ -109,12 +110,20 @@ function createCommandContext(
 }
 
 describe("reviewed boost production host", () => {
+	const inheritedParentId = process.env[PANOPTICON_PARENT_ID_ENV];
+
 	beforeEach(() => {
 		process.env.PI_PRINCIPAL = "1";
+		delete process.env[PANOPTICON_PARENT_ID_ENV];
 	});
 
 	afterEach(() => {
 		delete process.env.PI_PRINCIPAL;
+		if (inheritedParentId === undefined) {
+			delete process.env[PANOPTICON_PARENT_ID_ENV];
+		} else {
+			process.env[PANOPTICON_PARENT_ID_ENV] = inheritedParentId;
+		}
 	});
 	it("attests the reviewed source identity", () => {
 		const source = readFileSync(REVIEWED_BOOST_CONTRACT_PATH, "utf8");

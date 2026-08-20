@@ -4,6 +4,7 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PANOPTICON_PARENT_ID_ENV } from "../../lib/agent-registry.js";
 import type {
 	DaemonBoostWal,
 	DaemonBoostWalRecord,
@@ -200,12 +201,20 @@ function createContext(notifications: string[]): ExtensionCommandContext {
 }
 
 describe("production Q boost host", () => {
+	const inheritedParentId = process.env[PANOPTICON_PARENT_ID_ENV];
+
 	beforeEach(() => {
 		process.env.PI_PRINCIPAL = "1";
+		delete process.env[PANOPTICON_PARENT_ID_ENV];
 	});
 
 	afterEach(() => {
 		delete process.env.PI_PRINCIPAL;
+		if (inheritedParentId === undefined) {
+			delete process.env[PANOPTICON_PARENT_ID_ENV];
+		} else {
+			process.env[PANOPTICON_PARENT_ID_ENV] = inheritedParentId;
+		}
 	});
 	it("constructs cold from a valid Q control without provider or WAL mutation", async () => {
 		const fixture = createInput(record());
