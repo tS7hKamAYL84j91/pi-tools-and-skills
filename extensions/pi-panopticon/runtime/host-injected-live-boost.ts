@@ -122,10 +122,17 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			await this.finalizer.releaseReserved(lease);
 			return { ok: false, reason };
 		}
-		if (
-			(await this.dependencies.governance.classify(input.combinedInput)) !==
-			"public"
-		) {
+		let governance: string;
+		try {
+			governance = await this.dependencies.governance.classify(
+				input.combinedInput,
+			);
+		} catch {
+			await this.finalizer.releaseReserved(lease);
+			return { ok: false, reason: "governance-denied" };
+		}
+		if (governance !== "public") {
+			await this.finalizer.releaseReserved(lease);
 			return { ok: false, reason: "governance-denied" };
 		}
 		const activated = await this.dependencies.store.activate(lease.key);

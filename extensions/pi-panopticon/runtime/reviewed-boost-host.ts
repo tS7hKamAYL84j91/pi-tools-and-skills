@@ -3,6 +3,7 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { LiveBoostHostInjection } from "../boost/runtime-adapter.js";
 import { createPanopticonExtension } from "../index.js";
+import type { LiveBoostRuntimeBridge } from "./live-boost-bridge-contract.js";
 import {
 	Q_BOOST_BASELINE_KEY,
 	Q_BOOST_LEASE_KEY,
@@ -54,10 +55,7 @@ export function createReviewedBoostHost(
 	const shutdown = createIdempotentShutdown(input.injection);
 	const injection: LiveBoostHostInjection = {
 		...input.injection,
-		bridge: {
-			...input.injection.bridge,
-			shutdown: async () => shutdown(),
-		},
+		bridge: createShutdownWrappedBridge(input.injection.bridge, shutdown),
 	};
 	return {
 		contract: getReviewedBoostContractIdentity(),
@@ -97,6 +95,20 @@ function validateShutdownChoice(
 	if (choice !== "synchronous-restore" && choice !== "durable-block-marker") {
 		throw new Error("Invalid reviewed boost shutdown choice");
 	}
+}
+
+function createShutdownWrappedBridge(
+	bridge: LiveBoostRuntimeBridge,
+	shutdown: () => Promise<void>,
+): LiveBoostRuntimeBridge {
+	return {
+		reserve: (input) => bridge.reserve(input),
+		dispatch: (input) => bridge.dispatch(input),
+		reset: (input) => bridge.reset(input),
+		getStatus: (input) => bridge.getStatus(input),
+		checkDispatch: (subjectId) => bridge.checkDispatch(subjectId),
+		shutdown: async () => shutdown(),
+	};
 }
 
 function createIdempotentShutdown(
