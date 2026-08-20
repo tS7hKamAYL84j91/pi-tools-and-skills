@@ -1,9 +1,8 @@
-/**
- * Continuation run-state persistence for the pi-coas internal scheduler.
- */
+/** Continuation run-state persistence for the pi-coas internal scheduler. */
+
 import { ConfinedStore } from "./store.js";
-import type { CoasConfig, ScheduleEntry } from "./types.js";
 import { scheduleRunsPath } from "./schedules.js";
+import type { CoasConfig, ScheduleEntry } from "./types.js";
 
 const STALE_DAYS = 7;
 const MAX_SUMMARY_CHARS = 500;
@@ -22,12 +21,6 @@ export interface ScheduleRunState {
 	readonly nextAction?: string;
 	readonly reason?: string;
 	readonly lastUpdatedAt: string;
-}
-
-export interface PriorSummary {
-	readonly runId: string;
-	readonly text: string;
-	readonly stale: boolean;
 }
 
 function isRunStatus(value: unknown): value is ScheduleRunState["status"] {
@@ -75,6 +68,12 @@ export async function loadRunState(config: CoasConfig, taskId: string): Promise<
 export async function saveRunState(config: CoasConfig, taskId: string, state: ScheduleRunState): Promise<void> {
 	const store = await ConfinedStore.createCoasHome(config);
 	await store.writePrivateFileAtomic(scheduleRunsPath(config, taskId), `${JSON.stringify(state, null, 2)}\n`);
+}
+
+export interface PriorSummary {
+	readonly runId: string;
+	readonly text: string;
+	readonly stale: boolean;
 }
 
 export async function readPriorSummary(

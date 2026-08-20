@@ -6,10 +6,6 @@ export interface CoasConfig {
 	coasHome: string;
 }
 
-export interface RawCoasSettings {
-	coasHome?: unknown;
-}
-
 export interface CommandResult {
 	stdout: string;
 	stderr: string;
