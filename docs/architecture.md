@@ -781,3 +781,16 @@ new cron delivery. Approval artifacts are bounded private claim-checks with
 sanitized content and terminal retention cleanup. The architecture fitness suite
 therefore checks module budgets without exemptions while continuation state stays
 one bounded snapshot per task.
+
+## Standalone boost boundary
+
+`pi-boost` owns the mutable Principal lease and runtime lifecycle. `pi-panopticon` observes swarm state only and has no boost registration or authority dependency.
+
+```mermaid
+flowchart LR
+  Principal --> Boost[pi-boost]
+  Boost --> Authority[Lease authority]
+  Boost --> Audit[Persistence and audit]
+  Boost --> Runtime[Q runtime adapter]
+  Panopticon[pi-panopticon] --> Swarm[Swarm observation]
+```
