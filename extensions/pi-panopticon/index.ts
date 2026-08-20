@@ -1,27 +1,14 @@
-/**
- * Pi Agents — Unified Agent Infrastructure
- *
- * Single extension entry point that orchestrates:
- * - Registry: agent registration, heartbeat, dead-agent reaping
- * - Messaging: agent_send, agent_broadcast, /send command
- * - Spawner: spawn_agent, rpc_send, list_spawned, kill_agent
- * - Peek: agent_peek tool
- * - UI: powerline widget, /agents overlay, naming tools
- *
- * Lifecycle ordering:
- *   start:    registry.register → messaging.init → ui.start
- *   shutdown: spawner.shutdownAll → messaging.drainAll → ui.stop → registry.unregister
- */
-
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+/** Panopticon extension entrypoint and explicit host-injection factory. */
+import type {
+	ExtensionAPI,
+	ExtensionFactory,
+} from "@earendil-works/pi-coding-agent";
 import {
 	registerChannel,
 	unregisterChannel,
 } from "../../lib/message-transport.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
-import { registerBoostCommand } from "./boost/command.js";
-import { createInertBoostCommandDeps } from "./boost/inert-runtime.js";
 import { createMessaging } from "./messaging/messaging.js";
 import { loadExternalAgents } from "./registry/external-registrar.js";
 import { setupHealth } from "./registry/health.js";
@@ -30,7 +17,12 @@ import { getSelfName } from "./registry/peers.js";
 import { setupReconciler } from "./registry/reconciler.js";
 import Registry from "./registry/registry.js";
 import { OperationalStateStore } from "./registry/state.js";
+import {
+	type LiveBoostHostInjection,
+	setupBoostRuntime,
+} from "./runtime/boost-extension-wiring.js";
 import { stopPeerAgent } from "./spawner/agent-stop.js";
+import { setupMissingDoneNotice } from "./spawner/missing-done-notice.js";
 import { setupSpawner } from "./spawner/spawner.js";
 import setupSwarm from "./swarm/index.js";
 import { registerTeams } from "./teams/register.js";
@@ -41,7 +33,20 @@ import type {
 import { createAgentListModeStore } from "./ui/list-mode.js";
 import { setupUI } from "./ui/ui.js";
 
-export default function (pi: ExtensionAPI) {
+/** Create the extension with an explicit host capability; normal loading passes none. */
+export function createPanopticonExtension(
+	boostInjection?: LiveBoostHostInjection,
+): ExtensionFactory {
+	return (pi) => setupPanopticon(pi, boostInjection);
+}
+
+const defaultExtension = createPanopticonExtension();
+export default defaultExtension;
+
+function setupPanopticon(
+	pi: ExtensionAPI,
+	boostInjection?: LiveBoostHostInjection,
+): void {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId, () => pi.getSessionName());
 	const listMode = createAgentListModeStore();
@@ -69,7 +74,7 @@ export default function (pi: ExtensionAPI) {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
-	registerBoostCommand(pi, createInertBoostCommandDeps(registry));
+	const boost = setupBoostRuntime(pi, registry, boostInjection);
 	const runtime = new RuntimeControlPlane();
 	const teams = registerTeams(pi, runtime);
 	const swarm = setupSwarm(pi, teams);
@@ -83,16 +88,7 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Lifecycle: start ────────────────────────────────────────
 
-	// Wire missing-DONE safety net: when a spawned agent exits without
-	// sending a completion signal, inject a followUp to alert the orchestrator.
-	spawner.onMissingDone((agentName, pid, exitCode, durationMs) => {
-		const mins = Math.round(durationMs / 60_000);
-		pi.sendUserMessage(
-			`⚠️ Agent "${agentName}" (pid ${pid}) exited (code ${exitCode ?? "unknown"}) after ${mins}m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
-				`Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.`,
-			{ deliverAs: "followUp" },
-		);
-	});
+	setupMissingDoneNotice(pi, spawner);
 
 	pi.on("session_start", async (event, ctx) => {
 		const externalAgents = await loadExternalAgents({ workspaceRoot: ctx.cwd });
@@ -136,6 +132,7 @@ export default function (pi: ExtensionAPI) {
 	// ── Lifecycle: shutdown ─────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
+		await boost.shutdown();
 		await swarm.shutdown();
 		await spawner.shutdownAll();
 		reconciler.stop();

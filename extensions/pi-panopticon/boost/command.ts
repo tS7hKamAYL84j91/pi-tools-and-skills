@@ -22,19 +22,34 @@ export interface BoostCommandIdentity {
 	readonly subject: BoostSubject;
 }
 
+type MaybePromise<T> = T | Promise<T>;
+
 interface BoostCommandAuthority {
-	reserve(input: ReserveBoostInput): BoostResult<BoostLeaseStatus>;
-	getStatus(actor: BoostActor): BoostResult<BoostLeaseStatus>;
-	reset(input: ResetBoostInput): BoostResult<BoostLeaseStatus>;
+	reserve(
+		input: ReserveBoostInput,
+	): MaybePromise<BoostResult<BoostLeaseStatus>>;
+	getStatus(actor: BoostActor): MaybePromise<BoostResult<BoostLeaseStatus>>;
+	reset(input: ResetBoostInput): MaybePromise<BoostResult<BoostLeaseStatus>>;
 }
 
-interface InertBoostDispatchDecision {
-	readonly dispatched: false;
-	readonly kind: "reserved";
-}
+export type BoostCommandDispatchDecision =
+	| { readonly dispatched: false; readonly kind: "reserved" }
+	| {
+			readonly dispatched: false;
+			readonly kind: "denied";
+			readonly reason: string;
+	  }
+	| {
+			readonly dispatched: true;
+			readonly kind: "terminal";
+			readonly outcome: string;
+	  };
 
 interface BoostCommandDispatch {
-	recordReservation(status: BoostLeaseStatus): InertBoostDispatchDecision;
+	recordReservation(
+		status: BoostLeaseStatus,
+		input: ReserveBoostInput,
+	): MaybePromise<BoostCommandDispatchDecision>;
 }
 
 /** @public Explicit dependencies isolate the command from runtime capabilities. */
@@ -54,7 +69,10 @@ export interface BoostCommandDeps {
 
 /** Stateless phase-2 boundary: records the reservation decision without dispatch. */
 export class InertBoostDispatch implements BoostCommandDispatch {
-	recordReservation(_status: BoostLeaseStatus): InertBoostDispatchDecision {
+	recordReservation(
+		_status: BoostLeaseStatus,
+		_input?: ReserveBoostInput,
+	): BoostCommandDispatchDecision {
 		return { dispatched: false, kind: "reserved" };
 	}
 }
@@ -65,7 +83,7 @@ export function registerBoostCommand(
 	deps: BoostCommandDeps,
 ): void {
 	pi.registerCommand("boost", {
-		description: "Reserve, inspect, or reset an inert boost lease",
+		description: "Request, inspect, or reset a host-controlled boost lease",
 		handler: async (args, ctx) => {
 			const parsed = deps.parse(commandInput(args));
 			if (!parsed.ok) {
@@ -87,7 +105,7 @@ export function registerBoostCommand(
 						ctx,
 						deps,
 						"Boost status",
-						deps.authority.getStatus(identity.actor),
+						await deps.authority.getStatus(identity.actor),
 					);
 					return;
 				case "reset":
@@ -95,18 +113,19 @@ export function registerBoostCommand(
 						ctx,
 						deps,
 						"Boost reset",
-						deps.authority.reset({
+						await deps.authority.reset({
 							actor: identity.actor,
 							subjectId: identity.subject.subjectId,
 						}),
 					);
 					return;
 				case "request": {
-					const result = deps.authority.reserve({
+					const reservationInput: ReserveBoostInput = {
 						actor: identity.actor,
 						subject: identity.subject,
 						request: parsed.command.request,
-					});
+					};
+					const result = await deps.authority.reserve(reservationInput);
 					if (!result.ok) {
 						notifyDenial(ctx, deps, result.reason);
 						return;
@@ -115,7 +134,26 @@ export function registerBoostCommand(
 						deps.notify(ctx, "Boost denied: reservation unavailable", "error");
 						return;
 					}
-					deps.dispatch.recordReservation(result.value);
+					const dispatch = await deps.dispatch.recordReservation(
+						result.value,
+						reservationInput,
+					);
+					if (dispatch.kind === "denied") {
+						deps.notify(
+							ctx,
+							`Boost denied: ${boundedReason(dispatch.reason)}`,
+							"warning",
+						);
+						return;
+					}
+					if (dispatch.kind === "terminal") {
+						deps.notify(
+							ctx,
+							`Boost completed: outcome=${boundedReason(dispatch.outcome)}`,
+							"info",
+						);
+						return;
+					}
 					deps.notify(
 						ctx,
 						formatStatus("Boost reserved (inert)", result.value),
@@ -176,6 +214,12 @@ function opaqueId(value: string): string {
 
 function denialLabel(reason: BoostDenialReason): string {
 	return reason.replaceAll("-", " ");
+}
+
+function boundedReason(reason: string): string {
+	return /^[a-z-]{1,32}$/.test(reason)
+		? reason.replaceAll("-", " ")
+		: "unavailable";
 }
 
 function parseFeedback(code: BoostParseErrorCode): string {

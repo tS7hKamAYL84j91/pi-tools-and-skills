@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-08-19 (independent council PASS at `b1166d4`); implementation remains separately gated by review.
+Accepted — 2026-08-19 (independent council PASS at `b1166d4`). T-843 authorizes the minimal host-injected bridge and deterministic test host; live Q/provider enablement remains separately gated by independent PASS and committed contract handoff.
 
 ## Context
 
@@ -88,12 +88,18 @@ The framing and explicit boost prompt are capped together at 2,048 UTF-8 bytes f
 
 `--fresh` creates a new empty transient session bound to the same Principal issuer id and the same resolved workspace identity snapshot. It never inherits prior conversation, changes cwd/workspace, merges content back, or creates a reusable child authority. If the workspace binding cannot be revalidated at activation, dispatch denies and the lease reverts. Both modes retain the normal tool/workspace confinement policy.
 
+### 6. Host bridge and durable recovery
+
+T-843 provides the deployable ownership boundary omitted by the inert slice. A host injects the complete `LiveBoostRuntimeBridge`; normal `ExtensionAPI` loading has no bridge and fails closed. Q access is an exact read-only schema-v2 adapter. Durable reserve/consume/release is WAL-backed and mutex-serialized by enablement under one global lease cap. Active Q revoke or expiry orders `Revoking`, `AbortSignal` abort, terminal acknowledgement, baseline restoration, redacted audit, then budget release.
+
+`RevertFailed` and shutdown recovery markers are durable and per subject. Principal reset revalidates Q control and restores baseline before clearing a marker. Shutdown explicitly chooses awaited restoration or durable blocking; no activation survives restart. T-826 is an external daemon-backed/persistent-session tracker reference, **not a repository-local ADR**; T-843 aligns only with that host-owned session/control direction.
+
 ## Consequences
 
 - The external-model route is explicitly Principal-authorized, one-at-a-time, bounded to three human yields, governance-classified, auditable without prompt retention, and non-sticky.
 - A failed GLM restoration stops all model dispatch for its subject, favoring a visible safe failure over silent model drift.
 - Adding actual model identifiers requires later approved configuration work; this ADR makes no configuration change.
-- `/boost` remains unavailable until implementation review passes and receives separate authorization.
+- The bridge remains inert under normal extension loading; live Q/provider deployment remains unavailable until independent review passes and the exact control contract is committed and handed off.
 
 ## Required implementation evidence
 
@@ -113,4 +119,7 @@ The framing and explicit boost prompt are capped together at 2,048 UTF-8 bytes f
 
 - ADR-035: workload governance/model routing consumer
 - `docs/reports/t-839-boost-lease-proposal.md`
-- T-839
+- `planning/T-843-LIVE-BOOST-RUNTIME-BRIDGE-PROPOSAL.md`
+- `planning/T-843-LIVE-BOOST-RUNTIME-BRIDGE-IMPLEMENTATION.md`
+- T-839 / T-843
+- T-826 external tracker reference (host-owned persistence direction only; not an ADR in this repository)

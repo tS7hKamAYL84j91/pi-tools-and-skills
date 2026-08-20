@@ -67,7 +67,8 @@ export type BoostDenialReason =
 	| "revert-failed"
 	| "lease-not-found"
 	| "lease-not-active"
-	| "budget-exhausted";
+	| "budget-exhausted"
+	| "runtime-unavailable";
 
 export interface BoostActor {
 	readonly kind: BoostActorKind;

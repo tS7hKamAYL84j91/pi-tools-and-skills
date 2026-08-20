@@ -6,17 +6,17 @@
  * drop registration calls while still leaving isolated unit tests green.
  */
 
-import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerTeams as teamExtension } from "../../extensions/pi-panopticon/teams/register.js";
+import { describe, expect, it } from "vitest";
+import coasExtension from "../../extensions/pi-coas/index.js";
+import doctorExtension from "../../extensions/pi-doctor/index.js";
+import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
+import goalExtension from "../../extensions/pi-goal/index.js";
 import kanbanExtension from "../../extensions/pi-kanban/index.js";
 import matrixExtension from "../../extensions/pi-matrix/index.js";
-import coasExtension from "../../extensions/pi-coas/index.js";
-import panopticonExtension from "../../extensions/pi-panopticon/index.js";
-import goalExtension from "../../extensions/pi-goal/index.js";
-import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
 import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
-import doctorExtension from "../../extensions/pi-doctor/index.js";
+import panopticonExtension from "../../extensions/pi-panopticon/index.js";
+import { registerTeams as teamExtension } from "../../extensions/pi-panopticon/teams/register.js";
 
 interface ToolParameters {
 	properties?: Record<string, unknown>;
@@ -63,7 +63,10 @@ function createFakeApi(): {
 		registerTool(definition) {
 			registrations.tools.add(definition.name);
 			if (definition.parameters) {
-				registrations.toolParameters.set(definition.name, definition.parameters);
+				registrations.toolParameters.set(
+					definition.name,
+					definition.parameters,
+				);
 			}
 		},
 		registerCommand(name) {
@@ -115,15 +118,27 @@ describe("extension registration smoke tests", () => {
 	it("retains deprecated, ignored gate inputs in Doctor, Goal, and Kanban public schemas", () => {
 		const doctor = createFakeApi();
 		doctorExtension(doctor.api);
-		expectDeprecatedGateParameter(doctor.registrations, "pi_doctor", "gateCommand");
+		expectDeprecatedGateParameter(
+			doctor.registrations,
+			"pi_doctor",
+			"gateCommand",
+		);
 
 		const goal = createFakeApi();
 		goalExtension(goal.api);
-		expectDeprecatedGateParameter(goal.registrations, "goal_complete", "gate_command");
+		expectDeprecatedGateParameter(
+			goal.registrations,
+			"goal_complete",
+			"gate_command",
+		);
 
 		const kanban = createFakeApi();
 		kanbanExtension(kanban.api);
-		expectDeprecatedGateParameter(kanban.registrations, "kanban_complete", "gate_command");
+		expectDeprecatedGateParameter(
+			kanban.registrations,
+			"kanban_complete",
+			"gate_command",
+		);
 	});
 	it("team extension registers its tools, commands, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
@@ -169,9 +184,7 @@ describe("extension registration smoke tests", () => {
 			"kanban_snapshot",
 			"kanban_unblock",
 		]);
-		expectRegistered(registrations.commands, [
-			"kanban",
-		]);
+		expectRegistered(registrations.commands, ["kanban"]);
 		expectRegistered(registrations.flags, []);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+k"]);
 		expectRegistered(registrations.events, [
@@ -309,6 +322,7 @@ describe("extension registration smoke tests", () => {
 			"agent-list-mode",
 			"agents",
 			"agents-mode",
+			"boost",
 			"send",
 			"swarm",
 			"team",

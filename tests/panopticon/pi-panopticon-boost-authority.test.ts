@@ -176,21 +176,24 @@ describe("ADR-045 boost authority", () => {
 		});
 	});
 
-	it("wires only the injected inert boost command at the runtime entrypoint", () => {
+	it("fails closed by default and accepts only the explicit host injection", () => {
 		const runtimeSource = readFileSync(
 			"extensions/pi-panopticon/index.ts",
 			"utf8",
 		);
-		const registration =
-			"registerBoostCommand(pi, createInertBoostCommandDeps(registry));";
-		const registrationOffset = runtimeSource.indexOf(registration);
-		expect(registrationOffset).toBeGreaterThanOrEqual(0);
-		const boostRegistration = runtimeSource.slice(
-			registrationOffset,
-			registrationOffset + registration.length,
+		const boostWiring = readFileSync(
+			"extensions/pi-panopticon/runtime/boost-extension-wiring.ts",
+			"utf8",
 		);
-		expect(boostRegistration).not.toMatch(
-			/activate|provider|selector|config|default|scheduler|network/,
+		expect(runtimeSource).toContain("createPanopticonExtension()");
+		expect(boostWiring).toContain(
+			"createUnavailableBoostCommandDeps(registry)",
+		);
+		expect(boostWiring).toContain(
+			"createHostBoostCommandDeps(registry, injection)",
+		);
+		expect(`${runtimeSource}\n${boostWiring}`).not.toMatch(
+			/process\.env.*boost|globalThis.*boost|as unknown as.*ExtensionAPI/i,
 		);
 	});
 });

@@ -450,27 +450,30 @@ flowchart LR
 - Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
 - Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
 
-## Panopticon Inert Boost Command Boundary
+## Panopticon Host-Injected Boost Runtime Boundary
 
-ADR-045 phase 2 registers `/boost` from the Panopticon entrypoint through `registerBoostCommand`. The command receives its parser, Principal/session/workspace identity resolver, narrow lease authority, notifier, and `InertBoostDispatch` as explicit dependencies. Requests may reserve only; the command authority type exposes no activation method, and the stateless dispatch boundary returns `dispatched: false`.
+ADR-045 is implemented through a host-owned T-843 bridge, not through `ExtensionAPI`. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createPanopticonExtension` with the complete bridge, immutable logical Q control reference, and shutdown choice; there is no environment, global, API cast, provider-discovery, or configuration fallback.
 
 ```mermaid
 flowchart LR
-  Principal[Principal slash command] --> Command[registerBoostCommand]
-  Command --> Parser[Injected pure parser]
-  Command --> Identity[Injected root-session identity]
-  Command --> Authority[Injected narrow lease authority]
-  Command --> Notify[Bounded local notifier]
-  Authority --> Reserved[In-memory Reserved status]
-  Reserved --> Inert[InertBoostDispatch]
-  Inert -. dispatched false .-> NoDispatch[No activation or provider call]
-  Command -. cannot access .-> Forbidden[Model selector, provider, config/defaults, scheduler, network]
-  Tests[Command fakes] -. verify routing and redaction .-> Command
+  Principal[Authenticated Principal command] --> Command[Panopticon boost adapter]
+  Default[Normal ExtensionAPI load] -. no host capability .-> Deny[Fail-closed denial]
+  Command -->|explicit injection only| Bridge[Host LiveBoostRuntimeBridge]
+  Bridge --> Q[Read-only Q schema-v2 resolver]
+  Bridge --> Governance[Per-dispatch governance]
+  Bridge --> Store[Daemon session-control store]
+  Store --> WAL[Injected append-only WAL]
+  Bridge --> Provider[Cancellable provider seam]
+  Bridge --> Restore[Baseline restore]
+  Q -->|revision / revoke / expiry| Revoke[Revoking → abort → terminal ack → restore]
+  Revoke --> Audit[Redacted audit + budget release]
 ```
 
-Status and reset call only their injected authority methods. Feedback is limited to state, remaining yields, expiry, and a validated opaque lease id; prompts, model/provider data, workspace details, and internal failure fields are not rendered. The runtime authority uses only in-memory inert adapters: reservation/reset can update its process-local lease state, while activation, context creation, model selection, configuration/default mutation, scheduling, and network behavior remain unavailable.
+The Q adapter exposes only `resolve` and `subscribe`; its exact logical contract is team `q-boost`, keys `principalBoostBaseline` and `principalBoostLease`, and enablement/mapping/rollback versions. It carries verification statuses rather than raw signatures, residency documents, credentials, provider configuration, or paths. Every reservation and dispatch authenticates the Principal, and every dispatch revalidates Q control and governance before the provider seam.
 
-The underlying authority captures the baseline identity, classifies the fixed frame plus explicit prompt, restores after every human yield, expires or resets in memory, and blocks its subject after `RevertFailed` in domain tests. Clean/fresh contexts carry captured Principal/workspace identity and prohibit history inheritance, merge-back, and sublease authority. Audit records contain only opaque identities and bounded transition metadata; injected fakes provide all effects.
+The daemon-control test store appends before mutation, replays its WAL, and serializes global plus enablement-keyed transactions. Reserve/consume/release are keyed by enablement, subject, and lease; one global lease and the hard three-yield cap are enforced. Activation generations increase monotonically and stale terminal events are rejected. Revocation durably marks `Revoking` before aborting, awaits terminal acknowledgement, restores baseline, appends an identity-redacted audit event, then releases budget.
+
+Restore, audit, or cleanup failure writes a durable per-subject `RevertFailed` marker; other subjects remain dispatchable. Principal reset requires fresh Q revalidation and baseline restoration. Shutdown explicitly chooses awaited restoration or a durable recovery block, and no activation or selector survives restart. This repository contains deterministic host/store fixtures only: Q deployment, provider credentials, live fixtures, configuration/default changes, Teams mapping writes, and scheduler changes remain outside this implementation pending independent PASS and committed contract handoff.
 
 ## Panopticon Controls
 
