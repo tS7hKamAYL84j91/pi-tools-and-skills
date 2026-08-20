@@ -454,10 +454,14 @@ flowchart LR
 
 ADR-045 is implemented through a host-owned T-843 bridge, not through `ExtensionAPI`. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createPanopticonExtension` with the complete bridge, immutable logical Q control reference, and shutdown choice; there is no environment, global, API cast, provider-discovery, or configuration fallback.
 
+T-846 adds the reviewed host-construction boundary: it accepts only a matching Q-contract path/SHA attestation and canonical logical reference before constructing that explicit factory. The construction result exposes identity evidence, the extension factory, and one idempotent restore-capable shutdown path; it neither authorizes a provider nor creates a Q write/configuration surface. Clean-worktree/commit attestation remains the launcher layer's responsibility.
+
 ```mermaid
 flowchart LR
   Principal[Authenticated Principal command] --> Command[Panopticon boost adapter]
   Default[Normal ExtensionAPI load] -. no host capability .-> Deny[Fail-closed denial]
+  Attestation[Q contract path + SHA / logical reference] --> Host[Reviewed host constructor]
+  Host -->|explicit factory + injection only| Command
   Command -->|explicit injection only| Bridge[Host LiveBoostRuntimeBridge]
   Bridge --> Q[Read-only Q schema-v2 resolver]
   Bridge --> Governance[Per-dispatch governance]
