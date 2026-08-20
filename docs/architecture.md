@@ -137,6 +137,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
+| `pi-boost` | user/global | Principal-only bounded Boost lease command and host-injected Q runtime control | Injected daemon/WAL state and redacted audit; no Panopticon-owned state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
@@ -450,17 +451,19 @@ flowchart LR
 - Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
 - Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
 
-## Panopticon Host-Injected Boost Runtime Boundary
+## Standalone Host-Injected Boost Runtime Boundary
 
-ADR-045 is implemented through a host-owned T-843 bridge, not through `ExtensionAPI`. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createPanopticonExtension` with the complete bridge, immutable logical Q control reference, and shutdown choice; there is no environment, global, API cast, provider-discovery, or configuration fallback.
+ADR-046 assigns Boost to `pi-boost`, not Panopticon or a team. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, immutable copied logical Q control reference, and shutdown choice; there is no global, API cast, provider-discovery, or configuration fallback.
+
+The default identity boundary requires `PI_PRINCIPAL=1` and rejects sessions carrying the shared parent-agent marker. Reading that shared marker prevents delegated workers from inheriting Principal authority; it does not grant Panopticon any Boost dependency or mutation surface.
 
 T-846 adds the reviewed host-construction boundary: it accepts only a matching Q-contract path/SHA attestation and canonical logical reference before constructing that explicit factory. The construction result exposes identity evidence, the extension factory, and one idempotent restore-capable shutdown path; it neither authorizes a provider nor creates a Q write/configuration surface. Clean-worktree/commit attestation remains the launcher layer's responsibility.
 
 ```mermaid
 flowchart LR
-  Principal[Authenticated Principal command] --> Command[Panopticon boost adapter]
+  Principal[Authenticated Principal command] --> Command[pi-boost command adapter]
   Default[Normal ExtensionAPI load] -. no host capability .-> Deny[Fail-closed denial]
-  Attestation[Q contract path + SHA / logical reference] --> Host[Reviewed host constructor]
+  Attestation[Q contract path + SHA / logical reference] --> Host[Reviewed pi-boost host constructor]
   Host -->|explicit factory + injection only| Command
   Command -->|explicit injection only| Bridge[Host LiveBoostRuntimeBridge]
   Bridge --> Q[Read-only Q schema-v2 resolver]

@@ -53,8 +53,10 @@ export function createReviewedBoostHost(
 	validateLogicalReference(input.injection);
 	validateShutdownChoice(input.injection.shutdownChoice);
 	const shutdown = createIdempotentShutdown(input.injection);
+	const control = Object.freeze({ ...input.injection.control });
 	const injection: LiveBoostHostInjection = {
 		...input.injection,
+		control,
 		bridge: createShutdownWrappedBridge(input.injection.bridge, shutdown),
 	};
 	return {

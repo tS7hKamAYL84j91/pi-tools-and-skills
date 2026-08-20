@@ -150,6 +150,10 @@ describe("reviewed boost production host", () => {
 			contract: getReviewedBoostContractIdentity(),
 			injection,
 		});
+		const expectedControl = { ...injection.control };
+		// Runtime mutation verifies the reviewed host retains an immutable copy.
+		const mutableControl = injection.control as { enablementId: string };
+		mutableControl.enablementId = "mutated-after-construction";
 		const injected = createFakeApi();
 		host.extension(injected.api);
 		const injectedBoost = injected.commands.get("boost");
@@ -163,6 +167,9 @@ describe("reviewed boost production host", () => {
 		);
 
 		expect(injection.bridge.reserve).toHaveBeenCalledTimes(1);
+		expect(injection.bridge.reserve).toHaveBeenCalledWith(
+			expect.objectContaining({ control: expectedControl }),
+		);
 		expect(injected.notifications.join(" ")).toContain("runtime unavailable");
 
 		const inert = createFakeApi();
