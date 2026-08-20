@@ -263,9 +263,15 @@ describe("production Q boost host", () => {
 			"review this public fixture",
 			createContext(fake.notifications),
 		);
+		await command.handler(
+			"review this second public fixture",
+			createContext(fake.notifications),
+		);
 
 		expect(fixture.provider).not.toHaveBeenCalled();
 		expect(fixture.wal.records.map((entry) => entry.action)).toEqual([
+			"reserve",
+			"release",
 			"reserve",
 			"release",
 		]);
