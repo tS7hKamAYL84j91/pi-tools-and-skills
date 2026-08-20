@@ -99,6 +99,8 @@ The Q control plan must define `LiveDispatchBoundary.dispatch(grant)` and its te
 
 ## Q control plan required before implementation
 
+**Handoff:** Q/Quartermaster owns the required control-plan artifact at `planning/T-839-Q-CONTROL-PLAN.md` (to be created by Q). Until it is reviewed and approved, `/boost` stays inert; this is the only current live-integration blocker, not a phase-3 specification or council gap.
+
 1. Q identifies the Teams configuration owner/path, Q-record storage and signing/verification mechanism, and records the approved logical-key mapping, provider/residency evidence, expiry, budget-ceiling composition with the three-yield cap, and rollback version.
 2. Q prepares a dry-run validation that resolves both keys without selecting or calling a provider.
 3. Q obtains Principal confirmation for the specific enablement window and budget ceiling.
