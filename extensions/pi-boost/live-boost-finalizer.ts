@@ -1,6 +1,6 @@
 /** Serialized terminal, revocation, failure, and shutdown finalization. */
 
-import type { BoostTerminalOutcome } from "../boost/contracts.js";
+import type { BoostTerminalOutcome } from "./boost/contracts.js";
 import type { DaemonBoostBlockedCategory } from "./daemon-boost-control-store.js";
 import type {
 	LiveBoostAuditRecord,

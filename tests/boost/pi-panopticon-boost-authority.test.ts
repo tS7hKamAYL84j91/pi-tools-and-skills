@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { BoostModelPolicyKey } from "../../extensions/pi-panopticon/boost/contracts.js";
-import { BoostGlobalLeaseSlot } from "../../extensions/pi-panopticon/boost/global-slot.js";
+import type { BoostModelPolicyKey } from "../../extensions/pi-boost/boost/contracts.js";
+import { BoostGlobalLeaseSlot } from "../../extensions/pi-boost/boost/global-slot.js";
 import {
 	AGENT,
 	activate,
@@ -178,11 +178,11 @@ describe("ADR-045 boost authority", () => {
 
 	it("fails closed by default and accepts only the explicit host injection", () => {
 		const runtimeSource = readFileSync(
-			"extensions/pi-panopticon/index.ts",
+			"extensions/pi-boost/index.ts",
 			"utf8",
 		);
 		const boostWiring = readFileSync(
-			"extensions/pi-panopticon/runtime/boost-extension-wiring.ts",
+			"extensions/pi-boost/boost-extension-wiring.ts",
 			"utf8",
 		);
 		expect(runtimeSource).toContain("createPanopticonExtension()");

@@ -1,8 +1,8 @@
 /** Explicit production host construction boundary for the reviewed boost contract. */
 
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { LiveBoostHostInjection } from "../boost/runtime-adapter.js";
-import { createPanopticonExtension } from "../index.js";
+import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
+import { createBoostExtension } from "./index.js";
 import type { LiveBoostRuntimeBridge } from "./live-boost-bridge-contract.js";
 import {
 	Q_BOOST_BASELINE_KEY,
@@ -30,7 +30,7 @@ export interface ReviewedBoostHost {
 }
 
 export const REVIEWED_BOOST_CONTRACT_PATH =
-	"extensions/pi-panopticon/runtime/q-boost-control-contract.ts" as const;
+	"extensions/pi-boost/q-boost-control-contract.ts" as const;
 export const REVIEWED_BOOST_CONTRACT_SHA256 =
 	"feabb391685bede3506d2ffe8f4b80a06ca19afdac8f10b65d7cb06510c52b28" as const;
 
@@ -59,7 +59,7 @@ export function createReviewedBoostHost(
 	};
 	return {
 		contract: getReviewedBoostContractIdentity(),
-		extension: createPanopticonExtension(injection),
+		extension: createBoostExtension(injection),
 		shutdown,
 	};
 }

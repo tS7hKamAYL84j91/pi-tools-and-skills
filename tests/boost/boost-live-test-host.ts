@@ -2,13 +2,13 @@ import {
 	DaemonBoostControlStore,
 	type DaemonBoostWal,
 	type DaemonBoostWalRecord,
-} from "../../extensions/pi-panopticon/runtime/daemon-boost-control-store.js";
+} from "../../extensions/pi-boost/daemon-boost-control-store.js";
 import {
 	HostInjectedLiveBoostRuntime,
 	type LiveBoostAuditRecord,
 	type LiveBoostProviderRequest,
 	type LiveBoostTerminalEvent,
-} from "../../extensions/pi-panopticon/runtime/host-injected-live-boost.js";
+} from "../../extensions/pi-boost/host-injected-live-boost.js";
 import {
 	Q_BOOST_BASELINE_KEY,
 	Q_BOOST_LEASE_KEY,
@@ -18,7 +18,7 @@ import {
 	type QBoostControlReference,
 	type QBoostControlRevision,
 	type QBoostControlSubscription,
-} from "../../extensions/pi-panopticon/runtime/q-boost-control-contract.js";
+} from "../../extensions/pi-boost/q-boost-control-contract.js";
 
 export const TEST_CONTROL_REFERENCE: QBoostControlReference = {
 	teamId: Q_BOOST_TEAM_ID,

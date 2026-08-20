@@ -6,7 +6,7 @@ import { type MockedFunction, vi } from "vitest";
 import {
 	type BoostCommandIdentity,
 	registerBoostCommand,
-} from "../../extensions/pi-panopticon/boost/command.js";
+} from "../../extensions/pi-boost/boost/command.js";
 import type {
 	BoostActor,
 	BoostAuditRecord,
@@ -22,14 +22,14 @@ import type {
 	IsolationContextRequest,
 	ReserveBoostInput,
 	ResetBoostInput,
-} from "../../extensions/pi-panopticon/boost/contracts.js";
-import { BoostGlobalLeaseSlot } from "../../extensions/pi-panopticon/boost/global-slot.js";
-import { BoostLeaseAuthority } from "../../extensions/pi-panopticon/boost/lease-authority.js";
+} from "../../extensions/pi-boost/boost/contracts.js";
+import { BoostGlobalLeaseSlot } from "../../extensions/pi-boost/boost/global-slot.js";
+import { BoostLeaseAuthority } from "../../extensions/pi-boost/boost/lease-authority.js";
 import {
 	type BoostParseResult,
 	combineBoostInput,
 	parseBoostCommand,
-} from "../../extensions/pi-panopticon/boost/parser.js";
+} from "../../extensions/pi-boost/boost/parser.js";
 
 export const PRINCIPAL: BoostActor = {
 	kind: "principal",

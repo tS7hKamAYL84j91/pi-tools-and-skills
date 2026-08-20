@@ -1,7 +1,7 @@
 /** Production assembly of the reviewed boost host from Q-injected dependencies. */
 
-import type { BoostGovernanceDecision } from "../boost/contracts.js";
-import type { LiveBoostHostInjection } from "../boost/runtime-adapter.js";
+import type { BoostGovernanceDecision } from "./boost/contracts.js";
+import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
 import {
 	DaemonBoostControlStore,
 	type DaemonBoostWal,

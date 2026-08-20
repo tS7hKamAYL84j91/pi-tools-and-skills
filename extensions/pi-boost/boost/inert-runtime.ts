@@ -1,7 +1,7 @@
 /** Capability-free runtime construction for phase-2 boost reservations. */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Registry } from "../types.js";
+import type { Registry } from "../../pi-panopticon/types.js";
 import {
 	type BoostCommandDeps,
 	type BoostCommandIdentity,

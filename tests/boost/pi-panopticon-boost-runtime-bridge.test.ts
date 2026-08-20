@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type {
 	BoostActor,
 	BoostSubject,
-} from "../../extensions/pi-panopticon/boost/contracts.js";
-import { combineBoostInput } from "../../extensions/pi-panopticon/boost/parser.js";
-import type { QBoostControlRecord } from "../../extensions/pi-panopticon/runtime/q-boost-control-contract.js";
+} from "../../extensions/pi-boost/boost/contracts.js";
+import { combineBoostInput } from "../../extensions/pi-boost/boost/parser.js";
+import type { QBoostControlRecord } from "../../extensions/pi-boost/q-boost-control-contract.js";
 import {
 	createLiveBoostTestHost,
 	TEST_CONTROL_REFERENCE,

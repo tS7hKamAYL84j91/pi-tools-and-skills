@@ -17,10 +17,6 @@ import { getSelfName } from "./registry/peers.js";
 import { setupReconciler } from "./registry/reconciler.js";
 import Registry from "./registry/registry.js";
 import { OperationalStateStore } from "./registry/state.js";
-import {
-	type LiveBoostHostInjection,
-	setupBoostRuntime,
-} from "./runtime/boost-extension-wiring.js";
 import { stopPeerAgent } from "./spawner/agent-stop.js";
 import { setupMissingDoneNotice } from "./spawner/missing-done-notice.js";
 import { setupSpawner } from "./spawner/spawner.js";
@@ -34,19 +30,14 @@ import { createAgentListModeStore } from "./ui/list-mode.js";
 import { setupUI } from "./ui/ui.js";
 
 /** Create the extension with an explicit host capability; normal loading passes none. */
-export function createPanopticonExtension(
-	boostInjection?: LiveBoostHostInjection,
-): ExtensionFactory {
-	return (pi) => setupPanopticon(pi, boostInjection);
+export function createPanopticonExtension(): ExtensionFactory {
+	return (pi) => setupPanopticon(pi);
 }
 
 const defaultExtension = createPanopticonExtension();
 export default defaultExtension;
 
-function setupPanopticon(
-	pi: ExtensionAPI,
-	boostInjection?: LiveBoostHostInjection,
-): void {
+function setupPanopticon(pi: ExtensionAPI): void {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId, () => pi.getSessionName());
 	const listMode = createAgentListModeStore();
@@ -74,7 +65,6 @@ function setupPanopticon(
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
-	const boost = setupBoostRuntime(pi, registry, boostInjection);
 	const runtime = new RuntimeControlPlane();
 	const teams = registerTeams(pi, runtime);
 	const swarm = setupSwarm(pi, teams);
@@ -132,7 +122,6 @@ function setupPanopticon(
 	// ── Lifecycle: shutdown ─────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
-		await boost.shutdown();
 		await swarm.shutdown();
 		await spawner.shutdownAll();
 		reconciler.stop();

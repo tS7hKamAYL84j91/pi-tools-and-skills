@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { BoostAuditRecord } from "../../extensions/pi-panopticon/boost/contracts.js";
+import type { BoostAuditRecord } from "../../extensions/pi-boost/boost/contracts.js";
 import {
 	activate,
 	createBoostHarness,

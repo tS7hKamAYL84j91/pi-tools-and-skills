@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createQBoostControlAdapter,
 	type QBoostControlRecordSource,
-} from "../../extensions/pi-panopticon/runtime/q-boost-control-adapter.js";
+} from "../../extensions/pi-boost/q-boost-control-adapter.js";
 import {
 	Q_BOOST_BASELINE_KEY,
 	Q_BOOST_LEASE_KEY,
@@ -11,7 +11,7 @@ import {
 	type QBoostControlRecord,
 	type QBoostControlReference,
 	type QBoostControlRevision,
-} from "../../extensions/pi-panopticon/runtime/q-boost-control-contract.js";
+} from "../../extensions/pi-boost/q-boost-control-contract.js";
 
 const REFERENCE: QBoostControlReference = {
 	teamId: Q_BOOST_TEAM_ID,
@@ -222,7 +222,7 @@ describe("Q boost control adapter", () => {
 
 	it("exposes no provider, configuration, scheduler, or raw-control seam", () => {
 		const source = readFileSync(
-			"extensions/pi-panopticon/runtime/q-boost-control-adapter.ts",
+			"extensions/pi-boost/q-boost-control-adapter.ts",
 			"utf8",
 		);
 		expect(source).not.toMatch(

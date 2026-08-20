@@ -5,7 +5,7 @@ import {
 	combineBoostInput,
 	MAX_BOOST_INPUT_BYTES,
 	parseBoostCommand,
-} from "../../extensions/pi-panopticon/boost/parser.js";
+} from "../../extensions/pi-boost/boost/parser.js";
 
 function expectRequest(input: string) {
 	const result = parseBoostCommand(input);

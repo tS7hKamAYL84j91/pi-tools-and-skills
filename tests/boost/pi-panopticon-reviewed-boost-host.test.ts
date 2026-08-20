@@ -5,20 +5,20 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import type { LiveBoostHostInjection } from "../../extensions/pi-panopticon/boost/runtime-adapter.js";
+import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/runtime-adapter.js";
 import defaultPanopticonExtension from "../../extensions/pi-panopticon/index.js";
-import type { LiveBoostRuntimeBridge } from "../../extensions/pi-panopticon/runtime/live-boost-bridge-contract.js";
+import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
 	Q_BOOST_BASELINE_KEY,
 	Q_BOOST_LEASE_KEY,
 	Q_BOOST_TEAM_ID,
-} from "../../extensions/pi-panopticon/runtime/q-boost-control-contract.js";
+} from "../../extensions/pi-boost/q-boost-control-contract.js";
 import {
 	createReviewedBoostHost,
 	getReviewedBoostContractIdentity,
 	REVIEWED_BOOST_CONTRACT_PATH,
 	REVIEWED_BOOST_CONTRACT_SHA256,
-} from "../../extensions/pi-panopticon/runtime/reviewed-boost-host.js";
+} from "../../extensions/pi-boost/reviewed-boost-host.js";
 
 interface CommandDefinition {
 	handler(args: string, context: ExtensionCommandContext): Promise<void>;
@@ -238,7 +238,7 @@ describe("reviewed boost production host", () => {
 
 	it("keeps the reviewed host free of operational mutation seams", () => {
 		const source = readFileSync(
-			"extensions/pi-panopticon/runtime/reviewed-boost-host.ts",
+			"extensions/pi-boost/reviewed-boost-host.ts",
 			"utf8",
 		);
 		expect(source).toContain("createPanopticonExtension(injection)");

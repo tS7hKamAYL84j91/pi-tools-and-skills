@@ -1,12 +1,12 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { InertBoostDispatch } from "../../extensions/pi-panopticon/boost/command.js";
+import { InertBoostDispatch } from "../../extensions/pi-boost/boost/command.js";
 import type {
 	BoostLeaseStatus,
 	BoostResult,
 	ReserveBoostInput,
-} from "../../extensions/pi-panopticon/boost/contracts.js";
-import { createInertBoostCommandDeps } from "../../extensions/pi-panopticon/boost/inert-runtime.js";
+} from "../../extensions/pi-boost/boost/contracts.js";
+import { createInertBoostCommandDeps } from "../../extensions/pi-boost/boost/inert-runtime.js";
 import {
 	AGENT,
 	createBoostCommandHarness,

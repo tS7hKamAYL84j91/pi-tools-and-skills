@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createHostBoostCommandDeps,
 	createUnavailableBoostCommandDeps,
-} from "../../extensions/pi-panopticon/boost/runtime-adapter.js";
-import type { LiveBoostRuntimeBridge } from "../../extensions/pi-panopticon/runtime/live-boost-bridge-contract.js";
+} from "../../extensions/pi-boost/boost/runtime-adapter.js";
+import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import { PRINCIPAL, request, SUBJECT } from "./boost-helpers.js";
 import { TEST_CONTROL_REFERENCE } from "./boost-live-test-host.js";
 
@@ -70,7 +70,7 @@ describe("T-843 host injection boundary", () => {
 			}),
 		).toEqual({ ok: false, reason: "runtime-unavailable" });
 
-		const source = readFileSync("extensions/pi-panopticon/index.ts", "utf8");
+		const source = readFileSync("extensions/pi-boost/index.ts", "utf8");
 		expect(source).toContain("createPanopticonExtension");
 		expect(source).not.toMatch(
 			/as unknown as.*ExtensionAPI|process\.env.*boost|globalThis.*boost/i,
@@ -79,11 +79,11 @@ describe("T-843 host injection boundary", () => {
 
 	it("keeps Q read-only and exposes no config/default/scheduler or credential seam", () => {
 		const controlSource = readFileSync(
-			"extensions/pi-panopticon/runtime/q-boost-control-contract.ts",
+			"extensions/pi-boost/q-boost-control-contract.ts",
 			"utf8",
 		);
 		const runtimeSource = readFileSync(
-			"extensions/pi-panopticon/runtime/live-boost-bridge-contract.ts",
+			"extensions/pi-boost/live-boost-bridge-contract.ts",
 			"utf8",
 		);
 		expect(controlSource).toMatch(/resolve\([\s\S]*subscribe\(/);

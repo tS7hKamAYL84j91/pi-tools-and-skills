@@ -7,21 +7,21 @@ import { describe, expect, it, vi } from "vitest";
 import type {
 	DaemonBoostWal,
 	DaemonBoostWalRecord,
-} from "../../extensions/pi-panopticon/runtime/daemon-boost-control-store.js";
-import type { LiveBoostAuditRecord } from "../../extensions/pi-panopticon/runtime/live-boost-bridge-contract.js";
+} from "../../extensions/pi-boost/daemon-boost-control-store.js";
+import type { LiveBoostAuditRecord } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
 	createProductionQBoostHost,
 	type ProductionQBoostHostInput,
-} from "../../extensions/pi-panopticon/runtime/production-q-boost-host.js";
-import type { QBoostControlRecordSource } from "../../extensions/pi-panopticon/runtime/q-boost-control-adapter.js";
+} from "../../extensions/pi-boost/production-q-boost-host.js";
+import type { QBoostControlRecordSource } from "../../extensions/pi-boost/q-boost-control-adapter.js";
 import {
 	Q_BOOST_BASELINE_KEY,
 	Q_BOOST_LEASE_KEY,
 	Q_BOOST_TEAM_ID,
 	type QBoostControlRecord,
 	type QBoostControlRevision,
-} from "../../extensions/pi-panopticon/runtime/q-boost-control-contract.js";
-import { getReviewedBoostContractIdentity } from "../../extensions/pi-panopticon/runtime/reviewed-boost-host.js";
+} from "../../extensions/pi-boost/q-boost-control-contract.js";
+import { getReviewedBoostContractIdentity } from "../../extensions/pi-boost/reviewed-boost-host.js";
 
 interface CommandDefinition {
 	handler(args: string, context: ExtensionCommandContext): Promise<void>;
@@ -328,7 +328,7 @@ describe("production Q boost host", () => {
 
 	it("exposes no provider construction, configuration, or Q-write seam", () => {
 		const source = readFileSync(
-			"extensions/pi-panopticon/runtime/production-q-boost-host.ts",
+			"extensions/pi-boost/production-q-boost-host.ts",
 			"utf8",
 		);
 		expect(source).not.toMatch(

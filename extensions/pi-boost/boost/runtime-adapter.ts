@@ -5,9 +5,9 @@ import type {
 	LiveBoostLeaseStatus,
 	LiveBoostResult,
 	LiveBoostRuntimeBridge,
-} from "../runtime/live-boost-bridge-contract.js";
-import type { QBoostControlReference } from "../runtime/q-boost-control-contract.js";
-import type { Registry } from "../types.js";
+} from "./live-boost-bridge-contract.js";
+import type { QBoostControlReference } from "./q-boost-control-contract.js";
+import type { Registry } from "../../pi-panopticon/types.js";
 import type {
 	BoostCommandDeps,
 	BoostCommandDispatchDecision,

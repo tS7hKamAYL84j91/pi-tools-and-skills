@@ -3,7 +3,7 @@ import {
 	DaemonBoostControlStore,
 	type DaemonBoostWal,
 	type DaemonBoostWalRecord,
-} from "../../extensions/pi-panopticon/runtime/daemon-boost-control-store.js";
+} from "../../extensions/pi-boost/daemon-boost-control-store.js";
 
 class MemoryWal implements DaemonBoostWal {
 	readonly records: DaemonBoostWalRecord[] = [];

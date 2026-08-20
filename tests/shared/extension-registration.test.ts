@@ -16,6 +16,7 @@ import kanbanExtension from "../../extensions/pi-kanban/index.js";
 import matrixExtension from "../../extensions/pi-matrix/index.js";
 import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
 import panopticonExtension from "../../extensions/pi-panopticon/index.js";
+import boostExtension from "../../extensions/pi-boost/index.js";
 import { registerTeams as teamExtension } from "../../extensions/pi-panopticon/teams/register.js";
 
 interface ToolParameters {
@@ -115,6 +116,12 @@ function expectDeprecatedGateParameter(
 }
 
 describe("extension registration smoke tests", () => {
+	it("pi-boost registers /boost and lifecycle shutdown", () => {
+		const {api, registrations} = createFakeApi();
+		boostExtension(api);
+		expectRegistered(registrations.commands, ["boost"]);
+		expectRegistered(registrations.events, ["session_shutdown"]);
+	});
 	it("retains deprecated, ignored gate inputs in Doctor, Goal, and Kanban public schemas", () => {
 		const doctor = createFakeApi();
 		doctorExtension(doctor.api);

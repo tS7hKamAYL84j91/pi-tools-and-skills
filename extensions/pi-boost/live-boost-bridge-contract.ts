@@ -7,7 +7,7 @@ import type {
 	BoostRequest,
 	BoostSubject,
 	BoostTerminalOutcome,
-} from "../boost/contracts.js";
+} from "./boost/contracts.js";
 import type { DaemonBoostControlStore } from "./daemon-boost-control-store.js";
 import type {
 	QBoostControlAdapter,
