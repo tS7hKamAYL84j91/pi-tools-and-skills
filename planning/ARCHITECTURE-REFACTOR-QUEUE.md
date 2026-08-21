@@ -72,8 +72,7 @@ flowchart TD
 
 ### Coordination Blockers
 
-- [/] **ADR-047 release blocker** — peer-owned: independent audit found unreadable marker/directory failures were suppressed by `existsSync` in `lib/declarative-discovery.ts`. A peer worker is replacing this with ENOENT-only suppression and characterization tests; re-review follows integration.
-- [/] **Track 2 merge hold** — peer-owned: Goal overlay and Panopticon UI branches remain isolated until T-851/pi-boost integration stabilizes the main base.
+- [/] **Coordination Blockers** — none: ADR-047 pi-boost is complete and pushed to origin/main (`1e8cb50`). Hotspots 1.1–1.4 and Track 2.1–2.2 merged and green on main (`4ef4587`). All remaining refactoring tracks active via Luna workers.
 
 ### Track 1: High-Scoring Hotspot Decomposition
 
@@ -93,21 +92,23 @@ flowchart TD
   - Extracted dispatch handling into `scheduler-dispatch.ts`.
   - Merged to main: `a0a1d5e` (source `refactor/coas-scheduler-hotspot` @ `5c0d03f`).
   - Integration evidence: `git diff --check`, `npm test` (1,317 passed), and `npm run check` (99.23% type coverage) pass.
-- [/] **1.4 Refactor `pi-kanban/snapshot.ts`** — implementation complete; awaiting current-main rebase and final validation:
-  - Worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`; commit: `68294fa`.
-  - Extracted snapshot and overlay view models; final integration gate remains pending.
+- [x] **1.4 Refactor `pi-kanban/snapshot.ts`** — **merged**:
+  - Extracted snapshot and overlay view models (`snapshot-model.ts`, `overlay-model.ts`).
+  - Merged to main: `4ef4587`.
+  - Validation: `npm run check` (99.24% type coverage), `npm test` (1368 passed).
 - **Validation Gate:** `npx vitest run tests/architecture/hotspots.ts && npm test`
 
 ---
 
 ### Track 2: TUI Testability & Coverage Desert Elimination
 
-- [/] **2.1 Decouple TUI Renderers into Pure View-Models** — implementations complete; merges held:
-  - Goal overlay: `refactor/goal-overlay-tests` @ `5cd16ac`.
-  - Panopticon UI: `refactor/panopticon-ui-tests` @ `f5348f6`.
-  - Kanban overlay: `refactor/kanban-hotspot-ui` @ `68294fa` (pending rebase/revalidation).
-- [/] **2.2 Implement Deterministic TUI Snapshot Tests** — implementations complete; merge state as above.
-- [ ] **2.3 Command Unit-Test Harness**:
+- [x] **2.1 Decouple TUI Renderers into Pure View-Models** — **merged**:
+  - Goal overlay: `goal-render.ts` + `goal-overlay-render.test.ts`.
+  - Panopticon UI: `agent-detail-model.ts`, `status-view-model.ts` + `ui-view-model.test.ts`.
+  - Kanban overlay: `overlay-model.ts` + `pi-kanban-snapshot-render.test.ts`.
+- [x] **2.2 Implement Deterministic TUI Snapshot Tests** — **merged**:
+  - Snapshot tests in `tests/goal/goal-overlay-render.test.ts`, `tests/panopticon/ui-view-model.test.ts`, `tests/kanban/pi-kanban-snapshot-render.test.ts`.
+- [/] **2.3 Command Unit-Test Harness** — active in `/tmp/pi-refactor-track-23`:
   - Add headless mock command context fixtures to test command parsing and error responses in `pi-coas/commands.ts` and `pi-panopticon/ui/*-command.ts`.
 - **Validation Gate:** Raise statement coverage in UI/CLI modules to $>75\%$; run `npm run test:coverage`.
 
@@ -115,13 +116,13 @@ flowchart TD
 
 ### Track 4: `lib/` Layering Cleanse & Multi-Tenant Discipline
 
-- [ ] **4.1 Relocate Single-Tenant Utilities**:
+- [/] **4.1 Relocate Single-Tenant Utilities** — active in `/tmp/pi-refactor-track-4`:
   - Move `lib/coas-*` files into `extensions/pi-coas/lib/` or internal module paths.
   - Move `lib/spawn-*` files into `extensions/pi-panopticon/spawner/` (unless shared).
   - Move CLI entrypoints (`session-spool-*-cli.ts`) into `scripts/` or `bin/`.
-- [ ] **4.2 Enforce Multi-Tenant Rule in Fitness Tests**:
+- [/] **4.2 Enforce Multi-Tenant Rule in Fitness Tests**:
   - Update `tests/architecture/lib-layering.ts`: every file in `lib/` must be imported by $\ge 2$ distinct extensions or test suites.
-- [ ] **4.3 Define Clean Core Primitives in `lib/`**:
+- [/] **4.3 Define Clean Core Primitives in `lib/`**:
   - `lib/` contains only true shared primitives: `file-lock.ts`, `file-persistence.ts`, `tool-result.ts`, `agent-registry.ts`, `runtime-control-plane.ts`, `gate-command.ts`, `team-protocol-spi.ts`.
 - **Validation Gate:** `npx vitest run tests/architecture/lib-layering.ts && npm run check`
 
@@ -129,10 +130,10 @@ flowchart TD
 
 ### Track 5: State Persistence & Write-Ahead Log (WAL) Consolidation
 
-- [ ] **5.1 Unified Event-Sourced Storage Primitive (`lib/event-log.ts`)**:
+- [/] **5.1 Unified Event-Sourced Storage Primitive (`lib/event-log.ts`)** — active in `/tmp/pi-refactor-track-5`:
   - Shared append-only WAL with atomic append, fsync, and replay iterators.
   - Atomic snapshot/compaction with lockfile acquisition (`.lock` + rename).
-- [ ] **5.2 Migrate Extensions to Shared Storage Primitive**:
+- [/] **5.2 Migrate Extensions to Shared Storage Primitive**:
   - Migrate `pi-kanban` log appending and compaction to `lib/event-log.ts`.
   - Migrate `pi-teams` run-state event streams to `lib/event-log.ts`.
 - **Validation Gate:** `npx vitest run tests/kanban/ tests/teams/ tests/shared/`
