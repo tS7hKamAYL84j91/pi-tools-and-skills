@@ -1,5 +1,9 @@
 # Plan: Decommission Fusion from Teams and Re-Integrate under pi-boost
 
+## Status
+
+Completed and integrated on 2026-08-21. ADR-050 accepted; Teams and Boost slices passed root and independent review.
+
 ## Objective
 
 Decommission the stateless `fusion-analysis` protocol from the `pi-teams` extension, and re-implement it as an inline, resource-leased capability under `pi-boost`. This unifies the abstract "lease" and "yield" execution models for inline cognitive and environmental capability escalation.
@@ -7,7 +11,7 @@ Decommission the stateless `fusion-analysis` protocol from the `pi-teams` extens
 ## Non-Goals
 
 - No changes to multi-agent stateful team protocols (`debate`, `consult`, `research`, `hierarchical-swarm`).
-- No changes to `pi-boost` environmental leases or Principal authorization rules.
+- No weakening of environmental lease/reversion controls; agent self-boost remains default-deny and requires trusted operator-authored standard Pi settings.
 - No introduction of multi-process background agents under `pi-boost`.
 
 ---
@@ -52,7 +56,7 @@ Implement the parallel cognitive-boost pipeline in `pi-boost`:
 
 **Validation command:**
 ```bash
-npx vitest run tests/panopticon/boost-lifecycle.test.ts
+npx vitest run tests/boost tests/shared/extension-registration.test.ts
 ```
 
 ### Milestone 4 — Complete Full Validation and Quality Gates
@@ -75,3 +79,9 @@ npm run check && npm test
 - `pi-boost` successfully exposes a `boost_fusion` tool and `/boost fusion` command.
 - A cognitive fusion boost leases panel resources concurrently, synthesizes the results via the judge, and yields the final answer in a single turn.
 - Quality gates pass cleanly at 95%+ type coverage and zero knip/linter findings.
+
+## Delivery evidence
+
+- Teams decommission feature `026b94b`, merged as `f7e1742`; zero active Fusion residue fitness and full Teams/evals gates pass.
+- Cognitive Boost feature `046a518`, merged as `fa2fbec`; trusted settings/capability, SettingsList, property/unit/integration/smoke, private audit, and lease lifecycle tests pass.
+- Combined main: `npm run check` PASS at 99.24% type coverage; `npm test` PASS (187 files / 1,412 tests); focused architecture/Teams/Boost/evals/registration PASS (69 files / 565 tests).
