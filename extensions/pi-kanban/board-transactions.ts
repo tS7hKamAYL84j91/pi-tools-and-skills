@@ -2,8 +2,7 @@
  * Cross-process transaction boundary for the authoritative Kanban event log.
  */
 
-import { appendLogLine } from "../../lib/file-persistence.js";
-import { withAdvisoryLock } from "../../lib/file-lock.js";
+import { EventLog, textEventLogCodec } from "../../lib/event-log.js";
 import {
 	type BoardState,
 	boardLogPath,
@@ -22,9 +21,13 @@ interface BoardTransactionResult<T> {
 /** Lines appended by this process, used by the watcher for self-detection. */
 export const selfAppendedLines = new Set<string>();
 
+function boardEventLog(): EventLog<string> {
+	return new EventLog(boardLogPath(), { codec: textEventLogCodec });
+}
+
 /** Run work while holding the one advisory lock for board.log. */
 export async function withBoardLock<T>(fn: () => Promise<T>): Promise<T> {
-	return withAdvisoryLock(boardLogPath(), fn);
+	return boardEventLog().withLock(fn);
 }
 
 async function appendBoardEventsLocked(events: readonly string[]): Promise<void> {
@@ -38,7 +41,7 @@ async function appendBoardEventsLocked(events: readonly string[]): Promise<void>
 		selfAppendedLines.add(event);
 	}
 	try {
-		await appendLogLine(boardLogPath(), events.join("\n"));
+		await boardEventLog().appendLocked(events);
 	} catch (error) {
 		for (const event of newlyRegistered) {
 			selfAppendedLines.delete(event);

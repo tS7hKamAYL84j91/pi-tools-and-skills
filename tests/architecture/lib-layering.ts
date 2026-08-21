@@ -32,6 +32,7 @@ const IO_LIB_FILES = new Set([
 	"declarative-discovery.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
+	"event-log.ts",
 	"gate-command.ts",
 	"path-inside.ts",
 	"pi-settings.ts",
