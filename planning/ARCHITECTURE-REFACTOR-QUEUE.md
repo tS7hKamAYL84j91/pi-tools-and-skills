@@ -70,6 +70,11 @@ flowchart TD
 
 ## Active Refactor Queue
 
+### Coordination Blockers
+
+- [/] **ADR-047 release blocker** — peer-owned: independent audit found unreadable marker/directory failures were suppressed by `existsSync` in `lib/declarative-discovery.ts`. A peer worker is replacing this with ENOENT-only suppression and characterization tests; re-review follows integration.
+- [/] **Track 2 merge hold** — peer-owned: Goal overlay and Panopticon UI branches remain isolated until T-851/pi-boost integration stabilizes the main base.
+
 ### Track 1: High-Scoring Hotspot Decomposition
 
 - [x] **1.1 Decompose `pi-goal/goal-extension.ts` (Score 2,113; 483 LOC; 84 branch points)** — **merged**:
@@ -88,22 +93,20 @@ flowchart TD
   - Extracted dispatch handling into `scheduler-dispatch.ts`.
   - Merged to main: `a0a1d5e` (source `refactor/coas-scheduler-hotspot` @ `5c0d03f`).
   - Integration evidence: `git diff --check`, `npm test` (1,317 passed), and `npm run check` (99.23% type coverage) pass.
-- [/] **1.4 Refactor `pi-kanban/snapshot.ts`** — in progress:
-  - Worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`.
-  - Split markdown serialization and column folding into pure transformer helpers.
+- [/] **1.4 Refactor `pi-kanban/snapshot.ts`** — implementation complete; awaiting current-main rebase and final validation:
+  - Worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`; commit: `68294fa`.
+  - Extracted snapshot and overlay view models; final integration gate remains pending.
 - **Validation Gate:** `npx vitest run tests/architecture/hotspots.ts && npm test`
 
 ---
 
 ### Track 2: TUI Testability & Coverage Desert Elimination
 
-- [/] **2.1 Decouple TUI Renderers into Pure View-Models** — in progress:
-  - Refactor overlays to follow the `(ViewState, Dimensions) => AnsiBuffer` pure transformer pattern.
-  - Separate keyboard/event dispatching from ANSI string generation.
-- [/] **2.2 Implement Deterministic TUI Snapshot Tests** — in progress:
-  - Kanban worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`.
-  - Goal worktree: `.workers/goal-overlay-tests`; branch: `refactor/goal-overlay-tests`.
-  - Panopticon worktree: `.workers/panopticon-ui-tests`; branch: `refactor/panopticon-ui-tests`.
+- [/] **2.1 Decouple TUI Renderers into Pure View-Models** — implementations complete; merges held:
+  - Goal overlay: `refactor/goal-overlay-tests` @ `5cd16ac`.
+  - Panopticon UI: `refactor/panopticon-ui-tests` @ `f5348f6`.
+  - Kanban overlay: `refactor/kanban-hotspot-ui` @ `68294fa` (pending rebase/revalidation).
+- [/] **2.2 Implement Deterministic TUI Snapshot Tests** — implementations complete; merge state as above.
 - [ ] **2.3 Command Unit-Test Harness**:
   - Add headless mock command context fixtures to test command parsing and error responses in `pi-coas/commands.ts` and `pi-panopticon/ui/*-command.ts`.
 - **Validation Gate:** Raise statement coverage in UI/CLI modules to $>75\%$; run `npm run test:coverage`.
