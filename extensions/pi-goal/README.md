@@ -9,12 +9,12 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 - `/goal` or `/goal help` — show available commands.
 - `/goal <text>` — create a project goal from text and start a bounded **manual** run.
 - `/goal <text> --continuous` or `--until-complete` — explicitly opt into continuous mode; it may continue across passing non-final milestones but never calls `goal_complete` automatically.
-- `/goal file <path> [goal start|--continuous|--until-complete]` — use an existing project file as the goal source; explicit continuous mode creates `.pi/goal/TODO.md` and starts a 20-turn run.
+- `/goal file <path> [goal start|--continuous|--until-complete]` — use an existing project file as the goal source; explicit continuous mode creates `.pi/goal/instances/<goalId>/TODO.md` and starts a 20-turn run.
 - `/goal status` — show the current goal state.
-- `/goal plan [milestone title]` — generate a reviewable `SPEC.md`/`PLAN.md`/`STATUS.md` under `.pi/goal/` and pause for approval.
+- `/goal plan [milestone title]` — generate a reviewable `SPEC.md`/`PLAN.md`/`STATUS.md` under `.pi/goal/instances/<goalId>/` and pause for approval.
 - `/goal approve` — accept the generated plan and allow implementation.
 - `/goal run [--turns N|--until-complete]` — continue an active or paused goal. If a plan is required but not yet approved, `/goal run` implicitly approves it.
-- `/goal pause`, `/goal resume`, `/goal stop`, `/goal steer <text>`, `/goal clear`, `/goal edit <text>` — manage goal lifecycle. Steer is current-run, untrusted guidance and never changes the objective or approved plan. Resume starts a real bounded run; stop/pause/error/gate/budget/hard-timeout halt continuation. `/goal clear` removes `.pi/goal/` local state and run artifacts for the current workspace. `/goal edit` updates the objective and invalidates existing evidence/plan revisions.
+- `/goal pause`, `/goal resume`, `/goal stop`, `/goal steer <text>`, `/goal clear`, `/goal edit <text>` — manage goal lifecycle. Steer is current-run, untrusted guidance and never changes the objective or approved plan. Resume starts a real bounded run; stop/pause/error/gate/budget/hard-timeout halt continuation. `/goal clear` removes the bound `.pi/goal/instances/<goalId>/` state and run artifacts for the current workspace. `/goal edit` updates the objective and invalidates existing evidence/plan revisions.
 
 ### Tools
 
@@ -31,7 +31,7 @@ The public `goal_complete` schema retains deprecated `gate_command` only as igno
 
 ## Provisional Surfaces
 
-- `.pi/goal/TODO.md` extraction logic.
+- `.pi/goal/instances/<goalId>/TODO.md` extraction logic.
 - Bounded turn iteration limits.
 
 ## Cross-Extension Dependencies
@@ -40,9 +40,9 @@ The public `goal_complete` schema retains deprecated `gate_command` only as igno
 
 ## Runtime files
 
-The extension writes project-local state under `.pi/goal/` and adds that directory to `.git/info/exclude` when possible. Durable goal artifacts include:
+The extension writes project-local state under `.pi/goal/instances/<goalId>/` and adds that directory to `.git/info/exclude` when possible. Durable goal artifacts include:
 
-- `goal.json` — authoritative state (schema v3 for new runs; v1/v2 are read and migrated to manual mode).
+- `goal.json` — authoritative state in the bound goal instance (schema v3 for new runs; v1/v2 are read and migrated to manual mode).
 - `GOAL.md` — human-readable summary.
 - `TODO.md` — initial task tracker created from text/file goals.
 - `SPEC.md` — goals, non-goals, constraints, and done-when checks.
@@ -50,7 +50,7 @@ The extension writes project-local state under `.pi/goal/` and adds that directo
 - `STATUS.md` — live audit log with normalized execution state, milestone checklist, last verification, turns used, bounded lifecycle events, and blockers.
 - `runs/YYYY/MM/DD/*.{jsonl,md}` — per-iteration transcripts.
 
-Markdown files are derived from `goal.json`; `goal.json` is committed first, and `loadGoal` deterministically rewrites every projection so an interrupted save cannot leave stale derived guidance.
+Markdown files are derived from `goal.json`; `goal.json` is committed first, and `loadGoal` deterministically rewrites every bound-instance projection so an interrupted save cannot leave stale derived guidance.
 
 ## Enablement
 

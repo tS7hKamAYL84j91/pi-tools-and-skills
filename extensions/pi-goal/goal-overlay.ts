@@ -14,7 +14,7 @@ export async function showGoalOverlay(ctx: ExtensionCommandContext, state: GoalS
 				const border = () => new DynamicBorder((text: string) => theme.fg("accent", text));
 				container.addChild(border());
 				container.addChild(new Text(theme.fg("accent", theme.bold(" Goal Detail")), 1, 0));
-				container.addChild(new Text(theme.fg("dim", " esc close · details also in .pi/goal/GOAL.md"), 1, 0));
+				container.addChild(new Text(theme.fg("dim", " esc close · details also in .pi/goal/instances/<goalId>/GOAL.md"), 1, 0));
 				for (const line of detail) {
 					container.addChild(new Text(line, 1, 0));
 				}

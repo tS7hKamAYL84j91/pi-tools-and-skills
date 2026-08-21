@@ -1,10 +1,11 @@
 /** Bounded goal turn loop; command registration delegates here to keep lifecycle flow focused. */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { GOAL_BINDING_CUSTOM_TYPE } from "./goal-binding.js";
 import { continuationMarker, continuationMarkerComment } from "./goal-continuation.js";
 import { continuationPrompt, kickoffPrompt } from "./prompts.js";
 import { loadGoal, saveGoal, writeGoalIteration } from "./goal-persist.js";
 import { getRunMode, stopGoal, updateGoal } from "./goal-plan.js";
-import { collectChangedFiles, goalStoppedMessage } from "./goal-helpers.js";
+import { collectChangedFiles, goalScopeForContext, goalStoppedMessage } from "./goal-helpers.js";
 import type { GoalRuntime } from "./goal-runtime.js";
 import { cancelContinuationPending, refreshUi } from "./goal-runtime.js";
 import type { GoalState } from "./goal-types.js";
@@ -44,6 +45,9 @@ export async function runGoalLoop(
 			activeCtx.ui.setStatus("goal", `goal: running ${state.turnsUsed}/${state.turnBudget}`);
 			const result = await activeCtx.newSession({
 				...(originalSession ? { parentSession: originalSession } : {}),
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(GOAL_BINDING_CUSTOM_TYPE, { goalId: state.goalId });
+				},
 				withSession: async (replacementCtx) => {
 					activeCtx = replacementCtx;
 					await replacementCtx.sendUserMessage(markedPrompt);
@@ -60,10 +64,10 @@ export async function runGoalLoop(
 		runtime.resolve = null;
 		runtime.pendingMarker = null;
 
-		const latest = await loadGoal(activeCtx.cwd);
+		const latest = await loadGoal(activeCtx.cwd, goalScopeForContext(activeCtx));
 		if (!latest || latest.status !== "active" || !latest.runActive) {
 			runtime.stopRequested = false;
-			await refreshUi(activeCtx, runtime, latest);
+			await refreshUi(activeCtx, runtime, latest, goalScopeForContext(activeCtx));
 			return;
 		}
 		const afterTurn = updateGoal(latest, {
@@ -71,18 +75,18 @@ export async function runGoalLoop(
 			executionState: "in_progress",
 			changedFiles: collectChangedFiles(messages, latest.changedFiles),
 		});
-		await writeGoalIteration(activeCtx.cwd, afterTurn, afterTurn.turnsUsed, messages);
+		await writeGoalIteration(activeCtx.cwd, afterTurn, afterTurn.turnsUsed, { messages, scope: goalScopeForContext(activeCtx) });
 		if (afterTurn.turnsUsed >= afterTurn.turnBudget || runtime.stopRequested) {
 			const stopped = stopGoal(afterTurn, "interrupted", afterTurn.turnsUsed >= afterTurn.turnBudget ? "Goal turn budget exhausted." : "Goal stop requested.");
 			runtime.stopRequested = false;
-			await saveGoal(activeCtx.cwd, stopped);
-			await refreshUi(activeCtx, runtime, stopped);
+			await saveGoal(activeCtx.cwd, stopped, goalScopeForContext(activeCtx));
+			await refreshUi(activeCtx, runtime, stopped, goalScopeForContext(activeCtx));
 			activeCtx.ui.notify(goalStoppedMessage(stopped), "info");
 			return;
 		}
 		state = updateGoal(afterTurn, { runMode: getRunMode(afterTurn) });
-		await saveGoal(activeCtx.cwd, state);
-		await refreshUi(activeCtx, runtime, state);
+		await saveGoal(activeCtx.cwd, state, goalScopeForContext(activeCtx));
+		await refreshUi(activeCtx, runtime, state, goalScopeForContext(activeCtx));
 	}
 	cancelContinuationPending(runtime);
 }

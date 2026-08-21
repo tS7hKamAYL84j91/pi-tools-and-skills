@@ -85,15 +85,27 @@ interface GoalPaths {
 }
 
 export const STATE_DIR = join(".pi", "goal");
+export const INSTANCES_DIR = join(STATE_DIR, "instances");
 const STATE_FILE = "goal.json";
 const SUMMARY_FILE = "GOAL.md";
 const TODO_FILE = "TODO.md";
 const SPEC_FILE = "SPEC.md";
 const PLAN_FILE = "PLAN.md";
 const STATUS_FILE = "STATUS.md";
+const GOAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-export function goalPaths(cwd: string): GoalPaths {
-	const dir = join(cwd, STATE_DIR);
+export function assertGoalId(goalId: string): string {
+	if (!GOAL_ID_PATTERN.test(goalId)) {
+		throw new Error(`Invalid pi-goal id: ${goalId}`);
+	}
+	return goalId;
+}
+
+/** Returns either the legacy flat paths or a confined instance path set. */
+export function goalPaths(cwd: string, goalId?: string): GoalPaths {
+	const dir = goalId === undefined
+		? join(cwd, STATE_DIR)
+		: join(cwd, INSTANCES_DIR, assertGoalId(goalId));
 	return {
 		dir,
 		statePath: join(dir, STATE_FILE),

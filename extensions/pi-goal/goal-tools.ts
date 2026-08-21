@@ -15,7 +15,7 @@ import {
 	updateGoal,
 	withLifecycle,
 } from "./goal-plan.js";
-import { requireGoal } from "./goal-helpers.js";
+import { goalScopeForContext, requireGoal } from "./goal-helpers.js";
 import { renderGoalSummary } from "./goal-render.js";
 import type { GoalState } from "./goal-types.js";
 import type { GoalRuntime } from "./goal-runtime.js";
@@ -32,7 +32,7 @@ export function registerGoalTools(
 		promptSnippet: "Read the active project goal, source file, run status, milestones, and completion requirements.",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const state = await loadGoal(ctx.cwd);
+			const state = await loadGoal(ctx.cwd, goalScopeForContext(ctx));
 			const details = state ? ({ ...state } as Record<string, unknown>) : {};
 			return ok(state ? renderGoalSummary(state) : "No pi goal is set.", details);
 		},
@@ -56,7 +56,7 @@ export function registerGoalTools(
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const state = await requireGoal(ctx.cwd);
+			const state = await requireGoal(ctx.cwd, goalScopeForContext(ctx));
 			if (state.status === "complete") {
 				throw new Error("Cannot plan a complete goal");
 			}
@@ -69,10 +69,10 @@ export function registerGoalTools(
 					}))
 				: undefined;
 			const planned = generatePlanState(state, milestones);
-			await saveGoal(ctx.cwd, planned);
+			await saveGoal(ctx.cwd, planned, goalScopeForContext(ctx));
 			await refreshUi(ctx, planned);
 			return ok(
-				`Plan generated with ${planned.milestones.length} milestone(s). Review .pi/goal/PLAN.md, then use /goal approve or /goal run.`,
+				`Plan generated with ${planned.milestones.length} milestone(s). Review .pi/goal/instances/<goalId>/PLAN.md, then use /goal approve or /goal run.`,
 				{ ...planned } as Record<string, unknown>,
 			);
 		},
@@ -94,7 +94,7 @@ export function registerGoalTools(
 			command: Type.Optional(Type.String({ description: "Validation command that was run. Defaults to the current milestone's command." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const state = await requireGoal(ctx.cwd);
+			const state = await requireGoal(ctx.cwd, goalScopeForContext(ctx));
 			if (state.status === "complete") {
 				throw new Error("Cannot verify a complete goal");
 			}
@@ -128,7 +128,7 @@ export function registerGoalTools(
 			const next = params.exitCode === 0
 				? markProgress(updateGoal(state, { lastVerification: record }), `Verification passed for milestone ${idx + 1}.`)
 				: stopGoal(updateGoal(state, { lastVerification: record }), "failed", `Verification failed for milestone ${idx + 1} (exitCode=${params.exitCode}).`);
-			await saveGoal(ctx.cwd, next);
+			await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
 			await refreshUi(ctx, next);
 			return ok(
 				`Verification recorded for milestone ${idx + 1} (${milestone.title}): exitCode=${params.exitCode}`,
@@ -158,7 +158,7 @@ export function registerGoalTools(
 			if (!evidence) {
 				throw new Error("goal_complete requires non-empty evidence");
 			}
-			const state = await requireGoal(ctx.cwd);
+			const state = await requireGoal(ctx.cwd, goalScopeForContext(ctx));
 			const gateCommand = process.env.PI_GOAL_GATE_COMMAND;
 			if (gateCommand !== undefined) {
 				const gate = await runGateCommand(gateCommand, ctx.cwd, signal);
@@ -221,7 +221,7 @@ export function registerGoalTools(
 						runActive: getRunMode(state) === "continuous" && state.runActive,
 						milestoneRevision: (state.milestoneRevision ?? 0) + 1,
 					}), "progress", `Milestone ${state.currentMilestoneIndex + 1} completed.`), `Advanced to milestone ${nextIndex + 1}.`);
-					await saveGoal(ctx.cwd, next);
+					await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
 					await refreshUi(ctx, next);
 					return ok(
 						`Milestone ${state.currentMilestoneIndex + 1} complete. Next milestone: ${nextMilestone.title}.${next.runActive ? " Continuous execution will continue." : " Continue with /goal run."}`,
@@ -239,7 +239,7 @@ export function registerGoalTools(
 					lastVerification: undefined,
 					milestoneRevision: (state.milestoneRevision ?? 0) + 1,
 				}), "completed", "Final milestone completed by root audit.");
-				await saveGoal(ctx.cwd, next);
+				await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
 				await refreshUi(ctx, next);
 				return {
 					...ok(`Goal complete. Evidence: ${evidence}`, { ...next } as Record<string, unknown>),
@@ -253,7 +253,7 @@ export function registerGoalTools(
 				runActive: false,
 				completionEvidence: evidence,
 			}), "completed", "Goal completed by root audit.");
-			await saveGoal(ctx.cwd, next);
+			await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
 			await refreshUi(ctx, next);
 			return {
 				...ok(`Goal complete. Evidence: ${evidence}`, { ...next } as Record<string, unknown>),
@@ -263,7 +263,7 @@ export function registerGoalTools(
 	});
 	async function saveFailedGoal(ctx: ExtensionContext, state: GoalState, error: string): Promise<GoalState> {
 		const failed = stopGoal(state, "failed", error);
-		await saveGoal(ctx.cwd, failed);
+		await saveGoal(ctx.cwd, failed, goalScopeForContext(ctx));
 		await refreshUi(ctx, failed);
 		return failed;
 	}

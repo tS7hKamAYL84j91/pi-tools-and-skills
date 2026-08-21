@@ -188,6 +188,22 @@ flowchart LR
 | `pi-file-watch` | project-local | Watches explicitly configured files and wakes the active session with bounded redacted updates | Runtime watchers only; reads `.pi/file-watch.json` and configured files |
 | `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
 
+### pi-goal session-lineage isolation (ADR-051)
+
+```mermaid
+flowchart LR
+  SessionA[pi session A] --> BindingA[private pi-goal binding]
+  SessionB[pi session B] --> BindingB[private pi-goal binding]
+  BindingA --> InstanceA[.pi/goal/instances/goal-A]
+  BindingB --> InstanceB[.pi/goal/instances/goal-B]
+  InstanceA --> RunsA[runs and projections]
+  InstanceB --> RunsB[runs and projections]
+  SessionA -. cannot discover or mutate .-> InstanceB
+  SessionB -. cannot discover or mutate .-> InstanceA
+```
+
+Each production pi-goal read/write resolves the latest `pi-goal:binding` custom entry on the active session branch. Legacy flat state is migrated once under a lock, with only known projection/run files moved and symlink/traversal inputs rejected.
+
 ### State ownership summary
 
 | State class | Owner | Expected write pattern |
