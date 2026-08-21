@@ -152,6 +152,29 @@ C4Component
     Rel(pi, panopticon, "may load separately")
 ```
 
+### Cognitive Boost lease/yield boundary (ADR-050)
+
+Fusion is decommissioned from `pi-teams` and owned by `pi-boost` as a prompt-scoped cognitive lease. Principal sessions may invoke it directly. Agent sessions are default-denied and may self-initiate only through an operator-authored namespaced `boost.agentSelfBoost` capability in standard Pi settings. Global settings are overridden by project settings only when the Pi host marks the project trusted; callers cannot select or expand authority, models, budgets, or timeouts.
+
+```mermaid
+flowchart LR
+  Global[~/.pi/agent/settings.json\nboost namespace] --> Resolve[Validated effective Boost policy]
+  Project[trusted .pi/settings.json\nboost override] --> Resolve
+  Principal[Principal session] --> Gate[Trusted capability gate]
+  Agent[Pre-granted agent session] --> Gate
+  Resolve --> Gate
+  Gate --> Lease[Cognitive lease\nfixed panel/model/timeout caps]
+  Lease --> Panel[Bounded concurrent panel]
+  Panel --> Judge[Strict JSON judge synthesis]
+  Judge --> Yield[Single answer yield]
+  Yield --> Audit[Private redacted audit\nno prompt/model identity]
+  Yield --> Release[Immediate release]
+  CallerText[Tool args / objective text] -. cannot grant or expand .-> Gate
+  Teams[pi-teams] -. no private dependency .-> Lease
+```
+
+The `/boost` SettingsList shows inherited/default/global/project provenance and persists only to the selected standard settings scope. Environmental Boost retains its injected runtime, WAL, reversion, and TTL semantics; Cognitive Boost creates no sticky model state and fails closed on authorization, bounds, audit, or execution failure.
+
 ### Declarative discovery boundary (ADR-047)
 
 ```mermaid
@@ -176,7 +199,7 @@ flowchart LR
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and lifecycle controls | Panopticon registry/session state |
 | `pi-teams` | user/global | Standalone declarative team protocols, profiles, hierarchical swarm compatibility, and run controls | Team session events plus private result artifacts under the configured team root |
-| `pi-boost` | user/global | Principal-only bounded Boost lease with declarative descriptor, reviewed model binding, and host-injected runtime | Injected WAL state and redacted audit; no Panopticon-owned state |
+| `pi-boost` | user/global | Bounded environmental leases plus cognitive panel/judge lease-yield; Principal or trusted pre-granted agent capability | Environmental WAL/reversion state plus private redacted audits; cognitive leases retain no panel state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |

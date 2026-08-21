@@ -1,9 +1,26 @@
-/** Inert `/boost` command registration and bounded feedback. */
+/** Inert and cognitive `/boost` command registration, settings overlay, and bounded feedback. */
 
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { resolveEffectiveBoostSettings } from "../boost-settings.js";
+import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
+import {
+	DEFAULT_BOOST_HOST_CAPABILITIES,
+	type BoostHostCapabilities,
+} from "./host-capabilities.js";
+import {
+	boundedBoostReason,
+	boostDenialLabel,
+	boostParseFeedback,
+	formatBoostStatus,
+} from "./boost-command-feedback.js";
+import type {
+	BoostFusionRequest,
+	CognitiveLeaseResult,
+} from "./cognitive-types.js";
+import { handleCognitiveFusionCommand } from "./cognitive-command.js";
 import type {
 	BoostActor,
 	BoostDenialReason,
@@ -13,7 +30,7 @@ import type {
 	ReserveBoostInput,
 	ResetBoostInput,
 } from "./contracts.js";
-import type { BoostParseErrorCode, BoostParseResult } from "./parser.js";
+import type { BoostParseResult } from "./boost-parse-types.js";
 
 type BoostNotificationLevel = "info" | "warning" | "error";
 
@@ -65,6 +82,11 @@ export interface BoostCommandDeps {
 		level: BoostNotificationLevel,
 	) => void;
 	readonly dispatch: BoostCommandDispatch;
+	readonly hostCapabilities?: BoostHostCapabilities;
+	readonly cognitive?: (
+		input: BoostFusionRequest,
+		ctx: ExtensionCommandContext,
+	) => Promise<CognitiveLeaseResult>;
 }
 
 /** Stateless phase-2 boundary: records the reservation decision without dispatch. */
@@ -77,21 +99,44 @@ export class InertBoostDispatch implements BoostCommandDispatch {
 	}
 }
 
-/** Register the Principal-only, reservation-only `/boost` command. */
+/** Register the `/boost` command for environmental, cognitive, and settings operations. */
 export function registerBoostCommand(
 	pi: ExtensionAPI,
 	deps: BoostCommandDeps,
 ): void {
 	pi.registerCommand("boost", {
-		description: "Request, inspect, or reset a host-controlled boost lease",
+		description:
+			"Request, inspect, or reset a host-controlled boost lease, run cognitive fusion, or configure settings",
 		handler: async (args, ctx) => {
 			const parsed = deps.parse(commandInput(args));
 			if (!parsed.ok) {
-				deps.notify(ctx, parseFeedback(parsed.error.code), "warning");
+				deps.notify(ctx, boostParseFeedback(parsed.error.code), "warning");
 				return;
 			}
+			const hostCapabilities =
+				deps.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
+			const effectiveSettings = resolveEffectiveBoostSettings(
+				ctx.cwd,
+				hostCapabilities.isProjectTrusted(ctx.cwd, ctx),
+				hostCapabilities.globalSettingsPath,
+			);
+
+			if (parsed.command.kind === "settings") {
+				await openBoostSettingsOverlay(ctx, hostCapabilities);
+				return;
+			}
+
 			const identity = deps.identity(ctx);
-			if (!identity || identity.actor.kind !== "principal") {
+			const isPrincipal = identity?.actor.kind === "principal";
+			const isAgentEnabled = identity?.actor.kind === "agent";
+			const agentCapabilityAllowed =
+				isPrincipal ||
+				(isAgentEnabled &&
+					effectiveSettings.agentSelfBoost.enabled &&
+					(effectiveSettings.agentSelfBoost.allowEnvironmental ||
+						effectiveSettings.agentSelfBoost.allowCognitive));
+
+			if (!identity || !agentCapabilityAllowed) {
 				deps.notify(
 					ctx,
 					"Boost denied: Principal identity required",
@@ -99,6 +144,7 @@ export function registerBoostCommand(
 				);
 				return;
 			}
+
 			switch (parsed.command.kind) {
 				case "status":
 					notifyResult(
@@ -119,7 +165,51 @@ export function registerBoostCommand(
 						}),
 					);
 					return;
+				case "fusion": {
+					if (!isPrincipal && !effectiveSettings.agentSelfBoost.allowCognitive) {
+						deps.notify(ctx, "Boost fusion denied: cognitive self-boost is disabled", "warning");
+						return;
+					}
+					if (!deps.cognitive) {
+						deps.notify(ctx, "Boost fusion unavailable", "error");
+						return;
+					}
+					if (!isPrincipal && (parsed.command.fusion.profile !== undefined || parsed.command.fusion.panelSize !== undefined)) {
+						deps.notify(ctx, "Boost fusion denied: agent profile and panel caps are fixed by operator settings", "warning");
+						return;
+					}
+					const fusionInput: BoostFusionRequest = isPrincipal
+						? { ...parsed.command.fusion, requireApprovalAboveCalls: 5, auditActor: "principal", auditSurface: "command" }
+						: {
+								prompt: parsed.command.fusion.prompt,
+								profile: effectiveSettings.profile,
+								panelSize: Math.min(effectiveSettings.panelSize, effectiveSettings.agentSelfBoost.maxPanelModels),
+								models: effectiveSettings.models,
+								...(effectiveSettings.judge ? { judge: effectiveSettings.judge } : {}),
+								timeoutMs: effectiveSettings.timeoutMs,
+								requireApprovalAboveCalls: Math.min(effectiveSettings.panelSize, effectiveSettings.agentSelfBoost.maxPanelModels) + 1,
+								auditActor: "agent",
+								auditSurface: "command",
+							};
+					await handleCognitiveFusionCommand(ctx, fusionInput, deps.cognitive, deps.notify);
+					return;
+				}
 				case "request": {
+					if (
+						!isPrincipal &&
+						!effectiveSettings.agentSelfBoost.allowEnvironmental
+					) {
+						deps.notify(
+							ctx,
+							"Boost denied: environmental self-boost is disabled",
+							"warning",
+						);
+						return;
+					}
+					if (!isPrincipal && parsed.command.request.requestedYields > effectiveSettings.agentSelfBoost.maxYields) {
+						deps.notify(ctx, "Boost denied: requested yields exceed the operator capability cap", "warning");
+						return;
+					}
 					const reservationInput: ReserveBoostInput = {
 						actor: identity.actor,
 						subject: identity.subject,
@@ -141,7 +231,7 @@ export function registerBoostCommand(
 					if (dispatch.kind === "denied") {
 						deps.notify(
 							ctx,
-							`Boost denied: ${boundedReason(dispatch.reason)}`,
+							`Boost denied: ${boundedBoostReason(dispatch.reason)}`,
 							"warning",
 						);
 						return;
@@ -149,14 +239,14 @@ export function registerBoostCommand(
 					if (dispatch.kind === "terminal") {
 						deps.notify(
 							ctx,
-							`Boost completed: outcome=${boundedReason(dispatch.outcome)}`,
+							`Boost completed: outcome=${boundedBoostReason(dispatch.outcome)}`,
 							"info",
 						);
 						return;
 					}
 					deps.notify(
 						ctx,
-						formatStatus("Boost reserved (inert)", result.value),
+						formatBoostStatus("Boost reserved (inert)", result.value),
 						"info",
 					);
 				}
@@ -179,7 +269,7 @@ function notifyResult(
 		notifyDenial(ctx, deps, result.reason);
 		return;
 	}
-	deps.notify(ctx, formatStatus(label, result.value), "info");
+	deps.notify(ctx, formatBoostStatus(label, result.value), "info");
 }
 
 function notifyDenial(
@@ -187,57 +277,5 @@ function notifyDenial(
 	deps: BoostCommandDeps,
 	reason: BoostDenialReason,
 ): void {
-	deps.notify(ctx, `Boost denied: ${denialLabel(reason)}`, "warning");
-}
-
-function formatStatus(label: string, status: BoostLeaseStatus): string {
-	const fields = [`state=${status.state}`];
-	if (status.leaseId !== undefined) {
-		fields.push(`id=${opaqueId(status.leaseId)}`);
-	}
-	if (
-		status.remainingYields !== undefined &&
-		Number.isSafeInteger(status.remainingYields) &&
-		status.remainingYields >= 0
-	) {
-		fields.push(`remaining=${status.remainingYields}`);
-	}
-	if (status.expiresAt !== undefined && Number.isFinite(status.expiresAt)) {
-		fields.push(`expiresAt=${status.expiresAt}`);
-	}
-	return `${label}: ${fields.join(" ")}`;
-}
-
-function opaqueId(value: string): string {
-	return /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : "redacted";
-}
-
-function denialLabel(reason: BoostDenialReason): string {
-	return reason.replaceAll("-", " ");
-}
-
-function boundedReason(reason: string): string {
-	return /^[a-z-]{1,32}$/.test(reason)
-		? reason.replaceAll("-", " ")
-		: "unavailable";
-}
-
-function parseFeedback(code: BoostParseErrorCode): string {
-	switch (code) {
-		case "invalid-yield-count":
-			return "Boost option error: -n must be 1, 2, or 3";
-		case "repeated-option":
-			return "Boost option error: options may be specified only once";
-		case "conflicting-isolation":
-			return "Boost option error: --clean and --fresh are mutually exclusive";
-		case "unknown-option":
-			return "Boost option error: unknown option";
-		case "trailing-subcommand":
-			return "Boost syntax error: status/reset accept no trailing text; use -- for a prompt";
-		case "input-too-large":
-			return "Boost request rejected: input exceeds 2,048 UTF-8 bytes";
-		case "not-boost-command":
-		case "missing-prompt":
-			return "Usage: /boost status | reset | [-n 1..3] [--clean|--fresh] [--] <prompt>";
-	}
+	deps.notify(ctx, `Boost denied: ${boostDenialLabel(reason)}`, "warning");
 }

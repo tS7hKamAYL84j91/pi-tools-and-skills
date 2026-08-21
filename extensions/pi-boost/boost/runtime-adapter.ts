@@ -1,13 +1,24 @@
-/** Command adapter for an explicitly host-injected Boost bridge. */
+/** Command adapter for an explicitly host-injected Boost bridge and cognitive deliberation. */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { resolveEffectiveBoostSettings } from "../boost-settings.js";
 import type {
 	LiveBoostLeaseStatus,
 	LiveBoostResult,
 	LiveBoostRuntimeBridge,
 } from "../live-boost-bridge-contract.js";
 import type { LiveBoostControlReference } from "../live-boost-control-contract.js";
+import { executeCognitiveLease } from "./cognitive-lease.js";
+import type {
+	BoostFusionRequest,
+	CognitiveAuditSink,
+	CognitiveModelRunner,
+} from "./cognitive-types.js";
 import type { BoostIdentitySource } from "./identity-source.js";
+import {
+	DEFAULT_BOOST_HOST_CAPABILITIES,
+	type BoostHostCapabilities,
+} from "./host-capabilities.js";
 import type {
 	BoostCommandDeps,
 	BoostCommandDispatchDecision,
@@ -27,17 +38,50 @@ export interface LiveBoostHostInjection {
 	readonly shutdownChoice: "synchronous-restore" | "durable-block-marker";
 }
 
-/** Default command dependencies: visible denial and no reservation mutation. */
+interface CognitiveBoostDependencies {
+	readonly runner?: CognitiveModelRunner;
+	readonly hostCapabilities?: BoostHostCapabilities;
+	readonly audit?: CognitiveAuditSink;
+}
+
+function createCognitiveHandler(cognitiveRunner?: CognitiveModelRunner, audit?: CognitiveAuditSink) {
+	return async (input: BoostFusionRequest, ctx: ExtensionCommandContext) => {
+		const available = ctx.modelRegistry.getAvailable();
+		const visibleModels = available
+			.filter((model) => model.input.includes("text"))
+			.map((model) => `${model.provider}/${model.id}`);
+		return executeCognitiveLease({
+			prompt: input.prompt,
+			profile: input.profile,
+			panelSize: input.panelSize,
+			models: input.models,
+			judge: input.judge,
+			timeoutMs: input.timeoutMs,
+			requireApprovalAboveCalls: input.requireApprovalAboveCalls,
+			audit,
+			auditActor: input.auditActor,
+			auditSurface: input.auditSurface,
+			visibleModels,
+			cwd: ctx.cwd,
+			runner: cognitiveRunner,
+		});
+	};
+}
+
+/** Default command dependencies: visible denial for environmental boost, cognitive deliberation enabled. */
 export function createUnavailableBoostCommandDeps(
 	identitySource: BoostIdentitySource,
+	options: CognitiveBoostDependencies = {},
 ): BoostCommandDeps {
+	const hostCapabilities = options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
 	const unavailable = <T>(): BoostResult<T> => ({
 		ok: false,
 		reason: "runtime-unavailable",
 	});
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) => principalIdentity(ctx, identitySource),
+		identity: (ctx) =>
+			principalIdentity(ctx, identitySource, hostCapabilities),
 		authority: {
 			reserve: unavailable,
 			getStatus: unavailable,
@@ -45,17 +89,22 @@ export function createUnavailableBoostCommandDeps(
 		},
 		notify: (ctx, message, level) => ctx.ui.notify(message, level),
 		dispatch: new InertBoostDispatch(),
+		hostCapabilities,
+		cognitive: createCognitiveHandler(options.runner, options.audit),
 	};
 }
 
-/** Adapt only the injected bridge and immutable live-control reference. */
+/** Adapt injected bridge, immutable live-control reference, and cognitive deliberation. */
 export function createHostBoostCommandDeps(
 	identitySource: BoostIdentitySource,
 	injection: LiveBoostHostInjection,
+	options: CognitiveBoostDependencies = {},
 ): BoostCommandDeps {
+	const hostCapabilities = options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) => principalIdentity(ctx, identitySource),
+		identity: (ctx) =>
+			principalIdentity(ctx, identitySource, hostCapabilities),
 		authority: {
 			reserve: async (input) =>
 				mapStatus(
@@ -85,6 +134,7 @@ export function createHostBoostCommandDeps(
 			},
 		},
 		notify: (ctx, message, level) => ctx.ui.notify(message, level),
+		hostCapabilities,
 		dispatch: {
 			recordReservation: async (status, input) => {
 				if (!status.leaseId) {
@@ -107,19 +157,28 @@ export function createHostBoostCommandDeps(
 					: deniedDispatch(result.reason);
 			},
 		},
+		cognitive: createCognitiveHandler(options.runner, options.audit),
 	};
 }
 
 function principalIdentity(
 	ctx: ExtensionCommandContext,
 	identitySource: BoostIdentitySource,
+	hostCapabilities: BoostHostCapabilities,
 ): BoostCommandIdentity | undefined {
-	if (!identitySource.isPrincipalSession()) {
+	const isPrincipal = identitySource.isPrincipalSession();
+	const settings = resolveEffectiveBoostSettings(
+		ctx.cwd,
+		hostCapabilities.isProjectTrusted(ctx.cwd, ctx),
+		hostCapabilities.globalSettingsPath,
+	);
+	const isAgentEnabled = settings.agentSelfBoost.enabled;
+	if (!isPrincipal && !isAgentEnabled) {
 		return undefined;
 	}
 	const sessionId = ctx.sessionManager.getSessionId();
 	return {
-		actor: { kind: "principal", issuerId: sessionId },
+		actor: { kind: isPrincipal ? "principal" : "agent", issuerId: sessionId },
 		subject: {
 			subjectId: identitySource.selfId,
 			workspace: { workspaceId: sessionId, root: ctx.cwd },
