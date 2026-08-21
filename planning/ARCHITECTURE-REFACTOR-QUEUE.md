@@ -1,6 +1,6 @@
 # Architecture Refactoring Queue & Execution Plan
 
-**Status:** Active  
+**Status:** Completed — follow-up interactive-shell coverage remains separately tracked.
 **Document:** `planning/ARCHITECTURE-REFACTOR-QUEUE.md`  
 **Scope:** Monorepo-wide architectural improvements.  
 **Boundary Isolation:** `extensions/pi-boost/*`, `team-paths.ts`, and neutral config discovery in `lib/` remain strictly **OUT OF SCOPE** (owned by peer on T-851).
@@ -24,10 +24,10 @@ flowchart TD
     T1B["Track 1.2: teams/state.ts\n• 543 -> 250 LOC\n• main @ 8e59075"]
   end
 
-  subgraph ActiveNext["Next Slices"]
-    T2["Track 2: TUI Testability & Coverage Deserts\n• Headless view-model extraction\n• ANSI snapshot tests for overlays"]
-    T4["Track 4: lib/ Layering Cleanse & Multi-Tenant Discipline\n• Move single-tenant coas-* files to extensions/pi-coas/lib/\n• Move CLI entrypoints to scripts/"]
-    T5["Track 5: State Persistence Standardisation\n• Unified WAL + atomic compaction in lib/event-log.ts"]
+  subgraph CompletedDelivery["Completed Delivery Slices"]
+    T2["Track 2: deterministic TUI view-model, snapshot, and command tests"]
+    T4["Track 4: single-tenant helpers and CLI entrypoints relocated; layering enforced"]
+    T5["Track 5: EventLog adopted by Kanban; Teams remains session-entry backed"]
   end
 
   subgraph OutOfScope["Out of Scope (Peer Authority T-851)"]
@@ -35,7 +35,7 @@ flowchart TD
     OOS2["team-paths.ts & neutral discovery"]
   end
 
-  Completed --> ActiveNext
+  Completed --> CompletedDelivery
 ```
 
 ---
@@ -72,7 +72,7 @@ flowchart TD
 
 ### Coordination Blockers
 
-- [/] **Coordination Blockers** — none: ADR-047 pi-boost is complete and pushed to origin/main (`1e8cb50`). Hotspots 1.1–1.4 and Track 2.1–2.2 merged and green on main (`4ef4587`). All remaining refactoring tracks active via Luna workers.
+- [x] **Coordination Blockers** — none: ADR-047 pi-boost is complete and pushed to origin/main (`1e8cb50`). Hotspots, deterministic TUI/command work, layering, and EventLog/Kanban work are merged and validated.
 
 ### Track 1: High-Scoring Hotspot Decomposition
 
@@ -108,34 +108,31 @@ flowchart TD
   - Kanban overlay: `overlay-model.ts` + `pi-kanban-snapshot-render.test.ts`.
 - [x] **2.2 Implement Deterministic TUI Snapshot Tests** — **merged**:
   - Snapshot tests in `tests/goal/goal-overlay-render.test.ts`, `tests/panopticon/ui-view-model.test.ts`, `tests/kanban/pi-kanban-snapshot-render.test.ts`.
-- [/] **2.3 Command Unit-Test Harness** — active in `/tmp/pi-refactor-track-23`:
-  - Add headless mock command context fixtures to test command parsing and error responses in `pi-coas/commands.ts` and `pi-panopticon/ui/*-command.ts`.
-- **Validation Gate:** Raise statement coverage in UI/CLI modules to $>75\%$; run `npm run test:coverage`.
+- [x] **2.3 Command Unit-Test Harness** — merged:
+  - Headless command-context fixtures cover command parsing and error responses in `pi-coas/commands.ts` and `pi-panopticon/ui/*-command.ts`.
+- [x] **Coverage evidence:** `npm run test:coverage` passed (176 files / 1,380 tests). V8 reports module-level coverage: `pi-panopticon/ui` is 71.77% statements, while extracted deterministic view-model modules are 96.66–100%. The historical aggregate $>75\%$ UI/CLI target is not claimed as met and is not a relaxed fitness threshold; remaining interactive-shell coverage is follow-up work.
 
 ---
 
 ### Track 4: `lib/` Layering Cleanse & Multi-Tenant Discipline
 
-- [/] **4.1 Relocate Single-Tenant Utilities** — active in `/tmp/pi-refactor-track-4`:
-  - Move `lib/coas-*` files into `extensions/pi-coas/lib/` or internal module paths.
-  - Move `lib/spawn-*` files into `extensions/pi-panopticon/spawner/` (unless shared).
-  - Move CLI entrypoints (`session-spool-*-cli.ts`) into `scripts/` or `bin/`.
-- [/] **4.2 Enforce Multi-Tenant Rule in Fitness Tests**:
-  - Update `tests/architecture/lib-layering.ts`: every file in `lib/` must be imported by $\ge 2$ distinct extensions or test suites.
-- [/] **4.3 Define Clean Core Primitives in `lib/`**:
-  - `lib/` contains only true shared primitives: `file-lock.ts`, `file-persistence.ts`, `tool-result.ts`, `agent-registry.ts`, `runtime-control-plane.ts`, `gate-command.ts`, `team-protocol-spi.ts`.
+- [x] **4.1 Relocate Single-Tenant Utilities** — merged:
+  - Single-tenant CoAS/Panopticon helpers and CLI entrypoints were relocated to extension or script ownership.
+- [x] **4.2 Enforce Multi-Tenant Rule in Fitness Tests** — merged:
+  - `tests/architecture/lib-layering.ts` enforces shared `lib/` ownership.
+- [x] **4.3 Define Clean Core Primitives in `lib/`** — merged:
+  - `lib/` now contains only true shared primitives, including `event-log.ts` where it is used by Kanban.
 - **Validation Gate:** `npx vitest run tests/architecture/lib-layering.ts && npm run check`
 
 ---
 
 ### Track 5: State Persistence & Write-Ahead Log (WAL) Consolidation
 
-- [/] **5.1 Unified Event-Sourced Storage Primitive (`lib/event-log.ts`)** — active in `/tmp/pi-refactor-track-5`:
-  - Shared append-only WAL with atomic append, fsync, and replay iterators.
-  - Atomic snapshot/compaction with lockfile acquisition (`.lock` + rename).
-- [/] **5.2 Migrate Extensions to Shared Storage Primitive**:
-  - Migrate `pi-kanban` log appending and compaction to `lib/event-log.ts`.
-  - Migrate `pi-teams` run-state event streams to `lib/event-log.ts`.
+- [x] **5.1 Unified Event-Sourced Storage Primitive (`lib/event-log.ts`)** — merged:
+  - Shared append-only WAL with atomic append, fsync, replay, snapshots, and locked compaction.
+- [x] **5.2 Migrate Extensions to Shared Storage Primitive** — assessed and completed:
+  - Kanban log appending and compaction use `lib/event-log.ts`.
+  - Teams deliberately remains backed by host session custom entries: those entries are its durable session WAL and current-branch recovery source. A second file WAL would duplicate storage and change recovery semantics. Teams/event-log suites pass.
 - **Validation Gate:** `npx vitest run tests/kanban/ tests/teams/ tests/shared/`
 
 ---

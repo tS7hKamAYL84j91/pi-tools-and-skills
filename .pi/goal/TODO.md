@@ -1,58 +1,30 @@
-# TODO — Remaining Work
-
-Single tracker for active work on this goal.
+# Architecture Refactor Queue Goal
 
 ## Goal
 
-implemente using sub agents you are architect the design lead the planning/PLAN.md
+Complete the remaining verifiable work in `planning/ARCHITECTURE-REFACTOR-QUEUE.md` without weakening architecture fitness tests or changing pi-boost / declarative-discovery boundaries.
 
-**🔴 AUTONOMY RULE — READ FIRST:**
-The implementation agent is expected to complete outstanding items without asking the user for confirmation.
+## Completed evidence
 
-- Pick work from this TODO, implement it, validate it, and update this file.
-- Use the smallest useful change.
-- Preserve useful content; do not delete source material unless it is clearly duplicate, empty, generated junk, or moved with an auditable note.
-- Prefer moves/renames over rewrites.
-- Escalate architecture, security, broad policy decisions, or destructive cleanup to `llm-council` when available.
-- Use `navigator` review when substantial repo changes are made and team tools are available.
+- [x] Tracks 1.1–1.4: hotspot decompositions merged.
+- [x] Tracks 2.1–2.3: deterministic TUI view-model/snapshot tests and command harnesses merged.
+- [x] Track 4: CoAS/Panopticon single-tenant helpers and CLI entrypoints relocated; layering fitness strengthened.
+- [x] Track 5.1 and Kanban migration: `lib/event-log.ts` added and Kanban transaction persistence migrated.
+- [x] Integration checks before the current goal plan: `npm run check` passed at 99.24% type coverage; `npm test` passed 176 files / 1,380 tests.
 
-Progress markers:
-- `[ ]` Planned
-- `[~]` In progress
-- `[R]` Ready for review
-- `[x]` Done
-- `[!]` Blocked
+## Remaining work
 
----
+- [x] (5.2) Assessed Teams run-state persistence: migration is not warranted. Teams persists its protocol-neutral events through the host session custom-entry WAL (`pi.appendEntry`) and rehydrates from the current session branch; adding `lib/event-log.ts` would duplicate storage and break session-branch recovery semantics. Existing event format is preserved. Validated with the Teams and event-log suites.
+- [x] (2 coverage) `npm run test:coverage` passed (176 files / 1,380 tests) and supplied module coverage: all files 72.14% statements; `pi-panopticon/ui` 71.77%; extracted view-models meet the intended deterministic-test scope (`agent-detail-model.ts`, `status-view-model.ts`, and Kanban `overlay-model.ts` at 100%; `goal-render.ts` at 96.66%). The aggregate UI shell remains below the historical 75% aspirational target, so no threshold is claimed or relaxed; further interactive-shell coverage is separate follow-up work.
+- [x] (delivery) Updated `planning/ARCHITECTURE-REFACTOR-QUEUE.md` to reflect merged tracks, Teams' session-WAL decision, coverage evidence, and follow-up coverage scope.
+- [x] (release) `git diff --check`, `npm run check`, and `npm test` passed; integrated queue documentation is committed and pushed.
 
-## How to use this TODO
+## Follow-up (out of scope for this goal)
 
-1. Claim an item — change `[ ]` to `[~]` and add a dated note with intended scope.
-2. Implement the smallest useful change.
-3. Refactor only as needed to keep the result simple.
-4. Validate with project checks or a documented manual check.
-5. Update docs/architecture notes when the project requires it.
-6. Change to `[R]` when ready for review, then `[x]` after validation/review.
-7. If blocked, change to `[!]`, record the blocker and next decision needed, then stop broadening scope.
+- [ ] Fix `/goal` bounded-run continuation: advancing a milestone currently sets `runActive: false`, ending the loop instead of automatically delivering the next bounded invocation. Add regression coverage in the pi-goal suite.
 
-## Remaining TODO Items
+## Constraints
 
-- [x] (1.1) Inspect repository state and refine the goal. 2026-07-12: reviewed `planning/PLAN.md`, team handlers/runtime/TUI, active tests, and clean baseline `c562ead` (aside from planning/goal files).
-- [x] (2.1) Implement the shared `fast | balanced | thorough` team profile contract with explicit precedence and compatibility for existing Fusion `limits.maxLoops` callers. Evidence: `f3f1cd5`, ADR 034, profile/session/tool tests.
-- [x] (2.2) Implement Fusion critical-path improvements: concise/bounded panel output, provider-mapped generation caps, bounded judge input, complete judge schema including final `answer`, provider diversity, degraded fallback, and direct displayed results without an extra LLM turn. Evidence: `f3f1cd5`, `db660cb`, `1e4ca6b`.
-- [x] (2.3) Implement Navigator fast behavior: compact output contract, bounded generation/retries/timeout, and minimal context in Fast mode while preserving bounded context for other profiles. Evidence: `tests/teams/team-consult-profile.test.ts`.
-- [x] (3.1) Implement compact all-node progress, event-driven refresh, run-specific widget ownership, and no-ID cancellation of the newest active run. Evidence: `a2a5348`, `1e4ca6b` and state/progress/command tests.
-- [x] (3.2) Remove registry/filesystem reads from team-browser render paths and add focused one-shot Run/Profile controls using native TUI components. Evidence: `3d9a8c5`, `d50b120` and render-path fitness tests.
-- [x] (4.1) Add deterministic tests for profiles, Fusion/Navigator behavior, progress, cancellation, provider payloads, and render-path boundaries. Evidence: final full suite passed 116 files/937 tests, including architecture fitness.
-- [x] (4.2) Add bounded deterministic evaluation fixtures and an opt-in redacted live latency/quality harness. Live measurements were intentionally not run; Balanced remains default until the documented gates pass. Evidence: `2de8fd9`, `tests/evals/team-speed-profile-evaluation.md`.
-- [x] (5.1) Update team docs, architecture Mermaid, planning/progress/knowledge files, ADR 034, and evaluation methodology.
-- [x] (5.2) Run validation and reviews. Final integrated evidence: `npm run check` passed at 99.19% type coverage; `npm test` passed 116 files/937 tests; `npm run test:evals` passed 3 files/13 tests; benchmark syntax/opt-in guard passed. Navigator initial REVISE findings were fixed and re-review returned PASS; final council returned PASS and follow-ups were applied.
-- [x] (6.1) Completion audit and final evidence recorded. All implementation requirements are done; live provider measurement, generic reasoning-effort normalization, metadata/render caching are explicitly deferred with safety/KISS rationale and do not change the Balanced default.
-
----
-
-## Completion Criteria
-
-- All TODO items are `[x]`, `[R]` with review notes, or `[!]` with explicit blockers.
-- Required validation has passed or has a documented reason why it cannot run.
-- Final state and evidence are recorded in this file.
+- No architecture-fitness exemptions, threshold relaxations, or exception-list additions.
+- `extensions/pi-boost/**`, `extensions/pi-panopticon/teams/team-paths.ts`, and `lib/declarative-discovery.ts` are out of scope.
+- Do not add a generic persistence framework beyond the concrete Teams need.
