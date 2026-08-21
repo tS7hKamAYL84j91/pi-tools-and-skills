@@ -8,12 +8,17 @@ import { visibleRecords } from "../registry/visibility.js";
 import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
 import { formatAge, STATUS_SYMBOL } from "../registry/registry.js";
 import type { AgentRecord } from "../types.js";
-import type { ThemeColor } from "./ui-format.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../../lib/tui-confirmation.js";
 import { projectWorkSummary } from "./summary-projection.js";
 import { renderSummarySection } from "./agent-summary-render.js";
 import { accentBorder } from "./ui-format.js";
+import {
+	buildAgentDetailRows,
+	formatActivityExtra,
+	getActivityColor,
+	getActivityWindow,
+} from "./agent-detail-model.js";
 import {
 	approveAgentApproval,
 	deferAgentApproval,
@@ -33,50 +38,6 @@ interface RenderAgentDetailOverlayArgs {
 	selectedApprovalIndex?: number;
 }
 
-function agentDetailRows(record: AgentRecord): [string, string][] {
-	const rows: [string, string][] = [
-		["Model", record.model || "unknown"],
-		["CWD", record.cwd],
-		["PID", String(record.pid)],
-		["Messages", `msg:${record.pendingMessages ?? 0}`],
-		["Uptime", formatAge(record.startedAt)],
-	];
-	if (record.task) {
-		rows.push(["Task", record.task.slice(0, 60)]);
-	}
-	return rows;
-}
-
-function activityColor(event: string): ThemeColor {
-	if (event.includes("error")) {
-		return "error";
-	}
-	if (event.includes("start")) {
-		return "success";
-	}
-	if (event.includes("end")) {
-		return "warning";
-	}
-	return "dim";
-}
-
-function activityExtra(entry: SessionEvent): string {
-	return Object.entries(entry)
-		.filter(([key]) => key !== "ts" && key !== "event")
-		.map(([key, value]) => `${key}=${String(value).slice(0, 60)}`)
-		.join(" ");
-}
-
-interface ActivityWindow {
-	visibleEvents: SessionEvent[];
-	hiddenCount: number;
-}
-
-function activityWindow(events: readonly SessionEvent[]): ActivityWindow {
-	const visibleEvents = events.slice(-15);
-	return { visibleEvents, hiddenCount: events.length - visibleEvents.length };
-}
-
 /** @internal Return true for detail-view keys that navigate back to the agent list. */
 export function isAgentDetailBackInput(data: string): boolean {
 	return matchesKey(data, "backspace") || matchesKey(data, "left");
@@ -92,23 +53,23 @@ export function renderAgentDetailOverlay(args: RenderAgentDetailOverlayArgs): st
 	container.addChild(accentBorder(args.theme));
 	add(`  ${STATUS_SYMBOL[args.record.status]} ${args.theme.fg("accent", args.theme.bold(args.record.name))}${isSelf ? args.theme.fg("dim", " (you)") : ""}  ${args.theme.fg("muted", args.record.status)}`);
 
-	for (const [label, value] of agentDetailRows(args.record)) {
-		row(label, value);
+	for (const detailRow of buildAgentDetailRows(args.record, formatAge(args.record.startedAt))) {
+		row(detailRow.label, detailRow.value);
 	}
 
 	add(`\n  ${args.theme.fg("accent", args.theme.bold("Recent Activity"))} ${args.theme.fg("dim", `(${args.sessionEvents.length} events)`)}`);
 	if (args.sessionEvents.length === 0) {
 		add(`  ${args.theme.fg("dim", "(no activity recorded)")}`);
 	} else {
-		const { visibleEvents, hiddenCount } = activityWindow(args.sessionEvents);
+		const { visibleEvents, hiddenCount } = getActivityWindow(args.sessionEvents);
 		if (hiddenCount > 0) {
 			add(`  ${args.theme.fg("dim", `... ${hiddenCount} earlier event${hiddenCount === 1 ? "" : "s"} omitted`)}`);
 		}
 		for (const entry of visibleEvents) {
 			const ts = new Date(entry.ts).toISOString().slice(11, 19);
 			const event = String(entry.event ?? "?");
-			const extra = activityExtra(entry);
-			add(`  ${args.theme.fg("dim", ts)} ${args.theme.fg(activityColor(event), event)}${extra ? args.theme.fg("muted", ` ${extra}`) : ""}`);
+			const extra = formatActivityExtra(entry);
+			add(`  ${args.theme.fg("dim", ts)} ${args.theme.fg(getActivityColor(event), event)}${extra ? args.theme.fg("muted", ` ${extra}`) : ""}`);
 		}
 	}
 
