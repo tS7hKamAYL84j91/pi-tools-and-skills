@@ -10,17 +10,21 @@ import {
 	type LiveBoostProviderRequest,
 	type LiveBoostTerminalEvent,
 } from "../../extensions/pi-boost/host-injected-live-boost.js";
-import {
-	EXTERNAL_BOOST_TEAM_ID,
-	type ExternalBoostConfigAdapter,
-	type ExternalBoostConfigRecord,
-	type ExternalBoostConfigReference,
-	type ExternalBoostConfigRevision,
-	type ExternalBoostConfigSubscription,
-} from "../../extensions/pi-boost/external-boost-config-contract.js";
+import type {
+	LiveBoostControlAdapter,
+	LiveBoostControlRecord,
+	LiveBoostControlReference,
+	LiveBoostControlRevision,
+	LiveBoostControlSubscription,
+} from "../../extensions/pi-boost/live-boost-control-contract.js";
+import type { BoostDescriptorAdapter } from "../../extensions/pi-boost/boost-descriptor-adapter.js";
+import type {
+	BoostDescriptorResolution,
+	BoostThinkingLevel,
+	ReviewedBoostThinkingPolicy,
+} from "../../extensions/pi-boost/boost-descriptor.js";
 
-export const TEST_CONTROL_REFERENCE: ExternalBoostConfigReference = {
-	teamId: EXTERNAL_BOOST_TEAM_ID,
+export const TEST_CONTROL_REFERENCE: LiveBoostControlReference = {
 	enablementId: "enablement-test",
 };
 
@@ -55,29 +59,29 @@ export class TestDaemonWal implements DaemonBoostWal {
 	}
 }
 
-class TestExternalBoostConfigAdapter implements ExternalBoostConfigAdapter {
+class TestLiveBoostControlAdapter implements LiveBoostControlAdapter {
 	resolveCount = 0;
-	record: ExternalBoostConfigRecord;
+	record: LiveBoostControlRecord;
 	streamAvailable = true;
 	private readonly listeners = new Set<
-		(revision: ExternalBoostConfigRevision) => Promise<void>
+		(revision: LiveBoostControlRevision) => Promise<void>
 	>();
 
-	constructor(record: ExternalBoostConfigRecord) {
+	constructor(record: LiveBoostControlRecord) {
 		this.record = record;
 	}
 
 	async resolve(
-		_reference: ExternalBoostConfigReference,
-	): Promise<ExternalBoostConfigRecord | undefined> {
+		_reference: LiveBoostControlReference,
+	): Promise<LiveBoostControlRecord | undefined> {
 		this.resolveCount += 1;
 		return this.record;
 	}
 
 	subscribe(
-		_reference: ExternalBoostConfigReference,
-		listener: (revision: ExternalBoostConfigRevision) => Promise<void>,
-	): ExternalBoostConfigSubscription | undefined {
+		_reference: LiveBoostControlReference,
+		listener: (revision: LiveBoostControlRevision) => Promise<void>,
+	): LiveBoostControlSubscription | undefined {
 		if (!this.streamAvailable) {
 			return undefined;
 		}
@@ -89,8 +93,8 @@ class TestExternalBoostConfigAdapter implements ExternalBoostConfigAdapter {
 		};
 	}
 
-	async emit(reason: ExternalBoostConfigRevision["reason"]): Promise<void> {
-		const revision: ExternalBoostConfigRevision = {
+	async emit(reason: LiveBoostControlRevision["reason"]): Promise<void> {
+		const revision: LiveBoostControlRevision = {
 			enablementId: this.record.enablementId,
 			revision: this.record.revision + 1,
 			reason,
@@ -104,7 +108,7 @@ class TestExternalBoostConfigAdapter implements ExternalBoostConfigAdapter {
 interface LiveBoostTestHost {
 	readonly audit: LiveBoostAuditRecord[];
 	readonly bridge: HostInjectedLiveBoostRuntime;
-	readonly control: TestExternalBoostConfigAdapter;
+	readonly control: TestLiveBoostControlAdapter;
 	readonly dispatchRequests: LiveBoostProviderRequest[];
 	readonly events: string[];
 	readonly signals: AbortSignal[];
@@ -114,10 +118,13 @@ interface LiveBoostTestHost {
 }
 
 interface TestHostOverrides {
-	readonly control?: Partial<ExternalBoostConfigRecord>;
+	readonly control?: Partial<LiveBoostControlRecord>;
 	readonly now?: () => number;
 	readonly restoreFailsFor?: string;
+	readonly acknowledgeAbort?: boolean;
 	readonly wal?: TestDaemonWal;
+	readonly thinkingLevel?: BoostThinkingLevel;
+	readonly thinkingPolicy?: () => ReviewedBoostThinkingPolicy | undefined;
 }
 
 export async function createLiveBoostTestHost(
@@ -127,10 +134,7 @@ export async function createLiveBoostTestHost(
 	const wal = overrides.wal ?? new TestDaemonWal(events);
 	const now = overrides.now ?? (() => 10_000);
 	const store = await DaemonBoostControlStore.open(wal, now);
-	const record: ExternalBoostConfigRecord = {
-		schemaVersion: 1,
-		protocol: "boost",
-		teamId: EXTERNAL_BOOST_TEAM_ID,
+	const record: LiveBoostControlRecord = {
 		enablementId: TEST_CONTROL_REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
 		maximumYields: 3,
@@ -139,7 +143,24 @@ export async function createLiveBoostTestHost(
 		enabled: true,
 		...overrides.control,
 	};
-	const control = new TestExternalBoostConfigAdapter(record);
+	const control = new TestLiveBoostControlAdapter(record);
+	const descriptor: BoostDescriptorResolution = {
+		descriptor: {
+			schemaVersion: 1,
+			enablementId: TEST_CONTROL_REFERENCE.enablementId,
+			principalIssuerId: "principal-test",
+			enabled: true,
+			...(overrides.thinkingLevel === undefined ? {} : { thinkingLevel: overrides.thinkingLevel }),
+			maximumYields: 3,
+			expiresAt: now() + 2 * BOOST_LEASE_MAX_DURATION_MS,
+			revision: 11,
+			model: { key: "principalBoostLease", provider: "provider-test", id: "model-test", family: "sol-ultra" },
+		},
+		fingerprint: "test-fingerprint",
+		source: "builtin",
+		path: "/test/boost.md",
+	};
+	const descriptorAdapter: BoostDescriptorAdapter = { resolve: async () => descriptor };
 	const audit: LiveBoostAuditRecord[] = [];
 	const dispatchRequests: LiveBoostProviderRequest[] = [];
 	const signals: AbortSignal[] = [];
@@ -147,6 +168,15 @@ export async function createLiveBoostTestHost(
 	const bridge = new HostInjectedLiveBoostRuntime({
 		store,
 		control,
+		descriptor: descriptorAdapter,
+		models: {
+			resolve: (key) => key === "principalBoostLease"
+				? { provider: "provider-test", id: "model-test", family: "sol-ultra" }
+				: { provider: "baseline-test", id: "baseline-test", family: "glm-5.2" },
+		},
+		thinkingPolicy: {
+			resolve: () => overrides.thinkingPolicy?.() ?? ({ policyRevision: 1, defaultLevel: "medium", supportedLevels: ["low", "medium", "high"] }),
+		},
 		now,
 		nextLeaseId: () => "lease-test",
 		governance: { classify: async () => "public" },
@@ -164,12 +194,14 @@ export async function createLiveBoostTestHost(
 						"abort",
 						() => {
 							events.push("abort");
-							terminalResolver?.({
-								leaseId: request.leaseId,
-								activationGeneration: request.activationGeneration,
-								outcome: "cancelled",
-								humanVisible: false,
-							});
+							if (overrides.acknowledgeAbort !== false) {
+								terminalResolver?.({
+									leaseId: request.leaseId,
+									activationGeneration: request.activationGeneration,
+									outcome: "cancelled",
+									humanVisible: false,
+								});
+							}
 						},
 						{ once: true },
 					);
@@ -184,6 +216,7 @@ export async function createLiveBoostTestHost(
 				}
 			},
 		},
+		isolation: { dispose: async () => { events.push("isolation-dispose"); } },
 		audit: {
 			append: async (auditRecord) => {
 				events.push("redacted-audit");

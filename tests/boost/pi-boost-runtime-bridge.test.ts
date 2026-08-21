@@ -5,7 +5,7 @@ import type {
 } from "../../extensions/pi-boost/boost/contracts.js";
 import { combineBoostInput } from "../../extensions/pi-boost/boost/parser.js";
 import { BOOST_LEASE_MAX_DURATION_MS } from "../../extensions/pi-boost/daemon-boost-control-store.js";
-import type { ExternalBoostConfigRecord } from "../../extensions/pi-boost/external-boost-config-contract.js";
+import type { LiveBoostControlRecord } from "../../extensions/pi-boost/live-boost-control-contract.js";
 import {
 	createLiveBoostTestHost,
 	TEST_CONTROL_REFERENCE,
@@ -62,7 +62,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		["enabled", false],
 	] as const)("fails closed on external Boost config mismatch %s", async (field, value) => {
 		const host = await createLiveBoostTestHost({
-			control: { [field]: value } as Partial<ExternalBoostConfigRecord>,
+			control: { [field]: value } as Partial<LiveBoostControlRecord>,
 		});
 
 		expect(await reserve(host)).toEqual({
@@ -111,6 +111,11 @@ describe("T-843 host-injected live boost runtime", () => {
 			value: { activationGeneration: 1, outcome: "visible" },
 		});
 		expect(host.control.resolveCount).toBe(2);
+		expect(host.dispatchRequests[0]?.model).toEqual({
+			provider: "provider-test",
+			id: "model-test",
+			family: "sol-ultra",
+		});
 		expect(host.store.snapshot().leases).toEqual([]);
 		expect(host.events.indexOf("baseline-restore")).toBeLessThan(
 			host.events.indexOf("redacted-audit"),

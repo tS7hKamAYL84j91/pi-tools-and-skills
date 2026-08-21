@@ -29,6 +29,7 @@ const IO_LIB_FILES = new Set([
 	"coas-schedule-target.ts",
 	"coas-types.ts",
 	"confined-store.ts",
+	"declarative-discovery.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
 	"gate-command.ts",

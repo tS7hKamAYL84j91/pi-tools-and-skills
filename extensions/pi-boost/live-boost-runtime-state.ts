@@ -9,17 +9,24 @@ import type {
 } from "./live-boost-bridge-contract.js";
 import { ProcessWideKeyedMutex } from "./process-wide-mutex.js";
 import type {
-	ExternalBoostConfigReference,
-	ExternalBoostConfigSubscription,
-} from "./external-boost-config-contract.js";
+	LiveBoostControlReference,
+	LiveBoostControlSubscription,
+} from "./live-boost-control-contract.js";
+import type {
+	BoostDescriptorResolution,
+	ResolvedBoostThinking,
+	ReviewedBoostModel,
+} from "./boost-descriptor.js";
 
 export interface RuntimeBoostLease {
 	readonly key: DaemonBoostLeaseKey;
 	readonly issuerId: string;
 	readonly requestedYields: number;
 	readonly expiresAt: number;
-	readonly control: ExternalBoostConfigReference;
-	readonly subscription: ExternalBoostConfigSubscription;
+	readonly control: LiveBoostControlReference;
+	readonly descriptor: BoostDescriptorResolution;
+	readonly thinking: ResolvedBoostThinking;
+	readonly subscription: LiveBoostControlSubscription;
 }
 
 export interface ActiveBoostDispatch {
@@ -36,6 +43,7 @@ export class LiveBoostRuntimeState {
 	private readonly leases = new Map<string, RuntimeBoostLease>();
 	private readonly active = new Map<string, ActiveBoostDispatch>();
 	private readonly failClosedSubjects = new Set<string>();
+	private readonly disposedLeases = new Set<string>();
 	private readonly lifecycleMutex = new ProcessWideKeyedMutex();
 
 	addLease(lease: RuntimeBoostLease): void {
@@ -59,6 +67,8 @@ export class LiveBoostRuntimeState {
 		lease: RuntimeBoostLease,
 		generation: number,
 		input: LiveBoostDispatchInput,
+		model: ReviewedBoostModel,
+		thinking: ResolvedBoostThinking,
 	): ActiveBoostDispatch {
 		const controller = new AbortController();
 		let complete = (_result: LiveBoostResult<LiveBoostTerminalEvent>): void =>
@@ -72,6 +82,8 @@ export class LiveBoostRuntimeState {
 			.dispatch(
 				{
 					enablementId: lease.key.enablementId,
+					model,
+					thinkingLevel: thinking.thinkingLevel,
 					subjectId: lease.key.subjectId,
 					leaseId: lease.key.leaseId,
 					activationGeneration: generation,
@@ -125,6 +137,14 @@ export class LiveBoostRuntimeState {
 
 	isFailClosed(subjectId: string): boolean {
 		return this.failClosedSubjects.has(subjectId);
+	}
+
+	async disposeOnce(lease: RuntimeBoostLease, dispose: (subjectId: string) => Promise<void>): Promise<void> {
+		if (this.disposedLeases.has(lease.key.leaseId)) {
+			return;
+		}
+		await dispose(lease.key.subjectId);
+		this.disposedLeases.add(lease.key.leaseId);
 	}
 
 	async withLeaseLock(

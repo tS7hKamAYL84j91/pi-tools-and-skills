@@ -10,9 +10,16 @@ import type {
 } from "./boost/contracts.js";
 import type { DaemonBoostControlStore } from "./daemon-boost-control-store.js";
 import type {
-	ExternalBoostConfigAdapter,
-	ExternalBoostConfigReference,
-} from "./external-boost-config-contract.js";
+	LiveBoostControlAdapter,
+	LiveBoostControlReference,
+} from "./live-boost-control-contract.js";
+import type { BoostDescriptorAdapter } from "./boost-descriptor-adapter.js";
+import type {
+	BoostThinkingLevel,
+	ReviewedBoostModel,
+	ReviewedBoostModelResolver,
+	ReviewedBoostThinkingPolicyResolver,
+} from "./boost-descriptor.js";
 
 export type LiveBoostDenialReason =
 	| "unauthorized"
@@ -38,14 +45,14 @@ export interface LiveBoostReserveInput {
 	readonly caller: BoostActor;
 	readonly subject: BoostSubject;
 	readonly request: BoostRequest;
-	readonly control: ExternalBoostConfigReference;
+	readonly control: LiveBoostControlReference;
 }
 
 export interface LiveBoostDispatchInput {
 	readonly caller: BoostActor;
 	readonly subjectId: string;
 	readonly leaseId: string;
-	readonly control: ExternalBoostConfigReference;
+	readonly control: LiveBoostControlReference;
 	readonly combinedInput: string;
 	readonly isolation: BoostIsolationMode;
 }
@@ -53,7 +60,7 @@ export interface LiveBoostDispatchInput {
 export interface LiveBoostResetInput {
 	readonly caller: BoostActor;
 	readonly subjectId: string;
-	readonly control: ExternalBoostConfigReference;
+	readonly control: LiveBoostControlReference;
 }
 
 export interface LiveBoostLeaseStatus {
@@ -67,6 +74,8 @@ export interface LiveBoostLeaseStatus {
 
 export interface LiveBoostProviderRequest {
 	readonly enablementId: string;
+	readonly model: ReviewedBoostModel;
+	readonly thinkingLevel: BoostThinkingLevel;
 	readonly subjectId: string;
 	readonly leaseId: string;
 	readonly activationGeneration: number;
@@ -98,7 +107,10 @@ export interface LiveBoostAuditRecord {
 
 export interface LiveBoostRuntimeDependencies {
 	readonly store: DaemonBoostControlStore;
-	readonly control: ExternalBoostConfigAdapter;
+	readonly control: LiveBoostControlAdapter;
+	readonly descriptor: BoostDescriptorAdapter;
+	readonly models: ReviewedBoostModelResolver;
+	readonly thinkingPolicy: ReviewedBoostThinkingPolicyResolver;
 	readonly now: () => number;
 	readonly nextLeaseId: () => string;
 	readonly governance: {
@@ -112,6 +124,9 @@ export interface LiveBoostRuntimeDependencies {
 	};
 	readonly baseline: {
 		restore(subjectId: string): Promise<void>;
+	};
+	readonly isolation: {
+		dispose(subjectId: string): Promise<void>;
 	};
 	readonly audit: {
 		append(record: LiveBoostAuditRecord): Promise<void>;

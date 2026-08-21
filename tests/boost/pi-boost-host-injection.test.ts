@@ -80,7 +80,7 @@ describe("T-843 host injection boundary", () => {
 
 	it("keeps external config read-only and exposes no default/scheduler or credential seam", () => {
 		const controlSource = readFileSync(
-			"extensions/pi-boost/external-boost-config-contract.ts",
+			"extensions/pi-boost/live-boost-control-contract.ts",
 			"utf8",
 		);
 		const runtimeSource = readFileSync(

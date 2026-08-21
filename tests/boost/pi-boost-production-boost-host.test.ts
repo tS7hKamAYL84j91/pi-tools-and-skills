@@ -14,12 +14,11 @@ import {
 	createProductionBoostHost,
 	type ProductionBoostHostInput,
 } from "../../extensions/pi-boost/production-boost-host.js";
-import type { ExternalBoostConfigRecordSource } from "../../extensions/pi-boost/external-boost-config-adapter.js";
-import {
-	EXTERNAL_BOOST_TEAM_ID,
-	type ExternalBoostConfigRecord,
-	type ExternalBoostConfigRevision,
-} from "../../extensions/pi-boost/external-boost-config-contract.js";
+import type { LiveBoostControlRecordSource } from "../../extensions/pi-boost/live-boost-control-adapter.js";
+import type {
+		LiveBoostControlRecord,
+	LiveBoostControlRevision,
+} from "../../extensions/pi-boost/live-boost-control-contract.js";
 import { getReviewedBoostContractIdentity } from "../../extensions/pi-boost/reviewed-boost-host.js";
 
 interface CommandDefinition {
@@ -58,12 +57,9 @@ class MemoryWal implements DaemonBoostWal {
 }
 
 function record(
-	overrides: Partial<ExternalBoostConfigRecord> = {},
-): ExternalBoostConfigRecord {
+	overrides: Partial<LiveBoostControlRecord> = {},
+): LiveBoostControlRecord {
 	return {
-		schemaVersion: 1,
-		protocol: "boost",
-		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: "enablement-test",
 		principalIssuerId: "principal-test",
 		maximumYields: 1,
@@ -74,13 +70,13 @@ function record(
 	};
 }
 
-function createSource(value: ExternalBoostConfigRecord | undefined): {
-	readonly source: ExternalBoostConfigRecordSource;
+function createSource(value: LiveBoostControlRecord | undefined): {
+	readonly source: LiveBoostControlRecordSource;
 	readonly unsubscribes: { value: number };
-	emit(revision: ExternalBoostConfigRevision): Promise<void>;
+	emit(revision: LiveBoostControlRevision): Promise<void>;
 } {
 	const listeners = new Set<
-		(revision: ExternalBoostConfigRevision) => Promise<void>
+		(revision: LiveBoostControlRevision) => Promise<void>
 	>();
 	const unsubscribes = { value: 0 };
 	return {
@@ -105,7 +101,7 @@ function createSource(value: ExternalBoostConfigRecord | undefined): {
 	};
 }
 
-function createInput(control: ExternalBoostConfigRecord | undefined): {
+function createInput(control: LiveBoostControlRecord | undefined): {
 	readonly audit: LiveBoostAuditRecord[];
 	readonly baseline: ReturnType<typeof vi.fn>;
 	readonly input: ProductionBoostHostInput;
@@ -133,7 +129,6 @@ function createInput(control: ExternalBoostConfigRecord | undefined): {
 			contract: getReviewedBoostContractIdentity(),
 			control: {
 				reference: {
-					teamId: EXTERNAL_BOOST_TEAM_ID,
 					enablementId: "enablement-test",
 				},
 				source: source.source,
@@ -143,8 +138,22 @@ function createInput(control: ExternalBoostConfigRecord | undefined): {
 			now: () => 10_000,
 			nextLeaseId: () => "lease-test",
 			governance: { classify: async () => "public" },
+			descriptor: {
+				resolve: async () => ({
+					descriptor: {
+						schemaVersion: 1, enablementId: "enablement-test", principalIssuerId: "principal-test", enabled: true,
+						maximumYields: 1, expiresAt: 20_000, revision: 1,
+						model: { key: "principalBoostLease", provider: "provider-test", id: "model-test", family: "sol-ultra" },
+					}, fingerprint: "test", source: "builtin", path: "/test/boost.md",
+				}),
+			},
+			models: { resolve: (key) => key === "principalBoostLease"
+				? { provider: "provider-test", id: "model-test", family: "sol-ultra" }
+				: { provider: "baseline-test", id: "baseline-test", family: "glm-5.2" } },
+			thinkingPolicy: { resolve: () => ({ policyRevision: 1, defaultLevel: "medium", supportedLevels: ["low", "medium", "high"] }) },
 			provider: { dispatch: provider },
 			baseline: { restore: baseline },
+			isolation: { dispose: async () => undefined },
 			audit: {
 				append: async (entry) => {
 					audit.push(entry);

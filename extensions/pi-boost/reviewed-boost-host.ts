@@ -4,7 +4,6 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
 import { createBoostExtension } from "./index.js";
 import type { LiveBoostRuntimeBridge } from "./live-boost-bridge-contract.js";
-import { EXTERNAL_BOOST_TEAM_ID } from "./external-boost-config-contract.js";
 
 /** @public Source-relative contract identity validated before host construction. */
 export interface ReviewedBoostContractIdentity {
@@ -26,9 +25,9 @@ export interface ReviewedBoostHost {
 }
 
 export const REVIEWED_BOOST_CONTRACT_PATH =
-	"extensions/pi-boost/external-boost-config-contract.ts" as const;
+	"extensions/pi-boost/live-boost-control-contract.ts" as const;
 export const REVIEWED_BOOST_CONTRACT_SHA256 =
-	"b717e239d0e3e188c6764c5c016bbeb0d7c56d0df8bcbdb2a063ce61975bc089" as const;
+	"f212881bb8feca1f70e1254212830f194b321a47fb7655722346660110a90cf4" as const;
 
 /** Returns the immutable reviewed identity that a clean-cwd host must attest. */
 export function getReviewedBoostContractIdentity(): ReviewedBoostContractIdentity {
@@ -75,10 +74,7 @@ function validateReviewedContract(
 
 function validateLogicalReference(injection: LiveBoostHostInjection): void {
 	const reference = injection.control;
-	if (
-		reference.teamId !== EXTERNAL_BOOST_TEAM_ID ||
-		!isBoundedIdentifier(reference.enablementId)
-	) {
+	if (!isBoundedIdentifier(reference.enablementId)) {
 		throw new Error("Invalid reviewed boost control reference");
 	}
 }

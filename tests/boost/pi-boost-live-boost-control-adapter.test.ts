@@ -1,27 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-	createExternalBoostConfigAdapter,
-	type ExternalBoostConfigRecordSource,
-} from "../../extensions/pi-boost/external-boost-config-adapter.js";
-import {
-	EXTERNAL_BOOST_TEAM_ID,
-	type ExternalBoostConfigRecord,
-	type ExternalBoostConfigReference,
-	type ExternalBoostConfigRevision,
-} from "../../extensions/pi-boost/external-boost-config-contract.js";
+	createLiveBoostControlAdapter,
+	type LiveBoostControlRecordSource,
+} from "../../extensions/pi-boost/live-boost-control-adapter.js";
+import type {
+		LiveBoostControlRecord,
+	LiveBoostControlReference,
+	LiveBoostControlRevision,
+} from "../../extensions/pi-boost/live-boost-control-contract.js";
 
-const REFERENCE: ExternalBoostConfigReference = {
-	teamId: EXTERNAL_BOOST_TEAM_ID,
+const REFERENCE: LiveBoostControlReference = {
 	enablementId: "enablement-test",
 };
 
-function record(overrides: Record<string, unknown> = {}): ExternalBoostConfigRecord {
-	const canonical: ExternalBoostConfigRecord = {
-		schemaVersion: 1,
-		protocol: "boost",
-		teamId: EXTERNAL_BOOST_TEAM_ID,
-		enablementId: REFERENCE.enablementId,
+function record(overrides: Record<string, unknown> = {}): LiveBoostControlRecord {
+	const canonical: LiveBoostControlRecord = {
+			enablementId: REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
 		maximumYields: 3,
 		expiresAt: 20_000,
@@ -29,16 +24,16 @@ function record(overrides: Record<string, unknown> = {}): ExternalBoostConfigRec
 		enabled: true,
 	};
 	// Intentional malformed runtime record fixture for fail-closed validation.
-	return { ...canonical, ...overrides } as ExternalBoostConfigRecord;
+	return { ...canonical, ...overrides } as LiveBoostControlRecord;
 }
 
-function createSource(initial: ExternalBoostConfigRecord | undefined): {
-	readonly source: ExternalBoostConfigRecordSource;
+function createSource(initial: LiveBoostControlRecord | undefined): {
+	readonly source: LiveBoostControlRecordSource;
 	readonly calls: { resolve: number; unsubscribe: number };
-	emit(revision: ExternalBoostConfigRevision): Promise<void>;
+	emit(revision: LiveBoostControlRevision): Promise<void>;
 } {
 	const listeners = new Set<
-		(revision: ExternalBoostConfigRevision) => Promise<void>
+		(revision: LiveBoostControlRevision) => Promise<void>
 	>();
 	const calls = { resolve: 0, unsubscribe: 0 };
 	return {
@@ -66,11 +61,11 @@ function createSource(initial: ExternalBoostConfigRecord | undefined): {
 	};
 }
 
-function createAdapter(initial: ExternalBoostConfigRecord | undefined) {
+function createAdapter(initial: LiveBoostControlRecord | undefined) {
 	const fixture = createSource(initial);
 	return {
 		fixture,
-		adapter: createExternalBoostConfigAdapter(fixture.source, {
+		adapter: createLiveBoostControlAdapter(fixture.source, {
 			principalIssuerId: "principal-test",
 			now: () => 10_000,
 		}),
@@ -104,7 +99,7 @@ describe("external Boost config adapter", () => {
 		null,
 	])("fails closed for absent references before consulting the source", async (absent) => {
 		const { adapter, fixture } = createAdapter(record());
-		const malformed = absent as unknown as ExternalBoostConfigReference;
+		const malformed = absent as unknown as LiveBoostControlReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(adapter.subscribe(malformed, async () => undefined)).toBeUndefined();
@@ -116,7 +111,7 @@ describe("external Boost config adapter", () => {
 		const malformed = {
 			...REFERENCE,
 			enablementId: "invalid/value",
-		} as ExternalBoostConfigReference;
+		} as LiveBoostControlReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(adapter.subscribe(malformed, async () => undefined)).toBeUndefined();
@@ -128,14 +123,14 @@ describe("external Boost config adapter", () => {
 		const malformed = {
 			...REFERENCE,
 			teamId: 7,
-		} as unknown as ExternalBoostConfigReference;
+		} as unknown as LiveBoostControlReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
 	it("fails closed when the injected external Boost config source throws", async () => {
-		const source: ExternalBoostConfigRecordSource = {
+		const source: LiveBoostControlRecordSource = {
 			resolve: async () => {
 				throw new Error("external config unavailable");
 			},
@@ -143,7 +138,7 @@ describe("external Boost config adapter", () => {
 				throw new Error("external config unavailable");
 			},
 		};
-		const adapter = createExternalBoostConfigAdapter(source, {
+		const adapter = createLiveBoostControlAdapter(source, {
 			principalIssuerId: "principal-test",
 			now: () => 10_000,
 		});
@@ -154,7 +149,7 @@ describe("external Boost config adapter", () => {
 
 	it("filters mismatched and stale revisions with idempotent unsubscribe", async () => {
 		const { adapter, fixture } = createAdapter(record());
-		const delivered: ExternalBoostConfigRevision[] = [];
+		const delivered: LiveBoostControlRevision[] = [];
 		const subscription = adapter.subscribe(REFERENCE, async (revision) => {
 			delivered.push(revision);
 		});
@@ -207,7 +202,7 @@ describe("external Boost config adapter", () => {
 
 	it("exposes no provider, configuration, scheduler, or raw-control seam", () => {
 		const source = readFileSync(
-			"extensions/pi-boost/external-boost-config-adapter.ts",
+			"extensions/pi-boost/live-boost-control-adapter.ts",
 			"utf8",
 		);
 		expect(source).not.toMatch(

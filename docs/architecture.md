@@ -131,13 +131,30 @@ flowchart TD
   COAS -. task scheduling .-> Kanban
 ```
 
+### Declarative discovery boundary (ADR-047)
+
+```mermaid
+flowchart LR
+  Teams[pi-panopticon Teams] --> Discovery[lib/declarative-discovery]
+  Boost[pi-boost] --> Discovery
+  Discovery --> TeamFiles[Layered Team Markdown]
+  Discovery --> BoostFile[Fixed boost.md]
+  BoostFile --> Validate[Boost-only schema + fingerprint]
+  Validate --> Reviewed[Reviewed model binding]
+  Reviewed --> Lease[Lease runtime]
+  Live[Injected live control] --> Lease
+  Teams -. no dependency .-> Boost
+```
+
+`lib/declarative-discovery.ts` performs lexical root/path discovery only. Teams retain their parsers and registry; Boost selects one highest-layer fixed descriptor before validation, then requires a matching reviewed model and separate live-control gate.
+
 ### Extension roles
 
 | Extension | Scope | Primary role | State owner |
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
-| `pi-boost` | user/global | Principal-only bounded Boost lease with read-only external config and host-injected provider runtime | Injected WAL state and redacted audit; no Panopticon- or publisher-owned state |
+| `pi-boost` | user/global | Principal-only bounded Boost lease with declarative descriptor, reviewed model binding, and host-injected runtime | Injected WAL state and redacted audit; no Panopticon-owned state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
@@ -261,8 +278,8 @@ flowchart TD
   spawn, and agent-registry behavior. Current IO/runtime files: `agent-api.ts`,
   `agent-registry.ts`, `file-persistence.ts`, `pi-settings.ts`,
   `session-hook-installer*.ts`, `session-log.ts`, `session-source*.ts`,
-  `session-spool*.ts`, `spawn-events.ts`, `spawn-rpc.ts`, and
-  `spawn-service.ts`.
+  `session-spool*.ts`, `spawn-events.ts`, `spawn-rpc.ts`, `spawn-service.ts`,
+  and `declarative-discovery.ts` (lexical layered Markdown discovery).
 - Pure runtime mappers that do not touch IO may live beside runtime helpers when
   their data shape is runtime-specific; currently `session-journal.ts` is in
   this bucket.
@@ -453,9 +470,9 @@ flowchart LR
 
 ## Standalone Host-Injected Boost Runtime Boundary
 
-ADR-046 assigns Boost to `pi-boost`, not Panopticon, Q, or a team. Normal extension loading supplies no bridge and registers a fail-closed `/boost` denial. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, a copied read-only external-config reference, and a shutdown choice; there is no global, API cast, provider discovery, or configuration fallback.
+ADR-046/047 assign Boost to `pi-boost`, not Panopticon or a Team. Normal extension loading supplies no bridge and registers a fail-closed `/boost` denial. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, immutable live-control reference, descriptor resolver, and shutdown choice; there is no global, API cast, provider discovery, Team manifest, or configuration fallback.
 
-The default identity boundary requires `PI_PRINCIPAL=1` and rejects sessions carrying the shared parent-agent marker. The external config publisher has no authority or write surface inside `pi-boost`; Q may publish the Teams-shaped record later, but Boost owns validation and runtime policy.
+The default identity boundary requires `PI_PRINCIPAL=1` and rejects sessions carrying the shared parent-agent marker. ADR-047 gives Boost a fixed `boost.md` descriptor discovered through `lib/declarative-discovery.ts`; neither Panopticon nor a descriptor publisher has a write surface inside `pi-boost`. Boost owns validation and runtime policy.
 
 ```mermaid
 flowchart LR
@@ -463,24 +480,27 @@ flowchart LR
   Default[Normal extension load] -. no host capability .-> Deny[Fail-closed denial]
   Attestation[Contract path + SHA] --> Host[Reviewed host constructor]
   Host --> Command
-  Command --> Config[Read-only external config adapter]
+  Command --> Descriptor[Boost descriptor resolver]
+  Descriptor --> Discovery[lib declarative discovery]
+  Command --> LiveControl[Injected live-control gate]
   Command --> Governance[Per-dispatch governance]
   Command --> Store[WAL-backed global lease]
   Store --> TTL[Two-hour expiry / max three yields]
   Command --> Provider[Cancellable provider seam]
   Provider --> Restore[Baseline restore]
-  Config -->|revision / revoke / config expiry| Revoke[Abort → terminal ack → restore]
+  Descriptor -->|fingerprint/layer invalidation| Revoke[Abort → bounded terminal ack → restore → idempotent isolation disposal]
+  LiveControl -->|revision / revoke / expiry| Revoke
   TTL -->|lease expiry| Revoke
   Revoke --> Audit[Redacted audit + durable release]
 ```
 
-The external-config adapter exposes only `resolve` and `subscribe`. Its minimal Teams-shaped record carries schema/protocol, team and enablement IDs, Principal issuer, yield ceiling, expiry, revision, and enabled state—not credentials, provider configuration, model keys, signatures, or residency metadata. Every reservation and dispatch authenticates the Principal; every dispatch revalidates config and governance.
+The descriptor permits only its fixed schema: enablement and Principal issuer IDs, enabled state, bounded yields, expiry, revision, and the reviewed `principalBoostLease` model identity. The reviewed resolver must exactly match its provider/id/family; baseline remains `principalBoostBaseline`/`glm-5.2`. The separate injected live-control adapter exposes only `resolve` and `subscribe`, and can only narrow or revoke. Every reservation and dispatch authenticates the Principal and revalidates descriptor, fingerprint, reviewed mapping, live control, and governance.
 
-The production assembly accepts only injected config source, append-if-sequence WAL, governance classifier, cancellable provider seam, baseline restore, and redacted audit. Assembly is cold: it performs no provider call, external-config write, default-model mutation, schedule change, or background activation.
+The production assembly accepts descriptor discovery, injected live control, reviewed model resolver, append-if-sequence WAL, governance classifier, cancellable provider seam, baseline restore, idempotent isolation disposal, and redacted audit. Assembly is cold: it performs no provider call, descriptor write, default-model mutation, schedule change, or background activation.
 
 The store persists `expiresAt = reservation time + 7,200,000 ms`, enforces one global lease and at most three human yields, and rejects stale generations. At the next status, dispatch, or reservation boundary, an expired lease restores baseline, appends redacted audit, and durably releases the slot before replacement. Revision revocation follows `Revoking → abort → terminal acknowledgement → restore → audit → release`.
 
-Restore, audit, or cleanup failure writes a durable per-subject `RevertFailed` marker; other subjects remain dispatchable. Principal reset requires fresh external-config validation and baseline restoration. Shutdown chooses awaited restoration or a durable recovery block, and no activation survives restart.
+Restore, isolation disposal, audit, acknowledgement, or cleanup failure writes a durable per-subject `RevertFailed` marker and blocks dispatch for that subject. Principal reset requires fresh descriptor/live-control validation and baseline restoration. Shutdown chooses awaited restoration or a durable recovery block, and no activation survives restart.
 
 ## Panopticon Controls
 

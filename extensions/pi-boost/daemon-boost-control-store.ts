@@ -83,7 +83,10 @@ export class DaemonBoostControlStore {
 				subjectId: input.subjectId,
 				leaseId: input.leaseId,
 				requestedYields: input.requestedYields,
-				expiresAt: input.now + BOOST_LEASE_MAX_DURATION_MS,
+				expiresAt: Math.min(
+					input.now + BOOST_LEASE_MAX_DURATION_MS,
+					input.expiresAt ?? Number.POSITIVE_INFINITY,
+				),
 			};
 			const appendFailure = await this.state.append(record);
 			if (appendFailure) {

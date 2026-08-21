@@ -14,8 +14,9 @@ import type {
 	LiveBoostRuntimeState,
 	RuntimeBoostLease,
 } from "./live-boost-runtime-state.js";
-import type { ExternalBoostConfigRevision } from "./external-boost-config-contract.js";
+import type { LiveBoostControlRevision } from "./live-boost-control-contract.js";
 import { redactedBoostAuditId } from "./redacted-boost-audit.js";
+import { awaitTerminalAcknowledgement } from "./boost-terminal-acknowledgement.js";
 
 export class LiveBoostFinalizer {
 	constructor(
@@ -39,7 +40,7 @@ export class LiveBoostFinalizer {
 		return waitForRevocation ? active.completion : requireResult(result);
 	}
 
-	async handleRevision(revision: ExternalBoostConfigRevision): Promise<void> {
+	async handleRevision(revision: LiveBoostControlRevision): Promise<void> {
 		const targets = this.state
 			.allLeases()
 			.filter((lease) => lease.key.enablementId === revision.enablementId);
@@ -65,6 +66,7 @@ export class LiveBoostFinalizer {
 	async releaseReserved(lease: RuntimeBoostLease): Promise<void> {
 		try {
 			await this.dependencies.baseline.restore(lease.key.subjectId);
+			await this.state.disposeOnce(lease, this.dependencies.isolation.dispose);
 			await this.dependencies.audit.append(
 				auditRecord(this.dependencies.now(), lease, "revoked"),
 			);
@@ -104,7 +106,6 @@ export class LiveBoostFinalizer {
 			this.state.removeLease(lease);
 		}
 	}
-
 	private async finalizeTerminal(
 		active: ActiveBoostDispatch,
 		terminal: LiveBoostTerminalEvent,
@@ -129,6 +130,7 @@ export class LiveBoostFinalizer {
 		}
 		try {
 			await this.dependencies.baseline.restore(active.lease.key.subjectId);
+			await this.state.disposeOnce(active.lease, this.dependencies.isolation.dispose);
 		} catch {
 			return this.failReversion(active, "restore-failed");
 		}
@@ -154,7 +156,6 @@ export class LiveBoostFinalizer {
 		}
 		return this.finish(active, { ok: true, value: terminal });
 	}
-
 	private async revokeActive(
 		active: ActiveBoostDispatch,
 		reason: Exclude<LiveBoostDenialReason, "unauthorized">,
@@ -180,7 +181,15 @@ export class LiveBoostFinalizer {
 		if (!revokeMarked) {
 			return;
 		}
-		const terminal = await active.terminal;
+		let terminal: LiveBoostTerminalEvent;
+		try {
+			terminal = await awaitTerminalAcknowledgement(active.terminal);
+		} catch {
+			await this.state.withLeaseLock(active.lease.key.leaseId, async () => {
+				await this.failReversion(active, "cleanup-failed");
+			});
+			return;
+		}
 		await this.state.withLeaseLock(active.lease.key.leaseId, async () => {
 			const restored = await this.restoreAuditRelease(
 				active,
@@ -193,7 +202,6 @@ export class LiveBoostFinalizer {
 			});
 		});
 	}
-
 	private async restoreAuditRelease(
 		active: ActiveBoostDispatch,
 		outcome: BoostTerminalOutcome,
@@ -201,6 +209,7 @@ export class LiveBoostFinalizer {
 	): Promise<boolean> {
 		try {
 			await this.dependencies.baseline.restore(active.lease.key.subjectId);
+			await this.state.disposeOnce(active.lease, this.dependencies.isolation.dispose);
 			await this.appendTerminalAudit(active, outcome, phase);
 			const released = await this.dependencies.store.release(active.lease.key);
 			if (!released.ok) {
@@ -213,7 +222,6 @@ export class LiveBoostFinalizer {
 			return false;
 		}
 	}
-
 	private async failReversion(
 		active: ActiveBoostDispatch,
 		category: DaemonBoostBlockedCategory,
@@ -231,7 +239,6 @@ export class LiveBoostFinalizer {
 		this.state.removeLease(active.lease);
 		return this.finish(active, { ok: false, reason: "revert-failed" });
 	}
-
 	private async blockSubject(
 		lease: RuntimeBoostLease,
 		category: DaemonBoostBlockedCategory,
@@ -246,7 +253,6 @@ export class LiveBoostFinalizer {
 		}
 		// The in-memory marker denies new work until the durable host recovers.
 	}
-
 	private async appendTerminalAudit(
 		active: ActiveBoostDispatch,
 		outcome: BoostTerminalOutcome,
@@ -267,7 +273,6 @@ export class LiveBoostFinalizer {
 		return result;
 	}
 }
-
 function auditRecord(
 	timestamp: number,
 	lease: RuntimeBoostLease,
@@ -281,7 +286,6 @@ function auditRecord(
 		leaseId: redactedBoostAuditId("lease", lease.key.leaseId),
 	};
 }
-
 function requireResult<T>(
 	result: LiveBoostResult<T> | undefined,
 ): LiveBoostResult<T> {

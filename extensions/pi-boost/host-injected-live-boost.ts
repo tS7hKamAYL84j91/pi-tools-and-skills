@@ -1,6 +1,5 @@
 /** Deterministic host-owned implementation of the injected live boost bridge. */
 
-import type { DaemonBoostLeaseSnapshot } from "./daemon-boost-control-store.js";
 import type {
 	LiveBoostDenialReason,
 	LiveBoostDispatchInput,
@@ -14,9 +13,17 @@ import type {
 } from "./live-boost-bridge-contract.js";
 import { LiveBoostFinalizer } from "./live-boost-finalizer.js";
 import { LiveBoostRuntimeState } from "./live-boost-runtime-state.js";
-import type { ExternalBoostConfigReference } from "./external-boost-config-contract.js";
-import { validateExternalBoostConfig } from "./external-boost-config-contract.js";
+import { validateLiveBoostControl } from "./live-boost-control-contract.js";
+import { resolveBoostThinking } from "./boost-descriptor.js";
+import { resolveCurrentBoostDescriptor } from "./boost-descriptor-gate.js";
 import { redactedBoostAuditId } from "./redacted-boost-audit.js";
+import {
+	isPrincipal,
+	liveBoostStatus,
+	mapLiveBoostStoreReason,
+	resolveSelectedModel,
+	sameControl,
+} from "./live-boost-runtime-helpers.js";
 
 export type {
 	LiveBoostAuditRecord,
@@ -40,14 +47,20 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			return { ok: false, reason: "unauthorized" };
 		}
 		await this.releaseExpiredLeases();
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: input.request.requestedYields });
+		if (!descriptor) {
+			return { ok: false, reason: "control-invalid" };
+		}
+		const thinking = resolveBoostThinking(descriptor.descriptor, this.dependencies.thinkingPolicy);
+		if (!thinking) {
+			return { ok: false, reason: "control-invalid" };
+		}
 		const record = await this.dependencies.control.resolve(input.control);
-		if (
-			!validateExternalBoostConfig(input.control, record, {
-				issuerId: input.caller.issuerId,
-				requestedYields: input.request.requestedYields,
-				now: this.dependencies.now(),
-			})
-		) {
+		if (!validateLiveBoostControl(input.control, record, {
+			issuerId: input.caller.issuerId,
+			requestedYields: input.request.requestedYields,
+			now: this.dependencies.now(),
+		})) {
 			return { ok: false, reason: "control-invalid" };
 		}
 		const subscription = this.dependencies.control.subscribe(
@@ -63,7 +76,8 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			subjectId: input.subject.subjectId,
 			leaseId,
 			requestedYields: input.request.requestedYields,
-			externalYieldCeiling: record.maximumYields,
+			externalYieldCeiling: Math.min(record.maximumYields, descriptor.descriptor.maximumYields),
+			expiresAt: Math.min(record.expiresAt, descriptor.descriptor.expiresAt),
 			now: this.dependencies.now(),
 		});
 		if (!reserved.ok) {
@@ -86,9 +100,11 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			requestedYields: input.request.requestedYields,
 			expiresAt: reserved.value.expiresAt,
 			control: input.control,
+			descriptor,
+			thinking,
 			subscription,
 		});
-		return { ok: true, value: status(reserved.value) };
+		return { ok: true, value: liveBoostStatus(reserved.value) };
 	}
 
 	async dispatch(
@@ -114,14 +130,14 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			await this.finalizer.expireLease(lease);
 			return { ok: false, reason: "expired" };
 		}
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: lease.requestedYields });
 		const record = await this.dependencies.control.resolve(input.control);
-		if (
-			!validateExternalBoostConfig(input.control, record, {
+		if (!descriptor || descriptor.fingerprint !== lease.descriptor.fingerprint ||
+			!validateLiveBoostControl(input.control, record, {
 				issuerId: input.caller.issuerId,
 				requestedYields: lease.requestedYields,
 				now: this.dependencies.now(),
-			})
-		) {
+			})) {
 			const reason: LiveBoostDenialReason =
 				record && record.expiresAt <= this.dependencies.now()
 					? "expired"
@@ -142,15 +158,28 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			await this.finalizer.releaseReserved(lease);
 			return { ok: false, reason: "governance-denied" };
 		}
+		const thinking = resolveBoostThinking(descriptor.descriptor, this.dependencies.thinkingPolicy);
+		if (!thinking || thinking.policyRevision !== lease.thinking.policyRevision ||
+			thinking.thinkingLevel !== lease.thinking.thinkingLevel) {
+			await this.finalizer.releaseReserved(lease);
+			return { ok: false, reason: "control-invalid" };
+		}
+		const model = resolveSelectedModel(this.dependencies.models, descriptor);
+		if (!model) {
+			await this.finalizer.releaseReserved(lease);
+			return { ok: false, reason: "control-invalid" };
+		}
 		const activated = await this.dependencies.store.activate(lease.key);
 		if (!activated.ok) {
-			return { ok: false, reason: mapStoreReason(activated.reason) };
+			return { ok: false, reason: mapLiveBoostStoreReason(activated.reason) };
 		}
 		const active = this.state.startProviderDispatch(
 			this.dependencies,
 			lease,
 			activated.value.generation,
 			input,
+			model,
+			thinking,
 		);
 		return this.finalizer.finalizeAfterProvider(active, await active.terminal);
 	}
@@ -161,14 +190,13 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		if (!isPrincipal(input.caller)) {
 			return { ok: false, reason: "unauthorized" };
 		}
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: 1 });
 		const record = await this.dependencies.control.resolve(input.control);
-		if (
-			!validateExternalBoostConfig(input.control, record, {
-				issuerId: input.caller.issuerId,
-				requestedYields: 1,
-				now: this.dependencies.now(),
-			})
-		) {
+		if (!descriptor || !validateLiveBoostControl(input.control, record, {
+			issuerId: input.caller.issuerId,
+			requestedYields: 1,
+			now: this.dependencies.now(),
+		})) {
 			return { ok: false, reason: "control-invalid" };
 		}
 		try {
@@ -222,7 +250,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			.snapshot()
 			.leases.find((candidate) => candidate.leaseId === lease.key.leaseId);
 		return snapshot
-			? { ok: true as const, value: status(snapshot) }
+			? { ok: true as const, value: liveBoostStatus(snapshot) }
 			: { ok: true as const, value: { state: "Idle" as const } };
 	}
 
@@ -253,42 +281,4 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			!this.dependencies.store.checkDispatch(subjectId).allowed
 		);
 	}
-}
-
-function isPrincipal(actor: {
-	readonly kind: string;
-	readonly issuerId: string;
-}): boolean {
-	return actor.kind === "principal" && actor.issuerId.length > 0;
-}
-
-function sameControl(
-	left: ExternalBoostConfigReference,
-	right: ExternalBoostConfigReference,
-): boolean {
-	return (
-		left.teamId === right.teamId &&
-		left.enablementId === right.enablementId
-	);
-}
-
-function status(lease: DaemonBoostLeaseSnapshot): LiveBoostLeaseStatus {
-	return {
-		state: "Reserved",
-		leaseId: lease.leaseId,
-		requestedYields: lease.requestedYields,
-		consumedYields: lease.consumedYields,
-		remainingYields: lease.requestedYields - lease.consumedYields,
-		expiresAt: lease.expiresAt,
-	};
-}
-
-function mapStoreReason(reason: string): LiveBoostDenialReason {
-	if (reason === "stale-activation") {
-		return "stale-activation";
-	}
-	if (reason === "blocked-subject") {
-		return "revert-failed";
-	}
-	return reason === "lease-not-found" ? "lease-not-found" : "budget-denied";
 }

@@ -18,3 +18,4 @@ import "./architecture/clean-code.js";
 import "./architecture/hotspots.js";
 import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";
+import "./architecture/adr047-shared-discovery.js";

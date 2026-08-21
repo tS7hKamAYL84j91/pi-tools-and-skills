@@ -6,7 +6,7 @@ import type {
 	LiveBoostResult,
 	LiveBoostRuntimeBridge,
 } from "../live-boost-bridge-contract.js";
-import type { ExternalBoostConfigReference } from "../external-boost-config-contract.js";
+import type { LiveBoostControlReference } from "../live-boost-control-contract.js";
 import type { BoostIdentitySource } from "./identity-source.js";
 import type {
 	BoostCommandDeps,
@@ -23,7 +23,7 @@ import { parseBoostCommand } from "./parser.js";
 
 export interface LiveBoostHostInjection {
 	readonly bridge: LiveBoostRuntimeBridge;
-	readonly control: ExternalBoostConfigReference;
+	readonly control: LiveBoostControlReference;
 	readonly shutdownChoice: "synchronous-restore" | "durable-block-marker";
 }
 
@@ -48,7 +48,7 @@ export function createUnavailableBoostCommandDeps(
 	};
 }
 
-/** Adapt only the injected bridge and immutable external-config reference. */
+/** Adapt only the injected bridge and immutable live-control reference. */
 export function createHostBoostCommandDeps(
 	identitySource: BoostIdentitySource,
 	injection: LiveBoostHostInjection,

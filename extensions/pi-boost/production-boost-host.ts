@@ -7,16 +7,21 @@ import {
 	type DaemonBoostWal,
 } from "./daemon-boost-control-store.js";
 import { HostInjectedLiveBoostRuntime } from "./host-injected-live-boost.js";
+import { createBoostDescriptorAdapter, type BoostDescriptorAdapter } from "./boost-descriptor-adapter.js";
+import type {
+	ReviewedBoostModelResolver,
+	ReviewedBoostThinkingPolicyResolver,
+} from "./boost-descriptor.js";
 import type {
 	LiveBoostAuditRecord,
 	LiveBoostProviderRequest,
 	LiveBoostTerminalEvent,
 } from "./live-boost-bridge-contract.js";
 import {
-	createExternalBoostConfigAdapter,
-	type ExternalBoostConfigRecordSource,
-} from "./external-boost-config-adapter.js";
-import type { ExternalBoostConfigReference } from "./external-boost-config-contract.js";
+	createLiveBoostControlAdapter,
+	type LiveBoostControlRecordSource,
+} from "./live-boost-control-adapter.js";
+import type { LiveBoostControlReference } from "./live-boost-control-contract.js";
 import {
 	createReviewedBoostHost,
 	type ReviewedBoostContractIdentity,
@@ -27,10 +32,13 @@ import {
 export interface ProductionBoostHostInput {
 	readonly contract: ReviewedBoostContractIdentity;
 	readonly control: {
-		readonly reference: ExternalBoostConfigReference;
-		readonly source: ExternalBoostConfigRecordSource;
+		readonly reference: LiveBoostControlReference;
+		readonly source: LiveBoostControlRecordSource;
 		readonly principalIssuerId: string;
 	};
+	readonly descriptor?: BoostDescriptorAdapter;
+	readonly models: ReviewedBoostModelResolver;
+	readonly thinkingPolicy: ReviewedBoostThinkingPolicyResolver;
 	readonly wal: DaemonBoostWal;
 	readonly now: () => number;
 	readonly nextLeaseId: () => string;
@@ -46,6 +54,9 @@ export interface ProductionBoostHostInput {
 	readonly baseline: {
 		restore(subjectId: string): Promise<void>;
 	};
+	readonly isolation: {
+		dispose(subjectId: string): Promise<void>;
+	};
 	readonly audit: {
 		append(record: LiveBoostAuditRecord): Promise<void>;
 	};
@@ -56,7 +67,7 @@ export interface ProductionBoostHostInput {
 export async function createProductionBoostHost(
 	input: ProductionBoostHostInput,
 ): Promise<ReviewedBoostHost> {
-	const control = createExternalBoostConfigAdapter(input.control.source, {
+	const control = createLiveBoostControlAdapter(input.control.source, {
 		principalIssuerId: input.control.principalIssuerId,
 		now: input.now,
 	});
@@ -64,11 +75,15 @@ export async function createProductionBoostHost(
 	const bridge = new HostInjectedLiveBoostRuntime({
 		store,
 		control,
+		descriptor: input.descriptor ?? createBoostDescriptorAdapter({ now: input.now }),
+		models: input.models,
+		thinkingPolicy: input.thinkingPolicy,
 		now: input.now,
 		nextLeaseId: input.nextLeaseId,
 		governance: input.governance,
 		provider: input.provider,
 		baseline: input.baseline,
+		isolation: input.isolation,
 		audit: input.audit,
 	});
 	return createReviewedBoostHost({

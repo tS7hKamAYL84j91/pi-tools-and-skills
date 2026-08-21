@@ -9,7 +9,6 @@ import { PANOPTICON_PARENT_ID_ENV } from "../../lib/agent-registry.js";
 import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/runtime-adapter.js";
 import defaultBoostExtension from "../../extensions/pi-boost/index.js";
 import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
-import { EXTERNAL_BOOST_TEAM_ID } from "../../extensions/pi-boost/external-boost-config-contract.js";
 import {
 	createReviewedBoostHost,
 	getReviewedBoostContractIdentity,
@@ -51,7 +50,6 @@ function createInjection(): LiveBoostHostInjection {
 	return {
 		bridge: createDisabledBridge(),
 		control: {
-			teamId: EXTERNAL_BOOST_TEAM_ID,
 			enablementId: "enablement-test",
 		},
 		shutdownChoice: "synchronous-restore",

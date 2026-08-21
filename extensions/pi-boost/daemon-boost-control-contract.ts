@@ -83,6 +83,8 @@ export interface DaemonBoostWal {
 export interface DaemonBoostReserveInput extends DaemonBoostLeaseKey {
 	readonly requestedYields: number;
 	readonly externalYieldCeiling: number;
+	/** Optional narrower descriptor/live-control expiry; WAL format remains unchanged. */
+	readonly expiresAt?: number;
 	readonly now: number;
 }
 
