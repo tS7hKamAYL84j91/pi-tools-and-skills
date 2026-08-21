@@ -14,13 +14,7 @@ import {
 import { requireGoal } from "./goal-helpers.js";
 import { renderGoalSummary } from "./goal-render.js";
 import type { GoalState } from "./goal-types.js";
-
-export interface GoalRuntime {
-	resolve: ((messages: readonly unknown[]) => void) | null;
-	stopRequested: boolean;
-	pendingMarker: string | null;
-	cancelledMarkers: Set<string>;
-}
+import type { GoalRuntime } from "./goal-runtime.js";
 
 export function registerGoalTools(
 	pi: ExtensionAPI,
