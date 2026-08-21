@@ -18,7 +18,7 @@ describe("team session mode", () => {
 
 	it("rejects unsafe fanout and unknown topology", () => {
 		expect(() => parseTeamModeArgs("on --max-models 6")).toThrow(/1 to 5/);
-		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/fusion-analysis/);
+		expect(() => parseTeamModeArgs("on --topology unknown")).toThrow(/llm-council/);
 		expect(() => parseTeamModeArgs("on --profile instant")).toThrow(/fast, balanced, or thorough/);
 	});
 
@@ -40,7 +40,7 @@ describe("team session mode", () => {
 	it("builds auto-mode prompt", () => {
 		const prompt = buildAutoModePrompt("Compare options", {
 			state: "auto",
-			topology: "fusion-analysis",
+			topology: "navigator",
 			maxModels: 2,
 			approved: true,
 		});
@@ -67,7 +67,7 @@ describe("team session mode", () => {
 });
 
 describe("applyParsedCommand", () => {
-	const base = { state: "off" as const, topology: "fusion-analysis" as const, maxModels: 2, approved: false };
+	const base = { state: "off" as const, topology: "llm-council" as const, maxModels: 2, approved: false };
 
 	it("sets mode for on/auto/off/once and leaves status unchanged", () => {
 		expect(applyParsedCommand(base, { action: "on" })).toMatchObject({ state: "on" });
@@ -90,7 +90,7 @@ describe("applyParsedCommand", () => {
 	it("stores inline prompt in state", () => {
 		expect(applyParsedCommand(base, { action: "once", prompt: "Refactor this?" })).toEqual({
 			state: "once",
-			topology: "fusion-analysis",
+			topology: "llm-council",
 			maxModels: 2,
 			approved: false,
 			prompt: "Refactor this?",
@@ -111,11 +111,6 @@ describe("estimatedCallDescription", () => {
 
 	it("reports debate shape for llm-council", () => {
 		expect(estimatedCallDescription({ state: "on", topology: "llm-council", maxModels: 3, approved: true })).toBe("members + critiques + synthesis (debate; multiple calls)");
-	});
-
-	it("reports panel + judge direct-answer delivery for fusion-analysis, capped at the override", () => {
-		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 2, approved: true })).toBe("2 panel + judge (direct answer with structured diagnostics)");
-		expect(estimatedCallDescription({ state: "on", topology: "fusion-analysis", maxModels: 5, approved: true })).toBe("3 panel + judge (direct answer with structured diagnostics)");
 	});
 });
 
@@ -203,41 +198,27 @@ describe("buildTeamContext", () => {
 });
 
 describe("formatTeamModeResult / formatTeamModeError", () => {
-	it("surfaces a valid Fusion judge answer instead of raw JSON", () => {
-		const body = JSON.stringify({ answer: "Ship the focused fix.", consensus: ["fix"], confidence: "high" });
-		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, body);
-		expect(out).toContain('[Team "fusion-analysis" result — status: ok · calls: 2]');
-		expect(out).toContain("Ship the focused fix.");
-		expect(out).not.toContain('"consensus"');
-		expect(out).not.toContain("Degraded run");
-	});
-
-	it("preserves malformed Fusion JSON as a diagnostic fallback", () => {
-		const out = formatTeamModeResult("fusion-analysis", { nodes: [{ ok: true }, { ok: true }] }, "not json");
-		expect(out).toContain("not json");
-	});
-
-	it("preserves degraded Fusion fallback diagnostics when no answer is available", () => {
-		const body = JSON.stringify({ answer: "", blindSpots: ["judge returned invalid JSON"] });
-		const out = formatTeamModeResult("fusion-analysis", { failureReason: "invalid_judge_json", degraded: true, nodes: [{ ok: false }] }, body);
-		expect(out).toContain('"blindSpots"');
-		expect(out).toContain("Degraded run");
-	});
-
 	it("keeps Navigator results direct and unchanged", () => {
 		const out = formatTeamModeResult("navigator", { nodes: [{ ok: true }] }, "Fix the timeout guard.");
 		expect(out).toContain("Fix the timeout guard.");
 		expect(out).not.toContain("Degraded run");
 	});
 
+	it("formats a successful council result", () => {
+		const out = formatTeamModeResult("llm-council", { nodes: [{ ok: true }, { ok: true }] }, "Synthesized council response.");
+		expect(out).toContain('[Team "llm-council" result — status: ok · calls: 2]');
+		expect(out).toContain("Synthesized council response.");
+		expect(out).not.toContain("Degraded run");
+	});
+
 	it("formats a partial result with failed count and degraded hint", () => {
-		const out = formatTeamModeResult("fusion-analysis", { degraded: true, nodes: [{ ok: true }, { ok: false }] }, "analysis text");
+		const out = formatTeamModeResult("llm-council", { degraded: true, nodes: [{ ok: true }, { ok: false }] }, "analysis text");
 		expect(out).toContain('status: partial · calls: 2 · failed: 1');
 		expect(out).toContain('Ask for "trace" for per-model details.');
 	});
 
 	it("formats a failed result", () => {
-		const out = formatTeamModeResult("fusion-analysis", { failureReason: "all_panels_failed", nodes: [] }, "");
+		const out = formatTeamModeResult("llm-council", { failureReason: "all_nodes_failed", nodes: [] }, "");
 		expect(out).toContain('status: failed · calls: 0');
 	});
 

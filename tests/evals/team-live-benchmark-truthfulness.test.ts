@@ -1,10 +1,10 @@
 /**
  * Deterministic tests for the live team benchmark truthfulness helpers.
  *
- * These tests cover the failure modes observed on 2026-07-12:
- *   - schema-valid degraded fallback was counted as a valid judge result
+ * These tests cover the failure modes observed during live benchmarks:
  *   - Codex `Unsupported parameter: max_output_tokens` was not categorized
  *   - per-role/model node success was not reported
+ *   - degraded status is identified correctly
  *
  * No live provider calls are made. Only pure helpers are exercised.
  */
@@ -12,39 +12,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	categorizeError,
-	fusionSchemaValid,
 	isDegraded,
-	judgeNode,
 	resultIsValid,
 	summarize,
 	summarizeSchema,
 } from "../../scripts/team-live-benchmark-helpers.mjs";
-
-function validFusionSummary() {
-	return JSON.stringify({
-		answer: "The change is correct and bounded.",
-		confidence: "high",
-		consensus: ["bounded scope"],
-		contradictions: [],
-		partialCoverage: [],
-		uniqueInsights: ["test coverage is adequate"],
-		blindSpots: [],
-		missingEvidence: [],
-	});
-}
-
-function degradedFallbackSummary() {
-	return JSON.stringify({
-		answer: "Fusion judge validation failed; review the degraded diagnostics before acting.",
-		confidence: "low",
-		consensus: [],
-		contradictions: [],
-		partialCoverage: [],
-		uniqueInsights: [],
-		blindSpots: ["judge returned invalid JSON"],
-		missingEvidence: ["judge analysis unavailable"],
-	});
-}
 
 function node(role: string, model: string, ok: boolean, error?: string) {
 	return {
@@ -73,41 +45,36 @@ describe("team-live-benchmark truthfulness", () => {
 		expect(categorizeError("something unexpected happened")).toBe("unknown");
 	});
 
-	it("treats schema-valid non-degraded fusion as valid", () => {
-		const nodes = [
-			node("panel_1", "provider-a/model-a", true),
-			node("panel_2", "provider-b/model-b", true),
-			node("judge", "provider-a/model-a", true),
-		];
-		const completedEvent = { summary: validFusionSummary() };
-		expect(resultIsValid("fusion-analysis", completedEvent)).toBe(true);
-		expect(isDegraded("fusion-analysis", nodes, completedEvent)).toBe(false);
+	it("treats non-empty summary as valid result for navigator", () => {
+		const completedEvent = { summary: "Navigator evaluation text." };
+		expect(resultIsValid("navigator", completedEvent)).toBe(true);
 	});
 
-	it("marks schema-valid fallback as degraded when the judge failed", () => {
-		const nodes = [
-			node("panel_1", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
-			node("panel_2", "provider-b/model-b", true),
-			node("judge", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
-		];
-		const completedEvent = { summary: degradedFallbackSummary() };
-		expect(resultIsValid("fusion-analysis", completedEvent)).toBe(true);
-		expect(isDegraded("fusion-analysis", nodes, completedEvent)).toBe(true);
+	it("rejects empty summary for navigator", () => {
+		expect(resultIsValid("navigator", { summary: "" })).toBe(false);
+		expect(resultIsValid("navigator", undefined)).toBe(false);
 	});
 
-	it("marks a run as degraded when any panel failed even if the judge succeeded", () => {
-		const nodes = [
-			node("panel_1", "provider-a/model-a", false, "timeout"),
-			node("panel_2", "provider-b/model-b", true),
-			node("judge", "provider-c/model-c", true),
-		];
-		const completedEvent = { summary: validFusionSummary() };
-		expect(isDegraded("fusion-analysis", nodes, completedEvent)).toBe(true);
+	it("summarizes valid JSON schema text", () => {
+		expect(summarizeSchema('{"key": "value"}')).toEqual({ key: "value" });
+		expect(summarizeSchema("not json")).toBeNull();
+		expect(summarizeSchema("")).toBeNull();
 	});
 
-	it("rejects malformed fusion summaries", () => {
-		expect(fusionSchemaValid(summarizeSchema("not json"))).toBe(false);
-		expect(fusionSchemaValid(summarizeSchema(JSON.stringify({ answer: "x" })))).toBe(false);
+	it("marks a run as degraded when any node failed", () => {
+		const nodes = [
+			node("navigator", "provider-a/model-a", false, "timeout"),
+		];
+		const completedEvent = { summary: "Some summary" };
+		expect(isDegraded("navigator", nodes, completedEvent)).toBe(true);
+	});
+
+	it("marks a run as non-degraded when all nodes succeed", () => {
+		const nodes = [
+			node("navigator", "provider-a/model-a", true),
+		];
+		const completedEvent = { summary: "Decisive finding." };
+		expect(isDegraded("navigator", nodes, completedEvent)).toBe(false);
 	});
 
 	it("reports per-role/model success and error categories", () => {
@@ -124,9 +91,7 @@ describe("team-live-benchmark truthfulness", () => {
 				resultValid: true,
 				failureCategory: null,
 				nodes: [
-					node("panel_1", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
-					node("panel_2", "provider-b/model-b", true),
-					node("judge", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
+					node("navigator", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
 				],
 			},
 			{
@@ -141,19 +106,15 @@ describe("team-live-benchmark truthfulness", () => {
 				resultValid: true,
 				failureCategory: null,
 				nodes: [
-					node("panel_1", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
-					node("panel_2", "provider-b/model-b", true),
-					node("judge", "provider-a/model-a", false, "Codex error: Unsupported parameter: max_output_tokens"),
+					node("navigator", "provider-a/model-a", true),
 				],
 			},
 		];
-		const summary = summarize(runs, "fusion-analysis");
+		const summary = summarize(runs, "navigator");
 		expect(summary.successfulRuns).toBe(2);
-		expect(summary.degradedRuns).toBe(0); // runs themselves are marked non-degraded here
+		expect(summary.degradedRuns).toBe(0);
 		expect(summary.roleModelStats).toMatchObject({
-			"panel_1:provider-a/model-a": { total: 2, ok: 0, errors: { unsupported_parameter: 2 } },
-			"panel_2:provider-b/model-b": { total: 2, ok: 2, errors: {} },
-			"judge:provider-a/model-a": { total: 2, ok: 0, errors: { unsupported_parameter: 2 } },
+			"navigator:provider-a/model-a": { total: 2, ok: 1, errors: { unsupported_parameter: 1 } },
 		});
 	});
 
@@ -171,9 +132,7 @@ describe("team-live-benchmark truthfulness", () => {
 				resultValid: false,
 				failureCategory: "degraded",
 				nodes: [
-					node("panel_1", "provider-a/model-a", false, "timeout"),
-					node("panel_2", "provider-b/model-b", true),
-					node("judge", "provider-c/model-c", false, "timeout"),
+					node("navigator", "provider-a/model-a", false, "timeout"),
 				],
 			},
 			{
@@ -188,22 +147,15 @@ describe("team-live-benchmark truthfulness", () => {
 				resultValid: true,
 				failureCategory: null,
 				nodes: [
-					node("panel_1", "provider-a/model-a", true),
-					node("panel_2", "provider-b/model-b", true),
-					node("judge", "provider-c/model-c", true),
+					node("navigator", "provider-b/model-b", true),
 				],
 			},
 		];
-		const summary = summarize(runs, "fusion-analysis");
+		const summary = summarize(runs, "navigator");
 		expect(summary.successfulRuns).toBe(2);
 		expect(summary.degradedRuns).toBe(1);
 		expect(summary.nonDegradedRuns).toBe(1);
 		expect(summary.medianEndToEndDurationMs).toBe(42_500);
 		expect(summary.medianNonDegradedEndToEndDurationMs).toBe(25_000);
-	});
-
-	it("locates the judge node", () => {
-		const nodes = [node("panel_1", "m", true), node("judge", "m", true)];
-		expect(judgeNode(nodes)?.role).toBe("judge");
 	});
 });

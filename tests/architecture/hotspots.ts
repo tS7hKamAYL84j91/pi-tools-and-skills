@@ -46,13 +46,6 @@ function daysBetween(start: string, end: string): number {
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
-		path: "extensions/pi-teams/team-handler-fusion-analysis.ts",
-		maxLines: 360,
-		reason: "Fusion analysis protocol panel/judge helpers; extract a dedicated fusion-node module when adding another fusion-style protocol.",
-		createdAt: "2026-06-24",
-		targetDate: "2026-09-22",
-	},
-	{
 		path: "extensions/pi-goal/goal-extension.ts",
 		maxLines: 650,
 		reason: "Established goal tool/command entrypoint; split registration from state flow when touched.",

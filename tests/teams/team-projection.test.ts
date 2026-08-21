@@ -8,7 +8,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { projectBuiltinTeams, pruneBuiltinTeams } from "../../extensions/pi-teams/team-projection.js";
 
-const BUILTIN_IDS = ["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council", "navigator"];
+const BUILTIN_IDS = ["deep-research", "hierarchical-swarm-default", "llm-council", "navigator"];
 
 function fakeCtx(cwd: string): ExtensionContext {
 	return { cwd } as unknown as ExtensionContext;
@@ -50,7 +50,7 @@ describe("projectBuiltinTeams", () => {
 		const result = await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
 
 		expect(result.skipped).toContain("navigator");
-		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council"]);
+		expect([...result.projected].sort()).toEqual(["deep-research", "hierarchical-swarm-default", "llm-council"]);
 		const nav = readFileSync(join(dest, "navigator.md"), "utf8");
 		expect(nav).toContain("my/custom-edit");
 		expect(nav).not.toContain("seed projection");
@@ -73,7 +73,7 @@ describe("projectBuiltinTeams", () => {
 		const result = await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest, force: true });
 
 		expect(result.overwritten).toContain("navigator");
-		expect([...result.projected].sort()).toEqual(["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council"]);
+		expect([...result.projected].sort()).toEqual(["deep-research", "hierarchical-swarm-default", "llm-council"]);
 		const nav = readFileSync(join(dest, "navigator.md"), "utf8");
 		expect(nav).not.toContain("CUSTOM");
 		expect(nav).toContain("seed projection");
@@ -94,12 +94,12 @@ describe("projectBuiltinTeams", () => {
 describe("pruneBuiltinTeams", () => {
 	it("removes user-scope files for ids no longer in built-in seeds", async () => {
 		await projectBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
-		writeFileSync(join(dest, "router-fusion.md"), '---\nschemaVersion: 2\nid: "router-fusion"\n---\n\n<!-- pi-panopticon seed projection of "router-fusion". This file is the source of truth for this team; edit it freely. Re-project missing seeds with /teams seed. -->\n\nstale seed\n', "utf8");
+		writeFileSync(join(dest, "stale-legacy-seed.md"), '---\nschemaVersion: 2\nid: "stale-legacy-seed"\n---\n\n<!-- pi-teams seed projection of "stale-legacy-seed". This file is the source of truth for this team; edit it freely. Re-project missing seeds with /teams seed. -->\n\nstale seed\n', "utf8");
 
 		const result = await pruneBuiltinTeams(fakeCtx(dest), { userTeamsDir: dest });
 
-		expect([...result.removed].sort()).toEqual(["router-fusion"]);
-		expect(existsSync(join(dest, "router-fusion.md"))).toBe(false);
+		expect([...result.removed].sort()).toEqual(["stale-legacy-seed"]);
+		expect(existsSync(join(dest, "stale-legacy-seed.md"))).toBe(false);
 		expect(existsSync(join(dest, "navigator.md"))).toBe(true);
 	});
 

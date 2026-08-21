@@ -2,7 +2,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildTeamContext } from "./team-context.js";
-import { resolveTeamProfile, type TeamProfile } from "./team-profiles.js";
+import type { TeamProfile } from "./team-profiles.js";
 import { directTeamResultBody } from "./team-result.js";
 import { runTeam, type TeamRunRegistration } from "./team-runtime.js";
 import { isTopology, type TeamRoute } from "./team-routes.js";
@@ -34,9 +34,8 @@ interface TeamRunOutcomeDetails {
 	nodes?: ReadonlyArray<{ ok?: boolean; model?: string; error?: string }>;
 }
 
-const DEFAULT_TOPOLOGY: TeamRoute = "fusion-analysis";
+const DEFAULT_TOPOLOGY: TeamRoute = "llm-council";
 const DEFAULT_MAX_MODELS = 2;
-const OVERRIDE_MAX_MODELS = 3;
 const HARD_MAX_MODELS = 5;
 const LARGE_CONTEXT_CHARS = 12_000;
 
@@ -58,7 +57,7 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 	const headTokens = head.split(/\s+/).filter(Boolean);
 	const command = headTokens.shift() ?? "status";
 	if (command !== "on" && command !== "off" && command !== "auto" && command !== "once" && command !== "status") {
-		throw new Error("Usage: /team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]");
+		throw new Error("Usage: /team on|auto|off|status|once [prompt] [--topology llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]");
 	}
 	const inlinePrompt = headTokens.join(" ").trim() || undefined;
 	const result: ParseResult = { action: command, prompt: inlinePrompt };
@@ -67,7 +66,7 @@ export function parseTeamModeArgs(rawArgs: string): ParseResult {
 		const token = tokens[index];
 		if (token === "--topology") {
 			const topology = tokens[++index];
-			if (!topology || !isTopology(topology)) throw new Error("--topology must be fusion-analysis, llm-council, or navigator");
+			if (!topology || !isTopology(topology)) throw new Error("--topology must be llm-council or navigator");
 			result.topology = topology;
 			continue;
 		}
@@ -104,17 +103,10 @@ export function applyParsedCommand(state: SessionTeamMode, parsed: ParseResult):
 	return next;
 }
 
-function fusionPanelSize(state: SessionTeamMode): number {
-	const configured = state.maxModelsExplicit === false ? resolveTeamProfile(state.profile).fusionPanelModels : state.maxModels;
-	return Math.min(configured, OVERRIDE_MAX_MODELS);
-}
-
-/** Human-readable estimate of model calls a `/team` run will make for the active
- *  topology. `maxModels` caps the fusion-analysis panel size, not total calls. Pure. */
+/** Human-readable estimate of model calls a `/team` run will make for the active topology. Pure. */
 export function estimatedCallDescription(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return "1 model call (one focused review)";
-	if (state.topology === "llm-council") return "members + critiques + synthesis (debate; multiple calls)";
-	return `${fusionPanelSize(state)} panel + judge (direct answer with structured diagnostics)`;
+	return "members + critiques + synthesis (debate; multiple calls)";
 }
 
 function statusLine(state: SessionTeamMode): string {
@@ -128,9 +120,7 @@ function shouldBypass(text: string, source: string | undefined): boolean {
 
 function topologyInstruction(state: SessionTeamMode): string {
 	if (state.topology === "navigator") return `Use team_run with id="navigator" and profile="${state.profile ?? "balanced"}" for one focused review, then answer from the synthesis first.`;
-	if (state.topology === "llm-council") return `Use team_run with id="llm-council" and profile="${state.profile ?? "balanced"}" for bounded debate, then answer from the synthesis first.`;
-	const legacyLimit = state.maxModelsExplicit === false ? "" : ` and limits.maxLoops=${fusionPanelSize(state)}`;
-	return `Use team_run with id="fusion-analysis", profile="${state.profile ?? "balanced"}"${legacyLimit} for bounded multi-model deliberation. The team returns structured JSON analysis including answer, consensus, contradictions, partialCoverage, uniqueInsights, blindSpots, confidence, and missingEvidence.`;
+	return `Use team_run with id="llm-council" and profile="${state.profile ?? "balanced"}" for bounded debate, then answer from the synthesis first.`;
 }
 
 export function buildAutoModePrompt(text: string, state: SessionTeamMode): string {
@@ -188,14 +178,13 @@ async function approvalOk(ctx: { hasUI?: boolean; ui?: { confirm?: (title: strin
 }
 
 /** Build the run params for a forced `/team once` or deterministic `/team on` run. Pure. */
-function forcedRunParams(state: SessionTeamMode, prompt: string, ctx: ExtensionContext): { id: string; prompt: string; profile: TeamProfile; limits?: { maxLoops: number } } {
+function forcedRunParams(state: SessionTeamMode, prompt: string, ctx: ExtensionContext): { id: string; prompt: string; profile: TeamProfile } {
 	const profile = state.profile ?? "balanced";
 	const contextualPrompt = buildTeamContext(ctx, prompt, profile);
 	return {
 		id: state.topology,
 		prompt: contextualPrompt,
 		profile,
-		...(state.maxModelsExplicit === false ? {} : { limits: { maxLoops: fusionPanelSize(state) } }),
 	};
 }
 

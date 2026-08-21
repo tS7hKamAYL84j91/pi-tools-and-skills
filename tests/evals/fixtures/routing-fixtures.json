@@ -1,7 +1,6 @@
 {
     "navigator": { "expected": true },
     "llm-council": { "expected": true },
-    "fusion-analysis": { "expected": true },
     "deep-research": { "expected": false },
     "unknown": { "expected": false }
 }

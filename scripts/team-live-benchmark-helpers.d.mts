@@ -1,6 +1,6 @@
 /** Type declarations for the live benchmark helper module. */
 
-export type TeamKind = "fusion-analysis" | "navigator";
+export type TeamKind = "navigator";
 
 export type ErrorCategory =
 	| "unsupported_parameter"
@@ -65,9 +65,7 @@ export declare const DEFAULT_PROMPT: string;
 
 export declare function categorizeError(error: unknown): ErrorCategory;
 export declare function summarizeSchema(summary: unknown): unknown;
-export declare function fusionSchemaValid(value: unknown): boolean;
 export declare function resultIsValid(team: TeamKind, completedEvent: CompletedEvent | undefined): boolean;
-export declare function judgeNode(nodes: readonly BenchmarkNode[]): BenchmarkNode | undefined;
 export declare function isDegraded(team: TeamKind, nodes: readonly BenchmarkNode[], completedEvent: CompletedEvent | undefined): boolean;
 export declare function percentile(values: readonly number[], percentileValue: number): number | null;
 export declare function summarize(runs: readonly BenchmarkRun[], team: TeamKind): BenchmarkSummary;

@@ -36,47 +36,17 @@ export function summarizeSchema(summary) {
 	}
 }
 
-export function fusionSchemaValid(value) {
-	if (value === null || typeof value !== "object") return false;
-	const arrayFields = [
-		"consensus",
-		"contradictions",
-		"partialCoverage",
-		"uniqueInsights",
-		"blindSpots",
-		"missingEvidence",
-	];
-	return (
-		typeof value.answer === "string" &&
-		value.answer.trim().length > 0 &&
-		typeof value.confidence === "string" &&
-		arrayFields.every((field) => Array.isArray(value[field]))
-	);
-}
-
-export function resultIsValid(team, completedEvent) {
+export function resultIsValid(_team, completedEvent) {
 	if (
 		completedEvent === undefined ||
 		typeof completedEvent.summary !== "string"
 	)
 		return false;
-	if (team === "navigator") return completedEvent.summary.trim().length > 0;
-	return fusionSchemaValid(summarizeSchema(completedEvent.summary));
+	return completedEvent.summary.trim().length > 0;
 }
 
-export function judgeNode(nodes) {
-	return nodes.find((node) => node.role === "judge");
-}
-
-// For Fusion, a non-degraded run requires all nodes ok AND the judge node ok.
-// A schema-valid fallback produced while nodes failed is degraded, not valid.
-export function isDegraded(team, nodes, completedEvent) {
-	if (team === "navigator") {
-		return nodes.length === 0 || !nodes.every((node) => node.ok);
-	}
-	const judge = judgeNode(nodes);
-	if (!judge || !judge.ok) return true;
-	return nodes.some((node) => !node.ok);
+export function isDegraded(_team, nodes, _completedEvent) {
+	return nodes.length === 0 || !nodes.every((node) => node.ok);
 }
 
 export function percentile(values, percentileValue) {
@@ -91,7 +61,7 @@ export function percentile(values, percentileValue) {
 	);
 }
 
-export function summarize(runs, team) {
+export function summarize(runs, _team) {
 	const successful = runs.filter(
 		(runRecord) =>
 			runRecord.exitCode === 0 && runRecord.teamDurationMs !== null,
