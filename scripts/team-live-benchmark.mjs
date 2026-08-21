@@ -10,7 +10,6 @@ import {
 	DEFAULT_PROMPT,
 	categorizeError,
 	isDegraded,
-	judgeNode,
 	resultIsValid,
 	summarize,
 } from "./team-live-benchmark-helpers.mjs";
@@ -41,8 +40,8 @@ function parseArgs(argv) {
 			fail(`unknown argument: ${flag}`);
 		}
 	}
-	if (options.team !== "fusion-analysis" && options.team !== "navigator")
-		fail("--team must be fusion-analysis or navigator");
+	if (options.team !== "navigator")
+		fail("--team must be navigator");
 	if (!["fast", "balanced", "thorough"].includes(options.profile))
 		fail("--profile must be fast, balanced, or thorough");
 	if (!Number.isInteger(options.runs) || options.runs < 1 || options.runs > 100)
@@ -177,11 +176,7 @@ async function main() {
 				routingValid && resultIsValid(options.team, completedEvent);
 			const degraded =
 				routingValid && isDegraded(options.team, nodes, completedEvent);
-			const judge = judgeNode(nodes);
-			const judgeValid =
-				options.team === "fusion-analysis"
-					? Boolean(judge?.ok && schemaValid)
-					: schemaValid;
+			const judgeValid = schemaValid;
 			runs.push({
 				index: index + 1,
 				exitCode,

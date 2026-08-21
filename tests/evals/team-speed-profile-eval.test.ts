@@ -7,22 +7,9 @@ import {
 import { directTeamResultBody } from "../../extensions/pi-teams/team-result.js";
 import { isTopology } from "../../extensions/pi-teams/team-routes.js";
 
-const FUSION_ARRAY_FIELDS = [
-	"consensus",
-	"contradictions",
-	"partialCoverage",
-	"uniqueInsights",
-	"blindSpots",
-	"missingEvidence",
-] as const;
 const RUBRIC_FIELDS = ["routing", "bounds", "validity", "behavior"] as const;
 
 interface ExpectedContract {
-	panelModels?: number;
-	panelMaxTokens?: number;
-	judgeMaxTokens?: number;
-	panelMaxChars?: number;
-	promptMaxChars?: number;
 	navigatorMaxTokens?: number;
 	navigatorTimeoutMs?: number;
 	navigatorMaxRetries?: number;
@@ -34,7 +21,7 @@ interface ExpectedContract {
 
 interface SpeedProfileCase {
 	id: string;
-	team: "fusion-analysis" | "navigator";
+	team: "navigator";
 	profile?: TeamProfile;
 	selectedRoute: string;
 	expected: ExpectedContract;
@@ -64,20 +51,7 @@ function readFixture(): SpeedProfileFixture {
 }
 
 function isValidResult(testCase: SpeedProfileCase): boolean {
-	if (testCase.team === "navigator") return testCase.result.trim().length > 0;
-	try {
-		const parsed: unknown = JSON.parse(testCase.result);
-		if (typeof parsed !== "object" || parsed === null) return false;
-		const result = parsed as Record<string, unknown>;
-		return (
-			typeof result.answer === "string" &&
-			result.answer.trim().length > 0 &&
-			typeof result.confidence === "string" &&
-			FUSION_ARRAY_FIELDS.every((field) => Array.isArray(result[field]))
-		);
-	} catch {
-		return false;
-	}
+	return testCase.result.trim().length > 0;
 }
 
 const fixture = readFixture();
@@ -98,21 +72,6 @@ describe("team speed profile deterministic evaluation", () => {
 			expect(isTopology(testCase.selectedRoute)).toBe(true);
 			expect(testCase.selectedRoute).toBe(testCase.team);
 			expect(profile).toMatchObject({
-				...(testCase.expected.panelModels === undefined
-					? {}
-					: { fusionPanelModels: testCase.expected.panelModels }),
-				...(testCase.expected.panelMaxTokens === undefined
-					? {}
-					: { fusionPanelMaxTokens: testCase.expected.panelMaxTokens }),
-				...(testCase.expected.judgeMaxTokens === undefined
-					? {}
-					: { fusionJudgeMaxTokens: testCase.expected.judgeMaxTokens }),
-				...(testCase.expected.panelMaxChars === undefined
-					? {}
-					: { fusionPanelMaxChars: testCase.expected.panelMaxChars }),
-				...(testCase.expected.promptMaxChars === undefined
-					? {}
-					: { fusionPromptMaxChars: testCase.expected.promptMaxChars }),
 				...(testCase.expected.navigatorMaxTokens === undefined
 					? {}
 					: { navigatorMaxTokens: testCase.expected.navigatorMaxTokens }),

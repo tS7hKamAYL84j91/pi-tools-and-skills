@@ -38,7 +38,7 @@ The package manifest loads `index.ts` and the bundled `pi-team-consultation` ski
 - `/teams async [id] [prompt] [--profile fast|balanced|thorough]` — start the same profiled run asynchronously and deliver its result as a follow-up.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
 - `/teams stop [runId]` — request cancellation of an explicit run, or the newest pending/running run when omitted.
-- `/team on|auto|off|status|once [prompt] [--topology fusion-analysis|llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `fusion-analysis` and `balanced`.
+- `/team on|auto|off|status|once [prompt] [--topology llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `llm-council` and `balanced`.
 - `/swarm <goal> [--profile fast|balanced|thorough] [--execute]` — hierarchical-swarm compatibility command; dry-run is the default.
 
 ## Provisional Surfaces
@@ -53,24 +53,23 @@ The package manifest loads `index.ts` and the bundled `pi-team-consultation` ski
 
 ## Protocols
 
-Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
+`pi-teams` supports four bounded protocols: `consult` (`navigator`), `debate` (`llm-council`), `research` (`deep-research`), and `hierarchical-swarm` (`/swarm`). Fusion is decommissioned and is no longer a `pi-teams` topology. Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
 
 ### Profiles and precedence
 
-`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Fusion's legacy explicit `limits.maxLoops` remains a supported panel-size override and wins over the profile panel default. Fast Fusion prefers provider-diverse models from the configured order when multiple providers are configured; it cannot create provider diversity from a single-provider model list. It bounds panel/judge output and judge input, and returns complete JSON with `answer`, `consensus`, `contradictions`, `partialCoverage`, `uniqueInsights`, `blindSpots`, `confidence`, and `missingEvidence`. Deterministic `/team` Fusion mode displays the non-empty `answer` directly while retaining run diagnostics; invalid or empty-answer judge output keeps the degraded structured fallback. Navigator output remains direct.
+`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Navigator output remains direct.
 
 Canonical profile output caps are translated at the provider payload boundary: Google GenerateContent and Cloud Code Assist use `maxOutputTokens`, OpenAI Responses uses `max_output_tokens`, and message-based OpenAI-compatible payloads use `max_tokens`. Unrecognized payload shapes are left unchanged rather than receiving `maxTokens` blindly.
 
 Fast Navigator uses a compact prompt, no retries, a 30-second maximum node timeout, and bounded output. Explicit Fast timeout values can lower but not raise that safety cap.
 
-Deterministic profile evaluation runs in normal CI from `tests/evals/fixtures/team-speed-profiles.json`; it verifies contracts and makes no live performance claim. Live provider timing is explicitly opt-in via `PI_TEAM_LIVE_BENCHMARK=1 npm run benchmark:teams:live -- ...` and records redacted end-to-end/per-node durations outside CI. See [`tests/evals/team-speed-profile-evaluation.md`](../../../tests/evals/team-speed-profile-evaluation.md) for baseline fields, median/P95 comparison, and promotion gates. **Balanced remains the default until both Fusion and Navigator live gates pass.**
+Deterministic profile evaluation runs in normal CI from `tests/evals/fixtures/team-speed-profiles.json`; it verifies contracts and makes no live performance claim. Live provider timing is explicitly opt-in via `PI_TEAM_LIVE_BENCHMARK=1 npm run benchmark:teams:live -- ...` and records redacted end-to-end/per-node durations outside CI. See [`tests/evals/team-speed-profile-evaluation.md`](../../../tests/evals/team-speed-profile-evaluation.md) for baseline fields, median/P95 comparison, and promotion gates. **Balanced remains the default until Navigator live gates pass.**
 
 | Built-in team | Protocol pattern | Use when |
 |---|---|---|
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
 | `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
-| `fusion-analysis` | Bounded panel + judge | OpenRouter-style deliberation: the judge returns a direct `answer` plus structured diagnostics. |
 
 ### `/team on` / `/team once` context enrichment
 

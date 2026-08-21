@@ -5,8 +5,8 @@ This directory contains deterministic evaluation fixtures for tools, skills, tea
 ## Scope
 
 - **Tool executions:** output bounds, false triggers, parameter handling, and adversarial resilience.
-- **Team protocols:** routing for Navigator, council, Fusion, and deep-research built-ins.
-- **Speed profiles:** representative Fusion and Navigator routing, bounds, result validity, and direct/degraded result behavior.
+- **Team protocols:** routing for Navigator, council, and deep-research built-ins.
+- **Speed profiles:** representative Navigator routing, bounds, result validity, and direct result behavior.
 
 ## Adding tests
 

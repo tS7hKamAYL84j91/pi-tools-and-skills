@@ -101,9 +101,6 @@ flowchart TD
   Teams --> TeamChild[one-shot pi --print child]
   TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane
   Teams --> TeamProfiles[Shared fast / balanced / thorough profiles]
-  TeamProfiles --> Fusion[Fusion bounded panel + judge handler]
-  Fusion --> FusionPlanner[Pure model and call-budget planner]
-  Fusion --> FusionOutput[Pure prompt and judge-output helpers]
   TeamProfiles --> Navigator[Navigator bounded consult]
   ProfileFixtures[Deterministic profile fixtures and rubric] -. validates contracts .-> TeamProfiles
   LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
@@ -133,7 +130,7 @@ flowchart TD
 
 ### Standalone Teams extension boundary (ADR-048)
 
-`pi-teams` is independently installable and owns team/swarm registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
+`pi-teams` is independently installable and owns team/swarm registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. Fusion is decommissioned and is no longer a `pi-teams` topology; `pi-teams` owns only the `consult`, `debate`, `research`, and `hierarchical-swarm` protocols. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
 
 ```mermaid
 C4Component
@@ -141,7 +138,7 @@ C4Component
     Container(pi, "pi session", "Extension host", "Loads independently installed extensions")
     Component(registry, "pi package registry", "Package settings", "Selects pi-teams as an installable package")
     Component(teams, "pi-teams", "Extension", "Registers team, runtime, and swarm surfaces")
-    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, fusion, research, and hierarchical swarm")
+    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, research, and hierarchical swarm")
     Component(state, "Team session state", "Session custom entries", "Persists bounded run events and rehydrates run state")
     Component(results, "Team result root", "Private claim-check files", "Stores completed async results under the configured team root")
     Component(shared, "Shared runtime libraries", "lib/", "Provides agent APIs, child-process, transport, persistence, and runtime helpers")
@@ -510,7 +507,7 @@ flowchart LR
 - Deterministic speed-profile fixtures are CI-safe and contain only synthetic public inputs/results.
 - The live harness is outside normal CI, requires explicit opt-in, deletes raw session data, and does not retain prompts, outputs, or credentials.
 - Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
-- Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Fusion and Navigator live comparisons pass.
+- Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Navigator live comparisons pass.
 
 ## Standalone Host-Injected Boost Runtime Boundary
 

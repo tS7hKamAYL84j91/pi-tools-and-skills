@@ -28,7 +28,6 @@ describe("loadTeamRegistry", () => {
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"deep-research",
-			"fusion-analysis",
 			"hierarchical-swarm-default",
 			"llm-council",
 			"navigator",
@@ -46,10 +45,6 @@ describe("loadTeamRegistry", () => {
 		expect(requireTeam(registry, "navigator").agents).toEqual([
 			"consult_navigator",
 		]);
-		expect(requireTeam(registry, "fusion-analysis")).toMatchObject({
-			protocol: "fusion-analysis",
-			limits: { maxLoops: 3 },
-		});
 	});
 
 	it("accepts explicit-binding teams with custom protocol labels", async () => {

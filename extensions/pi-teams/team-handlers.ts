@@ -4,7 +4,6 @@
 
 import { consultHandler } from "./team-handler-consult.js";
 import { debateHandler } from "./team-handler-debate.js";
-import { fusionAnalysisHandler } from "./team-handler-fusion-analysis.js";
 import { hierarchicalSwarmHandler } from "./team-handler-hierarchical-swarm.js";
 import { researchHandler } from "./team-handler-research.js";
 import { councilSlots, manifestModelSlots, promptChains, TEAM_STATUS_KEY } from "./team-handler-shared.js";
@@ -17,7 +16,6 @@ export type { TeamModelSlot, TeamRunInput };
 const TEAM_HANDLERS: readonly TeamHandler[] = [
 	consultHandler,
 	debateHandler,
-	fusionAnalysisHandler,
 	hierarchicalSwarmHandler,
 	researchHandler,
 ];

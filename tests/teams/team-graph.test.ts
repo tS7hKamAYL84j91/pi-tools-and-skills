@@ -31,14 +31,13 @@ describe("direct team handlers", () => {
 		expect(getTeamHandler(team({ protocol: "debate" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "council" }))?.key).toBe("council");
 		expect(getTeamHandler(team({ protocol: "research" }))?.key).toBe("research");
-		expect(getTeamHandler(team({ protocol: "fusion-analysis" }))?.key).toBe("fusion-analysis");
 		expect(getTeamHandler(team({ protocol: "telephone" }))).toBeUndefined();
 		expect(modelSlotsForTeam(team({ protocol: "telephone" }), team().models)).toEqual([]);
 		expect(promptChainsForTeam(team({ protocol: "telephone" }))).toEqual([]);
 		expect(getTeamHandler(team({ protocol: "graph" }))).toBeUndefined();
 	});
 
-	it("reports debate, consult, research, and fusion-analysis model slots without graph lowering", () => {
+	it("reports debate, consult, and research model slots without graph lowering", () => {
 		expect(modelSlotsForTeam(team(), team().models)).toEqual([
 			{ id: "member:0", label: "Member model 1", current: "test/a", kind: "member", index: 0 },
 			{ id: "member:1", label: "Member model 2", current: "test/b", kind: "member", index: 1 },
@@ -51,10 +50,6 @@ describe("direct team handlers", () => {
 			{ id: "explorer", label: "Explorer model", current: "test/a", kind: "member", index: 0 },
 			{ id: "verifier", label: "Verifier model", current: "test/b", kind: "member", index: 1 },
 			{ id: "synthesis", label: "Synthesis model", current: "test/synthesis", kind: "synthesis" },
-		]);
-		expect(modelSlotsForTeam(team({ protocol: "fusion-analysis", agentBindings: [{ role: "panel", subagent: "panel_agent", model: "test/a" }, { role: "judge", subagent: "judge_agent", model: "test/synthesis" }], models: { members: ["test/a"], synthesis: "test/synthesis" } }), { members: ["test/a"], synthesis: "test/synthesis" })).toEqual([
-			{ id: "member:0", label: "Panel model 1", current: "test/a", kind: "member", index: 0 },
-			{ id: "judge", label: "Judge model", current: "test/synthesis", kind: "synthesis" },
 		]);
 	});
 
@@ -70,6 +65,5 @@ describe("direct team handlers", () => {
 			"navigator.system",
 			"navigator.template",
 		]);
-		expect(promptChainsForTeam(team({ protocol: "fusion-analysis" })).map((chain) => chain.slot)).toEqual(["judge.system"]);
 	});
 });
