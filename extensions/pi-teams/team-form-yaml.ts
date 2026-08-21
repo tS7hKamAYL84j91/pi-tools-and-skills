@@ -50,6 +50,26 @@ export function quoteYamlString(value: string): string {
 	return quote(value);
 }
 
+function swarmLines(protocol: string): string[] {
+	if (protocol !== "hierarchical-swarm") return [];
+	return [
+		'hierarchicalSwarmBounds: { maxDepth: 2, maxChildrenPerNode: 3, maxTotalNodes: 8, maxWip: 3, maxRepairCycles: 3, ttlMs: 1800000, writeIsolationMode: "tree-global-exclusive" }',
+		'hierarchicalSwarmRoleTemplates:',
+		'  - role: "root"',
+		'    bindingRole: "root_orchestrator"',
+		'    reviewerRole: "root"',
+		'    reviewRequired: true',
+		'  - role: "manager"',
+		'    bindingRole: "sub_orchestrator"',
+		'    reviewerRole: "root"',
+		'    reviewRequired: true',
+		'  - role: "worker"',
+		'    bindingRole: "leaf_worker"',
+		'    reviewerRole: "manager"',
+		'    reviewRequired: true',
+	];
+}
+
 export function teamFileContent(args: TeamFormInput & { id: string; name: string }): string {
 	const bindings = args.agentBindings ?? [];
 	return [
@@ -59,6 +79,7 @@ export function teamFileContent(args: TeamFormInput & { id: string; name: string
 		`name: ${quote(args.name)}`,
 		...(args.description ? [`description: ${quote(args.description)}`] : []),
 		`protocol: ${quote(args.protocol)}`,
+		...swarmLines(args.protocol),
 		...promptLines(args.prompts),
 		...agentBindingLines(bindings),
 		...(args.limits?.maxFixPasses !== undefined ? [`maxFixPasses: ${args.limits.maxFixPasses}`] : []),
