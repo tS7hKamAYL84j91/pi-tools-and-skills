@@ -12,8 +12,8 @@ import {
 	formatEvent,
 	hasCompletionSignal,
 	recentOutputFromEvents,
-} from "../../lib/spawn-events.js";
-import { buildArgList, type SpawnedAgent } from "../../lib/spawn-service.js";
+} from "../../extensions/pi-panopticon/spawner/spawn-events.js";
+import { buildArgList, type SpawnedAgent } from "../../extensions/pi-panopticon/spawner/spawn-service.js";
 import { asExtensionApi, makeMockExtensionApi, makeRegistry } from "./helpers.js";
 
 function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {

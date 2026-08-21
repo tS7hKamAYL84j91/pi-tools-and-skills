@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkTemplateSafety, formatTemplateSafetyResult } from "../lib/template-safety.js";
+import { checkTemplateSafety, formatTemplateSafetyResult } from "./helpers/template-safety.js";
 
 describe("template safety checker", () => {
 	it("passes explicit public fixture paths", async () => {

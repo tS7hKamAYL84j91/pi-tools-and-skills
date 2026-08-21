@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const cliPath = join(repoRoot, 'lib', 'session-hook-installer-cli.ts');
+const cliPath = join(repoRoot, 'scripts', 'session-hook-installer-cli.ts');
 const result = spawnSync('npx', ['tsx', cliPath, ...process.argv.slice(2)], { stdio: 'inherit', cwd: repoRoot });
 
 if (result.error) {

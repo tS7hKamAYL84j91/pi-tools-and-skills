@@ -10,9 +10,9 @@ import {
 	buildArgList,
 	spawnChild,
 	gracefulKill,
-} from "../../../lib/spawn-service.js";
-import { rpcWrite, rpcCall } from "../../../lib/spawn-rpc.js";
-import { recentOutputFromEvents } from "../../../lib/spawn-events.js";
+} from "./spawn-service.js";
+import { rpcWrite, rpcCall } from "./spawn-rpc.js";
+import { recentOutputFromEvents } from "./spawn-events.js";
 import {
 	TaskBriefSchema,
 	renderBriefAsPrompt,

@@ -13,7 +13,7 @@ import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_VISIBILITY_ENV,
 } from "../../../lib/agent-registry.js";
-import { resolvePiBinary } from "../../../lib/spawn-service.js";
+import { resolvePiBinary } from "../spawner/spawn-service.js";
 import { spawnRuntimeChildProcess } from "../../../lib/runtime-child-process.js";
 import providerOverridesExtension, { PROVIDER_PARAMETERS_ENV } from "./provider-overrides-extension.js";
 import type { TeamParticipant, GenerationParameterValue, ForkTurnsMode, ModelRun } from "./types.js";

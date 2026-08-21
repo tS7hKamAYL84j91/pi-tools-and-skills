@@ -271,15 +271,13 @@ flowchart TD
 - Core `lib/` files expose contracts and pure formatting/render helpers; they
   must not import Node filesystem, OS, or process-spawning APIs.
   Current core files: `agent-names.ts`, `completion-signal.ts`,
-  `message-transport.ts`, `oracle-judge.ts`, `secret-redaction.ts`,
-  `task-brief.ts`, `tool-result.ts`, `tui-confirmation.ts`, and
-  `tui-overflow.ts`.
-- IO/runtime `lib/` files own shared filesystem, process, settings, session,
-  spawn, and agent-registry behavior. Current IO/runtime files: `agent-api.ts`,
-  `agent-registry.ts`, `file-persistence.ts`, `pi-settings.ts`,
-  `session-hook-installer*.ts`, `session-log.ts`, `session-source*.ts`,
-  `session-spool*.ts`, `spawn-events.ts`, `spawn-rpc.ts`, `spawn-service.ts`,
-  and `declarative-discovery.ts` (lexical layered Markdown discovery).
+  `message-transport.ts`, `secret-redaction.ts`, `task-brief.ts`,
+  `tool-result.ts`, `tui-confirmation.ts`, and `tui-overflow.ts`.
+- Shared IO/runtime primitives in `lib/` are imported by multiple callers and
+  own generic filesystem, process, settings, session, and registry behavior.
+  CoAS-owned modules live in `extensions/pi-coas/lib/`; Panopticon spawn
+  modules live in `extensions/pi-panopticon/spawner/`; CLI adapters live in
+  `scripts/`. The fitness suite rejects undocumented or single-caller files.
 - Pure runtime mappers that do not touch IO may live beside runtime helpers when
   their data shape is runtime-specific; currently `session-journal.ts` is in
   this bucket.
@@ -288,13 +286,15 @@ flowchart TD
   not extension runtime modules.
 - Runtime/session and transport `lib/` files may perform IO, but must stay below
   extensions and must not import extension runtime code.
-- Dependency direction is one-way: extensions may import `lib/`; `lib/` must not
-  import `extensions/`. Core contracts should stay below IO/runtime helpers; any
+- Dependency direction is one-way: extensions may import shared `lib/` primitives;
+  `lib/` must not import `extensions/`. Extension-owned public libraries under
+  `extensions/*/lib/` may be consumed by another extension when that contract
+  is explicitly part of the extension boundary. Core contracts should stay below IO/runtime helpers; any
   exception must be documented rather than hidden.
 - `tests/architecture.test.ts` enforces the currently practical parts of this
-  layering policy: all `lib/` TypeScript modules are classified, core files do
-  not import Node IO modules, core files do not value-import higher IO/runtime
-  layers, and `lib/` modules do not import extension runtime code.
+  layering policy: all `lib/` TypeScript modules are documented shared
+  primitives with multiple callers, core files do not import Node IO modules,
+  and `lib/` modules do not import extension runtime code.
 
 ---
 

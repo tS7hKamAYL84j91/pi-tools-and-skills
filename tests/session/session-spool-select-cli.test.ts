@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { manageSessionSpoolHook } from "../../lib/session-hook-installer.js";
-import { runSessionSpoolSelectCli } from "../../lib/session-spool-select-cli.js";
+import { runSessionSpoolSelectCli } from "../../scripts/session-spool-select-cli.js";
 
 function writeSession(path: string, seconds: number, text: string): void {
 	writeFileSync(path, `${JSON.stringify({ message: { role: "user", content: [{ type: "text", text }] } })}\n`, "utf8");

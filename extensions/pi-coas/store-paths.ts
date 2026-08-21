@@ -2,7 +2,7 @@
 
 import { join } from "node:path";
 import { assertInside, pathInside } from "../../lib/path-inside.js";
-import { assertSafeId, isoUtc } from "../../lib/coas-paths.js";
+import { assertSafeId, isoUtc } from "./lib/coas-paths.js";
 import type { CoasConfig } from "./types.js";
 
 export { assertInside, assertSafeId, isoUtc, pathInside };

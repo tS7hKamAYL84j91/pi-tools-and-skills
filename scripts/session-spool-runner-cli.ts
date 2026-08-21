@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Thin explicit CLI wrapper for the local session spooling runner POC. */
 
-import { runSessionSpoolOnce } from "./session-spool-runner.js";
+import { runSessionSpoolOnce } from "../lib/session-spool-runner.js";
 
 interface CliArgs {
 	registryDir?: string;
@@ -15,7 +15,7 @@ interface CliArgs {
 
 function usage(): string {
 	return [
-		"Usage: npx tsx lib/session-spool-runner-cli.ts --registry-dir <absolute-dir> --source-file <relative-or-absolute-jsonl> --agent-id <id> --name <display-name> --cwd <cwd> [--source-root <dir>] [--max-events N]",
+		"Usage: npx tsx scripts/session-spool-runner-cli.ts --registry-dir <absolute-dir> --source-file <relative-or-absolute-jsonl> --agent-id <id> --name <display-name> --cwd <cwd> [--source-root <dir>] [--max-events N]",
 		"",
 		"Explicit local POC only. Requires an installed session-spool-hook manifest; no default/background hook is enabled.",
 	].join("\n");

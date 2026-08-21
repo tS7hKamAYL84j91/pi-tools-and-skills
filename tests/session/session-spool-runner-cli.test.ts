@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { manageSessionSpoolHook } from "../../lib/session-hook-installer.js";
-import { runSessionSpoolRunnerCli } from "../../lib/session-spool-runner-cli.js";
+import { runSessionSpoolRunnerCli } from "../../scripts/session-spool-runner-cli.js";
 
 describe("session spool runner CLI", () => {
 	it("requires explicit arguments and manifest", async () => {

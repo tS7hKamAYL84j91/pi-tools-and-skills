@@ -11,7 +11,7 @@ import {
 	defaultPersistDir,
 	ensureExternalMailbox,
 	externalMailboxPath,
-} from "../../../lib/transports/external-mailbox.js";
+} from "./external-mailbox.js";
 
 const EXTERNAL_MANIFEST_VERSION = 1;
 const SAFE_EXTERNAL_ID = /^ext-[A-Za-z0-9][A-Za-z0-9._-]*$/;

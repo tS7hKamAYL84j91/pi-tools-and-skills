@@ -42,7 +42,7 @@ const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
 // ── Spawn arg building ──────────────────────────────────────────
 
-export interface ArgParams {
+interface ArgParams {
 	model?: string;
 	tools?: string[] | null;
 	sessionDir?: string;
@@ -117,7 +117,7 @@ export async function gracefulKill(
 
 // ── Child process spawning ──────────────────────────────────────
 
-export interface SpawnOpts {
+interface SpawnOpts {
 	name: string;
 	cwd: string;
 	args: string[];

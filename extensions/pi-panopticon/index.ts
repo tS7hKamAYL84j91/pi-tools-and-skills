@@ -4,7 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import { resumeAgentApproval } from "../../lib/coas-approval-inbox.js";
+import { resumeAgentApproval } from "../pi-coas/lib/coas-approval-inbox.js";
 import { resolveCoasConfig } from "../../lib/coas-config.js";
 import type { CoasConfig } from "../../lib/coas-types.js";
 import {

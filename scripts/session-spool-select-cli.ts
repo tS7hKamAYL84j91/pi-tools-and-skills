@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /** Explicit CLI combining read-only session discovery with one-shot spooling. */
 
-import { listRecentSessionSources } from "./session-source-discovery.js";
-import { runSessionSpoolOnce } from "./session-spool-runner.js";
+import { listRecentSessionSources } from "../lib/session-source-discovery.js";
+import { runSessionSpoolOnce } from "../lib/session-spool-runner.js";
 
 interface SelectCliArgs {
 	sourceRoot?: string;
@@ -18,7 +18,7 @@ interface SelectCliArgs {
 
 function usage(): string {
 	return [
-		"Usage: npx tsx lib/session-spool-select-cli.ts [--source-root <dir>] [--limit N] [--pick N --spool --registry-dir <absolute-dir> --agent-id <id> --name <display-name> --cwd <cwd>] [--max-events N]",
+		"Usage: npx tsx scripts/session-spool-select-cli.ts [--source-root <dir>] [--limit N] [--pick N --spool --registry-dir <absolute-dir> --agent-id <id> --name <display-name> --cwd <cwd>] [--max-events N]",
 		"",
 		"Lists recent pi session sources read-only by default. Spooling runs only when both --pick and --spool are supplied explicitly.",
 	].join("\n");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateOracleJudges } from "../../lib/oracle-judge.js";
+import { evaluateOracleJudges } from "../helpers/oracle-judge.js";
 
 const FIXTURE = {
 	id: "synthetic-change-1",

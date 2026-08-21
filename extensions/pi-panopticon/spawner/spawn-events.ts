@@ -5,7 +5,7 @@
  * managers to detect completion signals when an agent exits.
  */
 
-import { parseCompletionSignal } from "./completion-signal.js";
+import { parseCompletionSignal } from "../../../lib/completion-signal.js";
 import type { SpawnedAgent } from "./spawn-service.js";
 
 type Evt = Record<string, unknown>;

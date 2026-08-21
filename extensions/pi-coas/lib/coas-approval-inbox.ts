@@ -2,11 +2,11 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { withAdvisoryLock } from "./file-lock.js";
-import { ConfinedStore } from "./confined-store.js";
+import { withAdvisoryLock } from "../../../lib/file-lock.js";
+import { ConfinedStore } from "../../../lib/confined-store.js";
 import { assertSafeId, isoUtc } from "./coas-paths.js";
 import { loadRunState, saveRunState, type ScheduleRunState } from "./coas-run-state.js";
-import type { CoasConfig } from "./coas-types.js";
+import type { CoasConfig } from "../../../lib/coas-types.js";
 import { readScheduleTargetAgent } from "./coas-schedule-target.js";
 
 const INBOX_DIR = "schedule-runs/awaiting-approval";
