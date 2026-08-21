@@ -474,7 +474,7 @@ flowchart LR
   Revoke --> Audit[Redacted audit + durable release]
 ```
 
-The external-config adapter exposes only `resolve` and `subscribe`. Its Teams-shaped record carries logical keys, Principal issuer, yield ceiling, expiry, revision, and verification statuses—not credentials, provider configuration, raw signatures, or residency documents. Every reservation and dispatch authenticates the Principal; every dispatch revalidates config and governance.
+The external-config adapter exposes only `resolve` and `subscribe`. Its minimal Teams-shaped record carries schema/protocol, team and enablement IDs, Principal issuer, yield ceiling, expiry, revision, and enabled state—not credentials, provider configuration, model keys, signatures, or residency metadata. Every reservation and dispatch authenticates the Principal; every dispatch revalidates config and governance.
 
 The production assembly accepts only injected config source, append-if-sequence WAL, governance classifier, cancellable provider seam, baseline restore, and redacted audit. Assembly is cold: it performs no provider call, external-config write, default-model mutation, schedule change, or background activation.
 
