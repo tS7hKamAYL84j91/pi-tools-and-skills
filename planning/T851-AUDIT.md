@@ -14,22 +14,20 @@ Resolved in the parked implementation:
 Current validation passes:
 
 - `npm run check` (strict typecheck, lint, knip, type coverage)
-- `npm test` (1317 tests)
+- `npm test` (1352 tests)
 - `git diff --check`
 - `scripts/t851-artifact-smoke.sh` (isolated artifact consumer startup)
 
-## Missing tests
+## Completed coverage
 
-- `tests/lib/declarative-discovery.test.ts`: expansion/markers, malformed settings, errors, fixed-target no-probing, `roots: []`, seeded properties.
-- `tests/boost/pi-boost-descriptor-adapter.test.ts`: missing/unreadable/non-file targets, precedence, symlinks, installed path.
-- `tests/boost/pi-boost-descriptor.test.ts`: boundaries, UTF-8 limits, unknown fields, model/baseline mapping.
-- `tests/boost/pi-boost-runtime-bridge.test.ts` and `pi-boost-production-boost-host.test.ts`: independent gates, issuer/fingerprint changes, denial side effects, selected model, default invariance.
-- Rollback: timeout, disposal/release/audit failures, durable `RevertFailed`, startup fencing.
-- `tests/teams/`: explicit characterization matrix.
+- Discovery: layered precedence, path expansion, malformed settings, fixed targets, empty explicit roots, lexical duplicates/symlinks, seeded properties, and ENOENT-only filesystem suppression.
+- Descriptor: required boundaries, UTF-8 limits, unknown fields, exact fingerprints, model mapping, and baseline invariance.
+- Lifecycle: independent gates, issuer/fingerprint changes, denial side effects, rollback timeout/disposal/release/audit failures, and durable `RevertFailed` blocking.
+- Teams: explicit root/source/precedence characterization in `tests/teams/team-paths.test.ts`.
 
 ## Docs/smoke/KISS
 
-`docs/architecture.md` and `extensions/pi-boost/README.md` have Mermaid/boundary docs. `TODO.md` is stale; `tests/architecture/adr047-shared-discovery.ts` is too narrow.
+`docs/architecture.md` and `extensions/pi-boost/README.md` have Mermaid/boundary docs. `TODO.md` and `tests/architecture/adr047-shared-discovery.ts` were updated during completion.
 
 Artifact-only smoke (no source paths/test hosts):
 ```bash
