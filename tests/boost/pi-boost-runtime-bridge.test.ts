@@ -4,7 +4,7 @@ import type {
 	BoostSubject,
 } from "../../extensions/pi-boost/boost/contracts.js";
 import { combineBoostInput } from "../../extensions/pi-boost/boost/parser.js";
-import type { QBoostControlRecord } from "../../extensions/pi-boost/q-boost-control-contract.js";
+import type { ExternalBoostConfigRecord } from "../../extensions/pi-boost/external-boost-config-contract.js";
 import {
 	createLiveBoostTestHost,
 	TEST_CONTROL_REFERENCE,
@@ -66,9 +66,9 @@ describe("T-843 host-injected live boost runtime", () => {
 		["signatureStatus", "unverified"],
 		["ownershipStatus", "unknown"],
 		["residencyEvidence", "local-only"],
-	] as const)("fails closed on Q control mismatch %s", async (field, value) => {
+	] as const)("fails closed on external Boost config mismatch %s", async (field, value) => {
 		const host = await createLiveBoostTestHost({
-			control: { [field]: value } as Partial<QBoostControlRecord>,
+			control: { [field]: value } as Partial<ExternalBoostConfigRecord>,
 		});
 
 		expect(await reserve(host)).toEqual({
@@ -79,7 +79,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.dispatchRequests).toEqual([]);
 	});
 
-	it("rejects non-Principal callers before Q resolution or budget mutation", async () => {
+	it("rejects non-Principal callers before future publisher resolution or budget mutation", async () => {
 		const host = await createLiveBoostTestHost();
 
 		expect(
@@ -94,7 +94,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.wal.records).toEqual([]);
 	});
 
-	it("fails closed when the Q revision stream is unavailable", async () => {
+	it("fails closed when the future publisher revision stream is unavailable", async () => {
 		const host = await createLiveBoostTestHost();
 		host.control.streamAvailable = false;
 
@@ -165,7 +165,7 @@ describe("T-843 host-injected live boost runtime", () => {
 	it.each([
 		"revoked",
 		"expired",
-	] as const)("orders active Q %s as revoking, abort, acknowledgement, restore, audit, release", async (reason) => {
+	] as const)("orders active future publisher %s as revoking, abort, acknowledgement, restore, audit, release", async (reason) => {
 		const events: string[] = [];
 		const host = await createLiveBoostTestHost({
 			wal: new TestDaemonWal(events),
@@ -195,7 +195,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.store.snapshot().leases).toEqual([]);
 	});
 
-	it("persists RevertFailed per subject and resets only after Principal Q revalidation", async () => {
+	it("persists RevertFailed per subject and resets only after Principal future publisher revalidation", async () => {
 		const wal = new TestDaemonWal();
 		const failing = await createLiveBoostTestHost({
 			wal,

@@ -5,18 +5,18 @@ import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
 import { createBoostExtension } from "./index.js";
 import type { LiveBoostRuntimeBridge } from "./live-boost-bridge-contract.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-} from "./q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+} from "./external-boost-config-contract.js";
 
-/** @public Source-relative identity Q must validate before constructing an injected host. */
+/** @public Source-relative identity future publisher must validate before constructing an injected host. */
 export interface ReviewedBoostContractIdentity {
 	readonly path: typeof REVIEWED_BOOST_CONTRACT_PATH;
 	readonly sha256: typeof REVIEWED_BOOST_CONTRACT_SHA256;
 }
 
-/** @public Q-supplied evidence and capability required to construct the host extension. */
+/** @public future publisher-supplied evidence and capability required to construct the host extension. */
 export interface ReviewedBoostHostInput {
 	readonly contract: ReviewedBoostContractIdentity;
 	readonly injection: LiveBoostHostInjection;
@@ -30,9 +30,9 @@ export interface ReviewedBoostHost {
 }
 
 export const REVIEWED_BOOST_CONTRACT_PATH =
-	"extensions/pi-boost/q-boost-control-contract.ts" as const;
+	"extensions/pi-boost/external-boost-config-contract.ts" as const;
 export const REVIEWED_BOOST_CONTRACT_SHA256 =
-	"feabb391685bede3506d2ffe8f4b80a06ca19afdac8f10b65d7cb06510c52b28" as const;
+	"15d7a3631a6e0d55bb991a40de635e446aee45e1332f3cda4e452f9369c6e797" as const;
 
 /** Returns the immutable reviewed identity that a clean-cwd host must attest. */
 export function getReviewedBoostContractIdentity(): ReviewedBoostContractIdentity {
@@ -80,9 +80,9 @@ function validateReviewedContract(
 function validateLogicalReference(injection: LiveBoostHostInjection): void {
 	const reference = injection.control;
 	if (
-		reference.teamId !== Q_BOOST_TEAM_ID ||
-		reference.baselineLogicalKey !== Q_BOOST_BASELINE_KEY ||
-		reference.leaseLogicalKey !== Q_BOOST_LEASE_KEY ||
+		reference.teamId !== EXTERNAL_BOOST_TEAM_ID ||
+		reference.baselineLogicalKey !== EXTERNAL_BOOST_BASELINE_KEY ||
+		reference.leaseLogicalKey !== EXTERNAL_BOOST_LEASE_KEY ||
 		!isBoundedIdentifier(reference.enablementId) ||
 		!isVersion(reference.mappingVersion) ||
 		!isVersion(reference.rollbackVersion)

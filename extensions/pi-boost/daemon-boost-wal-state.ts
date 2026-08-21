@@ -127,6 +127,7 @@ export class DaemonBoostWalState {
 					subjectId: record.subjectId,
 					leaseId: record.leaseId,
 					requestedYields: record.requestedYields,
+					expiresAt: record.expiresAt,
 					consumedYields: 0,
 					generation: 0,
 					state: "Reserved",
@@ -203,5 +204,6 @@ export function snapshotDaemonLease(
 		requestedYields: lease.requestedYields,
 		consumedYields: lease.consumedYields,
 		generation: lease.generation,
+		expiresAt: lease.expiresAt,
 	};
 }

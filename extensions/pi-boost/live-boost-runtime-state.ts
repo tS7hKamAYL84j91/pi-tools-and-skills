@@ -9,16 +9,17 @@ import type {
 } from "./live-boost-bridge-contract.js";
 import { ProcessWideKeyedMutex } from "./process-wide-mutex.js";
 import type {
-	QBoostControlReference,
-	QBoostControlSubscription,
-} from "./q-boost-control-contract.js";
+	ExternalBoostConfigReference,
+	ExternalBoostConfigSubscription,
+} from "./external-boost-config-contract.js";
 
 export interface RuntimeBoostLease {
 	readonly key: DaemonBoostLeaseKey;
 	readonly issuerId: string;
 	readonly requestedYields: number;
-	readonly control: QBoostControlReference;
-	readonly subscription: QBoostControlSubscription;
+	readonly expiresAt: number;
+	readonly control: ExternalBoostConfigReference;
+	readonly subscription: ExternalBoostConfigSubscription;
 }
 
 export interface ActiveBoostDispatch {

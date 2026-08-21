@@ -77,9 +77,9 @@ describe("T-843 host injection boundary", () => {
 		);
 	});
 
-	it("keeps Q read-only and exposes no config/default/scheduler or credential seam", () => {
+	it("keeps future publisher read-only and exposes no config/default/scheduler or credential seam", () => {
 		const controlSource = readFileSync(
-			"extensions/pi-boost/q-boost-control-contract.ts",
+			"extensions/pi-boost/external-boost-config-contract.ts",
 			"utf8",
 		);
 		const runtimeSource = readFileSync(
@@ -95,7 +95,7 @@ describe("T-843 host injection boundary", () => {
 		);
 	});
 
-	it("passes only logical Q control and authenticated command inputs to the injected bridge", async () => {
+	it("passes only logical external Boost config and authenticated command inputs to the injected bridge", async () => {
 		const bridge = bridgeFake();
 		const deps = createHostBoostCommandDeps(registry, {
 			bridge,

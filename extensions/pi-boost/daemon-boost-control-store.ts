@@ -27,18 +27,25 @@ export type {
 
 const GLOBAL_LEASE_MUTEX_KEY = "boost:global-lease";
 const MAX_BOOST_YIELDS = 3;
+export const BOOST_LEASE_MAX_DURATION_MS = 2 * 60 * 60 * 1000;
 
 /** Durable test/host store; filesystem ownership remains in the injected daemon WAL. */
 export class DaemonBoostControlStore {
 	private readonly mutex = new ProcessWideKeyedMutex();
 	private readonly state: DaemonBoostWalState;
 
-	private constructor(wal: DaemonBoostWal) {
+	private constructor(
+		wal: DaemonBoostWal,
+		private readonly now: () => number,
+	) {
 		this.state = new DaemonBoostWalState(wal);
 	}
 
-	static async open(wal: DaemonBoostWal): Promise<DaemonBoostControlStore> {
-		const store = new DaemonBoostControlStore(wal);
+	static async open(
+		wal: DaemonBoostWal,
+		now: () => number,
+	): Promise<DaemonBoostControlStore> {
+		const store = new DaemonBoostControlStore(wal, now);
 		await store.state.replay();
 		// A WAL-only lease has no live host context after restart, so it blocks.
 		for (const lease of store.state.snapshot().leases) {
@@ -60,7 +67,7 @@ export class DaemonBoostControlStore {
 		input: DaemonBoostReserveInput,
 	): Promise<DaemonBoostStoreResult<DaemonBoostLeaseSnapshot>> {
 		return this.transaction(input.enablementId, async () => {
-			if (!isValidBudget(input.requestedYields, input.qYieldCeiling)) {
+			if (!isValidBudget(input.requestedYields, input.externalYieldCeiling)) {
 				return { ok: false, reason: "invalid-yield-budget" };
 			}
 			if (this.state.isBlocked(input.subjectId)) {
@@ -76,6 +83,7 @@ export class DaemonBoostControlStore {
 				subjectId: input.subjectId,
 				leaseId: input.leaseId,
 				requestedYields: input.requestedYields,
+				expiresAt: input.now + BOOST_LEASE_MAX_DURATION_MS,
 			};
 			const appendFailure = await this.state.append(record);
 			if (appendFailure) {
@@ -99,6 +107,9 @@ export class DaemonBoostControlStore {
 			}
 			if (lease.state !== "Reserved") {
 				return { ok: false, reason: "lease-not-active" };
+			}
+			if (lease.expiresAt <= this.now()) {
+				return { ok: false, reason: "lease-not-found" };
 			}
 			if (lease.consumedYields >= lease.requestedYields) {
 				return { ok: false, reason: "invalid-yield-budget" };
@@ -146,6 +157,9 @@ export class DaemonBoostControlStore {
 				return validation;
 			}
 			const lease = validation.value;
+			if (lease.expiresAt <= this.now()) {
+				return { ok: false, reason: "lease-not-found" };
+			}
 			const consumedYields = input.humanVisible
 				? lease.consumedYields + 1
 				: lease.consumedYields;
@@ -256,14 +270,14 @@ export class DaemonBoostControlStore {
 
 function isValidBudget(
 	requestedYields: number,
-	qYieldCeiling: number,
+	externalYieldCeiling: number,
 ): boolean {
 	return (
 		Number.isSafeInteger(requestedYields) &&
 		requestedYields >= 1 &&
 		requestedYields <= MAX_BOOST_YIELDS &&
-		Number.isSafeInteger(qYieldCeiling) &&
-		qYieldCeiling >= requestedYields &&
-		qYieldCeiling <= MAX_BOOST_YIELDS
+		Number.isSafeInteger(externalYieldCeiling) &&
+		externalYieldCeiling >= requestedYields &&
+		externalYieldCeiling <= MAX_BOOST_YIELDS
 	);
 }

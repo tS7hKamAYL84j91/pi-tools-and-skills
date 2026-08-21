@@ -11,17 +11,17 @@ import type {
 } from "../../extensions/pi-boost/daemon-boost-control-store.js";
 import type { LiveBoostAuditRecord } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
-	createProductionQBoostHost,
-	type ProductionQBoostHostInput,
-} from "../../extensions/pi-boost/production-q-boost-host.js";
-import type { QBoostControlRecordSource } from "../../extensions/pi-boost/q-boost-control-adapter.js";
+	createProductionBoostHost,
+	type ProductionBoostHostInput,
+} from "../../extensions/pi-boost/production-boost-host.js";
+import type { ExternalBoostConfigRecordSource } from "../../extensions/pi-boost/external-boost-config-adapter.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-	type QBoostControlRecord,
-	type QBoostControlRevision,
-} from "../../extensions/pi-boost/q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+	type ExternalBoostConfigRecord,
+	type ExternalBoostConfigRevision,
+} from "../../extensions/pi-boost/external-boost-config-contract.js";
 import { getReviewedBoostContractIdentity } from "../../extensions/pi-boost/reviewed-boost-host.js";
 
 interface CommandDefinition {
@@ -60,18 +60,18 @@ class MemoryWal implements DaemonBoostWal {
 }
 
 function record(
-	overrides: Partial<QBoostControlRecord> = {},
-): QBoostControlRecord {
+	overrides: Partial<ExternalBoostConfigRecord> = {},
+): ExternalBoostConfigRecord {
 	return {
 		schemaVersion: 2,
 		protocol: "boost",
-		teamId: Q_BOOST_TEAM_ID,
+		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: "enablement-test",
 		principalIssuerId: "principal-test",
 		mappingVersion: 7,
 		rollbackVersion: 3,
-		baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-		leaseLogicalKey: Q_BOOST_LEASE_KEY,
+		baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+		leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		maximumYields: 1,
 		expiresAt: 20_000,
 		revision: 1,
@@ -83,13 +83,13 @@ function record(
 	};
 }
 
-function createSource(value: QBoostControlRecord | undefined): {
-	readonly source: QBoostControlRecordSource;
+function createSource(value: ExternalBoostConfigRecord | undefined): {
+	readonly source: ExternalBoostConfigRecordSource;
 	readonly unsubscribes: { value: number };
-	emit(revision: QBoostControlRevision): Promise<void>;
+	emit(revision: ExternalBoostConfigRevision): Promise<void>;
 } {
 	const listeners = new Set<
-		(revision: QBoostControlRevision) => Promise<void>
+		(revision: ExternalBoostConfigRevision) => Promise<void>
 	>();
 	const unsubscribes = { value: 0 };
 	return {
@@ -114,10 +114,10 @@ function createSource(value: QBoostControlRecord | undefined): {
 	};
 }
 
-function createInput(control: QBoostControlRecord | undefined): {
+function createInput(control: ExternalBoostConfigRecord | undefined): {
 	readonly audit: LiveBoostAuditRecord[];
 	readonly baseline: ReturnType<typeof vi.fn>;
-	readonly input: ProductionQBoostHostInput;
+	readonly input: ProductionBoostHostInput;
 	readonly provider: ReturnType<typeof vi.fn>;
 	readonly source: ReturnType<typeof createSource>;
 	readonly wal: MemoryWal;
@@ -142,12 +142,12 @@ function createInput(control: QBoostControlRecord | undefined): {
 			contract: getReviewedBoostContractIdentity(),
 			control: {
 				reference: {
-					teamId: Q_BOOST_TEAM_ID,
+					teamId: EXTERNAL_BOOST_TEAM_ID,
 					enablementId: "enablement-test",
 					mappingVersion: 7,
 					rollbackVersion: 3,
-					baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-					leaseLogicalKey: Q_BOOST_LEASE_KEY,
+					baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+					leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 				},
 				source: source.source,
 				principalIssuerId: "principal-test",
@@ -200,7 +200,7 @@ function createContext(notifications: string[]): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
-describe("production Q boost host", () => {
+describe("production future publisher boost host", () => {
 	const inheritedParentId = process.env[PANOPTICON_PARENT_ID_ENV];
 
 	beforeEach(() => {
@@ -216,10 +216,10 @@ describe("production Q boost host", () => {
 			process.env[PANOPTICON_PARENT_ID_ENV] = inheritedParentId;
 		}
 	});
-	it("constructs cold from a valid Q control without provider or WAL mutation", async () => {
+	it("constructs cold from a valid external Boost config without provider or WAL mutation", async () => {
 		const fixture = createInput(record());
 
-		const host = await createProductionQBoostHost(fixture.input);
+		const host = await createProductionBoostHost(fixture.input);
 		host.extension(createFakeApi().api);
 
 		expect(fixture.provider).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe("production Q boost host", () => {
 
 	it("runs a controlled valid fixture with redacted audit only", async () => {
 		const fixture = createInput(record());
-		const host = await createProductionQBoostHost(fixture.input);
+		const host = await createProductionBoostHost(fixture.input);
 		const fake = createFakeApi();
 		host.extension(fake.api);
 		const command = fake.commands.get("boost");
@@ -263,11 +263,11 @@ describe("production Q boost host", () => {
 		},
 	])("releases the reserved slot after governance denial %#", async (classify) => {
 		const fixture = createInput(record());
-		const input: ProductionQBoostHostInput = {
+		const input: ProductionBoostHostInput = {
 			...fixture.input,
 			governance: { classify },
 		};
-		const host = await createProductionQBoostHost(input);
+		const host = await createProductionBoostHost(input);
 		const fake = createFakeApi();
 		host.extension(fake.api);
 		const command = fake.commands.get("boost");
@@ -293,7 +293,7 @@ describe("production Q boost host", () => {
 		]);
 	});
 
-	it("cancels and reverts an active lease after a Q revoke revision", async () => {
+	it("cancels and reverts an active lease after a future publisher revoke revision", async () => {
 		const fixture = createInput(record());
 		fixture.provider.mockImplementation(
 			async (request, signal) =>
@@ -311,7 +311,7 @@ describe("production Q boost host", () => {
 					);
 				}),
 		);
-		const host = await createProductionQBoostHost(fixture.input);
+		const host = await createProductionBoostHost(fixture.input);
 		const fake = createFakeApi();
 		host.extension(fake.api);
 		const command = fake.commands.get("boost");
@@ -342,9 +342,9 @@ describe("production Q boost host", () => {
 		expect(fixture.audit.map((entry) => entry.phase)).toEqual(["revoked"]);
 	});
 
-	it("exposes no provider construction, configuration, or Q-write seam", () => {
+	it("exposes no provider construction, configuration, or future publisher-write seam", () => {
 		const source = readFileSync(
-			"extensions/pi-boost/production-q-boost-host.ts",
+			"extensions/pi-boost/production-boost-host.ts",
 			"utf8",
 		);
 		expect(source).not.toMatch(
@@ -352,9 +352,9 @@ describe("production Q boost host", () => {
 		);
 	});
 
-	it("denies disabled Q control before provider or WAL use", async () => {
+	it("denies disabled external Boost config before provider or WAL use", async () => {
 		const fixture = createInput(record({ enabled: false }));
-		const host = await createProductionQBoostHost(fixture.input);
+		const host = await createProductionBoostHost(fixture.input);
 		const fake = createFakeApi();
 		host.extension(fake.api);
 		const command = fake.commands.get("boost");

@@ -1,38 +1,38 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-	createQBoostControlAdapter,
-	type QBoostControlRecordSource,
-} from "../../extensions/pi-boost/q-boost-control-adapter.js";
+	createExternalBoostConfigAdapter,
+	type ExternalBoostConfigRecordSource,
+} from "../../extensions/pi-boost/external-boost-config-adapter.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-	type QBoostControlRecord,
-	type QBoostControlReference,
-	type QBoostControlRevision,
-} from "../../extensions/pi-boost/q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+	type ExternalBoostConfigRecord,
+	type ExternalBoostConfigReference,
+	type ExternalBoostConfigRevision,
+} from "../../extensions/pi-boost/external-boost-config-contract.js";
 
-const REFERENCE: QBoostControlReference = {
-	teamId: Q_BOOST_TEAM_ID,
+const REFERENCE: ExternalBoostConfigReference = {
+	teamId: EXTERNAL_BOOST_TEAM_ID,
 	enablementId: "enablement-test",
 	mappingVersion: 7,
 	rollbackVersion: 3,
-	baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-	leaseLogicalKey: Q_BOOST_LEASE_KEY,
+	baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+	leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 };
 
-function record(overrides: Record<string, unknown> = {}): QBoostControlRecord {
-	const canonical: QBoostControlRecord = {
+function record(overrides: Record<string, unknown> = {}): ExternalBoostConfigRecord {
+	const canonical: ExternalBoostConfigRecord = {
 		schemaVersion: 2,
 		protocol: "boost",
-		teamId: Q_BOOST_TEAM_ID,
+		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
 		mappingVersion: REFERENCE.mappingVersion,
 		rollbackVersion: REFERENCE.rollbackVersion,
-		baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-		leaseLogicalKey: Q_BOOST_LEASE_KEY,
+		baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+		leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		maximumYields: 3,
 		expiresAt: 20_000,
 		revision: 4,
@@ -42,16 +42,16 @@ function record(overrides: Record<string, unknown> = {}): QBoostControlRecord {
 		residencyEvidence: "external-eligible",
 	};
 	// Intentional malformed runtime record fixture for fail-closed validation.
-	return { ...canonical, ...overrides } as QBoostControlRecord;
+	return { ...canonical, ...overrides } as ExternalBoostConfigRecord;
 }
 
-function createSource(initial: QBoostControlRecord | undefined): {
-	readonly source: QBoostControlRecordSource;
+function createSource(initial: ExternalBoostConfigRecord | undefined): {
+	readonly source: ExternalBoostConfigRecordSource;
 	readonly calls: { resolve: number; unsubscribe: number };
-	emit(revision: QBoostControlRevision): Promise<void>;
+	emit(revision: ExternalBoostConfigRevision): Promise<void>;
 } {
 	const listeners = new Set<
-		(revision: QBoostControlRevision) => Promise<void>
+		(revision: ExternalBoostConfigRevision) => Promise<void>
 	>();
 	const calls = { resolve: 0, unsubscribe: 0 };
 	return {
@@ -79,19 +79,19 @@ function createSource(initial: QBoostControlRecord | undefined): {
 	};
 }
 
-function createAdapter(initial: QBoostControlRecord | undefined) {
+function createAdapter(initial: ExternalBoostConfigRecord | undefined) {
 	const fixture = createSource(initial);
 	return {
 		fixture,
-		adapter: createQBoostControlAdapter(fixture.source, {
+		adapter: createExternalBoostConfigAdapter(fixture.source, {
 			principalIssuerId: "principal-test",
 			now: () => 10_000,
 		}),
 	};
 }
 
-describe("Q boost control adapter", () => {
-	it("resolves only a current canonical Q record", async () => {
+describe("future publisher boost control adapter", () => {
+	it("resolves only a current canonical external Boost config record", async () => {
 		const { adapter } = createAdapter(record());
 
 		expect(await adapter.resolve(REFERENCE)).toEqual(record());
@@ -108,7 +108,7 @@ describe("Q boost control adapter", () => {
 		{ signatureStatus: "unverified" },
 		{ ownershipStatus: "other" },
 		{ residencyEvidence: "local-only" },
-	] as const)("fails closed for invalid Q record %#", async (overrides) => {
+	] as const)("fails closed for invalid external Boost config record %#", async (overrides) => {
 		const { adapter } = createAdapter(record(overrides));
 
 		expect(await adapter.resolve(REFERENCE)).toBeUndefined();
@@ -117,48 +117,48 @@ describe("Q boost control adapter", () => {
 	it.each([
 		undefined,
 		null,
-	])("fails closed for absent references before consulting Q", async (absent) => {
+	])("fails closed for absent references before consulting future publisher", async (absent) => {
 		const { adapter, fixture } = createAdapter(record());
-		const malformed = absent as unknown as QBoostControlReference;
+		const malformed = absent as unknown as ExternalBoostConfigReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(adapter.subscribe(malformed, async () => undefined)).toBeUndefined();
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
-	it("rejects a malformed reference before consulting Q", async () => {
+	it("rejects a malformed reference before consulting future publisher", async () => {
 		const { adapter, fixture } = createAdapter(record());
 		const malformed = {
 			...REFERENCE,
 			mappingVersion: -1,
-		} as QBoostControlReference;
+		} as ExternalBoostConfigReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(adapter.subscribe(malformed, async () => undefined)).toBeUndefined();
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
-	it("rejects a string-coerced reference before consulting Q", async () => {
+	it("rejects a string-coerced reference before consulting future publisher", async () => {
 		const { adapter, fixture } = createAdapter(record());
 		const malformed = {
 			...REFERENCE,
 			mappingVersion: "7",
-		} as unknown as QBoostControlReference;
+		} as unknown as ExternalBoostConfigReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
-	it("fails closed when the injected Q source throws", async () => {
-		const source: QBoostControlRecordSource = {
+	it("fails closed when the injected external Boost config source throws", async () => {
+		const source: ExternalBoostConfigRecordSource = {
 			resolve: async () => {
-				throw new Error("Q unavailable");
+				throw new Error("future publisher unavailable");
 			},
 			subscribe: () => {
-				throw new Error("Q unavailable");
+				throw new Error("future publisher unavailable");
 			},
 		};
-		const adapter = createQBoostControlAdapter(source, {
+		const adapter = createExternalBoostConfigAdapter(source, {
 			principalIssuerId: "principal-test",
 			now: () => 10_000,
 		});
@@ -169,7 +169,7 @@ describe("Q boost control adapter", () => {
 
 	it("filters mismatched and stale revisions with idempotent unsubscribe", async () => {
 		const { adapter, fixture } = createAdapter(record());
-		const delivered: QBoostControlRevision[] = [];
+		const delivered: ExternalBoostConfigRevision[] = [];
 		const subscription = adapter.subscribe(REFERENCE, async (revision) => {
 			delivered.push(revision);
 		});
@@ -222,7 +222,7 @@ describe("Q boost control adapter", () => {
 
 	it("exposes no provider, configuration, scheduler, or raw-control seam", () => {
 		const source = readFileSync(
-			"extensions/pi-boost/q-boost-control-adapter.ts",
+			"extensions/pi-boost/external-boost-config-adapter.ts",
 			"utf8",
 		);
 		expect(source).not.toMatch(

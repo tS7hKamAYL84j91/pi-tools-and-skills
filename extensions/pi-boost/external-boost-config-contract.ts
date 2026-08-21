@@ -1,29 +1,29 @@
-/** Exact read-only Q schema-v2 boost control boundary. */
+/** Exact read-only Teams-shaped external Boost config boost control boundary. */
 
-export const Q_BOOST_TEAM_ID = "q-boost" as const;
-export const Q_BOOST_BASELINE_KEY = "principalBoostBaseline" as const;
-export const Q_BOOST_LEASE_KEY = "principalBoostLease" as const;
+export const EXTERNAL_BOOST_TEAM_ID = "external-boost" as const;
+export const EXTERNAL_BOOST_BASELINE_KEY = "principalBoostBaseline" as const;
+export const EXTERNAL_BOOST_LEASE_KEY = "principalBoostLease" as const;
 
-export interface QBoostControlReference {
-	readonly teamId: typeof Q_BOOST_TEAM_ID;
+export interface ExternalBoostConfigReference {
+	readonly teamId: typeof EXTERNAL_BOOST_TEAM_ID;
 	readonly enablementId: string;
 	readonly mappingVersion: number;
 	readonly rollbackVersion: number;
-	readonly baselineLogicalKey: typeof Q_BOOST_BASELINE_KEY;
-	readonly leaseLogicalKey: typeof Q_BOOST_LEASE_KEY;
+	readonly baselineLogicalKey: typeof EXTERNAL_BOOST_BASELINE_KEY;
+	readonly leaseLogicalKey: typeof EXTERNAL_BOOST_LEASE_KEY;
 }
 
 /** Verification statuses only; raw signatures and residency evidence are never exposed. */
-export interface QBoostControlRecord {
+export interface ExternalBoostConfigRecord {
 	readonly schemaVersion: 2;
 	readonly protocol: "boost";
-	readonly teamId: typeof Q_BOOST_TEAM_ID;
+	readonly teamId: typeof EXTERNAL_BOOST_TEAM_ID;
 	readonly enablementId: string;
 	readonly principalIssuerId: string;
 	readonly mappingVersion: number;
 	readonly rollbackVersion: number;
-	readonly baselineLogicalKey: typeof Q_BOOST_BASELINE_KEY;
-	readonly leaseLogicalKey: typeof Q_BOOST_LEASE_KEY;
+	readonly baselineLogicalKey: typeof EXTERNAL_BOOST_BASELINE_KEY;
+	readonly leaseLogicalKey: typeof EXTERNAL_BOOST_LEASE_KEY;
 	readonly maximumYields: number;
 	readonly expiresAt: number;
 	readonly revision: number;
@@ -33,30 +33,30 @@ export interface QBoostControlRecord {
 	readonly residencyEvidence: "external-eligible";
 }
 
-export interface QBoostControlRevision {
+export interface ExternalBoostConfigRevision {
 	readonly enablementId: string;
 	readonly revision: number;
 	readonly reason: "revision" | "revoked" | "expired" | "rollback";
 }
 
-export interface QBoostControlSubscription {
+export interface ExternalBoostConfigSubscription {
 	unsubscribe(): void;
 }
 
 /** Read-only: no descriptor, enablement, mapping, or rollback mutation method exists. */
-export interface QBoostControlAdapter {
+export interface ExternalBoostConfigAdapter {
 	resolve(
-		reference: QBoostControlReference,
-	): Promise<QBoostControlRecord | undefined>;
+		reference: ExternalBoostConfigReference,
+	): Promise<ExternalBoostConfigRecord | undefined>;
 	subscribe(
-		reference: QBoostControlReference,
-		listener: (revision: QBoostControlRevision) => Promise<void>,
-	): QBoostControlSubscription | undefined;
+		reference: ExternalBoostConfigReference,
+		listener: (revision: ExternalBoostConfigRevision) => Promise<void>,
+	): ExternalBoostConfigSubscription | undefined;
 }
 
-export function validateQBoostControl(
-	reference: QBoostControlReference,
-	record: QBoostControlRecord | undefined,
+export function validateExternalBoostConfig(
+	reference: ExternalBoostConfigReference,
+	record: ExternalBoostConfigRecord | undefined,
 	input: {
 		readonly issuerId: string;
 		readonly requestedYields: number;
@@ -67,16 +67,16 @@ export function validateQBoostControl(
 		record !== undefined &&
 		record.schemaVersion === 2 &&
 		record.protocol === "boost" &&
-		record.teamId === Q_BOOST_TEAM_ID &&
-		reference.teamId === Q_BOOST_TEAM_ID &&
+		record.teamId === EXTERNAL_BOOST_TEAM_ID &&
+		reference.teamId === EXTERNAL_BOOST_TEAM_ID &&
 		record.enablementId === reference.enablementId &&
 		record.principalIssuerId === input.issuerId &&
 		record.mappingVersion === reference.mappingVersion &&
 		record.rollbackVersion === reference.rollbackVersion &&
-		record.baselineLogicalKey === Q_BOOST_BASELINE_KEY &&
-		reference.baselineLogicalKey === Q_BOOST_BASELINE_KEY &&
-		record.leaseLogicalKey === Q_BOOST_LEASE_KEY &&
-		reference.leaseLogicalKey === Q_BOOST_LEASE_KEY &&
+		record.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
+		reference.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
+		record.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
+		reference.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
 		record.enabled === true &&
 		record.signatureStatus === "verified" &&
 		record.ownershipStatus === "principal-owned" &&

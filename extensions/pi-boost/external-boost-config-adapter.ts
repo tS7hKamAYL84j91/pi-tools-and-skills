@@ -1,37 +1,37 @@
-/** Strict read-only adapter from an injected Q record source to the boost contract. */
+/** Strict read-only adapter from an injected external Boost config record source to the boost contract. */
 
 import type {
-	QBoostControlAdapter,
-	QBoostControlRecord,
-	QBoostControlReference,
-	QBoostControlRevision,
-	QBoostControlSubscription,
-} from "./q-boost-control-contract.js";
+	ExternalBoostConfigAdapter,
+	ExternalBoostConfigRecord,
+	ExternalBoostConfigReference,
+	ExternalBoostConfigRevision,
+	ExternalBoostConfigSubscription,
+} from "./external-boost-config-contract.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-} from "./q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+} from "./external-boost-config-contract.js";
 
-/** @public Read-only Q source; it intentionally exposes no control mutation. */
-export interface QBoostControlRecordSource {
-	resolve(enablementId: string): Promise<QBoostControlRecord | undefined>;
+/** @public Read-only external Boost config source; it intentionally exposes no control mutation. */
+export interface ExternalBoostConfigRecordSource {
+	resolve(enablementId: string): Promise<ExternalBoostConfigRecord | undefined>;
 	subscribe(
-		listener: (revision: QBoostControlRevision) => Promise<void>,
-	): QBoostControlSubscription;
+		listener: (revision: ExternalBoostConfigRevision) => Promise<void>,
+	): ExternalBoostConfigSubscription;
 }
 
-/** @public Fixed trusted identity and clock used to validate Q records. */
-export interface QBoostControlAdapterOptions {
+/** @public Fixed trusted identity and clock used to validate future publisher records. */
+export interface ExternalBoostConfigAdapterOptions {
 	readonly principalIssuerId: string;
 	readonly now: () => number;
 }
 
-/** Creates a fail-closed adapter over a Q-injected read-only record source. */
-export function createQBoostControlAdapter(
-	source: QBoostControlRecordSource,
-	options: QBoostControlAdapterOptions,
-): QBoostControlAdapter {
+/** Creates a fail-closed adapter over a future publisher-injected read-only record source. */
+export function createExternalBoostConfigAdapter(
+	source: ExternalBoostConfigRecordSource,
+	options: ExternalBoostConfigAdapterOptions,
+): ExternalBoostConfigAdapter {
 	return {
 		resolve: async (reference) => {
 			if (!isValidReference(reference)) {
@@ -50,7 +50,7 @@ export function createQBoostControlAdapter(
 			}
 			let active = true;
 			let latestRevision = -1;
-			let sourceSubscription: QBoostControlSubscription;
+			let sourceSubscription: ExternalBoostConfigSubscription;
 			try {
 				sourceSubscription = source.subscribe(async (revision) => {
 					if (
@@ -81,13 +81,13 @@ export function createQBoostControlAdapter(
 }
 
 function isValidReference(
-	reference: QBoostControlReference | undefined,
-): reference is QBoostControlReference {
+	reference: ExternalBoostConfigReference | undefined,
+): reference is ExternalBoostConfigReference {
 	return (
 		reference != null &&
-		reference.teamId === Q_BOOST_TEAM_ID &&
-		reference.baselineLogicalKey === Q_BOOST_BASELINE_KEY &&
-		reference.leaseLogicalKey === Q_BOOST_LEASE_KEY &&
+		reference.teamId === EXTERNAL_BOOST_TEAM_ID &&
+		reference.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
+		reference.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
 		isOpaqueIdentifier(reference.enablementId) &&
 		isVersion(reference.mappingVersion) &&
 		isVersion(reference.rollbackVersion)
@@ -95,21 +95,21 @@ function isValidReference(
 }
 
 function isValidRecord(
-	record: QBoostControlRecord | undefined,
-	reference: QBoostControlReference,
-	options: QBoostControlAdapterOptions,
-): record is QBoostControlRecord {
+	record: ExternalBoostConfigRecord | undefined,
+	reference: ExternalBoostConfigReference,
+	options: ExternalBoostConfigAdapterOptions,
+): record is ExternalBoostConfigRecord {
 	return (
 		record !== undefined &&
 		record.schemaVersion === 2 &&
 		record.protocol === "boost" &&
-		record.teamId === Q_BOOST_TEAM_ID &&
+		record.teamId === EXTERNAL_BOOST_TEAM_ID &&
 		record.enablementId === reference.enablementId &&
 		record.principalIssuerId === options.principalIssuerId &&
 		record.mappingVersion === reference.mappingVersion &&
 		record.rollbackVersion === reference.rollbackVersion &&
-		record.baselineLogicalKey === Q_BOOST_BASELINE_KEY &&
-		record.leaseLogicalKey === Q_BOOST_LEASE_KEY &&
+		record.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
+		record.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
 		Number.isSafeInteger(record.maximumYields) &&
 		record.maximumYields >= 1 &&
 		record.maximumYields <= 3 &&

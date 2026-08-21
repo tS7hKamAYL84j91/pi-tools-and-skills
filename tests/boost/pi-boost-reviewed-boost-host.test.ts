@@ -10,10 +10,10 @@ import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/run
 import defaultBoostExtension from "../../extensions/pi-boost/index.js";
 import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-} from "../../extensions/pi-boost/q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+} from "../../extensions/pi-boost/external-boost-config-contract.js";
 import {
 	createReviewedBoostHost,
 	getReviewedBoostContractIdentity,
@@ -55,12 +55,12 @@ function createInjection(): LiveBoostHostInjection {
 	return {
 		bridge: createDisabledBridge(),
 		control: {
-			teamId: Q_BOOST_TEAM_ID,
+			teamId: EXTERNAL_BOOST_TEAM_ID,
 			enablementId: "enablement-test",
 			mappingVersion: 7,
 			rollbackVersion: 3,
-			baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-			leaseLogicalKey: Q_BOOST_LEASE_KEY,
+			baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+			leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		},
 		shutdownChoice: "synchronous-restore",
 	};
@@ -244,7 +244,7 @@ describe("reviewed boost production host", () => {
 		).toThrow("Invalid reviewed boost shutdown choice");
 	});
 
-	it("rejects an invalid logical Q reference before extension construction", () => {
+	it("rejects an invalid logical future publisher reference before extension construction", () => {
 		const injection = createInjection();
 		const invalid = {
 			...injection,
@@ -266,7 +266,7 @@ describe("reviewed boost production host", () => {
 		);
 		expect(source).toContain("createBoostExtension(injection)");
 		expect(source).not.toMatch(
-			/from\s+["'][^"']*(provider|config|scheduler)[^"']*["']|process\.env|apiKey|configPath|defaultModel/i,
+			/from\s+["'][^"']*(provider|scheduler)[^"']*["']|process\.env|apiKey|configPath|defaultModel/i,
 		);
 	});
 });

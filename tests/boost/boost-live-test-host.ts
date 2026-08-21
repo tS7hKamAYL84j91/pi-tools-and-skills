@@ -10,23 +10,23 @@ import {
 	type LiveBoostTerminalEvent,
 } from "../../extensions/pi-boost/host-injected-live-boost.js";
 import {
-	Q_BOOST_BASELINE_KEY,
-	Q_BOOST_LEASE_KEY,
-	Q_BOOST_TEAM_ID,
-	type QBoostControlAdapter,
-	type QBoostControlRecord,
-	type QBoostControlReference,
-	type QBoostControlRevision,
-	type QBoostControlSubscription,
-} from "../../extensions/pi-boost/q-boost-control-contract.js";
+	EXTERNAL_BOOST_BASELINE_KEY,
+	EXTERNAL_BOOST_LEASE_KEY,
+	EXTERNAL_BOOST_TEAM_ID,
+	type ExternalBoostConfigAdapter,
+	type ExternalBoostConfigRecord,
+	type ExternalBoostConfigReference,
+	type ExternalBoostConfigRevision,
+	type ExternalBoostConfigSubscription,
+} from "../../extensions/pi-boost/external-boost-config-contract.js";
 
-export const TEST_CONTROL_REFERENCE: QBoostControlReference = {
-	teamId: Q_BOOST_TEAM_ID,
+export const TEST_CONTROL_REFERENCE: ExternalBoostConfigReference = {
+	teamId: EXTERNAL_BOOST_TEAM_ID,
 	enablementId: "enablement-test",
 	mappingVersion: 7,
 	rollbackVersion: 3,
-	baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-	leaseLogicalKey: Q_BOOST_LEASE_KEY,
+	baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+	leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 };
 
 export class TestDaemonWal implements DaemonBoostWal {
@@ -60,29 +60,29 @@ export class TestDaemonWal implements DaemonBoostWal {
 	}
 }
 
-class TestQBoostControlAdapter implements QBoostControlAdapter {
+class TestExternalBoostConfigAdapter implements ExternalBoostConfigAdapter {
 	resolveCount = 0;
-	record: QBoostControlRecord;
+	record: ExternalBoostConfigRecord;
 	streamAvailable = true;
 	private readonly listeners = new Set<
-		(revision: QBoostControlRevision) => Promise<void>
+		(revision: ExternalBoostConfigRevision) => Promise<void>
 	>();
 
-	constructor(record: QBoostControlRecord) {
+	constructor(record: ExternalBoostConfigRecord) {
 		this.record = record;
 	}
 
 	async resolve(
-		_reference: QBoostControlReference,
-	): Promise<QBoostControlRecord | undefined> {
+		_reference: ExternalBoostConfigReference,
+	): Promise<ExternalBoostConfigRecord | undefined> {
 		this.resolveCount += 1;
 		return this.record;
 	}
 
 	subscribe(
-		_reference: QBoostControlReference,
-		listener: (revision: QBoostControlRevision) => Promise<void>,
-	): QBoostControlSubscription | undefined {
+		_reference: ExternalBoostConfigReference,
+		listener: (revision: ExternalBoostConfigRevision) => Promise<void>,
+	): ExternalBoostConfigSubscription | undefined {
 		if (!this.streamAvailable) {
 			return undefined;
 		}
@@ -94,8 +94,8 @@ class TestQBoostControlAdapter implements QBoostControlAdapter {
 		};
 	}
 
-	async emit(reason: QBoostControlRevision["reason"]): Promise<void> {
-		const revision: QBoostControlRevision = {
+	async emit(reason: ExternalBoostConfigRevision["reason"]): Promise<void> {
+		const revision: ExternalBoostConfigRevision = {
 			enablementId: this.record.enablementId,
 			revision: this.record.revision + 1,
 			reason,
@@ -109,7 +109,7 @@ class TestQBoostControlAdapter implements QBoostControlAdapter {
 interface LiveBoostTestHost {
 	readonly audit: LiveBoostAuditRecord[];
 	readonly bridge: HostInjectedLiveBoostRuntime;
-	readonly control: TestQBoostControlAdapter;
+	readonly control: TestExternalBoostConfigAdapter;
 	readonly dispatchRequests: LiveBoostProviderRequest[];
 	readonly events: string[];
 	readonly signals: AbortSignal[];
@@ -119,7 +119,7 @@ interface LiveBoostTestHost {
 }
 
 interface TestHostOverrides {
-	readonly control?: Partial<QBoostControlRecord>;
+	readonly control?: Partial<ExternalBoostConfigRecord>;
 	readonly restoreFailsFor?: string;
 	readonly wal?: TestDaemonWal;
 }
@@ -129,18 +129,18 @@ export async function createLiveBoostTestHost(
 ): Promise<LiveBoostTestHost> {
 	const events = overrides.wal?.events ?? [];
 	const wal = overrides.wal ?? new TestDaemonWal(events);
-	const store = await DaemonBoostControlStore.open(wal);
 	const now = 10_000;
-	const record: QBoostControlRecord = {
+	const store = await DaemonBoostControlStore.open(wal, () => now);
+	const record: ExternalBoostConfigRecord = {
 		schemaVersion: 2,
 		protocol: "boost",
-		teamId: Q_BOOST_TEAM_ID,
+		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: TEST_CONTROL_REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
 		mappingVersion: TEST_CONTROL_REFERENCE.mappingVersion,
 		rollbackVersion: TEST_CONTROL_REFERENCE.rollbackVersion,
-		baselineLogicalKey: Q_BOOST_BASELINE_KEY,
-		leaseLogicalKey: Q_BOOST_LEASE_KEY,
+		baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
+		leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		maximumYields: 3,
 		expiresAt: now + 60_000,
 		revision: 11,
@@ -150,7 +150,7 @@ export async function createLiveBoostTestHost(
 		residencyEvidence: "external-eligible",
 		...overrides.control,
 	};
-	const control = new TestQBoostControlAdapter(record);
+	const control = new TestExternalBoostConfigAdapter(record);
 	const audit: LiveBoostAuditRecord[] = [];
 	const dispatchRequests: LiveBoostProviderRequest[] = [];
 	const signals: AbortSignal[] = [];

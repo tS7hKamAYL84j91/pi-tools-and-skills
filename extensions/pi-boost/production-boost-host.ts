@@ -1,4 +1,4 @@
-/** Production assembly of the reviewed boost host from Q-injected dependencies. */
+/** Production assembly of the reviewed boost host from future publisher-injected dependencies. */
 
 import type { BoostGovernanceDecision } from "./boost/contracts.js";
 import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
@@ -13,22 +13,22 @@ import type {
 	LiveBoostTerminalEvent,
 } from "./live-boost-bridge-contract.js";
 import {
-	createQBoostControlAdapter,
-	type QBoostControlRecordSource,
-} from "./q-boost-control-adapter.js";
-import type { QBoostControlReference } from "./q-boost-control-contract.js";
+	createExternalBoostConfigAdapter,
+	type ExternalBoostConfigRecordSource,
+} from "./external-boost-config-adapter.js";
+import type { ExternalBoostConfigReference } from "./external-boost-config-contract.js";
 import {
 	createReviewedBoostHost,
 	type ReviewedBoostContractIdentity,
 	type ReviewedBoostHost,
 } from "./reviewed-boost-host.js";
 
-/** @public All host-owned dependencies needed to construct the Q-bound bridge. */
-export interface ProductionQBoostHostInput {
+/** @public All host-owned dependencies needed to construct the future publisher-bound bridge. */
+export interface ProductionBoostHostInput {
 	readonly contract: ReviewedBoostContractIdentity;
 	readonly control: {
-		readonly reference: QBoostControlReference;
-		readonly source: QBoostControlRecordSource;
+		readonly reference: ExternalBoostConfigReference;
+		readonly source: ExternalBoostConfigRecordSource;
 		readonly principalIssuerId: string;
 	};
 	readonly wal: DaemonBoostWal;
@@ -53,14 +53,14 @@ export interface ProductionQBoostHostInput {
 }
 
 /** Opens the durable store and constructs a cold reviewed host without dispatching. */
-export async function createProductionQBoostHost(
-	input: ProductionQBoostHostInput,
+export async function createProductionBoostHost(
+	input: ProductionBoostHostInput,
 ): Promise<ReviewedBoostHost> {
-	const control = createQBoostControlAdapter(input.control.source, {
+	const control = createExternalBoostConfigAdapter(input.control.source, {
 		principalIssuerId: input.control.principalIssuerId,
 		now: input.now,
 	});
-	const store = await DaemonBoostControlStore.open(input.wal);
+	const store = await DaemonBoostControlStore.open(input.wal, input.now);
 	const bridge = new HostInjectedLiveBoostRuntime({
 		store,
 		control,

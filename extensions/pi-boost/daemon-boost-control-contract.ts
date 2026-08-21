@@ -29,6 +29,7 @@ interface DaemonBoostWalBase extends DaemonBoostLeaseKey {
 interface ReserveWalRecord extends DaemonBoostWalBase {
 	readonly action: "reserve";
 	readonly requestedYields: number;
+	readonly expiresAt: number;
 }
 
 interface ActivateWalRecord extends DaemonBoostWalBase {
@@ -81,7 +82,8 @@ export interface DaemonBoostWal {
 
 export interface DaemonBoostReserveInput extends DaemonBoostLeaseKey {
 	readonly requestedYields: number;
-	readonly qYieldCeiling: number;
+	readonly externalYieldCeiling: number;
+	readonly now: number;
 }
 
 export interface DaemonBoostConsumeInput extends DaemonBoostLeaseKey {
@@ -98,6 +100,7 @@ export interface DaemonBoostLeaseSnapshot extends DaemonBoostLeaseKey {
 	readonly requestedYields: number;
 	readonly consumedYields: number;
 	readonly generation: number;
+	readonly expiresAt: number;
 }
 
 export interface DaemonBoostStoreSnapshot {
@@ -117,4 +120,5 @@ export interface MutableDaemonBoostLease extends DaemonBoostLeaseKey {
 	readonly requestedYields: number;
 	consumedYields: number;
 	generation: number;
+	readonly expiresAt: number;
 }

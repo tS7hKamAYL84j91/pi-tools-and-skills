@@ -137,7 +137,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
-| `pi-boost` | user/global | Principal-only bounded Boost lease command and host-injected Q runtime control | Injected daemon/WAL state and redacted audit; no Panopticon-owned state |
+| `pi-boost` | user/global | Principal-only bounded Boost lease command and host-injected injected provider runtime control | Injected daemon/WAL state and redacted audit; no Panopticon-owned state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
@@ -453,38 +453,38 @@ flowchart LR
 
 ## Standalone Host-Injected Boost Runtime Boundary
 
-ADR-046 assigns Boost to `pi-boost`, not Panopticon or a team. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, immutable copied logical Q control reference, and shutdown choice; there is no global, API cast, provider-discovery, or configuration fallback.
+ADR-046 assigns Boost to `pi-boost`, not Panopticon or a team. The normal extension factory supplies no bridge and registers a fail-closed `/boost` denial with no reservation mutation. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, immutable copied logical external Boost config reference, and shutdown choice; there is no global, API cast, provider-discovery, or configuration fallback.
 
 The default identity boundary requires `PI_PRINCIPAL=1` and rejects sessions carrying the shared parent-agent marker. Reading that shared marker prevents delegated workers from inheriting Principal authority; it does not grant Panopticon any Boost dependency or mutation surface.
 
-T-846 adds the reviewed host-construction boundary: it accepts only a matching Q-contract path/SHA attestation and canonical logical reference before constructing that explicit factory. The construction result exposes identity evidence, the extension factory, and one idempotent restore-capable shutdown path; it neither authorizes a provider nor creates a Q write/configuration surface. Clean-worktree/commit attestation remains the launcher layer's responsibility.
+T-846 adds the reviewed host-construction boundary: it accepts only a matching future publisher-contract path/SHA attestation and canonical logical reference before constructing that explicit factory. The construction result exposes identity evidence, the extension factory, and one idempotent restore-capable shutdown path; it neither authorizes a provider nor creates a future publisher write/configuration surface. Clean-worktree/commit attestation remains the launcher layer's responsibility.
 
 ```mermaid
 flowchart LR
   Principal[Authenticated Principal command] --> Command[pi-boost command adapter]
   Default[Normal ExtensionAPI load] -. no host capability .-> Deny[Fail-closed denial]
-  Attestation[Q contract path + SHA / logical reference] --> Host[Reviewed pi-boost host constructor]
+  Attestation[future publisher contract path + SHA / logical reference] --> Host[Reviewed pi-boost host constructor]
   Host -->|explicit factory + injection only| Command
   Command -->|explicit injection only| Bridge[Host LiveBoostRuntimeBridge]
-  Bridge --> Q[Read-only Q schema-v2 resolver]
+  Bridge --> future publisher[Read-only Teams-shaped external Boost config resolver]
   Bridge --> Governance[Per-dispatch governance]
   Bridge --> Store[Daemon session-control store]
   Store --> WAL[Injected append-only WAL]
   Bridge --> Provider[Cancellable provider seam]
   Bridge --> Restore[Baseline restore]
-  Q -->|revision / revoke / expiry| Revoke[Revoking → abort → terminal ack → restore]
+  future publisher -->|revision / revoke / expiry| Revoke[Revoking → abort → terminal ack → restore]
   Revoke --> Audit[Redacted audit + budget release]
 ```
 
-The Q adapter exposes only `resolve` and `subscribe`; its exact logical contract is team `q-boost`, keys `principalBoostBaseline` and `principalBoostLease`, and enablement/mapping/rollback versions. It carries verification statuses rather than raw signatures, residency documents, credentials, provider configuration, or paths. Every reservation and dispatch authenticates the Principal, and every dispatch revalidates Q control and governance before the provider seam.
+The external Boost config adapter exposes only `resolve` and `subscribe`; its exact logical contract is the external Boost config team, keys `principalBoostBaseline` and `principalBoostLease`, and enablement/mapping/rollback versions. It carries verification statuses rather than raw signatures, residency documents, credentials, provider configuration, or paths. Every reservation and dispatch authenticates the Principal, and every dispatch revalidates external Boost config and governance before the provider seam.
 
-T-847 supplies the production read-only Q adapter boundary. It accepts only an injected Q record/revision source and validates canonical references, Principal issuer, schema-v2 status, yields, expiry, and strictly increasing same-enablement revisions. Disabled, expired, mismatched, malformed, stale, or unavailable inputs return no record/subscription; it has no Q-write, provider, configuration, scheduler, or default-model surface.
+T-847 supplies the production read-only external Boost config adapter boundary. It accepts only an injected external Boost config record/revision source and validates canonical references, Principal issuer, schema-v2 status, yields, expiry, and strictly increasing same-enablement revisions. Disabled, expired, mismatched, malformed, stale, or unavailable inputs return no record/subscription; it has no future publisher-write, provider, configuration, scheduler, or default-model surface.
 
-T-848 is the production assembly boundary. It wires only injected Q adapter/source, append-if-sequence WAL, governance classifier, cancellation-aware provider seam, baseline restore, and redacted audit into the existing bridge/runtime and reviewed host. Assembly is cold: it dispatches no work or provider call and never constructs credentials, default-model/configuration, scheduler, or Q-write surfaces. A Q-approved control record remains the separate activation gate.
+T-848 is the production assembly boundary. It wires only injected external Boost config adapter/source, append-if-sequence WAL, governance classifier, cancellation-aware provider seam, baseline restore, and redacted audit into the existing bridge/runtime and reviewed host. Assembly is cold: it dispatches no work or provider call and never constructs credentials, default-model/configuration, scheduler, or future publisher-write surfaces. A future publisher-approved control record remains the separate activation gate.
 
 The daemon-control test store appends before mutation, replays its WAL, and serializes global plus enablement-keyed transactions. Reserve/consume/release are keyed by enablement, subject, and lease; one global lease and the hard three-yield cap are enforced. Activation generations increase monotonically and stale terminal events are rejected. Revocation durably marks `Revoking` before aborting, awaits terminal acknowledgement, restores baseline, appends an identity-redacted audit event, then releases budget.
 
-Restore, audit, or cleanup failure writes a durable per-subject `RevertFailed` marker; other subjects remain dispatchable. Principal reset requires fresh Q revalidation and baseline restoration. Shutdown explicitly chooses awaited restoration or a durable recovery block, and no activation or selector survives restart. This repository contains deterministic host/store fixtures only: Q deployment, provider credentials, live fixtures, configuration/default changes, Teams mapping writes, and scheduler changes remain outside this implementation pending independent PASS and committed contract handoff.
+Restore, audit, or cleanup failure writes a durable per-subject `RevertFailed` marker; other subjects remain dispatchable. Principal reset requires fresh future publisher revalidation and baseline restoration. Shutdown explicitly chooses awaited restoration or a durable recovery block, and no activation or selector survives restart. This repository contains deterministic host/store fixtures only: future publisher deployment, provider credentials, live fixtures, configuration/default changes, Teams mapping writes, and scheduler changes remain outside this implementation pending independent PASS and committed contract handoff.
 
 ## Panopticon Controls
 
@@ -794,6 +794,6 @@ flowchart LR
   Principal --> Boost[pi-boost]
   Boost --> Authority[Lease authority]
   Boost --> Audit[Persistence and audit]
-  Boost --> Runtime[Q runtime adapter]
+  Boost --> Runtime[injected provider runtime adapter]
   Panopticon[pi-panopticon] --> Swarm[Swarm observation]
 ```

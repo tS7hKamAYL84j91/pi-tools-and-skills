@@ -14,8 +14,8 @@ import type {
 } from "./live-boost-bridge-contract.js";
 import { LiveBoostFinalizer } from "./live-boost-finalizer.js";
 import { LiveBoostRuntimeState } from "./live-boost-runtime-state.js";
-import type { QBoostControlReference } from "./q-boost-control-contract.js";
-import { validateQBoostControl } from "./q-boost-control-contract.js";
+import type { ExternalBoostConfigReference } from "./external-boost-config-contract.js";
+import { validateExternalBoostConfig } from "./external-boost-config-contract.js";
 import { redactedBoostAuditId } from "./redacted-boost-audit.js";
 
 export type {
@@ -41,7 +41,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		}
 		const record = await this.dependencies.control.resolve(input.control);
 		if (
-			!validateQBoostControl(input.control, record, {
+			!validateExternalBoostConfig(input.control, record, {
 				issuerId: input.caller.issuerId,
 				requestedYields: input.request.requestedYields,
 				now: this.dependencies.now(),
@@ -62,7 +62,8 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			subjectId: input.subject.subjectId,
 			leaseId,
 			requestedYields: input.request.requestedYields,
-			qYieldCeiling: record.maximumYields,
+			externalYieldCeiling: record.maximumYields,
+			now: this.dependencies.now(),
 		});
 		if (!reserved.ok) {
 			subscription.unsubscribe();
@@ -82,6 +83,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			},
 			issuerId: input.caller.issuerId,
 			requestedYields: input.request.requestedYields,
+			expiresAt: reserved.value.expiresAt,
 			control: input.control,
 			subscription,
 		});
@@ -107,9 +109,13 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		if (this.isDispatchBlocked(input.subjectId)) {
 			return { ok: false, reason: "revert-failed" };
 		}
+		if (lease.expiresAt <= this.dependencies.now()) {
+			await this.finalizer.releaseReserved(lease);
+			return { ok: false, reason: "expired" };
+		}
 		const record = await this.dependencies.control.resolve(input.control);
 		if (
-			!validateQBoostControl(input.control, record, {
+			!validateExternalBoostConfig(input.control, record, {
 				issuerId: input.caller.issuerId,
 				requestedYields: lease.requestedYields,
 				now: this.dependencies.now(),
@@ -156,7 +162,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		}
 		const record = await this.dependencies.control.resolve(input.control);
 		if (
-			!validateQBoostControl(input.control, record, {
+			!validateExternalBoostConfig(input.control, record, {
 				issuerId: input.caller.issuerId,
 				requestedYields: 1,
 				now: this.dependencies.now(),
@@ -207,6 +213,10 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		if (!lease) {
 			return { ok: true as const, value: { state: "Idle" as const } };
 		}
+		if (lease.expiresAt <= this.dependencies.now()) {
+			await this.finalizer.releaseReserved(lease);
+			return { ok: true as const, value: { state: "Idle" as const } };
+		}
 		const snapshot = this.dependencies.store
 			.snapshot()
 			.leases.find((candidate) => candidate.leaseId === lease.key.leaseId);
@@ -243,8 +253,8 @@ function isPrincipal(actor: {
 }
 
 function sameControl(
-	left: QBoostControlReference,
-	right: QBoostControlReference,
+	left: ExternalBoostConfigReference,
+	right: ExternalBoostConfigReference,
 ): boolean {
 	return (
 		left.teamId === right.teamId &&

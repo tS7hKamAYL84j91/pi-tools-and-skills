@@ -10,9 +10,9 @@ import type {
 } from "./boost/contracts.js";
 import type { DaemonBoostControlStore } from "./daemon-boost-control-store.js";
 import type {
-	QBoostControlAdapter,
-	QBoostControlReference,
-} from "./q-boost-control-contract.js";
+	ExternalBoostConfigAdapter,
+	ExternalBoostConfigReference,
+} from "./external-boost-config-contract.js";
 
 export type LiveBoostDenialReason =
 	| "unauthorized"
@@ -38,14 +38,14 @@ export interface LiveBoostReserveInput {
 	readonly caller: BoostActor;
 	readonly subject: BoostSubject;
 	readonly request: BoostRequest;
-	readonly control: QBoostControlReference;
+	readonly control: ExternalBoostConfigReference;
 }
 
 export interface LiveBoostDispatchInput {
 	readonly caller: BoostActor;
 	readonly subjectId: string;
 	readonly leaseId: string;
-	readonly control: QBoostControlReference;
+	readonly control: ExternalBoostConfigReference;
 	readonly combinedInput: string;
 	readonly isolation: BoostIsolationMode;
 }
@@ -53,7 +53,7 @@ export interface LiveBoostDispatchInput {
 export interface LiveBoostResetInput {
 	readonly caller: BoostActor;
 	readonly subjectId: string;
-	readonly control: QBoostControlReference;
+	readonly control: ExternalBoostConfigReference;
 }
 
 export interface LiveBoostLeaseStatus {
@@ -97,7 +97,7 @@ export interface LiveBoostAuditRecord {
 
 export interface LiveBoostRuntimeDependencies {
 	readonly store: DaemonBoostControlStore;
-	readonly control: QBoostControlAdapter;
+	readonly control: ExternalBoostConfigAdapter;
 	readonly now: () => number;
 	readonly nextLeaseId: () => string;
 	readonly governance: {

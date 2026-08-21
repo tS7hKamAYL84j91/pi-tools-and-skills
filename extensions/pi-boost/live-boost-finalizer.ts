@@ -14,7 +14,7 @@ import type {
 	LiveBoostRuntimeState,
 	RuntimeBoostLease,
 } from "./live-boost-runtime-state.js";
-import type { QBoostControlRevision } from "./q-boost-control-contract.js";
+import type { ExternalBoostConfigRevision } from "./external-boost-config-contract.js";
 import { redactedBoostAuditId } from "./redacted-boost-audit.js";
 
 export class LiveBoostFinalizer {
@@ -39,7 +39,7 @@ export class LiveBoostFinalizer {
 		return waitForRevocation ? active.completion : requireResult(result);
 	}
 
-	async handleRevision(revision: QBoostControlRevision): Promise<void> {
+	async handleRevision(revision: ExternalBoostConfigRevision): Promise<void> {
 		const targets = this.state
 			.allLeases()
 			.filter((lease) => lease.key.enablementId === revision.enablementId);
