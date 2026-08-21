@@ -1,28 +1,43 @@
 /** ADR-047 dependency and neutral-shared-library fitness checks. */
 
 import { readFileSync } from "node:fs";
+import { relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { listTsFiles } from "./helpers.js";
 
-const discovery = readFileSync("lib/declarative-discovery.ts", "utf8");
-const teamPaths = readFileSync("extensions/pi-panopticon/teams/team-paths.ts", "utf8");
-const boostResolver = readFileSync("extensions/pi-boost/boost-descriptor-adapter.ts", "utf8");
-const boostSources = [
-	"extensions/pi-boost/boost-descriptor-adapter.ts",
-	"extensions/pi-boost/live-boost-control-contract.ts",
-	"extensions/pi-boost/live-boost-control-adapter.ts",
-	"extensions/pi-boost/host-injected-live-boost.ts",
-].map((path) => readFileSync(path, "utf8")).join("\n");
+const DISCOVERY_PATH = "lib/declarative-discovery.ts";
+const EXTENSION_IMPORT = /from\s+["'](?:\.\.\/)+extensions\//;
+const PANOPTICON_IMPORT = /from\s+["'][^"']*pi-panopticon\//;
+const BOOST_IMPORT = /from\s+["'][^"']*pi-boost\//;
+
+function source(path: string): string {
+	return readFileSync(path, "utf8");
+}
 
 describe("ADR-047 shared declarative discovery", () => {
-	it("keeps shared discovery extension-neutral and imported by both consumers", () => {
-		expect(discovery).not.toMatch(/pi-panopticon|pi-boost|teamId|enablementId|provider|model/i);
-		expect(teamPaths).toContain("lib/declarative-discovery.js");
-		expect(boostResolver).toContain("lib/declarative-discovery.js");
+	it("keeps lib neutral: it has no extension dependency or domain descriptor policy", () => {
+		const discovery = source(DISCOVERY_PATH);
+		expect(discovery).not.toMatch(EXTENSION_IMPORT);
+		expect(discovery).not.toMatch(/pi-panopticon|pi-boost|team(?:Id)?|enablementId|principalIssuerId|provider|model|lease/i);
 	});
 
-	it("keeps extensions independent and removes Team-shaped Boost identity", () => {
-		expect(teamPaths).not.toContain("pi-boost");
-		expect(boostSources).not.toMatch(/teamId|EXTERNAL_BOOST_TEAM_ID|protocol:\s*["']boost/);
-		expect(boostSources).not.toContain("config.json");
+	it("keeps pi-panopticon and pi-boost free of cross-extension imports", () => {
+		const violations: string[] = [];
+		for (const file of listTsFiles("extensions/pi-panopticon")) {
+			if (BOOST_IMPORT.test(source(file))) violations.push(relative(process.cwd(), file));
+		}
+		for (const file of listTsFiles("extensions/pi-boost")) {
+			if (PANOPTICON_IMPORT.test(source(file))) violations.push(relative(process.cwd(), file));
+		}
+		expect(violations).toEqual([]);
+	});
+
+	it("uses the neutral primitive in both consumers and has no Boost config.json fallback", () => {
+		expect(source("extensions/pi-panopticon/teams/team-paths.ts")).toContain("lib/declarative-discovery.js");
+		expect(source("extensions/pi-boost/boost-descriptor-adapter.ts")).toContain("lib/declarative-discovery.js");
+		const configFallbacks = listTsFiles("extensions/pi-boost")
+			.filter((file) => /config\.json/.test(source(file)))
+			.map((file) => relative(process.cwd(), file));
+		expect(configFallbacks).toEqual([]);
 	});
 });

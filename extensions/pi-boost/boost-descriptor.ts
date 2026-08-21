@@ -35,7 +35,6 @@ export interface BoostDescriptor {
 	readonly enablementId: string;
 	readonly principalIssuerId: string;
 	readonly enabled: true;
-	readonly thinkingLevel?: BoostThinkingLevel;
 	readonly maximumYields: number;
 	readonly expiresAt: number;
 	readonly revision: number;
@@ -70,7 +69,7 @@ export function parseBoostDescriptor(raw: string, now: number): BoostDescriptor 
 
 /** Validates a data-only descriptor and returns its canonical normalized form. */
 export function normalizeBoostDescriptor(value: unknown, now: number): BoostDescriptor | undefined {
-	if (!isRecord(value) || !hasExactKeys(value, ["schemaVersion", "enablementId", "principalIssuerId", "enabled", "maximumYields", "expiresAt", "revision", "model"], ["thinkingLevel"])) {
+	if (!isRecord(value) || !hasExactKeys(value, ["schemaVersion", "enablementId", "principalIssuerId", "enabled", "maximumYields", "expiresAt", "revision", "model"])) {
 		return undefined;
 	}
 	const model = value.model;
@@ -81,7 +80,6 @@ export function normalizeBoostDescriptor(value: unknown, now: number): BoostDesc
 	const principalIssuerId = trimBounded(value.principalIssuerId, 256);
 	const provider = trimBounded(model.provider, 128);
 	const id = trimBounded(model.id, 128);
-	const thinkingLevel = value.thinkingLevel;
 	const maximumYields = value.maximumYields;
 	const expiresAt = value.expiresAt;
 	const revision = value.revision;
@@ -91,7 +89,6 @@ export function normalizeBoostDescriptor(value: unknown, now: number): BoostDesc
 		!/^[A-Za-z0-9_-]{1,64}$/.test(enablementId) ||
 		!principalIssuerId ||
 		value.enabled !== true ||
-		(thinkingLevel !== undefined && !isBoostThinkingLevel(thinkingLevel)) ||
 		typeof maximumYields !== "number" || !Number.isSafeInteger(maximumYields) || maximumYields < 1 || maximumYields > 3 ||
 		typeof expiresAt !== "number" || !Number.isFinite(expiresAt) || expiresAt <= now ||
 		typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0 ||
@@ -104,7 +101,6 @@ export function normalizeBoostDescriptor(value: unknown, now: number): BoostDesc
 		enablementId,
 		principalIssuerId,
 		enabled: true,
-		...(thinkingLevel === undefined ? {} : { thinkingLevel }),
 		maximumYields,
 		expiresAt,
 		revision,
@@ -119,7 +115,6 @@ export function boostDescriptorFingerprint(descriptor: BoostDescriptor): string 
 		enablementId: descriptor.enablementId,
 		principalIssuerId: descriptor.principalIssuerId,
 		enabled: descriptor.enabled,
-		thinkingLevel: descriptor.thinkingLevel,
 		maximumYields: descriptor.maximumYields,
 		expiresAt: descriptor.expiresAt,
 		revision: descriptor.revision,
@@ -133,18 +128,15 @@ export function boostDescriptorFingerprint(descriptor: BoostDescriptor): string 
 	return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
-/** Resolves the descriptor level against the host-owned reviewed policy. */
+/** Resolves the host-owned policy; ADR-047 descriptors cannot select a level. */
 export function resolveBoostThinking(
-	descriptor: BoostDescriptor,
+	_descriptor: BoostDescriptor,
 	resolver: ReviewedBoostThinkingPolicyResolver,
 ): ResolvedBoostThinking | undefined {
 	try {
 		const policy = resolver.resolve();
 		if (!isValidThinkingPolicy(policy)) return undefined;
-		const thinkingLevel = descriptor.thinkingLevel ?? policy.defaultLevel;
-		return policy.supportedLevels.includes(thinkingLevel)
-			? { thinkingLevel, policyRevision: policy.policyRevision }
-			: undefined;
+		return { thinkingLevel: policy.defaultLevel, policyRevision: policy.policyRevision };
 	} catch {
 		return undefined;
 	}
