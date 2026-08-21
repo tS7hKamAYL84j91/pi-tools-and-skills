@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { renderGoalOverlayLines, renderGoalSummary } from "../../extensions/pi-goal/goal-render.js";
+import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
+
+function makeGoal(overrides: Partial<GoalState> = {}): GoalState {
+	return {
+		schemaVersion: 2,
+		goalId: "goal-1",
+		objective: "Ship the deterministic overlay",
+		status: "active",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+		runActive: false,
+		turnBudget: 20,
+		turnsUsed: 3,
+		currentMilestoneIndex: 0,
+		milestones: [],
+		...overrides,
+	};
+}
+
+describe("renderGoalOverlayLines", () => {
+	it("renders the normal goal details in stable line order", () => {
+		expect(renderGoalOverlayLines(renderGoalSummary(makeGoal({
+			sourcePath: "brief.md",
+			planRequired: true,
+			planApproved: true,
+			milestones: [{
+				id: "m1",
+				title: "Implement",
+				validationCommand: "npm test",
+				status: "in_progress",
+			}],
+			completionEvidence: "Evidence recorded",
+		})), 24)).toEqual([
+			"Goal goal-1",
+			"Status: active",
+			"Source: brief.md",
+			"Plan: approved · milestone 1/1",
+			"Current milestone: Implement (in_progress)",
+			"Objective: Ship the deterministic overlay",
+			"Evidence: Evidence recorded",
+		]);
+	});
+
+	it("renders an empty goal without optional detail lines", () => {
+		expect(renderGoalOverlayLines(renderGoalSummary(makeGoal({ objective: "" })), 24)).toEqual([
+			"Goal goal-1",
+			"Status: active",
+			"Objective: ",
+		]);
+	});
+
+	it("bounds long detail while preserving the overflow count", () => {
+		const objective = Array.from({ length: 30 }, (_, index) => `detail-${index + 1}`).join("\n");
+		const lines = renderGoalOverlayLines(renderGoalSummary(makeGoal({ objective })), 24);
+
+		expect(lines).toHaveLength(24);
+		expect(lines.slice(0, 2)).toEqual(["Goal goal-1", "Status: active"]);
+		expect(lines[22]).toBe("detail-21");
+		expect(lines[23]).toBe("… 9 more lines in .pi/goal/GOAL.md");
+	});
+});
