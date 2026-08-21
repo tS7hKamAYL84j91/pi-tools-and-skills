@@ -33,7 +33,7 @@ describe("ADR-047 shared declarative discovery", () => {
 	});
 
 	it("uses the neutral primitive in both consumers and has no Boost config.json fallback", () => {
-		expect(source("extensions/pi-panopticon/teams/team-paths.ts")).toContain("lib/declarative-discovery.js");
+		expect(source("extensions/pi-teams/team-paths.ts")).toContain("lib/declarative-discovery.js");
 		expect(source("extensions/pi-boost/boost-descriptor-adapter.ts")).toContain("lib/declarative-discovery.js");
 		const configFallbacks = listTsFiles("extensions/pi-boost")
 			.filter((file) => /config\.json/.test(source(file)))

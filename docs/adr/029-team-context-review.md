@@ -77,7 +77,7 @@ UX if implemented:
 
 ### Part 6: Docs
 
-- Update `extensions/pi-panopticon/teams/README.md`:
+- Update `extensions/pi-teams/README.md`:
   - Explain context-aware `/team on` and `/team once`.
   - Note `/team review` as a Phase 2 future candidate (not yet implemented).
 - Command description string in `team-session-mode.ts` already covers `once`; no further change needed.

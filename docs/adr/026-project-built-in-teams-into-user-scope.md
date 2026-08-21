@@ -6,7 +6,7 @@ Source: `docs/team-builtin-projection-plan.md`; llm-council panel review (run `t
 
 ## Context
 
-Built-in team specs ship at `extensions/pi-panopticon/teams/config/teams/*.md`
+Built-in team specs ship at `extensions/pi-teams/config/teams/*.md`
 with hard-pinned `model:` ids per agent binding. Two problems drove this ADR:
 
 1. **Wrong layer for user preference.** An EO routing decision was applied by

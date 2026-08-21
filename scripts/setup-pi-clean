@@ -21,7 +21,7 @@ usage() {
 Usage: setup-pi-clean [package-name]
 
 Removes pi-tools-and-skills package and legacy direct registrations. With
-package-name, removes one user-installable extension package registration.
+package-name, removes one user-installable extension package registration (including pi-teams).
 Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }

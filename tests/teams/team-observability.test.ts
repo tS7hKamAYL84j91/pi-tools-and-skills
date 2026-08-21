@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { observabilityEventsFromRunEvents, serializeObservabilityEvents, TEAM_OBSERVABILITY_SCHEMA_VERSION } from "../../extensions/pi-panopticon/teams/observability.js";
-import type { TeamRunEvent } from "../../extensions/pi-panopticon/teams/state.js";
+import { observabilityEventsFromRunEvents, serializeObservabilityEvents, TEAM_OBSERVABILITY_SCHEMA_VERSION } from "../../extensions/pi-teams/observability.js";
+import type { TeamRunEvent } from "../../extensions/pi-teams/state.js";
 
 function event(overrides: Partial<TeamRunEvent> & { kind: TeamRunEvent["kind"] }): TeamRunEvent {
 	return {

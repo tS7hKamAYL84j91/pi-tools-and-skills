@@ -5,8 +5,8 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { registerTeams as teamExtension } from "../../extensions/pi-panopticon/teams/register.js";
-import type { ProjectionResult } from "../../extensions/pi-panopticon/teams/team-projection.js";
+import { registerTeams as teamExtension } from "../../extensions/pi-teams/register.js";
+import type { ProjectionResult } from "../../extensions/pi-teams/team-projection.js";
 
 type RegisteredHandler = (event: { reason: string }, ctx: ExtensionContext) => unknown;
 
@@ -16,7 +16,7 @@ const { projectMock } = vi.hoisted(() => {
 	return { projectMock };
 });
 
-vi.mock("../../extensions/pi-panopticon/teams/team-projection.js", () => ({
+vi.mock("../../extensions/pi-teams/team-projection.js", () => ({
 	projectBuiltinTeams: projectMock,
 }));
 

@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const tempDirs: string[] = [];
-
-vi.mock("../../extensions/pi-panopticon/spawner/spawn-service.js", () => ({
+vi.mock("../../extensions/pi-teams/pi-binary.js", () => ({
 	resolvePiBinary: () => process.env.PI_TEAMS_TEST_PI_BINARY ?? process.execPath,
 }));
+
+const tempDirs: string[] = [];
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -33,7 +33,7 @@ describe("team runner cancellation", () => {
 		chmodSync(script, 0o755);
 		process.env.PI_TEAMS_TEST_PI_BINARY = script;
 		process.env.PI_TEAMS_TEST_TERM_FILE = termFile;
-		const { runMember } = await import("../../extensions/pi-panopticon/teams/runner.js");
+		const { runMember } = await import("../../extensions/pi-teams/runner.js");
 		const controller = new AbortController();
 		const startedAt = Date.now();
 		const promise = runMember({ label: "Cancel", model: "test/model" }, {

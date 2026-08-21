@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	resolveTeamProfile,
 	type TeamProfile,
-} from "../../extensions/pi-panopticon/teams/team-profiles.js";
-import { directTeamResultBody } from "../../extensions/pi-panopticon/teams/team-result.js";
-import { isTopology } from "../../extensions/pi-panopticon/teams/team-routes.js";
+} from "../../extensions/pi-teams/team-profiles.js";
+import { directTeamResultBody } from "../../extensions/pi-teams/team-result.js";
+import { isTopology } from "../../extensions/pi-teams/team-routes.js";
 
 const FUSION_ARRAY_FIELDS = [
 	"consensus",

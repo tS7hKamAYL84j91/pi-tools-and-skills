@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPiPrintOutput, mapSpawnResultToModelRun, toolArgs } from "../../extensions/pi-panopticon/teams/runner.js";
+import { extractPiPrintOutput, mapSpawnResultToModelRun, toolArgs } from "../../extensions/pi-teams/runner.js";
 
 describe("extractPiPrintOutput", () => {
 	it("keeps plain text-mode output", () => {

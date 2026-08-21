@@ -1,0 +1,22 @@
+{
+	"name": "pi-teams",
+	"version": "1.0.0",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		],
+		"skills": [
+			"./skills"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"@earendil-works/pi-tui": "^0.74.0"
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

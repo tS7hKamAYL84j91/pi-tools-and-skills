@@ -2,13 +2,13 @@ import { lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startTeamRunAsync } from "../../extensions/pi-panopticon/teams/team-async.js";
+import { startTeamRunAsync } from "../../extensions/pi-teams/team-async.js";
 import {
 	readTeamRunResultArtifact,
 	teamRunResultArtifactPath,
 	writeTeamRunResultArtifact,
-} from "../../extensions/pi-panopticon/teams/team-result-artifact.js";
-import { resolveTeamResultRoot } from "../../extensions/pi-panopticon/teams/team-paths.js";
+} from "../../extensions/pi-teams/team-result-artifact.js";
+import { resolveTeamResultRoot } from "../../extensions/pi-teams/team-paths.js";
 
 const tempDirs: string[] = [];
 

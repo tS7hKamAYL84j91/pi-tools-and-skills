@@ -9,8 +9,7 @@
 			"./index.ts"
 		],
 		"skills": [
-			"./skills",
-			"./teams/skills"
+			"./skills"
 		]
 	},
 	"engines": {

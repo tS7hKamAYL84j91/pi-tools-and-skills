@@ -11,7 +11,6 @@ import {
 	registerChannel,
 	unregisterChannel,
 } from "../../lib/message-transport.js";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import { createMessaging } from "./messaging/messaging.js";
 import { loadExternalAgents } from "./registry/external-registrar.js";
@@ -24,8 +23,6 @@ import { OperationalStateStore } from "./registry/state.js";
 import { stopPeerAgent } from "./spawner/agent-stop.js";
 import { setupMissingDoneNotice } from "./spawner/missing-done-notice.js";
 import { setupSpawner } from "./spawner/spawner.js";
-import setupSwarm from "./swarm/index.js";
-import { registerTeams } from "./teams/register.js";
 import type {
 	AgentMessageSender,
 	AgentStopper,
@@ -73,9 +70,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
-	const runtime = new RuntimeControlPlane();
-	const teams = registerTeams(pi, runtime);
-	const swarm = setupSwarm(pi, teams);
 	const ui = setupUI(pi, {
 		selfId,
 		registry,
@@ -132,7 +126,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	// ── Lifecycle: shutdown ─────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
-		await swarm.shutdown();
 		await spawner.shutdownAll();
 		reconciler.stop();
 		messaging.drainAll();

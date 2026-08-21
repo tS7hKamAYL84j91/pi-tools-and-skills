@@ -46,7 +46,7 @@ function daysBetween(start: string, end: string): number {
 
 const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 	{
-		path: "extensions/pi-panopticon/teams/team-handler-fusion-analysis.ts",
+		path: "extensions/pi-teams/team-handler-fusion-analysis.ts",
 		maxLines: 360,
 		reason: "Fusion analysis protocol panel/judge helpers; extract a dedicated fusion-node module when adding another fusion-style protocol.",
 		createdAt: "2026-06-24",
@@ -102,14 +102,14 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 		targetDate: "2026-09-22",
 	},
 	{
-		path: "extensions/pi-panopticon/teams/state.ts",
+		path: "extensions/pi-teams/state.ts",
 		maxLines: 560,
 		reason: "Team run state serialization expanded for ADR 027 node observability and T-805 artifact claim-check events; extract versioned codecs on the next schema change.",
 		createdAt: "2026-06-24",
 		targetDate: "2026-09-22",
 	},
 	{
-		path: "extensions/pi-panopticon/teams/team-overlay.ts",
+		path: "extensions/pi-teams/team-overlay.ts",
 		maxLines: 430,
 		reason: "Team overlay renderer; extract render helpers when adding UI states.",
 		createdAt: "2026-06-24",
@@ -130,14 +130,14 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 		targetDate: "2026-09-22",
 	},
 	{
-		path: "extensions/pi-panopticon/teams/team-runtime.ts",
+		path: "extensions/pi-teams/team-runtime.ts",
 		maxLines: 500,
 		reason: "Team runtime control expanded for ADR 027 node observability; extract team control tools before adding more runtime surfaces.",
 		createdAt: "2026-06-24",
 		targetDate: "2026-09-22",
 	},
 	{
-		path: "extensions/pi-panopticon/teams/team-registry.ts",
+		path: "extensions/pi-teams/team-registry.ts",
 		maxLines: 350,
 		reason: "Team manifest registry; extract manifest IO/merge helpers when expanded.",
 		createdAt: "2026-06-24",
@@ -164,7 +164,7 @@ const MODULES: ModuleDefinition[] = [
 	{ name: "panopticon-registry", pathPrefix: "extensions/pi-panopticon/registry/" },
 	{ name: "panopticon-messaging", pathPrefix: "extensions/pi-panopticon/messaging/" },
 	{ name: "panopticon-spawner", pathPrefix: "extensions/pi-panopticon/spawner/" },
-	{ name: "panopticon-teams", pathPrefix: "extensions/pi-panopticon/teams/" },
+	{ name: "panopticon-teams", pathPrefix: "extensions/pi-teams/" },
 	{ name: "kanban", pathPrefix: "extensions/pi-kanban/" },
 	{ name: "goal", pathPrefix: "extensions/pi-goal/" },
 	{ name: "matrix", pathPrefix: "extensions/pi-matrix/" },

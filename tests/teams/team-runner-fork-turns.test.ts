@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../extensions/pi-teams/pi-binary.js", () => ({
+	resolvePiBinary: () => process.env.PI_TEAMS_TEST_PI_BINARY ?? process.execPath,
+}));
+
 interface FakePiReport {
 	argv: string[];
 	stdinLength: number;
@@ -13,10 +17,6 @@ interface FakePiReport {
 }
 
 const tempDirs: string[] = [];
-
-vi.mock("../../extensions/pi-panopticon/spawner/spawn-service.js", () => ({
-	resolvePiBinary: () => process.env.PI_TEAMS_TEST_PI_BINARY ?? process.execPath,
-}));
 
 afterEach(() => {
 	delete process.env.PI_TEAMS_TEST_PI_BINARY;
@@ -52,10 +52,10 @@ function createFakePi(): string {
 
 async function runFakePi(
 	prompt: string,
-	forkTurns?: import("../../extensions/pi-panopticon/teams/types.js").ForkTurnsMode,
+	forkTurns?: import("../../extensions/pi-teams/types.js").ForkTurnsMode,
 ): Promise<FakePiReport> {
 	process.env.PI_TEAMS_TEST_PI_BINARY = createFakePi();
-	const { runMember } = await import("../../extensions/pi-panopticon/teams/runner.js");
+	const { runMember } = await import("../../extensions/pi-teams/runner.js");
 	const result = await runMember(
 		{ label: "Fork", model: "test/model" },
 		{

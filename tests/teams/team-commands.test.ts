@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { registerTeamCommands } from "../../extensions/pi-panopticon/teams/team-commands.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { registerTeamCommands } from "../../extensions/pi-teams/team-commands.js";
 
 interface CommandDefinition {
 	description?: string;

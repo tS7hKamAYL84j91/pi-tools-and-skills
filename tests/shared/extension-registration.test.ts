@@ -17,7 +17,7 @@ import matrixExtension from "../../extensions/pi-matrix/index.js";
 import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
 import panopticonExtension from "../../extensions/pi-panopticon/index.js";
 import boostExtension from "../../extensions/pi-boost/index.js";
-import { registerTeams as teamExtension } from "../../extensions/pi-panopticon/teams/register.js";
+import teamExtension from "../../extensions/pi-teams/index.js";
 
 interface ToolParameters {
 	properties?: Record<string, unknown>;
@@ -153,18 +153,22 @@ describe("extension registration smoke tests", () => {
 		teamExtension(api);
 
 		expectRegistered(registrations.tools, [
+			"runtime_status",
+			"runtime_stop",
+			"swarm_list",
+			"swarm_run",
+			"swarm_status",
+			"swarm_stop",
 			"team_delete",
 			"team_describe",
 			"team_form",
 			"team_list",
-			"runtime_status",
-			"runtime_stop",
 			"team_models",
 			"team_run",
 			"team_runs",
 			"team_stop",
 		]);
-		expectRegistered(registrations.commands, ["teams", "team"]);
+		expectRegistered(registrations.commands, ["swarm", "teams", "team"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
 			"input",
@@ -305,22 +309,8 @@ describe("extension registration smoke tests", () => {
 			"message_read",
 			"message_send",
 			"rpc_send",
-			"runtime_status",
-			"runtime_stop",
 			"set_name",
 			"spawn_agent",
-			"swarm_list",
-			"swarm_run",
-			"swarm_status",
-			"swarm_stop",
-			"team_delete",
-			"team_describe",
-			"team_form",
-			"team_list",
-			"team_models",
-			"team_run",
-			"team_runs",
-			"team_stop",
 		]);
 		expectRegistered(registrations.commands, [
 			"agent-external-list",
@@ -330,20 +320,15 @@ describe("extension registration smoke tests", () => {
 			"agents",
 			"agents-mode",
 			"send",
-			"swarm",
-			"team",
-			"teams",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);
 		expectRegistered(registrations.events, [
 			"agent_end",
 			"agent_start",
-			"before_provider_request",
 			"input",
 			"model_select",
 			"session_shutdown",
 			"session_start",
-			"session_tree",
 		]);
 	});
 

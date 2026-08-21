@@ -5,10 +5,10 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { modelSlotsForTeam } from "../../extensions/pi-panopticon/teams/team-handlers.js";
-import { validateTeamManifest } from "../../extensions/pi-panopticon/teams/team-manifest.js";
-import { loadTeamRegistry } from "../../extensions/pi-panopticon/teams/team-registry.js";
-import type { TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
+import { modelSlotsForTeam } from "../../extensions/pi-teams/team-handlers.js";
+import { validateTeamManifest } from "../../extensions/pi-teams/team-manifest.js";
+import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
+import type { TeamSpec } from "../../extensions/pi-teams/team-types.js";
 import { withTempConfig, writeSubagent } from "./team-test-helpers.js";
 
 function requireTeam(registry: ReturnType<typeof loadTeamRegistry>, id: string): TeamSpec {

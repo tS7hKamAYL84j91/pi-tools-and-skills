@@ -9,7 +9,7 @@ Related: ADR 022 (to be created after council review)
 
 ## 1. Problem
 
-Built-in team specs ship at `extensions/pi-panopticon/teams/config/teams/*.md`
+Built-in team specs ship at `extensions/pi-teams/config/teams/*.md`
 with hard-pinned `model:` ids per agent binding. Two issues:
 
 1. **Wrong layer for user preference.** An EO routing decision was applied by
@@ -136,7 +136,7 @@ user edits the live file. Smallest change; worst UX.
 
 ## 4. Implementation sketch (after review)
 
-- New module `extensions/pi-panopticon/teams/team-projection.ts`:
+- New module `extensions/pi-teams/team-projection.ts`:
   - `projectBuiltinTeams(ctx): Promise<{ projected: string[]; skipped: string[] }>`
   - uses `teamDirectories()` to find built-in team dir and
     `dirsForTeamScope("user", ctx.cwd)` for destination;
@@ -242,7 +242,7 @@ ids.
 
 ## 10. Final v1 scope (Option 3)
 
-1. New `extensions/pi-panopticon/teams/team-projection.ts` (~60-100 LOC):
+1. New `extensions/pi-teams/team-projection.ts` (~60-100 LOC):
    - `projectBuiltinTeams(ctx): { projected: string[]; skipped: string[] }`
    - Source: builtin teams dir (`teamDirectories(configPath)[0].teams`).
    - Destination: `dirsForTeamScope("user", ctx.cwd).teams` (honours

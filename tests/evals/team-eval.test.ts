@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { isTopology } from "../../extensions/pi-panopticon/teams/team-routes.js";
+import { isTopology } from "../../extensions/pi-teams/team-routes.js";
 
 describe("Team Protocol Routing Evaluation", () => {
     const fixturesPath = "tests/evals/fixtures/routing-fixtures.json";

@@ -16,6 +16,7 @@ PACKAGE_EXTENSIONS = [
 USER_INSTALLABLE_PACKAGES = {
     "pi-goal",
     "pi-matrix",
+    "pi-teams",
     "pi-ollama-models",
     "pi-panopticon",
 }
@@ -28,6 +29,7 @@ PROJECT_ONLY_PACKAGES = {
 
 OWNED_EXTENSION_DIRS = [
     "pi-panopticon",
+    "pi-teams",
     "council",
     "pi-file-watch",
     "pi-kanban",

@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const runTeamMock = vi.fn(async () => ({ content: [{ type: "text" as const, text: "team output" }] }));
 
-vi.mock("../../extensions/pi-panopticon/teams/team-runtime.js", () => ({
+vi.mock("../../extensions/pi-teams/team-runtime.js", () => ({
 	runTeam: runTeamMock,
 }));
 
-const { parseTeamRunArgs, registerTeamCommands } = await import("../../extensions/pi-panopticon/teams/team-commands.js");
+const { parseTeamRunArgs, registerTeamCommands } = await import("../../extensions/pi-teams/team-commands.js");
 
 interface CommandDefinition {
 	description?: string;

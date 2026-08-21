@@ -45,7 +45,7 @@
 		"skills": [
 			"./skills",
 			"./extensions/pi-panopticon/skills",
-			"./extensions/pi-panopticon/teams/skills"
+			"./extensions/pi-teams/skills"
 		],
 		"prompts": [
 			"./prompts"

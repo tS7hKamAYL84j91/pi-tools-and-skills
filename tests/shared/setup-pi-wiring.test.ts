@@ -124,6 +124,14 @@ describeIfPython("setup-pi package wiring", () => {
 		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
 	});
 
+	it("registers standalone pi-teams independently", () => {
+		runSettingsHelper("register-package", "pi-teams");
+
+		const settings = readSettings();
+		expect(settings.extensions).toBeUndefined();
+		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-teams") }]);
+	});
+
 	it("rejects pi-research-tools because canonical ownership moved to pi-extension-poc", () => {
 		const result = runSettingsHelperResult("register-package", "pi-research-tools");
 
@@ -163,6 +171,7 @@ describeIfPython("setup-pi package wiring", () => {
 				{
 					extensions: [
 						join(extensionsDir, "pi-panopticon"),
+						join(extensionsDir, "pi-teams"),
 						join(extensionsDir, "pi-kanban"),
 						join(extensionsDir, "pi-coas"),
 						"/external/extension",

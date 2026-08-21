@@ -5,7 +5,7 @@ This directory is for active, decision-useful documentation. Completed reports a
 ## Active reference
 
 - [`architecture.md`](architecture.md) — current architecture map, state ownership, trust boundaries, validation anchors, detailed reference, and F.I.R.E. review context.
-- [`deep-dives/teams-platform.md`](deep-dives/teams-platform.md) — Panopticon teams standing decisions, run-state contract, and evidence-gated future work.
+- [`deep-dives/teams-platform.md`](deep-dives/teams-platform.md) — pi-teams standing decisions, run-state contract, and evidence-gated future work.
 - [`deep-dives/ux-tools-policy.md`](deep-dives/ux-tools-policy.md) — TUI consistency rules and command/tool namespace policy.
 
 ## Architecture Decision Records

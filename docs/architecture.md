@@ -17,7 +17,7 @@ Restrained, Elegant).
   infrastructure.
 - **Restrained & Elegant:** Extension boundaries are tight. Kanban uses a simple
   append-only log.
-- **Restrained Teams module:** Team execution now uses direct protocol handlers inside `pi-panopticon/teams`; the generic DAG executor and lowering layers are removed from the baseline.
+- **Restrained Teams extension:** Team execution uses direct protocol handlers inside independently installable `pi-teams`; the generic DAG executor and lowering layers are removed from the baseline.
 - **Sparse Panopticon alerts:** Reconciliation follow-ups only interrupt for
   actionable states, reducing idle token cost (ADR 014).
 
@@ -30,7 +30,7 @@ The main risk is **custom framework growth**:
   pi-hosted timer loop, no external crontab reconciliation.
 - `pi-matrix`: Justified for human interaction, but too heavy for local
   agent-to-agent comms. Keep local peer routing on IPC-backed channels such as
-  `agent_send`, spawned-agent RPC, and Panopticon Teams live-agent bindings.
+  `agent_send`, spawned-agent RPC, and shared agent APIs used by `pi-teams` live-agent bindings.
 
 ### Recommendations
 
@@ -74,6 +74,7 @@ flowchart TD
     Matrix[pi-matrix]
     OllamaModels[pi-ollama-models]
     Panopticon[pi-panopticon]
+    Teams[pi-teams]
     Bionic[pi-bionic]
     Doctor[pi-doctor]
   end
@@ -88,18 +89,18 @@ flowchart TD
   Pi --> Matrix
   Pi --> OllamaModels
   Pi --> Panopticon
-  Panopticon --> TeamsModule[teams module]
-  TeamsModule --> Swarm[protocol: hierarchical-swarm]
+  Pi --> Teams
+  Teams --> Swarm[protocol: hierarchical-swarm]
   Swarm --> Managers[manifest-bound orchestrator nodes]
   Managers --> SwarmWorkers[bounded manager or leaf-worker children]
   SwarmWorkers --> RuntimePlane[shared runtime child entities]
   Swarm --> Governance[ADR-035 eligible model routing at each spawn]
-  TeamsModule --> RuntimePlane
-  TeamsModule --> TeamResults[Private team result root\nuser team root/results]
+  Teams --> RuntimePlane
+  Teams --> TeamResults[Private team result root\nuser team root/results]
   TeamResults --> AsyncDelivery[Claim-check async delivery]
-  TeamsModule --> TeamChild[one-shot pi --print child]
+  Teams --> TeamChild[one-shot pi --print child]
   TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane
-  TeamsModule --> TeamProfiles[Shared fast / balanced / thorough profiles]
+  Teams --> TeamProfiles[Shared fast / balanced / thorough profiles]
   TeamProfiles --> Fusion[Fusion bounded panel + judge handler]
   Fusion --> FusionPlanner[Pure model and call-budget planner]
   Fusion --> FusionOutput[Pure prompt and judge-output helpers]
@@ -118,24 +119,47 @@ flowchart TD
   Matrix --> SharedLib
   OllamaModels --> SharedLib
   Panopticon --> SharedLib
-  TeamsModule --> SharedLib
+  Teams --> SharedLib
   Bionic --> SharedLib
   Doctor --> SharedLib
   Kanban --> SharedLib
   FileWatch --> SharedLib
   COAS --> SharedLib
 
-  TeamsModule -. uses runtime substrate .-> Panopticon
   Kanban -. agent assignment/status .-> Panopticon
   Goal -. spawned-worker orchestration .-> Panopticon
   COAS -. task scheduling .-> Kanban
+```
+
+### Standalone Teams extension boundary (ADR-048)
+
+`pi-teams` is independently installable and owns team/swarm registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
+
+```mermaid
+C4Component
+    title Standalone pi-teams public ownership boundary
+    Container(pi, "pi session", "Extension host", "Loads independently installed extensions")
+    Component(registry, "pi package registry", "Package settings", "Selects pi-teams as an installable package")
+    Component(teams, "pi-teams", "Extension", "Registers team, runtime, and swarm surfaces")
+    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, fusion, research, and hierarchical swarm")
+    Component(state, "Team session state", "Session custom entries", "Persists bounded run events and rehydrates run state")
+    Component(results, "Team result root", "Private claim-check files", "Stores completed async results under the configured team root")
+    Component(shared, "Shared runtime libraries", "lib/", "Provides agent APIs, child-process, transport, persistence, and runtime helpers")
+    Component(panopticon, "pi-panopticon", "Independent extension", "Owns agent registry, messaging, health, UI, and spawning")
+    Rel(pi, registry, "loads package settings")
+    Rel(registry, teams, "loads when selected")
+    Rel(teams, protocols, "registers and invokes")
+    Rel(protocols, state, "appends run events")
+    Rel(protocols, results, "writes result artifacts")
+    Rel(teams, shared, "uses shared capabilities")
+    Rel(pi, panopticon, "may load separately")
 ```
 
 ### Declarative discovery boundary (ADR-047)
 
 ```mermaid
 flowchart LR
-  Teams[pi-panopticon Teams] --> Discovery[lib/declarative-discovery]
+  Teams[pi-teams] --> Discovery[lib/declarative-discovery]
   Boost[pi-boost] --> Discovery
   Discovery --> TeamFiles[Layered Team Markdown]
   Discovery --> BoostFile[Fixed boost.md]
@@ -153,7 +177,8 @@ flowchart LR
 | Extension | Scope | Primary role | State owner |
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
-| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and modular declarative team workflows | Panopticon registry/session state plus isolated team run session state |
+| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and lifecycle controls | Panopticon registry/session state |
+| `pi-teams` | user/global | Standalone declarative team protocols, profiles, hierarchical swarm compatibility, and run controls | Team session events plus private result artifacts under the configured team root |
 | `pi-boost` | user/global | Principal-only bounded Boost lease with declarative descriptor, reviewed model binding, and host-injected runtime | Injected WAL state and redacted audit; no Panopticon-owned state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
@@ -172,7 +197,7 @@ flowchart LR
 | Watched files | Owning user/workspace; `pi-file-watch` reads only | Explicit configured file paths, no recursive discovery or writes |
 | Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
 | Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
-| Team run state | Panopticon Teams module | Session events plus private artifacts under the configured user team root's `results/` directory; profile selection is session-local/input-only |
+| Team run state | `pi-teams` | Session events plus private artifacts under the configured user team root's `results/` directory; profile selection is session-local/input-only |
 | Local model registry | `pi-ollama-models` for the `ollama` provider entry | Atomic full-file rewrite of pi `models.json`, preserving other providers |
 
 ### Trust boundaries
@@ -196,7 +221,7 @@ flowchart LR
 - `pi-ollama-models` executes only an operator-configured absolute `PI_OLLAMA_COMMAND` whose basename is `ollama`, or a fixed standard absolute candidate (`/usr/local/bin/ollama`, `/usr/bin/ollama`). Deprecated public `modelsPath` and `ollamaCommand` fields are accepted but ignored. It never executes caller commands, resolves through PATH, `which`, cwd, or project files, and writes no credentials; other model providers in `models.json` remain outside its ownership.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
 - Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
-- Team result claim-checks are Panopticon-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or CoAS state.
+- Team result claim-checks are `pi-teams`-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or CoAS state.
 
 ### Completion gate trust boundary
 
@@ -410,7 +435,7 @@ flowchart TD
 
 ---
 
-## Panopticon Team Run Progress Boundary
+## Pi Teams Run Progress Boundary
 
 ```mermaid
 flowchart LR
@@ -428,7 +453,7 @@ flowchart LR
 - Widgets use per-run keys so concurrent teams do not overwrite each other, and refresh only after state events rather than on a polling interval.
 - No-ID cancellation considers only `pending` and `running` records and deterministically chooses greatest `startedAt`, then lexicographically greatest id. `stopping` and terminal runs are excluded; `runtime_stop` remains explicit-id only.
 
-## Panopticon Team Browser Render Boundary
+## Pi Teams Browser Render Boundary
 
 ```mermaid
 flowchart LR
@@ -452,7 +477,7 @@ flowchart LR
 - The Run action closes the browser before opening a native profile selector and prompt editor; its profile is one-shot input passed directly to `runTeam`, not session-mode state.
 - `tests/architecture/tui-render-paths.ts` guards team overlay render closures against synchronous registry/filesystem reads.
 
-## Panopticon Team Profile Evaluation Boundary
+## Pi Teams Profile Evaluation Boundary
 
 ```mermaid
 flowchart LR
@@ -623,7 +648,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  DeepResearch[Panopticon teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
+  DeepResearch[pi-teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
   PromptTools --> Registered[pi-research-tools in pi-extension-poc\nregistered dry-run tools]
   PromptTools --> Manifest[pi-extension-poc lib/research-tool-fixtures.ts\nmetadata fixtures]
   Registered --> Json[Typed params + JSON output\nempty dry-run envelopes]
@@ -638,7 +663,7 @@ flowchart TD
 
 - Research-tool metadata in `/home/jim/git/pi-extension-poc` remains the source for compatibility checks and future provider design.
 - `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only; this repo no longer owns its implementation.
-- Deep-research workflow policy stays in `extensions/pi-panopticon/teams` prompts and protocol handlers.
+- Deep-research workflow policy stays in `extensions/pi-teams` prompts and protocol handlers.
 - Source IDs, provenance fields, artifact paths, and result semantics are declared before any provider/runtime promotion.
 - Runtime providers, credential handling, extension loading changes, durable artifact persistence, and deletion of old research behavior require separate approval/ADR.
 

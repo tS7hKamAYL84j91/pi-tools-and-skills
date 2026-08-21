@@ -1,8 +1,10 @@
 # ADR 025: Panopticon Runtime Control Plane
 
-Status: Proposed
+Status: Superseded by ADR-048
 Date: 2026-05-30
 Source: historical Panopticon runtime-consolidation report retained in git history.
+
+ADR-048 establishes the later standalone public ownership boundary for `pi-teams`; the runtime-consolidation direction below is retained as historical context only.
 
 ## Context
 
@@ -12,9 +14,9 @@ This creates a misleading middle ground: teams look like an independent orchestr
 
 ## Decision
 
-Adopt Panopticon as the intentional runtime control plane for agents and teams.
+The superseded proposal adopted Panopticon as the intentional runtime control plane for agents and teams.
 
-Panopticon owns the shared runtime substrate:
+Under that superseded proposal, Panopticon would own the shared runtime substrate:
 
 - process and child-agent spawning;
 - registry and visibility;
@@ -24,7 +26,7 @@ Panopticon owns the shared runtime substrate:
 - messaging/routing substrate;
 - unified runtime UX for inspect/status/stop surfaces.
 
-Teams remain a modular Panopticon runtime module, not a merged code blob. `pi-teams` continues to own:
+Under that superseded proposal, Teams would remain a modular Panopticon runtime module, not a merged code blob. `pi-teams` would continue to own:
 
 - team specs and model-role binding;
 - navigator, council/debate, and research protocol semantics;
@@ -61,7 +63,7 @@ A team must not be modeled as “just an agent.” A team run may own children t
 
 ## Adapter boundary
 
-Panopticon should expose a narrow runtime adapter before broad refactors:
+The superseded proposal would have exposed a narrow runtime adapter before broad refactors:
 
 - spawn a child process/agent under a parent runtime entity;
 - stop a runtime entity with explicit propagation semantics;
@@ -69,7 +71,7 @@ Panopticon should expose a narrow runtime adapter before broad refactors:
 - emit runtime events for lifecycle and status changes;
 - link child entities to a parent team run.
 
-`pi-teams` should depend on that adapter for runtime lifecycle behavior, while keeping protocol logic inside team modules.
+Under that proposal, `pi-teams` would have depended on that adapter for runtime lifecycle behavior, while keeping protocol logic inside team modules.
 
 ## Guardrails
 

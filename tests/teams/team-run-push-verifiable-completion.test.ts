@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { runTeam } from "../../extensions/pi-panopticon/teams/team-runtime.js";
-import { readTeamRunResultArtifact, teamRunResultArtifactPath } from "../../extensions/pi-panopticon/teams/team-result-artifact.js";
-import type { TeamRunInput } from "../../extensions/pi-panopticon/teams/team-handlers.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { runTeam } from "../../extensions/pi-teams/team-runtime.js";
+import { readTeamRunResultArtifact, teamRunResultArtifactPath } from "../../extensions/pi-teams/team-result-artifact.js";
+import type { TeamRunInput } from "../../extensions/pi-teams/team-handlers.js";
 
 interface FakeContext extends ExtensionContext {
 	ui: ExtensionContext["ui"] & {
@@ -57,12 +57,12 @@ function createFakeTeamHandler(resultText: string, stopped = false) {
 
 let currentHandler = createFakeTeamHandler("FAKE_TEAM_RESULT");
 
-vi.mock("../../extensions/pi-panopticon/teams/team-handlers.js", () => ({
+vi.mock("../../extensions/pi-teams/team-handlers.js", () => ({
 	TEAM_STATUS_KEY: "teams:status",
 	getTeamHandler: vi.fn(() => currentHandler),
 }));
 
-vi.mock("../../extensions/pi-panopticon/teams/team-registry.js", () => ({
+vi.mock("../../extensions/pi-teams/team-registry.js", () => ({
 	loadTeamRegistry: vi.fn(() => ({
 		teams: new Map([[
 			"test-team",
@@ -83,8 +83,8 @@ vi.mock("../../extensions/pi-panopticon/teams/team-registry.js", () => ({
 	})),
 }));
 
-vi.mock("../../extensions/pi-panopticon/teams/team-paths.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../extensions/pi-panopticon/teams/team-paths.js")>();
+vi.mock("../../extensions/pi-teams/team-paths.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../extensions/pi-teams/team-paths.js")>();
 	return {
 		...actual,
 		resolveTeamResultRoot: vi.fn(() => {

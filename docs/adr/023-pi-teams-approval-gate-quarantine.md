@@ -6,7 +6,7 @@ Ticket: T-498
 
 ## Context
 
-T-308 added provisional pi-teams approval-gate primitives in `extensions/pi-panopticon/teams/approval-gates.ts`, tests in `tests/team-approval-gates.test.ts`, and observability mapping for approval request/result details. The API can create an awaiting-approval state, emit `run_detail` trace records, resolve a result, and execute a caller-provided action only after an approved state.
+T-308 added provisional pi-teams approval-gate primitives in `extensions/pi-teams/approval-gates.ts`, tests in `tests/team-approval-gates.test.ts`, and observability mapping for approval request/result details. The API can create an awaiting-approval state, emit `run_detail` trace records, resolve a result, and execute a caller-provided action only after an approved state.
 
 The current implementation is intentionally not wired into default team runtime, mutating tool authorization, live notifications, external services, or organization-wide policy. `TeamApprovalConfig` exists in team manifests and validation requires an owner only when `approval.enabled === true`, but no team protocol currently treats that config as mandatory runtime policy.
 

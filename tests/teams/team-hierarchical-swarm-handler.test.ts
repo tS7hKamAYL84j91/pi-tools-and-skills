@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
 import type {
 	TeamAgentBinding,
 	TeamSpec,
-} from "../../extensions/pi-panopticon/teams/team-types.js";
+} from "../../extensions/pi-teams/team-types.js";
 
 interface CapturedNodeArgs {
 	binding: TeamAgentBinding;
@@ -18,10 +18,10 @@ interface CapturedNodeArgs {
 
 let captured: CapturedNodeArgs | undefined;
 
-vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => {
+vi.mock("../../extensions/pi-teams/team-node-runner.js", async () => {
 	const actual = await vi.importActual<
-		typeof import("../../extensions/pi-panopticon/teams/team-node-runner.js")
-	>("../../extensions/pi-panopticon/teams/team-node-runner.js");
+		typeof import("../../extensions/pi-teams/team-node-runner.js")
+	>("../../extensions/pi-teams/team-node-runner.js");
 	return {
 		...actual,
 		runTeamNode: async (args: CapturedNodeArgs) => {
@@ -40,7 +40,7 @@ vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => 
 });
 
 const { getTeamHandler } = await import(
-	"../../extensions/pi-panopticon/teams/team-handlers.js"
+	"../../extensions/pi-teams/team-handlers.js"
 );
 
 function testSwarmTeam(): TeamSpec {
