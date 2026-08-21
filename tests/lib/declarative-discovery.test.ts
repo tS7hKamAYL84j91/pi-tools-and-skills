@@ -1,8 +1,13 @@
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return { ...actual, statSync: vi.fn(actual.statSync) };
+});
 import {
 	discoverDeclarativeRoots,
 	discoverFixedTargets,
@@ -22,6 +27,28 @@ function options(cwd: string, values: Record<string, unknown> = {}, roots?: read
 }
 
 describe("declarative discovery", () => {
+	it("suppresses only missing project markers", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "discovery-"));
+		const missing = Object.assign(new Error("missing"), { code: "ENOENT" });
+		vi.mocked(statSync).mockImplementationOnce(() => { throw missing; });
+		expect(findDeclarativeProjectRoot(cwd)).toBe(cwd);
+
+		const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+		vi.mocked(statSync).mockImplementationOnce(() => { throw denied; });
+		expect(() => findDeclarativeProjectRoot(cwd)).toThrow(denied);
+	});
+
+	it("suppresses only missing Markdown directories", () => {
+		const root = mkdtempSync(join(tmpdir(), "discovery-"));
+		const missing = Object.assign(new Error("missing"), { code: "ENOENT" });
+		vi.mocked(statSync).mockImplementationOnce(() => { throw missing; });
+		expect(discoverMarkdownDirectories([{ source: "user", root }], ["items"])).toEqual([]);
+
+		const denied = Object.assign(new Error("denied"), { code: "EIO" });
+		vi.mocked(statSync).mockImplementationOnce(() => { throw denied; });
+		expect(() => discoverMarkdownDirectories([{ source: "user", root }], ["items"])).toThrow(denied);
+	});
+
 	it("orders builtin, configured user, and configured project roots with lexical expansion", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "discovery-"));
 		mkdirSync(join(cwd, ".git"));

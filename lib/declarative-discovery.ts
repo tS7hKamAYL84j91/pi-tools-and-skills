@@ -1,6 +1,6 @@
 /** Extension-neutral lexical discovery for layered Markdown descriptors. */
 
-import { existsSync, readdirSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -34,7 +34,7 @@ export function findDeclarativeProjectRoot(start: string): string {
 	let directory = start;
 	let parent = dirname(directory);
 	while (directory !== parent) {
-		if (existsSync(join(directory, "package.json")) || existsSync(join(directory, ".git"))) {
+		if (pathExists(join(directory, "package.json")) || pathExists(join(directory, ".git"))) {
 			return directory;
 		}
 		directory = parent;
@@ -85,7 +85,7 @@ export function discoverMarkdownDirectories(
 	for (const root of roots) {
 		for (const directory of directories) {
 			const absoluteDirectory = join(root.root, directory);
-			if (!existsSync(absoluteDirectory)) {
+			if (!pathExists(absoluteDirectory)) {
 				continue;
 			}
 			for (const entry of readdirSync(absoluteDirectory).filter((name) => name.endsWith(".md")).sort()) {
@@ -102,6 +102,22 @@ export function discoverFixedTargets(
 	target: string,
 ): DeclarativePath[] {
 	return roots.map((root) => ({ source: root.source, root: root.root, path: join(root.root, target) }));
+}
+
+function pathExists(path: string): boolean {
+	try {
+		statSync(path);
+		return true;
+	} catch (error: unknown) {
+		if (isMissingPathError(error)) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+function isMissingPathError(error: unknown): boolean {
+	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function configuredRoots(value: unknown, base: string): string[] {
