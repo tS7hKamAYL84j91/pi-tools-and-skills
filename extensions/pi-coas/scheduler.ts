@@ -17,9 +17,11 @@ import { resumeApprovedRunTracked, type ResumeContext } from "./scheduler-resume
 import { countAwaitingApprovals } from "./approval-inbox.js";
 import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-recovery.js";
 import { countContinuationReady, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
-import { runOncePerMinute, type RunOnceMetrics } from "./scheduler-run-once.js";
+import { countContinuationSchedules, cronExpressionError } from "./scheduler-evaluation.js";
+import type { RunOnceMetrics } from "./scheduler-run-once.js";
+import { dispatchScheduledRun } from "./scheduler-dispatch.js";
 import { isoUtc } from "./store-paths.js";
-import { cronExpressionError, listSchedules } from "./schedules.js";
+import { listSchedules } from "./schedules.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
 import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
 import { SchedulerWorkTracker } from "./scheduler-work-tracker.js";
@@ -238,7 +240,7 @@ export class CoasInternalScheduler {
 
 	private async updateCounts(schedules: ScheduleEntry[], config: CoasConfig): Promise<void> {
 		this.enabledCount = schedules.length;
-		this.continuationCount = schedules.filter((schedule) => schedule.continuation).length;
+		this.continuationCount = countContinuationSchedules(schedules);
 		this.continuationReady = await countContinuationReady(config, schedules);
 		this.awaitingApprovalCount = await countAwaitingApprovals(config);
 	}
@@ -267,32 +269,22 @@ export class CoasInternalScheduler {
 
 	private get runExecutor(): RunExecutor {
 		return {
-			execute: (schedule, now) => this.runBody(schedule, now),
+			execute: (schedule, now) => {
+				if (!this.config) return Promise.resolve();
+				return dispatchScheduledRun({
+					pi: this.pi,
+					config: this.config,
+					metrics: this.metrics,
+					canDispatch: () => this.work.accepting,
+					registerActiveRun: (runId, startedAt, approvalRequestId) => {
+						this.activeScheduledRuns.set(runId, { taskId: schedule.taskId, runId, startedAt, approvalRequestId });
+					},
+					incrementAwaitingApproval: () => {
+						this.awaitingApprovalCount++;
+					},
+				}, schedule, now);
+			},
 			track: (work) => this.work.track(work),
 		};
-	}
-
-	private async runBody(schedule: ScheduleEntry, now: Date): Promise<void> {
-		if (!this.config) return;
-		try {
-			const result = await runOncePerMinute({
-				pi: this.pi,
-				config: this.config,
-				schedule,
-				now,
-				canDispatch: () => this.work.accepting,
-				registerActiveRun: (runId, startedAt, approvalRequestId) => {
-					this.activeScheduledRuns.set(runId, { taskId: schedule.taskId, runId, startedAt, approvalRequestId });
-				},
-			}, this.metrics);
-			if (result.approvalRequestId && !result.queued) {
-				this.awaitingApprovalCount++;
-			}
-		} catch (error) {
-			this.metrics.failedCount++;
-			this.metrics.lastFailedAt = isoUtc();
-			this.metrics.lastTaskId = schedule.taskId;
-			this.metrics.lastError = (error as Error).message;
-		}
 	}
 }
