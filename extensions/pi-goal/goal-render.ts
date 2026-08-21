@@ -4,6 +4,14 @@
 import { getCurrentMilestone } from "./goal-plan.js";
 import type { GoalState, Milestone } from "./goal-types.js";
 
+export function renderGoalOverlayLines(text: string, maxLines: number): string[] {
+	const lines = text.split("\n");
+	if (lines.length <= maxLines) {
+		return lines;
+	}
+	return [...lines.slice(0, maxLines - 1), `… ${lines.length - maxLines + 1} more lines in .pi/goal/GOAL.md`];
+}
+
 export function renderGoalSummary(state: GoalState): string {
 	const source = state.sourcePath ? `\nSource: ${state.sourcePath}` : "";
 	const run = state.runActive
