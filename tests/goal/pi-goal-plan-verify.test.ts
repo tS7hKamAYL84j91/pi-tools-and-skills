@@ -13,6 +13,7 @@ import {
 	loadGoal,
 	saveGoal,
 	startRun,
+	updateGoal,
 	type GoalState,
 } from "../../extensions/pi-goal/state.js";
 
@@ -75,12 +76,44 @@ describe("pi-goal plan mode and verification gate", () => {
 		await writeFile(join(tempDir, ".pi/goal", "goal.json"), JSON.stringify(legacy, null, 2));
 		const loaded = await loadGoal(tempDir);
 		expect(loaded).toBeDefined();
-		expect(loaded?.schemaVersion).toBe(1);
+		expect(loaded?.schemaVersion).toBe(3);
+		expect(loaded?.runMode).toBe("manual");
+		expect(loaded?.executionState).toBe("idle");
+		expect(loaded?.milestoneRevision).toBe(1);
+		expect(loaded?.lastProgressAt).toBe(legacy.updatedAt);
 		expect(loaded?.planRequired).toBe(false);
 		expect(loaded?.planApproved).toBe(false);
 		expect(loaded?.currentMilestoneIndex).toBe(0);
 		expect(loaded?.milestones).toEqual([]);
 		expect(loaded?.lastVerification).toBeUndefined();
+	});
+
+	it("durably migrates v2 state and keeps restart correlation stable", async () => {
+		const updatedAt = "2026-08-21T00:00:00.000Z";
+		const legacy = {
+			schemaVersion: 2,
+			goalId: "legacy-v2",
+			objective: "restart migration",
+			status: "active",
+			createdAt: updatedAt,
+			updatedAt,
+			runId: "old-run",
+			runActive: true,
+			turnBudget: 4,
+			turnsUsed: 1,
+			lastVerification: { milestoneIndex: 0, command: "npm test", exitCode: 0, outputSummary: "old" },
+		};
+		await mkdir(join(tempDir, ".pi/goal"), { recursive: true });
+		await writeFile(join(tempDir, ".pi/goal", "goal.json"), JSON.stringify(legacy), "utf8");
+		const migrated = await loadGoal(tempDir);
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as GoalState;
+		expect(migrated?.schemaVersion).toBe(3);
+		expect(persisted.schemaVersion).toBe(3);
+		expect(persisted.runMode).toBe("manual");
+		expect(persisted.lastProgressAt).toBe(updatedAt);
+		expect(persisted.milestoneRevision).toBe(1);
+		expect(persisted.lastVerification).toBeUndefined();
+		expect((await loadGoal(tempDir))?.lastProgressAt).toBe(updatedAt);
 	});
 
 	it("legacy goal completes with evidence-only gate", async () => {
@@ -231,6 +264,56 @@ describe("pi-goal plan mode and verification gate", () => {
 		expect(loaded).toBeDefined();
 		await expect(readFile(join(tempDir, ".pi/goal", "PLAN.md"), "utf8")).resolves.toContain("Recoverable task");
 		await expect(readFile(join(tempDir, ".pi/goal", "STATUS.md"), "utf8")).resolves.toContain("Current milestone");
+	});
+
+	it("continuous mode keeps the run active across a verified non-final milestone", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		let state = startRun(generatePlanState(await createTextGoal(tempDir, "continuous\n- one\n- two")), 5, "continuous");
+		await saveGoal(tempDir, state);
+		const verify = findTool(pi, "goal_verify");
+		await verify.execute("call-v", { exitCode: 0, outputSummary: "one passed" }, undefined, undefined, ctx);
+		const complete = findTool(pi, "goal_complete");
+		await complete.execute("call-c", { evidence: "one is complete" }, undefined, undefined, ctx);
+		state = (await loadGoal(tempDir)) as GoalState;
+		expect(state.currentMilestoneIndex).toBe(1);
+		expect(state.runMode).toBe("continuous");
+		expect(state.runActive).toBe(true);
+		expect(state.executionState).toBe("in_progress");
+	});
+
+	it("manual mode pauses after a verified non-final milestone", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(generatePlanState(await createTextGoal(tempDir, "manual\n- one\n- two")), 5, "manual");
+		await saveGoal(tempDir, state);
+		const verify = findTool(pi, "goal_verify");
+		await verify.execute("call-v", { exitCode: 0, outputSummary: "one passed" }, undefined, undefined, ctx);
+		const complete = findTool(pi, "goal_complete");
+		await complete.execute("call-c", { evidence: "one is complete" }, undefined, undefined, ctx);
+		expect((await loadGoal(tempDir))?.runActive).toBe(false);
+	});
+
+	it("rejects evidence after a milestone revision changes", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(generatePlanState(await createTextGoal(tempDir, "stale evidence")), 5, "continuous");
+		await saveGoal(tempDir, state);
+		const verify = findTool(pi, "goal_verify");
+		await verify.execute("call-v", { exitCode: 0, outputSummary: "passed" }, undefined, undefined, ctx);
+		const current = (await loadGoal(tempDir)) as GoalState;
+		const changedRevision = updateGoal(current, { milestoneRevision: (current.milestoneRevision ?? 0) + 1 });
+		await saveGoal(tempDir, changedRevision);
+		const complete = findTool(pi, "goal_complete");
+		await expect(complete.execute("call-c", { evidence: "stale" }, undefined, undefined, ctx)).rejects.toThrow(/stale|no verification/);
+
+		const oldVerification = current.lastVerification;
+		const newRun = startRun(changedRevision, 5, "continuous");
+		await saveGoal(tempDir, updateGoal(newRun, { lastVerification: oldVerification }));
+		await expect(complete.execute("call-c2", { evidence: "old run" }, undefined, undefined, ctx)).rejects.toThrow(/stale/);
 	});
 });
 

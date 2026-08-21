@@ -124,6 +124,7 @@ describe("Goal authority and projection ordering", () => {
 
 		expect(await readProjections(tempDir)).toEqual(expectedProjections(loaded));
 		expect(atomicControl.writes).toEqual([
+			paths.statePath,
 			paths.summaryPath,
 			paths.specPath,
 			paths.planPath,

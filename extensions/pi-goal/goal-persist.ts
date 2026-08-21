@@ -29,6 +29,9 @@ export async function loadGoal(cwd: string): Promise<GoalState | null> {
 		const parsed = JSON.parse(raw) as unknown;
 		const { parseGoalState } = await import("./goal-parse.js");
 		const state = parseGoalState(parsed);
+		if (state.schemaVersion === 3 && isLegacyState(parsed)) {
+			await writeFileAtomic(paths.statePath, `${JSON.stringify(state, null, 2)}\n`);
+		}
 		await regenerateDerivedFiles(cwd, state);
 		return state;
 	});
@@ -48,6 +51,12 @@ export async function saveGoal(cwd: string, state: GoalState): Promise<void> {
 		await writeFileAtomic(paths.statusPath, renderStatusMarkdown(state));
 		await ensureRuntimeIgnored(cwd);
 	});
+}
+
+function isLegacyState(value: unknown): boolean {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const record = value as Record<string, unknown>;
+	return record.schemaVersion === 1 || record.schemaVersion === 2 || typeof record.runMode !== "string" || typeof record.lastProgressAt !== "string";
 }
 
 async function regenerateDerivedFiles(cwd: string, state: GoalState): Promise<void> {
@@ -130,18 +139,27 @@ export async function createTextGoal(
 function newGoal(objective: string, sourcePath: string): GoalState {
 	const now = new Date().toISOString();
 	return {
-		schemaVersion: 1,
+		schemaVersion: 3,
 		goalId: `g-${randomUUID()}`,
 		objective,
 		sourcePath,
 		status: "active",
+		runMode: "manual",
+		executionState: "idle",
 		createdAt: now,
 		updatedAt: now,
 		runActive: false,
 		turnBudget: 0,
 		turnsUsed: 0,
 		currentMilestoneIndex: 0,
+		milestoneRevision: 0,
 		milestones: [],
+		lastProgressAt: now,
+		livenessEpoch: 0,
+		livenessWarningIssued: false,
+		livenessNudgeIssued: false,
+		lifecycle: [],
+		changedFiles: [],
 	};
 }
 

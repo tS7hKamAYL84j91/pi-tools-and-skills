@@ -98,6 +98,17 @@ describe("goal_complete operator-configured gate", () => {
 		expect(state?.completionEvidence).toBeUndefined();
 	});
 
+	it("fails and stops an active continuous run when the gate fails", async () => {
+		const { cwd, goal } = await makeWorkspace();
+		await saveGoal(cwd, { ...goal, runActive: true, executionState: "in_progress", runMode: "continuous" });
+		process.env.PI_GOAL_GATE_COMMAND = "exit 1";
+		await expect(runtime.callTool("goal_complete", { evidence: "must not complete" }, cwd)).rejects.toThrow(/gate failed/);
+		const state = await loadGoal(cwd);
+		expect(state?.runActive).toBe(false);
+		expect(state?.executionState).toBe("failed");
+		expect(state?.completionEvidence).toBeUndefined();
+	});
+
 	it("completes without a configured gate", async () => {
 		const { cwd } = await makeWorkspace();
 		const result = await runtime.callTool("goal_complete", { evidence: "No gate" }, cwd);

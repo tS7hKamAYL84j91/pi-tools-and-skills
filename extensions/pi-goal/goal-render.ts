@@ -13,7 +13,9 @@ export function renderGoalOverlayLines(text: string, maxLines: number): string[]
 }
 
 export function renderGoalSummary(state: GoalState): string {
-	const source = state.sourcePath ? `\nSource: ${state.sourcePath}` : "";
+	const source = state.sourcePath ? `\n${state.schemaVersion >= 3 ? "Source (untrusted)" : "Source"}: ${state.sourcePath}` : "";
+	const mode = state.runMode ? `\nRun mode: ${state.runMode}` : "";
+	const execution = state.executionState ? `\nExecution: ${state.executionState}` : "";
 	const run = state.runActive
 		? `\nRun: ${state.turnsUsed}/${state.turnBudget}`
 		: "";
@@ -26,7 +28,11 @@ export function renderGoalSummary(state: GoalState): string {
 		: "";
 	const milestone = getCurrentMilestone(state);
 	const milestoneLine = milestone ? `\nCurrent milestone: ${milestone.title} (${milestone.status})` : "";
-	return `Goal ${state.goalId}\nStatus: ${state.status}${source}${run}${plan}${milestoneLine}\nObjective: ${state.objective}${evidence}${error}`;
+	const evidenceSummary = state.lastVerification
+		? `\nVerification evidence (untrusted report): ${state.lastVerification.outputSummary.slice(0, 200)}`
+		: "";
+	const objectiveLabel = state.schemaVersion >= 3 ? "Objective (untrusted)" : "Objective";
+	return `Goal ${state.goalId}\nStatus: ${state.status}${mode}${execution}${source}${run}${plan}${milestoneLine}\n${objectiveLabel}: ${state.objective}${evidence}${evidenceSummary}${error}`;
 }
 
 export function renderGoalMarkdown(state: GoalState): string {
@@ -57,7 +63,12 @@ export function renderStatusMarkdown(state: GoalState): string {
 	const verification = state.lastVerification
 		? `Last verification: milestone ${state.lastVerification.milestoneIndex + 1} · \`${state.lastVerification.command}\` · exitCode=${state.lastVerification.exitCode} · ${state.lastVerification.timestamp}`
 		: "No verification recorded for the current milestone.";
-	return `# STATUS — Live Audit Log\n\n- Current milestone: ${milestone ? `${milestone.title} (${milestone.status})` : "none"}\n- ${verification}\n- Turns used: ${state.turnsUsed}/${state.turnBudget}\n- Last error: ${state.lastError ?? "none"}\n\n## Iteration notes\n\nRecord blockers, decisions, and validation outcomes here after each turn.\n`;
+	const checklist = state.milestones.length === 0
+		? "- No milestone checklist is active."
+		: state.milestones.map((item) => `- [${item.status === "done" ? "x" : " "}] ${item.title}`).join("\n");
+	const lifecycle = (state.lifecycle ?? []).slice(-5).map((event) => `- ${event.timestamp} ${event.kind}: ${event.summary}`).join("\n") || "- none";
+	const changedFiles = (state.changedFiles ?? []).slice(-20).map((file) => `- ${file}`).join("\n") || "- none reported";
+	return `# STATUS — Live Audit Log\n\n- Execution: ${state.executionState ?? (state.runActive ? "in_progress" : state.status)}\n- Run mode: ${state.runMode ?? "manual"}\n- Current milestone: ${milestone ? `${milestone.title} (${milestone.status})` : "none"}\n- ${verification}\n- Turns used: ${state.turnsUsed}/${state.turnBudget}\n- Last progress: ${state.lastProgressAt ?? "unknown"}\n- Last error: ${state.lastError ?? "none"}\n\n## Milestone checklist\n\n${checklist}\n\n## Recent lifecycle (bounded)\n\n${lifecycle}\n\n## Changed files (bounded, reported)\n\n${changedFiles}\n\n## Iteration notes\n\nChanged files and evidence summaries are bounded, untrusted reports. Record blockers, decisions, and validation outcomes here after each turn.\n`;
 }
 
 export function renderTodoMarkdown(objective: string): string {

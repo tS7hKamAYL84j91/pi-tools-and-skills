@@ -699,6 +699,27 @@ flowchart TD
 - `goal_complete` is root-owned and requires concrete evidence after re-reading source requirements and checking validation state.
 - Goal text and source files are treated as untrusted input; current repository/filesystem state remains authoritative.
 
+### Continuous execution and liveness (ADR-049)
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant Goal as pi-goal authority
+    participant Pi as pi session
+    participant Watchdog as unref watchdog
+    Operator->>Goal: /goal ... --continuous
+    Goal->>Goal: start runId + milestoneRevision
+    Goal->>Pi: bounded turn
+    Pi->>Goal: goal_verify + root goal_complete
+    Goal->>Goal: correlate evidence, advance revision
+    Goal->>Pi: next turn only for non-final continuous milestone
+    Watchdog->>Goal: inspect persisted lastProgressAt
+    Watchdog->>Pi: one idle nudge per liveness epoch
+    Watchdog->>Goal: hard timeout pauses run
+```
+
+`goal.json` is authoritative for `runMode`, normalized `executionState`, `runId`, `milestoneRevision`, and bounded lifecycle/liveness dispositions. Verification records must match the current goal, run, milestone, and revision; old records are ignored during migration. Continuous mode never invokes root-owned completion, and manual mode pauses after a milestone. The session watchdog starts only after `session_start`, uses operator-configured bounded thresholds, never nudges an active turn, and is cleared on `session_shutdown`.
+
 ---
 
 ## CoAS Confined Filesystem Boundary

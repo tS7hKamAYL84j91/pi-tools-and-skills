@@ -9,7 +9,11 @@ import { loadGoal, saveGoal } from "./goal-persist.js";
 import {
 	generatePlanState,
 	getCurrentMilestone,
+	getRunMode,
+	markProgress,
+	stopGoal,
 	updateGoal,
+	withLifecycle,
 } from "./goal-plan.js";
 import { requireGoal } from "./goal-helpers.js";
 import { renderGoalSummary } from "./goal-render.js";
@@ -108,15 +112,22 @@ export function registerGoalTools(
 					`Validation command mismatch for milestone ${milestone.id}: expected "${milestone.validationCommand}", got "${command}"`,
 				);
 			}
+			if (idx !== state.currentMilestoneIndex) {
+				throw new Error(`Milestone evidence is stale: current milestone is ${state.currentMilestoneIndex}, received ${idx}`);
+			}
 			const record = {
+				goalId: state.goalId,
 				milestoneIndex: idx,
 				command,
 				exitCode: params.exitCode,
 				outputSummary: params.outputSummary,
 				timestamp: new Date().toISOString(),
 				runId: state.runId,
+				milestoneRevision: state.milestoneRevision,
 			};
-			const next = updateGoal(state, { lastVerification: record });
+			const next = params.exitCode === 0
+				? markProgress(updateGoal(state, { lastVerification: record }), `Verification passed for milestone ${idx + 1}.`)
+				: stopGoal(updateGoal(state, { lastVerification: record }), "failed", `Verification failed for milestone ${idx + 1} (exitCode=${params.exitCode}).`);
 			await saveGoal(ctx.cwd, next);
 			await refreshUi(ctx, next);
 			return ok(
@@ -147,16 +158,19 @@ export function registerGoalTools(
 			if (!evidence) {
 				throw new Error("goal_complete requires non-empty evidence");
 			}
+			const state = await requireGoal(ctx.cwd);
 			const gateCommand = process.env.PI_GOAL_GATE_COMMAND;
 			if (gateCommand !== undefined) {
 				const gate = await runGateCommand(gateCommand, ctx.cwd, signal);
 				if (!gate.passed) {
+					if (state.runActive) {
+						await saveFailedGoal(ctx, state, `Completion gate failed (exitCode=${gate.exitCode}).`);
+					}
 					throw new Error(
 						`goal_complete gate failed (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
 					);
 				}
 			}
-			const state = await requireGoal(ctx.cwd);
 			if (state.status !== "active" && state.status !== "planning") {
 				throw new Error(`Cannot complete a ${state.status} goal`);
 			}
@@ -171,6 +185,9 @@ export function registerGoalTools(
 					throw new Error(
 						`Milestone "${current.title}" has no verification. Call goal_verify with the validation result first.`,
 					);
+				}
+				if (state.runId && (verification.goalId !== state.goalId || verification.runId !== state.runId || verification.milestoneRevision !== state.milestoneRevision)) {
+					throw new Error("Verification evidence is stale for the current run or milestone revision; verify again.");
 				}
 				if (verification.command !== current.validationCommand) {
 					throw new Error(
@@ -195,29 +212,33 @@ export function registerGoalTools(
 					if (!nextMilestone) {
 						throw new Error("Invariant: next milestone missing after bounds check");
 					}
-					const next = updateGoal(state, {
+					const next = markProgress(withLifecycle(updateGoal(state, {
 						milestones: advanced,
 						currentMilestoneIndex: nextIndex,
 						lastVerification: undefined,
 						status: "active",
-						runActive: false,
-					});
+						executionState: getRunMode(state) === "continuous" && state.runActive ? "in_progress" : "idle",
+						runActive: getRunMode(state) === "continuous" && state.runActive,
+						milestoneRevision: (state.milestoneRevision ?? 0) + 1,
+					}), "progress", `Milestone ${state.currentMilestoneIndex + 1} completed.`), `Advanced to milestone ${nextIndex + 1}.`);
 					await saveGoal(ctx.cwd, next);
 					await refreshUi(ctx, next);
 					return ok(
-						`Milestone ${state.currentMilestoneIndex + 1} complete. Next milestone: ${nextMilestone.title}. Continue with /goal run.`,
+						`Milestone ${state.currentMilestoneIndex + 1} complete. Next milestone: ${nextMilestone.title}.${next.runActive ? " Continuous execution will continue." : " Continue with /goal run."}`,
 						{ ...next } as Record<string, unknown>,
 					);
 				}
 
-				const next = updateGoal(state, {
+				const next = withLifecycle(updateGoal(state, {
 					milestones: nextMilestones,
 					currentMilestoneIndex: nextIndex,
 					status: "complete",
+					executionState: "completed",
 					runActive: false,
 					completionEvidence: evidence,
 					lastVerification: undefined,
-				});
+					milestoneRevision: (state.milestoneRevision ?? 0) + 1,
+				}), "completed", "Final milestone completed by root audit.");
 				await saveGoal(ctx.cwd, next);
 				await refreshUi(ctx, next);
 				return {
@@ -226,11 +247,12 @@ export function registerGoalTools(
 				};
 			}
 
-			const next = updateGoal(state, {
+			const next = withLifecycle(updateGoal(state, {
 				status: "complete",
+				executionState: "completed",
 				runActive: false,
 				completionEvidence: evidence,
-			});
+			}), "completed", "Goal completed by root audit.");
 			await saveGoal(ctx.cwd, next);
 			await refreshUi(ctx, next);
 			return {
@@ -239,6 +261,13 @@ export function registerGoalTools(
 			};
 		},
 	});
+	async function saveFailedGoal(ctx: ExtensionContext, state: GoalState, error: string): Promise<GoalState> {
+		const failed = stopGoal(state, "failed", error);
+		await saveGoal(ctx.cwd, failed);
+		await refreshUi(ctx, failed);
+		return failed;
+	}
+
 	// Keep lint happy: runtime is used by callers via the shared global runtime object,
 	// but this registration function receives it for potential future use.
 	void runtime;
