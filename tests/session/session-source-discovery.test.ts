@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listRecentSessionSources } from "../../lib/session-source-discovery.js";
-import { runSessionSourceCli } from "../../lib/session-source-cli.js";
+import { runSessionSourceCli } from "../../scripts/session-source-cli.js";
 
 function touch(path: string, seconds: number): void {
 	writeFileSync(path, "{}\n", "utf8");

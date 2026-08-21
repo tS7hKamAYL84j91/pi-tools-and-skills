@@ -26,7 +26,7 @@ import {
 	listAgentApprovals,
 	rejectAgentApproval,
 	type PendingApproval,
-} from "../../../lib/coas-approval-inbox.js";
+} from "../../pi-coas/lib/coas-approval-inbox.js";
 
 interface RenderAgentDetailOverlayArgs {
 	record: AgentRecord;

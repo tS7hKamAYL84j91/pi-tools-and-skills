@@ -1,8 +1,8 @@
 /** Minimal schedule-env reader for cross-extension consumers. */
 
 import { join } from "node:path";
-import { ConfinedStore } from "./confined-store.js";
-import type { CoasConfig } from "./coas-types.js";
+import { ConfinedStore } from "../../../lib/confined-store.js";
+import type { CoasConfig } from "../../../lib/coas-types.js";
 
 function unquoteShellValue(value: string): string {
 	const trimmed = value.trim();

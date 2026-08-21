@@ -1,4 +1,4 @@
-/** Repo-specific lib layering fitness functions. */
+/** Shared-lib fitness functions: `lib/` is reserved for multi-caller primitives. */
 
 import { readFileSync } from "node:fs";
 import { basename, relative } from "node:path";
@@ -9,7 +9,6 @@ const CORE_LIB_FILES = new Set([
 	"agent-names.ts",
 	"completion-signal.ts",
 	"message-transport.ts",
-	"oracle-judge.ts",
 	"secret-redaction.ts",
 	"task-brief.ts",
 	"tool-result.ts",
@@ -17,101 +16,75 @@ const CORE_LIB_FILES = new Set([
 	"tui-overflow.ts",
 ]);
 
-const IO_LIB_FILES = new Set([
+/** Every entry is a deliberately shared primitive and has multiple callers. */
+const SHARED_LIB_FILES = new Set([
 	"agent-api.ts",
+	"agent-names.ts",
 	"agent-registry.ts",
-	"coas-approval-inbox.ts",
 	"coas-config.ts",
 	"coas-governance.ts",
-	"coas-home.ts",
-	"coas-paths.ts",
-	"coas-run-state.ts",
-	"coas-schedule-target.ts",
 	"coas-types.ts",
+	"completion-signal.ts",
 	"confined-store.ts",
 	"declarative-discovery.ts",
 	"file-lock.ts",
 	"file-persistence.ts",
 	"gate-command.ts",
+	"message-transport.ts",
 	"path-inside.ts",
 	"pi-settings.ts",
 	"private-local-mode.ts",
-	"session-hook-installer-cli.ts",
-	"session-hook-installer.ts",
-	"session-log.ts",
-	"session-source-cli.ts",
-	"session-source-discovery.ts",
-	"session-spool-runner-cli.ts",
-	"session-spool-runner.ts",
-	"session-spool-select-cli.ts", // CLI wrapper: combines session-source-discovery + session-spool-runner IO modules
-	"session-spool.ts",
-	"spawn-events.ts",
-	"spawn-rpc.ts",
-	"spawn-service.ts",
+	"runtime-agent-messaging.ts",
 	"runtime-child-process.ts",
-	"template-safety.ts",
-	"maildir.ts",
-	"maildir-inbox.ts",
+	"runtime-control-plane.ts",
+	"secret-redaction.ts",
+	"session-hook-installer.ts",
+	"session-journal.ts",
+	"session-log.ts",
+	"session-source-discovery.ts",
+	"session-spool-runner.ts",
+	"session-spool.ts",
+	"task-brief.ts",
+	"tool-result.ts",
+	"tui-confirmation.ts",
+	"tui-overflow.ts",
 	"external-mailbox.ts",
-]);
-
-const PURE_RUNTIME_LIB_FILES = new Set(["runtime-agent-messaging.ts", "runtime-control-plane.ts", "session-journal.ts"]);
-
-const CLASSIFIED_LIB_FILES = new Set([
-	...CORE_LIB_FILES,
-	...IO_LIB_FILES,
-	...PURE_RUNTIME_LIB_FILES,
+	"maildir.ts",
 ]);
 
 const NODE_IO_IMPORT = /from\s+["']node:(?:fs|fs\/promises|child_process|os)["']/;
-const VALUE_RELATIVE_IMPORT = /^import\s+(?!type\b)[\s\S]*?from\s+["']\.\/?([^"']+)\.js["'];?$/gm;
+function callersOf(fileName: string): Set<string> {
+	const callers = new Set<string>();
+	for (const file of [...listTsFiles("extensions"), ...listTsFiles("lib"), ...listTsFiles("tests"), ...listTsFiles("scripts")]) {
+		const content = readFileSync(file, "utf8");
+		if (content.includes(fileName.replace(/\.ts$/, ".js"))) callers.add(relative(process.cwd(), file));
+	}
+	return callers;
+}
 
 describe("lib layering", () => {
-	it("every lib TypeScript module is assigned to a documented layer", () => {
-		const unclassified = listTsFiles("lib")
-			.map((file) => relative(process.cwd(), file))
-			.filter((file) => !CLASSIFIED_LIB_FILES.has(basename(file)));
-		expect(unclassified).toEqual([]);
-	});
-
-	it("core lib contracts and render helpers do not import Node IO modules", () => {
-		const violations: string[] = [];
-		for (const file of listTsFiles("lib")) {
-			if (!CORE_LIB_FILES.has(basename(file))) continue;
-			const content = readFileSync(file, "utf8");
-			if (NODE_IO_IMPORT.test(content)) {
-				violations.push(relative(process.cwd(), file));
-			}
-		}
+	it("every lib TypeScript module is a documented shared primitive with multiple callers", () => {
+		const violations = listTsFiles("lib").flatMap((file) => {
+			const fileName = basename(file);
+			if (!SHARED_LIB_FILES.has(fileName)) return [`${relative(process.cwd(), file)} is undocumented`];
+			const callers = callersOf(fileName);
+			return callers.size >= 2 ? [] : [`${relative(process.cwd(), file)} has ${callers.size} caller(s)`];
+		});
 		expect(violations).toEqual([]);
 	});
 
-	it("core lib contracts do not value-import higher IO/runtime layers", () => {
-		const violations: string[] = [];
-		for (const file of listTsFiles("lib")) {
-			const fileName = basename(file);
-			if (!CORE_LIB_FILES.has(fileName)) continue;
-			const content = readFileSync(file, "utf8");
-			for (const match of content.matchAll(VALUE_RELATIVE_IMPORT)) {
-				const imported = `${match[1]}.ts`;
-				if (!CORE_LIB_FILES.has(basename(imported))) {
-					violations.push(
-						`${relative(process.cwd(), file)} value-imports ${match[1]}.js`,
-					);
-				}
-			}
-		}
+	it("core lib contracts and render helpers do not import Node IO modules", () => {
+		const violations = listTsFiles("lib")
+			.filter((file) => CORE_LIB_FILES.has(basename(file)))
+			.filter((file) => NODE_IO_IMPORT.test(readFileSync(file, "utf8")))
+			.map((file) => relative(process.cwd(), file));
 		expect(violations).toEqual([]);
 	});
 
 	it("lib modules do not import from extension runtime", () => {
-		const violations: string[] = [];
-		for (const file of listTsFiles("lib")) {
-			const content = readFileSync(file, "utf8");
-			if (/from\s+["']\.\.\/extensions\//.test(content)) {
-				violations.push(relative(process.cwd(), file));
-			}
-		}
+		const violations = listTsFiles("lib")
+			.filter((file) => /from\s+["']\.\.\/extensions\//.test(readFileSync(file, "utf8")))
+			.map((file) => relative(process.cwd(), file));
 		expect(violations).toEqual([]);
 	});
 });

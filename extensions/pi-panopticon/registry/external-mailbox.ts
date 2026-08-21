@@ -1,7 +1,7 @@
 /** Persistent external-agent mailbox path helpers. */
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { ensurePrivateDirectory } from "../private-local-mode.js";
+import { ensurePrivateDirectory } from "../../../lib/private-local-mode.js";
 
 /** Default root for persistent external-agent mailboxes. */
 export function defaultPersistDir(): string {

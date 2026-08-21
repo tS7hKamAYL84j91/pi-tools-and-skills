@@ -3,7 +3,8 @@
   "entry": [
     "extensions/*/index.ts",
     "lib/*.ts",
-    "lib/**/*.ts"
+    "lib/**/*.ts",
+    "scripts/session-*-cli.ts"
   ],
   "project": [
     "extensions/**/*.ts",

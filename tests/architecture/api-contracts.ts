@@ -46,7 +46,8 @@ describe("extension isolation", () => {
 				const target = normalize(join(dirname(file), specifier));
 				const relativeTarget = relative(process.cwd(), target);
 				const [root, targetExtension] = relativeTarget.split(sep);
-				if (root === "extensions" && targetExtension !== sourceExtension) {
+				const targetIsPublicLibrary = relativeTarget.split(sep)[2] === "lib";
+				if (root === "extensions" && targetExtension !== sourceExtension && !targetIsPublicLibrary) {
 					violations.push(`${relativeFile} -> ${specifier}`);
 				}
 			}

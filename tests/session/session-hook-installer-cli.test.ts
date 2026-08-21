@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runSessionHookInstallerCli } from "../../lib/session-hook-installer-cli.js";
+import { runSessionHookInstallerCli } from "../../scripts/session-hook-installer-cli.js";
 
 describe("session hook installer CLI adapter", () => {
 	it("delegates install/status/uninstall to the library implementation", async () => {

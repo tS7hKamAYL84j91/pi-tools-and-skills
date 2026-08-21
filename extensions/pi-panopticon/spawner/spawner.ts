@@ -15,9 +15,9 @@ import type { Registry } from "../types.js";
 import {
 	gracefulKill,
 	type SpawnedAgent,
-} from "../../../lib/spawn-service.js";
-import { rpcWrite } from "../../../lib/spawn-rpc.js";
-import { hasCompletionSignal } from "../../../lib/spawn-events.js";
+} from "./spawn-service.js";
+import { rpcWrite } from "./spawn-rpc.js";
+import { hasCompletionSignal } from "./spawn-events.js";
 import type { SpawnerContext } from "./spawner-types.js";
 import {
 	registerSpawnAgentTool,

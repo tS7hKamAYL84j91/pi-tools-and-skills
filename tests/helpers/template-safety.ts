@@ -3,14 +3,14 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-export interface TemplateSafetyFinding {
+interface TemplateSafetyFinding {
 	path: string;
 	ruleId: string;
 	message: string;
 	line: number;
 }
 
-export interface TemplateSafetyResult {
+interface TemplateSafetyResult {
 	checked: string[];
 	findings: TemplateSafetyFinding[];
 }

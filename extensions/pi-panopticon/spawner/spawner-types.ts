@@ -2,7 +2,7 @@
  * Types and interfaces for agent spawner.
  */
 
-import type { SpawnedAgent } from "../../../lib/spawn-service.js";
+import type { SpawnedAgent } from "./spawn-service.js";
 import type { TaskBrief } from "../../../lib/task-brief.js";
 import type { Registry } from "../types.js";
 

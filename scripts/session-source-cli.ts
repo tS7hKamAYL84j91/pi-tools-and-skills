@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Thin CLI for read-only pi session source discovery. */
 
-import { listRecentSessionSources } from "./session-source-discovery.js";
+import { listRecentSessionSources } from "../lib/session-source-discovery.js";
 
 interface SourceCliArgs {
 	sourceRoot?: string;
@@ -9,7 +9,7 @@ interface SourceCliArgs {
 }
 
 function usage(): string {
-	return "Usage: npx tsx lib/session-source-cli.ts [--source-root <dir>] [--limit N]";
+	return "Usage: npx tsx scripts/session-source-cli.ts [--source-root <dir>] [--limit N]";
 }
 
 function parseArgs(argv: readonly string[]): SourceCliArgs {

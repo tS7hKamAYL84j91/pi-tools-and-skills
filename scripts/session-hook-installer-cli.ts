@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Thin CLI adapter for the session spool hook installer library. */
 
-import { manageSessionSpoolHook, type SessionHookAction } from "./session-hook-installer.js";
+import { manageSessionSpoolHook, type SessionHookAction } from "../lib/session-hook-installer.js";
 
 interface HookCliArgs {
 	action?: SessionHookAction;
@@ -13,7 +13,7 @@ const ACTIONS = new Set<SessionHookAction>(["status", "install", "uninstall", "d
 
 function usage(): string {
 	return [
-		"Usage: npx tsx lib/session-hook-installer-cli.ts <status|install|uninstall|dry-run> --registry-dir <absolute-local-dir> [--retention-events N]",
+		"Usage: npx tsx scripts/session-hook-installer-cli.ts <status|install|uninstall|dry-run> --registry-dir <absolute-local-dir> [--retention-events N]",
 		"",
 		"Off-by-default local POC. No global hooks are installed; this delegates to the session hook installer library.",
 	].join("\n");

@@ -18,7 +18,7 @@ import {
 	writeSubagent,
 } from "./team-test-helpers.js";
 
-vi.mock("../../lib/spawn-service.js", () => ({
+vi.mock("../../extensions/pi-panopticon/spawner/spawn-service.js", () => ({
 	resolvePiBinary: () =>
 		process.env.PI_TEAMS_TEST_PI_BINARY ?? process.execPath,
 }));
