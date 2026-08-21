@@ -47,20 +47,20 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			return { ok: false, reason: "unauthorized" };
 		}
 		await this.releaseExpiredLeases();
-		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: input.request.requestedYields });
-		if (!descriptor) {
-			return { ok: false, reason: "control-invalid" };
-		}
-		const thinking = resolveBoostThinking(descriptor.descriptor, this.dependencies.thinkingPolicy);
-		if (!thinking) {
-			return { ok: false, reason: "control-invalid" };
-		}
 		const record = await this.dependencies.control.resolve(input.control);
 		if (!validateLiveBoostControl(input.control, record, {
 			issuerId: input.caller.issuerId,
 			requestedYields: input.request.requestedYields,
 			now: this.dependencies.now(),
 		})) {
+			return { ok: false, reason: "control-invalid" };
+		}
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: input.request.requestedYields });
+		if (!descriptor) {
+			return { ok: false, reason: "control-invalid" };
+		}
+		const thinking = resolveBoostThinking(descriptor.descriptor, this.dependencies.thinkingPolicy);
+		if (!thinking) {
 			return { ok: false, reason: "control-invalid" };
 		}
 		const subscription = this.dependencies.control.subscribe(
@@ -130,14 +130,21 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			await this.finalizer.expireLease(lease);
 			return { ok: false, reason: "expired" };
 		}
-		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: lease.requestedYields });
 		const record = await this.dependencies.control.resolve(input.control);
-		if (!descriptor || descriptor.fingerprint !== lease.descriptor.fingerprint ||
-			!validateLiveBoostControl(input.control, record, {
-				issuerId: input.caller.issuerId,
-				requestedYields: lease.requestedYields,
-				now: this.dependencies.now(),
-			})) {
+		if (!validateLiveBoostControl(input.control, record, {
+			issuerId: input.caller.issuerId,
+			requestedYields: lease.requestedYields,
+			now: this.dependencies.now(),
+		})) {
+			const reason: LiveBoostDenialReason =
+				record && record.expiresAt <= this.dependencies.now()
+					? "expired"
+					: "control-invalid";
+			await this.finalizer.releaseReserved(lease);
+			return { ok: false, reason };
+		}
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: lease.requestedYields });
+		if (!descriptor || descriptor.fingerprint !== lease.descriptor.fingerprint) {
 			const reason: LiveBoostDenialReason =
 				record && record.expiresAt <= this.dependencies.now()
 					? "expired"
@@ -190,13 +197,16 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		if (!isPrincipal(input.caller)) {
 			return { ok: false, reason: "unauthorized" };
 		}
-		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: 1 });
 		const record = await this.dependencies.control.resolve(input.control);
-		if (!descriptor || !validateLiveBoostControl(input.control, record, {
+		if (!validateLiveBoostControl(input.control, record, {
 			issuerId: input.caller.issuerId,
 			requestedYields: 1,
 			now: this.dependencies.now(),
 		})) {
+			return { ok: false, reason: "control-invalid" };
+		}
+		const descriptor = await resolveCurrentBoostDescriptor({ descriptor: this.dependencies.descriptor, models: this.dependencies.models, control: input.control, issuerId: input.caller.issuerId, requestedYields: 1 });
+		if (!descriptor) {
 			return { ok: false, reason: "control-invalid" };
 		}
 		try {

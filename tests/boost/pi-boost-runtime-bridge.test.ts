@@ -5,7 +5,9 @@ import type {
 } from "../../extensions/pi-boost/boost/contracts.js";
 import { combineBoostInput } from "../../extensions/pi-boost/boost/parser.js";
 import { BOOST_LEASE_MAX_DURATION_MS } from "../../extensions/pi-boost/daemon-boost-control-store.js";
+import { awaitTerminalAcknowledgement } from "../../extensions/pi-boost/boost-terminal-acknowledgement.js";
 import type { LiveBoostControlRecord } from "../../extensions/pi-boost/live-boost-control-contract.js";
+import type { LiveBoostTerminalEvent } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
 import {
 	createLiveBoostTestHost,
 	TEST_CONTROL_REFERENCE,
@@ -99,6 +101,65 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.wal.records).toEqual([]);
 	});
 
+	it.each([
+		["descriptor", async (host: Awaited<ReturnType<typeof createLiveBoostTestHost>>) => {
+			host.descriptor.value = {
+				...host.descriptor.value,
+				descriptor: { ...host.descriptor.value.descriptor, principalIssuerId: "other-principal" },
+			};
+		}],
+		["live control", async (host: Awaited<ReturnType<typeof createLiveBoostTestHost>>) => {
+			host.control.record = { ...host.control.record, enabled: false };
+		}],
+	] as const)("requires a valid %s gate before reservation without model selection or activation", async (_gate, deny) => {
+		const host = await createLiveBoostTestHost();
+		await deny(host);
+
+		expect(await reserve(host)).toEqual({ ok: false, reason: "control-invalid" });
+		expect(host.modelKeys).toEqual([]);
+		expect(host.dispatchRequests).toEqual([]);
+		expect(host.wal.records).toEqual([]);
+	});
+
+	it.each([
+		["descriptor issuer", (host: Awaited<ReturnType<typeof createLiveBoostTestHost>>) => {
+			host.descriptor.value = {
+				...host.descriptor.value,
+				descriptor: { ...host.descriptor.value.descriptor, principalIssuerId: "other-principal" },
+			};
+		}],
+		["descriptor fingerprint", (host: Awaited<ReturnType<typeof createLiveBoostTestHost>>) => {
+			host.descriptor.value = { ...host.descriptor.value, fingerprint: "changed-fingerprint" };
+		}],
+		["live-control issuer", (host: Awaited<ReturnType<typeof createLiveBoostTestHost>>) => {
+			host.control.record = { ...host.control.record, principalIssuerId: "other-principal" };
+		}],
+	] as const)("invalidates a reserved lease on %s change before activation or provider dispatch", async (_change, change) => {
+		const host = await createLiveBoostTestHost();
+		expect(await reserve(host)).toMatchObject({ ok: true });
+		host.modelKeys.splice(0);
+		change(host);
+
+		expect(await dispatch(host)).toEqual({ ok: false, reason: "control-invalid" });
+		expect(host.dispatchRequests).toEqual([]);
+		expect(host.wal.records.map((entry) => entry.action)).toEqual(["reserve", "release"]);
+	});
+
+	it("rejects requests above the live-control yield bound before model selection", async () => {
+		const host = await createLiveBoostTestHost({ control: { maximumYields: 1 } });
+		const requestWithTwoYields = { ...REQUEST, requestedYields: 2 };
+
+		expect(await host.bridge.reserve({
+			caller: PRINCIPAL,
+			subject: SUBJECT,
+			request: requestWithTwoYields,
+			control: TEST_CONTROL_REFERENCE,
+		})).toEqual({ ok: false, reason: "control-invalid" });
+		expect(host.modelKeys).toEqual([]);
+		expect(host.dispatchRequests).toEqual([]);
+		expect(host.wal.records).toEqual([]);
+	});
+
 	it("revalidates control, restores baseline, consumes one visible yield, and releases", async () => {
 		const host = await createLiveBoostTestHost();
 		expect(await reserve(host)).toMatchObject({ ok: true });
@@ -116,6 +177,9 @@ describe("T-843 host-injected live boost runtime", () => {
 			id: "model-test",
 			family: "sol-ultra",
 		});
+		expect(host.modelKeys).toEqual(
+			expect.arrayContaining(["principalBoostLease", "principalBoostBaseline"]),
+		);
 		expect(host.store.snapshot().leases).toEqual([]);
 		expect(host.events.indexOf("baseline-restore")).toBeLessThan(
 			host.events.indexOf("redacted-audit"),
@@ -233,6 +297,58 @@ describe("T-843 host-injected live boost runtime", () => {
 		}
 		expect(host.signals[0]?.aborted).toBe(true);
 		expect(host.store.snapshot().leases).toEqual([]);
+	});
+
+	it("times out terminal acknowledgement after 30 seconds", async () => {
+		vi.useFakeTimers();
+		try {
+			const acknowledgement = awaitTerminalAcknowledgement(
+				new Promise<LiveBoostTerminalEvent>(() => undefined),
+			);
+			const rejection = expect(acknowledgement).rejects.toThrow(
+				"Boost terminal acknowledgement timed out",
+			);
+			await vi.advanceTimersByTimeAsync(29_999);
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(1);
+			await rejection;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		["baseline restoration", { restoreFailsFor: SUBJECT.subjectId }],
+		["isolation disposal", { isolationFailsFor: SUBJECT.subjectId }],
+		["audit append", { auditFails: true }],
+	] as const)("blocks dispatch when %s fails during terminal rollback", async (_stage, overrides) => {
+		const host = await createLiveBoostTestHost(overrides);
+		await reserve(host);
+		const pending = dispatch(host);
+		await vi.waitFor(() => expect(host.dispatchRequests).toHaveLength(1));
+		host.resolveTerminal();
+
+		expect(await pending).toEqual({ ok: false, reason: "revert-failed" });
+		expect(host.bridge.checkDispatch(SUBJECT.subjectId)).toEqual({
+			allowed: false,
+			reason: "revert-failed",
+		});
+	});
+
+	it("blocks dispatch when durable release fails and disposes isolation only once", async () => {
+		const host = await createLiveBoostTestHost();
+		await reserve(host);
+		const pending = dispatch(host);
+		await vi.waitFor(() => expect(host.dispatchRequests).toHaveLength(1));
+		host.wal.failActions.add("release");
+		host.resolveTerminal();
+
+		expect(await pending).toEqual({ ok: false, reason: "revert-failed" });
+		expect(host.events.filter((event) => event === "isolation-dispose")).toHaveLength(1);
+		expect(host.bridge.checkDispatch(SUBJECT.subjectId)).toEqual({
+			allowed: false,
+			reason: "revert-failed",
+		});
 	});
 
 	it("persists RevertFailed per subject and resets only after Principal config revalidation", async () => {

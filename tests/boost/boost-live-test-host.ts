@@ -32,6 +32,7 @@ export class TestDaemonWal implements DaemonBoostWal {
 	readonly records: DaemonBoostWalRecord[] = [];
 	readonly events?: string[];
 	failNextAppend = false;
+	readonly failActions = new Set<DaemonBoostWalRecord["action"]>();
 
 	constructor(events?: string[]) {
 		this.events = events;
@@ -45,7 +46,7 @@ export class TestDaemonWal implements DaemonBoostWal {
 		expectedSequence: number,
 		record: DaemonBoostWalRecord,
 	): Promise<"appended" | "conflict"> {
-		if (this.failNextAppend) {
+		if (this.failNextAppend || this.failActions.has(record.action)) {
 			this.failNextAppend = false;
 			throw new Error("private WAL failure");
 		}
@@ -109,7 +110,9 @@ interface LiveBoostTestHost {
 	readonly audit: LiveBoostAuditRecord[];
 	readonly bridge: HostInjectedLiveBoostRuntime;
 	readonly control: TestLiveBoostControlAdapter;
+	readonly descriptor: { value: BoostDescriptorResolution };
 	readonly dispatchRequests: LiveBoostProviderRequest[];
+	readonly modelKeys: string[];
 	readonly events: string[];
 	readonly signals: AbortSignal[];
 	readonly store: DaemonBoostControlStore;
@@ -121,6 +124,8 @@ interface TestHostOverrides {
 	readonly control?: Partial<LiveBoostControlRecord>;
 	readonly now?: () => number;
 	readonly restoreFailsFor?: string;
+	readonly isolationFailsFor?: string;
+	readonly auditFails?: boolean;
 	readonly acknowledgeAbort?: boolean;
 	readonly wal?: TestDaemonWal;
 	readonly thinkingLevel?: BoostThinkingLevel;
@@ -144,7 +149,7 @@ export async function createLiveBoostTestHost(
 		...overrides.control,
 	};
 	const control = new TestLiveBoostControlAdapter(record);
-	const descriptor: BoostDescriptorResolution = {
+	const descriptor: { value: BoostDescriptorResolution } = { value: {
 		descriptor: {
 			schemaVersion: 1,
 			enablementId: TEST_CONTROL_REFERENCE.enablementId,
@@ -159,9 +164,10 @@ export async function createLiveBoostTestHost(
 		fingerprint: "test-fingerprint",
 		source: "builtin",
 		path: "/test/boost.md",
-	};
-	const descriptorAdapter: BoostDescriptorAdapter = { resolve: async () => descriptor };
+	} };
+	const descriptorAdapter: BoostDescriptorAdapter = { resolve: async () => descriptor.value };
 	const audit: LiveBoostAuditRecord[] = [];
+	const modelKeys: string[] = [];
 	const dispatchRequests: LiveBoostProviderRequest[] = [];
 	const signals: AbortSignal[] = [];
 	let terminalResolver: ((event: LiveBoostTerminalEvent) => void) | undefined;
@@ -170,9 +176,12 @@ export async function createLiveBoostTestHost(
 		control,
 		descriptor: descriptorAdapter,
 		models: {
-			resolve: (key) => key === "principalBoostLease"
+			resolve: (key) => {
+				modelKeys.push(key);
+				return key === "principalBoostLease"
 				? { provider: "provider-test", id: "model-test", family: "sol-ultra" }
-				: { provider: "baseline-test", id: "baseline-test", family: "glm-5.2" },
+				: { provider: "baseline-test", id: "baseline-test", family: "glm-5.2" };
+			},
 		},
 		thinkingPolicy: {
 			resolve: () => overrides.thinkingPolicy?.() ?? ({ policyRevision: 1, defaultLevel: "medium", supportedLevels: ["low", "medium", "high"] }),
@@ -216,10 +225,18 @@ export async function createLiveBoostTestHost(
 				}
 			},
 		},
-		isolation: { dispose: async () => { events.push("isolation-dispose"); } },
+		isolation: { dispose: async (subjectId) => {
+			events.push("isolation-dispose");
+			if (subjectId === overrides.isolationFailsFor) {
+				throw new Error("isolation implementation details");
+			}
+		} },
 		audit: {
 			append: async (auditRecord) => {
 				events.push("redacted-audit");
+				if (overrides.auditFails) {
+					throw new Error("audit implementation details");
+				}
 				audit.push(auditRecord);
 			},
 		},
@@ -228,7 +245,9 @@ export async function createLiveBoostTestHost(
 		audit,
 		bridge,
 		control,
+		descriptor,
 		dispatchRequests,
+		modelKeys,
 		events,
 		signals,
 		store,
