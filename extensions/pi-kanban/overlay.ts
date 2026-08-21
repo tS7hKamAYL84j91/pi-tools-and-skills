@@ -368,15 +368,15 @@ class KanbanOverlay implements Component {
 			case "move-picker":
 				return renderMovePicker(this.pendingMoveTask, width, this.theme);
 			default: {
-				const view = buildOverlayViewModel(
-					this.board,
-					this.activeColumn(),
-					this.activeRow,
-					this.scroll,
-					this.statusMessage,
-					this.filterQuery,
-					this.mode === "search",
-				);
+				const view = buildOverlayViewModel({
+					board: this.board,
+					activeCol: this.activeColumn(),
+					activeRow: this.activeRow,
+					scroll: this.scroll,
+					statusMessage: this.statusMessage,
+					filterQuery: this.filterQuery,
+					isFiltering: this.mode === "search",
+				});
 				// Keep controller scrolling in sync with the rows supplied to the view.
 				const maxRows = Math.max(
 					8,

@@ -152,21 +152,21 @@ describe("kanban snapshot/overlay rendering", () => {
 			order: [task.id, hidden.id],
 			totalEvents: 2,
 		};
-		const view = buildOverlayViewModel(
+		const view = buildOverlayViewModel({
 			board,
-			"todo",
-			0,
-			{
+			activeCol: "todo",
+			activeRow: 0,
+			scroll: {
 				backlog: 0,
 				todo: 0,
 				"in-progress": 0,
 				blocked: 0,
 				done: 0,
 			},
-			"",
-			"visible",
-			false,
-		);
+			statusMessage: "",
+			filterQuery: "visible",
+			isFiltering: false,
+		});
 		expect(view.colTasks[COLUMNS.indexOf("todo")]).toEqual([task]);
 	});
 

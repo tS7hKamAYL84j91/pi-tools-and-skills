@@ -47,29 +47,33 @@ export function tasksInColumn(
 	return tasks.slice(-DONE_LIMIT).reverse();
 }
 
+interface OverlayViewModelInput {
+	board: BoardState;
+	activeCol: Column;
+	activeRow: number;
+	scroll: Record<Column, number>;
+	statusMessage: string;
+	filterQuery: string;
+	isFiltering: boolean;
+}
+
 /** Builds the renderer input without reading the terminal or filesystem. */
 export function buildOverlayViewModel(
-	board: BoardState,
-	activeCol: Column,
-	activeRow: number,
-	scroll: Record<Column, number>,
-	statusMessage: string,
-	filterQuery: string,
-	isFiltering: boolean,
+	input: OverlayViewModelInput,
 ): OverlayViewModel {
-	const allDone = tasksInColumn(board, "done", filterQuery, false);
+	const allDone = tasksInColumn(input.board, "done", input.filterQuery, false);
 	const colTasks = COLUMNS.map((column) =>
-		tasksInColumn(board, column, filterQuery),
+		tasksInColumn(input.board, column, input.filterQuery),
 	);
 	const visibleDone = colTasks[COLUMNS.indexOf("done")]?.length ?? 0;
 	return {
 		colTasks,
-		activeCol,
-		activeRow,
-		scroll,
-		statusMessage,
-		filterQuery,
-		isFiltering,
+		activeCol: input.activeCol,
+		activeRow: input.activeRow,
+		scroll: input.scroll,
+		statusMessage: input.statusMessage,
+		filterQuery: input.filterQuery,
+		isFiltering: input.isFiltering,
 		hiddenDoneCount: Math.max(0, allDone.length - visibleDone),
 	};
 }
