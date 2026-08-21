@@ -7,28 +7,12 @@ import type { AgentListModeStore } from "./list-mode.js";
 import type { Registry } from "../types.js";
 import { filterAgentList } from "../registry/visibility.js";
 import { renderStatusWidget } from "./ui-format.js";
+import { summarizeAgentStatus } from "./status-view-model.js";
 
 export interface UIModule {
 	start(ctx: ExtensionContext): void;
 	stop(): void;
 	refresh(ctx: ExtensionContext): void;
-}
-
-function agentStatusLabel(records: ReturnType<typeof filterAgentList>, selfId: string): string {
-	const peers = records.filter((r) => r.id !== selfId);
-	const running = peers.filter((r) => r.status === "running").length;
-	const waiting = peers.filter((r) => r.status === "waiting").length;
-	if (peers.length === 0) return "solo";
-	if (running > 0 || waiting > 0) {
-		return [
-			[running, "active"],
-			[waiting, "idle"],
-		]
-			.filter(([n]) => n)
-			.map(([n, label]) => `${label}:${n}`)
-			.join(" ");
-	}
-	return `${peers.length} peer${peers.length !== 1 ? "s" : ""}`;
 }
 
 export function createAgentStatusWidget(
@@ -63,7 +47,7 @@ export function createAgentStatusWidget(
 
 			ctx.ui.setStatus(
 				"agent-panopticon",
-				ctx.ui.theme.fg("accent", `agents: ${agentStatusLabel(records, selfId)}`),
+				ctx.ui.theme.fg("accent", `agents: ${summarizeAgentStatus(records, selfId).label}`),
 			);
 		} catch {
 			ctx.ui.setStatus("agent-panopticon", ctx.ui.theme.fg("error", "agents: err"));
