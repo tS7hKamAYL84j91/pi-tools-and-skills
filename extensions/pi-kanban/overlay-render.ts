@@ -9,7 +9,8 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { renderDestructiveConfirmationOverlay } from "../../lib/tui-confirmation.js";
-import { type TaskState, WIP_LIMIT } from "./board.js";
+import type { TaskState } from "./board.js";
+import { WIP_LIMIT } from "./board.js";
 
 // ── Sanitisation ────────────────────────────────────────────────
 
@@ -34,14 +35,14 @@ const stripDangerousEscapes = (s: string): string =>
 
 // ── Layout constants ────────────────────────────────────────────
 
-export const COLUMNS = [
-	"backlog",
-	"todo",
-	"in-progress",
-	"blocked",
-	"done",
-] as const;
-export type Column = (typeof COLUMNS)[number];
+import {
+	COLUMNS,
+	type Column,
+	type OverlayViewModel,
+} from "./overlay-model.js";
+
+export type { Column } from "./overlay-model.js";
+export { COLUMNS } from "./overlay-model.js";
 
 const COLUMN_LABELS: Record<Column, string> = {
 	backlog: "BACKLOG",
@@ -51,7 +52,6 @@ const COLUMN_LABELS: Record<Column, string> = {
 	done: "DONE",
 };
 
-export const DONE_LIMIT = 10;
 const MIN_NARROW_COL_WIDTH = 10;
 const MAX_COL_WIDTH = 40;
 const FRAME_WIDTH = 6;
@@ -122,7 +122,11 @@ function modalLine(content: string, innerW: number, theme: Theme): string {
 	);
 }
 
-function modalTruncatedLine(content: string, innerW: number, theme: Theme): string {
+function modalTruncatedLine(
+	content: string,
+	innerW: number,
+	theme: Theme,
+): string {
 	return (
 		theme.fg("border", "  │ ") +
 		truncateToWidth(padVisible(content, innerW), innerW, "…", true) +
@@ -132,7 +136,11 @@ function modalTruncatedLine(content: string, innerW: number, theme: Theme): stri
 
 function noSelectionLines(innerW: number, theme: Theme): string[] {
 	return [
-		modalLine(theme.fg("muted", " No task selected — press esc to return."), innerW, theme),
+		modalLine(
+			theme.fg("muted", " No task selected — press esc to return."),
+			innerW,
+			theme,
+		),
 		frameBottom(innerW, theme),
 	];
 }
@@ -148,16 +156,7 @@ function taskDisplayTitle(task: TaskState): string {
 // ── View model ──────────────────────────────────────────────────
 
 /** Snapshot of mutable controller state needed by the renderers. */
-interface BoardView {
-	colTasks: TaskState[][]; // Tasks per column, in COLUMNS order
-	activeCol: Column;
-	activeRow: number;
-	scroll: Record<Column, number>;
-	statusMessage: string;
-	filterQuery?: string;
-	isFiltering?: boolean;
-	hiddenDoneCount?: number;
-}
+type BoardView = OverlayViewModel;
 
 // ── Card rendering ──────────────────────────────────────────────
 
@@ -248,7 +247,9 @@ export function renderBoard(
 				: theme.fg("dim", label);
 		headerParts.push(padVisible(` ${styled}`, colW));
 	}
-	lines.push(modalLine(headerParts.join(theme.fg("border", "│")), totalInner, theme));
+	lines.push(
+		modalLine(headerParts.join(theme.fg("border", "│")), totalInner, theme),
+	);
 	lines.push(frameMiddle(totalInner, theme));
 
 	// Empty board state
@@ -276,7 +277,9 @@ export function renderBoard(
 					col === view.activeCol && row + offset === view.activeRow;
 				rowParts.push(renderCard(task, colW, isSelected, theme));
 			}
-			lines.push(modalLine(rowParts.join(theme.fg("border", "│")), totalInner, theme));
+			lines.push(
+				modalLine(rowParts.join(theme.fg("border", "│")), totalInner, theme),
+			);
 		}
 	}
 
@@ -366,12 +369,16 @@ export function renderConfirmDelete(
 		return [frameTop(innerW, theme), ...noSelectionLines(innerW, theme)];
 	}
 
-	return renderDestructiveConfirmationOverlay({
-		title: "Delete Task?",
-		subject: `${task.id} ${taskDisplayTitle(task)}`,
-		details: ["Appends a DELETE event; history remains in the board log."],
-		severity: "warning",
-	}, width, theme);
+	return renderDestructiveConfirmationOverlay(
+		{
+			title: "Delete Task?",
+			subject: `${task.id} ${taskDisplayTitle(task)}`,
+			details: ["Appends a DELETE event; history remains in the board log."],
+			severity: "warning",
+		},
+		width,
+		theme,
+	);
 }
 
 // ── Move-picker view ────────────────────────────────────────────
@@ -395,7 +402,8 @@ export function renderMovePicker(
 	lines.push(modalLine(title, innerW, theme));
 	lines.push(frameMiddle(innerW, theme));
 
-	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)} (currently: ${task.col})`;	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
+	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)} (currently: ${task.col})`;
+	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
 	lines.push(modalLine("", innerW, theme));
 
 	const backlogOption =

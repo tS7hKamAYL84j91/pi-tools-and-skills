@@ -22,9 +22,13 @@ import {
 } from "./board.js";
 import { deleteTask, moveTask } from "./board-transactions.js";
 import {
+	buildOverlayViewModel,
+	DONE_LIMIT,
+	tasksInColumn,
+} from "./overlay-model.js";
+import {
 	COLUMNS,
 	type Column,
-	DONE_LIMIT,
 	renderBoard,
 	renderConfirmDelete,
 	renderDetail,
@@ -116,25 +120,7 @@ class KanbanOverlay implements Component {
 	}
 
 	private filteredTasksIn(col: Column): TaskState[] {
-		const tasks = this.allTasksIn(col);
-		const query = this.filterQuery.trim().toLowerCase();
-		if (!query) return tasks;
-		return tasks.filter((task) => this.taskMatchesFilter(task, query));
-	}
-
-	private taskMatchesFilter(task: TaskState, query: string): boolean {
-		return [task.id, task.title, task.claimAgent, task.agent]
-			.some((value) => value.toLowerCase().includes(query));
-	}
-
-	private allTasksIn(col: Column): TaskState[] {
-		const out: TaskState[] = [];
-		for (const tid of this.board.order) {
-			const t = this.board.tasks.get(tid);
-			if (!t || t.deleted || t.col !== col) continue;
-			out.push(t);
-		}
-		return out;
+		return tasksInColumn(this.board, col, this.filterQuery, false);
 	}
 
 	private selectedTask(): TaskState | undefined {
@@ -382,30 +368,22 @@ class KanbanOverlay implements Component {
 			case "move-picker":
 				return renderMovePicker(this.pendingMoveTask, width, this.theme);
 			default: {
-				const colTasks = COLUMNS.map((c) => this.tasksIn(c));
-				const visibleDoneCount = colTasks[COLUMNS.indexOf("done")]?.length ?? 0;
-				const hiddenDoneCount = Math.max(
-					0,
-					this.filteredTasksIn("done").length - visibleDoneCount,
+				const view = buildOverlayViewModel(
+					this.board,
+					this.activeColumn(),
+					this.activeRow,
+					this.scroll,
+					this.statusMessage,
+					this.filterQuery,
+					this.mode === "search",
 				);
-				// Same upper-bound used by renderBoard so the controller's scroll
-				// math stays in sync with what the view will actually display.
-				const maxRows = Math.max(8, ...colTasks.map((t) => t.length));
-				this.clampScroll(colTasks, maxRows);
-				return renderBoard(
-					{
-						colTasks,
-						activeCol: this.activeColumn(),
-						activeRow: this.activeRow,
-						scroll: this.scroll,
-						statusMessage: this.statusMessage,
-						filterQuery: this.filterQuery,
-						isFiltering: this.mode === "search",
-						hiddenDoneCount,
-					},
-					width,
-					this.theme,
+				// Keep controller scrolling in sync with the rows supplied to the view.
+				const maxRows = Math.max(
+					8,
+					...view.colTasks.map((tasks) => tasks.length),
 				);
+				this.clampScroll(view.colTasks, maxRows);
+				return renderBoard(view, width, this.theme);
 			}
 		}
 	}
@@ -428,12 +406,21 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 		return;
 	}
 
-	ctx.ui.notify(`Kanban board theme: ${kanbanThemeName()} (${kanbanThemeHelp()})`, "info");
+	ctx.ui.notify(
+		`Kanban board theme: ${kanbanThemeName()} (${kanbanThemeHelp()})`,
+		"info",
+	);
 	await ctx.ui.custom<null>(
 		(tui, theme, _kb, done) => new KanbanOverlay(tui, theme, board, done),
 		{
 			overlay: true,
-			overlayOptions: { anchor: "center", width: "95%", minWidth: 60, maxHeight: "80%", margin: 2 },
+			overlayOptions: {
+				anchor: "center",
+				width: "95%",
+				minWidth: 60,
+				maxHeight: "80%",
+				margin: 2,
+			},
 		},
 	);
 }
