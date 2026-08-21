@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { renderGoalOverlayLines, renderGoalSummary } from "../../extensions/pi-goal/goal-render.js";
+import { collectChangedFiles } from "../../extensions/pi-goal/goal-helpers.js";
+import { renderGoalOverlayLines, renderGoalSummary, renderStatusMarkdown } from "../../extensions/pi-goal/goal-render.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
 function makeGoal(overrides: Partial<GoalState> = {}): GoalState {
@@ -20,6 +21,14 @@ function makeGoal(overrides: Partial<GoalState> = {}): GoalState {
 }
 
 describe("renderGoalOverlayLines", () => {
+	it("collects a bounded reported changed-file summary", () => {
+		const files = collectChangedFiles([
+			{ role: "toolResult", details: { path: "src/main.ts", modifiedFiles: ["src/other.ts"] } },
+		], Array.from({ length: 25 }, (_, index) => `old-${index}`));
+		expect(files).toHaveLength(20);
+		expect(files).toContain("src/main.ts");
+		expect(renderStatusMarkdown(makeGoal({ changedFiles: files }))).toContain("## Changed files (bounded, reported)");
+	});
 	it("renders the normal goal details in stable line order", () => {
 		expect(renderGoalOverlayLines(renderGoalSummary(makeGoal({
 			sourcePath: "brief.md",

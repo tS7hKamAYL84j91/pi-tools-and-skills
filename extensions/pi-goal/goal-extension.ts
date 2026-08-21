@@ -1,12 +1,13 @@
 /** Registers pi-goal commands, tools, lifecycle hooks, and UI status. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { extractContinuationMarker } from "./goal-continuation.js";
+import { continuationMarker, continuationMarkerComment, extractContinuationMarker } from "./goal-continuation.js";
 import { continuationPrompt, goalContextMessage } from "./prompts.js";
 import { loadGoal, saveGoal, writeGoalIteration } from "./goal-persist.js";
-import { updateGoal } from "./goal-plan.js";
-import { goalStoppedMessage } from "./goal-helpers.js";
+import { markProgress, stopGoal, updateGoal } from "./goal-plan.js";
+import { collectChangedFiles, goalStoppedMessage } from "./goal-helpers.js";
 import { registerGoalCommands } from "./goal-commands.js";
 import { registerGoalTools } from "./goal-tools.js";
+import { startGoalWatchdog } from "./goal-watchdog.js";
 import {
 	cancelContinuationPending,
 	findFinalAssistantMessage,
@@ -17,11 +18,30 @@ import {
 
 export default function goalExtension(pi: ExtensionAPI): void {
 	const runtime = getGoalRuntime();
+	let stopWatchdog: (() => void) | undefined;
 	registerGoalCommands(pi, runtime);
 	registerGoalTools(pi, runtime, (ctx, state) => refreshUi(ctx, runtime, state));
 
 	pi.on("session_start", async (_event, ctx) => {
+		stopWatchdog?.();
+		stopWatchdog = startGoalWatchdog({
+			cwd: ctx.cwd,
+			isTurnActive: () => !ctx.isIdle(),
+			hasQueuedContinuation: () => ctx.hasPendingMessages() || runtime.resolve !== null || runtime.pendingMarker !== null,
+			notify: (message, level) => ctx.ui.notify(message, level),
+			sendNudge: (state) => {
+				const marker = continuationMarker(state.goalId, state.livenessEpoch ?? 0);
+				runtime.pendingMarker = marker;
+				pi.sendUserMessage(`${continuationPrompt(state)}\n\n${continuationMarkerComment(marker)}`);
+			},
+			refresh: async (state) => refreshUi(ctx, runtime, state),
+		});
 		await refreshUi(ctx, runtime);
+		pi.on("session_shutdown", async () => {
+			stopWatchdog?.();
+			stopWatchdog = undefined;
+			cancelContinuationPending(runtime);
+		});
 	});
 
 	pi.on("input", async (event) => {
@@ -50,7 +70,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			const state = await loadGoal(ctx.cwd);
 			if (state && state.status === "active" && state.runActive) {
 				cancelContinuationPending(runtime);
-				const paused = updateGoal(state, { status: "paused", runActive: false });
+				const paused = updateGoal(stopGoal(state, "interrupted", finalAssistant.errorMessage ?? "Agent turn interrupted or failed."), { status: "paused", runActive: false });
 				await saveGoal(ctx.cwd, paused);
 				await refreshUi(ctx, runtime, paused);
 				ctx.ui.notify("Goal paused after interruption/agent error. Run /goal resume to continue.", "info");
@@ -74,10 +94,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
 			await refreshUi(ctx, runtime, state);
 			return;
 		}
-		const afterTurn = updateGoal(state, { turnsUsed: state.turnsUsed + 1 });
+		const afterTurn = markProgress(updateGoal(state, {
+			turnsUsed: state.turnsUsed + 1,
+			executionState: "in_progress",
+			changedFiles: collectChangedFiles(event.messages as readonly unknown[], state.changedFiles),
+		}), `Completed turn ${state.turnsUsed + 1}.`);
 		await writeGoalIteration(ctx.cwd, afterTurn, afterTurn.turnsUsed, event.messages as readonly unknown[]);
 		if (afterTurn.turnsUsed >= afterTurn.turnBudget || runtime.stopRequested) {
-			const stopped = updateGoal(afterTurn, { runActive: false });
+			const stopped = stopGoal(afterTurn, "interrupted", afterTurn.turnsUsed >= afterTurn.turnBudget ? "Goal turn budget exhausted." : "Goal stop requested.");
 			runtime.stopRequested = false;
 			await saveGoal(ctx.cwd, stopped);
 			await refreshUi(ctx, runtime, stopped);

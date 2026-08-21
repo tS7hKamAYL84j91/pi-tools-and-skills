@@ -2,7 +2,7 @@
 
 ## Status
 
-Queued separate goal; implementation not started. Requires ADR-049 before state-schema, execution-cadence, or public-command changes.
+Completed in `feat/pi-goal-continuous-liveness`; ADR-049 accepted by Principal direction after root/peer design agreement. Root and independent re-audits passed after all six review blockers were fixed.
 
 ## Goal
 
@@ -55,9 +55,24 @@ Continuous execution stops on pause, stop, interruption, provider/agent error, f
 - Fake-timer watchdog tests: soft warning, one-shot idle nudge, active-turn non-interference, hard pause, restart recovery, and shutdown cleanup.
 - State-schema migration and projection authority tests.
 
+## Implementation plan
+
+1. Extend the authoritative goal state with explicit run mode, normalized execution state, milestone revision, correlated verification, lifecycle records, and bounded liveness disposition; migrate v1/v2 fail-closed to manual mode.
+2. Keep pure transitions in `goal-plan.ts` and persistence/projection updates in `goal-persist.ts`; add correlation and lifecycle helpers without widening shared library boundaries.
+3. Update command/tool execution so continuous mode only follows a passing non-final root completion transition, while pause/stop/error/gate/budget/stale evidence halt continuation; make resume start the loop and steer queue current-run guidance.
+4. Add a session-scoped unref'd watchdog with injected timer seams for one warning, one idle nudge per epoch, active-turn protection, restart reconstruction, hard-timeout pause, and shutdown cleanup.
+5. Update render/context/README/architecture docs, then add focused fake-timer and migration/correlation tests before running the full gates.
+
+## Review and acceptance checks
+
+- Inspect the final diff for untouched Teams, Boost, CoAS, Kanban, and `lib/team-protocol-spi.ts` paths.
+- Run `npm run check` and `npm test`.
+- Verify projections are derived only after authoritative state writes and all liveness injections carry current run/epoch correlation.
+
 ## Delivery gates
 
-- ADR-049 accepted before implementation.
-- Mermaid architecture/state-flow update.
-- `npm run check` and `npm test` pass.
-- Independent review of state migration, completion trust boundary, and liveness behavior.
+- [x] ADR-049 accepted before implementation.
+- [x] Mermaid architecture/state-flow updated.
+- [x] `npm run check` passed at 99.23% type coverage.
+- [x] `npm test` passed: 177 files / 1,399 tests.
+- [x] Independent review of state migration, completion trust boundary, and liveness behavior passed.

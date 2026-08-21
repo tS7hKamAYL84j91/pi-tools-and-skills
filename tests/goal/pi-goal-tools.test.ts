@@ -5,9 +5,9 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
-import { createFileGoal, createFileTodoGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { createFileGoal, createFileTodoGoal, loadGoal } from "../../extensions/pi-goal/goal-persist.js";
 import { createTextGoal, saveGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
 
 interface RegisteredCommand {
@@ -261,6 +261,94 @@ describe("pi-goal extension", () => {
 
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
 		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 1 });
+	});
+
+	it("session shutdown cancels the watchdog timer", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const sessionStart = pi.handlers.get("session_start")?.[0] as ((event: unknown, context: FakeContext) => Promise<void>) | undefined;
+		const shutdown = pi.handlers.get("session_shutdown");
+		expect(sessionStart).toBeDefined();
+		const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+		await sessionStart?.({ reason: "startup" }, ctx as unknown as FakeContext);
+		const shutdownHandler = pi.handlers.get("session_shutdown")?.[0] as ((event: unknown, context: FakeContext) => Promise<void>) | undefined;
+		expect(shutdownHandler).toBeDefined();
+		await shutdownHandler?.({ reason: "quit" }, ctx as unknown as FakeContext);
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+		clearTimeoutSpy.mockRestore();
+		expect(shutdown).toBeUndefined();
+	});
+
+	it("/goal pause records an interrupted run", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		await saveGoal(tempDir, startRun(await createTextGoal(tempDir, "pause"), 3));
+		await runGoalCommand(pi, "pause", ctx);
+		const persisted = await loadGoal(tempDir);
+		expect(persisted?.status).toBe("paused");
+		expect(persisted?.executionState).toBe("interrupted");
+		expect(persisted?.runActive).toBe(false);
+	});
+
+	it("/goal resume preserves consumed turns and budget accounting", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir, pi);
+		const started = updateGoal(startRun(await createTextGoal(tempDir, "resume accounting"), 5), {
+			status: "paused",
+			runActive: false,
+			turnsUsed: 2,
+			executionState: "interrupted",
+		});
+		await saveGoal(tempDir, started);
+		let sends = 0;
+		ctx.newSession = async () => {
+			sends += 1;
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "finished" }]);
+			return { cancelled: false };
+		};
+		pi.sendUserMessage = async () => {
+			sends += 1;
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "finished" }]);
+		};
+		await runGoalCommand(pi, "resume", ctx);
+		const persisted = await loadGoal(tempDir);
+		expect(persisted?.status).toBe("active");
+		expect(persisted?.turnsUsed).toBe(5);
+		expect(persisted?.turnBudget).toBe(5);
+		expect(persisted?.runId).not.toBe(started.runId);
+		expect(sends).toBeGreaterThan(0);
+	});
+
+	it("/goal steer bounds persisted and injected guidance to 400 characters", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = startRun(await createTextGoal(tempDir, "steer bound"), 3);
+		await saveGoal(tempDir, state);
+		const guidance = "x".repeat(800);
+		let injected = "";
+		pi.sendUserMessage = (message) => {
+			injected = message;
+		};
+		await runGoalCommand(pi, `steer ${guidance}`, ctx);
+		expect(injected.endsWith("x".repeat(400))).toBe(true);
+		expect((await loadGoal(tempDir))?.steeringContext).toBe("x".repeat(400));
+	});
+
+	it("pauses an active run when the turn budget is exhausted", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		const state = updateGoal(startRun(await createTextGoal(tempDir, "budget stop"), 1), { turnsUsed: 0 });
+		await saveGoal(tempDir, state);
+		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", content: "finished" }]);
+		const persisted = await loadGoal(tempDir);
+		expect(persisted?.runActive).toBe(false);
+		expect(persisted?.turnsUsed).toBe(1);
+		expect(persisted?.lastError).toContain("budget");
 	});
 
 	it("/goal edit updates the objective without resetting counters", async () => {

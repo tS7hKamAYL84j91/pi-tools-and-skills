@@ -2,7 +2,7 @@
  * Shared pi-goal command and parsing helpers.
  */
 import { loadGoal } from "./goal-persist.js";
-import type { GoalState } from "./goal-types.js";
+import type { GoalRunMode, GoalState } from "./goal-types.js";
 
 const DEFAULT_TURNS = 3;
 export const UNTIL_COMPLETE_TURNS = 20;
@@ -19,18 +19,20 @@ const KNOWN_ACTIONS = new Set([
 	"clear",
 	"run",
 	"stop",
+	"steer",
 	"edit",
 ]);
 
 export const GOAL_HELP_COMMANDS = [
 	"/goal help — show this command summary",
 	"/goal status — show the current goal",
-	"/goal <text> — create a text goal and start a bounded run",
-	"/goal file <path> [goal start|--until-complete] — create a file-backed goal",
+	"/goal <text> [--continuous|--until-complete] — create a text goal and start a bounded run",
+	"/goal file <path> [goal start|--continuous|--until-complete] — create a file-backed goal",
 	"/goal plan [milestone title] — generate a reviewable plan and pause for approval",
 	"/goal approve — accept the generated plan and allow implementation",
 	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
 	"/goal pause | resume | stop — manage the current goal run",
+	"/goal steer <text> — send untrusted guidance to the current run",
 	"/goal edit <text> — update the objective of the active goal (invalidates the plan)",
 	"/goal clear — remove .pi/goal/ state and local run artifacts for this workspace",
 ] as const;
@@ -67,9 +69,17 @@ export function parseCommand(args: string): ParsedCommand {
 
 /** Parse `/goal file <path> [start|--until-complete]` arguments. */
 export function parseFileGoal(args: string): FileGoalArgs {
-	const untilComplete = /(?:^|\s)(?:--until-complete|(?:goal\s+)?start)(?:\s|$)/.test(args);
-	const path = args.replace(/(?:^|\s)(?:--until-complete|(?:goal\s+)?start)(?:\s|$)/g, " ").trim();
+	const untilComplete = /(?:^|\s)(?:--until-complete|--continuous|(?:goal\s+)?start)(?:\s|$)/.test(args);
+	const path = args.replace(/(?:^|\s)(?:--until-complete|--continuous|(?:goal\s+)?start)(?:\s|$)/g, " ").trim();
 	return { path, untilComplete };
+}
+
+export function parseRunMode(args: string): GoalRunMode {
+	return /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(args) ? "continuous" : "manual";
+}
+
+export function stripRunMode(args: string): string {
+	return args.replace(/(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/g, " ").trim();
 }
 
 /** Parse run turn options. */
@@ -77,7 +87,7 @@ export function parseTurns(args: string): number {
 	if (!args.trim()) {
 		return DEFAULT_TURNS;
 	}
-	if (/(?:^|\s)--until-complete(?:\s|$)/.test(args)) {
+	if (/(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(args)) {
 		return UNTIL_COMPLETE_TURNS;
 	}
 	const match = args.match(/(?:^|\s)--turns(?:=|\s+)(\d+)(?:\s|$)/);
@@ -135,4 +145,28 @@ export function goalHelpText(): string {
 export function goalStoppedMessage(state: GoalState): string {
 	const reason = state.turnsUsed >= state.turnBudget ? "turn budget reached" : "stop requested";
 	return `Goal run stopped after ${state.turnsUsed}/${state.turnBudget} turns (${reason}). Use /goal run --turns N to continue.`;
+}
+
+export function collectChangedFiles(messages: readonly unknown[], existing: readonly string[] = []): readonly string[] {
+	const files = new Set(existing.filter((file) => file.length > 0).map((file) => file.slice(0, 160)));
+	for (const message of messages) {
+		if (!isRecord(message) || message.role !== "toolResult" || !isRecord(message.details)) continue;
+		const details = message.details;
+		for (const key of ["path", "filePath"]) {
+			if (typeof details[key] === "string") files.add(details[key].slice(0, 160));
+		}
+		for (const key of ["files", "changedFiles", "modifiedFiles"]) {
+			const values = details[key];
+			if (Array.isArray(values)) {
+				for (const value of values) {
+					if (typeof value === "string" && value.length > 0) files.add(value.slice(0, 160));
+				}
+			}
+		}
+	}
+	return [...files].slice(-20);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
