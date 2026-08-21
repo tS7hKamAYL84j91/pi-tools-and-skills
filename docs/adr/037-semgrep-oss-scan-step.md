@@ -6,7 +6,7 @@ Proposed — pending FIRE/Navigator review (passed) and GM sign-off.
 
 ## Context
 
-The Principal-directed briefing `briefs/2026-07-26-ai-code-security-harnesses-briefing.md` recommends an ADAPT-not-ADOPT posture for AI code security harnesses. For our internal agent-generated code, the recommendation is to add **Semgrep OSS as a lightweight, custom-rules scan layer** feeding our existing review stack, while continuing to use the `red-team` skill for threat modeling.
+The Principal-directed security briefing retained in git history recommends an ADAPT-not-ADOPT posture for AI code security harnesses. For our internal agent-generated code, the recommendation is to add **Semgrep OSS as a lightweight, custom-rules scan layer** feeding our existing review stack, while continuing to use the `red-team` skill for threat modeling.
 
 The immediate vulnerability class is the one caught manually in Jules PR review: #40 (path traversal) and #43 (command injection). Automating this class reduces reliance on human memory and lets FIRE/Navigator/council reviews focus on design and semantics.
 
@@ -68,8 +68,4 @@ Add a bounded Semgrep OSS scan step to `pi-tools-and-skills`:
 
 ## References
 
-- `briefs/2026-07-26-ai-code-security-harnesses-briefing.md`
-- `coas/skills/red-team/SKILL.md`
-- `coas/skills/fire-review/SKILL.md`
-- Jules PR review evidence: `briefs/2026-07-22-jules-pr-review-pi-tools-and-skills.md`
-- FIRE review: `docs/reports/t-819-semgrep-proposal-fire-review.md`
+Historical briefing and FIRE-review source material is retained in git history. The accepted decision and current architecture/tests are authoritative.

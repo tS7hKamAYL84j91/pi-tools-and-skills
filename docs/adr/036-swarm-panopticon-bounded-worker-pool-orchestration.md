@@ -136,9 +136,6 @@ Council review confirmed that automatic completion/teardown implements this ADR;
 
 ## Related
 
-- `docs/deep-dives/2026-07-23-swarm-orchestration-design.md`
-- `briefs/2026-07-21-agent-swarm-model-economics-briefing.md`
-- `briefs/2026-07-22-token-spend-briefing.md`
-- `briefs/2026-07-22-loopgain-investigation-briefing.md`
+- Historical swarm design and briefing records in git history
 - `extensions/pi-panopticon/skills/pi-agent-orchestration/SKILL.md`
 - T-793 (model-routing), T-791 (delivery guard)

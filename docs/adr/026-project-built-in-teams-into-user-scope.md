@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-06-20
-Source: `docs/team-builtin-projection-plan.md`; llm-council panel review (run `team-mqm4dr9m-e8168bf0`, 4/5 members reported) + Navigator review.
+Source: historical `docs/team-builtin-projection-plan.md` in git history; llm-council panel review (run `team-mqm4dr9m-e8168bf0`, 4/5 members reported) + Navigator review.
 
 ## Context
 

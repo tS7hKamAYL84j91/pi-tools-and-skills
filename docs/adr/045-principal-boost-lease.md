@@ -8,7 +8,7 @@ Accepted — 2026-08-19 (independent council PASS at `b1166d4`). T-843 authorize
 
 T-839 requires a non-sticky `/boost` command that permits a Principal-approved Sol Ultra turn without changing root model defaults, residency, schedules, or normal agent state. The design review established five invariants: ADR-035 governance must compose with every dispatch, Sol must never remain selected between human yields, every human-visible terminal response consumes exactly one lease yield, parser subcommands are unambiguous, and only one active lease may exist globally.
 
-The accepted design proposal is `docs/reports/t-839-boost-lease-proposal.md` at `c4a6b75`. This ADR resolves its remaining six integration decisions. It does not authorize an implementation, provider call, or configuration mutation.
+The accepted design proposal is retained in git history at `c4a6b75` under `docs/reports/t-839-boost-lease-proposal.md`. This ADR resolves its remaining six integration decisions. It does not authorize an implementation, provider call, or configuration mutation.
 
 ```mermaid
 sequenceDiagram
@@ -118,8 +118,7 @@ T-843 provides the deployable ownership boundary omitted by the inert slice. A h
 ## Related
 
 - ADR-035: workload governance/model routing consumer
-- `docs/reports/t-839-boost-lease-proposal.md`
-- `planning/T-843-LIVE-BOOST-RUNTIME-BRIDGE-PROPOSAL.md`
-- `planning/T-843-LIVE-BOOST-RUNTIME-BRIDGE-IMPLEMENTATION.md`
+- Historical design proposal at `c4a6b75:docs/reports/t-839-boost-lease-proposal.md`
+- Historical T-843 planning records in git history
 - T-839 / T-843
 - T-826 external tracker reference (host-owned persistence direction only; not an ADR in this repository)

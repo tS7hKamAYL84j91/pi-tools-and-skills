@@ -2,7 +2,7 @@
 
 **Status:** Approved (council PASS with amendments)
 **Date:** 2026-06-20
-**Source:** `docs/archive/reports/t-739-team-run-observability-design.md`; Navigator review PASS; council review PASS with amendments.
+**Source:** historical `docs/archive/reports/t-739-team-run-observability-design.md` in git history; Navigator review PASS; council review PASS with amendments.
 
 ## Context
 

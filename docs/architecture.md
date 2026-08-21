@@ -396,7 +396,7 @@ flowchart TD
 
 ## UX and Tool Policy
 
-Detailed TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules live in [`docs/deep-dives/ux-tools-policy.md`](deep-dives/ux-tools-policy.md). This architecture reference only records the boundary: shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts` define reusable primitives, while `tests/architecture.test.ts` enforces the stable policy.
+TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules are enforced through shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts`, with `tests/architecture.test.ts` enforcing the stable policy.
 
 ## Kanban Extension
 
