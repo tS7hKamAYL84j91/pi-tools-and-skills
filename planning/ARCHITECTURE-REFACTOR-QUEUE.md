@@ -83,9 +83,11 @@ flowchart TD
   - State manager reduced to 250 LOC.
   - Merged to main: `8e59075` (source `refactor/teams-state-hotspot` @ `bec4987`).
   - Integration evidence: `git diff --check`, `npm test` (1,317 passed), and `npm run check` (99.23% type coverage) pass.
-- [ ] **1.3 Decompose `pi-coas/schedules.ts` & `scheduler.ts`**:
-  - Extract cron evaluation and continuation payload builders into `coas-schedule-evaluator.ts`.
-  - Extract delivery loop and error handling into `coas-scheduler-dispatcher.ts`.
+- [x] **1.3 Decompose `pi-coas/schedules.ts` & `scheduler.ts`** — **merged**:
+  - Extracted schedule evaluation into `scheduler-evaluation.ts`.
+  - Extracted dispatch handling into `scheduler-dispatch.ts`.
+  - Merged to main: `a0a1d5e` (source `refactor/coas-scheduler-hotspot` @ `5c0d03f`).
+  - Integration evidence: `git diff --check`, `npm test` (1,317 passed), and `npm run check` (99.23% type coverage) pass.
 - [/] **1.4 Refactor `pi-kanban/snapshot.ts`** — in progress:
   - Worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`.
   - Split markdown serialization and column folding into pure transformer helpers.
