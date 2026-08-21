@@ -1,15 +1,23 @@
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { parseBoard } from "../../extensions/pi-kanban/board.js";
-import { buildStatusText, buildWidgetLines } from "../../extensions/pi-kanban/watcher.js";
-import { setupTempKanbanDir } from "./kanban-test-helpers.js";
+import { buildOverlayViewModel } from "../../extensions/pi-kanban/overlay-model.js";
 import {
-	renderBoard,
-	renderDetail,
-	renderConfirmDelete,
-	renderMovePicker,
 	COLUMNS,
+	renderBoard,
+	renderConfirmDelete,
+	renderDetail,
+	renderMovePicker,
 } from "../../extensions/pi-kanban/overlay-render.js";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import {
+	bucketSnapshotTasks,
+	visibleDoneTasks,
+} from "../../extensions/pi-kanban/snapshot-model.js";
+import {
+	buildStatusText,
+	buildWidgetLines,
+} from "../../extensions/pi-kanban/watcher.js";
+import { setupTempKanbanDir } from "./kanban-test-helpers.js";
 
 function makeTheme(): Theme {
 	return {
@@ -28,7 +36,12 @@ function makeTheme(): Theme {
 		reset: () => "",
 		strip: (text: string) => text,
 		visibleWidth: (text: string) => text.length,
-		truncateToWidth: (text: string, _width: number, _ellipsis?: string, _end?: boolean) => text,
+		truncateToWidth: (
+			text: string,
+			_width: number,
+			_ellipsis?: string,
+			_end?: boolean,
+		) => text,
 	} as unknown as Theme;
 }
 
@@ -103,6 +116,60 @@ describe("kanban snapshot/overlay rendering", () => {
 		};
 	}
 
+	it("folds ordered active tasks into snapshot columns", () => {
+		const first = makeTask("T-001", "todo");
+		const deleted = { ...makeTask("T-002", "done"), deleted: true };
+		const board = {
+			tasks: new Map([
+				[first.id, first],
+				[deleted.id, deleted],
+			]),
+			order: [first.id, deleted.id],
+			totalEvents: 2,
+		};
+		expect(bucketSnapshotTasks(board).todo).toEqual([first]);
+		expect(bucketSnapshotTasks(board).done).toEqual([]);
+	});
+
+	it("filters done tasks against an injected clock", () => {
+		const recent = makeTask("T-001", "done");
+		recent.completedAt = "2026-01-15T00:00:00Z";
+		const old = makeTask("T-002", "done");
+		old.completedAt = "2025-12-01T00:00:00Z";
+		expect(
+			visibleDoneTasks([recent, old], {}, Date.parse("2026-01-20T00:00:00Z")),
+		).toEqual([recent]);
+	});
+
+	it("builds a filtered overlay view model without terminal state", () => {
+		const task = makeTask("T-101", "todo", "Visible task");
+		const hidden = makeTask("T-102", "todo", "Other task");
+		const board = {
+			tasks: new Map([
+				[task.id, task],
+				[hidden.id, hidden],
+			]),
+			order: [task.id, hidden.id],
+			totalEvents: 2,
+		};
+		const view = buildOverlayViewModel(
+			board,
+			"todo",
+			0,
+			{
+				backlog: 0,
+				todo: 0,
+				"in-progress": 0,
+				blocked: 0,
+				done: 0,
+			},
+			"",
+			"visible",
+			false,
+		);
+		expect(view.colTasks[COLUMNS.indexOf("todo")]).toEqual([task]);
+	});
+
 	it("widget renders compact one-line counts", async () => {
 		harness.writeBoardLog(
 			[
@@ -166,7 +233,8 @@ describe("kanban snapshot/overlay rendering", () => {
 			title: "Modal task",
 			priority: "high",
 			tags: "ui",
-			description: "Keep modal behaviour stable while renderer internals change.",
+			description:
+				"Keep modal behaviour stable while renderer internals change.",
 			agent: "lead",
 			claimed: false,
 			claimAgent: "",

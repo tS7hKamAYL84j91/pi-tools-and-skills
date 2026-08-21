@@ -8,34 +8,13 @@
 
 import type { BoardState, TaskState } from "./board.js";
 import { nowZ, WIP_LIMIT } from "./board.js";
-
-// ── Done filtering ─────────────────────────────────────────────
-
-const DEFAULT_DONE_MAX_AGE_DAYS = 30;
-
-interface SnapshotOptions {
-	showAllDone?: boolean;
-}
-
-function doneCutoffMs(): number {
-	return Date.now() - DEFAULT_DONE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
-}
-
-function isRecentDoneTask(task: TaskState): boolean {
-	if (!task.completedAt) return true;
-	const completedMs = Date.parse(task.completedAt);
-	return Number.isNaN(completedMs) || completedMs >= doneCutoffMs();
-}
-
-function visibleDoneTasks(tasks: TaskState[], options?: SnapshotOptions): TaskState[] {
-	return options?.showAllDone ? tasks : tasks.filter(isRecentDoneTask);
-}
-
-function doneCountLabel(visible: number, total: number, prefix?: string): string {
-	if (visible === total && !prefix) return String(visible);
-	const ageNote = visible < total ? `, ${total - visible} older hidden` : "";
-	return `${prefix ? `${prefix} ` : ""}${visible} of ${total}${ageNote}`;
-}
+import {
+	bucketSnapshotTasks,
+	DEFAULT_DONE_MAX_AGE_DAYS,
+	doneCountLabel,
+	type SnapshotOptions,
+	visibleDoneTasks,
+} from "./snapshot-model.js";
 
 // ── Column definitions ──────────────────────────────────────────
 
@@ -88,22 +67,6 @@ const SUMMARY_LIMITS: Record<string, number> = {
 	blocked: 10,
 	done: 5,
 };
-
-function bucketTasks(board: BoardState): Record<string, TaskState[]> {
-	const buckets: Record<string, TaskState[]> = {
-		backlog: [],
-		todo: [],
-		"in-progress": [],
-		blocked: [],
-		done: [],
-	};
-	for (const tid of board.order) {
-		const t = board.tasks.get(tid);
-		if (!t || t.deleted) continue;
-		buckets[t.col]?.push(t);
-	}
-	return buckets;
-}
 
 function truncateInlineDetail(value: string, maxLength: number): string {
 	return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
@@ -161,11 +124,18 @@ function taskDetailLines(task: TaskState): string[] {
 		"",
 	];
 	if (task.verificationRequired || task.checks.length > 0) {
-		lines.push(`- Verification required: ${task.verificationRequired ? "yes" : "no"}`, "");
+		lines.push(
+			`- Verification required: ${task.verificationRequired ? "yes" : "no"}`,
+			"",
+		);
 		if (task.checks.length > 0) {
 			lines.push("## Verification evidence", "");
 			for (const check of task.checks) {
-				lines.push(`- command: ${check.command}`, `  result: ${check.result}`, `  exit_code: ${check.exitCode}`);
+				lines.push(
+					`- command: ${check.command}`,
+					`  result: ${check.result}`,
+					`  exit_code: ${check.exitCode}`,
+				);
 			}
 			lines.push("");
 		}
@@ -218,7 +188,7 @@ export function generateSnapshotSummary(
 ): string {
 	const { totalEvents } = board;
 	const now = nowZ();
-	const buckets = bucketTasks(board);
+	const buckets = bucketSnapshotTasks(board);
 	const wip = buckets["in-progress"]?.length ?? 0;
 	const doneAll = buckets.done ?? [];
 	const doneVisible = visibleDoneTasks(doneAll, options);
@@ -250,7 +220,7 @@ export function generateSnapshot(
 ): string {
 	const { totalEvents } = board;
 	const now = nowZ();
-	const buckets = bucketTasks(board);
+	const buckets = bucketSnapshotTasks(board);
 	const wip = buckets["in-progress"]?.length ?? 0;
 	const doneAll = buckets.done ?? [];
 	const doneVisible = visibleDoneTasks(doneAll, options);
