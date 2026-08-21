@@ -1,4 +1,4 @@
-/** Production assembly of the reviewed boost host from future publisher-injected dependencies. */
+/** Production assembly of the reviewed Boost host from injected dependencies. */
 
 import type { BoostGovernanceDecision } from "./boost/contracts.js";
 import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
@@ -23,7 +23,7 @@ import {
 	type ReviewedBoostHost,
 } from "./reviewed-boost-host.js";
 
-/** @public All host-owned dependencies needed to construct the future publisher-bound bridge. */
+/** @public All host-owned dependencies needed to construct the config-bound bridge. */
 export interface ProductionBoostHostInput {
 	readonly contract: ReviewedBoostContractIdentity;
 	readonly control: {

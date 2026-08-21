@@ -1,4 +1,5 @@
 import {
+	BOOST_LEASE_MAX_DURATION_MS,
 	DaemonBoostControlStore,
 	type DaemonBoostWal,
 	type DaemonBoostWalRecord,
@@ -10,8 +11,6 @@ import {
 	type LiveBoostTerminalEvent,
 } from "../../extensions/pi-boost/host-injected-live-boost.js";
 import {
-	EXTERNAL_BOOST_BASELINE_KEY,
-	EXTERNAL_BOOST_LEASE_KEY,
 	EXTERNAL_BOOST_TEAM_ID,
 	type ExternalBoostConfigAdapter,
 	type ExternalBoostConfigRecord,
@@ -23,10 +22,6 @@ import {
 export const TEST_CONTROL_REFERENCE: ExternalBoostConfigReference = {
 	teamId: EXTERNAL_BOOST_TEAM_ID,
 	enablementId: "enablement-test",
-	mappingVersion: 7,
-	rollbackVersion: 3,
-	baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
-	leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 };
 
 export class TestDaemonWal implements DaemonBoostWal {
@@ -120,6 +115,7 @@ interface LiveBoostTestHost {
 
 interface TestHostOverrides {
 	readonly control?: Partial<ExternalBoostConfigRecord>;
+	readonly now?: () => number;
 	readonly restoreFailsFor?: string;
 	readonly wal?: TestDaemonWal;
 }
@@ -129,25 +125,18 @@ export async function createLiveBoostTestHost(
 ): Promise<LiveBoostTestHost> {
 	const events = overrides.wal?.events ?? [];
 	const wal = overrides.wal ?? new TestDaemonWal(events);
-	const now = 10_000;
-	const store = await DaemonBoostControlStore.open(wal, () => now);
+	const now = overrides.now ?? (() => 10_000);
+	const store = await DaemonBoostControlStore.open(wal, now);
 	const record: ExternalBoostConfigRecord = {
-		schemaVersion: 2,
+		schemaVersion: 1,
 		protocol: "boost",
 		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: TEST_CONTROL_REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
-		mappingVersion: TEST_CONTROL_REFERENCE.mappingVersion,
-		rollbackVersion: TEST_CONTROL_REFERENCE.rollbackVersion,
-		baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
-		leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		maximumYields: 3,
-		expiresAt: now + 60_000,
+		expiresAt: now() + 2 * BOOST_LEASE_MAX_DURATION_MS,
 		revision: 11,
 		enabled: true,
-		signatureStatus: "verified",
-		ownershipStatus: "principal-owned",
-		residencyEvidence: "external-eligible",
 		...overrides.control,
 	};
 	const control = new TestExternalBoostConfigAdapter(record);
@@ -158,7 +147,7 @@ export async function createLiveBoostTestHost(
 	const bridge = new HostInjectedLiveBoostRuntime({
 		store,
 		control,
-		now: () => now,
+		now,
 		nextLeaseId: () => "lease-test",
 		governance: { classify: async () => "public" },
 		provider: {

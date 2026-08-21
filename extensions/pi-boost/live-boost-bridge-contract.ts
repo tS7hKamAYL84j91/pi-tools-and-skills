@@ -62,6 +62,7 @@ export interface LiveBoostLeaseStatus {
 	readonly requestedYields: number;
 	readonly consumedYields: number;
 	readonly remainingYields: number;
+	readonly expiresAt: number;
 }
 
 export interface LiveBoostProviderRequest {

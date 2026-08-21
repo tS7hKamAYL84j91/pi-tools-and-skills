@@ -7,11 +7,7 @@ import type {
 	ExternalBoostConfigRevision,
 	ExternalBoostConfigSubscription,
 } from "./external-boost-config-contract.js";
-import {
-	EXTERNAL_BOOST_BASELINE_KEY,
-	EXTERNAL_BOOST_LEASE_KEY,
-	EXTERNAL_BOOST_TEAM_ID,
-} from "./external-boost-config-contract.js";
+import { EXTERNAL_BOOST_TEAM_ID } from "./external-boost-config-contract.js";
 
 /** @public Read-only external Boost config source; it intentionally exposes no control mutation. */
 export interface ExternalBoostConfigRecordSource {
@@ -21,13 +17,13 @@ export interface ExternalBoostConfigRecordSource {
 	): ExternalBoostConfigSubscription;
 }
 
-/** @public Fixed trusted identity and clock used to validate future publisher records. */
+/** @public Fixed trusted identity and clock used to validate external records. */
 export interface ExternalBoostConfigAdapterOptions {
 	readonly principalIssuerId: string;
 	readonly now: () => number;
 }
 
-/** Creates a fail-closed adapter over a future publisher-injected read-only record source. */
+/** Creates a fail-closed adapter over an injected read-only record source. */
 export function createExternalBoostConfigAdapter(
 	source: ExternalBoostConfigRecordSource,
 	options: ExternalBoostConfigAdapterOptions,
@@ -86,11 +82,7 @@ function isValidReference(
 	return (
 		reference != null &&
 		reference.teamId === EXTERNAL_BOOST_TEAM_ID &&
-		reference.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
-		reference.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
-		isOpaqueIdentifier(reference.enablementId) &&
-		isVersion(reference.mappingVersion) &&
-		isVersion(reference.rollbackVersion)
+		isOpaqueIdentifier(reference.enablementId)
 	);
 }
 
@@ -101,23 +93,16 @@ function isValidRecord(
 ): record is ExternalBoostConfigRecord {
 	return (
 		record !== undefined &&
-		record.schemaVersion === 2 &&
+		record.schemaVersion === 1 &&
 		record.protocol === "boost" &&
 		record.teamId === EXTERNAL_BOOST_TEAM_ID &&
 		record.enablementId === reference.enablementId &&
 		record.principalIssuerId === options.principalIssuerId &&
-		record.mappingVersion === reference.mappingVersion &&
-		record.rollbackVersion === reference.rollbackVersion &&
-		record.baselineLogicalKey === EXTERNAL_BOOST_BASELINE_KEY &&
-		record.leaseLogicalKey === EXTERNAL_BOOST_LEASE_KEY &&
 		Number.isSafeInteger(record.maximumYields) &&
 		record.maximumYields >= 1 &&
 		record.maximumYields <= 3 &&
 		isRevision(record.revision) &&
 		record.enabled === true &&
-		record.signatureStatus === "verified" &&
-		record.ownershipStatus === "principal-owned" &&
-		record.residencyEvidence === "external-eligible" &&
 		Number.isFinite(record.expiresAt) &&
 		record.expiresAt > options.now()
 	);
@@ -125,10 +110,6 @@ function isValidRecord(
 
 function isOpaqueIdentifier(value: string): boolean {
 	return /^[A-Za-z0-9_-]{1,64}$/.test(value);
-}
-
-function isVersion(value: number): boolean {
-	return Number.isSafeInteger(value) && value >= 0;
 }
 
 function isRevision(value: number): boolean {

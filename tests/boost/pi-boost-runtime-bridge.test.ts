@@ -4,6 +4,7 @@ import type {
 	BoostSubject,
 } from "../../extensions/pi-boost/boost/contracts.js";
 import { combineBoostInput } from "../../extensions/pi-boost/boost/parser.js";
+import { BOOST_LEASE_MAX_DURATION_MS } from "../../extensions/pi-boost/daemon-boost-control-store.js";
 import type { ExternalBoostConfigRecord } from "../../extensions/pi-boost/external-boost-config-contract.js";
 import {
 	createLiveBoostTestHost,
@@ -53,19 +54,12 @@ async function dispatch(
 
 describe("T-843 host-injected live boost runtime", () => {
 	it.each([
-		["schemaVersion", 1],
+		["schemaVersion", 2],
 		["protocol", "team"],
 		["teamId", "other-team"],
 		["enablementId", "other-enablement"],
 		["principalIssuerId", "other-principal"],
-		["mappingVersion", 8],
-		["rollbackVersion", 4],
-		["baselineLogicalKey", "otherBaseline"],
-		["leaseLogicalKey", "otherLease"],
 		["enabled", false],
-		["signatureStatus", "unverified"],
-		["ownershipStatus", "unknown"],
-		["residencyEvidence", "local-only"],
 	] as const)("fails closed on external Boost config mismatch %s", async (field, value) => {
 		const host = await createLiveBoostTestHost({
 			control: { [field]: value } as Partial<ExternalBoostConfigRecord>,
@@ -79,7 +73,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.dispatchRequests).toEqual([]);
 	});
 
-	it("rejects non-Principal callers before future publisher resolution or budget mutation", async () => {
+	it("rejects non-Principal callers before external-config resolution or budget mutation", async () => {
 		const host = await createLiveBoostTestHost();
 
 		expect(
@@ -94,7 +88,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.wal.records).toEqual([]);
 	});
 
-	it("fails closed when the future publisher revision stream is unavailable", async () => {
+	it("fails closed when the external-config revision stream is unavailable", async () => {
 		const host = await createLiveBoostTestHost();
 		host.control.streamAvailable = false;
 
@@ -126,6 +120,47 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(JSON.stringify(host.audit)).not.toMatch(
 			/provider|credential|response/i,
 		);
+	});
+
+	it("expires after two hours, restores and releases before allowing replacement", async () => {
+		let now = 10_000;
+		const host = await createLiveBoostTestHost({ now: () => now });
+
+		expect(await reserve(host)).toMatchObject({
+			ok: true,
+			value: { expiresAt: now + BOOST_LEASE_MAX_DURATION_MS },
+		});
+		now += BOOST_LEASE_MAX_DURATION_MS;
+
+		expect(
+			await host.bridge.getStatus({
+				caller: PRINCIPAL,
+				subjectId: SUBJECT.subjectId,
+			}),
+		).toEqual({ ok: true, value: { state: "Idle" } });
+		expect(host.events).toEqual(
+			expect.arrayContaining(["baseline-restore", "redacted-audit", "release"]),
+		);
+		expect(host.store.snapshot().leases).toEqual([]);
+		expect(await reserve(host)).toMatchObject({ ok: true });
+	});
+
+	it("expires an in-flight turn before consuming a human yield", async () => {
+		let now = 10_000;
+		const host = await createLiveBoostTestHost({ now: () => now });
+		await reserve(host);
+		const pending = dispatch(host);
+		await vi.waitFor(() => expect(host.dispatchRequests).toHaveLength(1));
+
+		now += BOOST_LEASE_MAX_DURATION_MS;
+		host.resolveTerminal();
+
+		expect(await pending).toEqual({ ok: false, reason: "expired" });
+		expect(
+			host.wal.records.filter((record) => record.action === "consume"),
+		).toEqual([]);
+		expect(host.store.snapshot().leases).toEqual([]);
+		expect(await reserve(host)).toMatchObject({ ok: true });
 	});
 
 	it("accepts only one terminal outcome for an activation", async () => {
@@ -165,7 +200,7 @@ describe("T-843 host-injected live boost runtime", () => {
 	it.each([
 		"revoked",
 		"expired",
-	] as const)("orders active future publisher %s as revoking, abort, acknowledgement, restore, audit, release", async (reason) => {
+	] as const)("orders active config %s as revoking, abort, acknowledgement, restore, audit, release", async (reason) => {
 		const events: string[] = [];
 		const host = await createLiveBoostTestHost({
 			wal: new TestDaemonWal(events),
@@ -195,7 +230,7 @@ describe("T-843 host-injected live boost runtime", () => {
 		expect(host.store.snapshot().leases).toEqual([]);
 	});
 
-	it("persists RevertFailed per subject and resets only after Principal future publisher revalidation", async () => {
+	it("persists RevertFailed per subject and resets only after Principal config revalidation", async () => {
 		const wal = new TestDaemonWal();
 		const failing = await createLiveBoostTestHost({
 			wal,

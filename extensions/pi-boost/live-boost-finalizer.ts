@@ -53,6 +53,15 @@ export class LiveBoostFinalizer {
 		}
 	}
 
+	async expireLease(lease: RuntimeBoostLease): Promise<void> {
+		const active = this.state.activeFor(lease.key.leaseId);
+		if (active) {
+			await this.revokeActive(active, "expired");
+			return;
+		}
+		await this.releaseReserved(lease);
+	}
+
 	async releaseReserved(lease: RuntimeBoostLease): Promise<void> {
 		try {
 			await this.dependencies.baseline.restore(lease.key.subjectId);
@@ -106,6 +115,17 @@ export class LiveBoostFinalizer {
 		) {
 			await this.restoreAuditRelease(active, terminal.outcome, "terminal");
 			return this.finish(active, { ok: false, reason: "stale-activation" });
+		}
+		if (active.lease.expiresAt <= this.dependencies.now()) {
+			const restored = await this.restoreAuditRelease(
+				active,
+				terminal.outcome,
+				"revoked",
+			);
+			return this.finish(active, {
+				ok: false,
+				reason: restored ? "expired" : "revert-failed",
+			});
 		}
 		try {
 			await this.dependencies.baseline.restore(active.lease.key.subjectId);

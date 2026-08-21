@@ -5,8 +5,6 @@ import {
 	type ExternalBoostConfigRecordSource,
 } from "../../extensions/pi-boost/external-boost-config-adapter.js";
 import {
-	EXTERNAL_BOOST_BASELINE_KEY,
-	EXTERNAL_BOOST_LEASE_KEY,
 	EXTERNAL_BOOST_TEAM_ID,
 	type ExternalBoostConfigRecord,
 	type ExternalBoostConfigReference,
@@ -16,30 +14,19 @@ import {
 const REFERENCE: ExternalBoostConfigReference = {
 	teamId: EXTERNAL_BOOST_TEAM_ID,
 	enablementId: "enablement-test",
-	mappingVersion: 7,
-	rollbackVersion: 3,
-	baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
-	leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 };
 
 function record(overrides: Record<string, unknown> = {}): ExternalBoostConfigRecord {
 	const canonical: ExternalBoostConfigRecord = {
-		schemaVersion: 2,
+		schemaVersion: 1,
 		protocol: "boost",
 		teamId: EXTERNAL_BOOST_TEAM_ID,
 		enablementId: REFERENCE.enablementId,
 		principalIssuerId: "principal-test",
-		mappingVersion: REFERENCE.mappingVersion,
-		rollbackVersion: REFERENCE.rollbackVersion,
-		baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
-		leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		maximumYields: 3,
 		expiresAt: 20_000,
 		revision: 4,
 		enabled: true,
-		signatureStatus: "verified",
-		ownershipStatus: "principal-owned",
-		residencyEvidence: "external-eligible",
 	};
 	// Intentional malformed runtime record fixture for fail-closed validation.
 	return { ...canonical, ...overrides } as ExternalBoostConfigRecord;
@@ -90,7 +77,7 @@ function createAdapter(initial: ExternalBoostConfigRecord | undefined) {
 	};
 }
 
-describe("future publisher boost control adapter", () => {
+describe("external Boost config adapter", () => {
 	it("resolves only a current canonical external Boost config record", async () => {
 		const { adapter } = createAdapter(record());
 
@@ -100,14 +87,12 @@ describe("future publisher boost control adapter", () => {
 	it.each([
 		{ enabled: false },
 		{ expiresAt: 10_000 },
-		{ mappingVersion: 8 },
-		{ rollbackVersion: 4 },
+		{ schemaVersion: 2 },
+		{ teamId: "other-team" },
+		{ enablementId: "other-enablement" },
 		{ principalIssuerId: "other-principal" },
 		{ maximumYields: 4 },
 		{ revision: -1 },
-		{ signatureStatus: "unverified" },
-		{ ownershipStatus: "other" },
-		{ residencyEvidence: "local-only" },
 	] as const)("fails closed for invalid external Boost config record %#", async (overrides) => {
 		const { adapter } = createAdapter(record(overrides));
 
@@ -117,7 +102,7 @@ describe("future publisher boost control adapter", () => {
 	it.each([
 		undefined,
 		null,
-	])("fails closed for absent references before consulting future publisher", async (absent) => {
+	])("fails closed for absent references before consulting the source", async (absent) => {
 		const { adapter, fixture } = createAdapter(record());
 		const malformed = absent as unknown as ExternalBoostConfigReference;
 
@@ -126,11 +111,11 @@ describe("future publisher boost control adapter", () => {
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
-	it("rejects a malformed reference before consulting future publisher", async () => {
+	it("rejects a malformed reference before consulting the source", async () => {
 		const { adapter, fixture } = createAdapter(record());
 		const malformed = {
 			...REFERENCE,
-			mappingVersion: -1,
+			enablementId: "invalid/value",
 		} as ExternalBoostConfigReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
@@ -138,11 +123,11 @@ describe("future publisher boost control adapter", () => {
 		expect(fixture.calls.resolve).toBe(0);
 	});
 
-	it("rejects a string-coerced reference before consulting future publisher", async () => {
+	it("rejects a string-coerced reference before consulting the source", async () => {
 		const { adapter, fixture } = createAdapter(record());
 		const malformed = {
 			...REFERENCE,
-			mappingVersion: "7",
+			teamId: 7,
 		} as unknown as ExternalBoostConfigReference;
 
 		expect(await adapter.resolve(malformed)).toBeUndefined();
@@ -152,10 +137,10 @@ describe("future publisher boost control adapter", () => {
 	it("fails closed when the injected external Boost config source throws", async () => {
 		const source: ExternalBoostConfigRecordSource = {
 			resolve: async () => {
-				throw new Error("future publisher unavailable");
+				throw new Error("external config unavailable");
 			},
 			subscribe: () => {
-				throw new Error("future publisher unavailable");
+				throw new Error("external config unavailable");
 			},
 		};
 		const adapter = createExternalBoostConfigAdapter(source, {

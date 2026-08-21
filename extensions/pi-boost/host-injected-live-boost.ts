@@ -39,6 +39,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		if (!isPrincipal(input.caller)) {
 			return { ok: false, reason: "unauthorized" };
 		}
+		await this.releaseExpiredLeases();
 		const record = await this.dependencies.control.resolve(input.control);
 		if (
 			!validateExternalBoostConfig(input.control, record, {
@@ -110,7 +111,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			return { ok: false, reason: "revert-failed" };
 		}
 		if (lease.expiresAt <= this.dependencies.now()) {
-			await this.finalizer.releaseReserved(lease);
+			await this.finalizer.expireLease(lease);
 			return { ok: false, reason: "expired" };
 		}
 		const record = await this.dependencies.control.resolve(input.control);
@@ -214,7 +215,7 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 			return { ok: true as const, value: { state: "Idle" as const } };
 		}
 		if (lease.expiresAt <= this.dependencies.now()) {
-			await this.finalizer.releaseReserved(lease);
+			await this.finalizer.expireLease(lease);
 			return { ok: true as const, value: { state: "Idle" as const } };
 		}
 		const snapshot = this.dependencies.store
@@ -235,6 +236,15 @@ export class HostInjectedLiveBoostRuntime implements LiveBoostRuntimeBridge {
 		readonly choice: "synchronous-restore" | "durable-block-marker";
 	}): Promise<void> {
 		await this.finalizer.shutdown(input);
+	}
+
+	private async releaseExpiredLeases(): Promise<void> {
+		const now = this.dependencies.now();
+		for (const lease of this.state.allLeases()) {
+			if (lease.expiresAt <= now) {
+				await this.finalizer.expireLease(lease);
+			}
+		}
 	}
 
 	private isDispatchBlocked(subjectId: string): boolean {
@@ -258,11 +268,7 @@ function sameControl(
 ): boolean {
 	return (
 		left.teamId === right.teamId &&
-		left.enablementId === right.enablementId &&
-		left.mappingVersion === right.mappingVersion &&
-		left.rollbackVersion === right.rollbackVersion &&
-		left.baselineLogicalKey === right.baselineLogicalKey &&
-		left.leaseLogicalKey === right.leaseLogicalKey
+		left.enablementId === right.enablementId
 	);
 }
 
@@ -273,6 +279,7 @@ function status(lease: DaemonBoostLeaseSnapshot): LiveBoostLeaseStatus {
 		requestedYields: lease.requestedYields,
 		consumedYields: lease.consumedYields,
 		remainingYields: lease.requestedYields - lease.consumedYields,
+		expiresAt: lease.expiresAt,
 	};
 }
 

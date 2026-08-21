@@ -48,7 +48,7 @@ export function createUnavailableBoostCommandDeps(
 	};
 }
 
-/** Adapt only the injected bridge and immutable logical future publisher reference. */
+/** Adapt only the injected bridge and immutable external-config reference. */
 export function createHostBoostCommandDeps(
 	identitySource: BoostIdentitySource,
 	injection: LiveBoostHostInjection,
@@ -146,6 +146,7 @@ function mapStatus(
 			requestedYields: result.value.requestedYields,
 			consumedYields: result.value.consumedYields,
 			remainingYields: result.value.remainingYields,
+			expiresAt: result.value.expiresAt,
 		},
 	};
 }

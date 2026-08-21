@@ -4,19 +4,15 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { LiveBoostHostInjection } from "./boost/runtime-adapter.js";
 import { createBoostExtension } from "./index.js";
 import type { LiveBoostRuntimeBridge } from "./live-boost-bridge-contract.js";
-import {
-	EXTERNAL_BOOST_BASELINE_KEY,
-	EXTERNAL_BOOST_LEASE_KEY,
-	EXTERNAL_BOOST_TEAM_ID,
-} from "./external-boost-config-contract.js";
+import { EXTERNAL_BOOST_TEAM_ID } from "./external-boost-config-contract.js";
 
-/** @public Source-relative identity future publisher must validate before constructing an injected host. */
+/** @public Source-relative contract identity validated before host construction. */
 export interface ReviewedBoostContractIdentity {
 	readonly path: typeof REVIEWED_BOOST_CONTRACT_PATH;
 	readonly sha256: typeof REVIEWED_BOOST_CONTRACT_SHA256;
 }
 
-/** @public future publisher-supplied evidence and capability required to construct the host extension. */
+/** @public Reviewed evidence and capability required to construct the host extension. */
 export interface ReviewedBoostHostInput {
 	readonly contract: ReviewedBoostContractIdentity;
 	readonly injection: LiveBoostHostInjection;
@@ -32,7 +28,7 @@ export interface ReviewedBoostHost {
 export const REVIEWED_BOOST_CONTRACT_PATH =
 	"extensions/pi-boost/external-boost-config-contract.ts" as const;
 export const REVIEWED_BOOST_CONTRACT_SHA256 =
-	"15d7a3631a6e0d55bb991a40de635e446aee45e1332f3cda4e452f9369c6e797" as const;
+	"b717e239d0e3e188c6764c5c016bbeb0d7c56d0df8bcbdb2a063ce61975bc089" as const;
 
 /** Returns the immutable reviewed identity that a clean-cwd host must attest. */
 export function getReviewedBoostContractIdentity(): ReviewedBoostContractIdentity {
@@ -81,11 +77,7 @@ function validateLogicalReference(injection: LiveBoostHostInjection): void {
 	const reference = injection.control;
 	if (
 		reference.teamId !== EXTERNAL_BOOST_TEAM_ID ||
-		reference.baselineLogicalKey !== EXTERNAL_BOOST_BASELINE_KEY ||
-		reference.leaseLogicalKey !== EXTERNAL_BOOST_LEASE_KEY ||
-		!isBoundedIdentifier(reference.enablementId) ||
-		!isVersion(reference.mappingVersion) ||
-		!isVersion(reference.rollbackVersion)
+		!isBoundedIdentifier(reference.enablementId)
 	) {
 		throw new Error("Invalid reviewed boost control reference");
 	}
@@ -129,8 +121,4 @@ function createIdempotentShutdown(
 
 function isBoundedIdentifier(value: string): boolean {
 	return /^[A-Za-z0-9_-]{1,64}$/.test(value);
-}
-
-function isVersion(value: number): boolean {
-	return Number.isSafeInteger(value) && value >= 0;
 }

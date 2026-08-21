@@ -9,11 +9,7 @@ import { PANOPTICON_PARENT_ID_ENV } from "../../lib/agent-registry.js";
 import type { LiveBoostHostInjection } from "../../extensions/pi-boost/boost/runtime-adapter.js";
 import defaultBoostExtension from "../../extensions/pi-boost/index.js";
 import type { LiveBoostRuntimeBridge } from "../../extensions/pi-boost/live-boost-bridge-contract.js";
-import {
-	EXTERNAL_BOOST_BASELINE_KEY,
-	EXTERNAL_BOOST_LEASE_KEY,
-	EXTERNAL_BOOST_TEAM_ID,
-} from "../../extensions/pi-boost/external-boost-config-contract.js";
+import { EXTERNAL_BOOST_TEAM_ID } from "../../extensions/pi-boost/external-boost-config-contract.js";
 import {
 	createReviewedBoostHost,
 	getReviewedBoostContractIdentity,
@@ -57,10 +53,6 @@ function createInjection(): LiveBoostHostInjection {
 		control: {
 			teamId: EXTERNAL_BOOST_TEAM_ID,
 			enablementId: "enablement-test",
-			mappingVersion: 7,
-			rollbackVersion: 3,
-			baselineLogicalKey: EXTERNAL_BOOST_BASELINE_KEY,
-			leaseLogicalKey: EXTERNAL_BOOST_LEASE_KEY,
 		},
 		shutdownChoice: "synchronous-restore",
 	};
@@ -244,11 +236,11 @@ describe("reviewed boost production host", () => {
 		).toThrow("Invalid reviewed boost shutdown choice");
 	});
 
-	it("rejects an invalid logical future publisher reference before extension construction", () => {
+	it("rejects an invalid external-config reference before extension construction", () => {
 		const injection = createInjection();
 		const invalid = {
 			...injection,
-			control: { ...injection.control, mappingVersion: -1 },
+			control: { ...injection.control, enablementId: "invalid/value" },
 		} as LiveBoostHostInjection;
 
 		expect(() =>

@@ -19,6 +19,7 @@ function bridgeFake(): LiveBoostRuntimeBridge {
 				requestedYields: 1,
 				consumedYields: 0,
 				remainingYields: 1,
+				expiresAt: 7_200_000,
 			},
 		})),
 		dispatch: vi.fn(async (input) => ({
@@ -77,7 +78,7 @@ describe("T-843 host injection boundary", () => {
 		);
 	});
 
-	it("keeps future publisher read-only and exposes no config/default/scheduler or credential seam", () => {
+	it("keeps external config read-only and exposes no default/scheduler or credential seam", () => {
 		const controlSource = readFileSync(
 			"extensions/pi-boost/external-boost-config-contract.ts",
 			"utf8",
