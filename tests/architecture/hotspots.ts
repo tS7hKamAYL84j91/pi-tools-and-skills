@@ -427,21 +427,46 @@ function changedModulesByCommit(): Map<string, Set<string>> {
 	const result = new Map<string, Set<string>>();
 	for (const [hash, _info] of commitInfo.entries()) {
 		if (skipped.has(hash)) continue;
-		const files = gitLines([
-			"show",
-			"--name-only",
-			"--format=",
+		const changes = gitLines([
+			"diff-tree",
+			"--root",
+			"--no-commit-id",
+			"--name-status",
+			"-M",
+			"-r",
 			hash,
 			"--",
 			"extensions",
 			"lib",
 		]);
 		const modules = new Set<string>();
-		for (const file of files) {
-			const module = moduleForPath(file);
+		const migratedModules = new Set<string>();
+		for (const change of changes) {
+			const fields = change.split("\t");
+			const status = fields[0];
+			if (!status) {
+				continue;
+			}
+			if (status.startsWith("R") && fields.length >= 3) {
+				const sourceModule = moduleForPath(fields[1] ?? "");
+				const destinationModule = moduleForPath(fields[2] ?? "");
+				if (sourceModule && destinationModule && sourceModule !== destinationModule) {
+					migratedModules.add(sourceModule);
+					migratedModules.add(destinationModule);
+					continue;
+				}
+			}
+			const module = moduleForPath(fields.at(-1) ?? "");
 			if (module) {
 				modules.add(module);
 			}
+		}
+		// A cross-module rename is a boundary migration, not co-evolution of the
+		// old and new owners. Exclude both owners for that commit; otherwise a
+		// relocation is attributed as temporal coupling merely because Git shows
+		// the destination path.
+		for (const module of migratedModules) {
+			modules.delete(module);
 		}
 		result.set(hash, modules);
 	}

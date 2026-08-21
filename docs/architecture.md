@@ -291,6 +291,9 @@ flowchart TD
   `extensions/*/lib/` may be consumed by another extension when that contract
   is explicitly part of the extension boundary. Core contracts should stay below IO/runtime helpers; any
   exception must be documented rather than hidden.
+- Temporal-coupling measurements treat cross-module file relocations as boundary
+  migrations, not co-evolution; the migrated source and destination owners are
+  excluded for that commit.
 - `tests/architecture.test.ts` enforces the currently practical parts of this
   layering policy: all `lib/` TypeScript modules are documented shared
   primitives with multiple callers, core files do not import Node IO modules,
