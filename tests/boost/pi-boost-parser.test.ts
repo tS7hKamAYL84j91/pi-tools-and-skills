@@ -83,9 +83,11 @@ describe("ADR-045 boost parser", () => {
 		});
 	});
 
+	it.each(["/boost", "/boost   "])("opens settings when no arguments are supplied in %s", (input) => {
+		expect(parseBoostCommand(input)).toEqual({ ok: true, command: { kind: "settings" } });
+	});
+
 	it.each([
-		"/boost",
-		"/boost   ",
 		"/boost -n 1",
 		"/boost --",
 	])("rejects an absent prompt in %s", (input) => {

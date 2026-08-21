@@ -25,8 +25,8 @@ import type {
 } from "../../extensions/pi-boost/boost/contracts.js";
 import { BoostGlobalLeaseSlot } from "../../extensions/pi-boost/boost/global-slot.js";
 import { BoostLeaseAuthority } from "../../extensions/pi-boost/boost/lease-authority.js";
+import type { BoostParseResult } from "../../extensions/pi-boost/boost/boost-parse-types.js";
 import {
-	type BoostParseResult,
 	combineBoostInput,
 	parseBoostCommand,
 } from "../../extensions/pi-boost/boost/parser.js";

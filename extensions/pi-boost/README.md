@@ -1,22 +1,34 @@
 # Pi Boost Extension
 
-Principal-only, bounded temporary model-lease control for pi.
+Bounded environmental and cognitive lease/yield capabilities for pi.
 
-## Stable Command
+## Stable Commands and Tools
 
-- `/boost` — request, inspect, or reset a two-hour Boost lease. Normal loading is fail-closed until the host injects the reviewed provider runtime.
+- `/boost` or `/boost settings` — inspect/edit effective Boost settings using standard Pi settings scopes.
+- `/boost <prompt>` — request a bounded environmental lease; host runtime injection remains required.
+- `/boost fusion <prompt>` — run one bounded multi-model cognitive lease and yield one synthesized result.
+- `boost_fusion` — tool equivalent of cognitive Fusion for Principal or pre-granted agent sessions.
+
+## Authorization and settings
+
+Authorization is default-deny. Principal sessions remain authorized by the reviewed identity boundary. Agent self-boost is available only when operator-authored settings explicitly enable it under the namespaced `boost.agentSelfBoost` policy. Callers cannot enable, expand, or select that policy through command/tool arguments, objective text, or mutable agent names.
+
+Settings resolve from `~/.pi/agent/settings.json`, followed by `.pi/settings.json` only when the Pi host marks the project trusted. The `/boost` SettingsList shows provenance and fixed profile, panel, model, judge, timeout, yield, and capability caps; writes target only the selected standard scope.
 
 ## Public and Internal Boundaries
 
-The public surface is the extension entrypoint, `/boost`, the reviewed host-construction contract, and redacted lease status. Files under `boost/` and runtime persistence/adaptation modules are internal implementation details.
+The public surface is the extension entrypoint, `/boost`, `boost_fusion`, the reviewed host-construction contract, and redacted lease status/results. Files under `boost/` and runtime persistence/adaptation modules are internal.
 
-`pi-boost` owns authorization, the persisted two-hour TTL, one process-wide slot, the three-human-yield cap, durable state and audit, provider adaptation, baseline reversion, and shutdown recovery. Its declarative `boost.md` is discovered from built-in, user (`boost.roots` or `~/.pi/agent/boost`), then project (`.pi/boost`) roots through the neutral shared discovery library. The highest present layer must contain exactly one valid `boost.md`; malformed or ambiguous higher layers deny without fallback. Live control remains an injected read-only gate and cannot select a model. The default extension grants identity only when `PI_PRINCIPAL=1` and no Panopticon parent-agent marker is present.
+Environmental Boost owns the persisted two-hour TTL, process-wide slot, bounded yields, durable state/audit, provider adaptation, baseline reversion, and shutdown recovery. Cognitive Boost owns a prompt-scoped panel/judge lease: bounded parallel panel calls, strict judge synthesis, one result yield, immediate release, and private redacted audit without prompts or model identities.
+
+The declarative environmental `boost.md` remains discovered through the neutral shared discovery library. Live control is injected and read-only. Cognitive configuration uses standard Pi JSON settings; neither configuration surface may mint authority.
 
 ## What this does NOT do
 
-- Does not run as a Team or delegate Boost authority to Team members.
-- Does not import Panopticon or accept Team manifests, protocol fields, or `pi-boost/config.json`.
-- Does not let Panopticon, schedules, providers, or project configuration mint leases.
+- Does not run as a Team or import Panopticon/Teams private modules.
+- Does not accept Team manifests or a bespoke `pi-boost/config.json`.
+- Does not let callers, schedules, providers, or untrusted project settings mint or expand capabilities.
 - Does not change root-model defaults or schedule cadence.
-- Does not expose prompts, provider credentials, model identities, descriptor paths, or mutable live-control records through status or audit output.
-- Does not silently continue after failed reversion; dispatch fails closed.
+- Does not expose prompts, credentials, model identities, descriptor paths, or mutable control records through status/audit.
+- Does not retain cognitive panel state after its single yield.
+- Does not silently continue after environmental reversion or cognitive audit failure; execution fails closed.

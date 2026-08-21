@@ -187,10 +187,10 @@ describe("ADR-045 boost authority", () => {
 		);
 		expect(runtimeSource).toContain("createBoostExtension()");
 		expect(boostWiring).toContain(
-			"createUnavailableBoostCommandDeps(identitySource)",
+			"createUnavailableBoostCommandDeps(identitySource, cognitiveOptions)",
 		);
 		expect(boostWiring).toContain(
-			"createHostBoostCommandDeps(identitySource, injection)",
+			"createHostBoostCommandDeps(identitySource, injection, cognitiveOptions)",
 		);
 		expect(`${runtimeSource}\n${boostWiring}`).not.toMatch(
 			/process\.env.*boost|globalThis.*boost|as unknown as.*ExtensionAPI/i,

@@ -1,39 +1,14 @@
-/** Pure ADR-045 `/boost` grammar and combined-input boundary. */
+/** Pure ADR-045 and ADR-050 `/boost` grammar and combined-input boundary. */
 
+import { parseFusionRequest } from "./cognitive-parser.js";
+import type { BoostParseErrorCode, BoostParseResult } from "./boost-parse-types.js";
 import type { BoostIsolationMode, BoostRequest } from "./contracts.js";
+
 
 export const BOOST_REVIEW_FRAME = `[BOOST REVIEW FRAME — EPHEMERAL]
 Challenge assumptions. Inspect the underlying diff when available. Avoid repeating recent failed edits.
 [/BOOST REVIEW FRAME]`;
 export const MAX_BOOST_INPUT_BYTES = 2_048;
-
-/** @public */
-export type BoostParseErrorCode =
-	| "not-boost-command"
-	| "missing-prompt"
-	| "trailing-subcommand"
-	| "invalid-yield-count"
-	| "repeated-option"
-	| "conflicting-isolation"
-	| "unknown-option"
-	| "input-too-large";
-
-/** @public */
-export type BoostParsedCommand =
-	| { readonly kind: "status" }
-	| { readonly kind: "reset" }
-	| { readonly kind: "request"; readonly request: BoostRequest };
-
-/** @public */
-export type BoostParseResult =
-	| { readonly ok: true; readonly command: BoostParsedCommand }
-	| {
-			readonly ok: false;
-			readonly error: {
-				readonly code: BoostParseErrorCode;
-				readonly message: string;
-			};
-	  };
 
 interface Token {
 	readonly value: string;
@@ -82,24 +57,37 @@ export function parseBoostCommand(input: string): BoostParseResult {
 	}
 	const body = input.slice(6).trim();
 	if (body.length === 0) {
-		return parseError(
-			"missing-prompt",
-			"Boost requires a subcommand or prompt",
-		);
+		return { ok: true, command: { kind: "settings" } };
 	}
 	const tokens = tokenize(body);
 	const first = tokens[0];
 	if (!first) {
 		return parseError("missing-prompt", "Boost requires a prompt");
 	}
-	if (first.value === "status" || first.value === "reset") {
+	if (
+		first.value === "status" ||
+		first.value === "reset" ||
+		first.value === "settings" ||
+		first.value === "config"
+	) {
 		if (tokens.length !== 1) {
 			return parseError(
 				"trailing-subcommand",
 				`${first.value} does not accept trailing tokens`,
 			);
 		}
-		return { ok: true, command: { kind: first.value } };
+		return {
+			ok: true,
+			command: {
+				kind:
+					first.value === "settings" || first.value === "config"
+						? "settings"
+						: first.value,
+			},
+		};
+	}
+	if (first.value === "fusion") {
+		return parseFusionRequest(body, tokens);
 	}
 	return parseRequest(body, tokens);
 }
@@ -151,7 +139,12 @@ function parseRequest(
 		if (token.value.startsWith("-")) {
 			return parseError("unknown-option", "Unknown boost option");
 		}
-		if (token.value === "status" || token.value === "reset") {
+		if (
+			token.value === "status" ||
+			token.value === "reset" ||
+			token.value === "settings" ||
+			token.value === "config"
+		) {
 			return parseError(
 				"trailing-subcommand",
 				`Prompt beginning with ${token.value} requires --`,
