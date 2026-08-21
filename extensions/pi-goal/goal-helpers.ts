@@ -1,8 +1,16 @@
 /**
  * Shared pi-goal command and parsing helpers.
  */
+import { createGoalSessionScope, type GoalSessionScope } from "./goal-binding.js";
 import { loadGoal } from "./goal-persist.js";
 import type { GoalRunMode, GoalState } from "./goal-types.js";
+
+export function goalScopeForContext(
+	ctx: { readonly cwd: string; readonly sessionManager?: unknown },
+	appendBinding?: (goalId: string | null) => void | Promise<void>,
+): GoalSessionScope {
+	return createGoalSessionScope(ctx, appendBinding);
+}
 
 const DEFAULT_TURNS = 3;
 export const UNTIL_COMPLETE_TURNS = 20;
@@ -124,12 +132,12 @@ export function buildPlanReviewPrompt(state: GoalState): string {
 	const milestoneList = state.milestones
 		.map((m, i) => `${i + 1}. ${m.title}\n   Validate: \`${m.validationCommand}\``)
 		.join("\n");
-	return `A reviewable plan has been generated for this goal.\n\n${milestoneList}\n\nReview or edit .pi/goal/PLAN.md, then run /goal approve or /goal run to start implementation.`;
+	return `A reviewable plan has been generated for this goal.\n\n${milestoneList}\n\nReview or edit .pi/goal/instances/<goalId>/PLAN.md, then run /goal approve or /goal run to start implementation.`;
 }
 
 /** Throw if no goal is active for this workspace. */
-export async function requireGoal(cwd: string): Promise<GoalState> {
-	const state = await loadGoal(cwd);
+export async function requireGoal(cwd: string, scope?: GoalSessionScope): Promise<GoalState> {
+	const state = await loadGoal(cwd, scope);
 	if (!state) {
 		throw new Error("No pi goal is set. Use /goal file <path> first.");
 	}

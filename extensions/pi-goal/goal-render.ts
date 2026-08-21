@@ -9,7 +9,7 @@ export function renderGoalOverlayLines(text: string, maxLines: number): string[]
 	if (lines.length <= maxLines) {
 		return lines;
 	}
-	return [...lines.slice(0, maxLines - 1), `… ${lines.length - maxLines + 1} more lines in .pi/goal/GOAL.md`];
+	return [...lines.slice(0, maxLines - 1), `… ${lines.length - maxLines + 1} more lines in .pi/goal/instances/<goalId>/GOAL.md`];
 }
 
 export function renderGoalSummary(state: GoalState): string {

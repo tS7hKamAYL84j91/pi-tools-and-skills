@@ -1,4 +1,5 @@
 /** Session-scoped, bounded liveness recovery for an active pi-goal run. */
+import type { GoalSessionScope } from "./goal-binding.js";
 import { loadGoal, saveGoal } from "./goal-persist.js";
 import { stopGoal, updateGoal, withLifecycle } from "./goal-plan.js";
 import type { GoalState } from "./goal-types.js";
@@ -20,6 +21,7 @@ interface GoalWatchdogConfig {
 
 interface GoalWatchdogHost {
 	readonly cwd: string;
+	readonly scope?: GoalSessionScope;
 	readonly now?: () => number;
 	readonly schedule?: (callback: () => void, delayMs: number) => TimerHandle;
 	readonly cancel?: (handle: TimerHandle) => void;
@@ -61,7 +63,7 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 	const tick = async (): Promise<void> => {
 		if (stopped) return;
 		try {
-			const state = await loadGoal(host.cwd);
+			const state = await loadGoal(host.cwd, host.scope);
 			if (state?.runActive && state.executionState !== "completed") {
 				await evaluate(state);
 			}
@@ -82,7 +84,7 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		const elapsed = Math.max(0, now() - progressAt);
 		if (elapsed >= config.hardTimeoutMs) {
 			const failed = stopGoal(state, "failed", "Goal liveness hard timeout reached; run paused. Resume explicitly after checking the current turn and repository state.");
-			await saveGoal(host.cwd, failed);
+			await saveGoal(host.cwd, failed, host.scope);
 			host.notify(failed.lastError ?? "Goal liveness hard timeout reached.", "error");
 			await host.refresh?.(failed);
 			return;
@@ -92,21 +94,21 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		let current = state;
 		if (!state.livenessWarningIssued) {
 			current = withLifecycle(updateGoal(state, { livenessWarningIssued: true }), "progress", "Liveness soft threshold reached; recovery is bounded.");
-			await saveGoal(host.cwd, current);
+			await saveGoal(host.cwd, current, host.scope);
 			host.notify("Goal run has made no recorded progress; watching for an idle recovery opportunity.", "warning");
 			await host.refresh?.(current);
 		}
 		if (current.livenessNudgeIssued || host.isTurnActive() || host.hasQueuedContinuation()) return;
 
 		const nudged = updateGoal(current, { livenessNudgeIssued: true });
-		await saveGoal(host.cwd, nudged);
+		await saveGoal(host.cwd, nudged, host.scope);
 		try {
 			host.sendNudge(nudged);
 		host.notify("Goal liveness recovery nudged the idle current run once.", "info");
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		const failed = stopGoal(nudged, "failed", `Goal liveness nudge failed: ${message}`);
-		await saveGoal(host.cwd, failed);
+		await saveGoal(host.cwd, failed, host.scope);
 		host.notify(failed.lastError ?? "Goal liveness nudge failed.", "error");
 		await host.refresh?.(failed);
 	}

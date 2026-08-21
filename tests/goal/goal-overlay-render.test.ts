@@ -67,6 +67,6 @@ describe("renderGoalOverlayLines", () => {
 		expect(lines).toHaveLength(24);
 		expect(lines.slice(0, 2)).toEqual(["Goal goal-1", "Status: active"]);
 		expect(lines[22]).toBe("detail-21");
-		expect(lines[23]).toBe("… 9 more lines in .pi/goal/GOAL.md");
+		expect(lines[23]).toBe("… 9 more lines in .pi/goal/instances/<goalId>/GOAL.md");
 	});
 });

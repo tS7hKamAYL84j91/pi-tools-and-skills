@@ -1,6 +1,8 @@
 /** Shared runtime state and UI helpers for pi-goal. */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadGoal } from "./goal-persist.js";
+import { goalScopeForContext } from "./goal-helpers.js";
+import type { GoalSessionScope } from "./goal-binding.js";
 import type { GoalState } from "./goal-types.js";
 
 const MAX_CANCELLED_MARKERS = 20;
@@ -41,8 +43,8 @@ export function isCancelledContinuation(runtime: GoalRuntime, prompt: string, ex
 	return marker !== undefined && runtime.cancelledMarkers.has(marker);
 }
 
-export async function refreshUi(ctx: ExtensionContext, runtime: GoalRuntime, state?: GoalState | null): Promise<void> {
-	const current = state === undefined ? await loadGoal(ctx.cwd) : state;
+export async function refreshUi(ctx: ExtensionContext, runtime: GoalRuntime, state?: GoalState | null, scope?: GoalSessionScope): Promise<void> {
+	const current = state === undefined ? await loadGoal(ctx.cwd, scope ?? goalScopeForContext(ctx)) : state;
 	if (!current || current.status === "complete") {
 		ctx.ui.setStatus("goal", undefined);
 		ctx.ui.setWidget("goal", undefined);
