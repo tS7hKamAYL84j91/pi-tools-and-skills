@@ -9,8 +9,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { registerTeamRunTool } from "../../extensions/pi-panopticon/teams/team-runtime.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { registerTeamRunTool } from "../../extensions/pi-teams/team-runtime.js";
 import {
 	createFakeApi,
 	withTempProjectRoot,
@@ -18,7 +18,7 @@ import {
 	writeSubagent,
 } from "./team-test-helpers.js";
 
-vi.mock("../../extensions/pi-panopticon/spawner/spawn-service.js", () => ({
+vi.mock("../../extensions/pi-teams/pi-binary.js", () => ({
 	resolvePiBinary: () =>
 		process.env.PI_TEAMS_TEST_PI_BINARY ?? process.execPath,
 }));

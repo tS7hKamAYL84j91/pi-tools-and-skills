@@ -9,7 +9,7 @@ import {
 	inspectTeamWorktreeConflicts,
 	planTeamWorktree,
 	type TeamWorktreePlan,
-} from "../../extensions/pi-panopticon/teams/worktree-isolation.js";
+} from "../../extensions/pi-teams/worktree-isolation.js";
 
 const tempDirs: string[] = [];
 

@@ -8,7 +8,7 @@
 
 During run `team-mqm4dr9m` the council reached a stuck state: 5 member/generation nodes completed, but the `glm-5.2` synthesis node sat for 10+ minutes. The runtime surface showed **zero running workers**, yet the team run was still marked `running`. Today the agent and TUI can only see aggregate `nodes=N`; there is no per-node progress, no heartbeat, and no signal to distinguish *slow-but-alive* from *hung*.
 
-Current `TeamRunRecord` (in `extensions/pi-panopticon/teams/state.ts`) stores:
+Current `TeamRunRecord` (in `extensions/pi-teams/state.ts`) stores:
 
 - `status`, `phases[]`, `nodes[]` (only completed nodes), `details[]`, timing, and terminal state.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canSpawn, childCapacity, rootCapacity } from "../../extensions/pi-panopticon/teams/hierarchical-swarm/capacity.js";
-import { parseChildRequests } from "../../extensions/pi-panopticon/teams/hierarchical-swarm/protocol.js";
+import { canSpawn, childCapacity, rootCapacity } from "../../extensions/pi-teams/hierarchical-swarm/capacity.js";
+import { parseChildRequests } from "../../extensions/pi-teams/hierarchical-swarm/protocol.js";
 
 const bounds = {
 	maxDepth: 2,

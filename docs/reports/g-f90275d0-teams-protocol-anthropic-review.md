@@ -7,7 +7,7 @@ Source reviewed: <https://www.anthropic.com/engineering/building-effective-agent
 
 ## Executive summary
 
-Anthropic's guidance supports the current Panopticon Teams direction: keep protocols simple, explicit, and workflow-shaped rather than rebuilding a generic autonomous-agent framework. The useful changes are documentation and prompt/tool ergonomics, not architecture expansion.
+Anthropic's guidance supports the current pi-teams direction: keep protocols simple, explicit, and workflow-shaped rather than rebuilding a generic autonomous-agent framework. The useful changes are documentation and prompt/tool ergonomics, not architecture expansion.
 
 Recommendation: **refine Teams docs and skill guidance; do not add runtime framework surface.**
 
@@ -49,7 +49,7 @@ Add compact guidance that says:
 
 ### 2. Document protocol-to-pattern mapping
 
-Add a small table to `extensions/pi-panopticon/teams/README.md` mapping:
+Add a small table to `extensions/pi-teams/README.md` mapping:
 
 - `navigator` → routing + focused evaluator
 - `llm-council` → parallelization + synthesis
@@ -86,7 +86,7 @@ Do not reintroduce generic graph execution, topology lowering, or template engin
 ## Acceptance criteria
 
 - `pi-team-consultation` contains the simplified routing guidance and Anthropic-pattern rationale.
-- `extensions/pi-panopticon/teams/README.md` documents protocol-to-pattern mapping.
+- `extensions/pi-teams/README.md` documents protocol-to-pattern mapping.
 - Built-in team/tool documentation nudges callers toward the simplest sufficient team.
 - Deleted templates remain absent and unreferenced.
 - No generic framework files, APIs, or public schemas are introduced.

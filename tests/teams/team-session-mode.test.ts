@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildTeamContext } from "../../extensions/pi-panopticon/teams/team-context.js";
-import { applyParsedCommand, buildAutoModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-panopticon/teams/team-session-mode.js";
+import { buildTeamContext } from "../../extensions/pi-teams/team-context.js";
+import { applyParsedCommand, buildAutoModePrompt, classifyTeamOutcome, estimatedCallDescription, formatTeamModeError, formatTeamModeResult, parseTeamModeArgs } from "../../extensions/pi-teams/team-session-mode.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 describe("team session mode", () => {

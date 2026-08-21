@@ -12,7 +12,7 @@ Three recent Executive Office briefings converged on a single operational need:
 - Adam Jacob's token-spend post (2026-07-22) argues orchestration should be deterministic code that minimizes the need for an LLM in the hot path.
 - LoopGain (2026-07-22) is not directly applicable (our loops are gate-based), but it reinforces convergence-detection and best-so-far rollback principles we already encode via material-successor policy.
 
-We already have the wiring: `spawn_agent`, `rpc_send`, `agent_status`, `agent_peek`, `kill_agent`, `team_run`, and `kanban_*`. What we lack is a deterministic, bounded, repo-local orchestration primitive a GM can invoke for a large decomposable task. The Principal directed that this primitive live as a **pi-panopticon package feature**, not a CoAS skill.
+We already have the wiring: `spawn_agent`, `rpc_send`, `agent_status`, `agent_peek`, `kill_agent`, `team_run`, and `kanban_*`. What we lack is a deterministic, bounded, repo-local orchestration primitive a GM can invoke for a large decomposable task. The Principal directed that this primitive live as a **pi-teams package feature**, not a CoAS skill.
 
 ## Decision
 
@@ -22,20 +22,20 @@ Add a `/swarm` mode to `extensions/pi-panopticon/`.
 
 ### Placement
 
-`/swarm` lives as a new submodule in `extensions/pi-panopticon/swarm/`, alongside `spawner/`, `registry/`, and `teams/`.
+`/swarm` lives in the standalone `extensions/pi-teams/swarm/` package alongside the Teams protocol handlers.
 
 It is **not** a team protocol (`teams/` protocols are fixed-shape review/debate/research panels) and **not** a skill (skills are LLM-read procedural guidance). It is a higher-level code primitive built on existing panopticon wiring.
 
 ### Files
 
-- `extensions/pi-panopticon/swarm/swarm-types.ts`
-- `extensions/pi-panopticon/swarm/swarm-planner.ts`
-- `extensions/pi-panopticon/swarm/swarm-runner.ts`
-- `extensions/pi-panopticon/swarm/swarm-reconciler.ts`
-- `extensions/pi-panopticon/swarm/swarm-gates.ts`
-- `extensions/pi-panopticon/swarm/swarm-commands.ts`
-- `extensions/pi-panopticon/swarm/swarm-tools.ts`
-- `extensions/pi-panopticon/swarm/index.ts`
+- `extensions/pi-teams/swarm/swarm-types.ts`
+- `extensions/pi-teams/swarm/swarm-planner.ts`
+- `extensions/pi-teams/swarm/swarm-runner.ts`
+- `extensions/pi-teams/swarm/swarm-reconciler.ts`
+- `extensions/pi-teams/swarm/swarm-gates.ts`
+- `extensions/pi-teams/swarm/swarm-commands.ts`
+- `extensions/pi-teams/swarm/swarm-tools.ts`
+- `extensions/pi-teams/swarm/index.ts`
 - Wire into `extensions/pi-panopticon/index.ts`.
 
 ### Invocation surface

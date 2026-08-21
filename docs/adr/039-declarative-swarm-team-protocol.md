@@ -6,7 +6,7 @@ Superseded by ADR-040 before implementation. ADR-039's fixed declarative protoco
 
 ## Context
 
-ADR-036 placed `/swarm` beside `teams/` as a standalone Panopticon primitive. The user-directed redesign requires explicit manifest control over worker roles, local-model bindings, tool allowlists, review bindings, and execution bounds. The standalone runner also lacks the normal Teams state, interaction, and terminal-result lifecycle.
+ADR-036 placed `/swarm` beside `teams/` as a standalone pi-teams primitive. The user-directed redesign requires explicit manifest control over worker roles, local-model bindings, tool allowlists, review bindings, and execution bounds. The standalone runner also lacks the normal Teams state, interaction, and terminal-result lifecycle.
 
 The prior council recommendation to amend ADR-036 applied only to incremental standalone lifecycle completion. This decision reverses ADR-036's central placement and invocation choice, so an amendment would obscure the audit trail.
 

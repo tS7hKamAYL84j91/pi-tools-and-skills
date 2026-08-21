@@ -43,7 +43,7 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 		label: "Panopticon registry",
 		patterns: [/\bREGISTRY_DIR\b/],
 	},
-	{ owner: "pi-panopticon", label: "Teams run state", patterns: [/pi-teams:run\b/] },
+	{ owner: "pi-teams", label: "Teams run state", patterns: [/pi-teams:run\b/] },
 ];
 
 const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
@@ -121,10 +121,10 @@ describe("runtime state boundary", () => {
 
 	it("Panopticon teams direct child process lifecycle remains explicitly bounded", () => {
 		const allowed = new Set([
-			"extensions/pi-panopticon/teams/worktree-isolation.ts",
+			"extensions/pi-teams/worktree-isolation.ts",
 		]);
 		const childProcessImportPattern = /from\s+["']node:child_process["']/;
-		const violations = listTsFiles("extensions/pi-panopticon/teams")
+		const violations = listTsFiles("extensions/pi-teams")
 			.map((file) => relative(process.cwd(), file))
 			.filter((file) => !allowed.has(file))
 			.filter((file) =>

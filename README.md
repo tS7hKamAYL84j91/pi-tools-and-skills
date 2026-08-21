@@ -32,14 +32,14 @@ pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
 pi install /absolute/path/to/pi-tools-and-skills
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-ollama-models`, or `pi-panopticon`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
+The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, or `pi-teams`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
 
 ### 2. Set up
 
 ```bash
 make help                            # show targets
 make setup                           # register extensions, skills, prompts
-make setup-package PACKAGE=pi-matrix # register one user-installable package globally
+make setup-package PACKAGE=pi-teams  # register standalone Teams globally
 ```
 
 ### 3. Run pi
@@ -62,8 +62,9 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 
 | Extension             | Type         | What it does                                                                                            |
 | --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
-| **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, lifecycle management, and modular team workflows (`team_run`) |
+| **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, and lifecycle management |
 | **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
+| **pi-teams**          | User         | Standalone declarative teams, profiles, hierarchical swarm compatibility, and `team_*` / `runtime_*` tools |
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
@@ -81,7 +82,7 @@ Reusable skills for pi-platform tooling and compact reference guidance. Extensio
 | **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
 | **pi-model-selection**     | shared        | Verify pi-visible models and route work to the right provider/model               |
 | **pi-session-management**  | shared        | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
-| **pi-team-consultation**   | pi-panopticon teams | Route review and decisions through `navigator` or `llm-council` teams        |
+| **pi-team-consultation**   | pi-teams | Route review and decisions through `navigator` or `llm-council` teams        |
 | **skill-creator**          | shared        | Meta-skill for creating and improving skills                                      |
 
 ---
@@ -94,7 +95,7 @@ Everything goes through `make`:
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `make` / `make help`                                                | Show available targets                                                                          |
 | `make setup`                                                        | Install this checkout as a local pi package                                                     |
-| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`) |
+| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, `pi-teams`) |
 | `make setup-clean`                                                  | Remove this checkout's pi package registration                                                  |
 | `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                                                            |
 | `make doctor`                                                       | Run checks, tests, and gitleaks secret scans                                                    |
@@ -112,7 +113,8 @@ Everything goes through `make`:
 
 ```text
 extensions/           Extensions:
-  pi-panopticon/        Global — multi-agent messaging, spawning, health, teams
+  pi-panopticon/        Global — multi-agent messaging, spawning, health
+  pi-teams/              User — standalone declarative teams and swarm compatibility
   pi-goal/              Global — bounded /goal workflow and completion audit
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
@@ -126,7 +128,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix` and user extension `pi-ollama-models` can be installed individually. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
+Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix`, user extension `pi-ollama-models`, and standalone `pi-teams` can be installed individually with `make setup-package PACKAGE=<name>`. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
 
 ## Development
 

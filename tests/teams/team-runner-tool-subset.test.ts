@@ -1,6 +1,6 @@
 /** Tests for per-run tool narrowing beneath the profile ceiling. */
 import { describe, expect, it, vi } from "vitest";
-import { resolveToolSubset } from "../../extensions/pi-panopticon/teams/runner.js";
+import { resolveToolSubset } from "../../extensions/pi-teams/runner.js";
 
 describe("resolveToolSubset", () => {
 	it("allows a subset narrower than the profile", () => {

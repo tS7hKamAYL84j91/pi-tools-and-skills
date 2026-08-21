@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 // ── PI binary resolution ────────────────────────────────────────
 
 /** Locate the pi CLI: bundled with the current node binary, then check safe path directories, else literal "pi". */
-export function resolvePiBinary(): string {
+function resolvePiBinary(): string {
 	const candidate = join(dirname(process.execPath), "pi");
 	if (existsSync(candidate)) return candidate;
 

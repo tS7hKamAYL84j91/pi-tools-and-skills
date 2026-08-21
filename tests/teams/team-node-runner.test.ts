@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { modelForBinding, nodeDetails, participantsFromRuns, type NodeRun } from "../../extensions/pi-panopticon/teams/team-node-runner.js";
+import { modelForBinding, nodeDetails, participantsFromRuns, type NodeRun } from "../../extensions/pi-teams/team-node-runner.js";
 
 describe("team-node-runner pure helpers", () => {
 	const node: NodeRun = {

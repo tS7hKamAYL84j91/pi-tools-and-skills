@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLiveAgentRef, liveAgentName, runLiveAgentNode } from "../../extensions/pi-panopticon/teams/live-agent.js";
+import { isLiveAgentRef, liveAgentName, runLiveAgentNode } from "../../extensions/pi-teams/live-agent.js";
 import type { InboundMessage, MessageTransport, DeliveryResult } from "../../lib/message-transport.js";
 import type { AgentInfo } from "../../lib/agent-api.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";

@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import type { TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import type { TeamSpec } from "../../extensions/pi-teams/team-types.js";
 
 const TEAM: TeamSpec = {
 	schemaVersion: 2,
@@ -17,12 +17,12 @@ const TEAM: TeamSpec = {
 	path: "/tmp/widget-test.md",
 };
 
-vi.mock("../../extensions/pi-panopticon/teams/team-registry.js", () => ({
+vi.mock("../../extensions/pi-teams/team-registry.js", () => ({
 	loadTeamRegistry: () => ({ teams: new Map([[TEAM.id, TEAM]]), subagents: new Map(), warnings: [] }),
 }));
 
-vi.mock("../../extensions/pi-panopticon/teams/team-handlers.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../extensions/pi-panopticon/teams/team-handlers.js")>();
+vi.mock("../../extensions/pi-teams/team-handlers.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../extensions/pi-teams/team-handlers.js")>();
 	return {
 		...actual,
 		getTeamHandler: () => ({
@@ -38,7 +38,7 @@ vi.mock("../../extensions/pi-panopticon/teams/team-handlers.js", async (importOr
 	};
 });
 
-const { runTeam } = await import("../../extensions/pi-panopticon/teams/team-runtime.js");
+const { runTeam } = await import("../../extensions/pi-teams/team-runtime.js");
 
 describe("team progress widget", () => {
 	it("renders every node on state events with a per-run key and clears it", async () => {

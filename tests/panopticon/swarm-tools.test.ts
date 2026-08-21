@@ -2,8 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { ok } from "../../lib/tool-result.js";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { registerSwarmTools } from "../../extensions/pi-panopticon/swarm/swarm-tools.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { registerSwarmTools } from "../../extensions/pi-teams/swarm/swarm-tools.js";
 
 interface RegisteredTool {
 	name: string;
@@ -18,7 +18,7 @@ function response(result: unknown): { content: Array<{ text: string }>; details:
 describe("swarm Teams compatibility tools", () => {
 	it("formats a manifest preflight and delegates execution to hierarchical-swarm-default", async () => {
 		const tools = new Map<string, RegisteredTool>();
-		const run = vi.fn(async () => ok("root result", { team: "hierarchical-swarm-default", runId: "run-test-1" }) as unknown as import("../../extensions/pi-panopticon/teams/team-run-completion.js").TeamRunToolResult);
+		const run = vi.fn(async () => ok("root result", { team: "hierarchical-swarm-default", runId: "run-test-1" }) as unknown as import("../../extensions/pi-teams/team-run-completion.js").TeamRunToolResult);
 		const runAsync = vi.fn(() => ok("started", { team: "hierarchical-swarm-default", async: true }));
 		registerSwarmTools({ registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); } } as unknown as ExtensionAPI, {
 			teams: { stateManager: new TeamStateManager(), runtime: new RuntimeControlPlane(), run, runAsync },

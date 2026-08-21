@@ -11,7 +11,7 @@ import {
 	chooseSynthesisModel,
 	chooseTeamMemberModels,
 	providerOf,
-} from "../../extensions/pi-panopticon/teams/members.js";
+} from "../../extensions/pi-teams/members.js";
 
 function withSettings<T>(teamConfig: { defaultMembers?: string[]; defaultSynthesis?: string }, fn: (settingsPath: string) => T): T {
 	const dir = mkdtempSync(join(tmpdir(), "team-test-"));

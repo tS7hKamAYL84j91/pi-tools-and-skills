@@ -5,16 +5,15 @@
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../../extensions/pi-panopticon/teams/team-form.js";
-import { loadTeamRegistry } from "../../extensions/pi-panopticon/teams/team-registry.js";
-import type { TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
+import { createTeamFiles, deleteTeamFiles, updateTeamModels } from "../../extensions/pi-teams/team-form.js";
+import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
+import type { TeamSpec } from "../../extensions/pi-teams/team-types.js";
 import { withTempProjectRoot, writeSubagent } from "./team-test-helpers.js";
 
 const CONFIG_PATH = join(
 	process.cwd(),
 	"extensions",
-	"pi-panopticon",
-	"teams",
+	"pi-teams",
 	"config",
 	"config.json",
 );

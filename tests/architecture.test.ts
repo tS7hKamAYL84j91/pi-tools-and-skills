@@ -19,3 +19,4 @@ import "./architecture/hotspots.js";
 import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";
 import "./architecture/adr047-shared-discovery.js";
+import "./architecture/pi-teams-public-boundary.js";

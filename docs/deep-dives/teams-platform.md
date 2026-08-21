@@ -1,6 +1,6 @@
 # Teams Platform
 
-Living summary for `extensions/pi-panopticon/teams`.
+Living summary for `extensions/pi-teams`.
 
 ## Current architecture
 
@@ -127,7 +127,7 @@ Explorer -> Verifier/EAM + Gap Detector -> targeted Explorer follow-up -> Synthe
 
 ## Public run state contract
 
-`pi-panopticon/teams` writes session custom events with `customType: "pi-teams:run"`.
+`pi-teams` writes session custom events with `customType: "pi-teams:run"`.
 The current event envelope is `schemaVersion: 1`; reduced `TeamRunRecord`
 objects returned by `team_runs` use `version: 1`.
 

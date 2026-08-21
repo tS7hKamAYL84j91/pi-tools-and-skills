@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateTeamManifest } from "../../extensions/pi-panopticon/teams/team-manifest.js";
-import type { TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
+import { validateTeamManifest } from "../../extensions/pi-teams/team-manifest.js";
+import type { TeamSpec } from "../../extensions/pi-teams/team-types.js";
 
 function team(overrides: Partial<TeamSpec> = {}): TeamSpec {
 	return {

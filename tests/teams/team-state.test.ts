@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
-import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
+import { TEAM_RUN_CUSTOM_TYPE, TeamStateManager } from "../../extensions/pi-teams/state.js";
 
 interface CustomEntry {
 	type: "custom";

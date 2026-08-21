@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { classifyCheckpointReadiness, type CheckpointReadinessInput } from "../../extensions/pi-panopticon/teams/checkpoint-readiness.js";
-import type { TeamRunRecord } from "../../extensions/pi-panopticon/teams/types.js";
+import { classifyCheckpointReadiness, type CheckpointReadinessInput } from "../../extensions/pi-teams/checkpoint-readiness.js";
+import type { TeamRunRecord } from "../../extensions/pi-teams/types.js";
 
 function runRecord(overrides: Partial<TeamRunRecord> = {}): TeamRunRecord {
 	return {

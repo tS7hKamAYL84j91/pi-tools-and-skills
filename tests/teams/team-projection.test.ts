@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { projectBuiltinTeams, pruneBuiltinTeams } from "../../extensions/pi-panopticon/teams/team-projection.js";
+import { projectBuiltinTeams, pruneBuiltinTeams } from "../../extensions/pi-teams/team-projection.js";
 
 const BUILTIN_IDS = ["deep-research", "fusion-analysis", "hierarchical-swarm-default", "llm-council", "navigator"];
 
@@ -37,7 +37,7 @@ describe("projectBuiltinTeams", () => {
 		expect(council.startsWith("---\n")).toBe(true);
 		expect(council).toContain('model: "ollama/qwen3.5:cloud"');
 		// Seed marker inserted as an invisible HTML comment in the body.
-		expect(council).toContain('<!-- pi-panopticon seed projection of "llm-council"');
+		expect(council).toContain('<!-- pi-teams seed projection of "llm-council"');
 	});
 
 	it("does not overwrite an existing user file (preexisting edit preserved)", async () => {

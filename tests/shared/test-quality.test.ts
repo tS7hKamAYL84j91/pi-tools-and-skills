@@ -109,7 +109,7 @@ describe("test quality fitness functions", () => {
 
 	it("tests do not reference removed standalone council extension paths", () => {
 		const violations = testFiles()
-			.filter((file) => /extensions\/(?:council|pi-teams)\//.test(readFileSync(file, "utf8")))
+			.filter((file) => /extensions\/council\//.test(readFileSync(file, "utf8")))
 			.map((file) => relative(process.cwd(), file));
 
 		expect(violations).toEqual([]);

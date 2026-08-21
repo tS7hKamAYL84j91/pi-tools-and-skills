@@ -6,7 +6,7 @@ Accepted — 2026-08-21, council-reviewed T-851 correction.
 
 ## Context
 
-Teams already has layered descriptor paths in `extensions/pi-panopticon/teams/team-paths.ts`. Only path discovery is shared: caller-supplied configuration location, root selection, lexical paths, source order, and direct Markdown enumeration. Team schema, parsing, registry, prompts, projection, and execution remain local to Teams.
+Teams already has layered descriptor paths in `extensions/pi-teams/team-paths.ts`. Only path discovery is shared: caller-supplied configuration location, root selection, lexical paths, source order, and direct Markdown enumeration. Team schema, parsing, registry, prompts, projection, and execution remain local to Teams.
 
 Boost needs declarative input without becoming a Team, importing Panopticon, or adding `pi-boost/config.json`. Discovery is an additional gate; the reviewed injected live control remains the lease and revocation authority from ADR-045/046. This ADR does not change the normal default model.
 
@@ -18,7 +18,7 @@ Add one narrow, extension-neutral `lib/` primitive. Each extension calls it and 
 flowchart LR
   D[lib discovery]
 
-  subgraph P[pi-panopticon Teams]
+  subgraph P[pi-teams]
     T[Teams caller] --> TP[Local Team parser, registry, prompts, projection]
   end
   subgraph B[pi-boost]
@@ -41,7 +41,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  PT[extensions/pi-panopticon/teams] --> L[lib/declarative discovery]
+  PT[extensions/pi-teams] --> L[lib/declarative discovery]
   PB[extensions/pi-boost] --> L
   N[No pi-panopticon <-> pi-boost dependency]
 ```
@@ -189,8 +189,8 @@ If the Team extraction regresses, restore the local Team path helper with the ch
 
 - ADR-045: Principal-approved `/boost` frontier-model lease
 - ADR-046: Standalone `pi-boost` extension
-- `extensions/pi-panopticon/teams/team-paths.ts`
-- `extensions/pi-panopticon/teams/team-registry.ts`
+- `extensions/pi-teams/team-paths.ts`
+- `extensions/pi-teams/team-registry.ts`
 - `extensions/pi-boost/`
 - `lib/`
 - `TODO.md`

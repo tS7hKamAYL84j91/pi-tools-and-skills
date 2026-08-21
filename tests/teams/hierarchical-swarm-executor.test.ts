@@ -2,14 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import type { TeamAgentBinding, TeamSpec } from "../../extensions/pi-panopticon/teams/team-types.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import type { TeamAgentBinding, TeamSpec } from "../../extensions/pi-teams/team-types.js";
 
 const calls: Array<{ role: string; nodeId?: string; parentId?: string; orchestratorName?: string; prompt: string }> = [];
 let rootDelegatedPrompt = "coordinate";
 
-vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => {
-	const actual = await vi.importActual<typeof import("../../extensions/pi-panopticon/teams/team-node-runner.js")>("../../extensions/pi-panopticon/teams/team-node-runner.js");
+vi.mock("../../extensions/pi-teams/team-node-runner.js", async () => {
+	const actual = await vi.importActual<typeof import("../../extensions/pi-teams/team-node-runner.js")>("../../extensions/pi-teams/team-node-runner.js");
 	return {
 		...actual,
 		runTeamNode: async (args: { role: string; nodeId?: string; parentId?: string; orchestratorName?: string; binding: TeamAgentBinding; model: string; prompt: string }) => {
@@ -24,7 +24,7 @@ vi.mock("../../extensions/pi-panopticon/teams/team-node-runner.js", async () => 
 	};
 });
 
-const { hierarchicalSwarmHandler } = await import("../../extensions/pi-panopticon/teams/team-handler-hierarchical-swarm.js");
+const { hierarchicalSwarmHandler } = await import("../../extensions/pi-teams/team-handler-hierarchical-swarm.js");
 
 function team(): TeamSpec {
 	return {

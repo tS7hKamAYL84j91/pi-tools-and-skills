@@ -37,7 +37,7 @@ flowchart LR
 
 ## Placement
 
-`/swarm` lives in `extensions/pi-panopticon/` as a first-class extension submodule, alongside `spawner/`, `registry/`, and `teams/`.
+`/swarm` lives in the standalone `extensions/pi-teams/` package alongside the Teams protocol handlers.
 
 Reasoning:
 - It is not a team protocol (`teams/` protocols are review/debate/research patterns with a fixed panel/judge shape).
@@ -45,14 +45,14 @@ Reasoning:
 - It is a higher-level primitive built on the existing panopticon surface: `spawn_agent`, `rpc_send`, `agent_status`, `agent_peek`, `kill_agent`, `team_run`, and the kanban board API.
 
 Proposed files:
-- `extensions/pi-panopticon/swarm/swarm-types.ts`
-- `extensions/pi-panopticon/swarm/swarm-planner.ts` (task-tree decomposition + brief generation)
-- `extensions/pi-panopticon/swarm/swarm-runner.ts` (worker pool lifecycle + monitoring)
-- `extensions/pi-panopticon/swarm/swarm-reconciler.ts` (DONE/BLOCKED reconciliation)
-- `extensions/pi-panopticon/swarm/swarm-gates.ts` (artifact evidence + stacked review invocation)
-- `extensions/pi-panopticon/swarm/swarm-commands.ts` (`/swarm` command)
-- `extensions/pi-panopticon/swarm/swarm-tools.ts` (`swarm_run` tool registration)
-- `extensions/pi-panopticon/swarm/index.ts` (exports)
+- `extensions/pi-teams/swarm/swarm-types.ts`
+- `extensions/pi-teams/swarm/swarm-planner.ts` (task-tree decomposition + brief generation)
+- `extensions/pi-teams/swarm/swarm-runner.ts` (worker pool lifecycle + monitoring)
+- `extensions/pi-teams/swarm/swarm-reconciler.ts` (DONE/BLOCKED reconciliation)
+- `extensions/pi-teams/swarm/swarm-gates.ts` (artifact evidence + stacked review invocation)
+- `extensions/pi-teams/swarm/swarm-commands.ts` (`/swarm` command)
+- `extensions/pi-teams/swarm/swarm-tools.ts` (`swarm_run` tool registration)
+- `extensions/pi-teams/swarm/index.ts` (exports)
 - Wire into `extensions/pi-panopticon/index.ts`.
 
 ## API / invocation surface
@@ -127,7 +127,7 @@ Each swarm card carries a `swarm:<swarmId>` tag. Worker briefs are stored in `pi
 2. Address council findings → update design. **Done in this revision.**
 3. Write ADR-036: `/swarm — pi-panopticon bounded worker-pool orchestration`.
 4. Principal sign-off.
-5. Implement in `extensions/pi-panopticon/swarm/`.
+5. Implement in `extensions/pi-teams/swarm/`.
 6. Validation: `npm run check`, `npm test`, swarm-specific tests covering WIP enforcement, artifact-gate failure, timeout/cleanup, abort/teardown, and kanban state transitions.
 
 ## Open questions (documented, not blockers for v1)

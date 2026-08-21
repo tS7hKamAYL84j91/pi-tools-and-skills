@@ -6,14 +6,14 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { registerTeamRunTool, summarizeTeamRuns } from "../../extensions/pi-panopticon/teams/team-runtime.js";
-import { loadTeamRegistry } from "../../extensions/pi-panopticon/teams/team-registry.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { registerTeamRunTool, summarizeTeamRuns } from "../../extensions/pi-teams/team-runtime.js";
+import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
 import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
-import { registerTeamTools } from "../../extensions/pi-panopticon/teams/team-tools.js";
+import { registerTeamTools } from "../../extensions/pi-teams/team-tools.js";
 import { createFakeApi, writeSubagent, writeTeam } from "./team-test-helpers.js";
 
-const CONFIG_PATH = join(process.cwd(), "extensions", "pi-panopticon", "teams", "config", "config.json");
+const CONFIG_PATH = join(process.cwd(), "extensions", "pi-teams", "config", "config.json");
 
 describe("team tools", () => {
 	it("summarizes team run status without raw run text", () => {

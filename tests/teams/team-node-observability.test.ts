@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { TeamStateManager } from "../../extensions/pi-panopticon/teams/state.js";
-import { computeNodeStall } from "../../extensions/pi-panopticon/teams/team-runtime.js";
-import type { TeamRunNodeRecord } from "../../extensions/pi-panopticon/teams/types.js";
+import { TeamStateManager } from "../../extensions/pi-teams/state.js";
+import { computeNodeStall } from "../../extensions/pi-teams/team-runtime.js";
+import type { TeamRunNodeRecord } from "../../extensions/pi-teams/types.js";
 
 interface CustomEntry {
 	type: "custom";

@@ -7,8 +7,8 @@ import {
 	TeamHandoffRouter,
 	type TeamHandoff,
 	type TeamHandoffTargetCandidate,
-} from "../../extensions/pi-panopticon/teams/handoff.js";
-import type { TeamAgentBinding } from "../../extensions/pi-panopticon/teams/team-types.js";
+} from "../../extensions/pi-teams/handoff.js";
+import type { TeamAgentBinding } from "../../extensions/pi-teams/team-types.js";
 
 const synthesisBinding: TeamAgentBinding = { role: "synthesis", subagent: "synthesis", model: "test/synthesis" };
 const explorerBinding: TeamAgentBinding = { role: "explorer", subagent: "explorer", model: "test/explorer" };
