@@ -14,7 +14,7 @@ function source(path: string): string {
 describe("Kanban board transaction boundary", () => {
 	it("centralizes board appends in the transaction module", () => {
 		const directAppenders = listTsFiles(KANBAN_ROOT)
-			.filter((path) => source(path).includes("appendLogLine("))
+			.filter((path) => source(path).includes("appendLocked("))
 			.map((path) => relative(process.cwd(), path));
 		expect(directAppenders).toEqual([
 			"extensions/pi-kanban/board-transactions.ts",
