@@ -86,7 +86,8 @@ flowchart TD
 - [ ] **1.3 Decompose `pi-coas/schedules.ts` & `scheduler.ts`**:
   - Extract cron evaluation and continuation payload builders into `coas-schedule-evaluator.ts`.
   - Extract delivery loop and error handling into `coas-scheduler-dispatcher.ts`.
-- [ ] **1.4 Refactor `pi-kanban/snapshot.ts`**:
+- [/] **1.4 Refactor `pi-kanban/snapshot.ts`** — in progress:
+  - Worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`.
   - Split markdown serialization and column folding into pure transformer helpers.
 - **Validation Gate:** `npx vitest run tests/architecture/hotspots.ts && npm test`
 
@@ -94,13 +95,13 @@ flowchart TD
 
 ### Track 2: TUI Testability & Coverage Desert Elimination
 
-- [ ] **2.1 Decouple TUI Renderers into Pure View-Models**:
+- [/] **2.1 Decouple TUI Renderers into Pure View-Models** — in progress:
   - Refactor overlays to follow the `(ViewState, Dimensions) => AnsiBuffer` pure transformer pattern.
   - Separate keyboard/event dispatching from ANSI string generation.
-- [ ] **2.2 Implement Deterministic TUI Snapshot Tests**:
-  - Add snapshot tests in `tests/kanban/kanban-overlay-render.test.ts`.
-  - Add snapshot tests in `tests/goal/goal-overlay-render.test.ts`.
-  - Add snapshot tests for `pi-panopticon/ui/agent-detail.ts` and `status-widget.ts`.
+- [/] **2.2 Implement Deterministic TUI Snapshot Tests** — in progress:
+  - Kanban worktree: `.workers/kanban-hotspot-ui`; branch: `refactor/kanban-hotspot-ui`.
+  - Goal worktree: `.workers/goal-overlay-tests`; branch: `refactor/goal-overlay-tests`.
+  - Panopticon worktree: `.workers/panopticon-ui-tests`; branch: `refactor/panopticon-ui-tests`.
 - [ ] **2.3 Command Unit-Test Harness**:
   - Add headless mock command context fixtures to test command parsing and error responses in `pi-coas/commands.ts` and `pi-panopticon/ui/*-command.ts`.
 - **Validation Gate:** Raise statement coverage in UI/CLI modules to $>75\%$; run `npm run test:coverage`.
