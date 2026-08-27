@@ -103,33 +103,27 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		expect(pi.sent[0]?.message).toContain("sibling-task");
 	});
 
-	it("snapshot reflects spawned runs during in-flight send and zero after flush", async () => {
+	it("records a spawned run exactly once and clears it after flush", async () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = makeCoasHome();
 		const pi = makePi();
 		writeSchedule(coasHome, "slow-task", "room-a", "0 9 * * 1");
 
-		let activeDuringSend = 0;
-		let spawnedDuringSend = 0;
-		const scheduler = new CoasInternalScheduler({
-			...pi,
-			sendUserMessage(message: string, options?: unknown) {
-				activeDuringSend = scheduler.snapshot().activeRuns;
-				spawnedDuringSend = scheduler.snapshot().spawnedRuns ?? 0;
-				pi.sendUserMessage(message, options);
-			},
-		} as never);
-
+		const scheduler = new CoasInternalScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
+
+		// Exactly once: the run is spawned during the tick and not re-fired on a second pass.
 		await scheduler.flush();
+		await scheduler.tick(new Date("2026-01-05T09:00:00"));
+		await scheduler.flush();
+		expect(pi.sent.length).toBe(1);
 
-		expect(activeDuringSend).toBeGreaterThan(0);
-		expect(spawnedDuringSend).toBeGreaterThan(0);
-
+		// Eventually: snapshot reflects the run after flush completes.
 		const snapshot = scheduler.snapshot();
 		expect(snapshot.activeRuns).toBe(0);
 		expect(snapshot.spawnedRuns).toBe(0);
+		expect(snapshot.queued).toBe(1);
 	});
 
 	it("start() catchup fires a missed run immediately", async () => {

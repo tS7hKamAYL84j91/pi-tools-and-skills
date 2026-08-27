@@ -62,6 +62,10 @@ export interface ScheduleEntry {
 	continuation?: boolean;
 	/** Require principal approval before each scheduled run is delivered. */
 	approvalRequired?: boolean;
+	/** Optional maximum number of queued runs for this schedule. */
+	runBudget?: number;
+	/** Optional lookback window for diminishing-returns detection; defaults to 3. */
+	lookback?: number;
 }
 
 export interface ScheduleAddInput {
@@ -77,6 +81,10 @@ export interface ScheduleAddInput {
 	continuation?: boolean;
 	/** Require principal approval before each scheduled run is delivered. */
 	approvalRequired?: boolean;
+	/** Optional maximum number of queued runs for this schedule. */
+	runBudget?: number;
+	/** Optional lookback window for diminishing-returns detection; defaults to 3. */
+	lookback?: number;
 }
 
 export interface SchedulerSnapshot {
@@ -88,6 +96,7 @@ export interface SchedulerSnapshot {
 	queued?: number;
 	failed?: number;
 	droppedScheduleRuns?: number;
+	skippedRuns?: number;
 	lastQueuedAt?: string;
 	lastFailedAt?: string;
 	lastTaskId?: string;

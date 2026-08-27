@@ -91,7 +91,16 @@ async function parseSchedule(config: CoasConfig, store: ConfinedStore, envPath: 
 		targetAgent: values.TARGET_AGENT,
 		continuation: (values.CONTINUATION ?? "0") === "1",
 		approvalRequired: (values.APPROVAL_REQUIRED ?? "0") === "1",
+		runBudget: parseOptionalPositiveInt(values.RUN_BUDGET),
+		lookback: parseOptionalPositiveInt(values.LOOKBACK),
 	};
+}
+
+function parseOptionalPositiveInt(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Number.parseInt(value, 10);
+	if (Number.isNaN(parsed) || parsed <= 0) return undefined;
+	return parsed;
 }
 
 export async function listSchedules(config: CoasConfig): Promise<ScheduleEntry[]> {
@@ -147,6 +156,8 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				...(input.targetAgent ? { TARGET_AGENT: input.targetAgent } : {}),
 				...(input.continuation ? { CONTINUATION: "1" } : {}),
 				...(input.approvalRequired ? { APPROVAL_REQUIRED: "1" } : {}),
+				...(input.runBudget !== undefined ? { RUN_BUDGET: String(input.runBudget) } : {}),
+				...(input.lookback !== undefined ? { LOOKBACK: String(input.lookback) } : {}),
 				CREATED_AT: now,
 				UPDATED_AT: now,
 			}));

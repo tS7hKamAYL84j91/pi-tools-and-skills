@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 
-vi.mock("../../lib/file-persistence.js", () => ({
+vi.mock("../../lib/file-persistence.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../lib/file-persistence.js")>()),
 	appendLogLine: vi.fn(async () => {
 		throw new Error("disk full");
 	}),

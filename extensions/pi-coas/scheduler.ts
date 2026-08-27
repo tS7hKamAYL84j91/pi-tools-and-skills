@@ -19,7 +19,7 @@ import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-r
 import { countContinuationReady, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
 import { countContinuationSchedules, cronExpressionError } from "./scheduler-evaluation.js";
 import type { RunOnceMetrics } from "./scheduler-run-once.js";
-import { dispatchScheduledRun } from "./scheduler-dispatch.js";
+import { createRunExecutor } from "./scheduler-dispatch.js";
 import { isoUtc } from "./store-paths.js";
 import { listSchedules } from "./schedules.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
@@ -47,6 +47,7 @@ export class CoasInternalScheduler {
 		droppedScheduleRuns: 0,
 		failedCount: 0,
 		queuedCount: 0,
+		skippedRuns: 0,
 	};
 	private enabledCount = 0;
 	private continuationCount = 0;
@@ -108,6 +109,7 @@ export class CoasInternalScheduler {
 			queued: this.metrics.queuedCount,
 			failed: this.metrics.failedCount,
 			droppedScheduleRuns: this.metrics.droppedScheduleRuns,
+			skippedRuns: this.metrics.skippedRuns,
 			lastQueuedAt: this.metrics.lastQueuedAt,
 			lastFailedAt: this.metrics.lastFailedAt,
 			lastTaskId: this.metrics.lastTaskId,
@@ -193,7 +195,7 @@ export class CoasInternalScheduler {
 		this.config = undefined;
 		this.runQueue.clear();
 		this.activeScheduledRuns.clear();
-		this.metrics = { droppedScheduleRuns: 0, failedCount: 0, queuedCount: 0 };
+		this.metrics = { droppedScheduleRuns: 0, failedCount: 0, queuedCount: 0, skippedRuns: 0 };
 		this.resetCounts();
 		this.startedAt = undefined;
 		if (interruptionError !== undefined) throw interruptionError;
@@ -268,23 +270,18 @@ export class CoasInternalScheduler {
 	}
 
 	private get runExecutor(): RunExecutor {
-		return {
-			execute: (schedule, now) => {
-				if (!this.config) return Promise.resolve();
-				return dispatchScheduledRun({
-					pi: this.pi,
-					config: this.config,
-					metrics: this.metrics,
-					canDispatch: () => this.work.accepting,
-					registerActiveRun: (runId, startedAt, approvalRequestId) => {
-						this.activeScheduledRuns.set(runId, { taskId: schedule.taskId, runId, startedAt, approvalRequestId });
-					},
-					incrementAwaitingApproval: () => {
-						this.awaitingApprovalCount++;
-					},
-				}, schedule, now);
-			},
+		return createRunExecutor({
+			pi: this.pi,
+			metrics: this.metrics,
+			workAccepting: () => this.work.accepting,
 			track: (work) => this.work.track(work),
-		};
+			config: () => this.config,
+			registerActiveRun: (taskId) => (runId, startedAt, approvalRequestId) => {
+				this.activeScheduledRuns.set(runId, { taskId, runId, startedAt, approvalRequestId });
+			},
+			incrementAwaitingApproval: () => {
+				this.awaitingApprovalCount++;
+			},
+		});
 	}
 }

@@ -6,6 +6,8 @@ import { activeIdentity, shouldDeliver } from "./scheduler-delivery.js";
 import { appendScheduleLog } from "./scheduler-log.js";
 import { renderPromptWithMarker } from "./scheduler-prompt.js";
 import { saveRunState } from "./scheduler-run-state.js";
+import { recordRunOutcome, shouldRunForSchedule } from "./scheduler-quota.js";
+import type { ScheduleRunOutcome } from "./scheduler-run-state.js";
 import { isoUtc } from "./store-paths.js";
 import { openApprovalGate, requiresPrincipalApproval } from "./scheduler-approval.js";
 import { newRunId } from "./scheduler-util.js";
@@ -24,6 +26,7 @@ export interface RunOnceMetrics {
 	droppedScheduleRuns: number;
 	failedCount: number;
 	queuedCount: number;
+	skippedRuns: number;
 	lastTaskId?: string;
 	lastFailedAt?: string;
 	lastQueuedAt?: string;
@@ -34,6 +37,7 @@ interface RunOnceResult {
 	queued: boolean;
 	runId?: string;
 	approvalRequestId?: string;
+	reason?: string;
 }
 
 export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetrics): Promise<RunOnceResult> {
@@ -45,8 +49,18 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		metrics.droppedScheduleRuns++;
 		metrics.lastTaskId = schedule.taskId;
 		metrics.lastFailedAt = isoUtc();
+		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: "dropped" });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `DROPPED ${identityLog} reason=${reason}`, metrics);
-		return { queued: false };
+		return { queued: false, reason };
+	}
+
+	const quota = await shouldRunForSchedule({ config, schedule, now });
+	if (!quota.shouldRun) {
+		metrics.skippedRuns++;
+		metrics.lastTaskId = schedule.taskId;
+		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: quota.reason as ScheduleRunOutcome });
+		await appendScheduleLogBestEffort(config, schedule.taskId, `SKIPPED ${identityLog} reason=${quota.reason}`, metrics);
+		return { queued: false, reason: quota.reason };
 	}
 
 	const priorSummary = schedule.continuation ? await import("./scheduler-run-state.js").then((m) => m.readPriorSummary(config, schedule, now)) : undefined;
@@ -55,8 +69,11 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	let approvalRequestId: string | undefined;
 	if (requiresPrincipalApproval(schedule, prompt)) {
 		const gate = await openApprovalGate({ pi, config, schedule, runId, prompt, now });
-		if (gate.parked) return { queued: false, runId, approvalRequestId: gate.approvalRequestId };
-		if (!gate.approved) return { queued: false };
+		if (gate.parked) {
+			await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "awaiting-approval" });
+			return { queued: false, runId, approvalRequestId: gate.approvalRequestId, reason: "awaiting_approval" };
+		}
+		if (!gate.approved) return { queued: false, reason: "approval_denied" };
 		approvalRequestId = gate.approvalRequestId;
 	}
 
@@ -74,7 +91,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	}
 
 	if (!ctx.canDispatch()) {
-		return { queued: false, runId, approvalRequestId };
+		return { queued: false, runId, approvalRequestId, reason: "dispatch_paused" };
 	}
 
 	try {
@@ -95,13 +112,19 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 				lastUpdatedAt: isoUtc(),
 			});
 		}
+		await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "interrupted", summary: `send_failed: ${(error as Error).message}` });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `FAILED internal ${(error as Error).message}`, metrics);
-		return { queued: false, runId, approvalRequestId };
+		return { queued: false, runId, approvalRequestId, reason: "send_failed" };
 	}
 
 	metrics.queuedCount++;
 	metrics.lastQueuedAt = isoUtc();
 	metrics.lastTaskId = schedule.taskId;
+	// History is recorded after the send succeeds. A crash in the window between
+	// send and record leaves the history without this run's `queued` entry: the
+	// budget counter undercounts by one but the run can never double-fire, since
+	// run-queue dedupe (taskId + minuteKey) already holds the claim.
+	await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "queued" });
 	await appendScheduleLogBestEffort(config, schedule.taskId, `QUEUED ${identityLog} host=${hostname()}`, metrics);
 	return { queued: true, runId, approvalRequestId };
 }
