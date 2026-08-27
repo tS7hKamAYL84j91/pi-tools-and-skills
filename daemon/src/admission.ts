@@ -83,6 +83,12 @@ export function verifyCapabilityProof(capabilitySecret: string, nonce: string, p
 /**
  * A2A send attribution: every send is attributed from the admitted binding's
  * capability proof, never from caller-supplied identity fields (ADR section 2).
+ *
+ * Serve-loop contract (T-868): `binding` MUST come from the daemon-owned
+ * live-binding store keyed by the authenticated connection's capability —
+ * never from caller-supplied message fields. Post-restart connections are
+ * unadmitted until re-admitted with a new generation; `identity.liveInstanceId`
+ * is never treated as a live binding.
  */
 export function verifySenderBinding(
 	binding: LiveBinding | undefined,

@@ -27,7 +27,7 @@ describe("durable fs writes (design doc section 3)", () => {
 		const roots = await makeRoots();
 		try {
 			const target = join(roots.stateRoot, "registry", "identities", "a-test.json");
-			const result = await writeDurableFileNoReplace(target, '{"agentId":"a-test"}\n');
+			const result = await writeDurableFileNoReplace(target, '{"agentId":"a-test"}\n', 0o600, roots.stateRoot);
 			expect(result.created).toBe(true);
 			expect(await readFile(target, "utf8")).toContain("a-test");
 
@@ -43,8 +43,8 @@ describe("durable fs writes (design doc section 3)", () => {
 		const roots = await makeRoots();
 		try {
 			const target = join(roots.stateRoot, "queue", "x", "m1.json");
-			await writeDurableFileNoReplace(target, "one\n");
-			await expect(writeDurableFileNoReplace(target, "two\n")).rejects.toThrow(/target exists/);
+			await writeDurableFileNoReplace(target, "one\n", 0o600, roots.stateRoot);
+			await expect(writeDurableFileNoReplace(target, "two\n", 0o600, roots.stateRoot)).rejects.toThrow(/target exists/);
 			expect(await readFile(target, "utf8")).toBe("one\n");
 		} finally {
 			await rm(roots.stateRoot, { recursive: true, force: true });
@@ -57,13 +57,13 @@ describe("durable fs writes (design doc section 3)", () => {
 			const dir = join(roots.stateRoot, "queue", "r");
 			// Simulate an interrupted enqueue: valid tmp, no final.
 			const orphanTmp = join(dir, `m-orphan.json.${process.pid}.00000000-0000-0000-0000-000000000000.tmp`);
-			await writeDurableFileNoReplace(orphanTmp, "payload\n");
+			await writeDurableFileNoReplace(orphanTmp, "payload\n", 0o600, roots.stateRoot);
 			// Simulate a completed publication: tmp + final both present.
 			const doneTmp = join(dir, `m-done.json.${process.pid}.00000000-0000-0000-0000-000000000001.tmp`);
-			await writeDurableFileNoReplace(doneTmp, "payload\n");
-			await writeDurableFileNoReplace(join(dir, "m-done.json"), "payload\n");
+			await writeDurableFileNoReplace(doneTmp, "payload\n", 0o600, roots.stateRoot);
+			await writeDurableFileNoReplace(join(dir, "m-done.json"), "payload\n", 0o600, roots.stateRoot);
 
-			const swept = await sweepStaleTmp(dir);
+			const { swept } = await sweepStaleTmp(dir, roots.stateRoot);
 			expect(swept.length).toBe(2);
 			expect(await readFile(join(dir, "m-orphan.json"), "utf8")).toBe("payload\n");
 			const names = await readdir(dir);
@@ -78,8 +78,8 @@ describe("durable fs writes (design doc section 3)", () => {
 		const roots = await makeRoots();
 		try {
 			const target = join(roots.stateRoot, "registry", "identities", "a-up.json");
-			await writeDurableFileReplace(target, "v1\n");
-			await writeDurableFileReplace(target, "v2\n");
+			await writeDurableFileReplace(target, "v1\n", 0o600, roots.stateRoot);
+			await writeDurableFileReplace(target, "v2\n", 0o600, roots.stateRoot);
 			expect(await readFile(target, "utf8")).toBe("v2\n");
 			const info = await stat(target);
 			expect(info.isFile()).toBe(true);
@@ -124,7 +124,7 @@ describe("single-instance lock (ADR section 7)", () => {
 			await acquireSingleInstanceLock(roots);
 			// Simulate a different holder by rewriting the lock pid.
 			const lockPath = join(roots.runtimeRoot, "daemon.lock");
-			await writeDurableFileReplace(lockPath, `${JSON.stringify({ pid: 999999, startedAt: new Date().toISOString() }, null, 2)}\n`);
+			await writeDurableFileReplace(lockPath, `${JSON.stringify({ pid: 999999, startedAt: new Date().toISOString() }, null, 2)}\n`, 0o600, roots.runtimeRoot);
 			expect(await releaseSingleInstanceLock(roots)).toBe(false);
 		} finally {
 			await releaseSingleInstanceLock(roots);
@@ -158,7 +158,7 @@ describe("identity records (ADR section 2, section 8 signing)", () => {
 			const path = join(roots.stateRoot, "registry", "identities", `${record.agentId}.json`);
 			const tampered = JSON.parse(await readFile(path, "utf8")) as { displayName: string; signature: string };
 			tampered.displayName = "attacker";
-			await writeDurableFileReplace(path, `${JSON.stringify(tampered, null, 2)}\n`);
+			await writeDurableFileReplace(path, `${JSON.stringify(tampered, null, 2)}\n`, 0o600, roots.stateRoot);
 			const verificationKeys = new Map([[keys.keyId, keys.publicKeyPem]]);
 			await expect(loadIdentity(roots, record.agentId, verificationKeys)).rejects.toThrow(/signature invalid/);
 		} finally {

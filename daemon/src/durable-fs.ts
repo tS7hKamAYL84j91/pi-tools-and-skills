@@ -2,11 +2,14 @@
  * Durable-write primitives with the exact fsync ordering specified in
  * planning/T-819-DAEMON-DESIGN.md section 3: temp file -> fsync -> no-replace
  * rename -> parent-directory fsync. Recovery redoes validated renames and
- * sweeps stale tmp files (never truncates, never drops silently).
+ * sweeps stale tmp files (never truncates, never drops silently; unvalidatable
+ * tmps are surfaced for audit). All directory components are validated against
+ * the ADR section 6 checklist (owner/mode/type, symlink rejection) anchored at
+ * the daemon state/runtime roots.
  */
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { link, mkdir, open, readdir, rename, stat, unlink } from "node:fs/promises";
+import { lstat, link, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /** fsync a directory by opening it read-only and syncing the handle (Linux). */
@@ -16,6 +19,36 @@ export async function fsyncDir(dir: string): Promise<void> {
 		await handle.sync();
 	} finally {
 		await handle.close();
+	}
+}
+
+/**
+ * ADR section 6 directory validation, stdlib-faithful openat emulation:
+ * every component from the anchor down is lstat'd — symlinks, non-directories,
+ * wrong-owner, and group/world-accessible directories are rejected
+ * fail-closed. Missing components are created 0700 with a parent dir fsync.
+ */
+export async function ensureValidatedDir(dir: string, anchor: string): Promise<void> {
+	// The anchor itself may not exist yet (fresh state root); create it once.
+	await mkdir(anchor, { recursive: true, mode: 0o700 });
+	const relative = dir.slice(anchor.length).replace(/^\/+/, "");
+	let current = anchor;
+	for (const segment of relative.split("/").filter(Boolean)) {
+		const next = join(current, segment);
+		try {
+			const info = await lstat(next);
+			if (!info.isDirectory()) throw new Error(`refusing non-directory path component: ${next}`);
+			if (info.uid !== process.getuid?.()) throw new Error(`refusing directory owned by another uid: ${next}`);
+			if ((info.mode & 0o077) !== 0) throw new Error(`refusing permissive directory: ${next}`);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				await mkdir(next, { mode: 0o700 });
+				await fsyncDir(current);
+			} else {
+				throw error;
+			}
+		}
+		current = next;
 	}
 }
 
@@ -38,15 +71,16 @@ async function linkNoReplace(tmpPath: string, finalPath: string): Promise<void> 
 
 /**
  * Atomically publish a durable file: temp -> fsync(file) -> no-replace
- * publish -> fsync(dir). Returns created=false when the target already
- * exists (the caller decides whether that is an error or a no-op).
+ * publish -> fsync(dir). Directory components are validated against ADR
+ * section 6 (owner/mode/type, symlink rejection) before use.
  */
 export async function writeDurableFileNoReplace(
 	finalPath: string,
 	content: string,
 	mode: number = 0o600,
+	anchor: string,
 ): Promise<{ created: boolean }> {
-	await mkdir(dirname(finalPath), { recursive: true, mode: 0o700 });
+	await ensureValidatedDir(dirname(finalPath), anchor);
 	const tmpPath = `${finalPath}.${process.pid}.${randomUUID()}.tmp`;
 	const handle = await open(tmpPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, mode);
 	try {
@@ -67,8 +101,8 @@ export async function writeDurableFileNoReplace(
 }
 
 /** Overwrite-in-place variant (identity updates) with the same durability order. */
-export async function writeDurableFileReplace(finalPath: string, content: string, mode: number = 0o600): Promise<void> {
-	await mkdir(dirname(finalPath), { recursive: true, mode: 0o700 });
+export async function writeDurableFileReplace(finalPath: string, content: string, mode: number = 0o600, anchor: string): Promise<void> {
+	await ensureValidatedDir(dirname(finalPath), anchor);
 	const tmpPath = `${finalPath}.${process.pid}.${randomUUID()}.tmp`;
 	const handle = await open(tmpPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW, mode);
 	try {
@@ -83,12 +117,18 @@ export async function writeDurableFileReplace(finalPath: string, content: string
 
 /**
  * Recovery: redo interrupted tmp->final renames we can validate (target
- * absent, tmp intact), remove the ones we cannot, and fsync the directory.
- * Idempotent; the caller emits audit events from the returned list.
+ * absent, tmp a regular file), remove the ones we cannot, and fsync the
+ * directory. Unvalidatable tmp files are rejected (returned, never silently
+ * ignored) so the caller can audit them. Idempotent by source path.
  */
-export async function sweepStaleTmp(dir: string): Promise<string[]> {
+export async function sweepStaleTmp(
+	dir: string,
+	anchor: string,
+): Promise<{ swept: string[]; rejected: string[] }> {
 	const swept: string[] = [];
-	if (!await exists(dir)) return swept;
+	const rejected: string[] = [];
+	if (!await exists(dir)) return { swept, rejected };
+	await ensureValidatedDir(dir, anchor);
 	const tmpPattern = /^(?<final>.+)\.\d+\.[0-9a-fA-F-]{36}\.tmp$/;
 	for (const entry of await readdir(dir)) {
 		const match = tmpPattern.exec(entry);
@@ -96,12 +136,16 @@ export async function sweepStaleTmp(dir: string): Promise<string[]> {
 		const tmpPath = join(dir, entry);
 		const finalPath = join(dir, match.groups.final);
 		try {
-			const info = await stat(tmpPath);
-			if (!info.isFile()) continue;
+			// lstat (never follows symlinks): a non-regular tmp is rejected + audited.
+			const info = await lstat(tmpPath);
+			if (!info.isFile()) {
+				rejected.push(tmpPath);
+				continue;
+			}
 			let targetExists = false;
 			try {
-				await stat(finalPath);
-				targetExists = true;
+				const targetInfo = await lstat(finalPath);
+				targetExists = targetInfo.isFile();
 			} catch {
 				targetExists = false;
 			}
@@ -114,16 +158,17 @@ export async function sweepStaleTmp(dir: string): Promise<string[]> {
 			}
 			swept.push(tmpPath);
 		} catch {
-			// Unreadable/unlinkable tmp: leave it; the scanner ignores tmp files.
+			// Unvalidatable tmp: leave in place; the caller audits it.
+			rejected.push(tmpPath);
 		}
 	}
 	if (swept.length > 0) await fsyncDir(dir);
-	return swept;
+	return { swept, rejected };
 }
 
 async function exists(path: string): Promise<boolean> {
 	try {
-		await stat(path);
+		await lstat(path);
 		return true;
 	} catch {
 		return false;

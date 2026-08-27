@@ -2,13 +2,16 @@
  * Daemon integrity key management (design doc section 9, ADR Guardrails).
  *
  * Private Ed25519 integrity key lives in the OS keyring via secret-tool when
+ * available: the key is generated and stored to the keyring on first start,
+ * and an existing fallback file is migrated into the keyring when it becomes
  * available. The 0600-file fallback is a recorded temporary deviation valid
- * ONLY while the same_uid_untrusted posture holds; it emits an audit event and
- * is forbidden once authenticated mode ships.
+ * ONLY when the keyring is genuinely unavailable while the same_uid_untrusted
+ * posture holds; it emits an audit event and is forbidden once authenticated
+ * mode ships.
  */
 import { spawn } from "node:child_process";
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { publicKeysDir } from "./paths.js";
 import { writeDurableFileNoReplace, writeDurableFileReplace } from "./durable-fs.js";
@@ -26,7 +29,7 @@ export interface DaemonKeys {
 
 export type AuditSink = (event: Record<string, unknown>) => Promise<void>;
 
-function runSecretTool(args: string[]): Promise<string | undefined> {
+function runSecretTool(args: string[], input?: string): Promise<string | undefined> {
 	return new Promise((resolve) => {
 		const child = spawn("secret-tool", args, { stdio: ["pipe", "pipe", "pipe"] });
 		let out = "";
@@ -37,7 +40,8 @@ function runSecretTool(args: string[]): Promise<string | undefined> {
 		child.on("close", (code) => {
 			resolve(code === 0 ? out : undefined);
 		});
-		child.stdin.end();
+		if (input !== undefined) child.stdin.end(input);
+		else child.stdin.end();
 	});
 }
 
@@ -51,11 +55,16 @@ export function publicKeysPath(roots: DaemonRoots, keyId: string): string {
 	return join(publicKeysDir(roots), `${keyId}.pub`);
 }
 
+async function storeToKeyring(keyId: string, privateKeyPem: string): Promise<boolean> {
+	const out = await runSecretTool(["store", "schema", KEYRING_SCHEMA, "id", keyId], privateKeyPem);
+	return out !== undefined;
+}
+
 /**
- * Load or create the daemon integrity key. Emits audit events for the
- * fallback. The keyId is stable for this daemon state root; rotation retains
- * prior verification keys (public halves are never removed while signed
- * queued messages remain live).
+ * Load or create the daemon integrity key. Preference order: existing keyring
+ * entry -> generate + keyring store -> fallback 0600 file (recorded
+ * deviation, audit event). A pre-existing fallback key is migrated into the
+ * keyring when the keyring becomes available.
  */
 export async function loadOrCreateIntegrityKey(roots: DaemonRoots, audit: AuditSink): Promise<DaemonKeys> {
 	const keyId = "coas-daemon-integrity-1";
@@ -66,9 +75,6 @@ export async function loadOrCreateIntegrityKey(roots: DaemonRoots, audit: AuditS
 		return { keyId, privateKeyPem: fromKeyring, publicKeyPem, fallbackFileUsed: false };
 	}
 
-	// Fallback: 0600 file under the state root. Recorded deviation (section 9):
-	// valid only in same_uid_untrusted; audit event required; forbidden once
-	// authenticated mode ships.
 	let pem: string | undefined;
 	try {
 		const raw = await readFile(fallbackKeyPath(roots), "utf8");
@@ -79,8 +85,20 @@ export async function loadOrCreateIntegrityKey(roots: DaemonRoots, audit: AuditS
 	if (!pem) {
 		const pair = generateKeyPairSync("ed25519");
 		pem = pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
-		await writeDurableFileReplace(fallbackKeyPath(roots), pem);
 	}
+
+	const stored = await storeToKeyring(keyId, pem);
+	if (stored) {
+		// Keyring holds the key: the fallback file (if any) must not linger.
+		await unlink(fallbackKeyPath(roots)).catch(() => {});
+		const publicKeyPem = await loadOrPublishPublicKey(roots, keyId, pem, audit);
+		return { keyId, privateKeyPem: pem, publicKeyPem, fallbackFileUsed: false };
+	}
+
+	// Fallback: 0600 file under the state root. Recorded deviation (section 9):
+	// valid only in same_uid_untrusted with a genuinely unavailable keyring;
+	// audit event required; forbidden once authenticated mode ships.
+	await writeDurableFileReplace(fallbackKeyPath(roots), pem, 0o600, roots.stateRoot);
 	await audit({
 		kind: "key_fallback_file",
 		posture: POSTURE,
@@ -96,7 +114,7 @@ async function loadOrPublishPublicKey(roots: DaemonRoots, keyId: string, private
 		return await readFile(pubPath, "utf8");
 	} catch {
 		const publicKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "pem" }).toString();
-		await writeDurableFileNoReplace(pubPath, publicKey);
+		await writeDurableFileNoReplace(pubPath, publicKey, 0o600, roots.stateRoot);
 		await audit({ kind: "public_key_published", keyId });
 		return publicKey;
 	}

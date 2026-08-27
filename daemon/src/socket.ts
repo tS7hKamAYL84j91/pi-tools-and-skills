@@ -80,8 +80,13 @@ export async function publishDaemonSocket(
 		server.listen(stagingPath, () => resolve());
 	});
 	// Mode before publication: the chmod lands on the staging inode; the
-	// rename that publishes it does not change the mode.
+	// rename that publishes it does not change the mode. Revalidate the
+	// final path immediately before rename (small TOCTOU, ADR section 6).
 	await chmod(stagingPath, 0o600);
+	const revalidation = await validateExistingSocketPath(finalPath);
+	if (revalidation.stale || await probeSocketLive(finalPath)) {
+		throw new Error(`refusing socket publication: path state changed: ${finalPath}`);
+	}
 	await rename(stagingPath, finalPath);
 	return { path: finalPath, server };
 }

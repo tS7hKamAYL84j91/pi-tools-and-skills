@@ -7,12 +7,12 @@
  * generation-N envelope is enqueued or the binding is published.
  */
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeDurableFileNoReplace, writeDurableFileReplace } from "./durable-fs.js";
 import { identitiesDir } from "./paths.js";
-import type { DaemonRoots } from "./paths.js";
+import { assertSafeId, type DaemonRoots } from "./paths.js";
 import { signBytes, verifyBytes } from "./keys.js";
+import { readRecordStrict } from "./record.js";
 
 export interface IdentityRecord {
 	readonly agentId: string;
@@ -58,6 +58,9 @@ export function mintInstanceId(): string {
 }
 
 function identityPath(roots: DaemonRoots, agentId: string): string {
+	// Path components are validated opaque ids (ADR section 6): daemon-minted
+	// ids pass; any user-derived name is rejected here.
+	assertSafeId("agent id", agentId);
 	return join(identitiesDir(roots), `${agentId}.json`);
 }
 
@@ -78,7 +81,7 @@ export async function createIdentity(
 	};
 	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
 	const record: IdentityRecord = { ...unsigned, signature };
-	await writeDurableFileNoReplace(identityPath(roots, record.agentId), `${JSON.stringify(record, null, 2)}\n`);
+	await writeDurableFileNoReplace(identityPath(roots, record.agentId), `${JSON.stringify(record, null, 2)}\n`, 0o600, roots.stateRoot);
 	return record;
 }
 
@@ -88,13 +91,27 @@ export async function loadIdentity(
 	agentId: string,
 	verificationKeys: ReadonlyMap<string, string>,
 ): Promise<IdentityRecord | undefined> {
-	let raw: string;
-	try {
-		raw = await readFile(identityPath(roots, agentId), "utf8");
-	} catch {
-		return undefined;
-	}
-	const parsed = JSON.parse(raw) as IdentityRecord;
+	const parsed = await readRecordStrict(
+		roots,
+		identityPath(roots, agentId),
+		(value: unknown): IdentityRecord | undefined => {
+			if (typeof value !== "object" || value === null) return undefined;
+			const record = value as Record<string, unknown>;
+			if (
+				typeof record.agentId !== "string" ||
+				typeof record.displayName !== "string" ||
+				typeof record.generation !== "number" ||
+				typeof record.signature !== "string" ||
+				typeof record.keyId !== "string" ||
+				typeof record.createdAt !== "string" ||
+				typeof record.updatedAt !== "string"
+			) {
+				return undefined;
+			}
+			return value as unknown as IdentityRecord;
+		},
+	);
+	if (!parsed) return undefined;
 	const verificationKey = verificationKeys.get(parsed.keyId);
 	if (!verificationKey) throw new Error(`unknown identity key: ${parsed.keyId}`);
 	const { signature, ...unsigned } = parsed;
@@ -122,7 +139,7 @@ export async function admitNewInstance(
 	};
 	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
 	const record: IdentityRecord = { ...unsigned, signature };
-	await writeDurableFileReplace(identityPath(roots, existing.agentId), `${JSON.stringify(record, null, 2)}\n`);
+	await writeDurableFileReplace(identityPath(roots, existing.agentId), `${JSON.stringify(record, null, 2)}\n`, 0o600, roots.stateRoot);
 	return { record, instanceId };
 }
 

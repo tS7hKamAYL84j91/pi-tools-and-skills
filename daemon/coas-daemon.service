@@ -12,9 +12,8 @@ Type=simple
 # for the workspace and alerts the Principal/Lumen channel (ADR rollback).
 Restart=no
 WorkingDirectory=%h/git/pi-tools-and-skills
-# Built via: npx tsc -p daemon/tsconfig.emit.json && node daemon/dist/main.mjs
-# (emit config kept out of the typecheck-only root tsconfig).
-ExecStart=/usr/bin/node %h/git/pi-tools-and-skills/daemon/dist/main.mjs
+# Built via: npm --prefix daemon run build (tsc -p daemon/tsconfig.emit.json).
+ExecStart=/usr/bin/node %h/git/pi-tools-and-skills/daemon/dist/main.js
 PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectSystem=strict

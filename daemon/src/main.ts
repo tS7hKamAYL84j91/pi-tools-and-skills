@@ -32,6 +32,12 @@ export interface DaemonBootstrap {
 export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBootstrap> {
 	const lock = await acquireSingleInstanceLock(roots);
 	if (!lock.acquired) {
+		// ADR section 7: the refused second instance is fail-closed AND audited.
+		await appendAudit(roots, {
+			kind: "daemon_start_rejected",
+			reason: lock.corrupt ? "lock_state_corrupt" : "live_holder",
+			...(lock.liveHolderPid !== undefined ? { holderPid: lock.liveHolderPid } : {}),
+		}, { durable: true }).catch(() => {});
 		throw new Error(`coas-daemon: another live daemon holds the single-instance lock (pid ${lock.liveHolderPid})`);
 	}
 	try {
