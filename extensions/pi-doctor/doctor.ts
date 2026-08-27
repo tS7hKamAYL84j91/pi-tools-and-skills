@@ -2,7 +2,9 @@
  * Read-only pi-tools extension diagnostics.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { join, relative } from "node:path";
+import { advisoriesForDependencies, isKnownAdvisoryId } from "./advisories.js";
 
 type DoctorSeverity = "ok" | "warning" | "error";
 
@@ -64,6 +66,48 @@ function packageJson(path: string): PackageJson {
 
 function finding(severity: DoctorSeverity, check: string, message: string, path?: string): DoctorFinding {
 	return { severity, check, message, ...(path ? { path } : {}) };
+}
+
+const ACK_FILE = join(".pi", "doctor-advisory-acks.json");
+
+export async function readDismissedAdvisories(cwd: string): Promise<Set<string>> {
+	if (!existsSync(ackPath(cwd))) return new Set();
+	try {
+		const parsed: unknown = readJson(ackPath(cwd));
+		if (!Array.isArray(parsed)) return new Set();
+		return new Set(parsed.filter((id): id is string => typeof id === "string" && isKnownAdvisoryId(id)));
+	} catch {
+		return new Set();
+	}
+}
+
+function ackPath(cwd: string): string {
+	return join(cwd, ACK_FILE);
+}
+
+/** Records an advisory dismissal. Unknown ids are rejected so typos never mask future advisories. */
+export async function dismissAdvisory(cwd: string, id: string): Promise<void> {
+	if (!isKnownAdvisoryId(id)) throw new Error(`Unknown advisory id: ${id}`);
+	const dismissed = await readDismissedAdvisories(cwd);
+	dismissed.add(id);
+	await writeFileAtomic(ackPath(cwd), `${JSON.stringify([...dismissed], null, 2)}\n`);
+}
+
+function checkSupplyChainAdvisories(cwd: string, dismissed: ReadonlySet<string>): DoctorFinding[] {
+	const findings: DoctorFinding[] = [];
+	for (const manifestPath of [join(cwd, "package.json"), ...EXTENSIONS.map((name) => join(cwd, "extensions", name, "package.json"))]) {
+		if (!existsSync(manifestPath)) continue;
+		try {
+			const pkg = readJson(manifestPath) as { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> };
+			const dependencies = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+			for (const advisory of advisoriesForDependencies(dependencies, dismissed)) {
+				findings.push(finding("warning", "supply-chain", `Advisory ${advisory.id}: ${advisory.packageName} matches a known-compromised release. ${advisory.summary} Advisory only: no changes were made.`, relative(cwd, manifestPath)));
+			}
+		} catch {
+			// Manifest readability is already reported by the package checks.
+		}
+	}
+	return findings;
 }
 
 function checkExtensionPackage(cwd: string, name: string): DoctorFinding[] {
@@ -131,11 +175,12 @@ function collectNamespaceFindings(cwd: string): DoctorFinding[] {
 	return findings.length > 0 ? findings : [finding("ok", "namespace", `No duplicate or reserved slash commands found across ${seenCommands.size} commands; no duplicate tool names found across ${seenTools.size} tools.`)];
 }
 
-export async function runDoctor(cwd: string): Promise<DoctorReport> {
+export async function runDoctor(cwd: string, dismissed: ReadonlySet<string> = new Set()): Promise<DoctorReport> {
 	const findings = [
 		...checkRootPackage(cwd),
 		...EXTENSIONS.flatMap((name) => checkExtensionPackage(cwd, name)),
 		...collectNamespaceFindings(cwd),
+		...checkSupplyChainAdvisories(cwd, dismissed),
 	];
 	const summary = {
 		ok: findings.filter((item) => item.severity === "ok").length,
