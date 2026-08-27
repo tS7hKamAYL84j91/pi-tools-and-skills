@@ -1,6 +1,6 @@
 # T-819 Design Doc: coas-daemon Implementation Mechanics
 
-- **Status:** Revised draft rev 2 — pending one-line re-checks (security seat, formal seat). Rev 1 @ `0741e4b` reviewed REVISE by both seats (`working-notes/docs/reviews/t-866-design-review-{security,formal}.md` @ `d5d1db2`); all findings incorporated below. T-867 starts only after both seats' one-line re-checks PASS.
+- **Status:** Reviewed — rev 2 @ `a6cd343` PASSED one-line re-checks by both seats (security seat: F1–F5 ✔; formal seat: F1–F3 majors resolved, no new counterexample; disposition via chief-of-staff 2026-08-27). Rev 1 @ `0741e4b` reviewed REVISE by both seats (`working-notes/docs/reviews/t-866-design-review-{security,formal}.md` @ `d5d1db2`); all findings incorporated. **T-867+ unblocked.**
 - **Owner:** pi-tools-and-skills-gm (implementation lead)
 - **Binding requirements:** ADR-0018 sections 1–8 (`working-notes/docs/adrs/0018-daemon-backed-sessions.md` @ `c9f738e`) — this doc **references, never restates** them. Any conflict with the ADR is resolved in favour of the ADR and is a material change requiring council re-review (validation gate (e)).
 - **Implements:** ADR-0018 Implementation path items 1–6, using the mechanics the scope seat deferred to this doc.
