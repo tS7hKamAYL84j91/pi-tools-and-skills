@@ -9,13 +9,16 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import { appendAudit } from "./audit.js";
-import { advanceDelivery, grantLease, scanNonTerminal, type DeliveryOutcome, type QueueRecord } from "./queue.js";
+import { advanceDelivery, backoffRemainingMs, expireExpiredRecords, expireLeases, grantLease, scanNonTerminal, type DeliveryOutcome, type QueueRecord } from "./queue.js";
 import { capabilityProof } from "./admission.js";
 import type { DaemonRoots } from "./paths.js";
 import type { AuditSink } from "./keys.js";
 
 export const DELIVERY_TIMEOUT_MS = 5_000;
 export const PER_TICK_BUDGET = 32;
+
+/** Serve-level outcome: DeliveryOutcome plus the parked case. */
+export type ServeOutcome = DeliveryOutcome | "parked";
 
 export interface LiveBindingConnection {
 	readonly agentId: string;
@@ -84,10 +87,22 @@ export class DeliveryServeLoop {
 	 * recipient cannot starve others.
 	 */
 	async tick(now: Date): Promise<TickResult> {
+		// Runtime expiry sweep first: any non-terminal record past expires_at
+		// dead-letters (review B2 — the rollback window closes without restart).
+		await expireExpiredRecords(this.roots, now);
+		// Lease TTL expiry: leased records whose lease lapsed return to queued.
+		await expireLeases(this.roots, now);
+
 		const records = await scanNonTerminal(this.roots);
-		const eligible = records
-			.filter((record) => record.delivery.state === "queued")
-			.filter((record) => Date.parse(record.signed.envelope.expires_at) > now.getTime());
+		const eligible = records.filter((record) => {
+			if (record.delivery.state === "queued") return this.backoffElapsed(record, now);
+			// Parked records with a live binding requeue immediately (review B1):
+			// the parked->queued edge of the transition table.
+			if (record.delivery.state === "parked" && this.bindings.has(record.signed.envelope.recipient_agent_id)) {
+				return true;
+			}
+			return false;
+		});
 
 		const byRecipient = new Map<string, QueueRecord>();
 		for (const record of eligible) {
@@ -115,7 +130,12 @@ export class DeliveryServeLoop {
 		return { attempted, parked, delivered, failed };
 	}
 
-	private async deliverOne(record: QueueRecord, now: Date): Promise<DeliveryOutcome | "parked"> {
+	/** Retry backoff (design doc section 5: 1s..16s after live-binding failures). */
+	private backoffElapsed(record: QueueRecord, now: Date): boolean {
+		return backoffRemainingMs(record, now) === 0;
+	}
+
+	private async deliverOne(record: QueueRecord, now: Date): Promise<ServeOutcome> {
 		const recipient = record.signed.envelope.recipient_agent_id;
 		const messageId = record.signed.envelope.message_id;
 		const binding = this.bindings.get(recipient);
@@ -126,8 +146,21 @@ export class DeliveryServeLoop {
 			return "parked";
 		}
 
+		// Generation policy enforcement (review B3): an exact-generation
+		// envelope cannot cross a replacement boundary (ADR section 5);
+		// stable_mailbox delivers to any later authenticated generation.
+		const generation = binding.generation;
+		const policy = record.signed.envelope.recipient_generation_policy;
+		const required = record.signed.envelope.recipient_generation;
+		if (policy === "exact" && required !== null && generation !== required) {
+			const advanced = await advanceDelivery(this.roots, recipient, messageId, "generation_mismatch", now);
+			if (advanced.state === "dead_letter") this.counters.deadLettered++;
+			await this.audit({ kind: "generation_mismatch", messageId, recipient, required, actual: generation });
+			return "live_failed";
+		}
+
 		const lease = await grantLease(this.roots, recipient, messageId, now);
-		if (!lease.leased || !lease.record) return "live_failed";
+		if (!lease.leased || !lease.record || lease.nonce === undefined) return "live_failed";
 
 		const send = binding.send(record.signed.envelope.payload).then(
 			(result): DeliveryOutcome => (result === "ack" ? "delivered" : "live_failed"),
@@ -138,11 +171,11 @@ export class DeliveryServeLoop {
 		});
 		const outcome = await Promise.race([send, timeout]);
 
-		const advanced = await advanceDelivery(this.roots, recipient, messageId, outcome, now);
+		const advanced = await advanceDelivery(this.roots, recipient, messageId, outcome, now, lease.nonce);
 		if (outcome === "delivered") this.counters.delivered++;
 		else this.counters.liveFailed++;
 		if (advanced.state === "dead_letter") this.counters.deadLettered++;
-		await this.audit({ kind: "delivery_attempt", messageId, recipient, outcome });
+		await this.audit({ kind: "delivery_attempt", messageId, recipient, outcome, posture: "same_uid_untrusted" });
 		return outcome;
 	}
 
@@ -165,7 +198,7 @@ export class DeliveryServeLoop {
 		if (advanced.state !== "delivered") {
 			return { accepted: false, reason: `ack not accepted in state ${advanced.state ?? "unknown"}` };
 		}
-		await appendAudit(this.roots, { kind: "delivery_ack", messageId: input.messageId, recipient: input.recipientAgentId });
+		await appendAudit(this.roots, { kind: "delivery_ack", messageId: input.messageId, recipient: input.recipientAgentId, posture: "same_uid_untrusted" });
 		return { accepted: true };
 	}
 }

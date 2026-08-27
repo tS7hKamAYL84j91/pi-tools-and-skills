@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildEnvelope, signEnvelope } from "../../daemon/src/envelope.js";
 import { enqueue } from "../../daemon/src/queue.js";
+import type { SignedEnvelope } from "../../daemon/src/envelope.js";
 import { DeliveryServeLoop, type LiveBindingConnection } from "../../daemon/src/serve.js";
 import { loadOrCreateIntegrityKey, savePolicyFileForTest } from "./helpers.js";
 
@@ -19,8 +20,10 @@ async function makeContext() {
 	const keys = await loadOrCreateIntegrityKey(roots, async () => {});
 	await savePolicyFileForTest(roots, keys, [{ senderAgentId: "a-sender", recipientAgentId: "a-worker", payloadTypes: ["notice"] }]);
 	const sender = { agentId: "a-sender", instanceId: "i-s1", generation: 1 };
+	const verificationKeys = new Map([[keys.keyId, keys.publicKeyPem]]);
+	const enqueueWithKeys = (input: { signed: SignedEnvelope }) => enqueue(roots, { ...input, policyDecision: { allowed: true } as const, verificationKeys });
 	const serve = new DeliveryServeLoop(roots, async () => {}, { deliveryTimeoutMs: 250 });
-	return { roots, keys, sender, recipient: "a-worker", serve, cleanup: async () => {
+	return { roots, keys, sender, recipient: "a-worker", serve, enqueueWithKeys, cleanup: async () => {
 		await rm(roots.runtimeRoot, { recursive: true, force: true });
 		await rm(roots.stateRoot, { recursive: true, force: true });
 	} };
@@ -44,7 +47,7 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 					payload: "hello",
 				}),
 			);
-			await enqueue(ctx.roots, { signed, policyDecision: { allowed: true } });
+			await ctx.enqueueWithKeys({ signed });
 
 			// Live binding registered with the capability the daemon issued at admission.
 			ctx.serve.bind({
@@ -75,22 +78,19 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 		const ctx = await makeContext();
 		try {
 			const recipientAgentId = ctx.recipient;
-			await enqueue(ctx.roots, {
-				signed: signEnvelope(
-					ctx.keys.privateKeyPem,
-					buildEnvelope(ctx.keys, {
-						idempotencyKey: "k-off",
-						expiresAt: new Date(Date.now() + 3600_000),
-						sender: ctx.sender,
-						recipientAgentId,
-						recipientGenerationPolicy: "stable_mailbox",
-						recipientGeneration: null,
-						payloadType: "notice",
-						payload: "later",
-					}),
-				),
-				policyDecision: { allowed: true },
-			});
+			await ctx.enqueueWithKeys({ signed: signEnvelope(
+				ctx.keys.privateKeyPem,
+				buildEnvelope(ctx.keys, {
+					idempotencyKey: "k-off",
+					expiresAt: new Date(Date.now() + 3600_000),
+					sender: ctx.sender,
+					recipientAgentId,
+					recipientGenerationPolicy: "stable_mailbox",
+					recipientGeneration: null,
+					payloadType: "notice",
+					payload: "later",
+				}),
+			) });
 
 			const result = await ctx.serve.tick(new Date());
 			expect(result.parked).toBe(1);
@@ -110,8 +110,7 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 				{ senderAgentId: ctx.sender.agentId, recipientAgentId: "a-healthy" },
 			]);
 			for (const recipient of ["a-worker", "a-healthy"]) {
-				await enqueue(ctx.roots, {
-					signed: signEnvelope(
+				await ctx.enqueueWithKeys({ signed: signEnvelope(
 						ctx.keys.privateKeyPem,
 						buildEnvelope(ctx.keys, {
 							idempotencyKey: `k-${recipient}`,
@@ -124,7 +123,6 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 							payload: "payload",
 						}),
 					),
-					policyDecision: { allowed: true },
 				});
 			}
 

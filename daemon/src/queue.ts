@@ -11,6 +11,7 @@
  * non-terminal records idempotently.
  */
 import { readFile, readdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { deadLetterDir, queueDir, assertSafeId, type DaemonRoots } from "./paths.js";
 import { writeDurableFileNoReplace, writeDurableFileReplace, sweepStaleTmp } from "./durable-fs.js";
@@ -25,6 +26,7 @@ export type DeadLetterReason =
 	| "attempts_exhausted"
 	| "expired"
 	| "integrity_failed"
+	| "generation_mismatch"
 	| "oversized"
 	| "queue_full"
 	| "daemon_disabled";
@@ -89,7 +91,10 @@ export interface EnqueueResult {
 
 export interface EnqueueInput {
 	readonly signed: SignedEnvelope;
+	/** Daemon-evaluated decision from policy.ts (never caller-supplied). */
 	readonly policyDecision: { readonly allowed: true } | { readonly allowed: false; readonly reason: string };
+	/** Verification keys for the defense-in-depth signature re-check. */
+	readonly verificationKeys: ReadonlyMap<string, string>;
 }
 
 /**
@@ -99,6 +104,13 @@ export interface EnqueueInput {
  */
 export async function enqueue(roots: DaemonRoots, input: EnqueueInput): Promise<EnqueueResult> {
 	const envelope = input.signed.envelope;
+	// Defense-in-depth: re-verify the envelope signature and payload integrity
+	// at enqueue (ADR section 3 reader order applies to the daemon too).
+	const verification = verifyEnvelope(input.signed, input.verificationKeys);
+	if (!verification.ok) {
+		await appendAudit(roots, { kind: "enqueue_rejected", reason: `integrity: ${verification.reason}` }, { durable: true });
+		return { enqueued: false, rejectedReason: verification.reason };
+	}
 	if (!input.policyDecision.allowed) {
 		await appendAudit(roots, {
 			kind: "enqueue_rejected",
@@ -149,6 +161,9 @@ export async function findPriorOutcome(roots: DaemonRoots, recipientAgentId: str
 			try {
 				const raw = await readFile(join(dir, entry), "utf8");
 				const record = JSON.parse(raw) as QueueRecord;
+				// Dedupe keys on (recipient_agent_id, idempotency_key) — the
+				// global dead-letter dir must be filtered by recipient (ADR section 3).
+				if (dir !== recipientDir && record.signed.envelope.recipient_agent_id !== recipientAgentId) continue;
 				if (record.signed.envelope.idempotency_key === idempotencyKey) {
 					return { messageId: record.signed.envelope.message_id, state: record.delivery.state };
 				}
@@ -182,8 +197,18 @@ async function countNonTerminal(roots: DaemonRoots, recipientAgentId: string): P
 	return count;
 }
 
+/** Remaining backoff for a record after a live-binding failure (design doc section 5: 1s..16s). */
+export function backoffRemainingMs(record: QueueRecord, now: Date): number {
+	if (record.delivery.attempts === 0 || record.delivery.lastAttemptAt === undefined) return 0;
+	const backoff = BACKOFF_MS[Math.min(record.delivery.attempts - 1, BACKOFF_MS.length - 1)] ?? 16_000;
+	const eligibleAt = Date.parse(record.delivery.lastAttemptAt) + backoff;
+	return Math.max(0, eligibleAt - now.getTime());
+}
+
+const BACKOFF_MS = [1000, 2000, 4000, 8000, 16_000];
+
 /** Delivery attempt outcome supplied by the serve loop (T-868 serve seam). */
-export type DeliveryOutcome = "delivered" | "live_failed" | "no_binding";
+export type DeliveryOutcome = "delivered" | "live_failed" | "no_binding" | "generation_mismatch" | "requeue";
 
 export interface DeliveryLease {
 	readonly recipientAgentId: string;
@@ -213,6 +238,8 @@ export async function advanceDelivery(
 	messageId: string,
 	outcome: DeliveryOutcome,
 	now: Date,
+	/** Required for the delivered outcome: the lease nonce granted by grantLease. */
+	leaseNonce?: string,
 ): Promise<{ record?: QueueRecord; state?: QueueState; audit?: Record<string, unknown> }> {
 	const record = await loadQueueRecord(roots, recipientAgentId, messageId);
 	if (!record) return {};
@@ -244,6 +271,24 @@ export async function advanceDelivery(
 		return { record: next, state: "parked" };
 	}
 
+	if (outcome === "generation_mismatch") {
+		// Exact-generation policy cannot cross a replacement boundary (ADR section 5).
+		const next = await persistTransition(roots, record, {
+			state: "dead_letter",
+			attempts: record.delivery.attempts,
+			enqueuedAt: record.delivery.enqueuedAt,
+			deadLetterReason: "generation_mismatch",
+		});
+		inFlightLeases.delete(key);
+		return { record: next, state: "dead_letter", audit: { kind: "dead_letter", reason: "generation_mismatch", messageId } };
+	}
+
+	if (outcome === "requeue") {
+		// parked -> queued when a live binding appears (review B1).
+		const next = await persistTransition(roots, record, { ...record.delivery, state: "queued" });
+		return { record: next, state: "queued" };
+	}
+
 	if (outcome === "live_failed") {
 		const attempts = record.delivery.attempts + 1;
 		if (attempts >= MAX_ATTEMPTS) {
@@ -266,10 +311,12 @@ export async function advanceDelivery(
 		return { record: next, state: "queued" };
 	}
 
-	// outcome === "delivered": accept only from the binding this lease was granted to.
+	// outcome === "delivered": accept only from the binding this lease was
+	// granted to — nonce must match and the lease must not have expired
+	// (design doc section 5 stale_ack edge, review B5).
 	const lease = inFlightLeases.get(key);
-	if (lease === undefined) {
-		// Ack without a known lease: stale/expired holder — no-op + audit.
+	if (lease === undefined || (leaseNonce !== undefined && lease.nonce !== leaseNonce) || lease.expiresAtMs <= now.getTime()) {
+		// Stale/expired holder — no-op + audit.
 		return { record, state: record.delivery.state, audit: { kind: "stale_ack", messageId } };
 	}
 	const next = await persistTransition(roots, record, {
@@ -288,15 +335,22 @@ async function persistTransition(roots: DaemonRoots, record: QueueRecord, delive
 }
 
 /** Grant a delivery lease (CAS): queued/parked -> leased with a TTL. */
-export async function grantLease(roots: DaemonRoots, recipientAgentId: string, messageId: string, now: Date): Promise<{ leased: boolean; record?: QueueRecord }> {
+export async function grantLease(roots: DaemonRoots, recipientAgentId: string, messageId: string, now: Date): Promise<{ leased: boolean; nonce?: string; record?: QueueRecord }> {
 	const record = await loadQueueRecord(roots, recipientAgentId, messageId);
 	if (!record) return { leased: false };
 	if (isTerminal(record.delivery.state)) return { leased: false, record };
+	if (record.delivery.state === "leased") {
+		// Compare-and-set discipline: a live lease is never blind-replaced.
+		const leaseExpiresAt = record.delivery.leaseExpiresAt ? Date.parse(record.delivery.leaseExpiresAt) : Number.NaN;
+		if (!Number.isNaN(leaseExpiresAt) && leaseExpiresAt > now.getTime()) {
+			return { leased: false, record };
+		}
+	}
 	if (isExpired(record, now)) {
 		const expired = await expireRecord(roots, record);
 		return { leased: false, record: expired };
 	}
-	const nonce = `${messageId}:${now.getTime()}`;
+	const nonce = randomNonce();
 	inFlightLeases.set(leaseKey(recipientAgentId, messageId), { nonce, expiresAtMs: now.getTime() + LEASE_TTL_MS });
 	const next = await persistTransition(roots, record, {
 		state: "leased",
@@ -304,7 +358,26 @@ export async function grantLease(roots: DaemonRoots, recipientAgentId: string, m
 		enqueuedAt: record.delivery.enqueuedAt,
 		leaseExpiresAt: new Date(now.getTime() + LEASE_TTL_MS).toISOString(),
 	});
-	return { leased: true, record: next };
+	return { leased: true, nonce, record: next };
+}
+
+function randomNonce(): string {
+	return randomUUID();
+}
+
+/**
+ * Runtime expiry sweep: any non-terminal record past expires_at dead-letters
+ * (design doc section 5 row "any non-terminal | expires_at passed"). Driven
+ * from the serve loop so the rollback window closes without a restart.
+ */
+export async function expireExpiredRecords(roots: DaemonRoots, now: Date): Promise<number> {
+	let expired = 0;
+	for (const record of await scanNonTerminal(roots)) {
+		if (!isExpired(record, now)) continue;
+		await expireRecord(roots, record);
+		expired++;
+	}
+	return expired;
 }
 
 /** Lease TTL expiry: back to queued, attempts unchanged (re-lease eligible). */
@@ -404,7 +477,9 @@ export async function scanNonTerminal(roots: DaemonRoots): Promise<QueueRecord[]
 	const queueRoot = queueDir(roots);
 	let recipients: string[] = [];
 	try {
-		recipients = (await readdir(queueRoot)).filter((entry) => !entry.includes(".") && entry !== "dead-letter" && entry !== "quarantine");
+		recipients = (await readdir(queueRoot, { withFileTypes: true }))
+			.filter((entry) => entry.isDirectory() && entry.name !== "dead-letter" && entry.name !== "quarantine")
+			.map((entry) => entry.name);
 	} catch {
 		return records;
 	}
