@@ -6,7 +6,10 @@ import { saveRunState } from "./scheduler-run-state.js";
 import { isoUtc } from "./store-paths.js";
 import type { CoasConfig, ScheduleEntry } from "./types.js";
 
-const SENSITIVE_SCHEDULE_PATTERN = /\b(send\s+(?:an?\s+)?(?:email|message|request)|(?:git\s+)?(?:push|commit|merge)|(?:access|read|use|retrieve)\s+(?:the\s+)?(?:secret|credential|token|password)|repo(?:sitory)?\s+mutation)\b/i;
+// Keep the heuristic aligned with real mutating actions. Require the literal `git`
+// verb for push/commit/merge so read-only phrases like "commit deltas" or
+// "git log" do not false-positive.
+const SENSITIVE_SCHEDULE_PATTERN = /\b(send\s+(?:an?\s+)?(?:email|message|request)|git\s+(?:push|commit|merge)|(?:access|read|use|retrieve)\s+(?:the\s+)?(?:secret|credential|token|password)|repo(?:sitory)?\s+mutation)\b/i;
 
 export function requiresPrincipalApproval(schedule: ScheduleEntry, prompt: string): boolean {
 	return schedule.approvalRequired === true || SENSITIVE_SCHEDULE_PATTERN.test(prompt);
