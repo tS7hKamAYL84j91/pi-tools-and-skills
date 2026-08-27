@@ -5,6 +5,7 @@
  * or dropped silently) with a durable audit event.
  */
 import { readFile, rename } from "node:fs/promises";
+import { ensureValidatedDir } from "./durable-fs.js";
 import { join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { quarantineDir } from "./paths.js";
@@ -61,6 +62,9 @@ export function parseRecordStrict(raw: string, maxBytes: number): unknown {
 export async function quarantineRecord(roots: DaemonRoots, path: string, reason: string): Promise<string> {
 	const name = path.split("/").pop() ?? "record";
 	const target = join(quarantineDir(roots), `${name}.corrupt-${Date.now()}`);
+	// The quarantine directory may not exist yet; create it validated before
+	// the move, or the rename fails silently and the corrupt record lingers.
+	await ensureValidatedDir(quarantineDir(roots), roots.stateRoot);
 	await rename(path, target).catch(() => {});
 	await appendAudit(roots, { kind: "record_quarantined", path, reason }, { durable: true });
 	return target;
