@@ -22,6 +22,16 @@ type AnySdk = any;
 const SYNC_TIMEOUT_MS = 30_000;
 const MAX_CALLBACK_TASKS = 8;
 
+function formatLogArg(arg: unknown): string {
+	if (typeof arg === "string") return arg;
+	if (arg instanceof Error) return arg.message;
+	try {
+		return JSON.stringify(arg) ?? String(arg);
+	} catch {
+		return String(arg);
+	}
+}
+
 export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private client?: AnySdk;
 	private connected = false;
@@ -52,6 +62,11 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			accessToken: config.accessToken,
 			userId: config.userId,
 			store,
+			// Without an explicit logger the SDK falls back to a loglevel logger
+			// bound to console.*, which pi's TUI renders as per-request noise
+			// ("FetchHttpApi: --> GET ..."). Route warn/error to the extension's
+			// notify path and silence the rest.
+			logger: this.createSdkLogger(callbacks),
 		});
 
 		this.bindLogger(config);
@@ -105,6 +120,23 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 					`Original error: ${(err as Error).message}`,
 			);
 		});
+	}
+
+	private createSdkLogger(callbacks: MatrixAdapterCallbacks): AnySdk {
+		const notify = callbacks.onLog;
+		const logger: AnySdk = {
+			trace: () => {},
+			debug: () => {},
+			info: () => {},
+			warn: (...args: unknown[]) => {
+				notify?.(args.map(formatLogArg).join(" "), "warning");
+			},
+			error: (...args: unknown[]) => {
+				notify?.(args.map(formatLogArg).join(" "), "error");
+			},
+			getChild: () => logger,
+		};
+		return logger;
 	}
 
 	private bindLogger(_config: MatrixConfig): void {
