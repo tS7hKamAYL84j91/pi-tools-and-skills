@@ -12,6 +12,7 @@ const DIMINISHING_OUTCOMES: readonly ScheduleRunOutcome[] = [
 	"skipped-diminishing",
 	"skipped-budget",
 	"skipped-pending-approval",
+	"skipped-drift",
 ];
 
 interface ShouldRunResult {

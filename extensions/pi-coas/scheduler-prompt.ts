@@ -2,7 +2,8 @@
  * Prompt rendering and agent-turn message extraction for scheduled runs.
  */
 import type { ScheduleEntry } from "./types.js";
-import type { PriorSummary } from "./scheduler-run-state.js";
+import type { PriorSummary, ScheduleRunState } from "./scheduler-run-state.js";
+import { isoUtc } from "./store-paths.js";
 
 const MAX_SUMMARY_CHARS = 500;
 const MAX_NEXT_ACTION_CHARS = 200;
@@ -51,7 +52,7 @@ export function renderPromptWithMarker(schedule: ScheduleEntry, runId: string, p
 	return `${prompt}\n\n${marker}`;
 }
 
-export function findFinalAssistantMessage(messages: readonly unknown[]): { role: string; stopReason?: string; errorMessage?: string } | undefined {
+function findFinalAssistantMessage(messages: readonly unknown[]): { role: string; stopReason?: string; errorMessage?: string } | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const m = messages[i];
 		if (!m || typeof m !== "object") continue;
@@ -80,7 +81,7 @@ function extractTextContent(message: Record<string, unknown>): string | undefine
 	return undefined;
 }
 
-export function extractBoundedSummary(messages: readonly unknown[]): string {
+function extractBoundedSummary(messages: readonly unknown[]): string {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const m = messages[i];
 		if (!m || typeof m !== "object") continue;
@@ -95,7 +96,7 @@ export function extractBoundedSummary(messages: readonly unknown[]): string {
 	return "";
 }
 
-export function extractNextAction(messages: readonly unknown[]): string | undefined {
+function extractNextAction(messages: readonly unknown[]): string | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const m = messages[i];
 		if (!m || typeof m !== "object") continue;
@@ -107,4 +108,34 @@ export function extractNextAction(messages: readonly unknown[]): string | undefi
 		if (next?.[1]) return next[1].trim().slice(0, MAX_NEXT_ACTION_CHARS);
 	}
 	return undefined;
+}
+
+
+/** Builds the terminal run-state record persisted when a scheduled agent turn ends. */
+export function runStateFromAgentEnd(
+	taskId: string,
+	runId: string,
+	startedAt: string,
+	messages: readonly unknown[],
+): ScheduleRunState & { readonly status: "complete" | "interrupted" } {
+	const finalAssistant = findFinalAssistantMessage(messages);
+	const status: "complete" | "interrupted" =
+		finalAssistant && (finalAssistant.stopReason === "aborted" || finalAssistant.stopReason === "error")
+			? "interrupted"
+			: "complete";
+	const summary = status === "complete"
+		? extractBoundedSummary(messages)
+		: `Run interrupted: ${finalAssistant?.errorMessage ?? "unknown reason"}`;
+	const nextAction = status === "complete" ? extractNextAction(messages) : undefined;
+	const now = isoUtc();
+	return {
+		taskId,
+		runId,
+		status,
+		startedAt,
+		completedAt: now,
+		summary,
+		nextAction,
+		lastUpdatedAt: now,
+	};
 }

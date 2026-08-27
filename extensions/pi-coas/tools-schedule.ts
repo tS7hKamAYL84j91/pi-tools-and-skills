@@ -11,6 +11,7 @@ import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
 import type { CoasInternalScheduler } from "./scheduler.js";
+import { formatModelLabel } from "./scheduler-util.js";
 import {
 	addSchedule,
 	formatScheduleList,
@@ -139,7 +140,10 @@ export function registerCoasScheduleAddTool(
 		async execute(_id, params, _signal, _onUpdate, ctx): Promise<ToolResult> {
 			try {
 				const config = await _configFor(ctx, params.cwd);
-				const schedule = await addSchedule(config, params);
+				// Snapshot the session model at creation so the drift guard can fail
+				// closed if the session later runs on a different model.
+				const modelSnapshot = formatModelLabel(ctx.model);
+				const schedule = await addSchedule(config, { ...params, modelSnapshot });
 				if (scheduler.coasHome === config.coasHome) {
 					await scheduler.reconcile(config);
 				}

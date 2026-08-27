@@ -19,7 +19,8 @@ export type ScheduleRunOutcome =
 	| "interrupted"
 	| "skipped-diminishing"
 	| "skipped-budget"
-	| "skipped-pending-approval";
+	| "skipped-pending-approval"
+	| "skipped-drift";
 
 export interface ScheduleRunHistoryEntry {
 	readonly runId: string;
@@ -46,7 +47,8 @@ function isScheduleRunOutcome(value: unknown): value is ScheduleRunOutcome {
 		value === "interrupted" ||
 		value === "skipped-diminishing" ||
 		value === "skipped-budget" ||
-		value === "skipped-pending-approval"
+		value === "skipped-pending-approval" ||
+		value === "skipped-drift"
 	);
 }
 

@@ -6,22 +6,18 @@
  * messages. It never reads or writes user crontab.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-	extractBoundedSummary,
-	extractNextAction,
-	findFinalAssistantMessage,
-	findScheduledRunMarker,
-} from "./scheduler-prompt.js";
+import { findScheduledRunMarker, runStateFromAgentEnd } from "./scheduler-prompt.js";
 import { finalizeApproval } from "./scheduler-approval.js";
 import { resumeApprovedRunTracked, type ResumeContext } from "./scheduler-resume.js";
 import { countAwaitingApprovals } from "./approval-inbox.js";
 import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-recovery.js";
-import { countContinuationReady, saveRunState, type ScheduleRunState } from "./scheduler-run-state.js";
+import { countContinuationReady, saveRunState } from "./scheduler-run-state.js";
 import { countContinuationSchedules, cronExpressionError } from "./scheduler-evaluation.js";
 import type { RunOnceMetrics } from "./scheduler-run-once.js";
 import { createRunExecutor } from "./scheduler-dispatch.js";
 import { isoUtc } from "./store-paths.js";
 import { listSchedules } from "./schedules.js";
+import { subscribeModelSelect } from "./scheduler-model-tracking.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
 import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
 import { SchedulerWorkTracker } from "./scheduler-work-tracker.js";
@@ -60,7 +56,14 @@ export class CoasInternalScheduler {
 	}
 	private startedAt: string | undefined;
 
-	constructor(private readonly pi: ExtensionAPI) {}
+	/** Session model identity (`provider/id`) for the schedule drift guard. */
+	private currentModel: string | undefined;
+
+	constructor(private readonly pi: ExtensionAPI) {
+		subscribeModelSelect(pi, (model) => {
+			this.currentModel = model;
+		});
+	}
 
 	async start(config: CoasConfig): Promise<void> {
 		if (!this.work.start()) return;
@@ -153,29 +156,10 @@ export class CoasInternalScheduler {
 		const active = this.activeScheduledRuns.get(marker.runId);
 		if (!active || active.taskId !== marker.taskId) return;
 
-		const finalAssistant = findFinalAssistantMessage(messages);
-		const status: ScheduleRunState["status"] =
-			finalAssistant && (finalAssistant.stopReason === "aborted" || finalAssistant.stopReason === "error")
-				? "interrupted"
-				: "complete";
-		const summary = status === "complete"
-			? extractBoundedSummary(messages)
-			: `Run interrupted: ${finalAssistant?.errorMessage ?? "unknown reason"}`;
-		const nextAction = status === "complete" ? extractNextAction(messages) : undefined;
-		const now = isoUtc();
-		const state: ScheduleRunState = {
-			taskId: active.taskId,
-			runId: active.runId,
-			status,
-			startedAt: active.startedAt,
-			completedAt: now,
-			summary,
-			nextAction,
-			lastUpdatedAt: now,
-		};
+		const state = runStateFromAgentEnd(active.taskId, active.runId, active.startedAt, messages);
 		try {
 			await saveRunState(this.config, active.taskId, state);
-			await finalizeApproval(this.config, active.approvalRequestId, status);
+			await finalizeApproval(this.config, active.approvalRequestId, state.status);
 		} catch (error) {
 			this.metrics.lastError = (error as Error).message;
 		}
@@ -274,6 +258,7 @@ export class CoasInternalScheduler {
 			pi: this.pi,
 			metrics: this.metrics,
 			workAccepting: () => this.work.accepting,
+			currentModel: () => this.currentModel,
 			track: (work) => this.work.track(work),
 			config: () => this.config,
 			registerActiveRun: (taskId) => (runId, startedAt, approvalRequestId) => {

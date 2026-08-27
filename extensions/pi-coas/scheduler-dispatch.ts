@@ -11,6 +11,7 @@ interface ScheduledRunDispatchContext {
 	readonly config: CoasConfig;
 	readonly metrics: RunOnceMetrics;
 	readonly canDispatch: () => boolean;
+	readonly currentModel?: () => string | undefined;
 	readonly registerActiveRun: (runId: string, startedAt: string, approvalRequestId?: string) => void;
 	readonly incrementAwaitingApproval: () => void;
 }
@@ -23,6 +24,7 @@ async function dispatchScheduledRun(ctx: ScheduledRunDispatchContext, schedule: 
 			schedule,
 			now,
 			canDispatch: ctx.canDispatch,
+			currentModel: ctx.currentModel,
 			registerActiveRun: ctx.registerActiveRun,
 		}, ctx.metrics);
 		if (result.approvalRequestId && !result.queued) ctx.incrementAwaitingApproval();
@@ -38,6 +40,7 @@ interface RunExecutorDeps {
 	readonly pi: ExtensionAPI;
 	readonly metrics: RunOnceMetrics;
 	readonly workAccepting: () => boolean;
+	readonly currentModel?: () => string | undefined;
 	readonly track: (work: Promise<unknown>) => void;
 	readonly config: () => CoasConfig | undefined;
 	readonly registerActiveRun: (taskId: string) => (runId: string, startedAt: string, approvalRequestId?: string) => void;
@@ -55,6 +58,7 @@ export function createRunExecutor(deps: RunExecutorDeps): RunExecutor {
 				config,
 				metrics: deps.metrics,
 				canDispatch: deps.workAccepting,
+				currentModel: deps.currentModel,
 				registerActiveRun: deps.registerActiveRun(schedule.taskId),
 				incrementAwaitingApproval: deps.incrementAwaitingApproval,
 			}, schedule, now);

@@ -93,6 +93,7 @@ async function parseSchedule(config: CoasConfig, store: ConfinedStore, envPath: 
 		approvalRequired: (values.APPROVAL_REQUIRED ?? "0") === "1",
 		runBudget: parseOptionalPositiveInt(values.RUN_BUDGET),
 		lookback: parseOptionalPositiveInt(values.LOOKBACK),
+		modelSnapshot: values.MODEL_SNAPSHOT || undefined,
 	};
 }
 
@@ -158,6 +159,7 @@ export async function addSchedule(config: CoasConfig, input: ScheduleAddInput): 
 				...(input.approvalRequired ? { APPROVAL_REQUIRED: "1" } : {}),
 				...(input.runBudget !== undefined ? { RUN_BUDGET: String(input.runBudget) } : {}),
 				...(input.lookback !== undefined ? { LOOKBACK: String(input.lookback) } : {}),
+				...(input.modelSnapshot ? { MODEL_SNAPSHOT: input.modelSnapshot } : {}),
 				CREATED_AT: now,
 				UPDATED_AT: now,
 			}));
