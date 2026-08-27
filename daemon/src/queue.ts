@@ -399,7 +399,7 @@ export async function recoverQueue(roots: DaemonRoots, verificationKeys: Readonl
 	return { replayed, deadLettered, quarantined };
 }
 
-async function scanNonTerminal(roots: DaemonRoots): Promise<QueueRecord[]> {
+export async function scanNonTerminal(roots: DaemonRoots): Promise<QueueRecord[]> {
 	const records: QueueRecord[] = [];
 	const queueRoot = queueDir(roots);
 	let recipients: string[] = [];
