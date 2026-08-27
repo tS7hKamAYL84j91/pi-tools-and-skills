@@ -1,0 +1,14 @@
+{
+	"name": "coas-daemon",
+	"version": "0.1.0",
+	"description": "CoAS daemon: scheduler tick, agent registry, and A2A routing (ADR-0018).",
+	"type": "module",
+	"main": "dist/coas-daemon.mjs",
+	"private": true,
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json"
+	}
+}

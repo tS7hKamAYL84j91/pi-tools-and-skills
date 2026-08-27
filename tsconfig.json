@@ -13,5 +13,5 @@
     "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["extensions/**/*.ts", "lib/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "scripts/**/*.d.mts", "vitest.config.ts"]
+  "include": ["extensions/**/*.ts", "lib/**/*.ts", "daemon/src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "scripts/**/*.d.mts", "vitest.config.ts"]
 }

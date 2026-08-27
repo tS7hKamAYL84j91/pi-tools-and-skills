@@ -1,0 +1,129 @@
+/**
+ * Durable identity records (ADR-0018 section 2): stable opaque `agent_id`,
+ * immutable `agent_instance_id` per admitted incarnation, monotonically
+ * increasing `generation` per agent_id. Identity records are signed with the
+ * daemon integrity key (ADR section 8) and follow the design doc section 3
+ * fsync ordering: the generation-N record is durable before any
+ * generation-N envelope is enqueued or the binding is published.
+ */
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { writeDurableFileNoReplace, writeDurableFileReplace } from "./durable-fs.js";
+import { identitiesDir } from "./paths.js";
+import type { DaemonRoots } from "./paths.js";
+import { signBytes, verifyBytes } from "./keys.js";
+
+export interface IdentityRecord {
+	readonly agentId: string;
+	/** Display alias only; never identity (ADR section 5). */
+	readonly displayName: string;
+	/** Current generation for this agent_id; monotonic. */
+	readonly generation: number;
+	/** Immutable id of the currently admitted incarnation, when one is live. */
+	readonly liveInstanceId?: string;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+	/** Ed25519 signature (base64) over the canonical unsigned bytes. */
+	readonly signature: string;
+	readonly keyId: string;
+}
+
+export interface IdentityKeys {
+	readonly keyId: string;
+	readonly privateKeyPem: string;
+}
+
+/** Unsigned view in fixed field order; signing bytes are reproducible. */
+interface UnsignedIdentity {
+	readonly agentId: string;
+	readonly displayName: string;
+	readonly generation: number;
+	readonly liveInstanceId?: string;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+	readonly keyId: string;
+}
+
+function canonicalIdentityBytes(unsigned: UnsignedIdentity): Uint8Array {
+	return Buffer.from(JSON.stringify(unsigned), "utf8");
+}
+
+export function mintAgentId(): string {
+	return `a-${randomUUID()}`;
+}
+
+export function mintInstanceId(): string {
+	return `i-${randomUUID()}`;
+}
+
+function identityPath(roots: DaemonRoots, agentId: string): string {
+	return join(identitiesDir(roots), `${agentId}.json`);
+}
+
+/** Create a new identity record at generation 1. No-replace: an existing id fails. */
+export async function createIdentity(
+	roots: DaemonRoots,
+	keys: IdentityKeys,
+	input: { readonly displayName: string },
+): Promise<IdentityRecord> {
+	const now = new Date().toISOString();
+	const unsigned: UnsignedIdentity = {
+		agentId: mintAgentId(),
+		displayName: input.displayName,
+		generation: 1,
+		createdAt: now,
+		updatedAt: now,
+		keyId: keys.keyId,
+	};
+	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
+	const record: IdentityRecord = { ...unsigned, signature };
+	await writeDurableFileNoReplace(identityPath(roots, record.agentId), `${JSON.stringify(record, null, 2)}\n`);
+	return record;
+}
+
+/** Load and verify an identity record; tampered records are errors, never trusted. */
+export async function loadIdentity(
+	roots: DaemonRoots,
+	agentId: string,
+	verificationKeys: ReadonlyMap<string, string>,
+): Promise<IdentityRecord | undefined> {
+	let raw: string;
+	try {
+		raw = await readFile(identityPath(roots, agentId), "utf8");
+	} catch {
+		return undefined;
+	}
+	const parsed = JSON.parse(raw) as IdentityRecord;
+	const verificationKey = verificationKeys.get(parsed.keyId);
+	if (!verificationKey) throw new Error(`unknown identity key: ${parsed.keyId}`);
+	const { signature, ...unsigned } = parsed;
+	if (!verifyBytes(verificationKey, canonicalIdentityBytes(unsigned), Buffer.from(signature, "base64"))) {
+		throw new Error(`identity record signature invalid: ${agentId}`);
+	}
+	return parsed;
+}
+
+/** Bump generation and attach a new live instance; durable before any binding publish. */
+export async function admitNewInstance(
+	roots: DaemonRoots,
+	keys: IdentityKeys,
+	existing: IdentityRecord,
+): Promise<{ record: IdentityRecord; instanceId: string }> {
+	const instanceId = mintInstanceId();
+	const unsigned: UnsignedIdentity = {
+		agentId: existing.agentId,
+		displayName: existing.displayName,
+		generation: existing.generation + 1,
+		liveInstanceId: instanceId,
+		createdAt: existing.createdAt,
+		updatedAt: new Date().toISOString(),
+		keyId: existing.keyId,
+	};
+	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
+	const record: IdentityRecord = { ...unsigned, signature };
+	await writeDurableFileReplace(identityPath(roots, existing.agentId), `${JSON.stringify(record, null, 2)}\n`);
+	return { record, instanceId };
+}
+
+export { verifyBytes };
