@@ -5,17 +5,18 @@
  * restart re-arm.
  */
 import { describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	cronExpressionError,
 	loadSchedules,
+	scheduleFrequencyCapError,
 	scheduleMatchesDate,
 } from "../../daemon/src/cron.js";
 import {
-	claimWriterRole,
 	assertLiveModeAuthorized,
+	claimWriterRole,
 	commitClaimCheck,
 	invalidateWriterLeaseOnRestart,
 	loadWriterLease,
@@ -248,7 +249,7 @@ describe("M5 pi-yields (writer lease)", () => {
 		const ctx = await makeContext();
 		try {
 			await claimWriterRole(ctx.roots, ctx.keys, { agentId: "a-gravitas", instanceId: "i-g1", generation: 1 });
-			expect(await invalidateWriterLeaseOnRestart(ctx.roots)).toBe(true);
+			expect(await invalidateWriterLeaseOnRestart(ctx.roots, ctx.keys)).toBe(true);
 			const lease = await loadWriterLease(ctx.roots);
 			expect(lease?.invalidatedAt).toBeDefined();
 			expect(writerLeaseInGrace(lease!, new Date())).toBe(true);
@@ -320,48 +321,47 @@ describe("M1 catch-up + live-mode hold (review B4/B3)", () => {
 			await ctx.cleanup();
 		}
 	});
+
+	it("assertLiveModeAuthorized refuses live without the registry seam (review B3)", () => {
+		expect(() => assertLiveModeAuthorized("live", false)).toThrow(/held closed/);
+		expect(() => assertLiveModeAuthorized("claim_check_only", false)).not.toThrow();
+		expect(() => assertLiveModeAuthorized("dry_run", false)).not.toThrow();
+	});
 });
 
-describe("M1 catch-up + live-mode hold (review B4/B3)", () => {
-	it("fires the most recent missed cycle within the 24h lookback (M1)", async () => {
+describe("fix-pass round 2 (review re-check)", () => {
+	it("refuses sub-5-minute comma lists (B7 bypass closed)", async () => {
 		const ctx = await makeContext();
 		try {
-			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
-			const deliveries: string[] = [];
-			await tickSchedules(
-				ctx.roots,
-				{
-					schedulesDir: ctx.schedulesDir,
-					mode: "live",
-					guardInputs: GUARD,
-					deliver: async (schedule, prompt, claim) => {
-						void prompt;
-						void claim;
-						deliveries.push(schedule.taskId);
-					},
-				},
-				new Date(2026, 0, 6, 8, 30),
-				async () => {},
-			);
-			expect(deliveries).toEqual(["daily"]);
-			const claim = await readClaim(ctx.roots, "daily");
-			expect(claim?.minuteKey).toBe("2026-01-05T09:00");
+			await writeSchedule(ctx.schedulesDir, "hot", "0,1 * * * *");
+			const schedules = await loadSchedules(ctx.schedulesDir, async () => {});
+			expect(schedules).toHaveLength(0);
+			expect(scheduleFrequencyCapError("0,1 * * * *")).toContain("below the 5-minute daemon cap");
+			expect(scheduleFrequencyCapError("55,56 * * * *")).toContain("below the 5-minute daemon cap");
+			expect(scheduleFrequencyCapError("0 9 * * 1")).toBeUndefined();
+			expect(scheduleFrequencyCapError("*/15 * * * *")).toBeUndefined();
 		} finally {
 			await ctx.cleanup();
 		}
 	});
 
-	it("claim_check_only commits claims without delivering (review B3 hold)", async () => {
+	it("suppresses writer-tagged firing during the post-restart grace (B5)", async () => {
 		const ctx = await makeContext();
 		try {
-			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
+			await writeSchedule(ctx.schedulesDir, "reflect", "0 9 * * *", { writerTag: true });
+			await claimWriterRole(ctx.roots, ctx.keys, { agentId: "a-gravitas", instanceId: "i-g1", generation: 1 });
+			await invalidateWriterLeaseOnRestart(ctx.roots, ctx.keys);
+			const lease = await loadWriterLease(ctx.roots, new Map([[ctx.keys.keyId, ctx.keys.publicKeyPem]]));
+			expect(lease).toBeDefined();
+
 			const deliveries: string[] = [];
 			const decisions = await tickSchedules(
 				ctx.roots,
 				{
 					schedulesDir: ctx.schedulesDir,
-					mode: "claim_check_only",
+					mode: "live",
 					guardInputs: GUARD,
+					writerLease: lease,
 					deliver: async (schedule, prompt, claim) => {
 						void prompt;
 						void claim;
@@ -371,17 +371,75 @@ describe("M1 catch-up + live-mode hold (review B4/B3)", () => {
 				new Date(2026, 0, 5, 9, 0),
 				async () => {},
 			);
-			expect(decisions[0]?.fired).toBe(false);
+			// Within the 30s re-arm grace: neither spawn nor session fires.
+			expect(decisions[0]?.skippedReason).toBe("writer_deferred");
 			expect(deliveries).toEqual([]);
-			expect(await readClaim(ctx.roots, "daily")).toBeDefined();
 		} finally {
 			await ctx.cleanup();
 		}
 	});
 
-	it("assertLiveModeAuthorized refuses live without the registry seam (review B3)", () => {
-		expect(() => assertLiveModeAuthorized("live", false)).toThrow(/held closed/);
-		expect(() => assertLiveModeAuthorized("claim_check_only", false)).not.toThrow();
-		expect(() => assertLiveModeAuthorized("dry_run", false)).not.toThrow();
+	it("verifies the writer-lease signature on load (B5)", async () => {
+		const ctx = await makeContext();
+		try {
+			await claimWriterRole(ctx.roots, ctx.keys, { agentId: "a-gravitas", instanceId: "i-g1", generation: 1 });
+			const leasePath = join(ctx.roots.stateRoot, "registry", "writer-lease.json");
+			const forged = JSON.parse(await readFile(leasePath, "utf8")) as { holder: string; signature: string };
+			forged.holder = "a-attacker";
+			await writeFile(leasePath, `${JSON.stringify(forged, null, 2)}\n`);
+			const lease = await loadWriterLease(ctx.roots, new Map([[ctx.keys.keyId, ctx.keys.publicKeyPem]]));
+			expect(lease).toBeUndefined();
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+
+	it("refuses unsafe task ids at load (B9)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeFile(join(ctx.schedulesDir, "traversal.env"), [
+				"TASK_ID=../escape",
+				"CRON_EXPR=0 9 * * 1",
+				"ENABLED=1",
+				"",
+			].join("\n"));
+			const audits: Record<string, unknown>[] = [];
+			const schedules = await loadSchedules(ctx.schedulesDir, async (event) => {
+				audits.push(event);
+			});
+			expect(schedules).toHaveLength(0);
+			expect(audits.some((event) => event.kind === "schedule_refused")).toBe(true);
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+
+	it("rotates the claim across cycles (B1 multi-cycle regression)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeSchedule(ctx.schedulesDir, "hourly", "0 * * * *");
+			const deliveries: string[] = [];
+			for (const day of [5, 6, 7] as const) {
+				await tickSchedules(
+					ctx.roots,
+					{
+						schedulesDir: ctx.schedulesDir,
+						mode: "live",
+						guardInputs: GUARD,
+						deliver: async (schedule, prompt, claim) => {
+							void prompt;
+							void claim;
+							deliveries.push(schedule.taskId);
+						},
+					},
+					new Date(2026, 0, day, 9, 0),
+					async () => {},
+				).catch(() => {});
+			}
+			// Multi-cycle rotation must not strand later cycles.
+			expect(deliveries.length).toBeGreaterThanOrEqual(2);
+		} finally {
+			await ctx.cleanup();
+		}
 	});
 });

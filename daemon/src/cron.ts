@@ -54,36 +54,42 @@ export function cronExpressionError(expr: string): string | undefined {
 	return undefined;
 }
 
-/** Design doc section 8 cap: the daemon refuses sub-5-minute schedules. */
+/**
+ * Design doc section 8 cap: the daemon refuses sub-5-minute schedules.
+ * The minute field is expanded to its firing-minute set (lists, ranges,
+ * steps) and adjacent firing minutes closer than the cap are refused —
+ * comma lists cannot bypass the check (re-review B7).
+ */
 export function scheduleFrequencyCapError(expr: string, capMinutes = SCHEDULE_FREQUENCY_CAP_MINUTES): string | undefined {
 	const fields = expr.trim().split(/\s+/);
 	const minuteField = fields[0] ?? "";
-	if (minuteField === "*") {
-		return `schedule fires every minute: below the ${capMinutes}-minute daemon cap`;
-	}
-	const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(minuteField);
-	if (!stepMatch) return undefined;
-	// Only an EXPLICIT step below the cap violates it; a bare "0" or a plain
-	// range fires once per hour/day, not every minute.
-	if (stepMatch[2] !== undefined) {
-		const step = Number.parseInt(stepMatch[2], 10);
-		if (step < capMinutes) {
-			return `schedule frequency below the ${capMinutes}-minute daemon cap (minute step ${step})`;
+	const minutes = new Set<number>();
+	for (const part of minuteField.split(",")) {
+		const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
+		if (!stepMatch) return undefined; // malformed: cron validation reports it
+		const base = stepMatch[1] ?? "";
+		const step = stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
+		if (base === "*") {
+			for (let candidate = 0; candidate <= 59; candidate += step) minutes.add(candidate);
+			continue;
 		}
-		return undefined;
-	}
-	const base = stepMatch[1] ?? "";
-	if (base === "*") return `schedule fires every minute: below the ${capMinutes}-minute daemon cap`;
-	const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
-	if (!rangeMatch) return undefined;
-	if (rangeMatch[2] !== undefined) {
+		const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
+		if (!rangeMatch) return undefined;
 		const start = Number.parseInt(rangeMatch[1] ?? "0", 10);
-		const end = Number.parseInt(rangeMatch[2], 10);
-		if (end > start) {
-			return `schedule fires on adjacent minutes: below the ${capMinutes}-minute daemon cap`;
-		}
-		return undefined;
+		const end = rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
+		for (let candidate = start; candidate <= Math.min(end, 59); candidate += step) minutes.add(candidate);
 	}
+	if (minutes.size === 0) return undefined;
+	const sorted = [...minutes].sort((first, second) => first - second);
+	const capError = `schedule frequency below the ${capMinutes}-minute daemon cap (${minuteField})`;
+	for (let i = 1; i < sorted.length; i++) {
+		const gap = (sorted[i] ?? 0) - (sorted[i - 1] ?? 0);
+		if (gap < capMinutes) return capError;
+	}
+	// Circular wrap: 59 -> 0+60.
+	const last = sorted[sorted.length - 1] ?? 0;
+	const first = sorted[0] ?? 0;
+	if (60 - last + first < capMinutes) return capError;
 	return undefined;
 }
 

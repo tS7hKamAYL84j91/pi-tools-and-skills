@@ -154,10 +154,25 @@ export async function releaseWriterRole(roots: DaemonRoots, holderAgentId: strin
  * writer-tagged cycles neither fire into a fresh spawn nor run in the session
  * (bounded 30s grace), closing the double-writer window.
  */
-export async function invalidateWriterLeaseOnRestart(roots: DaemonRoots): Promise<boolean> {
+export async function invalidateWriterLeaseOnRestart(
+	roots: DaemonRoots,
+	keys: { keyId: string; privateKeyPem: string },
+): Promise<boolean> {
 	const existing = await loadWriterLease(roots);
 	if (!existing || existing.invalidatedAt !== undefined) return false;
-	const invalidated: WriterLease = { ...existing, invalidatedAt: new Date().toISOString() };
+	// The invalidated record must be re-signed: signature verification on load
+	// would otherwise reject it (review B5).
+	const unsigned = {
+		role: existing.role,
+		holder: existing.holder,
+		holderInstance: existing.holderInstance,
+		generation: existing.generation,
+		keyId: existing.keyId,
+		claimedAt: existing.claimedAt,
+		invalidatedAt: new Date().toISOString(),
+	};
+	const signature = signBytes(keys.privateKeyPem, canonicalWriterBytes(unsigned)).toString("base64");
+	const invalidated: WriterLease = { ...unsigned, signature };
 	await writeDurableFileReplace(writerLeasePath(roots), `${JSON.stringify(invalidated, null, 2)}\n`, 0o600, roots.stateRoot);
 	await appendAudit(roots, { kind: "writer_lease_invalidated", holder: existing.holder }, { durable: true });
 	return true;
@@ -241,9 +256,11 @@ export async function tickSchedules(
 	// M5 suppression applies while a live claim is held AND during the 30s
 	// post-restart re-arm grace (review B5 — the grace was inverted). A claim
 	// whose holder binding is gone expires 30s after the binding died.
-	const writerClaimHeld = writerLease !== undefined && (writerLease.invalidatedAt === undefined || writerLeaseInGrace(writerLease, now))
-		? input.holderAlive === undefined || input.holderAlive(writerLease.holder) || writerLeaseInGrace(writerLease, now)
-		: false;
+	const writerClaimHeld =
+		writerLease !== undefined &&
+		(writerLeaseInGrace(writerLease, now) ||
+			(writerLease.invalidatedAt === undefined &&
+				(input.holderAlive === undefined || input.holderAlive(writerLease.holder))));
 
 	for (const schedule of schedules) {
 		if (!schedule.enabled) {

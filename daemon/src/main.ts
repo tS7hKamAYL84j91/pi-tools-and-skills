@@ -66,7 +66,7 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 		const startedAt = new Date().toISOString();
 		// M5/M6 recovery: a surviving writer lease is invalidated (re-arm) at
 		// startup; queue recovery replay is idempotent (ADR section 7).
-		await invalidateWriterLeaseOnRestart(roots).catch(() => {});
+		await invalidateWriterLeaseOnRestart(roots, keys).catch(() => {});
 		await appendAudit(roots, {
 			kind: "daemon_started",
 			posture: keys.fallbackFileUsed ? "same_uid_untrusted(key_fallback)" : "same_uid_untrusted",
@@ -89,8 +89,9 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 					schedulesDir,
 					mode,
 					guardInputs: { parentId: null, visibility: "workspace", scope: "root" },
-					writerLease: await loadWriterLease(roots),
+					writerLease: await loadWriterLease(roots, new Map([[keys.keyId, keys.publicKeyPem]])),
 					deferralCounts,
+					holderAlive: (agentId: string) => serve.bindingFor(agentId) !== undefined,
 					deliver: async (schedule, prompt, claim) => {
 						// Delivery seam (ADR-0008): the scheduled prompt is enqueued
 						// as a real signed envelope via the durable queue; the serve
