@@ -5,7 +5,11 @@
  */
 
 import { basename } from "node:path";
-import type { AgentNameSource, AgentRecord, AgentStatus } from "../../../lib/agent-registry.js";
+import type {
+	AgentNameSource,
+	AgentRecord,
+	AgentStatus,
+} from "../../../lib/agent-registry.js";
 
 export const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "R",
@@ -84,14 +88,23 @@ interface PickActiveNameInput {
 }
 
 /** Resolve active name by precedence: session/programmatic > spawn > generated. */
-export function pickActiveName(input: PickActiveNameInput): { name: string; source: AgentNameSource } {
+export function pickActiveName(input: PickActiveNameInput): {
+	name: string;
+	source: AgentNameSource;
+} {
 	if (input.sessionName) {
 		return { name: input.sessionName, source: "user" };
 	}
 	if (input.spawnName) {
-		return { name: pickName(input.cwd, input.records, input.selfId, input.spawnName), source: "spawn" };
+		return {
+			name: pickName(input.cwd, input.records, input.selfId, input.spawnName),
+			source: "spawn",
+		};
 	}
-	return { name: pickName(input.cwd, input.records, input.selfId), source: "generated" };
+	return {
+		name: pickName(input.cwd, input.records, input.selfId),
+		source: "generated",
+	};
 }
 
 /**

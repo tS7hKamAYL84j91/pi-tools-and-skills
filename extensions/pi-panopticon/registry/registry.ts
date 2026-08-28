@@ -11,7 +11,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentNameSource, AgentRecord, AgentStatus } from "../../../lib/agent-registry.js";
+import type {
+	AgentNameSource,
+	AgentRecord,
+	AgentStatus,
+} from "../../../lib/agent-registry.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_SPAWN_NAME_ENV,
@@ -67,11 +71,18 @@ export default class Registry implements RegistryInterface {
 		const records = this.readAllPeers();
 		const spawnName = process.env[PANOPTICON_SPAWN_NAME_ENV];
 		const sessionName = this.readSessionName();
-		const { name, source } = pickActiveName({ cwd, records, selfId: this.selfId, sessionName, spawnName });
+		const { name, source } = pickActiveName({
+			cwd,
+			records,
+			selfId: this.selfId,
+			sessionName,
+			spawnName,
+		});
 		this.lastSyncedSessionName = sessionName;
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
-		const visibility = process.env[PANOPTICON_VISIBILITY_ENV] === "scoped" ? "scoped" : "global";
+		const visibility =
+			process.env[PANOPTICON_VISIBILITY_ENV] === "scoped" ? "scoped" : "global";
 
 		// Create the record
 		this.record = {
@@ -127,7 +138,10 @@ export default class Registry implements RegistryInterface {
 				// already gone
 			}
 			try {
-				rmSync(join(REGISTRY_DIR, this.record.id), { recursive: true, force: true });
+				rmSync(join(REGISTRY_DIR, this.record.id), {
+					recursive: true,
+					force: true,
+				});
 			} catch {
 				// already gone
 			}

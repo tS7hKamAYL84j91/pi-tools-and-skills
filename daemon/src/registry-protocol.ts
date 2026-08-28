@@ -8,7 +8,11 @@
  */
 import { randomBytes } from "node:crypto";
 import { verifyCapabilityProof } from "./admission.js";
-import type { DaemonRegistry, RegistryEntry, RegistryEvent } from "./registry.js";
+import type {
+	DaemonRegistry,
+	RegistryEntry,
+	RegistryEvent,
+} from "./registry.js";
 
 /** Wire size cap: sync lines are small control messages, not payloads. */
 const MAX_WIRE_LINE_BYTES = 64 * 1024;
@@ -16,7 +20,11 @@ const MAX_WIRE_LINE_BYTES = 64 * 1024;
 /** Client -> daemon messages. */
 export type RegistrySyncRequest =
 	| { readonly op: "hello"; readonly agentId: string }
-	| { readonly op: "hello_proof"; readonly agentId: string; readonly proof: string }
+	| {
+			readonly op: "hello_proof";
+			readonly agentId: string;
+			readonly proof: string;
+	  }
 	| { readonly op: "subscribe"; readonly lastSeq: number };
 
 /** Daemon -> client messages. */
@@ -24,8 +32,18 @@ export type RegistrySyncResponse =
 	| { readonly op: "challenge"; readonly nonce: string }
 	| { readonly op: "hello_ok" }
 	| { readonly op: "hello_rejected"; readonly reason: string }
-	| { readonly op: "snapshot"; readonly seq: number; readonly entries: readonly RegistryEntry[] }
-	| { readonly op: "event"; readonly seq: number; readonly kind: RegistryEvent["kind"]; readonly agentId: string; readonly entry?: RegistryEntry };
+	| {
+			readonly op: "snapshot";
+			readonly seq: number;
+			readonly entries: readonly RegistryEntry[];
+	  }
+	| {
+			readonly op: "event";
+			readonly seq: number;
+			readonly kind: RegistryEvent["kind"];
+			readonly agentId: string;
+			readonly entry?: RegistryEntry;
+	  };
 
 export type RegistryWireMessage = RegistrySyncRequest | RegistrySyncResponse;
 
@@ -38,10 +56,13 @@ export function encodeWireMessage(message: RegistryWireMessage): string {
  * Parse one wire line. Returns undefined for empty, oversized, malformed, or
  * op-unknown lines — callers treat undefined as a protocol violation.
  */
-export function parseWireMessage(line: string): RegistryWireMessage | undefined {
+export function parseWireMessage(
+	line: string,
+): RegistryWireMessage | undefined {
 	const trimmed = line.trim();
 	if (trimmed.length === 0) return undefined;
-	if (Buffer.byteLength(trimmed, "utf8") > MAX_WIRE_LINE_BYTES) return undefined;
+	if (Buffer.byteLength(trimmed, "utf8") > MAX_WIRE_LINE_BYTES)
+		return undefined;
 	let value: unknown;
 	try {
 		value = JSON.parse(trimmed) as unknown;
@@ -51,8 +72,14 @@ export function parseWireMessage(line: string): RegistryWireMessage | undefined 
 	if (typeof value !== "object" || value === null) return undefined;
 	const op = (value as Record<string, unknown>).op;
 	if (
-		op !== "hello" && op !== "hello_proof" && op !== "subscribe" &&
-		op !== "challenge" && op !== "hello_ok" && op !== "hello_rejected" && op !== "snapshot" && op !== "event"
+		op !== "hello" &&
+		op !== "hello_proof" &&
+		op !== "subscribe" &&
+		op !== "challenge" &&
+		op !== "hello_ok" &&
+		op !== "hello_rejected" &&
+		op !== "snapshot" &&
+		op !== "event"
 	) {
 		return undefined;
 	}
@@ -85,8 +112,12 @@ export interface RegistrySyncHandlerInput {
 	readonly mintNonce?: () => string;
 }
 
-export function acceptRegistrySyncConnection(input: RegistrySyncHandlerInput, connection: RegistrySyncConnection): RegistrySyncSession {
-	const mintNonce = input.mintNonce ?? ((): string => randomBytes(16).toString("base64"));
+export function acceptRegistrySyncConnection(
+	input: RegistrySyncHandlerInput,
+	connection: RegistrySyncConnection,
+): RegistrySyncSession {
+	const mintNonce =
+		input.mintNonce ?? ((): string => randomBytes(16).toString("base64"));
 	const state: {
 		stage: "unauthenticated" | "challenged" | "authenticated" | "subscribed";
 		agentId?: string;
@@ -115,16 +146,28 @@ export function acceptRegistrySyncConnection(input: RegistrySyncHandlerInput, co
 					state.stage = "challenged";
 					state.agentId = message.agentId;
 					state.nonce = mintNonce();
-					connection.send(encodeWireMessage({ op: "challenge", nonce: state.nonce }));
+					connection.send(
+						encodeWireMessage({ op: "challenge", nonce: state.nonce }),
+					);
 					return;
 				}
 				case "hello_proof": {
-					if (state.stage !== "challenged" || state.agentId !== message.agentId) {
+					if (
+						state.stage !== "challenged" ||
+						state.agentId !== message.agentId
+					) {
 						failClosed("proof without challenge");
 						return;
 					}
 					const capability = input.registry.capabilityFor(message.agentId);
-					if (!capability || !verifyCapabilityProof(capability.capabilitySecret, state.nonce ?? "", Buffer.from(message.proof, "base64"))) {
+					if (
+						!capability ||
+						!verifyCapabilityProof(
+							capability.capabilitySecret,
+							state.nonce ?? "",
+							Buffer.from(message.proof, "base64"),
+						)
+					) {
 						failClosed("capability proof invalid");
 						return;
 					}
@@ -140,15 +183,32 @@ export function acceptRegistrySyncConnection(input: RegistrySyncHandlerInput, co
 					// A re-subscribe (the client's resync path) replaces the stream.
 					state.unsubscribe?.();
 					state.unsubscribe = undefined;
-					void input.registry.subscribe((event) => {
-						connection.send(encodeWireMessage({ op: "event", seq: event.seq, kind: event.kind, agentId: event.agentId, entry: input.registry.entry(event.agentId) }));
-					}).then((handshake) => {
-						state.unsubscribe = handshake.unsubscribe;
-						state.stage = "subscribed";
-						connection.send(encodeWireMessage({ op: "snapshot", seq: handshake.snapshot.seq, entries: handshake.snapshot.entries }));
-					}).catch(() => {
-						failClosed("subscription failed");
-					});
+					void input.registry
+						.subscribe((event) => {
+							connection.send(
+								encodeWireMessage({
+									op: "event",
+									seq: event.seq,
+									kind: event.kind,
+									agentId: event.agentId,
+									entry: input.registry.entry(event.agentId),
+								}),
+							);
+						})
+						.then((handshake) => {
+							state.unsubscribe = handshake.unsubscribe;
+							state.stage = "subscribed";
+							connection.send(
+								encodeWireMessage({
+									op: "snapshot",
+									seq: handshake.snapshot.seq,
+									entries: handshake.snapshot.entries,
+								}),
+							);
+						})
+						.catch(() => {
+							failClosed("subscription failed");
+						});
 					return;
 				}
 				case "challenge":

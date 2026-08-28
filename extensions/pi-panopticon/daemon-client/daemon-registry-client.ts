@@ -17,7 +17,10 @@ import {
 	type RegistrySyncConnection,
 	type RegistrySyncRequest,
 } from "../../../daemon/src/registry-protocol.js";
-import { RegistryEventBuffer, type RegistryEntry } from "../../../daemon/src/registry.js";
+import {
+	RegistryEventBuffer,
+	type RegistryEntry,
+} from "../../../daemon/src/registry.js";
 
 /** Reconnect backoff shares the M2 bounded ladder (1s doubling, 60s cap). */
 const RECONNECT_BASE_MS = 1_000;
@@ -28,11 +31,17 @@ const STABLE_CONNECTION_MS = 60_000;
 interface DaemonRegistryClientOptions {
 	readonly socketPath: string;
 	/** Admission credential issued out-of-band at daemon admission. */
-	readonly credential: { readonly agentId: string; readonly capabilitySecret: string };
+	readonly credential: {
+		readonly agentId: string;
+		readonly capabilitySecret: string;
+	};
 	/** Injectable connect (tests); defaults to a node:net unix socket. */
 	readonly connect?: (
 		path: string,
-		handlers: { readonly onLine: (line: string) => void; readonly onClose: () => void },
+		handlers: {
+			readonly onLine: (line: string) => void;
+			readonly onClose: () => void;
+		},
 	) => RegistrySyncConnection;
 	readonly now?: () => Date;
 }
@@ -73,7 +82,10 @@ export class DaemonRegistryClient {
 				const socket = createConnection(path);
 				let remainder = "";
 				socket.on("data", (chunk: Buffer) => {
-					remainder = splitLines(remainder + chunk.toString("utf8"), handlers.onLine);
+					remainder = splitLines(
+						remainder + chunk.toString("utf8"),
+						handlers.onLine,
+					);
 				});
 				socket.on("close", () => handlers.onClose());
 				return {
@@ -127,7 +139,12 @@ export class DaemonRegistryClient {
 		this.connection = connection;
 		this.stage = "handshaking";
 		this.connectedAtMs = this.now().getTime();
-		connection.send(encodeWireMessage({ op: "hello", agentId: this.options.credential.agentId }));
+		connection.send(
+			encodeWireMessage({
+				op: "hello",
+				agentId: this.options.credential.agentId,
+			}),
+		);
 	}
 
 	private onDisconnected(): void {
@@ -135,9 +152,13 @@ export class DaemonRegistryClient {
 		this.stage = "disconnected";
 		if (this.stopped || this.reconnectTimer !== undefined) return;
 		// Stability resets the ladder; rapid disconnects escalate to the cap.
-		const stable = this.now().getTime() - this.connectedAtMs >= STABLE_CONNECTION_MS;
+		const stable =
+			this.now().getTime() - this.connectedAtMs >= STABLE_CONNECTION_MS;
 		this.reconnectAttempts = stable ? 1 : this.reconnectAttempts + 1;
-		const delay = Math.min(RECONNECT_BASE_MS * 2 ** (this.reconnectAttempts - 1), RECONNECT_CAP_MS);
+		const delay = Math.min(
+			RECONNECT_BASE_MS * 2 ** (this.reconnectAttempts - 1),
+			RECONNECT_CAP_MS,
+		);
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = undefined;
 			if (!this.stopped) this.connectOnce();
@@ -150,8 +171,17 @@ export class DaemonRegistryClient {
 		switch (message.op) {
 			case "challenge": {
 				this.stage = "handshaking";
-				const proof = capabilityProof(this.options.credential.capabilitySecret, message.nonce);
-				this.connection?.send(encodeWireMessage({ op: "hello_proof", agentId: this.options.credential.agentId, proof: proof.toString("base64") }));
+				const proof = capabilityProof(
+					this.options.credential.capabilitySecret,
+					message.nonce,
+				);
+				this.connection?.send(
+					encodeWireMessage({
+						op: "hello_proof",
+						agentId: this.options.credential.agentId,
+						proof: proof.toString("base64"),
+					}),
+				);
 				return;
 			}
 			case "hello_ok": {
@@ -166,14 +196,24 @@ export class DaemonRegistryClient {
 			}
 			case "snapshot": {
 				this.replaceEntries(message.entries);
-				this.buffer.applySnapshot({ seq: message.seq, generatedAt: "", entries: message.entries });
+				this.buffer.applySnapshot({
+					seq: message.seq,
+					generatedAt: "",
+					entries: message.entries,
+				});
 				this.lastSeq = message.seq;
 				this.stage = "subscribed";
 				return;
 			}
 			case "event": {
-				if (message.entry !== undefined) this.pendingEntries.set(message.seq, message.entry);
-				const status = this.buffer.applyEvent({ seq: message.seq, at: "", kind: message.kind, agentId: message.agentId });
+				if (message.entry !== undefined)
+					this.pendingEntries.set(message.seq, message.entry);
+				const status = this.buffer.applyEvent({
+					seq: message.seq,
+					at: "",
+					kind: message.kind,
+					agentId: message.agentId,
+				});
 				if (status === "resync") this.resubscribe();
 				return;
 			}

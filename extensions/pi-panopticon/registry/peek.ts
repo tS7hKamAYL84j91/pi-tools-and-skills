@@ -12,7 +12,10 @@ import { ok } from "../types.js";
 import type { Registry } from "../types.js";
 import type { AgentListModeStore } from "../ui/list-mode.js";
 import { formatAge, STATUS_SYMBOL } from "./record-utils.js";
-import { agentDisplayName, findAgentByDisplayName } from "../ui/display-name.js";
+import {
+	agentDisplayName,
+	findAgentByDisplayName,
+} from "../ui/display-name.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 
 // ── Setup ───────────────────────────────────────────────────────
@@ -29,8 +32,7 @@ export function setupPeek(
 			"List agents discovered in the shared registry, or read the activity log of a specific agent. " +
 			"With no target: returns all registered agents and their status. " +
 			"With a target (agent name): reads the agent's activity log.",
-		promptSnippet:
-			"Discover agents or read a specific agent's activity log",
+		promptSnippet: "Discover agents or read a specific agent's activity log",
 		parameters: Type.Object({
 			target: Type.Optional(
 				Type.String({
@@ -48,21 +50,22 @@ export function setupPeek(
 		async execute(_toolCallId, params, _signal) {
 			const self = registry.getRecord();
 			const visible = visibleRecords(self, registry.readAllPeers());
-			const records = params.target ? visible : filterAgentList(self, visible, listMode.get(self));
+			const records = params.target
+				? visible
+				: filterAgentList(self, visible, listMode.get(self));
 			const selfId = registry.selfId;
 
 			if (!params.target) {
 				if (records.length === 0)
 					return ok("No agents registered.", { agents: [] });
 
-				const listing = records.map((r) =>
-					`  ${STATUS_SYMBOL[r.status]} ${agentDisplayName(r, records).padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
-						(r.pendingMessages ?? 0) > 0
-							? ` msg:${r.pendingMessages}`
-							: ""
-					}${r.id === selfId ? " (you)" : ""}${
-						r.task ? `  "${r.task.slice(0, 50)}"` : ""
-					}`,
+				const listing = records.map(
+					(r) =>
+						`  ${STATUS_SYMBOL[r.status]} ${agentDisplayName(r, records).padEnd(20)} ${r.status.padEnd(10)} ${r.model || "?"} up=${formatAge(r.startedAt)}${
+							(r.pendingMessages ?? 0) > 0 ? ` msg:${r.pendingMessages}` : ""
+						}${r.id === selfId ? " (you)" : ""}${
+							r.task ? `  "${r.task.slice(0, 50)}"` : ""
+						}`,
 				);
 
 				return ok(
@@ -100,13 +103,10 @@ export function setupPeek(
 
 			// Use session JSONL
 			if (!peer.sessionFile) {
-				return ok(
-					`Agent "${params.target}" has no session log yet.`,
-					{
-						target: peer.name,
-						hasSessionFile: false,
-					},
-				);
+				return ok(`Agent "${params.target}" has no session log yet.`, {
+					target: peer.name,
+					hasSessionFile: false,
+				});
 			}
 
 			const sessionEvents = readSessionLog(

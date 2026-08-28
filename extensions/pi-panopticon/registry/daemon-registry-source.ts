@@ -15,7 +15,9 @@ import { readVolatileRegistryRecords } from "./registry-reader.js";
 const COAS_DAEMON_ENABLED_ENV = "COAS_DAEMON_ENABLED";
 
 /** True when this workspace renders the registry from the daemon. */
-export function isDaemonRegistryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isDaemonRegistryEnabled(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
 	return env[COAS_DAEMON_ENABLED_ENV] === "1";
 }
 
@@ -31,7 +33,9 @@ function daemonSocketPath(env: NodeJS.ProcessEnv = process.env): string {
 	disconnected (fail-closed empty view — never a silent dual authority).
 	Undefined when the flag is unset: the incumbent registry stays authoritative.
  */
-export function createDaemonClientIfEnabled(env: NodeJS.ProcessEnv = process.env): DaemonRegistryClient | undefined {
+export function createDaemonClientIfEnabled(
+	env: NodeJS.ProcessEnv = process.env,
+): DaemonRegistryClient | undefined {
 	if (!isDaemonRegistryEnabled(env)) return undefined;
 	return new DaemonRegistryClient({
 		socketPath: daemonSocketPath(env),
@@ -50,11 +54,16 @@ export function createDaemonClientIfEnabled(env: NodeJS.ProcessEnv = process.env
 	incumbent shared disk (the mixed-mode matrix keeps one authority per
 	workspace). No attached client means the incumbent registry.
  */
-export function readPeerRecords(externalPeers: readonly AgentRecord[], daemonClient: DaemonRegistryClient | undefined): AgentRecord[] {
+export function readPeerRecords(
+	externalPeers: readonly AgentRecord[],
+	daemonClient: DaemonRegistryClient | undefined,
+): AgentRecord[] {
 	if (daemonClient !== undefined) {
 		return [
 			...externalPeers,
-			...(daemonClient.connected ? daemonEntriesToRecords(daemonClient.getEntries(), Date.now()) : []),
+			...(daemonClient.connected
+				? daemonEntriesToRecords(daemonClient.getEntries(), Date.now())
+				: []),
 		];
 	}
 	return [...externalPeers, ...readVolatileRegistryRecords()];
@@ -68,23 +77,28 @@ export function readPeerRecords(externalPeers: readonly AgentRecord[], daemonCli
  * global — everything else (including the daemon's neutral defaults) is
  * treated as scoped, the least-visible reading.
  */
-export function daemonEntriesToRecords(entries: readonly RegistryEntry[], now: number): AgentRecord[] {
-	return entries.map((entry): AgentRecord => ({
-		id: entry.agentId,
-		name: entry.displayName,
-		// Diagnostic only: the daemon registry does not expose peer PIDs (ADR section 2).
-		pid: 0,
-		cwd: "",
-		model: "",
-		startedAt: Date.parse(entry.createdAt),
-		heartbeat: now,
-		// Daemon liveness: a live binding means the agent is running; without
-		// one the identity persists but no instance is alive.
-		status: entry.liveInstanceId !== undefined ? "running" : "terminated",
-		...(entry.parentId !== null ? { parentId: entry.parentId } : {}),
-		visibility: visibilityTag(entry.visibility),
-		kind: "pi",
-	}));
+export function daemonEntriesToRecords(
+	entries: readonly RegistryEntry[],
+	now: number,
+): AgentRecord[] {
+	return entries.map(
+		(entry): AgentRecord => ({
+			id: entry.agentId,
+			name: entry.displayName,
+			// Diagnostic only: the daemon registry does not expose peer PIDs (ADR section 2).
+			pid: 0,
+			cwd: "",
+			model: "",
+			startedAt: Date.parse(entry.createdAt),
+			heartbeat: now,
+			// Daemon liveness: a live binding means the agent is running; without
+			// one the identity persists but no instance is alive.
+			status: entry.liveInstanceId !== undefined ? "running" : "terminated",
+			...(entry.parentId !== null ? { parentId: entry.parentId } : {}),
+			visibility: visibilityTag(entry.visibility),
+			kind: "pi",
+		}),
+	);
 }
 
 /** Fail-closed visibility mapping: only an exact "global" widens the view. */

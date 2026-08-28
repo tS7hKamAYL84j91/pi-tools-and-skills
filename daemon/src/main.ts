@@ -17,6 +17,8 @@ import { join } from "node:path";
 import { daemonRoots } from "./paths.js";
 import { assertLiveModeAuthorized, invalidateWriterLeaseOnRestart, loadWriterLease, tickSchedules, type TickMode } from "./schedule-tick.js";
 import { DeliveryServeLoop } from "./serve.js";
+import { DaemonRegistry } from "./registry.js";
+import { acceptRegistrySyncConnection } from "./registry-protocol.js";
 import { buildEnvelope, signEnvelope } from "./envelope.js";
 import { enqueue } from "./queue.js";
 
@@ -27,6 +29,7 @@ export interface DaemonBootstrap {
 	readonly socketPath: string;
 	readonly socket: PublishedSocket;
 	readonly serve: DeliveryServeLoop;
+	readonly registry: DaemonRegistry;
 	/** M4 snapshot: scheduler + delivery counters for coas_status. */
 	readonly snapshot: () => Record<string, unknown>;
 	readonly stop: () => Promise<void>;
@@ -59,9 +62,26 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 	}
 	try {
 		const keys = await loadOrCreateIntegrityKey(roots, (event) => appendAudit(roots, event, { durable: true }));
-		const socket = await publishDaemonSocket(roots, () => {
-			// Connection handler is wired by the serve loop (T-868: A2A queue);
-			// the control-plane dispatch lands with the queue slice.
+		const socket = await publishDaemonSocket(roots, (socket) => {
+			// M6 registry sync: each connection runs the authenticated
+			// capability-proof handshake (fail-closed) feeding complete lines
+			// to the session handler.
+			let buffer = "";
+			const session = acceptRegistrySyncConnection({ registry }, {
+				send: (line) => socket.write(line),
+				close: () => socket.destroy(),
+			});
+			socket.on("data", (chunk: Buffer) => {
+				buffer += chunk.toString("utf8");
+				let newlineIndex = buffer.indexOf("\n");
+				while (newlineIndex >= 0) {
+					const line = buffer.slice(0, newlineIndex);
+					buffer = buffer.slice(newlineIndex + 1);
+					session.onLine(line);
+					newlineIndex = buffer.indexOf("\n");
+				}
+			});
+			socket.on("close", () => session.close());
 		});
 		const startedAt = new Date().toISOString();
 		// M5/M6 recovery: a surviving writer lease is invalidated (re-arm) at
@@ -76,8 +96,14 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 
 		const mode: TickMode = tickModeFromEnv();
 		// B3 alternative (reviewer): hold live mode closed until the T-870
-		// registry seam provides registry-derived guard inputs.
+		// registry seam provides registry-derived guard inputs. The registry
+		// itself is recovered here (identity continuity + stale invalidation).
 		assertLiveModeAuthorized(mode, false);
+		const registry = await DaemonRegistry.recover(roots, {
+			keyId: keys.keyId,
+			privateKeyPem: keys.privateKeyPem,
+			publicKeyPem: keys.publicKeyPem,
+		});
 		const serve = new DeliveryServeLoop(roots, (event) => appendAudit(roots, event));
 		const deferralCounts = new Map<string, number>();
 
@@ -144,7 +170,7 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 			mode,
 			serve: serve.counters,
 		});
-		return { startedAt, posture: "same_uid_untrusted", keyId: keys.keyId, socketPath: socket.path, socket, serve, snapshot, stop };
+		return { startedAt, posture: "same_uid_untrusted", keyId: keys.keyId, socketPath: socket.path, socket, serve, registry, snapshot, stop };
 	} catch (error) {
 		// Fail closed: never leave a lock held by a daemon that did not start.
 		await releaseSingleInstanceLock(roots).catch(() => {});

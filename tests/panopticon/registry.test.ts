@@ -9,7 +9,14 @@ import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { classifyRecord } from "../../extensions/pi-panopticon/registry/registry.js";
-import { buildRecord, formatAge, nameTaken, pickName, pickActiveName, sortRecords } from "../../extensions/pi-panopticon/registry/record-utils.js";
+import {
+	buildRecord,
+	formatAge,
+	nameTaken,
+	pickName,
+	pickActiveName,
+	sortRecords,
+} from "../../extensions/pi-panopticon/registry/record-utils.js";
 import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 
 // ── Fixtures ────────────────────────────────────────────────────
@@ -123,7 +130,9 @@ describe("pickName", () => {
 
 	it("appends -2 when base is taken", () => {
 		const records = [makeRecord({ id: "other", name: "myproject" })];
-		expect(pickName("/home/user/myproject", records, "self")).toBe("myproject-2");
+		expect(pickName("/home/user/myproject", records, "self")).toBe(
+			"myproject-2",
+		);
 	});
 
 	it("increments suffix until a free slot is found", () => {
@@ -135,12 +144,16 @@ describe("pickName", () => {
 	});
 
 	it("uses requested name when provided", () => {
-		expect(pickName("/home/user/myproject", [], "self", "custom-agent")).toBe("custom-agent");
+		expect(pickName("/home/user/myproject", [], "self", "custom-agent")).toBe(
+			"custom-agent",
+		);
 	});
 
 	it("appends -2 when requested name is taken", () => {
 		const records = [makeRecord({ id: "other", name: "custom-agent" })];
-		expect(pickName("/home/user/myproject", records, "self", "custom-agent")).toBe("custom-agent-2");
+		expect(
+			pickName("/home/user/myproject", records, "self", "custom-agent"),
+		).toBe("custom-agent-2");
 	});
 });
 
@@ -148,21 +161,38 @@ describe("pickName", () => {
 
 describe("pickActiveName", () => {
 	it("prefers session names over spawn names", () => {
-		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self", sessionName: "user-name", spawnName: "spawned" })).toEqual({
+		expect(
+			pickActiveName({
+				cwd: "/x/proj",
+				records: [],
+				selfId: "self",
+				sessionName: "user-name",
+				spawnName: "spawned",
+			}),
+		).toEqual({
 			name: "user-name",
 			source: "user",
 		});
 	});
 
 	it("falls back to spawn name when session name is cleared", () => {
-		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self", spawnName: "spawned" })).toEqual({
+		expect(
+			pickActiveName({
+				cwd: "/x/proj",
+				records: [],
+				selfId: "self",
+				spawnName: "spawned",
+			}),
+		).toEqual({
 			name: "spawned",
 			source: "spawn",
 		});
 	});
 
 	it("falls back to a generated cwd name without session or spawn names", () => {
-		expect(pickActiveName({ cwd: "/x/proj", records: [], selfId: "self" })).toEqual({
+		expect(
+			pickActiveName({ cwd: "/x/proj", records: [], selfId: "self" }),
+		).toEqual({
 			name: "proj",
 			source: "generated",
 		});
@@ -177,12 +207,14 @@ describe("formatSessionLog", () => {
 	});
 
 	it("formats a tool_call event", () => {
-		const events = [{
-			ts: new Date("2025-01-01T12:34:56Z").getTime(),
-			event: "tool_call",
-			tool: "bash",
-			args: '{"command":"echo hi"}',
-		}];
+		const events = [
+			{
+				ts: new Date("2025-01-01T12:34:56Z").getTime(),
+				event: "tool_call",
+				tool: "bash",
+				args: '{"command":"echo hi"}',
+			},
+		];
 		const result = formatSessionLog(events);
 		expect(result).toContain("[12:34:56]");
 		expect(result).toContain("tool_call");
@@ -190,25 +222,29 @@ describe("formatSessionLog", () => {
 	});
 
 	it("formats a message event", () => {
-		const events = [{
-			ts: new Date("2025-01-01T00:00:00Z").getTime(),
-			event: "message",
-			role: "user",
-			text: "hello world",
-		}];
+		const events = [
+			{
+				ts: new Date("2025-01-01T00:00:00Z").getTime(),
+				event: "message",
+				role: "user",
+				text: "hello world",
+			},
+		];
 		const result = formatSessionLog(events);
 		expect(result).toContain("role=user");
 		expect(result).toContain('text="hello world"');
 	});
 
 	it("formats a tool_result event", () => {
-		const events = [{
-			ts: Date.now(),
-			event: "tool_result",
-			tool: "read",
-			summary: "file contents here",
-			isError: false,
-		}];
+		const events = [
+			{
+				ts: Date.now(),
+				event: "tool_result",
+				tool: "read",
+				summary: "file contents here",
+				isError: false,
+			},
+		];
 		const result = formatSessionLog(events);
 		expect(result).toContain("tool_result");
 		expect(result).toContain("tool=read");
@@ -231,17 +267,33 @@ describe("readSessionLog", () => {
 			const apiKeyValue = "example-secret-value";
 			const tokenValue = "example-token-value";
 			const bearerValue = "example-bearer-value";
-			writeFileSync(file, `${JSON.stringify({
-				message: {
-					role: "assistant",
-					timestamp: new Date("2025-01-01T00:00:00Z").getTime(),
-					content: [
-						{ type: "text", text: `api_key=${apiKeyValue}` },
-						{ type: "tool_use", name: "bash", input: { command: `echo token=${tokenValue}` } },
-						{ type: "tool_result", name: "bash", content: [{ type: "text", text: `Authorization: Bearer ${bearerValue}` }] },
-					],
-				},
-			})}\n`);
+			writeFileSync(
+				file,
+				`${JSON.stringify({
+					message: {
+						role: "assistant",
+						timestamp: new Date("2025-01-01T00:00:00Z").getTime(),
+						content: [
+							{ type: "text", text: `api_key=${apiKeyValue}` },
+							{
+								type: "tool_use",
+								name: "bash",
+								input: { command: `echo token=${tokenValue}` },
+							},
+							{
+								type: "tool_result",
+								name: "bash",
+								content: [
+									{
+										type: "text",
+										text: `Authorization: Bearer ${bearerValue}`,
+									},
+								],
+							},
+						],
+					},
+				})}\n`,
+			);
 			const formatted = formatSessionLog(readSessionLog(file, 10));
 			expect(formatted).toContain("[REDACTED]");
 			expect(formatted).not.toContain(apiKeyValue);
@@ -267,6 +319,6 @@ describe("sortRecords", () => {
 		const b = makeRecord({ id: "b", startedAt: 500 });
 		const c = makeRecord({ id: "c", startedAt: 1500 });
 		const sorted = sortRecords([a, b, c], "nobody");
-		expect(sorted.map(r => r.id)).toEqual(["b", "a", "c"]);
+		expect(sorted.map((r) => r.id)).toEqual(["b", "a", "c"]);
 	});
 });
