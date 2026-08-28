@@ -256,8 +256,9 @@ describe("approval-inbox overlay", () => {
 		const deps = makeDeps({ coasHome: home });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("r");
-		await new Promise((resolve) => setTimeout(resolve, 10));
-		expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("rejected");
+		await vi.waitFor(async () => {
+			expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("rejected");
+		});
 		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
 		harness.component.handleInput("\x1b");
 		await promise;
@@ -270,8 +271,9 @@ describe("approval-inbox overlay", () => {
 		const deps = makeDeps({ coasHome: home });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("d");
-		await new Promise((resolve) => setTimeout(resolve, 10));
-		expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("deferred");
+		await vi.waitFor(async () => {
+			expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("deferred");
+		});
 		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
 		harness.component.handleInput("\x1b");
 		await promise;
