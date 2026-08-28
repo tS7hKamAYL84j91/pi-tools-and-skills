@@ -61,3 +61,17 @@ No live activation, no real schedule files, no A2A deliveries, no pi sessions to
 
 - Timeboxed: single fixture session, all seven steps, one working session.
 - Report: step-by-step results + preview counts + audit excerpts delivered to chief-of-staff; step 2 draft prepared only after step 1 is accepted.
+
+## 9. Execution record (2026-08-28)
+
+| Step | Result |
+|---|---|
+| 1 | PASS — bootstrap in dry_run, socket 0600, `daemon_started` audited |
+| 2 | PASS — 3 fixture schedules loaded, 0 refused |
+| 3 | PASS — 3 claim-checks written, 0 deliveries, mode `dry_run` |
+| 4 | PASS — `already_claimed` ×3 (M1 coalescing) |
+| 5 | PASS — `claim_check_only` restart; quarter-hourly claim rotated to 09:15; 0 deliveries |
+| 6 | PASS — rollback rehearsal: lock released, ladder reset, not disabled |
+| 7 | PASS — live mode refused (held closed until the T-870 registry seam wiring) |
+
+Deliveries across the entire run: **0**. Gates after execution: 203 test files / 1532 tests, `npm run check` clean.
