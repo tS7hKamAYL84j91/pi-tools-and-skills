@@ -56,6 +56,7 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 				generation: 1,
 				label: "same_uid_untrusted",
 				capabilitySecret: "cap-secret",
+				guardInputs: { parentId: null, visibility: "workspace", scope: "root" },
 				async send() {
 					return "ack";
 				},
@@ -126,12 +127,14 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 				});
 			}
 
+			const rootGuard = { parentId: null, visibility: "workspace", scope: "root" as const };
 			const hung: LiveBindingConnection = {
 				agentId: "a-worker",
 				instanceId: "i-w1",
 				generation: 1,
 				label: "same_uid_untrusted",
 				capabilitySecret: "cap-worker",
+				guardInputs: rootGuard,
 				async send() {
 					return new Promise<"ack" | "nack" | "timeout">(() => {});
 				},
@@ -142,6 +145,7 @@ describe("DeliveryServeLoop (design doc sections 5/8)", () => {
 				generation: 1,
 				label: "same_uid_untrusted",
 				capabilitySecret: "cap-healthy",
+				guardInputs: rootGuard,
 				async send() {
 					return "ack";
 				},

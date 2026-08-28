@@ -26,6 +26,8 @@ export interface LiveBindingConnection {
 	readonly generation: number;
 	readonly label: "same_uid_untrusted";
 	readonly capabilitySecret: string;
+	/** Registry-derived guard inputs (design doc section 5a). */
+	readonly guardInputs: { readonly parentId: string | null; readonly visibility: string; readonly scope: "root" | "task" | "workspace" };
 	/** Bounded send; the serve loop races it against DELIVERY_TIMEOUT_MS. */
 	readonly send: (payload: string) => Promise<"ack" | "nack" | "timeout">;
 }
@@ -156,6 +158,21 @@ export class DeliveryServeLoop {
 			const advanced = await advanceDelivery(this.roots, recipient, messageId, "generation_mismatch", now);
 			if (advanced.state === "dead_letter") this.counters.deadLettered++;
 			await this.audit({ kind: "generation_mismatch", messageId, recipient, required, actual: generation });
+			return "live_failed";
+		}
+
+		// Delivery-seam guard (ADR-0008 (6)/(7)): daemon-ticked delivery targets
+		// root-admitted bindings only; non-root scopes drop+log+alert.
+		if (binding.guardInputs.scope !== "root") {
+			await this.audit({
+				kind: "delivery_guard_dropped",
+				messageId,
+				recipient,
+				scope: binding.guardInputs.scope,
+				reason: "non-root binding is not a delivery target",
+			});
+			const dropped = await advanceDelivery(this.roots, recipient, messageId, "live_failed", now);
+			if (dropped.state === "dead_letter") this.counters.deadLettered++;
 			return "live_failed";
 		}
 

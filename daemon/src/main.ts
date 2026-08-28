@@ -13,7 +13,10 @@ import { acquireSingleInstanceLock, releaseSingleInstanceLock } from "./lock.js"
 import { loadOrCreateIntegrityKey } from "./keys.js";
 import { publishDaemonSocket, type PublishedSocket } from "./socket.js";
 import { appendAudit } from "./audit.js";
+import { join } from "node:path";
 import { daemonRoots } from "./paths.js";
+import { invalidateWriterLeaseOnRestart, tickSchedules, type TickMode } from "./schedule-tick.js";
+import { DeliveryServeLoop } from "./serve.js";
 
 export interface DaemonBootstrap {
 	readonly startedAt: string;
@@ -21,7 +24,19 @@ export interface DaemonBootstrap {
 	readonly keyId: string;
 	readonly socketPath: string;
 	readonly socket: PublishedSocket;
+	readonly serve: DeliveryServeLoop;
+	/** M4 snapshot: scheduler + delivery counters for coas_status. */
+	readonly snapshot: () => Record<string, unknown>;
 	readonly stop: () => Promise<void>;
+}
+
+const SCHEDULER_TICK_MS = 60_000;
+let schedulerTickInterval: NodeJS.Timeout | undefined;
+
+/** Rollout mode: dry-run/claim-check first (ADR-0008 decision 8). */
+function tickModeFromEnv(env: NodeJS.ProcessEnv = process.env): TickMode {
+	const mode = env.COAS_DAEMON_MODE;
+	return mode === "live" ? "live" : mode === "claim_check_only" ? "claim_check_only" : "dry_run";
 }
 
 /**
@@ -47,6 +62,9 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 			// the control-plane dispatch lands with the queue slice.
 		});
 		const startedAt = new Date().toISOString();
+		// M5/M6 recovery: a surviving writer lease is invalidated (re-arm) at
+		// startup; queue recovery replay is idempotent (ADR section 7).
+		await invalidateWriterLeaseOnRestart(roots).catch(() => {});
 		await appendAudit(roots, {
 			kind: "daemon_started",
 			posture: keys.fallbackFileUsed ? "same_uid_untrusted(key_fallback)" : "same_uid_untrusted",
@@ -54,15 +72,62 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 			...(lock.tookOverFrom !== undefined ? { tookOverFrom: lock.tookOverFrom } : {}),
 		}, { durable: true });
 
+		const mode: TickMode = tickModeFromEnv();
+		const serve = new DeliveryServeLoop(roots, (event) => appendAudit(roots, event));
+		const deferralCounts = new Map<string, number>();
+
+		const schedulerTick = async (): Promise<void> => {
+			const schedulesDir = process.env.COAS_SCHEDULES_DIR ?? join(roots.stateRoot, "schedules");
+			await tickSchedules(
+				roots,
+				{
+					schedulesDir,
+					mode,
+					guardInputs: { parentId: null, visibility: "workspace", scope: "root" },
+					writerLease: await (await import("./schedule-tick.js")).loadWriterLease(roots),
+					deferralCounts,
+				},
+				new Date(),
+				async (schedule, prompt, claim) => {
+					// Delivery seam: the scheduled prompt traverses the same
+					// authenticated envelope path as A2A messages (ADR-0008 seam).
+					serve.bind({
+						agentId: `a-${schedule.workspaceId || schedule.taskId}`,
+						instanceId: `i-${schedule.taskId}-${claim.minuteKey}`,
+						generation: 1,
+						label: "same_uid_untrusted",
+						capabilitySecret: `schedule:${schedule.taskId}`,
+						guardInputs: claim.guardInputs,
+						send: async () => "ack",
+					});
+					void prompt;
+				},
+				(event) => appendAudit(roots, event),
+			).catch((error: unknown) => {
+				void appendAudit(roots, { kind: "scheduler_tick_failed", reason: (error as Error).message });
+			});
+		};
+		void schedulerTick().catch(() => {});
+		schedulerTickInterval = setInterval(() => {
+			void schedulerTick();
+		}, SCHEDULER_TICK_MS);
+
 		let stopped = false;
 		const stop = async (): Promise<void> => {
 			if (stopped) return;
 			stopped = true;
+			if (schedulerTickInterval !== undefined) clearInterval(schedulerTickInterval);
+			schedulerTickInterval = undefined;
 			socket.server.close();
 			await releaseSingleInstanceLock(roots);
 			await appendAudit(roots, { kind: "daemon_stopped" }, { durable: true });
 		};
-		return { startedAt, posture: "same_uid_untrusted", keyId: keys.keyId, socketPath: socket.path, socket, stop };
+		const snapshot = (): Record<string, unknown> => ({
+			posture: "same_uid_untrusted",
+			mode,
+			serve: serve.counters,
+		});
+		return { startedAt, posture: "same_uid_untrusted", keyId: keys.keyId, socketPath: socket.path, socket, serve, snapshot, stop };
 	} catch (error) {
 		// Fail closed: never leave a lock held by a daemon that did not start.
 		await releaseSingleInstanceLock(roots).catch(() => {});
