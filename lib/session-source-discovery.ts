@@ -20,15 +20,18 @@ function isSessionFile(name: string): boolean {
 }
 
 async function walk(root: string, dir: string, out: SessionSourceCandidate[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const path = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			await walk(root, path, out);
-		} else if (entry.isFile() && isSessionFile(entry.name)) {
-			const info = await stat(path);
-			out.push({ path, relativePath: relative(root, path), mtimeMs: info.mtimeMs, size: info.size });
-		}
-	}
+	const entries = await readdir(dir, { withFileTypes: true });
+	await Promise.all(
+		entries.map(async (entry) => {
+			const path = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				await walk(root, path, out);
+			} else if (entry.isFile() && isSessionFile(entry.name)) {
+				const info = await stat(path);
+				out.push({ path, relativePath: relative(root, path), mtimeMs: info.mtimeMs, size: info.size });
+			}
+		}),
+	);
 }
 
 /** List recent session source files under the canonical or test override root. */
