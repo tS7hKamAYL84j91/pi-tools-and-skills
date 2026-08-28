@@ -36,6 +36,9 @@ function runSecretTool(args: string[], input?: string): Promise<string | undefin
 		child.stdout.on("data", (chunk: Buffer) => {
 			out += chunk.toString("utf8");
 		});
+		// The keyring being unavailable is an expected outcome here (the caller
+		// falls back); a dead child's stdin write must not raise unhandled EPIPE.
+		child.stdin.on("error", () => {});
 		child.on("error", () => resolve(undefined));
 		child.on("close", (code) => {
 			resolve(code === 0 ? out : undefined);

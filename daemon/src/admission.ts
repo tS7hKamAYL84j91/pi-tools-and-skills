@@ -34,12 +34,15 @@ export interface LiveBinding {
 export interface AdmissionResult {
 	readonly binding: LiveBinding;
 	readonly capability: InstanceCapability;
+	/** The freshly signed identity record (generation bumped, binding attached). */
+	readonly record: IdentityRecord;
 }
 
 /**
  * Admit an instance of an existing agent: bumps the generation (durable
  * before any binding publish) and issues the capability secret. The caller
- * delivers the secret out-of-band to the admitted process.
+ * delivers the secret out-of-band to the admitted process. The signed record
+ * is returned so callers keep their in-memory view authoritative.
  */
 export async function admitInstance(
 	roots: DaemonRoots,
@@ -62,7 +65,7 @@ export async function admitInstance(
 		generation: record.generation,
 		label: ADMISSION_LABEL,
 	});
-	return { binding, capability: { agentId: record.agentId, instanceId, generation: record.generation, capabilitySecret, label: ADMISSION_LABEL } };
+	return { binding, capability: { agentId: record.agentId, instanceId, generation: record.generation, capabilitySecret, label: ADMISSION_LABEL }, record };
 }
 
 /** Proof-of-possession: HMAC(capability, nonce), constant-time compared. */
