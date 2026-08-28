@@ -7,7 +7,7 @@ import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { agentDisplayName } from "./display-name.js";
-import { sortRecords, STATUS_SYMBOL } from "../registry/registry.js";
+import { sortRecords, STATUS_SYMBOL } from "../registry/record-utils.js";
 
 /** Map status → short label shown after the colon in compact segments. */
 export const STATUS_LABEL: Record<AgentStatus, string> = {

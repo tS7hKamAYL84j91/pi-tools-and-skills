@@ -8,15 +8,8 @@ import { join } from "node:path";
 
 import { describe, it, expect } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
-import {
-	classifyRecord,
-	buildRecord,
-	formatAge,
-	nameTaken,
-	pickName,
-	pickActiveName,
-	sortRecords,
-} from "../../extensions/pi-panopticon/registry/registry.js";
+import { classifyRecord } from "../../extensions/pi-panopticon/registry/registry.js";
+import { buildRecord, formatAge, nameTaken, pickName, pickActiveName, sortRecords } from "../../extensions/pi-panopticon/registry/record-utils.js";
 import { readSessionLog, formatSessionLog } from "../../lib/session-log.js";
 
 // ── Fixtures ────────────────────────────────────────────────────

@@ -98,13 +98,15 @@ export interface RegistryEntry {
 	readonly parentId: string | null;
 	readonly visibility: string;
 	readonly scope: AdmissionScope;
+	/** Identity creation time (feeds the view model's startedAt). */
+	readonly createdAt: string;
 }
 
 export interface RegistrySnapshot {
 	/** Sequence of the last event contained in this snapshot. */
 	readonly seq: number;
 	readonly generatedAt: string;
-	readonly entries: RegistryEntry[];
+	readonly entries: readonly RegistryEntry[];
 }
 
 export interface AdmittedBinding {
@@ -256,6 +258,15 @@ export class DaemonRegistry {
 						await invalidateLiveInstance(roots, keys, identity),
 					);
 					registry.emit({
+						kind: "instance_invalidated",
+						agentId,
+						instanceId: identity.liveInstanceId,
+						generation: identity.generation,
+						reason: "restart_stale",
+					});
+					// Durable audit leg (GM review finding 1): the in-memory event
+					// alone is not the accountability trail for restart invalidations.
+					await registry.auditSink({
 						kind: "instance_invalidated",
 						agentId,
 						instanceId: identity.liveInstanceId,
@@ -500,6 +511,12 @@ export class DaemonRegistry {
 		};
 	}
 
+	/** Current registry entry for an agent (M6 sync protocol event payloads). */
+	entry(agentId: string): RegistryEntry | undefined {
+		if (!this.identities.has(agentId)) return undefined;
+		return this.entryFor(agentId);
+	}
+
 	/**
 	 * M6 snapshot: a single-lock atomic read of the registry state — never a
 	 * scan that events can interleave with. The snapshot's seq is the last
@@ -627,6 +644,7 @@ export class DaemonRegistry {
 			parentId: identity.parentId ?? null,
 			visibility: identity.visibility ?? "workspace",
 			scope: identity.scope ?? "task",
+			createdAt: identity.createdAt,
 		};
 	}
 
@@ -671,6 +689,12 @@ export class RegistryEventBuffer {
 	private readonly appliedEvents: RegistryEvent[] = [];
 	private resyncNeeded = false;
 
+	/**
+	 * @param onApply invoked for every event as it is applied (including
+	 * buffered ones drained after the snapshot) — the consumer's delta hook.
+	 */
+	constructor(private readonly onApply?: (event: RegistryEvent) => void) {}
+
 	/** Events received before the snapshot: buffered, then reconciled on apply. */
 	applyEvent(
 		event: RegistryEvent,
@@ -691,6 +715,7 @@ export class RegistryEventBuffer {
 		if (event.seq === expectedSeq) {
 			this.appliedEvents.push(event);
 			this.expectedSeq = event.seq + 1;
+			this.onApply?.(event);
 			this.drainBuffered();
 			return "applied";
 		}
@@ -721,6 +746,7 @@ export class RegistryEventBuffer {
 			if (event.seq === this.expectedSeq) {
 				this.appliedEvents.push(event);
 				this.expectedSeq = event.seq + 1;
+				this.onApply?.(event);
 				continue;
 			}
 			// A buffered event beyond the next expected seq is a gap: resync.
@@ -744,9 +770,8 @@ export class RegistryEventBuffer {
 		for (let index = 0; index < this.buffered.length; ) {
 			const event = this.buffered[index] as RegistryEvent;
 			if (event.seq === expectedSeq) {
-				this.appliedEvents.push(event);
-				this.expectedSeq = event.seq + 1;
 				this.buffered.splice(index, 1);
+				this.onApply?.(event);
 			} else if (event.seq < expectedSeq) {
 				// Stale buffered event, already contained: drop.
 				this.buffered.splice(index, 1);

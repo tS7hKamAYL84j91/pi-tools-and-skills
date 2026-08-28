@@ -5,7 +5,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { openAgentOverlay } from "../ui/agent-overlay.js";
 import type { AgentOverlayDeps } from "../ui/agent-overlay-types.js";
-import { sortRecords, STATUS_SYMBOL } from "../registry/registry.js";
+import { sortRecords, STATUS_SYMBOL } from "../registry/record-utils.js";
 import { filterAgentList } from "../registry/visibility.js";
 import { STATUS_LABEL } from "../ui/ui-format.js";
 

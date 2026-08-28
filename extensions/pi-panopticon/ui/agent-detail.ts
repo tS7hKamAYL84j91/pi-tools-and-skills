@@ -6,7 +6,7 @@ import { Container, Text, matchesKey } from "@earendil-works/pi-tui";
 import { readSessionLog, type SessionEvent } from "../../../lib/session-log.js";
 import { visibleRecords } from "../registry/visibility.js";
 import { agentDisplayName, findAgentByDisplayName } from "./display-name.js";
-import { formatAge, STATUS_SYMBOL } from "../registry/registry.js";
+import { formatAge, STATUS_SYMBOL } from "../registry/record-utils.js";
 import type { AgentRecord } from "../types.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { confirmDestructiveAction, type DestructiveConfirmationView } from "../../../lib/tui-confirmation.js";

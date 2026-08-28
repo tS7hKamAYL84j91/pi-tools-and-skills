@@ -13,7 +13,7 @@ import {
 	type SelectItem,
 	matchesKey,
 } from "@earendil-works/pi-tui";
-import { formatAge, sortRecords, STATUS_SYMBOL } from "../registry/registry.js";
+import { formatAge, sortRecords, STATUS_SYMBOL } from "../registry/record-utils.js";
 import type { AgentRecord } from "../types.js";
 import { agentDisplayName } from "./display-name.js";
 import { filterAgentList } from "../registry/visibility.js";
@@ -38,9 +38,10 @@ class AgentSelectList extends SelectList {
 	}
 
 	override setFilter(query: string): void {
-		// SelectList exposes setFilter but not a fuzzy matcher hook, so this mirrors
-		// the existing Teams picker pattern to update its private filtered state.
-		const internals = this as unknown as MutableSelectListInternals;
+	// SAFETY: SelectList exposes setFilter but not a fuzzy matcher hook, so this
+	// mirrors the existing Teams picker pattern to update its private filtered
+	// state; MutableSelectListInternals is the exact runtime shape of `this`.
+	const internals = this as unknown as MutableSelectListInternals;
 		const trimmed = query.trim();
 		internals.filteredItems = trimmed.length === 0
 			? this.allItems

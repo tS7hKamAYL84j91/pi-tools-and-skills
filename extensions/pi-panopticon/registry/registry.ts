@@ -10,7 +10,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { rmSync, unlinkSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { AgentNameSource, AgentRecord, AgentStatus } from "../../../lib/agent-registry.js";
 import {
 	PANOPTICON_PARENT_ID_ENV,
@@ -20,8 +20,10 @@ import {
 	REGISTRY_DIR,
 } from "../../../lib/agent-registry.js";
 import type { Registry as RegistryInterface } from "../types.js";
+import { buildRecord, pickActiveName } from "./record-utils.js";
+import { readPeerRecords } from "./daemon-registry-source.js";
+import type { DaemonRegistryClient } from "../daemon-client/daemon-registry-client.js";
 import { flushRecord } from "./registry-persistence.js";
-import { readVolatileRegistryRecords } from "./registry-reader.js";
 
 export { classifyRecord } from "./registry-reader.js";
 
@@ -29,109 +31,6 @@ export { classifyRecord } from "./registry-reader.js";
 
 const HEARTBEAT_MS = 5_000;
 const ORPHAN_REAP_MS = 60_000;
-export const STATUS_SYMBOL: Record<AgentStatus, string> = {
-	running: "R",
-	waiting: "W",
-	done: "D",
-	blocked: "B",
-	stalled: "S",
-	terminated: "X",
-	unknown: "?",
-};
-
-// ── Pure functions (exported for tests) ─────────────────────────
-
-/**
- * Build a record with updated heartbeat, status, and task.
- * Pure — caller supplies the timestamp.
- * @internal exported for tests
- */
-export function buildRecord(
-	base: AgentRecord,
-	status: AgentStatus,
-	task: string | undefined,
-	now: number,
-): AgentRecord {
-	return { ...base, heartbeat: now, status, task };
-}
-
-/**
- * Format uptime as human-readable duration (e.g. "5m", "42s").
- * @internal exported for tests
- */
-export function formatAge(startedAt: number): string {
-	const secs = Math.round((Date.now() - startedAt) / 1000);
-	return secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
-}
-
-/**
- * Check if a name is already taken by another agent.
- * Case-insensitive; ignores self.
- * @internal exported for tests
- */
-export function nameTaken(
-	name: string,
-	records: AgentRecord[],
-	selfId: string,
-): boolean {
-	const lower = name.toLowerCase();
-	return records.some((r) => r.name.toLowerCase() === lower && r.id !== selfId);
-}
-
-/**
- * Pick a unique name for this agent.
- * Starts with basename(cwd), then tries cwd-2, cwd-3, etc.
- * Falls back to cwd-{first 6 chars of id}.
- * @internal exported for tests
- */
-export function pickName(
-	cwd: string,
-	records: AgentRecord[],
-	selfId: string,
-	requestedName?: string,
-): string {
-	const base = requestedName || basename(cwd) || "agent";
-	if (!nameTaken(base, records, selfId)) return base;
-	for (let i = 2; i < 100; i++) {
-		const candidate = `${base}-${i}`;
-		if (!nameTaken(candidate, records, selfId)) return candidate;
-	}
-	return `${base}-${selfId.slice(0, 6)}`;
-}
-
-interface PickActiveNameInput {
-	cwd: string;
-	records: AgentRecord[];
-	selfId: string;
-	sessionName?: string;
-	spawnName?: string;
-}
-
-/** Resolve active name by precedence: session/programmatic > spawn > generated. */
-export function pickActiveName(input: PickActiveNameInput): { name: string; source: AgentNameSource } {
-	if (input.sessionName) {
-		return { name: input.sessionName, source: "user" };
-	}
-	if (input.spawnName) {
-		return { name: pickName(input.cwd, input.records, input.selfId, input.spawnName), source: "spawn" };
-	}
-	return { name: pickName(input.cwd, input.records, input.selfId), source: "generated" };
-}
-
-/**
- * Sort records: self first, then by startedAt.
- * @internal exported for tests
- */
-export function sortRecords(
-	records: AgentRecord[],
-	selfId: string,
-): AgentRecord[] {
-	return [...records].sort((a, b) => {
-		if (a.id === selfId) return -1;
-		if (b.id === selfId) return 1;
-		return a.startedAt - b.startedAt;
-	});
-}
 
 // ── Registry class ──────────────────────────────────────────────
 
@@ -143,6 +42,7 @@ export default class Registry implements RegistryInterface {
 	readonly selfId: string;
 	private record: AgentRecord | undefined;
 	private externalPeers: AgentRecord[] = [];
+	private daemonClient: DaemonRegistryClient | undefined;
 	private lastSyncedSessionName: string | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
@@ -283,6 +183,15 @@ export default class Registry implements RegistryInterface {
 		this.externalPeers = records.filter((record) => record.kind === "external");
 	}
 
+	/**
+	 * Attach the daemon-registry client (M6 handoff). Called by the daemon-mode
+	 * wiring before the client starts; the read path switches to the daemon
+	 * snapshot for as long as the client is live.
+	 */
+	setDaemonClient(client: DaemonRegistryClient): void {
+		this.daemonClient = client;
+	}
+
 	flush(): void {
 		flushRecord(this.record);
 	}
@@ -292,7 +201,11 @@ export default class Registry implements RegistryInterface {
 	 * Reaps dead agents (deletes their files + runs cleanup hooks).
 	 */
 	readAllPeers(): AgentRecord[] {
-		return [...this.externalPeers, ...readVolatileRegistryRecords()];
+		// Exactly one registry authority per workspace state, chosen at session
+		// start (design doc section 7, no dual-write): the daemon snapshot when
+		// the daemon-mode wiring attached a client, the incumbent shared-disk
+		// registry otherwise. The swap policy lives in daemon-registry-source.
+		return readPeerRecords(this.externalPeers, this.daemonClient);
 	}
 
 	// ── Internal: Heartbeat ──────────────────────────────────────

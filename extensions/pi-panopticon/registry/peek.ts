@@ -11,7 +11,7 @@ import { readSessionLog, formatSessionLog } from "../../../lib/session-log.js";
 import { ok } from "../types.js";
 import type { Registry } from "../types.js";
 import type { AgentListModeStore } from "../ui/list-mode.js";
-import { formatAge, STATUS_SYMBOL } from "./registry.js";
+import { formatAge, STATUS_SYMBOL } from "./record-utils.js";
 import { agentDisplayName, findAgentByDisplayName } from "../ui/display-name.js";
 import { filterAgentList, visibleRecords } from "./visibility.js";
 
