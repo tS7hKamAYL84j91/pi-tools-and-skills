@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { daemonRoots } from "./paths.js";
 import { assertLiveModeAuthorized, invalidateWriterLeaseOnRestart, loadWriterLease, tickSchedules, type TickMode } from "./schedule-tick.js";
 import { DeliveryServeLoop } from "./serve.js";
+import { gracefulStopSeenSinceLastStart, isDaemonDisabled, markGracefulStop, recordDaemonStart, recordStateCorruption } from "./breaker.js";
 import { DaemonRegistry } from "./registry.js";
 import { acceptRegistrySyncConnection } from "./registry-protocol.js";
 import { buildEnvelope, signEnvelope } from "./envelope.js";
@@ -50,6 +51,12 @@ function tickModeFromEnv(env: NodeJS.ProcessEnv = process.env): TickMode {
  * daemon holds the lock or the socket.
  */
 export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBootstrap> {
+	// Failure-threshold breaker: a disabled daemon refuses to start
+	// fail-closed until the Principal/Quartermaster clears the flag.
+	if (await isDaemonDisabled(roots)) {
+		throw new Error("coas-daemon is disabled (failure threshold or state corruption); clear the flag to re-enable");
+	}
+	const gracefulStopSeen = await gracefulStopSeenSinceLastStart(roots);
 	const lock = await acquireSingleInstanceLock(roots);
 	if (!lock.acquired) {
 		// ADR section 7: the refused second instance is fail-closed AND audited.
@@ -83,6 +90,8 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 			});
 			socket.on("close", () => session.close());
 		});
+		// Crash accounting: a start without a prior graceful stop is a crash.
+		const startAccounting = await recordDaemonStart(roots, gracefulStopSeen, new Date());
 		const startedAt = new Date().toISOString();
 		// M5/M6 recovery: a surviving writer lease is invalidated (re-arm) at
 		// startup; queue recovery replay is idempotent (ADR section 7).
@@ -106,6 +115,8 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 		});
 		const serve = new DeliveryServeLoop(roots, (event) => appendAudit(roots, event));
 		const deferralCounts = new Map<string, number>();
+		const schedulerCounters = { ticks: 0, fired: 0, deferredWriter: 0 };
+		let lastTickAt = "";
 
 		const schedulerTick = async (): Promise<void> => {
 			const schedulesDir = process.env.COAS_SCHEDULES_DIR ?? join(roots.stateRoot, "schedules");
@@ -146,7 +157,12 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 				},
 				new Date(),
 				(event) => appendAudit(roots, event),
-			).catch((error: unknown) => {
+			).then((decisions) => {
+				schedulerCounters.ticks++;
+				schedulerCounters.fired += decisions.filter((decision) => decision.fired).length;
+				schedulerCounters.deferredWriter += decisions.filter((decision) => decision.deferredWriter).length;
+				lastTickAt = new Date().toISOString();
+			}).catch((error: unknown) => {
 				void appendAudit(roots, { kind: "scheduler_tick_failed", reason: (error as Error).message });
 			});
 		};
@@ -162,14 +178,23 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 			if (schedulerTickInterval !== undefined) clearInterval(schedulerTickInterval);
 			schedulerTickInterval = undefined;
 			socket.server.close();
+			await markGracefulStop(roots); // the next start sees a graceful stop
+			await recordDaemonStart(roots, true); // graceful stop resets the crash ladder
 			await releaseSingleInstanceLock(roots);
 			await appendAudit(roots, { kind: "daemon_stopped" }, { durable: true });
 		};
+		const startedAtMs = Date.parse(startedAt);
 		const snapshot = (): Record<string, unknown> => ({
 			posture: "same_uid_untrusted",
 			mode,
+			uptime_s: Math.floor((Date.now() - startedAtMs) / 1000),
 			serve: serve.counters,
+			scheduler: schedulerCounters,
+			activeBindings: registry.counters.registered,
+			lastTickAt,
+			crashesInWindow: startAccounting.crashesInWindow,
 		});
+		void recordStateCorruption;
 		return { startedAt, posture: "same_uid_untrusted", keyId: keys.keyId, socketPath: socket.path, socket, serve, registry, snapshot, stop };
 	} catch (error) {
 		// Fail closed: never leave a lock held by a daemon that did not start.
