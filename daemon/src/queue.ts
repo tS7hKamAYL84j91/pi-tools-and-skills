@@ -103,6 +103,10 @@ export interface EnqueueInput {
  * durable write (commit-before-ack).
  */
 export async function enqueue(roots: DaemonRoots, input: EnqueueInput): Promise<EnqueueResult> {
+	return withQueueLock(() => enqueueLocked(roots, input));
+}
+
+async function enqueueLocked(roots: DaemonRoots, input: EnqueueInput): Promise<EnqueueResult> {
 	const envelope = input.signed.envelope;
 	// Defense-in-depth: re-verify the envelope signature and payload integrity
 	// at enqueue (ADR section 3 reader order applies to the daemon too).
@@ -207,6 +211,25 @@ export function backoffRemainingMs(record: QueueRecord, now: Date): number {
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 16_000];
 
+/**
+ * Queue mutation lock: the daemon is single-process, but concurrent async
+ * callers can interleave read-modify-write cycles (T-872 row 1 caught the
+ * lease double-grant). Serializing all state transitions here is the CAS.
+ */
+let mutationChain: Promise<unknown> = Promise.resolve();
+
+async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
+	const run = mutationChain.then(operation, operation);
+	mutationChain = run.catch(() => {});
+	try {
+		return await run;
+	} finally {
+		if (mutationChain === run) {
+			mutationChain = Promise.resolve();
+		}
+	}
+}
+
 /** Delivery attempt outcome supplied by the serve loop (T-868 serve seam). */
 export type DeliveryOutcome = "delivered" | "live_failed" | "no_binding" | "generation_mismatch" | "requeue";
 
@@ -239,6 +262,17 @@ export async function advanceDelivery(
 	outcome: DeliveryOutcome,
 	now: Date,
 	/** Required for the delivered outcome: the lease nonce granted by grantLease. */
+	leaseNonce?: string,
+): Promise<{ record?: QueueRecord; state?: QueueState; audit?: Record<string, unknown> }> {
+	return withQueueLock(() => advanceDeliveryLocked(roots, recipientAgentId, messageId, outcome, now, leaseNonce));
+}
+
+async function advanceDeliveryLocked(
+	roots: DaemonRoots,
+	recipientAgentId: string,
+	messageId: string,
+	outcome: DeliveryOutcome,
+	now: Date,
 	leaseNonce?: string,
 ): Promise<{ record?: QueueRecord; state?: QueueState; audit?: Record<string, unknown> }> {
 	const record = await loadQueueRecord(roots, recipientAgentId, messageId);
@@ -336,6 +370,10 @@ async function persistTransition(roots: DaemonRoots, record: QueueRecord, delive
 
 /** Grant a delivery lease (CAS): queued/parked -> leased with a TTL. */
 export async function grantLease(roots: DaemonRoots, recipientAgentId: string, messageId: string, now: Date): Promise<{ leased: boolean; nonce?: string; record?: QueueRecord }> {
+	return withQueueLock(() => grantLeaseLocked(roots, recipientAgentId, messageId, now));
+}
+
+async function grantLeaseLocked(roots: DaemonRoots, recipientAgentId: string, messageId: string, now: Date): Promise<{ leased: boolean; nonce?: string; record?: QueueRecord }> {
 	const record = await loadQueueRecord(roots, recipientAgentId, messageId);
 	if (!record) return { leased: false };
 	if (isTerminal(record.delivery.state)) return { leased: false, record };
@@ -371,6 +409,10 @@ function randomNonce(): string {
  * from the serve loop so the rollback window closes without a restart.
  */
 export async function expireExpiredRecords(roots: DaemonRoots, now: Date): Promise<number> {
+	return withQueueLock(() => expireExpiredRecordsLocked(roots, now));
+}
+
+async function expireExpiredRecordsLocked(roots: DaemonRoots, now: Date): Promise<number> {
 	let expired = 0;
 	for (const record of await scanNonTerminal(roots)) {
 		if (!isExpired(record, now)) continue;
@@ -382,6 +424,10 @@ export async function expireExpiredRecords(roots: DaemonRoots, now: Date): Promi
 
 /** Lease TTL expiry: back to queued, attempts unchanged (re-lease eligible). */
 export async function expireLeases(roots: DaemonRoots, now: Date): Promise<number> {
+	return withQueueLock(() => expireLeasesLocked(roots, now));
+}
+
+async function expireLeasesLocked(roots: DaemonRoots, now: Date): Promise<number> {
 	let expired = 0;
 	for (const record of await scanNonTerminal(roots)) {
 		if (record.delivery.state !== "leased") continue;
