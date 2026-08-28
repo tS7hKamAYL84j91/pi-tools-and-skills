@@ -65,7 +65,17 @@ export async function admitInstance(
 		generation: record.generation,
 		label: ADMISSION_LABEL,
 	});
-	return { binding, capability: { agentId: record.agentId, instanceId, generation: record.generation, capabilitySecret, label: ADMISSION_LABEL }, record };
+	return {
+		binding,
+		capability: {
+			agentId: record.agentId,
+			instanceId,
+			generation: record.generation,
+			capabilitySecret,
+			label: ADMISSION_LABEL,
+		},
+		record,
+	};
 }
 
 /** Proof-of-possession: HMAC(capability, nonce), constant-time compared. */
@@ -73,11 +83,18 @@ function randomCapabilitySecret(): string {
 	return randomBytes(32).toString("base64");
 }
 
-export function capabilityProof(capabilitySecret: string, nonce: string): Buffer {
+export function capabilityProof(
+	capabilitySecret: string,
+	nonce: string,
+): Buffer {
 	return createHmac("sha256", capabilitySecret).update(nonce).digest();
 }
 
-export function verifyCapabilityProof(capabilitySecret: string, nonce: string, proof: Buffer): boolean {
+export function verifyCapabilityProof(
+	capabilitySecret: string,
+	nonce: string,
+	proof: Buffer,
+): boolean {
 	const expected = capabilityProof(capabilitySecret, nonce);
 	if (proof.length !== expected.length) return false;
 	return timingSafeEqual(proof, expected);
@@ -95,7 +112,11 @@ export function verifyCapabilityProof(capabilitySecret: string, nonce: string, p
  */
 export function verifySenderBinding(
 	binding: LiveBinding | undefined,
-	expected: { readonly agentId: string; readonly instanceId: string; readonly generation: number },
+	expected: {
+		readonly agentId: string;
+		readonly instanceId: string;
+		readonly generation: number;
+	},
 ): boolean {
 	if (!binding) return false;
 	return (

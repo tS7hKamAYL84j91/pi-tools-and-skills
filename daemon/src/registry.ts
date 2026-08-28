@@ -24,7 +24,11 @@
  */
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { admitInstance, type InstanceCapability, type LiveBinding } from "./admission.js";
+import {
+	admitInstance,
+	type InstanceCapability,
+	type LiveBinding,
+} from "./admission.js";
 import { appendAudit } from "./audit.js";
 import {
 	createIdentity,
@@ -65,9 +69,16 @@ export interface RegistryGuardInputs {
 	readonly scope: AdmissionScope;
 }
 
-export type RegistryEventKind = "identity_created" | "instance_admitted" | "instance_invalidated";
+export type RegistryEventKind =
+	| "identity_created"
+	| "instance_admitted"
+	| "instance_invalidated";
 
-export type InvalidationReason = "superseded" | "crashed" | "restart_stale" | "close_drain_expired";
+export type InvalidationReason =
+	| "superseded"
+	| "crashed"
+	| "restart_stale"
+	| "close_drain_expired";
 
 export interface RegistryEvent {
 	readonly seq: number;
@@ -105,7 +116,10 @@ export interface AdmittedBinding {
 	/** Daemon-issued capability secret; the caller delivers it out-of-band. */
 	readonly capabilitySecret: string;
 	/** The M3 loser, when this admission displaced a live binding. */
-	readonly superseded?: { readonly instanceId: string; readonly generation: number };
+	readonly superseded?: {
+		readonly instanceId: string;
+		readonly generation: number;
+	};
 }
 
 export interface AdmissionRejected {
@@ -159,7 +173,10 @@ interface CrashTracking {
 
 /** Backoff for the Nth consecutive unstable crash: 1s, 2s, ... capped at 60s (M2). */
 export function respawnBackoffMs(consecutiveCrashes: number): number {
-	return Math.min(RESPAWN_BACKOFF_BASE_MS * 2 ** (consecutiveCrashes - 1), RESPAWN_BACKOFF_CAP_MS);
+	return Math.min(
+		RESPAWN_BACKOFF_BASE_MS * 2 ** (consecutiveCrashes - 1),
+		RESPAWN_BACKOFF_CAP_MS,
+	);
 }
 
 export class DaemonRegistry {
@@ -204,7 +221,11 @@ export class DaemonRegistry {
 	 * trusts a stale binding), and quarantine any record that fails
 	 * integrity or schema validation. Replaying recovery is a no-op.
 	 */
-	static async recover(roots: DaemonRoots, keys: RegistryKeys, options: DaemonRegistryOptions = {}): Promise<DaemonRegistry> {
+	static async recover(
+		roots: DaemonRoots,
+		keys: RegistryKeys,
+		options: DaemonRegistryOptions = {},
+	): Promise<DaemonRegistry> {
 		const registry = new DaemonRegistry(roots, keys, options);
 		let loaded = 0;
 		let staleInvalidated = 0;
@@ -221,13 +242,26 @@ export class DaemonRegistry {
 			try {
 				// Daemon-minted ids pass; a planted hostile filename fails closed.
 				assertSafeId("agent id", agentId);
-				const identity = await loadIdentity(roots, agentId, registry.verificationKeys);
+				const identity = await loadIdentity(
+					roots,
+					agentId,
+					registry.verificationKeys,
+				);
 				if (!identity) continue; // ENOENT, or parse/schema failure already quarantined + audited by the strict reader
 				registry.identities.set(agentId, identity);
 				loaded++;
 				if (identity.liveInstanceId !== undefined) {
-					registry.identities.set(agentId, await invalidateLiveInstance(roots, keys, identity));
-					registry.emit({ kind: "instance_invalidated", agentId, instanceId: identity.liveInstanceId, generation: identity.generation, reason: "restart_stale" });
+					registry.identities.set(
+						agentId,
+						await invalidateLiveInstance(roots, keys, identity),
+					);
+					registry.emit({
+						kind: "instance_invalidated",
+						agentId,
+						instanceId: identity.liveInstanceId,
+						generation: identity.generation,
+						reason: "restart_stale",
+					});
 					staleInvalidated++;
 				}
 			} catch (error) {
@@ -236,7 +270,11 @@ export class DaemonRegistry {
 				await quarantineRecord(roots, path, (error as Error).message);
 			}
 		}
-		await registry.auditSink({ kind: "registry_recovered", identities: loaded, staleBindingsInvalidated: staleInvalidated });
+		await registry.auditSink({
+			kind: "registry_recovered",
+			identities: loaded,
+			staleBindingsInvalidated: staleInvalidated,
+		});
 		return registry;
 	}
 
@@ -247,15 +285,27 @@ export class DaemonRegistry {
 	 */
 	async registerAgent(request: SpawnRequest): Promise<IdentityRecord> {
 		const displayName = request.displayName.trim();
-		if (displayName.length === 0 || displayName.length > 128) throw new Error("display name must be 1..128 characters");
-		if (request.visibility.length === 0 || request.visibility.length > 64) throw new Error("visibility must be 1..64 characters");
-		if (request.parentId !== null) assertSafeId("parent agent id", request.parentId);
+		if (displayName.length === 0 || displayName.length > 128)
+			throw new Error("display name must be 1..128 characters");
+		if (request.visibility.length === 0 || request.visibility.length > 64)
+			throw new Error("visibility must be 1..64 characters");
+		if (request.parentId !== null)
+			assertSafeId("parent agent id", request.parentId);
 		return this.locked(async () => {
 			const identity = await createIdentity(this.roots, this.keys, request);
 			this.identities.set(identity.agentId, identity);
 			this.counters.registered++;
-			this.emit({ kind: "identity_created", agentId: identity.agentId, generation: identity.generation });
-			await this.auditSink({ kind: "identity_registered", agentId: identity.agentId, displayName, scope: request.scope });
+			this.emit({
+				kind: "identity_created",
+				agentId: identity.agentId,
+				generation: identity.generation,
+			});
+			await this.auditSink({
+				kind: "identity_registered",
+				agentId: identity.agentId,
+				displayName,
+				scope: request.scope,
+			});
 			return identity;
 		});
 	}
@@ -270,17 +320,29 @@ export class DaemonRegistry {
 		assertSafeId("agent id", agentId);
 		return this.locked(async () => {
 			const identity = this.identities.get(agentId);
-			if (!identity) throw new Error(`unknown agent id: ${agentId} (register before admitting)`);
+			if (!identity)
+				throw new Error(
+					`unknown agent id: ${agentId} (register before admitting)`,
+				);
 			const nowMs = this.now().getTime();
 			const tracking = this.crashTracking.get(agentId);
 			if (tracking && tracking.respawnNotBeforeMs > nowMs) {
 				const retryAfterMs = tracking.respawnNotBeforeMs - nowMs;
 				this.counters.rejectedBackoff++;
-				await this.auditSink({ kind: "admission_rejected", agentId, reason: "respawn_backoff", retryAfterMs });
+				await this.auditSink({
+					kind: "admission_rejected",
+					agentId,
+					reason: "respawn_backoff",
+					retryAfterMs,
+				});
 				return { admitted: false, reason: "respawn_backoff", retryAfterMs };
 			}
 			const previous = this.bindings.get(agentId);
-			const { binding, capability, record } = await admitInstance(this.roots, this.keys, identity);
+			const { binding, capability, record } = await admitInstance(
+				this.roots,
+				this.keys,
+				identity,
+			);
 			if (previous) {
 				await this.dropBinding(previous, "superseded");
 				this.counters.superseded++;
@@ -288,14 +350,26 @@ export class DaemonRegistry {
 			this.identities.set(agentId, record);
 			this.bindings.set(agentId, { binding, capability, admittedAtMs: nowMs });
 			this.counters.admitted++;
-			this.emit({ kind: "instance_admitted", agentId, instanceId: binding.instanceId, generation: binding.generation });
+			this.emit({
+				kind: "instance_admitted",
+				agentId,
+				instanceId: binding.instanceId,
+				generation: binding.generation,
+			});
 			return {
 				admitted: true,
 				agentId,
 				instanceId: binding.instanceId,
 				generation: binding.generation,
 				capabilitySecret: capability.capabilitySecret,
-				...(previous ? { superseded: { instanceId: previous.binding.instanceId, generation: previous.binding.generation } } : {}),
+				...(previous
+					? {
+							superseded: {
+								instanceId: previous.binding.instanceId,
+								generation: previous.binding.generation,
+							},
+						}
+					: {}),
 			};
 		});
 	}
@@ -307,32 +381,66 @@ export class DaemonRegistry {
 	 * stale live-instance pointer is cleared. A crash notice for an already
 	 * superseded instance is a no-op.
 	 */
-	async noteInstanceCrash(agentId: string, instanceId: string, crashedAt: Date = this.now()): Promise<{ recorded: boolean; backoffMs?: number; respawnNotBeforeMs?: number }> {
+	async noteInstanceCrash(
+		agentId: string,
+		instanceId: string,
+		crashedAt: Date = this.now(),
+	): Promise<{
+		recorded: boolean;
+		backoffMs?: number;
+		respawnNotBeforeMs?: number;
+	}> {
 		assertSafeId("agent id", agentId);
 		return this.locked(async () => {
 			const current = this.bindings.get(agentId);
-			if (!current || current.binding.instanceId !== instanceId) return { recorded: false };
+			if (!current || current.binding.instanceId !== instanceId)
+				return { recorded: false };
 			const prior = this.crashTracking.get(agentId);
 			const crashedAtMs = crashedAt.getTime();
 			const lifetimeMs = crashedAtMs - current.admittedAtMs;
 			// Reset on stability: an instance that lived past the stability window
 			// starts the ladder over; only rapid crash loops escalate.
-			const consecutiveCrashes = lifetimeMs >= STABILITY_WINDOW_MS ? 1 : (prior?.consecutiveCrashes ?? 0) + 1;
+			const consecutiveCrashes =
+				lifetimeMs >= STABILITY_WINDOW_MS
+					? 1
+					: (prior?.consecutiveCrashes ?? 0) + 1;
 			const backoffMs = respawnBackoffMs(consecutiveCrashes);
 			const respawnNotBeforeMs = crashedAtMs + backoffMs;
 			const record = this.identities.get(agentId);
 			if (record) {
 				// Best-effort durable clear: liveness is corrected regardless, and
 				// a failed write is surfaced rather than silent.
-				await invalidateLiveInstance(this.roots, this.keys, record).catch((error: unknown) =>
-					this.auditSink({ kind: "instance_crash_invalidations_failed", agentId, reason: (error as Error).message }),
+				await invalidateLiveInstance(this.roots, this.keys, record).catch(
+					(error: unknown) =>
+						this.auditSink({
+							kind: "instance_crash_invalidations_failed",
+							agentId,
+							reason: (error as Error).message,
+						}),
 				);
 			}
 			this.bindings.delete(agentId);
-			this.crashTracking.set(agentId, { consecutiveCrashes, respawnNotBeforeMs });
+			this.crashTracking.set(agentId, {
+				consecutiveCrashes,
+				respawnNotBeforeMs,
+			});
 			this.counters.crashed++;
-			this.emit({ kind: "instance_invalidated", agentId, instanceId, generation: current.binding.generation, reason: "crashed" });
-			await this.auditSink({ kind: "instance_crashed", agentId, instanceId, generation: current.binding.generation, lifetimeMs, consecutiveCrashes, nextBackoffMs: backoffMs });
+			this.emit({
+				kind: "instance_invalidated",
+				agentId,
+				instanceId,
+				generation: current.binding.generation,
+				reason: "crashed",
+			});
+			await this.auditSink({
+				kind: "instance_crashed",
+				agentId,
+				instanceId,
+				generation: current.binding.generation,
+				lifetimeMs,
+				consecutiveCrashes,
+				nextBackoffMs: backoffMs,
+			});
 			return { recorded: true, backoffMs, respawnNotBeforeMs };
 		});
 	}
@@ -348,13 +456,24 @@ export class DaemonRegistry {
 			if (!current || current.binding.instanceId !== instanceId) return false;
 			const record = this.identities.get(agentId);
 			if (record) {
-				await invalidateLiveInstance(this.roots, this.keys, record).catch((error: unknown) =>
-					this.auditSink({ kind: "instance_disconnect_invalidations_failed", agentId, reason: (error as Error).message }),
+				await invalidateLiveInstance(this.roots, this.keys, record).catch(
+					(error: unknown) =>
+						this.auditSink({
+							kind: "instance_disconnect_invalidations_failed",
+							agentId,
+							reason: (error as Error).message,
+						}),
 				);
 			}
 			this.bindings.delete(agentId);
 			this.counters.disconnected++;
-			this.emit({ kind: "instance_invalidated", agentId, instanceId, generation: current.binding.generation, reason: undefined });
+			this.emit({
+				kind: "instance_invalidated",
+				agentId,
+				instanceId,
+				generation: current.binding.generation,
+				reason: undefined,
+			});
 			return true;
 		});
 	}
@@ -390,7 +509,9 @@ export class DaemonRegistry {
 		return this.locked(() => ({
 			seq: this.seq,
 			generatedAt: new Date().toISOString(),
-			entries: [...this.identities.keys()].map((agentId) => this.entryFor(agentId)),
+			entries: [...this.identities.keys()].map((agentId) =>
+				this.entryFor(agentId),
+			),
 		}));
 	}
 
@@ -399,14 +520,18 @@ export class DaemonRegistry {
 	 * happen under the same lock, so no event is missed or duplicated between
 	 * the two (the M6 sync protocol's overlap-free handshake).
 	 */
-	async subscribe(listener: (event: RegistryEvent) => void): Promise<{ snapshot: RegistrySnapshot; unsubscribe: () => void }> {
+	async subscribe(
+		listener: (event: RegistryEvent) => void,
+	): Promise<{ snapshot: RegistrySnapshot; unsubscribe: () => void }> {
 		return this.locked(() => {
 			this.listeners.add(listener);
 			return {
 				snapshot: {
 					seq: this.seq,
 					generatedAt: new Date().toISOString(),
-					entries: [...this.identities.keys()].map((agentId) => this.entryFor(agentId)),
+					entries: [...this.identities.keys()].map((agentId) =>
+						this.entryFor(agentId),
+					),
 				},
 				unsubscribe: () => {
 					this.listeners.delete(listener);
@@ -421,10 +546,13 @@ export class DaemonRegistry {
 	 * invalidated). Clean exits during the grace are spared, and instances
 	 * admitted during the grace are not captured (they have no in-flight turn).
 	 */
-	async drainForClose(graceMs: number = CLOSE_DRAIN_GRACE_MS): Promise<CloseDrainResult> {
+	async drainForClose(
+		graceMs: number = CLOSE_DRAIN_GRACE_MS,
+	): Promise<CloseDrainResult> {
 		const captured = new Map<string, string>();
 		await this.locked(() => {
-			for (const [agentId, state] of this.bindings) captured.set(agentId, state.binding.instanceId);
+			for (const [agentId, state] of this.bindings)
+				captured.set(agentId, state.binding.instanceId);
 		});
 		await sleep(graceMs);
 		return this.locked(async () => {
@@ -450,7 +578,10 @@ export class DaemonRegistry {
 		return this.events;
 	}
 
-	private async dropBinding(state: LiveBindingState, reason: InvalidationReason): Promise<void> {
+	private async dropBinding(
+		state: LiveBindingState,
+		reason: InvalidationReason,
+	): Promise<void> {
 		this.bindings.delete(state.binding.agentId);
 		const event = this.emit({
 			kind: "instance_invalidated",
@@ -460,7 +591,13 @@ export class DaemonRegistry {
 			reason,
 		});
 		// Durable audit: every invalidation is accountable (the M3 notice leg).
-		await this.auditSink({ kind: "instance_invalidated", agentId: event.agentId, instanceId: event.instanceId, generation: event.generation, reason });
+		await this.auditSink({
+			kind: "instance_invalidated",
+			agentId: event.agentId,
+			instanceId: event.instanceId,
+			generation: event.generation,
+			reason,
+		});
 		// Visible notice + in-flight-turn abort hook; a faulty consumer must not
 		// break the registry's own state transition.
 		try {
@@ -477,7 +614,10 @@ export class DaemonRegistry {
 
 	private entryFor(agentId: string): RegistryEntry {
 		const identity = this.identities.get(agentId);
-		if (!identity) throw new Error(`registry invariant violated: no identity for ${agentId}`);
+		if (!identity)
+			throw new Error(
+				`registry invariant violated: no identity for ${agentId}`,
+			);
 		const live = this.bindings.get(agentId);
 		return {
 			agentId,
@@ -492,9 +632,14 @@ export class DaemonRegistry {
 
 	private emit(event: Omit<RegistryEvent, "seq" | "at">): RegistryEvent {
 		this.seq += 1;
-		const sequenced: RegistryEvent = { ...event, seq: this.seq, at: new Date().toISOString() };
+		const sequenced: RegistryEvent = {
+			...event,
+			seq: this.seq,
+			at: new Date().toISOString(),
+		};
 		this.events.push(sequenced);
-		if (this.events.length > EVENT_LOG_CAP) this.events.splice(0, this.events.length - EVENT_LOG_CAP);
+		if (this.events.length > EVENT_LOG_CAP)
+			this.events.splice(0, this.events.length - EVENT_LOG_CAP);
 		for (const listener of this.listeners) {
 			try {
 				listener(sequenced);
@@ -527,7 +672,9 @@ export class RegistryEventBuffer {
 	private resyncNeeded = false;
 
 	/** Events received before the snapshot: buffered, then reconciled on apply. */
-	applyEvent(event: RegistryEvent): "applied" | "buffered" | "dropped" | "resync" {
+	applyEvent(
+		event: RegistryEvent,
+	): "applied" | "buffered" | "dropped" | "resync" {
 		if (this.snapshotSeq === undefined) {
 			if (this.buffered.length >= CLIENT_BUFFER_CAP) {
 				// Unbounded pre-snapshot buffering would be a DoS; overflow demands resync.
@@ -556,7 +703,10 @@ export class RegistryEventBuffer {
 	}
 
 	/** Apply the snapshot: contained events are dropped, later ones applied in order. */
-	applySnapshot(snapshot: RegistrySnapshot): { dropped: number; applied: number } {
+	applySnapshot(snapshot: RegistrySnapshot): {
+		dropped: number;
+		applied: number;
+	} {
 		this.snapshotSeq = snapshot.seq;
 		this.expectedSeq = snapshot.seq + 1;
 		this.resyncNeeded = false;

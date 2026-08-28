@@ -8,7 +8,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { writeDurableFileNoReplace, writeDurableFileReplace } from "./durable-fs.js";
+import {
+	writeDurableFileNoReplace,
+	writeDurableFileReplace,
+} from "./durable-fs.js";
 import { identitiesDir } from "./paths.js";
 import { assertSafeId, type DaemonRoots } from "./paths.js";
 import { signBytes, verifyBytes } from "./keys.js";
@@ -120,9 +123,17 @@ export async function createIdentity(
 		updatedAt: now,
 		keyId: keys.keyId,
 	};
-	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
+	const signature = signBytes(
+		keys.privateKeyPem,
+		canonicalIdentityBytes(unsigned),
+	).toString("base64");
 	const record: IdentityRecord = { ...unsigned, signature };
-	await writeDurableFileNoReplace(identityPath(roots, record.agentId), `${JSON.stringify(record, null, 2)}\n`, 0o600, roots.stateRoot);
+	await writeDurableFileNoReplace(
+		identityPath(roots, record.agentId),
+		`${JSON.stringify(record, null, 2)}\n`,
+		0o600,
+		roots.stateRoot,
+	);
 	return record;
 }
 
@@ -150,9 +161,21 @@ export async function loadIdentity(
 				return undefined;
 			}
 			if (
-				!(record.parentId === undefined || record.parentId === null || typeof record.parentId === "string") ||
-				!(record.visibility === undefined || typeof record.visibility === "string") ||
-				!(record.scope === undefined || record.scope === "root" || record.scope === "task" || record.scope === "workspace")
+				!(
+					record.parentId === undefined ||
+					record.parentId === null ||
+					typeof record.parentId === "string"
+				) ||
+				!(
+					record.visibility === undefined ||
+					typeof record.visibility === "string"
+				) ||
+				!(
+					record.scope === undefined ||
+					record.scope === "root" ||
+					record.scope === "task" ||
+					record.scope === "workspace"
+				)
 			) {
 				return undefined;
 			}
@@ -163,9 +186,16 @@ export async function loadIdentity(
 	);
 	if (!parsed) return undefined;
 	const verificationKey = verificationKeys.get(parsed.keyId);
-	if (!verificationKey) throw new Error(`unknown identity key: ${parsed.keyId}`);
+	if (!verificationKey)
+		throw new Error(`unknown identity key: ${parsed.keyId}`);
 	const { signature, ...unsigned } = parsed;
-	if (!verifyBytes(verificationKey, canonicalIdentityBytes(unsigned), Buffer.from(signature, "base64"))) {
+	if (
+		!verifyBytes(
+			verificationKey,
+			canonicalIdentityBytes(unsigned),
+			Buffer.from(signature, "base64"),
+		)
+	) {
 		throw new Error(`identity record signature invalid: ${agentId}`);
 	}
 	return parsed;
@@ -183,9 +213,17 @@ export async function admitNewInstance(
 		liveInstanceId: instanceId,
 		updatedAt: new Date().toISOString(),
 	});
-	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
+	const signature = signBytes(
+		keys.privateKeyPem,
+		canonicalIdentityBytes(unsigned),
+	).toString("base64");
 	const record: IdentityRecord = { ...unsigned, signature };
-	await writeDurableFileReplace(identityPath(roots, existing.agentId), `${JSON.stringify(record, null, 2)}\n`, 0o600, roots.stateRoot);
+	await writeDurableFileReplace(
+		identityPath(roots, existing.agentId),
+		`${JSON.stringify(record, null, 2)}\n`,
+		0o600,
+		roots.stateRoot,
+	);
 	return { record, instanceId };
 }
 
@@ -198,10 +236,21 @@ export async function invalidateLiveInstance(
 	keys: IdentityKeys,
 	existing: IdentityRecord,
 ): Promise<IdentityRecord> {
-	const unsigned = unsignedFrom(existing, { liveInstanceId: undefined, updatedAt: new Date().toISOString() });
-	const signature = signBytes(keys.privateKeyPem, canonicalIdentityBytes(unsigned)).toString("base64");
+	const unsigned = unsignedFrom(existing, {
+		liveInstanceId: undefined,
+		updatedAt: new Date().toISOString(),
+	});
+	const signature = signBytes(
+		keys.privateKeyPem,
+		canonicalIdentityBytes(unsigned),
+	).toString("base64");
 	const record: IdentityRecord = { ...unsigned, signature };
-	await writeDurableFileReplace(identityPath(roots, record.agentId), `${JSON.stringify(record, null, 2)}\n`, 0o600, roots.stateRoot);
+	await writeDurableFileReplace(
+		identityPath(roots, record.agentId),
+		`${JSON.stringify(record, null, 2)}\n`,
+		0o600,
+		roots.stateRoot,
+	);
 	return record;
 }
 

@@ -10,11 +10,20 @@
  * mode ships.
  */
 import { spawn } from "node:child_process";
-import { createPrivateKey, createPublicKey, generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
+import {
+	createPrivateKey,
+	createPublicKey,
+	generateKeyPairSync,
+	sign as cryptoSign,
+	verify as cryptoVerify,
+} from "node:crypto";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { publicKeysDir } from "./paths.js";
-import { writeDurableFileNoReplace, writeDurableFileReplace } from "./durable-fs.js";
+import {
+	writeDurableFileNoReplace,
+	writeDurableFileReplace,
+} from "./durable-fs.js";
 import type { DaemonRoots } from "./paths.js";
 
 export const POSTURE = "same_uid_untrusted";
@@ -29,9 +38,14 @@ export interface DaemonKeys {
 
 export type AuditSink = (event: Record<string, unknown>) => Promise<void>;
 
-function runSecretTool(args: string[], input?: string): Promise<string | undefined> {
+function runSecretTool(
+	args: string[],
+	input?: string,
+): Promise<string | undefined> {
 	return new Promise((resolve) => {
-		const child = spawn("secret-tool", args, { stdio: ["pipe", "pipe", "pipe"] });
+		const child = spawn("secret-tool", args, {
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 		let out = "";
 		child.stdout.on("data", (chunk: Buffer) => {
 			out += chunk.toString("utf8");
@@ -58,8 +72,14 @@ export function publicKeysPath(roots: DaemonRoots, keyId: string): string {
 	return join(publicKeysDir(roots), `${keyId}.pub`);
 }
 
-async function storeToKeyring(keyId: string, privateKeyPem: string): Promise<boolean> {
-	const out = await runSecretTool(["store", "schema", KEYRING_SCHEMA, "id", keyId], privateKeyPem);
+async function storeToKeyring(
+	keyId: string,
+	privateKeyPem: string,
+): Promise<boolean> {
+	const out = await runSecretTool(
+		["store", "schema", KEYRING_SCHEMA, "id", keyId],
+		privateKeyPem,
+	);
 	return out !== undefined;
 }
 
@@ -69,13 +89,32 @@ async function storeToKeyring(keyId: string, privateKeyPem: string): Promise<boo
  * deviation, audit event). A pre-existing fallback key is migrated into the
  * keyring when the keyring becomes available.
  */
-export async function loadOrCreateIntegrityKey(roots: DaemonRoots, audit: AuditSink): Promise<DaemonKeys> {
+export async function loadOrCreateIntegrityKey(
+	roots: DaemonRoots,
+	audit: AuditSink,
+): Promise<DaemonKeys> {
 	const keyId = "coas-daemon-integrity-1";
 
-	const fromKeyring = await runSecretTool(["lookup", "schema", KEYRING_SCHEMA, "id", keyId]);
+	const fromKeyring = await runSecretTool([
+		"lookup",
+		"schema",
+		KEYRING_SCHEMA,
+		"id",
+		keyId,
+	]);
 	if (fromKeyring?.includes("PRIVATE KEY")) {
-		const publicKeyPem = await loadOrPublishPublicKey(roots, keyId, fromKeyring, audit);
-		return { keyId, privateKeyPem: fromKeyring, publicKeyPem, fallbackFileUsed: false };
+		const publicKeyPem = await loadOrPublishPublicKey(
+			roots,
+			keyId,
+			fromKeyring,
+			audit,
+		);
+		return {
+			keyId,
+			privateKeyPem: fromKeyring,
+			publicKeyPem,
+			fallbackFileUsed: false,
+		};
 	}
 
 	let pem: string | undefined;
@@ -101,22 +140,35 @@ export async function loadOrCreateIntegrityKey(roots: DaemonRoots, audit: AuditS
 	// Fallback: 0600 file under the state root. Recorded deviation (section 9):
 	// valid only in same_uid_untrusted with a genuinely unavailable keyring;
 	// audit event required; forbidden once authenticated mode ships.
-	await writeDurableFileReplace(fallbackKeyPath(roots), pem, 0o600, roots.stateRoot);
+	await writeDurableFileReplace(
+		fallbackKeyPath(roots),
+		pem,
+		0o600,
+		roots.stateRoot,
+	);
 	await audit({
 		kind: "key_fallback_file",
 		posture: POSTURE,
-		detail: "OS keyring unavailable; integrity key stored as 0600 file (temporary deviation, same_uid_untrusted only)",
+		detail:
+			"OS keyring unavailable; integrity key stored as 0600 file (temporary deviation, same_uid_untrusted only)",
 	});
 	const publicKeyPem = await loadOrPublishPublicKey(roots, keyId, pem, audit);
 	return { keyId, privateKeyPem: pem, publicKeyPem, fallbackFileUsed: true };
 }
 
-async function loadOrPublishPublicKey(roots: DaemonRoots, keyId: string, privateKeyPem: string, audit: AuditSink): Promise<string> {
+async function loadOrPublishPublicKey(
+	roots: DaemonRoots,
+	keyId: string,
+	privateKeyPem: string,
+	audit: AuditSink,
+): Promise<string> {
 	const pubPath = publicKeysPath(roots, keyId);
 	try {
 		return await readFile(pubPath, "utf8");
 	} catch {
-		const publicKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "pem" }).toString();
+		const publicKey = createPublicKey(privateKeyPem)
+			.export({ type: "spki", format: "pem" })
+			.toString();
 		await writeDurableFileNoReplace(pubPath, publicKey, 0o600, roots.stateRoot);
 		await audit({ kind: "public_key_published", keyId });
 		return publicKey;
@@ -129,6 +181,10 @@ export function signBytes(privateKeyPem: string, bytes: Uint8Array): Buffer {
 }
 
 /** Verify canonical bytes against a retained verification key. */
-export function verifyBytes(publicKeyPem: string, bytes: Uint8Array, signature: Buffer): boolean {
+export function verifyBytes(
+	publicKeyPem: string,
+	bytes: Uint8Array,
+	signature: Buffer,
+): boolean {
 	return cryptoVerify(null, bytes, createPublicKey(publicKeyPem), signature);
 }
