@@ -1,11 +1,12 @@
 /**
  * Five-field cron matching for the daemon-ticked scheduler. Semantics match
  * the in-pi scheduler evaluation (minute hour day-of-month month day-of-week,
- * `*`, lists, ranges, steps). Schedule files are consumed unchanged (design
- * doc: no schedule-file format change).
+* `*`, lists, ranges, steps; day-of-week 0-7 with 7 == Sunday). Schedule files
+ * are consumed unchanged (design doc: no schedule-file format change).
  */
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
+import { assertSafeId } from "./paths.js";
 
 export interface ScheduleEntry {
 	readonly taskId: string;
@@ -15,8 +16,11 @@ export interface ScheduleEntry {
 	readonly workspaceId: string;
 	/** Additive M5 tag: defers delivery while a writer lease is held. */
 	readonly writerTag?: "gravitas";
+	readonly targetAgent?: string;
 	readonly prompt: string;
 }
+
+export const SCHEDULE_FREQUENCY_CAP_MINUTES = 5;
 
 export function cronExpressionError(expr: string): string | undefined {
 	const fields = expr.trim().split(/\s+/);
@@ -26,7 +30,7 @@ export function cronExpressionError(expr: string): string | undefined {
 		[0, 23],
 		[1, 31],
 		[1, 12],
-		[0, 6],
+		[0, 7],
 	];
 	for (const [index, field] of fields.entries()) {
 		const [min, max] = ranges[index] ?? [0, 59];
@@ -46,6 +50,39 @@ export function cronExpressionError(expr: string): string | undefined {
 				return `field ${index + 1} out of range [${min}-${max}]: ${field}`;
 			}
 		}
+	}
+	return undefined;
+}
+
+/** Design doc section 8 cap: the daemon refuses sub-5-minute schedules. */
+export function scheduleFrequencyCapError(expr: string, capMinutes = SCHEDULE_FREQUENCY_CAP_MINUTES): string | undefined {
+	const fields = expr.trim().split(/\s+/);
+	const minuteField = fields[0] ?? "";
+	if (minuteField === "*") {
+		return `schedule fires every minute: below the ${capMinutes}-minute daemon cap`;
+	}
+	const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(minuteField);
+	if (!stepMatch) return undefined;
+	// Only an EXPLICIT step below the cap violates it; a bare "0" or a plain
+	// range fires once per hour/day, not every minute.
+	if (stepMatch[2] !== undefined) {
+		const step = Number.parseInt(stepMatch[2], 10);
+		if (step < capMinutes) {
+			return `schedule frequency below the ${capMinutes}-minute daemon cap (minute step ${step})`;
+		}
+		return undefined;
+	}
+	const base = stepMatch[1] ?? "";
+	if (base === "*") return `schedule fires every minute: below the ${capMinutes}-minute daemon cap`;
+	const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
+	if (!rangeMatch) return undefined;
+	if (rangeMatch[2] !== undefined) {
+		const start = Number.parseInt(rangeMatch[1] ?? "0", 10);
+		const end = Number.parseInt(rangeMatch[2], 10);
+		if (end > start) {
+			return `schedule fires on adjacent minutes: below the ${capMinutes}-minute daemon cap`;
+		}
+		return undefined;
 	}
 	return undefined;
 }
@@ -74,7 +111,7 @@ function fieldMatches(field: string, value: number, min: number, max: number): b
 	return false;
 }
 
-/** Wall-clock match (minute granularity). */
+/** Wall-clock match (minute granularity); day-of-week 0 and 7 are both Sunday. */
 export function scheduleMatchesDate(expr: string, date: Date): boolean {
 	if (cronExpressionError(expr) !== undefined) return false;
 	const fields = expr.trim().split(/\s+/);
@@ -88,18 +125,19 @@ export function scheduleMatchesDate(expr: string, date: Date): boolean {
 		fieldMatches(hour, date.getHours(), 0, 23) &&
 		fieldMatches(month, date.getMonth() + 1, 1, 12) &&
 		fieldMatches(dayOfMonth, date.getDate(), 1, 31) &&
-		fieldMatches(dayOfWeek, date.getDay(), 0, 6)
+		(fieldMatches(dayOfWeek, date.getDay(), 0, 7) || (date.getDay() === 0 && fieldMatches(dayOfWeek, 7, 0, 7)))
 	);
 }
 
-interface RawScheduleEnv {
+type RawScheduleEnv = {
 	readonly TASK_ID?: string;
 	readonly TASK_NAME?: string;
 	readonly CRON_EXPR?: string;
 	readonly ENABLED?: string;
 	readonly WORKSPACE_ID?: string;
 	readonly WRITER_TAG?: string;
-}
+	readonly TARGET_AGENT?: string;
+};
 
 function parseEnvLine(content: string): Record<string, string> {
 	const values: Record<string, string> = {};
@@ -122,10 +160,10 @@ function parseEnvLine(content: string): Record<string, string> {
 
 /**
  * Load schedule entries from a CoAS home's schedules directory (files are
- * consumed unchanged). Enablement, cron validity, and the additive writer
- * tag are read here; the tick owns the rest.
+ * consumed unchanged). Invalid crons, sub-5-minute frequencies, and unsafe
+ * ids are refused with an audit event — never silently skipped.
  */
-export async function loadSchedules(coasSchedulesDir: string): Promise<ScheduleEntry[]> {
+export async function loadSchedules(coasSchedulesDir: string, audit?: (event: Record<string, unknown>) => Promise<void>): Promise<ScheduleEntry[]> {
 	const { readdir } = await import("node:fs/promises");
 	const entries: ScheduleEntry[] = [];
 	let files: string[] = [];
@@ -140,8 +178,19 @@ export async function loadSchedules(coasSchedulesDir: string): Promise<ScheduleE
 		try {
 			const parsed = parseEnvLine(await readFile(join(coasSchedulesDir, file), "utf8")) as RawScheduleEnv;
 			const taskId = parsed.TASK_ID ?? file.replace(/\.env$/, "");
+			assertSafeId("task id", taskId);
+			if (parsed.WORKSPACE_ID !== undefined) assertSafeId("workspace id", parsed.WORKSPACE_ID);
 			const cronExpr = parsed.CRON_EXPR ?? "";
-			if (cronExpressionError(cronExpr) !== undefined) continue;
+			const cronError = cronExpressionError(cronExpr);
+			if (cronError !== undefined) {
+				await audit?.({ kind: "schedule_refused", file, reason: cronError });
+				continue;
+			}
+			const capError = scheduleFrequencyCapError(cronExpr);
+			if (capError !== undefined) {
+				await audit?.({ kind: "schedule_refused", file, reason: capError });
+				continue;
+			}
 			entries.push({
 				taskId,
 				taskName: parsed.TASK_NAME ?? taskId,
@@ -149,9 +198,11 @@ export async function loadSchedules(coasSchedulesDir: string): Promise<ScheduleE
 				enabled: (parsed.ENABLED ?? "1") === "1",
 				workspaceId: parsed.WORKSPACE_ID ?? "",
 				...(parsed.WRITER_TAG === "gravitas" ? { writerTag: "gravitas" as const } : {}),
+				...(parsed.TARGET_AGENT !== undefined ? { targetAgent: parsed.TARGET_AGENT } : {}),
 				prompt: "",
 			});
-		} catch {
+		} catch (error) {
+			await audit?.({ kind: "schedule_refused", file, reason: (error as Error).message });
 			continue;
 		}
 	}
@@ -161,6 +212,7 @@ export async function loadSchedules(coasSchedulesDir: string): Promise<ScheduleE
 /** Load the prompt body for a task (separate .prompt file, consumed unchanged). */
 export async function loadSchedulePrompt(coasSchedulesDir: string, taskId: string): Promise<string | undefined> {
 	try {
+		assertSafeId("task id", taskId);
 		return await readFile(join(coasSchedulesDir, `${taskId}.prompt`), "utf8");
 	} catch {
 		return undefined;

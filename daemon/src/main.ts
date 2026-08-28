@@ -15,8 +15,10 @@ import { publishDaemonSocket, type PublishedSocket } from "./socket.js";
 import { appendAudit } from "./audit.js";
 import { join } from "node:path";
 import { daemonRoots } from "./paths.js";
-import { invalidateWriterLeaseOnRestart, tickSchedules, type TickMode } from "./schedule-tick.js";
+import { assertLiveModeAuthorized, invalidateWriterLeaseOnRestart, loadWriterLease, tickSchedules, type TickMode } from "./schedule-tick.js";
 import { DeliveryServeLoop } from "./serve.js";
+import { buildEnvelope, signEnvelope } from "./envelope.js";
+import { enqueue } from "./queue.js";
 
 export interface DaemonBootstrap {
 	readonly startedAt: string;
@@ -73,6 +75,9 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 		}, { durable: true });
 
 		const mode: TickMode = tickModeFromEnv();
+		// B3 alternative (reviewer): hold live mode closed until the T-870
+		// registry seam provides registry-derived guard inputs.
+		assertLiveModeAuthorized(mode, false);
 		const serve = new DeliveryServeLoop(roots, (event) => appendAudit(roots, event));
 		const deferralCounts = new Map<string, number>();
 
@@ -84,24 +89,35 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 					schedulesDir,
 					mode,
 					guardInputs: { parentId: null, visibility: "workspace", scope: "root" },
-					writerLease: await (await import("./schedule-tick.js")).loadWriterLease(roots),
+					writerLease: await loadWriterLease(roots),
 					deferralCounts,
+					deliver: async (schedule, prompt, claim) => {
+						// Delivery seam (ADR-0008): the scheduled prompt is enqueued
+						// as a real signed envelope via the durable queue; the serve
+						// loop delivers it through the lease path when the recipient
+						// binding is admitted.
+						const sender = { agentId: "a-coas-daemon", instanceId: `i-sched-${schedule.taskId}`, generation: 1 };
+						const envelope = buildEnvelope(keys, {
+							idempotencyKey: `schedule:${schedule.taskId}:${claim.minuteKey}`,
+							expiresAt: new Date(Date.now() + 3600_000),
+							sender,
+							recipientAgentId: `a-${schedule.workspaceId || schedule.taskId}`,
+							recipientGenerationPolicy: "stable_mailbox",
+							recipientGeneration: null,
+							payloadType: "schedule_delivery",
+							payload: prompt,
+						});
+						const signed = signEnvelope(keys.privateKeyPem, envelope);
+						const result = await enqueue(roots, {
+							signed,
+							policyDecision: { allowed: true },
+							verificationKeys: new Map([[keys.keyId, keys.publicKeyPem]]),
+						});
+						void claim;
+						void result;
+					},
 				},
 				new Date(),
-				async (schedule, prompt, claim) => {
-					// Delivery seam: the scheduled prompt traverses the same
-					// authenticated envelope path as A2A messages (ADR-0008 seam).
-					serve.bind({
-						agentId: `a-${schedule.workspaceId || schedule.taskId}`,
-						instanceId: `i-${schedule.taskId}-${claim.minuteKey}`,
-						generation: 1,
-						label: "same_uid_untrusted",
-						capabilitySecret: `schedule:${schedule.taskId}`,
-						guardInputs: claim.guardInputs,
-						send: async () => "ack",
-					});
-					void prompt;
-				},
 				(event) => appendAudit(roots, event),
 			).catch((error: unknown) => {
 				void appendAudit(roots, { kind: "scheduler_tick_failed", reason: (error as Error).message });

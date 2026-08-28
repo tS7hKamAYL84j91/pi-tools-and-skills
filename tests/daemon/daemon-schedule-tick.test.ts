@@ -15,6 +15,7 @@ import {
 } from "../../daemon/src/cron.js";
 import {
 	claimWriterRole,
+	assertLiveModeAuthorized,
 	commitClaimCheck,
 	invalidateWriterLeaseOnRestart,
 	loadWriterLease,
@@ -109,11 +110,17 @@ describe("write-ahead claim-check (review F2: cycle lost, never duplicated)", ()
 			const deliveries: string[] = [];
 			const decisions = await tickSchedules(
 				ctx.roots,
-				{ schedulesDir: ctx.schedulesDir, mode: "live", guardInputs: GUARD },
-				new Date(2026, 0, 5, 9, 0),
-				async (schedule) => {
-					deliveries.push(schedule.taskId);
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "live",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
 				},
+				new Date(2026, 0, 5, 9, 0),
 				async () => {},
 			);
 			expect(deliveries).toEqual(["daily"]);
@@ -122,11 +129,17 @@ describe("write-ahead claim-check (review F2: cycle lost, never duplicated)", ()
 			// A second tick in the same minute is claimed already (M1 coalescing).
 			const repeat = await tickSchedules(
 				ctx.roots,
-				{ schedulesDir: ctx.schedulesDir, mode: "live", guardInputs: GUARD },
-				new Date(2026, 0, 5, 9, 0, 30),
-				async (schedule) => {
-					deliveries.push(schedule.taskId);
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "live",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
 				},
+				new Date(2026, 0, 5, 9, 0, 30),
 				async () => {},
 			);
 			expect(repeat[0]?.skippedReason).toBe("already_claimed");
@@ -145,11 +158,17 @@ describe("dry-run/claim-check mode (ADR-0008 decision 8)", () => {
 			const deliveries: string[] = [];
 			const decisions = await tickSchedules(
 				ctx.roots,
-				{ schedulesDir: ctx.schedulesDir, mode: "dry_run", guardInputs: GUARD },
-				new Date(2026, 0, 5, 9, 0),
-				async (schedule) => {
-					deliveries.push(schedule.taskId);
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "dry_run",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
 				},
+				new Date(2026, 0, 5, 9, 0),
 				async () => {},
 			);
 			expect(decisions[0]?.fired).toBe(false);
@@ -174,11 +193,17 @@ describe("M5 pi-yields (writer lease)", () => {
 			for (let i = 0; i < 3; i++) {
 				const decisions = await tickSchedules(
 					ctx.roots,
-					{ schedulesDir: ctx.schedulesDir, mode: "live", guardInputs: GUARD, writerLease: await loadWriterLease(ctx.roots), deferralCounts },
-					new Date(2026, 0, 5 + i, 9, 0),
-					async () => {
-						throw new Error("writer-tagged work must not fire while the claim is held");
+					{
+						schedulesDir: ctx.schedulesDir,
+						mode: "live",
+						guardInputs: GUARD,
+						writerLease: await loadWriterLease(ctx.roots),
+						deferralCounts,
+						deliver: async () => {
+							throw new Error("writer-tagged work must not fire while the claim is held");
+						},
 					},
+					new Date(2026, 0, 5 + i, 9, 0),
 					async (event) => {
 						audits.push(event);
 					},
@@ -200,11 +225,17 @@ describe("M5 pi-yields (writer lease)", () => {
 			const deliveries: string[] = [];
 			await tickSchedules(
 				ctx.roots,
-				{ schedulesDir: ctx.schedulesDir, mode: "live", guardInputs: GUARD },
-				new Date(2026, 0, 6, 9, 0),
-				async (schedule) => {
-					deliveries.push(schedule.taskId);
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "live",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
 				},
+				new Date(2026, 0, 6, 9, 0),
 				async () => {},
 			);
 			expect(deliveries).toEqual(["reflect"]);
@@ -228,5 +259,129 @@ describe("M5 pi-yields (writer lease)", () => {
 		} finally {
 			await ctx.cleanup();
 		}
+	});
+});
+describe("M1 catch-up + live-mode hold (review B4/B3)", () => {
+	it("fires the most recent missed cycle within the 24h lookback (M1)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
+			// Tick on Tuesday: Monday 09:00 was missed — coalesce to one fire.
+			const deliveries: string[] = [];
+			await tickSchedules(
+				ctx.roots,
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "live",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
+				},
+				new Date(2026, 0, 6, 8, 30),
+				async () => {},
+			);
+			expect(deliveries).toEqual(["daily"]);
+			const claim = await readClaim(ctx.roots, "daily");
+			expect(claim?.minuteKey).toBe("2026-01-05T09:00");
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+
+	it("holds live mode closed until the registry seam lands (review B3)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
+			const deliveries: string[] = [];
+			// assertLiveModeAuthorized(mode="live", registrySeamReady=false) throws;
+			// the daemon bootstrap refuses it, so the tick treats live as claim-check.
+			const decisions = await tickSchedules(
+				ctx.roots,
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "claim_check_only",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
+				},
+				new Date(2026, 0, 5, 9, 0),
+				async () => {},
+			);
+			expect(decisions[0]?.fired).toBe(false);
+			expect(deliveries).toEqual([]);
+			expect(await readClaim(ctx.roots, "daily")).toBeDefined();
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+});
+
+describe("M1 catch-up + live-mode hold (review B4/B3)", () => {
+	it("fires the most recent missed cycle within the 24h lookback (M1)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
+			const deliveries: string[] = [];
+			await tickSchedules(
+				ctx.roots,
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "live",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
+				},
+				new Date(2026, 0, 6, 8, 30),
+				async () => {},
+			);
+			expect(deliveries).toEqual(["daily"]);
+			const claim = await readClaim(ctx.roots, "daily");
+			expect(claim?.minuteKey).toBe("2026-01-05T09:00");
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+
+	it("claim_check_only commits claims without delivering (review B3 hold)", async () => {
+		const ctx = await makeContext();
+		try {
+			await writeSchedule(ctx.schedulesDir, "daily", "0 9 * * 1");
+			const deliveries: string[] = [];
+			const decisions = await tickSchedules(
+				ctx.roots,
+				{
+					schedulesDir: ctx.schedulesDir,
+					mode: "claim_check_only",
+					guardInputs: GUARD,
+					deliver: async (schedule, prompt, claim) => {
+						void prompt;
+						void claim;
+						deliveries.push(schedule.taskId);
+					},
+				},
+				new Date(2026, 0, 5, 9, 0),
+				async () => {},
+			);
+			expect(decisions[0]?.fired).toBe(false);
+			expect(deliveries).toEqual([]);
+			expect(await readClaim(ctx.roots, "daily")).toBeDefined();
+		} finally {
+			await ctx.cleanup();
+		}
+	});
+
+	it("assertLiveModeAuthorized refuses live without the registry seam (review B3)", () => {
+		expect(() => assertLiveModeAuthorized("live", false)).toThrow(/held closed/);
+		expect(() => assertLiveModeAuthorized("claim_check_only", false)).not.toThrow();
+		expect(() => assertLiveModeAuthorized("dry_run", false)).not.toThrow();
 	});
 });
