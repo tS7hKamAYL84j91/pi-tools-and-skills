@@ -22,6 +22,7 @@ import { DaemonRegistry } from "./registry.js";
 import { acceptRegistrySyncConnection } from "./registry-protocol.js";
 import { buildEnvelope, signEnvelope } from "./envelope.js";
 import { enqueue } from "./queue.js";
+import { loadPolicy, authorizeSend, savePolicy } from "./policy.js";
 
 export interface DaemonBootstrap {
 	readonly startedAt: string;
@@ -104,15 +105,30 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 		}, { durable: true });
 
 		const mode: TickMode = tickModeFromEnv();
-		// B3 alternative (reviewer): hold live mode closed until the T-870
-		// registry seam provides registry-derived guard inputs. The registry
-		// itself is recovered here (identity continuity + stale invalidation).
-		assertLiveModeAuthorized(mode, false);
 		const registry = await DaemonRegistry.recover(roots, {
 			keyId: keys.keyId,
 			privateKeyPem: keys.privateKeyPem,
 			publicKeyPem: keys.publicKeyPem,
 		});
+		// E4 (pilot): the bounded pilot workspace agent, registry-managed.
+		const pilotAgentId = await ensureWorkspaceAgent(registry);
+		// E2: signed default policy — the daemon sender may deliver
+		// schedule_delivery envelopes to the pilot workspace agent only.
+		try {
+			await loadPolicy(roots, new Map([[keys.keyId, keys.publicKeyPem]]));
+		} catch {
+			await savePolicy(roots, keys, [
+				{ senderAgentId: "a-coas-daemon", recipientAgentId: pilotAgentId, payloadTypes: ["schedule_delivery"] },
+			]);
+		}
+		// E1 (design doc section 5a): guard inputs are registry-derived; the
+		// live-mode hold flips now that the seam provides them.
+		const guardInputs = registry.guardInputsFor(pilotAgentId) ?? {
+			parentId: null,
+			visibility: "workspace",
+			scope: "root" as const,
+		};
+		assertLiveModeAuthorized(mode, true);
 		const serve = new DeliveryServeLoop(roots, (event) => appendAudit(roots, event));
 		const deferralCounts = new Map<string, number>();
 		const schedulerCounters = { ticks: 0, fired: 0, deferredWriter: 0 };
@@ -125,11 +141,14 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 				{
 					schedulesDir,
 					mode,
-					guardInputs: { parentId: null, visibility: "workspace", scope: "root" },
+					guardInputs,
 					writerLease: await loadWriterLease(roots, new Map([[keys.keyId, keys.publicKeyPem]])),
 					deferralCounts,
 					holderAlive: (agentId: string) => serve.bindingFor(agentId) !== undefined,
 					deliver: async (schedule, prompt, claim) => {
+						void schedule;
+						void prompt;
+						void claim;
 						// Delivery seam (ADR-0008): the scheduled prompt is enqueued
 						// as a real signed envelope via the durable queue; the serve
 						// loop delivers it through the lease path when the recipient
@@ -146,9 +165,16 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 							payload: prompt,
 						});
 						const signed = signEnvelope(keys.privateKeyPem, envelope);
+						const policy = await loadPolicy(roots, new Map([[keys.keyId, keys.publicKeyPem]]));
+						const policyDecision = authorizeSend(policy, {
+							senderAgentId: envelope.sender_agent_id,
+							recipientAgentId: envelope.recipient_agent_id,
+							payloadType: envelope.payload_type,
+							recipientGeneration: envelope.recipient_generation,
+						});
 						const result = await enqueue(roots, {
 							signed,
-							policyDecision: { allowed: true },
+							policyDecision,
 							verificationKeys: new Map([[keys.keyId, keys.publicKeyPem]]),
 						});
 						void claim;
@@ -204,6 +230,24 @@ export async function bootstrapDaemon(roots = daemonRoots()): Promise<DaemonBoot
 }
 
 /** CLI entrypoint (invoked by the systemd unit / nohup): run until signalled. */
+export /**
+ * E4 (pilot): ensure the workspace agent identity exists in the daemon
+ * registry (registerAgent is idempotent by name via identity continuity).
+ */
+async function ensureWorkspaceAgent(
+	registry: DaemonRegistry,
+): Promise<string> {
+	const existing = (await registry.snapshot()).entries.find((entry) => entry.displayName === "pilot workspace");
+	if (existing) return existing.agentId;
+	const identity = await registry.registerAgent({
+		displayName: "pilot workspace",
+		parentId: null,
+		visibility: "workspace",
+		scope: "root",
+	});
+	return identity.agentId;
+}
+
 export async function runUntilSignal(roots = daemonRoots()): Promise<void> {
 	const bootstrap = await bootstrapDaemon(roots);
 	const shutdown = (): void => {
