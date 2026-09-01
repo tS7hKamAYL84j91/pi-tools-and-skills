@@ -66,6 +66,50 @@ describe("cognitive boost parser and planner", () => {
 			"panel model filtered by provider policy: deny/one",
 		);
 	});
+
+	it("plans from host-visible text models when no panel is configured (ADR-056 auto)", () => {
+		const plan = planCognitiveFusion({
+			configuredPanel: [],
+			visibleModels: ["a/one", "b/two", "c/three"],
+			maxPanelModels: 2,
+		});
+		expect(plan.panel).toEqual(["a/one", "b/two"]);
+		expect(plan.judge).toBe("a/one");
+		expect(plan.estimatedCalls).toBe(3);
+		expect(plan.warnings).toContain(
+			"no configured panel models; using 3 host-visible text model(s)",
+		);
+	});
+
+	it("applies provider policy to the host registry fallback", () => {
+		const plan = planCognitiveFusion({
+			configuredPanel: [],
+			visibleModels: ["deny/one", "a/one"],
+			denyProviders: ["deny"],
+		});
+		expect(plan.panel).toEqual(["a/one"]);
+		expect(plan.warnings).toContain(
+			"visible model filtered by provider policy: deny/one",
+		);
+	});
+
+	it("fails closed when no host-visible model exists and none is configured", () => {
+		expect(() =>
+			planCognitiveFusion({ configuredPanel: [], visibleModels: [] }),
+		).toThrow(/at least one usable panel model/);
+		expect(() => planCognitiveFusion({ configuredPanel: [] })).toThrow(
+			/at least one usable panel model/,
+		);
+	});
+
+	it("never substitutes registry models for stale explicit selections", () => {
+		expect(() =>
+			planCognitiveFusion({
+				configuredPanel: ["stale/one", "stale/two"],
+				visibleModels: ["a/one", "b/two"],
+			}),
+		).toThrow(/at least one usable panel model/);
+	});
 });
 
 describe("cognitive boost output and lease lifecycle", () => {
@@ -173,6 +217,54 @@ describe("cognitive boost output and lease lifecycle", () => {
 		});
 		expect(result.nodes.map((node) => node.role)).toEqual(["single"]);
 		expect(result.analysis).toBeUndefined();
+	});
+
+	it("runs the single lease on the first host-visible model when unconfigured", async () => {
+		const calls: string[] = [];
+		const runner: CognitiveModelRunner = async (input) => {
+			calls.push(input.model);
+			return { ok: true, output: `direct:${input.model}`, durationMs: 1 };
+		};
+		const result = await executeCognitiveLease({
+			prompt: "unstick",
+			single: true,
+			visibleModels: ["a/one", "b/two"],
+			runner,
+		});
+		expect(calls).toEqual(["a/one"]);
+		expect(result.nodes.map((node) => node.role)).toEqual(["single"]);
+		expect(result.analysis).toBeUndefined();
+		expect(result.warnings.join("\n")).toContain(
+			"no configured panel models",
+		);
+	});
+
+	it("runs an unconfigured fusion lease on host-visible models with a judge", async () => {
+		const calls: string[] = [];
+		const runner: CognitiveModelRunner = async (input) => {
+			calls.push(input.model);
+			return {
+				ok: true,
+				output: input.systemPrompt.includes("judge in")
+					? JUDGE_OUTPUT
+					: `view:${input.model}`,
+				durationMs: 1,
+			};
+		};
+		const result = await executeCognitiveLease({
+			prompt: "compare",
+			panelSize: 2,
+			visibleModels: ["a/one", "b/two"],
+			requireApprovalAboveCalls: 3,
+			runner,
+		});
+		expect(calls).toEqual(["a/one", "b/two", "a/one"]);
+		expect(result).toMatchObject({ ok: true, degraded: false, answer: "synthesized" });
+		expect(result.nodes.map((node) => node.role)).toEqual([
+			"panel_1",
+			"panel_2",
+			"judge",
+		]);
 	});
 
 	it("writes a private redacted audit record without prompt or model identity", async () => {

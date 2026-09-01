@@ -6,7 +6,6 @@ import {
 	type CognitiveLeaseExecutionOptions,
 	type CognitiveLeaseResult,
 	type CognitiveNodeRun,
-	DEFAULT_PANEL_MODELS,
 	resolveCognitiveProfile,
 } from "./cognitive-types.js";
 
@@ -21,7 +20,7 @@ export async function executeSingleModelLease(
 	const profileSettings = resolveCognitiveProfile(options.profile);
 	const runner = options.runner ?? defaultCognitiveModelRunner;
 	const plan = planCognitiveFusion({
-		configuredPanel: options.models ?? DEFAULT_PANEL_MODELS,
+		configuredPanel: options.models ?? [],
 		configuredFallback: [],
 		visibleModels: options.visibleModels,
 		maxPanelModels: 1,

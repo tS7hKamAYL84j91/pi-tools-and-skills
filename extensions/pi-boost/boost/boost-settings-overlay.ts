@@ -12,11 +12,30 @@ import {
 	createBoostSettingsWriter,
 	resolveEffectiveBoostSettings,
 } from "../boost-settings.js";
-import type { CognitiveProfile } from "./cognitive-types.js";
+import {
+	HARD_MAX_PANEL_MODELS,
+	type CognitiveProfile,
+} from "./cognitive-types.js";
 import {
 	DEFAULT_BOOST_HOST_CAPABILITIES,
 	type BoostHostCapabilities,
 } from "./host-capabilities.js";
+import {
+	AUTO_MODEL_SELECTION_LABEL,
+	formatModelSelection,
+	listTextCapableModels,
+	ModelSelectionSubmenu,
+	toggleModelSelection,
+} from "./model-selection.js";
+
+function executionSummary(
+	mode: "single" | "fusion",
+	panelSize: number,
+): string {
+	return mode === "single"
+		? "1 model, no judge"
+		: `${panelSize} models + judge`;
+}
 
 /** Open the interactive `/boost` settings overlay. */
 export async function openBoostSettingsOverlay(
@@ -31,15 +50,14 @@ export async function openBoostSettingsOverlay(
 	);
 
 	if (!ctx.hasUI) {
-		const execution =
-			current.mode === "single"
-				? "1 model, no judge"
-				: `${current.panelSize} models + judge`;
+		const modelsLabel = current.models.length === 0
+			? AUTO_MODEL_SELECTION_LABEL
+			: current.models.join(",");
 		const summary = [
 			`Boost effective settings:`,
 			`  mode: ${current.mode} [${current.sources.mode}]`,
-			`  execution: ${execution}`,
-			`  configured candidates: ${current.models.length} [${current.sources.models}]`,
+			`  execution: ${executionSummary(current.mode, current.panelSize)}`,
+			`  configured candidates: ${modelsLabel} [${current.sources.models}]`,
 			`  profile: ${current.profile} [${current.sources.profile}]`,
 			`  agentSelfBoost: ${current.agentSelfBoost.enabled ? "enabled" : "disabled"} [${current.sources.agentSelfBoost}]`,
 		].join("\n");
@@ -47,13 +65,13 @@ export async function openBoostSettingsOverlay(
 		return;
 	}
 
+	const availableModels = listTextCapableModels(ctx);
 	let targetScope: "project" | "global" = isTrusted ? "project" : "global";
 	let selectedMode: "single" | "fusion" = current.mode;
 	let selectedProfile: CognitiveProfile = current.profile;
 	let selectedPanelSize = String(current.panelSize);
-	let selectedAgentSelfBoost = current.agentSelfBoost.enabled
-		? "enabled"
-		: "disabled";
+let selectedModels: string[] = [...current.models];
+let selectedAgentSelfBoost = current.agentSelfBoost.enabled ? "enabled" : "disabled";
 	let selectedMaxYields = String(current.agentSelfBoost.maxYields);
 	let selectedMaxPanelModels = String(current.agentSelfBoost.maxPanelModels);
 	let selectedEnvironmental = current.agentSelfBoost.allowEnvironmental
@@ -83,12 +101,16 @@ export async function openBoostSettingsOverlay(
 			new Text(
 				theme.fg(
 					"dim",
-					` inspect inheritance · mode=${current.mode} [${current.sources.mode}] · configured candidates=${current.models.join(",")} [${current.sources.models}] · execution=${current.mode === "single" ? "1 model, no judge" : `${current.panelSize} models + judge`} · timeout=${current.timeoutMs}ms [${current.sources.timeoutMs}]`,
+					` inspect inheritance · mode=${current.mode} [${current.sources.mode}] · models=${current.models.length === 0 ? AUTO_MODEL_SELECTION_LABEL : current.models.join(",")} [${current.sources.models}] · execution=${executionSummary(current.mode, current.panelSize)} · timeout=${current.timeoutMs}ms [${current.sources.timeoutMs}]`,
 				),
 				1,
 				0,
 			),
 		);
+
+		const persist = (updates: Parameters<typeof writer.enqueue>[1]): void => {
+			writer.enqueue(targetScope, updates);
+		};
 
 		const items: SettingItem[] = [
 			{
@@ -114,6 +136,31 @@ export async function openBoostSettingsOverlay(
 				label: `Fusion Panel Size [${current.sources.panelSize}]`,
 				currentValue: selectedPanelSize,
 				values: ["1", "2", "3", "4"],
+			},
+			{
+				id: "models",
+				label: `Models [${current.sources.models}]`,
+				currentValue: formatModelSelection(selectedModels),
+				description: `Panel models from the host model registry (text-capable). Empty selection = ${AUTO_MODEL_SELECTION_LABEL}; up to ${HARD_MAX_PANEL_MODELS} selectable.`,
+				submenu: (_currentValue, doneModels) =>
+					new ModelSelectionSubmenu(
+						theme.fg("accent", theme.bold(" Boost Panel Models")),
+						availableModels,
+						selectedModels,
+						{
+							onToggle: (modelId) => {
+								selectedModels = [...toggleModelSelection(selectedModels, modelId)];
+								persist({ models: selectedModels });
+							},
+							onClear: () => {
+								selectedModels = [];
+								persist({ models: selectedModels });
+							},
+							onCancel: () => {
+								doneModels();
+							},
+						},
+					),
 			},
 			{
 				id: "agentSelfBoost",
@@ -146,10 +193,6 @@ export async function openBoostSettingsOverlay(
 				values: ["disabled", "enabled"],
 			},
 		];
-
-		const persist = (updates: Parameters<typeof writer.enqueue>[1]): void => {
-			writer.enqueue(targetScope, updates);
-		};
 
 		const settingsList = new SettingsList(
 			items,

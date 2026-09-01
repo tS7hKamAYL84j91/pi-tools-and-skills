@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { PI_SETTINGS_PATH } from "../../lib/pi-settings.js";
-import { DEFAULT_PANEL_MODELS } from "./boost/cognitive-types.js";
 import {
 	applySettings,
 	DEFAULT_TIMEOUT_MS,
@@ -19,7 +18,7 @@ export const DEFAULT_BOOST_SETTINGS: ResolvedBoostSettings = {
 	mode: "single",
 	profile: "balanced",
 	panelSize: 3,
-	models: DEFAULT_PANEL_MODELS,
+	models: [],
 	timeoutMs: DEFAULT_TIMEOUT_MS,
 	agentSelfBoost: {
 		enabled: false,

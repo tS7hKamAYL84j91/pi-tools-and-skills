@@ -47,6 +47,7 @@ function fakeContext(cwd: string): ExtensionContext {
 		modelRegistry: {
 			getAvailable: () => [
 				{ provider: "a", id: "one", input: ["text"] },
+				{ provider: "img", id: "vision", input: ["image"] },
 				{ provider: "b", id: "two", input: ["text"] },
 				{ provider: "judge", id: "final", input: ["text"] },
 			],
@@ -205,5 +206,57 @@ describe("boost_fusion authorization and fixed policy", () => {
 		}>;
 		expect(nodes).toHaveLength(1);
 		expect(nodes[0]).toMatchObject({ role: "single", model: "a/one" });
+	});
+
+	it("falls back to host-visible text models when unconfigured (ADR-056)", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "boost-fusion-auto-"));
+		roots.push(cwd);
+		const globalPath = join(cwd, "global.json");
+		await saveBoostSettings(
+			"global",
+			{ agentSelfBoost: { enabled: true, allowCognitive: true } },
+			cwd,
+			globalPath,
+		);
+		const tool = await setup(false, globalPath);
+		const ctx = fakeContext(cwd);
+
+		const single = await tool.execute(
+			"id",
+			{ prompt: "x" },
+			new AbortController().signal,
+			undefined,
+			ctx,
+		);
+		expect(single.content[0]?.text).toBe("panel:a/one");
+		expect(
+			(single.details?.nodes as ReadonlyArray<{ role: string }>).map(
+				(node) => node.role,
+			),
+		).toEqual(["single"]);
+		expect(single.details?.warnings).toContain(
+			"no configured panel models; using 3 host-visible text model(s)",
+		);
+
+		await saveBoostSettings(
+			"global",
+			{ mode: "fusion", panelSize: 2 },
+			cwd,
+			globalPath,
+		);
+		const fusion = await tool.execute(
+			"id",
+			{ prompt: "x" },
+			new AbortController().signal,
+			undefined,
+			ctx,
+		);
+		expect(fusion.content[0]?.text).toBe("final");
+		expect(
+			(fusion.details?.nodes as ReadonlyArray<{
+				role: string;
+				model: string;
+			}>).map((node) => `${node.role}:${node.model}`),
+		).toEqual(["panel_1:a/one", "panel_2:b/two", "judge:a/one"]);
 	});
 });

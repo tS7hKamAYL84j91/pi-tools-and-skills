@@ -61,6 +61,7 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 053 | Daemon protocol extraction into `lib/daemon-protocol` | [053-daemon-protocol-extraction.md](053-daemon-protocol-extraction.md) |
 | 054 | Test-only production module disposition and no-exemptions fitness rule | [054-test-only-module-disposition.md](054-test-only-module-disposition.md) |
 | 055 | Default `/goal run` to bounded continuous execution | [055-pi-goal-run-default-until-complete.md](055-pi-goal-run-default-until-complete.md) |
+| 056 | Boost model selection from the host model registry | [056-boost-model-registry-selection.md](056-boost-model-registry-selection.md) |
 
 ## ADR Registry Notes
 
@@ -70,4 +71,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - The next sequential ADR slot to assign is **056**.
+  - The next sequential ADR slot to assign is **057**.

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Plain `/goal run` now defaults to a bounded 20-turn continuous run; use `--turns N` for an explicit shorter run (ADR-055).
+- pi-boost no longer ships hard-coded provider/model defaults: unconfigured boost settings plan from the host model registry's text-capable models (`ctx.modelRegistry.getAvailable()`), with a warned auto fallback and fail-closed behavior when no usable model exists; stale explicit selections are never silently substituted. `/boost` settings gains a registry-backed multi-select model list (capped at 4, empty = auto). Single mode remains one model with no judge; fusion stays explicit (ADR-056).
 
 ## [1.2.0] - 2026-09-01
 

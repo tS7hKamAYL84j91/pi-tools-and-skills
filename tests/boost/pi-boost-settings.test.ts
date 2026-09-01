@@ -10,7 +10,15 @@ import {
 } from "../../extensions/pi-boost/boost-settings.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { openBoostSettingsOverlay } from "../../extensions/pi-boost/boost/boost-settings-overlay.js";
-import { DEFAULT_BOOST_HOST_CAPABILITIES } from "../../extensions/pi-boost/boost/host-capabilities.js";
+import {
+	AUTO_MODEL_SELECTION_LABEL,
+	formatModelSelection,
+	listTextCapableModels,
+	toggleModelSelection,
+} from "../../extensions/pi-boost/boost/model-selection.js";
+import {
+	DEFAULT_BOOST_HOST_CAPABILITIES,
+} from "../../extensions/pi-boost/boost/host-capabilities.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -243,6 +251,44 @@ describe("Boost standard settings precedence and trust", () => {
 		expect(notices.join("\n")).toContain("profile: fast [global]");
 	});
 
+	it("shows the auto host-registry state when no models are configured", async () => {
+		const paths = await workspace();
+		const notices: string[] = [];
+		const ctx = {
+			cwd: paths.root,
+			hasUI: false,
+			ui: {
+				notify: (message: string) => {
+					notices.push(message);
+				},
+			},
+		} as unknown as ExtensionContext;
+		await openBoostSettingsOverlay(ctx, {
+			isProjectTrusted: () => false,
+			globalSettingsPath: paths.globalPath,
+		});
+		const summary = notices.join("\n");
+		expect(summary).toContain(AUTO_MODEL_SELECTION_LABEL);
+		expect(summary).toContain("execution: 1 model, no judge");
+	});
+
+	it("persists and clears model selections through the scoped writer", async () => {
+		const paths = await workspace();
+		const writer = createBoostSettingsWriter(paths.root, paths.globalPath);
+		writer.enqueue("global", { models: ["a/one", "b/two"] });
+		await writer.drain();
+		expect(
+			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath)
+				.models,
+		).toEqual(["a/one", "b/two"]);
+		writer.enqueue("global", { models: [] });
+		await writer.drain();
+		expect(
+			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath)
+				.models,
+		).toEqual([]);
+	});
+
 	it("uses a typed host trust method when available and otherwise fails closed", () => {
 		expect(
 			DEFAULT_BOOST_HOST_CAPABILITIES.isProjectTrusted("/x", { cwd: "/x" }),
@@ -251,5 +297,43 @@ describe("Boost standard settings precedence and trust", () => {
 		expect(
 			DEFAULT_BOOST_HOST_CAPABILITIES.isProjectTrusted("/x", context),
 		).toBe(true);
+	});
+});
+
+describe("Boost model selection (ADR-056)", () => {
+	it("defaults to an empty auto model selection with no provider IDs", () => {
+		expect(DEFAULT_BOOST_SETTINGS.models).toEqual([]);
+	});
+
+	it("lists only text-capable host registry models in registry order", () => {
+		const ctx = {
+			modelRegistry: {
+				getAvailable: () => [
+					{ provider: "a", id: "one", input: ["text"] },
+					{ provider: "img", id: "vision", input: ["image"] },
+					{ provider: "b", id: "two", input: ["text", "image"] },
+				],
+			},
+		} as unknown as ExtensionContext;
+		expect(listTextCapableModels(ctx)).toEqual(["a/one", "b/two"]);
+	});
+
+	it("toggles models with ordered membership and the hard panel cap", () => {
+		let selected: readonly string[] = [];
+		selected = toggleModelSelection(selected, "a/one");
+		selected = toggleModelSelection(selected, "b/two");
+		expect(selected).toEqual(["a/one", "b/two"]);
+		selected = toggleModelSelection(selected, "b/two");
+		expect(selected).toEqual(["a/one"]);
+		const full = ["a/1", "b/2", "c/3", "d/4"];
+		expect(toggleModelSelection(full, "e/5")).toEqual(full);
+		expect(toggleModelSelection(full, "a/1")).toEqual(["b/2", "c/3", "d/4"]);
+	});
+
+	it("formats auto and explicit selection states", () => {
+		expect(formatModelSelection([])).toBe(AUTO_MODEL_SELECTION_LABEL);
+		expect(formatModelSelection(["a/one", "b/two"])).toBe(
+			"2 selected: a/one, b/two",
+		);
 	});
 });

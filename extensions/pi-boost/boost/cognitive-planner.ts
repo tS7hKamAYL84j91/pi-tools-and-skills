@@ -76,6 +76,24 @@ function providerDiverseModels(models: readonly string[]): string[] {
 	return [...selected, ...deferred];
 }
 
+/**
+ * Candidate panel models: the explicit configuration when non-empty, otherwise
+ * the host registry's visible text models (auto mode, ADR-056).
+ */
+function resolvePanelCandidates(
+	args: CognitiveFusionPlanInput,
+	warnings: string[],
+): string[] {
+	if (args.configuredPanel.length > 0) {
+		return filterModels(args, args.configuredPanel, warnings, "panel");
+	}
+	const visible = filterModels(args, args.visibleModels ?? [], warnings, "visible");
+	warnings.push(
+		`no configured panel models; using ${visible.length} host-visible text model(s)`,
+	);
+	return visible;
+}
+
 /** Plan panel and judge model allocation for a cognitive fusion deliberation. */
 export function planCognitiveFusion(
 	args: CognitiveFusionPlanInput,
@@ -84,16 +102,11 @@ export function planCognitiveFusion(
 	const profileSettings = resolveCognitiveProfile(args.profile);
 	const requestedLimit = args.maxPanelModels ?? profileSettings.panelModels;
 	const maxPanelModels = boundedPanelLimit(requestedLimit);
-	const filteredPanel = filterModels(
-		args,
-		args.configuredPanel,
-		warnings,
-		"panel",
-	);
+	const panelCandidates = resolvePanelCandidates(args, warnings);
 	const orderedPanel =
 		args.profile === "fast"
-			? providerDiverseModels(filteredPanel)
-			: filteredPanel;
+			? providerDiverseModels(panelCandidates)
+			: panelCandidates;
 	const panel = orderedPanel.slice(0, maxPanelModels);
 	if (panel.length === 0) {
 		throw new Error(
@@ -128,7 +141,7 @@ export function planCognitiveFusion(
 	return {
 		panel,
 		panelSourceIndexes: panel.map((model) =>
-			args.configuredPanel.indexOf(model),
+			orderedPanel.indexOf(model),
 		),
 		judge,
 		fallback,

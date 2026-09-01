@@ -13,7 +13,6 @@ import {
 	type CognitiveLeaseExecutionOptions,
 	type CognitiveLeaseResult,
 	type CognitiveNodeRun,
-	DEFAULT_PANEL_MODELS,
 	resolveCognitiveProfile,
 } from "./cognitive-types.js";
 
@@ -40,7 +39,7 @@ export async function executeFusionLease(
 	const startedAt = Date.now();
 	const profileSettings = resolveCognitiveProfile(options.profile);
 	const runner = options.runner ?? defaultCognitiveModelRunner;
-	const configuredPanel = options.models ?? DEFAULT_PANEL_MODELS;
+	const configuredPanel = options.models ?? [];
 
 	const plan = planCognitiveFusion({
 		configuredPanel,

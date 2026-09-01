@@ -39,16 +39,15 @@ export const DEFAULT_MAX_PANEL_MODELS = 3;
 export const HARD_MAX_PANEL_MODELS = 4;
 export const DEFAULT_APPROVAL_CALL_GATE = 4;
 
-export const DEFAULT_PANEL_MODELS: readonly string[] = [
-	"openai/gpt-5",
-	"anthropic/claude-3-7-sonnet",
-	"google/gemini-2.5-pro",
-];
-
 export interface CognitiveFusionPlanInput {
+	/**
+	 * Explicitly configured panel models. Empty means auto: plan from the
+	 * host-visible text models instead (warned fallback, fail closed when none).
+	 */
 	readonly configuredPanel: readonly string[];
 	readonly configuredJudge?: string;
 	readonly configuredFallback?: readonly string[];
+	/** Host registry's text-capable models in registry order (ADR-056). */
 	readonly visibleModels?: readonly string[];
 	readonly maxPanelModels?: number;
 	readonly allowProviders?: readonly string[];
