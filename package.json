@@ -1,7 +1,7 @@
 {
 	"name": "pi-tools-and-skills",
 	"version": "1.1.0",
-	"description": "",
+	"description": "Reusable extensions, skills, prompts, and shared libraries for the pi coding agent",
 	"directories": {
 		"doc": "docs"
 	},
@@ -30,7 +30,7 @@
 		"pi-coding-agent",
 		"agent-skills"
 	],
-	"author": "",
+	"author": "tS7hKamAYL84j91",
 	"license": "MIT",
 	"type": "module",
 	"files": [

@@ -2,7 +2,7 @@
 
 ![pi-panopticon](docs/images/pi-panopticon.png)
 
-Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/mariozechner/pi-coding-agent), a local-first coding agent.
+Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/earendil-works/pi), a local-first coding agent.
 
 This repository provides reusable operator tooling for a personal Chief of Staff setup: extension packages, agent skills, prompt templates, and shared TypeScript utilities.
 
@@ -10,9 +10,9 @@ This repository provides reusable operator tooling for a personal Chief of Staff
 
 ### Prerequisites
 
-- [pi](https://github.com/mariozechner/pi-coding-agent) installed and working
+- [pi](https://github.com/earendil-works/pi) installed and working
 - Node.js 22+
-- Python 3
+- Python 3 (only required for `npm run security:semgrep` in CI security scans, not needed for normal use)
 
 ### 1. Install
 

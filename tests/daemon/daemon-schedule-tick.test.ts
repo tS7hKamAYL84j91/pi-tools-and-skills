@@ -50,7 +50,7 @@ async function writeSchedule(schedulesDir: string, taskId: string, cron: string,
 		"ROOM_ID=general",
 		"WORKSPACE_ID=room-a",
 		`CRON_EXPR=${cron}`,
-		"ENABLED=" + (options.disabled ? "0" : "1"),
+		`ENABLED=${options.disabled ? "0" : "1"}`,
 	];
 	if (options.writerTag) lines.push("WRITER_TAG=gravitas");
 	lines.push("");
@@ -251,8 +251,9 @@ describe("M5 pi-yields (writer lease)", () => {
 			await claimWriterRole(ctx.roots, ctx.keys, { agentId: "a-gravitas", instanceId: "i-g1", generation: 1 });
 			expect(await invalidateWriterLeaseOnRestart(ctx.roots, ctx.keys)).toBe(true);
 			const lease = await loadWriterLease(ctx.roots);
-			expect(lease?.invalidatedAt).toBeDefined();
-			expect(writerLeaseInGrace(lease!, new Date())).toBe(true);
+			if (!lease) throw new Error("Writer lease not found");
+			expect(lease.invalidatedAt).toBeDefined();
+			expect(writerLeaseInGrace(lease, new Date())).toBe(true);
 
 			// Re-claim after invalidation succeeds (the live session re-claims).
 			const reclaim = await claimWriterRole(ctx.roots, ctx.keys, { agentId: "a-gravitas", instanceId: "i-g1", generation: 2 });

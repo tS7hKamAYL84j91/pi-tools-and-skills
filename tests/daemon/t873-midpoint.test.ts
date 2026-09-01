@@ -109,7 +109,8 @@ describe("T-873 step-2 midpoint (pilot workspace, 24h mid-point review)", () => 
 			await invalidateWriterLeaseOnRestart(pilot.roots, pilot.keys);
 			const lease = await loadWriterLease(pilot.roots, pilot.verificationKeys);
 			// Within the 30s re-arm grace: writer delivery stays deferred.
-			expect(writerLeaseInGrace(lease!, new Date())).toBe(true);
+			if (!lease) throw new Error("Writer lease not found");
+			expect(writerLeaseInGrace(lease, new Date())).toBe(true);
 		} finally {
 			await pilot.cleanup();
 		}
