@@ -5,7 +5,8 @@
     "daemon/src/*.ts",
     "lib/*.ts",
     "lib/**/*.ts",
-    "scripts/session-*-cli.ts"
+    "scripts/session-*-cli.ts",
+    "scripts/*.mjs"
   ],
   "project": [
     "extensions/**/*.ts",

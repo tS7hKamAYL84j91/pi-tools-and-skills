@@ -9,7 +9,7 @@
 		"check:namespace": "node scripts/check-namespace.mjs",
 		"check:template-safety": "node scripts/check-template-safety.mjs",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint extensions/ lib/ tests/ daemon/",
+		"lint": "biome lint extensions/ lib/ tests/ daemon/ scripts/",
 		"type-coverage": "type-coverage --strict --at-least 95",
 		"security:semgrep": "node scripts/semgrep-scan.mjs",
 		"check": "npm run check:namespace && npm run check:template-safety && npm run typecheck && npm run lint && npm run knip && npm run type-coverage",

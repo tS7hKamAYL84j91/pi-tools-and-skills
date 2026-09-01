@@ -78,7 +78,8 @@ export function summarize(runs, _team) {
 	for (const runRecord of successful) {
 		for (const node of runRecord.nodes) {
 			const key = `${node.role}:${node.model}`;
-			const stat = roleModelStats[key] ??= { total: 0, ok: 0, errors: {} };
+			const stat = roleModelStats[key] ?? { total: 0, ok: 0, errors: {} };
+			roleModelStats[key] = stat;
 			stat.total += 1;
 			if (node.ok) {
 				stat.ok += 1;
