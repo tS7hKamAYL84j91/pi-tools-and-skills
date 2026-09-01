@@ -49,11 +49,17 @@ function lineCount(file: string): number {
 }
 
 function existenceOnlyTestNames(content: string): string[] {
-	return [...content.matchAll(/\b(?:it|test)\s*\(\s*["'`]([^"'`]+)["'`]\s*,\s*(?:async\s*)?\(?(?:[^)=]*)\)?\s*=>\s*\{([\s\S]*?)\n\s*\}\s*\)/g)]
+	return [
+		...content.matchAll(
+			/\b(?:it|test)\s*\(\s*["'`]([^"'`]+)["'`]\s*,\s*(?:async\s*)?\(?(?:[^)=]*)\)?\s*=>\s*\{([\s\S]*?)\n\s*\}\s*\)/g,
+		),
+	]
 		.filter((match) => {
 			const body = match[2] ?? "";
 			const expects = body.match(/\bexpect\s*\(/g)?.length ?? 0;
-			return expects === 1 && /\.(?:toBeDefined|toBeTruthy)\s*\(\s*\)/.test(body);
+			return (
+				expects === 1 && /\.(?:toBeDefined|toBeTruthy)\s*\(\s*\)/.test(body)
+			);
 		})
 		.map((match) => match[1] ?? "")
 		.filter(Boolean);
@@ -61,7 +67,9 @@ function existenceOnlyTestNames(content: string): string[] {
 
 describe("test quality fitness functions", () => {
 	it("test files must not contain focused tests", () => {
-		const violations = testFiles().filter((file) => /\b(?:describe|it|test)\.only\s*\(/.test(readFileSync(file, "utf8")));
+		const violations = testFiles().filter((file) =>
+			/\b(?:describe|it|test)\.only\s*\(/.test(readFileSync(file, "utf8")),
+		);
 		expect(violations).toEqual([]);
 	});
 
@@ -84,17 +92,19 @@ describe("test quality fitness functions", () => {
 			.map((file) => relative(process.cwd(), file))
 			.map((path) => ({ path, lines: lineCount(path) }))
 			.filter((file) => file.lines > TEST_FILE_MAX_LINES)
-			.map((file) => `${file.path}: ${file.lines}/${TEST_FILE_MAX_LINES} lines`);
+			.map(
+				(file) => `${file.path}: ${file.lines}/${TEST_FILE_MAX_LINES} lines`,
+			);
 
 		expect(violations).toEqual([]);
 	});
 
 	it("tests avoid existence-only vanity test cases", () => {
-		const violations = testFiles()
-			.flatMap((file) =>
-				existenceOnlyTestNames(readFileSync(file, "utf8"))
-					.map((name) => `${relative(process.cwd(), file)}: ${name}`),
-			);
+		const violations = testFiles().flatMap((file) =>
+			existenceOnlyTestNames(readFileSync(file, "utf8")).map(
+				(name) => `${relative(process.cwd(), file)}: ${name}`,
+			),
+		);
 
 		expect(violations).toEqual([]);
 	});
@@ -102,14 +112,20 @@ describe("test quality fitness functions", () => {
 	it("architecture suites stay under tests/architecture", () => {
 		const violations = testFiles()
 			.map((file) => relative(process.cwd(), file))
-			.filter((file) => file.includes("architecture") && file !== "tests/architecture.test.ts");
+			.filter(
+				(file) =>
+					file.includes("architecture") &&
+					file !== "tests/architecture.test.ts",
+			);
 
 		expect(violations).toEqual([]);
 	});
 
 	it("tests do not reference removed standalone council extension paths", () => {
 		const violations = testFiles()
-			.filter((file) => /extensions\/council\//.test(readFileSync(file, "utf8")))
+			.filter((file) =>
+				/extensions\/council\//.test(readFileSync(file, "utf8")),
+			)
 			.map((file) => relative(process.cwd(), file));
 
 		expect(violations).toEqual([]);
@@ -119,8 +135,9 @@ describe("test quality fitness functions", () => {
 		// The package ships every top-level extensions/<name>/ directory, so each
 		// directory should have at least one matching test filename.
 		const tests = testFiles().map((file) => basename(file));
-		const missing = extensionNames().filter((extension) =>
-			!tests.some((testFile) => testFile.startsWith(`${extension}-`)),
+		const missing = extensionNames().filter(
+			(extension) =>
+				!tests.some((testFile) => testFile.startsWith(`${extension}-`)),
 		);
 		expect(missing).toEqual([]);
 	});
@@ -128,7 +145,10 @@ describe("test quality fitness functions", () => {
 	it("each shipped pi extension should document its boundary", () => {
 		const missing = extensionNames().filter((extension) => {
 			const readme = join("extensions", extension, "README.md");
-			return !existsSync(readme) || !readFileSync(readme, "utf8").includes("## What this does NOT do");
+			return (
+				!existsSync(readme) ||
+				!readFileSync(readme, "utf8").includes("## What this does NOT do")
+			);
 		});
 		expect(missing).toEqual([]);
 	});

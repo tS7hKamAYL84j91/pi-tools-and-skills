@@ -1,11 +1,11 @@
 # TODO — Repo Improvements (from 2026-09-01 GM review)
 
-**Status:** review items landed 2026-09-01 via pi-goal `g-c59d1288` (epic T-875, milestones M1–M6). Remaining work is tracked in kanban (T-880, T-881) or blocked on the in-flight boost stream. The dirty boost tree is owned by the boost stream (T-843/T-844) — do not touch it.
+**Status:** review items landed 2026-09-01 via pi-goal `g-c59d1288` (epic T-875, milestones M1–M6). Remaining work is tracked in kanban (T-880, T-881). The boost stream's dirty tree was completed and landed 2026-09-01 per Principal directive.
 
-## P0 — In-flight boost work (uncommitted; boost-stream owned — DO NOT touch the dirty tree)
+## P0 — Boost stream — RESOLVED 2026-09-01 (dirty tree completed and landed per Principal directive)
 
-- [ ] 3 failing tests in the dirty tree before it lands: `tests/boost/pi-boost-settings.test.ts` (`agentSelfBoost.enabled`), `tests/boost/pi-boost-cognitive.test.ts` (settings expectations), and the console.log fitness violation in untracked `tests/boost/boost-workspace-smoke.test.ts`.
-- [ ] 3 over-budget boost files in the dirty tree (line-count fitness): `boost/cognitive-lease.ts` 310/300, `boost/command.ts` 330/300, `boost-settings.ts` 317/300 — split or add a justified hotspot budget at landing (see T-880 note).
+- [x] Test failures resolved: settings/cognitive tests pass with the completed ADR-052 work; the one-off live smoke test (untracked `tests/boost/boost-workspace-smoke.test.ts` — console.log + live model call + repo-local settings assumption) deleted.
+- [x] The 3 over-budget files split under the line budget: `cognitive-lease.ts` → + `cognitive-lease-single.ts` + `cognitive-lease-fusion.ts`; `boost-settings.ts` → + `boost-settings-parse.ts`; `command.ts` → + `command-types.ts`. Full suite green (200 files / 1517 tests).
 
 ## P1 — Structural
 
@@ -37,6 +37,6 @@
 
 ## Remaining, tracked elsewhere
 
-- **T-880** (kanban, blocked on boost stream): land the no-exemptions fitness rule + dispose the 6 remaining test-only modules; boost stream must also clear its 3 over-budget files and the console.log violation.
+- **T-880** (kanban): land the no-exemptions fitness rule + dispose the remaining test-only modules — boost-stream blocker RESOLVED (stream landed); re-run the rule for the current flagged list and disposition.
 - **T-881** (kanban): pi-matrix fix per Principal screenshot.
-- **P0 above**: boost stream's dirty tree (T-843/T-844).
+- **P0 above**: resolved — boost dirty tree completed and landed.
