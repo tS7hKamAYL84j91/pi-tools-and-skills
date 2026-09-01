@@ -5,8 +5,8 @@
  * COAS_DAEMON_ENABLED=1; daemon-managed fields it does not expose (peer PIDs,
  * cwd, model) are diagnostic-only placeholders here.
  */
-import type { RegistryEntry } from "../../../daemon/src/registry.js";
-import { socketPath, daemonRoots } from "../../../daemon/src/paths.js";
+import type { RegistryEntry } from "../../../lib/daemon-protocol/registry-types.js";
+import { socketPath, daemonRoots } from "../../../lib/daemon-protocol/paths.js";
 import type { AgentRecord } from "../types.js";
 import { DaemonRegistryClient } from "../daemon-client/daemon-registry-client.js";
 import { readVolatileRegistryRecords } from "./registry-reader.js";

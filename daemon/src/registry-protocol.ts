@@ -1,98 +1,29 @@
 /**
- * M6 registry sync protocol (design doc section 7): the JSON-line wire
- * contract shared by the daemon-side connection handler and the pi-panopticon
- * daemon-client. Handshake: hello -> challenge -> proof (capability
- * possession per ADR section 2) -> hello_ok -> subscribe -> one atomic
- * snapshot followed by per-change events with monotonically increasing seq.
- * Daemon-side failures (bad proof, unknown op, wrong stage) are fail-closed.
+ * M6 daemon-side registry sync session (design doc section 7): the
+ * connection handler behind the daemon socket. The JSON-line wire codec is
+ * published from lib/daemon-protocol/registry-protocol.ts (ADR-053) and
+ * re-exported here so daemon-internal consumers are unchanged. Handshake:
+ * hello -> challenge -> proof (capability possession per ADR section 2) ->
+ * hello_ok -> subscribe -> one atomic snapshot followed by per-change events
+ * with monotonically increasing seq. Daemon-side failures (bad proof,
+ * unknown op, wrong stage) are fail-closed.
  */
 import { randomBytes } from "node:crypto";
 import { verifyCapabilityProof } from "./admission.js";
-import type {
-	DaemonRegistry,
-	RegistryEntry,
-	RegistryEvent,
-} from "./registry.js";
+import {
+	encodeWireMessage,
+	parseWireMessage,
+	type RegistrySyncConnection,
+} from "../../lib/daemon-protocol/registry-protocol.js";
+import type { DaemonRegistry } from "./registry.js";
 
-/** Wire size cap: sync lines are small control messages, not payloads. */
-const MAX_WIRE_LINE_BYTES = 64 * 1024;
-
-/** Client -> daemon messages. */
-export type RegistrySyncRequest =
-	| { readonly op: "hello"; readonly agentId: string }
-	| {
-			readonly op: "hello_proof";
-			readonly agentId: string;
-			readonly proof: string;
-	  }
-	| { readonly op: "subscribe"; readonly lastSeq: number };
-
-/** Daemon -> client messages. */
-export type RegistrySyncResponse =
-	| { readonly op: "challenge"; readonly nonce: string }
-	| { readonly op: "hello_ok" }
-	| { readonly op: "hello_rejected"; readonly reason: string }
-	| {
-			readonly op: "snapshot";
-			readonly seq: number;
-			readonly entries: readonly RegistryEntry[];
-	  }
-	| {
-			readonly op: "event";
-			readonly seq: number;
-			readonly kind: RegistryEvent["kind"];
-			readonly agentId: string;
-			readonly entry?: RegistryEntry;
-	  };
-
-export type RegistryWireMessage = RegistrySyncRequest | RegistrySyncResponse;
-
-/** Encode one wire message as a JSON line (newline-terminated). */
-export function encodeWireMessage(message: RegistryWireMessage): string {
-	return `${JSON.stringify(message)}\n`;
-}
-
-/**
- * Parse one wire line. Returns undefined for empty, oversized, malformed, or
- * op-unknown lines — callers treat undefined as a protocol violation.
- */
-export function parseWireMessage(
-	line: string,
-): RegistryWireMessage | undefined {
-	const trimmed = line.trim();
-	if (trimmed.length === 0) return undefined;
-	if (Buffer.byteLength(trimmed, "utf8") > MAX_WIRE_LINE_BYTES)
-		return undefined;
-	let value: unknown;
-	try {
-		value = JSON.parse(trimmed) as unknown;
-	} catch {
-		return undefined;
-	}
-	if (typeof value !== "object" || value === null) return undefined;
-	const op = (value as Record<string, unknown>).op;
-	if (
-		op !== "hello" &&
-		op !== "hello_proof" &&
-		op !== "subscribe" &&
-		op !== "challenge" &&
-		op !== "hello_ok" &&
-		op !== "hello_rejected" &&
-		op !== "snapshot" &&
-		op !== "event"
-	) {
-		return undefined;
-	}
-	return value as RegistryWireMessage;
-}
-
-/** Transport-agnostic connection surface (node:net socket or a test double). */
-export interface RegistrySyncConnection {
-	/** Write one encoded line to the peer. */
-	readonly send: (line: string) => void;
-	/** Tear the connection down. */
-	readonly close: () => void;
-}
+export { encodeWireMessage, parseWireMessage } from "../../lib/daemon-protocol/registry-protocol.js";
+export type {
+	RegistrySyncConnection,
+	RegistrySyncRequest,
+	RegistrySyncResponse,
+	RegistryWireMessage,
+} from "../../lib/daemon-protocol/registry-protocol.js";
 
 /**
  * One authenticated, subscribed daemon-side sync session. The daemon socket

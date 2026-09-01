@@ -10,10 +10,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	acceptRegistrySyncConnection,
 	encodeWireMessage,
 	type RegistrySyncConnection,
-} from "../../daemon/src/registry-protocol.js";
+} from "../../lib/daemon-protocol/registry-protocol.js";
+import { acceptRegistrySyncConnection } from "../../daemon/src/registry-protocol.js";
 import { DaemonRegistry } from "../../daemon/src/registry.js";
 import { loadOrCreateIntegrityKey } from "../../daemon/src/keys.js";
 import {
@@ -21,7 +21,7 @@ import {
 	isDaemonRegistryEnabled,
 } from "../../extensions/pi-panopticon/registry/daemon-registry-source.js";
 import { DaemonRegistryClient } from "../../extensions/pi-panopticon/daemon-client/daemon-registry-client.js";
-import type { DaemonRoots } from "../../daemon/src/paths.js";
+import type { DaemonRoots } from "../../lib/daemon-protocol/paths.js";
 
 async function makeRoots(): Promise<DaemonRoots> {
 	const base = await mkdtemp(join(tmpdir(), "panopticon-daemon-src-"));

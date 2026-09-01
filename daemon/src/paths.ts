@@ -3,31 +3,18 @@
  *
  * Implements the store hierarchy from planning/T-819-DAEMON-DESIGN.md section 2.
  * All creation/recovery paths bind to the ADR-0018 section 6 checklist; see
- * safe-create helpers in this package.
+ * safe-create helpers in this package. The client-facing roots and socket
+ * path are published from lib/daemon-protocol/paths.ts (ADR-053) and
+ * re-exported here so daemon-internal consumers are unchanged.
  */
 import { join } from "node:path";
+import type { DaemonRoots } from "../../lib/daemon-protocol/paths.js";
 
-export interface DaemonRoots {
-	readonly runtimeRoot: string;
-	readonly stateRoot: string;
-}
-
-/** Resolved daemon roots; overridable for tests via explicit values. */
-export function daemonRoots(env: NodeJS.ProcessEnv = process.env): DaemonRoots {
-	const runtimeBase = env.XDG_RUNTIME_DIR ?? join(env.HOME ?? "/tmp", ".runtime");
-	const dataBase = env.XDG_DATA_HOME ?? join(env.HOME ?? "/tmp", ".local", "share");
-	return {
-		runtimeRoot: join(runtimeBase, "coas"),
-		stateRoot: join(dataBase, "coas-daemon"),
-	};
-}
+export { daemonRoots, socketPath } from "../../lib/daemon-protocol/paths.js";
+export type { DaemonRoots };
 
 export function lockPath(roots: DaemonRoots): string {
 	return join(roots.runtimeRoot, "daemon.lock");
-}
-
-export function socketPath(roots: DaemonRoots): string {
-	return join(roots.runtimeRoot, "daemon.sock");
 }
 
 export function identitiesDir(roots: DaemonRoots): string {

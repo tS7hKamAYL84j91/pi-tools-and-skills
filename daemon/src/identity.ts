@@ -4,7 +4,9 @@
  * increasing `generation` per agent_id. Identity records are signed with the
  * daemon integrity key (ADR section 8) and follow the design doc section 3
  * fsync ordering: the generation-N record is durable before any
- * generation-N envelope is enqueued or the binding is published.
+ * generation-N envelope is enqueued or the binding is published. The
+ * AdmissionScope tag is published from lib/daemon-protocol/admission.ts
+ * (ADR-053) and re-exported here so daemon-internal consumers are unchanged.
  */
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -16,9 +18,9 @@ import { identitiesDir } from "./paths.js";
 import { assertSafeId, type DaemonRoots } from "./paths.js";
 import { signBytes, verifyBytes } from "./keys.js";
 import { readRecordStrict } from "./record.js";
+import type { AdmissionScope } from "../../lib/daemon-protocol/admission.js";
 
-/** ADR-0008 (7) spawn scope tag, stamped by the daemon at admission. */
-export type AdmissionScope = "root" | "task" | "workspace";
+export type { AdmissionScope };
 
 export interface IdentityRecord {
 	readonly agentId: string;

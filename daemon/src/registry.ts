@@ -21,6 +21,10 @@
  *   rebuilds identities with generation continuity and invalidates stale
  *   live-instance records (ADR sections 2/7); a tampered record is
  *   quarantined, never trusted and never silently dropped.
+ *
+ *   The published protocol types and the RegistryEventBuffer live in
+ *   lib/daemon-protocol/ (ADR-053) and are re-exported here so
+ *   daemon-internal consumers are unchanged.
  */
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,9 +38,15 @@ import {
 	createIdentity,
 	invalidateLiveInstance,
 	loadIdentity,
-	type AdmissionScope,
 	type IdentityRecord,
 } from "./identity.js";
+import type { AdmissionScope } from "../../lib/daemon-protocol/admission.js";
+import type {
+	InvalidationReason,
+	RegistryEntry,
+	RegistryEvent,
+	RegistrySnapshot,
+} from "../../lib/daemon-protocol/registry-types.js";
 import { assertSafeId, identitiesDir, type DaemonRoots } from "./paths.js";
 import { quarantineRecord } from "./record.js";
 import type { AuditSink } from "./keys.js";
@@ -50,7 +60,6 @@ export const STABILITY_WINDOW_MS = 60_000;
 export const CLOSE_DRAIN_GRACE_MS = 10_000;
 
 const EVENT_LOG_CAP = 1_024;
-const CLIENT_BUFFER_CAP = 1_024;
 
 /** Spawn request: display alias plus the ADR-0008 (5a)/(7) guard-input tags. */
 export interface SpawnRequest {
@@ -69,45 +78,13 @@ export interface RegistryGuardInputs {
 	readonly scope: AdmissionScope;
 }
 
-export type RegistryEventKind =
-	| "identity_created"
-	| "instance_admitted"
-	| "instance_invalidated";
-
-export type InvalidationReason =
-	| "superseded"
-	| "crashed"
-	| "restart_stale"
-	| "close_drain_expired";
-
-export interface RegistryEvent {
-	readonly seq: number;
-	readonly at: string;
-	readonly kind: RegistryEventKind;
-	readonly agentId: string;
-	readonly instanceId?: string;
-	readonly generation?: number;
-	readonly reason?: InvalidationReason;
-}
-
-export interface RegistryEntry {
-	readonly agentId: string;
-	readonly displayName: string;
-	readonly generation: number;
-	readonly liveInstanceId?: string;
-	readonly parentId: string | null;
-	readonly visibility: string;
-	readonly scope: AdmissionScope;
-	/** Identity creation time (feeds the view model's startedAt). */
-	readonly createdAt: string;
-}
-
-export interface RegistrySnapshot {
-	/** Sequence of the last event contained in this snapshot. */
-	readonly seq: number;
-	readonly generatedAt: string;
-	readonly entries: readonly RegistryEntry[];
-}
+export type {
+	InvalidationReason,
+	RegistryEntry,
+	RegistryEvent,
+	RegistryEventKind,
+	RegistrySnapshot,
+} from "../../lib/daemon-protocol/registry-types.js";
 
 export interface AdmittedBinding {
 	/** Discriminator: admission succeeded. */
@@ -676,111 +653,7 @@ export class DaemonRegistry {
 	}
 }
 
-/**
- * M6 client overlap rules (design doc section 7, formal review F7), as a
- * pure reusable piece for the slice-2 socket client: buffer events until the
- * snapshot is applied, drop events with seq <= the snapshot's seq, apply
- * thereafter in order, and resync (fresh snapshot) only on a true gap.
- */
-export class RegistryEventBuffer {
-	private snapshotSeq?: number;
-	private expectedSeq?: number;
-	private readonly buffered: RegistryEvent[] = [];
-	private readonly appliedEvents: RegistryEvent[] = [];
-	private resyncNeeded = false;
-
-	/**
-	 * @param onApply invoked for every event as it is applied (including
-	 * buffered ones drained after the snapshot) — the consumer's delta hook.
-	 */
-	constructor(private readonly onApply?: (event: RegistryEvent) => void) {}
-
-	/** Events received before the snapshot: buffered, then reconciled on apply. */
-	applyEvent(
-		event: RegistryEvent,
-	): "applied" | "buffered" | "dropped" | "resync" {
-		if (this.snapshotSeq === undefined) {
-			if (this.buffered.length >= CLIENT_BUFFER_CAP) {
-				// Unbounded pre-snapshot buffering would be a DoS; overflow demands resync.
-				this.resyncNeeded = true;
-				return "resync";
-			}
-			this.buffered.push(event);
-			return "buffered";
-		}
-		if (event.seq <= this.snapshotSeq) return "dropped";
-		// SAFETY: snapshotSeq was set in applySnapshot, which also assigned
-		// expectedSeq; both move together and are never cleared.
-		const expectedSeq = this.expectedSeq as number;
-		if (event.seq === expectedSeq) {
-			this.appliedEvents.push(event);
-			this.expectedSeq = event.seq + 1;
-			this.onApply?.(event);
-			this.drainBuffered();
-			return "applied";
-		}
-		if (event.seq > expectedSeq) {
-			// True gap (seq > last applied + 1): resync with a fresh snapshot.
-			this.resyncNeeded = true;
-			return "resync";
-		}
-		return "dropped"; // duplicate or already-applied event
-	}
-
-	/** Apply the snapshot: contained events are dropped, later ones applied in order. */
-	applySnapshot(snapshot: RegistrySnapshot): {
-		dropped: number;
-		applied: number;
-	} {
-		this.snapshotSeq = snapshot.seq;
-		this.expectedSeq = snapshot.seq + 1;
-		this.resyncNeeded = false;
-		let dropped = 0;
-		const pending = [...this.buffered];
-		this.buffered.length = 0;
-		for (const event of pending) {
-			if (event.seq <= snapshot.seq) {
-				dropped++;
-				continue;
-			}
-			if (event.seq === this.expectedSeq) {
-				this.appliedEvents.push(event);
-				this.expectedSeq = event.seq + 1;
-				this.onApply?.(event);
-				continue;
-			}
-			// A buffered event beyond the next expected seq is a gap: resync.
-			this.resyncNeeded = true;
-		}
-		return { dropped, applied: this.appliedEvents.length };
-	}
-
-	get resyncRequired(): boolean {
-		return this.resyncNeeded;
-	}
-
-	get applied(): readonly RegistryEvent[] {
-		return this.appliedEvents;
-	}
-
-	private drainBuffered(): void {
-		// SAFETY: drainBuffered only runs after applySnapshot assigned expectedSeq;
-		// applyEvent calls it on the applied path, where expectedSeq is a number.
-		const expectedSeq = this.expectedSeq as number;
-		for (let index = 0; index < this.buffered.length; ) {
-			const event = this.buffered[index] as RegistryEvent;
-			if (event.seq === expectedSeq) {
-				this.buffered.splice(index, 1);
-				this.onApply?.(event);
-			} else if (event.seq < expectedSeq) {
-				// Stale buffered event, already contained: drop.
-				this.buffered.splice(index, 1);
-			} else {
-				index++;
-			}
-		}
-	}
-}
+export { RegistryEventBuffer } from "../../lib/daemon-protocol/registry-event-buffer.js";
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => {

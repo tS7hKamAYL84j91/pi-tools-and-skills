@@ -8,16 +8,16 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RegistryEventBuffer } from "../../lib/daemon-protocol/registry-event-buffer.js";
+import type { RegistryEvent } from "../../lib/daemon-protocol/registry-types.js";
 import {
 	DaemonRegistry,
-	RegistryEventBuffer,
 	respawnBackoffMs,
-	type RegistryEvent,
 	type RegistryKeys,
 	type SpawnRequest,
 } from "../../daemon/src/registry.js";
 import { loadOrCreateIntegrityKey } from "../../daemon/src/keys.js";
-import type { DaemonRoots } from "../../daemon/src/paths.js";
+import type { DaemonRoots } from "../../lib/daemon-protocol/paths.js";
 
 async function makeRoots(): Promise<DaemonRoots> {
 	const base = await mkdtemp(join(tmpdir(), "coas-daemon-reg-"));

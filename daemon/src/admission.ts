@@ -5,9 +5,13 @@
  * the binding primitive is a daemon-issued per-instance capability secret:
  * the client proves possession by answering an HMAC challenge. Possession is
  * NOT authentication (label same_uid_untrusted, per ADR section 1); peer-cred
- * binding is the authenticated-mode upgrade path.
+ * binding is the authenticated-mode upgrade path. The capability proof is
+ * published from lib/daemon-protocol/admission.ts (ADR-053) and re-exported
+ * here so daemon-internal consumers are unchanged; verification is
+ * daemon-only and stays private in this module.
  */
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { capabilityProof } from "../../lib/daemon-protocol/admission.js";
 import { admitNewInstance, type IdentityRecord } from "./identity.js";
 import { appendAudit } from "./audit.js";
 import type { DaemonRoots } from "./paths.js";
@@ -78,16 +82,10 @@ export async function admitInstance(
 	};
 }
 
-/** Proof-of-possession: HMAC(capability, nonce), constant-time compared. */
+export { capabilityProof };
+
 function randomCapabilitySecret(): string {
 	return randomBytes(32).toString("base64");
-}
-
-export function capabilityProof(
-	capabilitySecret: string,
-	nonce: string,
-): Buffer {
-	return createHmac("sha256", capabilitySecret).update(nonce).digest();
 }
 
 export function verifyCapabilityProof(

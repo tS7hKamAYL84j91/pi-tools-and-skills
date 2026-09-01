@@ -10,17 +10,15 @@
  * a true gap (seq > expected + 1).
  */
 import { createConnection } from "node:net";
-import { capabilityProof } from "../../../daemon/src/admission.js";
+import { capabilityProof } from "../../../lib/daemon-protocol/admission.js";
 import {
 	encodeWireMessage,
 	parseWireMessage,
 	type RegistrySyncConnection,
 	type RegistrySyncRequest,
-} from "../../../daemon/src/registry-protocol.js";
-import {
-	RegistryEventBuffer,
-	type RegistryEntry,
-} from "../../../daemon/src/registry.js";
+} from "../../../lib/daemon-protocol/registry-protocol.js";
+import { RegistryEventBuffer } from "../../../lib/daemon-protocol/registry-event-buffer.js";
+import type { RegistryEntry } from "../../../lib/daemon-protocol/registry-types.js";
 
 /** Reconnect backoff shares the M2 bounded ladder (1s doubling, 60s cap). */
 const RECONNECT_BASE_MS = 1_000;
