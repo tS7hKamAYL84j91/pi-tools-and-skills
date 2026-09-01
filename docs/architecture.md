@@ -898,3 +898,37 @@ flowchart LR
   Boost --> Runtime[External config + provider adapter]
   Panopticon[pi-panopticon] --> Swarm[Swarm observation]
 ```
+## Daemon Protocol Boundary (ADR-053)
+
+Extracted so the published package never depends on the private, systemd-deployed daemon implementation. The client-facing protocol surface lives in `lib/daemon-protocol/` (shipped via the npm `files` whitelist); the daemon's operational internals stay under `daemon/src/` (private).
+
+```mermaid
+C4Component
+  Container_Boundary(lib, "lib/daemon-protocol (published)") {
+    Component(protocolPaths, "paths: socketPath/daemonRoots")
+    Component(protocolAdmission, "admission: capabilityProof + AdmissionScope")
+    Component(protocolTypes, "registry-types: RegistryEntry/RegistryEvent/RegistrySnapshot")
+    Component(protocolCodec, "wire codec: encode/parseWireMessage")
+    Component(protocolBuffer, "RegistryEventBuffer")
+  }
+  Container_Boundary(daemon, "daemon/src (private, systemd-deployed)") {
+    Component(registry, "DaemonRegistry + acceptRegistrySyncConnection")
+    Component(admission, "verifyCapabilityProof")
+  }
+  Container_Boundary(panopticon, "extensions/pi-panopticon (published)") {
+    Component(client, "daemon-registry-client")
+    Component(source, "daemon-registry-source")
+  }
+  Rel(client, protocolPaths, "imports")
+  Rel(client, protocolAdmission, "imports")
+  Rel(client, protocolTypes, "imports")
+  Rel(client, protocolCodec, "imports")
+  Rel(client, protocolBuffer, "imports")
+  Rel(source, protocolTypes, "imports")
+  Rel(source, protocolPaths, "imports")
+  Rel(registry, protocolTypes, "re-exports")
+  Rel(registry, protocolBuffer, "re-exports")
+  Rel(admission, protocolAdmission, "re-exports")
+```
+
+Invariants: `lib/daemon-protocol/**` has zero imports from `daemon/src/**`, enforced by `tests/architecture/daemon-protocol-boundaries.ts`; the wire codec and `capabilityProof` are byte-identical to pre-extraction behavior (pure moves); the daemon-side connection handler and proof verification remain private because they depend on daemon-internal state.
