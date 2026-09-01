@@ -110,13 +110,16 @@ jobs:
         package:
           - .
           - extensions/pi-bionic
+          - extensions/pi-boost
           - extensions/pi-coas
           - extensions/pi-doctor
           - extensions/pi-file-watch
           - extensions/pi-goal
           - extensions/pi-kanban
           - extensions/pi-matrix
+          - extensions/pi-ollama-models
           - extensions/pi-panopticon
+          - extensions/pi-teams
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
