@@ -180,8 +180,15 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			state = approvePlan(state);
 			await saveGoal(ctx.cwd, state, scopeFor(ctx));
 		}
-		const turns = parseTurns(rest);
-		const next = startRun(state, turns, /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(rest) ? "continuous" : getRunMode(state));
+		const explicitContinuous = /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(rest);
+		const explicitTurns = /(?:^|\s)--turns(?:=|\s+)\d+(?:\s|$)/.test(rest);
+		const turns = rest.trim().length === 0 ? UNTIL_COMPLETE_TURNS : parseTurns(rest);
+		const runMode = explicitContinuous
+			? "continuous"
+			: explicitTurns
+				? getRunMode(state)
+				: "continuous";
+		const next = startRun(state, turns, runMode);
 		await saveGoal(ctx.cwd, next, scopeFor(ctx));
 		await refreshUi(ctx, runtime, next);
 		await runGoalLoop(pi, runtime, ctx, next);

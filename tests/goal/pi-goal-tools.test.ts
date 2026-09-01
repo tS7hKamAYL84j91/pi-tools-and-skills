@@ -197,11 +197,46 @@ describe("pi-goal extension", () => {
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean };
 		expect(persisted.runActive).toBe(false);
 		expect(ctx.ui.notifications).toContainEqual({
-			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run --turns N to continue.",
+			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run to continue (or --turns N for a shorter bounded run).",
 			level: "info",
 		});
 		expect(ctx.ui.statuses.at(-1)?.key).toBe("goal");
 		expect(ctx.ui.statuses.at(-1)?.value).toBe("goal: active");
+	});
+
+	it("plain /goal run defaults to a bounded continuous run", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir, pi);
+		const state = await createTextGoal(tempDir, "default run mode test");
+		await saveGoal(tempDir, state);
+
+		let resolveNewSession: ((value: { cancelled: boolean }) => void) | undefined;
+		ctx.newSession = () => new Promise((resolve) => {
+			resolveNewSession = resolve;
+		});
+		pi.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		};
+
+		const runPromise = runGoalCommand(pi, "run", ctx);
+		await waitFor(() => resolveNewSession !== undefined);
+
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal/goal.json"), "utf8")) as {
+			turnBudget: number;
+			runMode: string;
+			runActive: boolean;
+		};
+		expect(persisted).toMatchObject({
+			turnBudget: 20,
+			runMode: "continuous",
+			runActive: true,
+		});
+
+		await runGoalCommand(pi, "pause", ctx);
+		resolveNewSession?.({ cancelled: false });
+		await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		await runPromise;
 	});
 
 	it("goal_complete clears the footer status and widget on completion", async () => {

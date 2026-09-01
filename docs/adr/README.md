@@ -57,6 +57,10 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 049 | pi-goal continuous execution and bounded liveness | [049-pi-goal-continuous-execution-and-liveness.md](049-pi-goal-continuous-execution-and-liveness.md) |
 | 050 | Unified Environmental and Cognitive Boost Lease and Yield Lifecycle | [050-cognitive-boost-lease-yield.md](050-cognitive-boost-lease-yield.md) |
 | 051 | pi-goal session-lineage isolation | [051-pi-goal-session-lineage-isolation.md](051-pi-goal-session-lineage-isolation.md) |
+| 052 | Boost defaults to single-model lease | [052-boost-defaults-to-single-model.md](052-boost-defaults-to-single-model.md) |
+| 053 | Daemon protocol extraction into `lib/daemon-protocol` | [053-daemon-protocol-extraction.md](053-daemon-protocol-extraction.md) |
+| 054 | Test-only production module disposition and no-exemptions fitness rule | [054-test-only-module-disposition.md](054-test-only-module-disposition.md) |
+| 055 | Default `/goal run` to bounded continuous execution | [055-pi-goal-run-default-until-complete.md](055-pi-goal-run-default-until-complete.md) |
 
 ## ADR Registry Notes
 
@@ -66,4 +70,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - The next sequential ADR slot to assign is **053**.
+  - The next sequential ADR slot to assign is **056**.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Plain `/goal run` now defaults to a bounded 20-turn continuous run; use `--turns N` for an explicit shorter run (ADR-055).
+
 ## [1.2.0] - 2026-09-01
 
 ### Added

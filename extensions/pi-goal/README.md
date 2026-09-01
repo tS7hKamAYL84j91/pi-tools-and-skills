@@ -13,7 +13,7 @@ Bounded project-goal workflow tools and the `/goal` command for pi.
 - `/goal status` — show the current goal state.
 - `/goal plan [milestone title]` — generate a reviewable `SPEC.md`/`PLAN.md`/`STATUS.md` under `.pi/goal/instances/<goalId>/` and pause for approval.
 - `/goal approve` — accept the generated plan and allow implementation.
-- `/goal run [--turns N|--until-complete]` — continue an active or paused goal. If a plan is required but not yet approved, `/goal run` implicitly approves it.
+- `/goal run [--turns N|--until-complete]` — continue an active or paused goal; plain `/goal run` defaults to a bounded 20-turn continuous run. If a plan is required but not yet approved, `/goal run` implicitly approves it.
 - `/goal pause`, `/goal resume`, `/goal stop`, `/goal steer <text>`, `/goal clear`, `/goal edit <text>` — manage goal lifecycle. Steer is current-run, untrusted guidance and never changes the objective or approved plan. Resume starts a real bounded run; stop/pause/error/gate/budget/hard-timeout halt continuation. `/goal clear` removes the bound `.pi/goal/instances/<goalId>/` state and run artifacts for the current workspace. `/goal edit` updates the objective and invalidates existing evidence/plan revisions.
 
 ### Tools

@@ -38,7 +38,7 @@ export const GOAL_HELP_COMMANDS = [
 	"/goal file <path> [goal start|--continuous|--until-complete] — create a file-backed goal",
 	"/goal plan [milestone title] — generate a reviewable plan and pause for approval",
 	"/goal approve — accept the generated plan and allow implementation",
-	"/goal run [--turns N|--until-complete] — continue an active or paused goal",
+	"/goal run [--turns N|--until-complete] — continue an active or paused goal (defaults to 20-turn continuous)",
 	"/goal pause | resume | stop — manage the current goal run",
 	"/goal steer <text> — send untrusted guidance to the current run",
 	"/goal edit <text> — update the objective of the active goal (invalidates the plan)",
@@ -152,7 +152,7 @@ export function goalHelpText(): string {
 /** Human-readable message when a goal run stops. */
 export function goalStoppedMessage(state: GoalState): string {
 	const reason = state.turnsUsed >= state.turnBudget ? "turn budget reached" : "stop requested";
-	return `Goal run stopped after ${state.turnsUsed}/${state.turnBudget} turns (${reason}). Use /goal run --turns N to continue.`;
+	return `Goal run stopped after ${state.turnsUsed}/${state.turnBudget} turns (${reason}). Use /goal run to continue (or --turns N for a shorter bounded run).`;
 }
 
 export function collectChangedFiles(messages: readonly unknown[], existing: readonly string[] = []): readonly string[] {
