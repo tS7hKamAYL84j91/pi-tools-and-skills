@@ -91,15 +91,20 @@ describe("T-873 step 1 execution (dry-run/claim-check rollout)", () => {
 			results.step4 = { alreadyClaimed: repeat.filter((decision) => decision.skippedReason === "already_claimed").length };
 			expect(results.step4).toEqual({ alreadyClaimed: 3 });
 
-			// Step 5: claim_check_only restart on the same state root; claims rotate.
+			// Step 5: claim_check_only rotation on the same state root; claims rotate.
+			// The deterministic tick and claim assertions run with no daemon alive:
+			// bootstrapDaemon fires a real-clock startup catch-up tick that can claim
+		// */15 schedules at a wall-clock minute and race the fixture clock below.
 			await daemon.stop();
 			process.env.COAS_DAEMON_MODE = "claim_check_only";
-			const daemon2 = await bootstrapDaemon(roots);
 			const rotate = await tick(roots, schedulesDir, "claim_check_only", new Date(2026, 0, 5, 9, 15), deliveries);
 			const quarterClaim = await readClaim(roots, "quarter-hourly");
 			results.step5 = { quarterClaimRotated: quarterClaim?.minuteKey === "2026-01-05T09:15", deliveries: deliveries.length };
 			expect(rotate.find((decision) => decision.taskId === "quarter-hourly")?.due).toBe(true);
 			expect(quarterClaim?.minuteKey).toBe("2026-01-05T09:15");
+			// Bootstrap proves claim_check_only restart works on this state root;
+			// its catch-up tick cannot affect any assertion above.
+			const daemon2 = await bootstrapDaemon(roots);
 			await daemon2.stop();
 
 			// Step 6: rollback rehearsal — graceful stop, lock released, ladder reset.
