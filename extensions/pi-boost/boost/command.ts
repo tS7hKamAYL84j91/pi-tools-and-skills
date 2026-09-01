@@ -1,15 +1,8 @@
 /** Inert and cognitive `/boost` command registration, settings overlay, and bounded feedback. */
 
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveEffectiveBoostSettings } from "../boost-settings.js";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
-import {
-	DEFAULT_BOOST_HOST_CAPABILITIES,
-	type BoostHostCapabilities,
-} from "./host-capabilities.js";
 import {
 	boundedBoostReason,
 	boostDenialLabel,
@@ -18,86 +11,28 @@ import {
 } from "./boost-command-feedback.js";
 import type {
 	BoostFusionRequest,
-	CognitiveLeaseResult,
 } from "./cognitive-types.js";
 import { handleCognitiveFusionCommand } from "./cognitive-command.js";
+import {
+	DEFAULT_BOOST_HOST_CAPABILITIES,
+} from "./host-capabilities.js";
 import type {
-	BoostActor,
 	BoostDenialReason,
 	BoostLeaseStatus,
 	BoostResult,
-	BoostSubject,
 	ReserveBoostInput,
-	ResetBoostInput,
 } from "./contracts.js";
-import type { BoostParseResult } from "./boost-parse-types.js";
 
-type BoostNotificationLevel = "info" | "warning" | "error";
-
-export interface BoostCommandIdentity {
-	readonly actor: BoostActor;
-	readonly subject: BoostSubject;
-}
-
-type MaybePromise<T> = T | Promise<T>;
-
-interface BoostCommandAuthority {
-	reserve(
-		input: ReserveBoostInput,
-	): MaybePromise<BoostResult<BoostLeaseStatus>>;
-	getStatus(actor: BoostActor): MaybePromise<BoostResult<BoostLeaseStatus>>;
-	reset(input: ResetBoostInput): MaybePromise<BoostResult<BoostLeaseStatus>>;
-}
-
-export type BoostCommandDispatchDecision =
-	| { readonly dispatched: false; readonly kind: "reserved" }
-	| {
-			readonly dispatched: false;
-			readonly kind: "denied";
-			readonly reason: string;
-	  }
-	| {
-			readonly dispatched: true;
-			readonly kind: "terminal";
-			readonly outcome: string;
-	  };
-
-interface BoostCommandDispatch {
-	recordReservation(
-		status: BoostLeaseStatus,
-		input: ReserveBoostInput,
-	): MaybePromise<BoostCommandDispatchDecision>;
-}
-
-/** @public Explicit dependencies isolate the command from runtime capabilities. */
-export interface BoostCommandDeps {
-	readonly parse: (input: string) => BoostParseResult;
-	readonly identity: (
-		ctx: ExtensionCommandContext,
-	) => BoostCommandIdentity | undefined;
-	readonly authority: BoostCommandAuthority;
-	readonly notify: (
-		ctx: ExtensionCommandContext,
-		message: string,
-		level: BoostNotificationLevel,
-	) => void;
-	readonly dispatch: BoostCommandDispatch;
-	readonly hostCapabilities?: BoostHostCapabilities;
-	readonly cognitive?: (
-		input: BoostFusionRequest,
-		ctx: ExtensionCommandContext,
-	) => Promise<CognitiveLeaseResult>;
-}
-
-/** Stateless phase-2 boundary: records the reservation decision without dispatch. */
-export class InertBoostDispatch implements BoostCommandDispatch {
-	recordReservation(
-		_status: BoostLeaseStatus,
-		_input?: ReserveBoostInput,
-	): BoostCommandDispatchDecision {
-		return { dispatched: false, kind: "reserved" };
-	}
-}
+// Contract types and the inert dispatch boundary live in command-types.ts;
+// re-exported here to preserve the existing import surface.
+export {
+	InertBoostDispatch,
+	type BoostCommandDeps,
+	type BoostCommandDispatchDecision,
+	type BoostCommandIdentity,
+} from "./command-types.js";
+import type { BoostCommandDeps } from "./command-types.js";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 /** Register the `/boost` command for environmental, cognitive, and settings operations. */
 export function registerBoostCommand(
@@ -166,32 +101,72 @@ export function registerBoostCommand(
 					);
 					return;
 				case "fusion": {
-					if (!isPrincipal && !effectiveSettings.agentSelfBoost.allowCognitive) {
-						deps.notify(ctx, "Boost fusion denied: cognitive self-boost is disabled", "warning");
+					if (
+						!isPrincipal &&
+						!effectiveSettings.agentSelfBoost.allowCognitive
+					) {
+						deps.notify(
+							ctx,
+							"Boost fusion denied: cognitive self-boost is disabled",
+							"warning",
+						);
 						return;
 					}
 					if (!deps.cognitive) {
 						deps.notify(ctx, "Boost fusion unavailable", "error");
 						return;
 					}
-					if (!isPrincipal && (parsed.command.fusion.profile !== undefined || parsed.command.fusion.panelSize !== undefined)) {
-						deps.notify(ctx, "Boost fusion denied: agent profile and panel caps are fixed by operator settings", "warning");
+					if (
+						!isPrincipal &&
+						(parsed.command.fusion.profile !== undefined ||
+							parsed.command.fusion.panelSize !== undefined)
+					) {
+						deps.notify(
+							ctx,
+							"Boost fusion denied: agent profile and panel caps are fixed by operator settings",
+							"warning",
+						);
 						return;
 					}
+					// Default single-model rut-breaker; explicit panel size opts into judge fusion for the call.
+					const singleMode =
+						effectiveSettings.mode !== "fusion" &&
+						parsed.command.fusion.panelSize === undefined;
 					const fusionInput: BoostFusionRequest = isPrincipal
-						? { ...parsed.command.fusion, requireApprovalAboveCalls: 5, auditActor: "principal", auditSurface: "command" }
+						? {
+								...parsed.command.fusion,
+								single: singleMode,
+								requireApprovalAboveCalls: 5,
+								auditActor: "principal",
+								auditSurface: "command",
+							}
 						: {
 								prompt: parsed.command.fusion.prompt,
+								single: singleMode,
 								profile: effectiveSettings.profile,
-								panelSize: Math.min(effectiveSettings.panelSize, effectiveSettings.agentSelfBoost.maxPanelModels),
+								panelSize: Math.min(
+									effectiveSettings.panelSize,
+									effectiveSettings.agentSelfBoost.maxPanelModels,
+								),
 								models: effectiveSettings.models,
-								...(effectiveSettings.judge ? { judge: effectiveSettings.judge } : {}),
+								...(effectiveSettings.judge
+									? { judge: effectiveSettings.judge }
+									: {}),
 								timeoutMs: effectiveSettings.timeoutMs,
-								requireApprovalAboveCalls: Math.min(effectiveSettings.panelSize, effectiveSettings.agentSelfBoost.maxPanelModels) + 1,
+								requireApprovalAboveCalls:
+									Math.min(
+										effectiveSettings.panelSize,
+										effectiveSettings.agentSelfBoost.maxPanelModels,
+									) + 1,
 								auditActor: "agent",
 								auditSurface: "command",
 							};
-					await handleCognitiveFusionCommand(ctx, fusionInput, deps.cognitive, deps.notify);
+					await handleCognitiveFusionCommand(
+						ctx,
+						fusionInput,
+						deps.cognitive,
+						deps.notify,
+					);
 					return;
 				}
 				case "request": {
@@ -206,8 +181,16 @@ export function registerBoostCommand(
 						);
 						return;
 					}
-					if (!isPrincipal && parsed.command.request.requestedYields > effectiveSettings.agentSelfBoost.maxYields) {
-						deps.notify(ctx, "Boost denied: requested yields exceed the operator capability cap", "warning");
+					if (
+						!isPrincipal &&
+						parsed.command.request.requestedYields >
+							effectiveSettings.agentSelfBoost.maxYields
+					) {
+						deps.notify(
+							ctx,
+							"Boost denied: requested yields exceed the operator capability cap",
+							"warning",
+						);
 						return;
 					}
 					const reservationInput: ReserveBoostInput = {

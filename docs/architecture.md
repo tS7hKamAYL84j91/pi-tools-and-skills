@@ -152,9 +152,9 @@ C4Component
     Rel(pi, panopticon, "may load separately")
 ```
 
-### Cognitive Boost lease/yield boundary (ADR-050)
+### Cognitive Boost lease/yield boundary (ADR-050, ADR-052)
 
-Fusion is decommissioned from `pi-teams` and owned by `pi-boost` as a prompt-scoped cognitive lease. Principal sessions may invoke it directly. Agent sessions are default-denied and may self-initiate only through an operator-authored namespaced `boost.agentSelfBoost` capability in standard Pi settings. Global settings are overridden by project settings only when the Pi host marks the project trusted; callers cannot select or expand authority, models, budgets, or timeouts.
+Fusion is decommissioned from `pi-teams` and owned by `pi-boost` as a prompt-scoped cognitive lease. Principal sessions may invoke it directly. Agent sessions are default-denied and may self-initiate only through an operator-authored namespaced `boost.agentSelfBoost` capability in standard Pi settings. Global settings are overridden by project settings only when the Pi host marks the project trusted; callers cannot select or expand authority, models, budgets, or timeouts. Per ADR-052 the cognitive lease defaults to a single-model rut-breaker lease (no judge synthesis); the ADR-050 panel+judge protocol applies under explicit `boost.mode: "fusion"` or an explicit per-call `panelSize` opt-in.
 
 ```mermaid
 flowchart LR
@@ -163,10 +163,16 @@ flowchart LR
   Principal[Principal session] --> Gate[Trusted capability gate]
   Agent[Pre-granted agent session] --> Gate
   Resolve --> Gate
-  Gate --> Lease[Cognitive lease\nfixed panel/model/timeout caps]
+  Gate --> Mode{Boost mode
+  single default?}
+  Mode -->|single default| Single[One lease model
+ephemeral anti-rut frame
+no judge]
+  Mode -->|fusion| Lease[Cognitive lease\nfixed panel/model/timeout caps]
   Lease --> Panel[Bounded concurrent panel]
   Panel --> Judge[Strict JSON judge synthesis]
   Judge --> Yield[Single answer yield]
+  Single --> Yield
   Yield --> Audit[Private redacted audit\nno prompt/model identity]
   Yield --> Release[Immediate release]
   CallerText[Tool args / objective text] -. cannot grant or expand .-> Gate
@@ -782,6 +788,7 @@ flowchart LR
 ## CoAS Internal Scheduler
 
 ### Goal
+
 Replace crontab-oriented CoAS scheduling with a pi-hosted internal scheduler.
 Schedule files remain the desired state; active in-memory timers become runtime
 reality while pi is open. CoAS owns recurring operational policy over other
@@ -835,6 +842,7 @@ C4Component
 ## CoAS Workspace Context
 
 ### Goal
+
 Keep `pi-coas` context project-local and gradual-disclosure safe. Active `CONTEXT.md` files are small SPR-style durable memory, not transcript archives.
 
 ### Architecture
@@ -898,6 +906,7 @@ flowchart LR
   Boost --> Runtime[External config + provider adapter]
   Panopticon[pi-panopticon] --> Swarm[Swarm observation]
 ```
+
 ## Daemon Protocol Boundary (ADR-053)
 
 Extracted so the published package never depends on the private, systemd-deployed daemon implementation. The client-facing protocol surface lives in `lib/daemon-protocol/` (shipped via the npm `files` whitelist); the daemon's operational internals stay under `daemon/src/` (private).

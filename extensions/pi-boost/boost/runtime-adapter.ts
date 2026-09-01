@@ -44,7 +44,10 @@ interface CognitiveBoostDependencies {
 	readonly audit?: CognitiveAuditSink;
 }
 
-function createCognitiveHandler(cognitiveRunner?: CognitiveModelRunner, audit?: CognitiveAuditSink) {
+function createCognitiveHandler(
+	cognitiveRunner?: CognitiveModelRunner,
+	audit?: CognitiveAuditSink,
+) {
 	return async (input: BoostFusionRequest, ctx: ExtensionCommandContext) => {
 		const available = ctx.modelRegistry.getAvailable();
 		const visibleModels = available
@@ -52,6 +55,7 @@ function createCognitiveHandler(cognitiveRunner?: CognitiveModelRunner, audit?: 
 			.map((model) => `${model.provider}/${model.id}`);
 		return executeCognitiveLease({
 			prompt: input.prompt,
+			single: input.single,
 			profile: input.profile,
 			panelSize: input.panelSize,
 			models: input.models,
@@ -73,15 +77,15 @@ export function createUnavailableBoostCommandDeps(
 	identitySource: BoostIdentitySource,
 	options: CognitiveBoostDependencies = {},
 ): BoostCommandDeps {
-	const hostCapabilities = options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
+	const hostCapabilities =
+		options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
 	const unavailable = <T>(): BoostResult<T> => ({
 		ok: false,
 		reason: "runtime-unavailable",
 	});
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) =>
-			principalIdentity(ctx, identitySource, hostCapabilities),
+		identity: (ctx) => principalIdentity(ctx, identitySource, hostCapabilities),
 		authority: {
 			reserve: unavailable,
 			getStatus: unavailable,
@@ -100,11 +104,11 @@ export function createHostBoostCommandDeps(
 	injection: LiveBoostHostInjection,
 	options: CognitiveBoostDependencies = {},
 ): BoostCommandDeps {
-	const hostCapabilities = options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
+	const hostCapabilities =
+		options.hostCapabilities ?? DEFAULT_BOOST_HOST_CAPABILITIES;
 	return {
 		parse: parseBoostCommand,
-		identity: (ctx) =>
-			principalIdentity(ctx, identitySource, hostCapabilities),
+		identity: (ctx) => principalIdentity(ctx, identitySource, hostCapabilities),
 		authority: {
 			reserve: async (input) =>
 				mapStatus(

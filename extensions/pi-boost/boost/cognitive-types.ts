@@ -10,10 +10,7 @@ interface CognitiveProfileSettings {
 	readonly promptMaxChars: number;
 }
 
-const COGNITIVE_PROFILES: Record<
-	CognitiveProfile,
-	CognitiveProfileSettings
-> = {
+const COGNITIVE_PROFILES: Record<CognitiveProfile, CognitiveProfileSettings> = {
 	fast: {
 		panelModels: 2,
 		panelMaxTokens: 600,
@@ -128,6 +125,8 @@ export interface CognitiveAuditSink {
 
 export interface CognitiveLeaseExecutionOptions {
 	readonly prompt: string;
+	/** Single-model rut-breaker mode: one model, no judge synthesis. */
+	readonly single?: boolean;
 	readonly profile?: CognitiveProfile;
 	readonly models?: readonly string[];
 	readonly judge?: string;
@@ -158,6 +157,8 @@ export interface CognitiveLeaseResult {
 
 export interface BoostFusionRequest {
 	readonly prompt: string;
+	/** Single-model rut-breaker mode: one model, no judge synthesis. */
+	readonly single?: boolean;
 	readonly profile?: CognitiveProfile;
 	readonly panelSize?: number;
 	readonly models?: readonly string[];
