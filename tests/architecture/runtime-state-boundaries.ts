@@ -119,14 +119,13 @@ describe("runtime state boundary", () => {
 		).toEqual([]);
 	});
 
-	it("Panopticon teams direct child process lifecycle remains explicitly bounded", () => {
-		const allowed = new Set([
-			"extensions/pi-teams/worktree-isolation.ts",
-		]);
+	it("pi-teams must not import node:child_process directly", () => {
+		// The pi-teams child process boundary is zero (ADR-054): team processes
+		// spawn only through the shared lib/runtime-child-process helper, never
+		// through direct node:child_process imports.
 		const childProcessImportPattern = /from\s+["']node:child_process["']/;
 		const violations = listTsFiles("extensions/pi-teams")
 			.map((file) => relative(process.cwd(), file))
-			.filter((file) => !allowed.has(file))
 			.filter((file) =>
 				childProcessImportPattern.test(readFileSync(file, "utf8")),
 			);

@@ -7,7 +7,7 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 ### Tools
 
 | Tool | Purpose |
-|---|---|
+| --- | --- |
 | `message_read` / `message_send` | Read and send messages across registered channels such as Matrix or agent transport. |
 | `agent_send` / `agent_broadcast` | Send direct or broadcast messages to registered peer agents. |
 | `agent_peek` / `agent_status` | Inspect peer activity and health; `agent_status` includes privacy-preserving aggregate counts for actionable states and pending messages. |
@@ -23,7 +23,6 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 
 ## Provisional Surfaces
 
-- `MEMORY.md` snapshot generation (currently advisory/design-only).
 - Agent stall heuristic thresholds.
 
 ## Public and Internal Boundaries
@@ -41,7 +40,7 @@ Capability file paths under `extensions/pi-panopticon/{ui,registry,messaging,spa
 
 Panopticon registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; healthy idle peers are suppressed.
 
-Design note: `docs/adr/022-panopticon-memory-snapshot.md` defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It is design-only; Panopticon does not currently write these snapshots.
+Design note: `docs/adr/022-panopticon-memory-snapshot.md` defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It remains design-only: the validated T-595/596/597 prototype modules were deleted under ADR-054's no-exemptions rule (see the prototype disposition note in ADR-022), and Panopticon does not currently write these snapshots.
 
 ## What this does NOT do
 

@@ -202,3 +202,9 @@ Require ADR/reviewer approval before any future change that:
 ## Out of scope
 
 No code, no writer/loader, no tests, no CLI/tool/command, no hook/daemon/runtime change, no external persistence, no live services/network/provider calls, no working-notes/STATE/pi-kanban/.workers mutation, and no raw private data in fixtures or docs.
+
+## Prototype disposition (ADR-054, 2026-09-01)
+
+The T-217B/T-217C prototype modules built for this design — the synthetic-only renderer and the manifest-gated writer from T-595/596/597 — were validated by tests and then **deleted** under ADR-054 (`docs/adr/054-test-only-module-disposition.md`): they had zero production importers, and the no-exemptions test-only-import fitness rule forbids keeping production modules alive on test imports alone.
+
+This design remains valid for a future implementation once the storage-location and retention-policy approvals (T-217A, Approval triggers above) are secured. The prototype code is preserved in git history and is recoverable when a concrete wiring plan and the required approvals exist.
