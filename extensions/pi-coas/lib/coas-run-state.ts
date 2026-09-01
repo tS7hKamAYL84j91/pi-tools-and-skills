@@ -2,11 +2,13 @@
 
 import { join } from "node:path";
 import { ConfinedStore } from "../../../lib/confined-store.js";
+import { assertSafeId } from "./coas-paths.js";
 import type { CoasConfig } from "../../../lib/coas-types.js";
 
 export interface ScheduleRunState {
 	readonly taskId: string;
 	readonly runId: string;
+	/** Approval claim-check identity, when this run is gated. */
 	readonly requestId?: string;
 	readonly status: "running" | "awaiting-approval" | "complete" | "failed" | "stopped" | "interrupted";
 	readonly startedAt: string;
@@ -18,6 +20,7 @@ export interface ScheduleRunState {
 }
 
 function scheduleRunsPath(config: CoasConfig, taskId: string): string {
+	assertSafeId("task id", taskId);
 	return join(config.coasHome, "schedule-runs", `${taskId}.json`);
 }
 

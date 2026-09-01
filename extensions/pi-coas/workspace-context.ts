@@ -33,14 +33,22 @@ function renderContextSummary(path: string, size: number, text: string, truncate
 }
 
 function readSection(text: string, section: string): string | undefined {
-	const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const startPattern = new RegExp(`^(#{1,6})\\s+.*${escaped}.*$`, "im");
-	const match = startPattern.exec(text);
-	if (!match || match.index === undefined) return undefined;
-	const level = match[1]?.length ?? 1;
-	const rest = text.slice(match.index + match[0].length + 1);
-	const next = new RegExp(`^#{1,${level}}\\s+`, "im").exec(rest);
-	return `${match[0]}\n${next ? rest.slice(0, next.index) : rest}`.trimEnd();
+	const normalizedSection = section.toLowerCase();
+	const lines = text.split("\n");
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const heading = /^(#{1,6})\s+.*$/i.exec(line);
+		if (!heading || !line.toLowerCase().includes(normalizedSection)) continue;
+		const level = heading[1]?.length ?? 1;
+		let end = index + 1;
+		while (end < lines.length) {
+			const nextHeading = /^(#{1,6})\s+/.exec(lines[end] ?? "");
+			if (nextHeading && (nextHeading[1]?.length ?? 7) <= level) break;
+			end++;
+		}
+		return lines.slice(index, end).join("\n").trimEnd();
+	}
+	return undefined;
 }
 
 async function compactContextIfNeeded(

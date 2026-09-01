@@ -18,6 +18,7 @@ interface MutableSelectListInternals {
 }
 
 function selectedItem(selectList: SelectList): SelectItem | undefined {
+	// SAFETY: SelectList does not expose its selection; these fields are read-only at this boundary and match the runtime shape.
 	const internals = selectList as unknown as MutableSelectListInternals;
 	return internals.filteredItems[internals.selectedIndex];
 }

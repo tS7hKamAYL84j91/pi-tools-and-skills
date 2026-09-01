@@ -4,16 +4,28 @@
 import { renderTemplate } from "./prompt-renderer.js";
 import type { TeamParticipant, ModelRun } from "./types.js";
 
+function replaceCaseInsensitive(text: string, token: string, replacement: string): string {
+	if (token.length === 0) return text;
+	const normalizedText = text.toLowerCase();
+	const normalizedToken = token.toLowerCase();
+	let result = "";
+	let start = 0;
+	let match = normalizedText.indexOf(normalizedToken, start);
+	while (match >= 0) {
+		result += text.slice(start, match) + replacement;
+		start = match + token.length;
+		match = normalizedText.indexOf(normalizedToken, start);
+	}
+	return result + text.slice(start);
+}
+
 /** Replace each participant's model id and live-agent name with its anonymous label. */
 function anonymizeParticipantReferences(text: string, members: readonly TeamParticipant[]): string {
 	let anonymized = text;
 	for (const member of members) {
 		const tokens = [member.model];
 		if (member.agentName) tokens.push(member.agentName);
-		for (const token of tokens) {
-			const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			anonymized = anonymized.replace(new RegExp(escaped, "gi"), member.label);
-		}
+		for (const token of tokens) anonymized = replaceCaseInsensitive(anonymized, token, member.label);
 	}
 	return anonymized;
 }

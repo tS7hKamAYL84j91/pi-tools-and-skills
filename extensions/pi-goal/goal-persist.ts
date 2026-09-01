@@ -38,7 +38,13 @@ export async function loadGoal(cwd: string, scope?: GoalSessionScope): Promise<G
 	return withAdvisoryLock(paths.statePath, async () => {
 		if (!existsSync(paths.statePath)) return null;
 		const raw = await readFile(paths.statePath, "utf8");
-		const parsed = JSON.parse(raw) as unknown;
+		// Malformed persisted state is intentionally surfaced; silently recovering could load the wrong goal.
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw) as unknown;
+		} catch (error: unknown) {
+			throw error instanceof Error ? error : new Error(String(error));
+		}
 		const { parseGoalState } = await import("./goal-parse.js");
 		const state = parseGoalState(parsed);
 		if (state.schemaVersion === 3 && isLegacyState(parsed)) {

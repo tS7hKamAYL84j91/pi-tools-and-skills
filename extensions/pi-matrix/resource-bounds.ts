@@ -100,7 +100,10 @@ export class AttachmentDownloadResources {
 	}
 }
 
-function abortReason(signal: AbortSignal): unknown {
+// AbortSignal.reason is caller-controlled; preserve its native reason type as the rejection reason.
+type AbortReason = AbortSignal["reason"] | Error;
+
+function abortReason(signal: AbortSignal): AbortReason {
 	return signal.reason ?? new Error("Matrix attachment download aborted.");
 }
 

@@ -34,8 +34,14 @@ export async function readRecordStrict<T>(
 	}
 }
 
+interface JsonObject {
+	readonly [key: string]: JsonValue;
+}
+
+type JsonValue = boolean | null | number | string | JsonObject | JsonValue[];
+
 /** Strict single-object JSON: BOM, trailing garbage, duplicate keys, size cap. */
-export function parseRecordStrict(raw: string, maxBytes: number): unknown {
+export function parseRecordStrict(raw: string, maxBytes: number): JsonValue {
 	if (raw.charCodeAt(0) === 0xfeff) throw new Error("BOM rejected");
 	if (Buffer.byteLength(raw, "utf8") > maxBytes) throw new Error("record exceeds parse cap");
 	const trimmed = raw.trim();
@@ -43,7 +49,7 @@ export function parseRecordStrict(raw: string, maxBytes: number): unknown {
 	// JSON.parse throws on trailing tokens; duplicate keys are caught by the
 	// per-object seen-set reviver (JSON.parse collapses repeats silently).
 	const seenKeys = new WeakMap<object, Set<string>>();
-	return JSON.parse(trimmed, function (this: object, key: string, value: unknown) {
+	return JSON.parse(trimmed, function (this: Record<string, unknown>, key: string, value: unknown) {
 		if (key === "__proto__") throw new Error("prototype key rejected");
 		if (typeof this === "object" && this !== null) {
 			let seen = seenKeys.get(this);

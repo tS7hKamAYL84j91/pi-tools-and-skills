@@ -57,7 +57,14 @@ export function parseFileWatchConfig(value: unknown): FileWatchConfig {
 export async function loadFileWatchConfig(cwd: string, configPath = DEFAULT_CONFIG_PATH): Promise<FileWatchConfig> {
 	const path = resolveConfiguredPath(cwd, configPath);
 	if (!existsSync(path)) return parseFileWatchConfig({});
-	return parseFileWatchConfig(JSON.parse(await readFile(path, "utf8")));
+	// Malformed configuration is intentionally surfaced instead of silently changing watched paths.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(await readFile(path, "utf8"));
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
+	return parseFileWatchConfig(parsed);
 }
 
 export function resolveConfiguredPath(cwd: string, configuredPath: string): string {

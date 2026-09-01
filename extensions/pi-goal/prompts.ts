@@ -29,8 +29,21 @@ export function continuationPrompt(state: GoalState): string {
 }
 
 function escapeXml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
+	let escaped = "";
+	for (const character of value) {
+		switch (character) {
+			case "&":
+				escaped += "&amp;";
+				break;
+			case "<":
+				escaped += "&lt;";
+				break;
+			case ">":
+				escaped += "&gt;";
+				break;
+			default:
+				escaped += character;
+		}
+	}
+	return escaped;
 }

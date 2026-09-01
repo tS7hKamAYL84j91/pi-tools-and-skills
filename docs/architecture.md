@@ -109,7 +109,9 @@ flowchart TD
   Pi --> Kanban
   Pi --> FileWatch
   Pi --> COAS
-  COAS --> ConfinedStore[ADR-038 confined filesystem store]
+  COAS --> CoasScheduler[pi-coas scheduler]
+  CoasScheduler --> CoasRunState[pi-coas/lib run-state helper]
+  CoasRunState --> ConfinedStore[ADR-038 confined filesystem store]
   ConfinedStore --> CoasRoots[validated CoAS, schedule, and workspace roots]
 
   Goal --> SharedLib

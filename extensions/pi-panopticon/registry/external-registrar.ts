@@ -77,7 +77,13 @@ async function loadManifest(config: ExternalRuntimeConfig): Promise<ExternalAgen
 	if (raw === undefined) {
 		return [];
 	}
-	const parsed = JSON.parse(raw) as unknown;
+	// A malformed manifest is rejected rather than treated as an empty registry.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw) as unknown;
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
 	if (!Array.isArray(parsed)) {
 		throw new Error(`External agent manifest must be an array: ${path}`);
 	}

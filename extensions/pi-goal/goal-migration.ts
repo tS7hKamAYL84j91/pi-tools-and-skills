@@ -32,7 +32,14 @@ export async function migrateLegacyGoal(scope: GoalSessionScope, support: GoalMi
 		}
 		await assertLegacyLayout(root);
 		const { parseGoalState } = await import("./goal-parse.js");
-		const state = parseGoalState(JSON.parse(await readFile(statePath, "utf8")) as unknown);
+		// Legacy state parse failures intentionally abort migration rather than risk moving invalid data.
+		let parsedState: unknown;
+		try {
+			parsedState = JSON.parse(await readFile(statePath, "utf8")) as unknown;
+		} catch (error: unknown) {
+			throw error instanceof Error ? error : new Error(String(error));
+		}
+		const state = parseGoalState(parsedState);
 		const goalId = assertGoalId(state.goalId);
 		const instance = goalPaths(scope.cwd, goalId);
 		await support.assertSafeGoalRoot(scope.cwd, goalId);
@@ -95,7 +102,13 @@ async function assertLegacyLayout(root: string): Promise<void> {
 }
 
 async function readMigrationMarker(path: string): Promise<string> {
-	const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+	// A malformed marker must fail closed so migration cannot be treated as complete.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || !("goalId" in parsed) || typeof parsed.goalId !== "string") {
 		throw new Error(`Invalid pi-goal migration marker: ${path}`);
 	}

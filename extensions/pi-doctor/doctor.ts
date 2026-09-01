@@ -34,6 +34,12 @@ interface PackageJson {
 	};
 }
 
+interface JsonObject {
+	readonly [key: string]: JsonValue;
+}
+
+type JsonValue = boolean | null | number | string | JsonObject | JsonValue[];
+
 const EXTENSIONS = ["pi-bionic", "pi-coas", "pi-doctor", "pi-goal", "pi-file-watch", "pi-kanban", "pi-matrix", "pi-ollama-models", "pi-panopticon"];
 const REQUIRED_ROOT_SCRIPTS = ["check:namespace", "typecheck", "lint", "knip", "type-coverage", "check", "test"];
 const RESERVED_COMMANDS = new Set(["settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys", "fork", "clone", "tree", "login", "logout", "new", "compact", "resume", "reload", "quit"]);
@@ -55,8 +61,13 @@ function listTsFiles(dir: string): string[] {
 	return files;
 }
 
-function readJson(path: string): unknown {
-	return JSON.parse(readFileSync(path, "utf8"));
+function readJson(path: string): JsonValue {
+	const raw = readFileSync(path, "utf8");
+	try {
+		return JSON.parse(raw) as JsonValue;
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
 }
 
 function packageJson(path: string): PackageJson {

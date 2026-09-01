@@ -63,9 +63,15 @@ export async function loadPolicy(
 	roots: Parameters<typeof identitiesDir>[0],
 	verificationKeys: ReadonlyMap<string, string>,
 ): Promise<PolicyRecord> {
+	// Invalid or untrusted policy data is intentionally surfaced; callers must not proceed with an unverifiable policy.
 	const { readFile } = await import("node:fs/promises");
 	const raw = await readFile(policyPath(roots), "utf8");
-	const parsed = JSON.parse(raw) as PolicyRecord;
+	let parsed: PolicyRecord;
+	try {
+		parsed = JSON.parse(raw) as PolicyRecord;
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
 	const key = verificationKeys.get(parsed.keyId);
 	if (!key) throw new Error(`unknown policy key: ${parsed.keyId}`);
 	const { signature, ...unsigned } = parsed;
