@@ -9,13 +9,9 @@ import {
 	boostParseFeedback,
 	formatBoostStatus,
 } from "./boost-command-feedback.js";
-import type {
-	BoostFusionRequest,
-} from "./cognitive-types.js";
+import type { BoostFusionRequest } from "./cognitive-types.js";
 import { handleCognitiveFusionCommand } from "./cognitive-command.js";
-import {
-	DEFAULT_BOOST_HOST_CAPABILITIES,
-} from "./host-capabilities.js";
+import { DEFAULT_BOOST_HOST_CAPABILITIES } from "./host-capabilities.js";
 import type {
 	BoostDenialReason,
 	BoostLeaseStatus,

@@ -56,7 +56,9 @@ export interface ResolvedBoostSettings {
 
 import type { CognitiveProfile } from "./boost/cognitive-types.js";
 
-export function safeReadJson(path: string): Record<string, unknown> | undefined {
+export function safeReadJson(
+	path: string,
+): Record<string, unknown> | undefined {
 	if (!existsSync(path)) return undefined;
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
