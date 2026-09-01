@@ -25,7 +25,9 @@ export interface LiveBoostControlSubscription {
 
 /** Live control can only gate/revoke an already-valid descriptor. */
 export interface LiveBoostControlAdapter {
-	resolve(reference: LiveBoostControlReference): Promise<LiveBoostControlRecord | undefined>;
+	resolve(
+		reference: LiveBoostControlReference,
+	): Promise<LiveBoostControlRecord | undefined>;
 	subscribe(
 		reference: LiveBoostControlReference,
 		listener: (revision: LiveBoostControlRevision) => Promise<void>,
@@ -35,24 +37,54 @@ export interface LiveBoostControlAdapter {
 export function validateLiveBoostControl(
 	reference: LiveBoostControlReference,
 	record: LiveBoostControlRecord | undefined,
-	input: { readonly issuerId: string; readonly requestedYields: number; readonly now: number },
+	input: {
+		readonly issuerId: string;
+		readonly requestedYields: number;
+		readonly now: number;
+	},
 ): boolean {
-	return hasLiveBoostControlFields(record) && isReference(reference) &&
+	return (
+		hasLiveBoostControlFields(record) &&
+		isReference(reference) &&
 		record.enablementId === reference.enablementId &&
-		record.principalIssuerId === input.issuerId && record.enabled === true &&
-		Number.isSafeInteger(record.maximumYields) && record.maximumYields >= input.requestedYields &&
-		record.maximumYields <= 3 && Number.isSafeInteger(record.revision) && record.revision >= 0 &&
-		Number.isFinite(record.expiresAt) && record.expiresAt > input.now;
+		record.principalIssuerId === input.issuerId &&
+		record.enabled === true &&
+		Number.isSafeInteger(record.maximumYields) &&
+		record.maximumYields >= input.requestedYields &&
+		record.maximumYields <= 3 &&
+		Number.isSafeInteger(record.revision) &&
+		record.revision >= 0 &&
+		Number.isFinite(record.expiresAt) &&
+		record.expiresAt > input.now
+	);
 }
 
-function hasLiveBoostControlFields(value: unknown): value is LiveBoostControlRecord {
-	return value !== null && typeof value === "object" && !Array.isArray(value) &&
-		hasExactKeys(value as Record<string, unknown>, ["enablementId", "principalIssuerId", "maximumYields", "expiresAt", "revision", "enabled"]);
+function hasLiveBoostControlFields(
+	value: unknown,
+): value is LiveBoostControlRecord {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		!Array.isArray(value) &&
+		hasExactKeys(value as Record<string, unknown>, [
+			"enablementId",
+			"principalIssuerId",
+			"maximumYields",
+			"expiresAt",
+			"revision",
+			"enabled",
+		])
+	);
 }
 
-function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+function hasExactKeys(
+	value: Record<string, unknown>,
+	keys: readonly string[],
+): boolean {
 	const actual = Object.keys(value);
-	return actual.length === keys.length && actual.every((key) => keys.includes(key));
+	return (
+		actual.length === keys.length && actual.every((key) => keys.includes(key))
+	);
 }
 
 function isReference(reference: LiveBoostControlReference): boolean {

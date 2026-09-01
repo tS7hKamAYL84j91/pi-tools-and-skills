@@ -133,7 +133,7 @@ function testOnlyProductionModules(): string[] {
 				const specifier = match[1] ?? "";
 				const module = specifier ? resolveLocalImport(file, specifier) : null;
 				if (!module) {
-						continue;
+					continue;
 				}
 				const importers = importersByModule.get(module) ?? new Set<string>();
 				importers.add(file);
@@ -250,8 +250,8 @@ describe("test quality fitness functions", () => {
 			const readme = join("extensions", extension, "README.md");
 			return (
 				!existsSync(readme) ||
-			!readFileSync(readme, "utf8").includes("## What this does NOT do")
-		);
+				!readFileSync(readme, "utf8").includes("## What this does NOT do")
+			);
 		});
 		expect(missing).toEqual([]);
 	});

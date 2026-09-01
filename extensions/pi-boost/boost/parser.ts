@@ -1,9 +1,11 @@
 /** Pure ADR-045 and ADR-050 `/boost` grammar and combined-input boundary. */
 
 import { parseFusionRequest } from "./cognitive-parser.js";
-import type { BoostParseErrorCode, BoostParseResult } from "./boost-parse-types.js";
+import type {
+	BoostParseErrorCode,
+	BoostParseResult,
+} from "./boost-parse-types.js";
 import type { BoostIsolationMode } from "./contracts.js";
-
 
 export const BOOST_REVIEW_FRAME = `[BOOST REVIEW FRAME — EPHEMERAL]
 Challenge assumptions. Inspect the underlying diff when available. Avoid repeating recent failed edits.
