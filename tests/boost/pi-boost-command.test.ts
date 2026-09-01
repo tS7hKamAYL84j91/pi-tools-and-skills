@@ -1,4 +1,3 @@
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { InertBoostDispatch } from "../../extensions/pi-boost/boost/command.js";
 import type {
@@ -6,7 +5,6 @@ import type {
 	BoostResult,
 	ReserveBoostInput,
 } from "../../extensions/pi-boost/boost/contracts.js";
-import { createInertBoostCommandDeps } from "../../extensions/pi-boost/boost/inert-runtime.js";
 import {
 	AGENT,
 	createBoostCommandHarness,
@@ -15,46 +13,6 @@ import {
 } from "./boost-helpers.js";
 
 describe("phase-2 inert /boost command", () => {
-	it("constructs only the inert runtime command capabilities", () => {
-		const deps = createInertBoostCommandDeps({
-			isPrincipalSession: () => true,
-			selfId: "subject-runtime",
-		});
-		const context = {
-			cwd: "/workspace/runtime",
-			sessionManager: { getSessionId: () => "principal-runtime" },
-		} as ExtensionCommandContext;
-		const identity = deps.identity(context);
-		const parsed = deps.parse("/boost inspect the diff");
-		if (!identity || !parsed.ok || parsed.command.kind !== "request") {
-			throw new Error("Expected an inert runtime request identity");
-		}
-
-		const reservation = deps.authority.reserve({
-			actor: identity.actor,
-			subject: identity.subject,
-			request: parsed.command.request,
-		});
-
-		expect(Object.keys(deps).sort()).toEqual([
-			"authority",
-			"dispatch",
-			"identity",
-			"notify",
-			"parse",
-		]);
-		expect(Object.keys(deps.authority).sort()).toEqual([
-			"getStatus",
-			"reserve",
-			"reset",
-		]);
-		expect("activate" in deps.authority).toBe(false);
-		expect(reservation).toMatchObject({
-			ok: true,
-			value: { state: "Reserved", remainingYields: 1 },
-		});
-	});
-
 	it("registers through the boost hook and routes request parsing to reservation", async () => {
 		const harness = createBoostCommandHarness();
 

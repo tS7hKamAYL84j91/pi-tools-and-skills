@@ -1,42 +1,26 @@
-# TODO — Repo Improvements (from 2026-09-01 GM review)
+# TODO — Next Cycle (from the 2026-09-01 final architecture & health review)
 
-**Status:** review items landed 2026-09-01 via pi-goal `g-c59d1288` (epic T-875, milestones M1–M6). Remaining work is tracked in kanban (T-880, T-881). The boost stream's dirty tree was completed and landed 2026-09-01 per Principal directive.
+**Context:** the 2026-09-01 GM review (pi-goal `g-c59d1288`, epic T-875) is complete — 17 commits, v1.2.0 released, all gates green at `96a8204` (200 test files / 1,517 tests, knip clean, type-coverage 99.28%, CI double-green). This file is the forward backlog from the closing review. Board tickets: T-880, T-881.
 
-## P0 — Boost stream — RESOLVED 2026-09-01 (dirty tree completed and landed per Principal directive)
+## P1 — Immediate
 
-- [x] Test failures resolved: settings/cognitive tests pass with the completed ADR-052 work; the one-off live smoke test (untracked `tests/boost/boost-workspace-smoke.test.ts` — console.log + live model call + repo-local settings assumption) deleted.
-- [x] The 3 over-budget files split under the line budget: `cognitive-lease.ts` → + `cognitive-lease-single.ts` + `cognitive-lease-fusion.ts`; `boost-settings.ts` → + `boost-settings-parse.ts`; `command.ts` → + `command-types.ts`. Full suite green (200 files / 1517 tests).
+- [ ] **Pin `actions/setup-node` in `fitness.yml:18`** to the same commit SHA used in `ci.yml` (`actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0`) — the last remaining mutable action reference (opengrep CWE-1357). One line.
+- [ ] **T-880 — land the ADR-054 no-exemptions fitness rule + dispose the 6 remaining test-only modules.** The rule is implemented with red→green evidence on branch `goal/t876b-test-only-disposition` (commit `bd82e01`). Modules to disposition: pi-boost `boost/cognitive.ts`, `boost/inert-runtime.ts`, `production-boost-host.ts` (dispositionable now — the boost stream landed in `5f66fe6`), and pi-teams `approval-gates.ts`, `checkpoint-readiness.ts`, `observability.ts` (verify supersession by the current team-node-runner implementation, then delete module + tests). Note: `production-boost-host.ts` ↔ `live-boost-bridge-contract.ts` share 21 duplicated lines — disposition those together.
+- [ ] **T-881 — fix the pi-matrix issue** captured in `docs/images/Screenshot 2026-09-01 at 19.49.01.png` (Principal-reported 2026-09-01 19:49). If Matrix behavior changes, run the RELEASING.md item-5 manual homeserver smoke test (invite/join, rich text, attachments, reconnect, restart without replay).
 
-## P1 — Structural
+## P2 — Debt register (from the full lens scan; not gate failures)
 
-- [x] **Daemon packaging risk — DONE via ADR-053** (`af6a9e4`): `lib/daemon-protocol/` extracted; pi-panopticon decoupled from the private daemon; architecture guard test; CI green.
-- [x] **CI duplication — DONE** (PR #52, `90306ef`): fitness.yml scoped to `vitest run tests/architecture tests/shared`.
-- [x] **CI pin inconsistency — DONE** (PR #52): checkout commit-SHA-pinned in both workflows.
-- [x] **Install-smoke matrix — DONE** (PR #52): all 11 extension packages + root covered.
-- [ ] **Fix pi-matrix issue** captured in `docs/images/Screenshot 2026-09-01 at 19.49.01.png` (Principal-reported 2026-09-01 19:49) — tracked as kanban **T-881**.
+- [ ] **Adopt-or-accept decision on boundary decoding**: ~350 of the 634 lens warnings are `no-runtime-typeof` / `no-unknown-parameters` idioms — the repo validates with typeof/narrowing instead of decoding at I/O boundaries. Either adopt "decode at boundary" as an incremental lint gate (worst files first) or record the accepted style.
+- [ ] **Triage the 13 lens-blocking rule hits**: unknown returns + unchecked-throwing calls in `pi-doctor/doctor.ts`, `daemon/src/record.ts`, `daemon/src/policy.ts`, `pi-goal/goal-persist.ts`, `pi-goal/goal-migration.ts`, `pi-panopticon/registry/external-registrar.ts`, `pi-file-watch/config.ts`, `pi-matrix/resource-bounds.ts`, `pi-coas/commands.ts` (incl. one `as unknown as` without a SAFETY comment).
+- [ ] **DRY extraction candidates** (jscpd): `pi-coas/scheduler-run-state.ts` ↔ `pi-coas/lib/coas-run-state.ts` (35 lines), `pi-boost/boost/cognitive-runner.ts` ↔ `pi-teams/runner.ts` (32), `scripts/setup-pi` ↔ `scripts/setup-pi-clean` (26), `pi-panopticon/ui/agent-list.ts` ↔ `pi-teams/team-models.ts` (20), `pi-teams/pi-binary.ts` ↔ `pi-panopticon/spawner/spawn-service.ts` ↔ `cognitive-runner.ts` (10 × 3).
+- [ ] **Complexity watch list** (split before next growth): `lib/agent-registry.ts` (fan-in 25 × cx 12), `pi-teams/team-registry.ts` (cx 26), `pi-boost/boost-descriptor.ts` (cx 24), `pi-teams/team-node-runner.ts` (cx 26), `lib/session-log.ts` (cx 29), `pi-coas/scheduler-run-state.ts` (fan-in 8 × cx 17).
+- [ ] **Security hardening notes** (opengrep, low urgency): non-literal `RegExp(section)` at `pi-coas/workspace-context.ts:37,42` and `RegExp(members)` at `pi-teams/protocol-prompts.ts:15` (ReDoS-class, tool-param input); `replaceAll`-based escaping at `pi-goal/prompts.ts:32` — consider a real sanitizer.
 
-## P2 — Dead code (verified: zero production importers)
+## P3 — Recorded false positives (no action; re-verify only if tooling changes)
 
-- [x] `extensions/pi-kanban/lifecycle.ts` — deleted with its 2 tests per ADR-054 (reclassified test-only; `b0ca375`).
-- [x] `extensions/pi-teams/worktree-isolation.ts` — deleted with its test (`fc2d74e`); pi-teams child-process boundary now zero.
-- [x] `extensions/pi-panopticon/ui/memory-renderer.ts` + `ui/memory-writer.ts` — deleted with tests + fixtures (`fc2d74e`); ADR-022 disposition note appended.
-- [ ] `extensions/pi-boost/boost/cognitive.ts` shim — deferred: in-flight boost area; disposition lands with **T-880**.
-- [x] **Test-only-import fitness rule — implemented** (red→green evidence; branch `goal/t876b-test-only-disposition`) but **landing deferred → T-880**: it flags 6 further test-only modules (3 pi-boost mid-integration by the boost bridge, 3 pi-teams pending supersession verification); no-exemptions directive forbids landing with carve-outs.
-- [x] Orphan scripts deleted (PR #53, `a35a6e0`): `scripts/t851-artifact-smoke.sh`, `scripts/session-spool-hook.mjs`. **Correction:** `scripts/pi-package-settings.py` is live (invoked by `scripts/setup-pi`/`setup-pi-clean`) and retained.
-- [x] `extensions/pi-ollama-models/` verified intentional in this repo (T-724 promotion; T-762's removal referred to pi-extension-poc); covered by install-smoke.
+- `package.json:33` gitleaks "generic-api-key" = the author's GitHub username; the repo's own policy (`.gitleaks.toml`) passes green in CI.
+- lens-knip "unused file `boost/command-types.ts`" — it is imported by `boost/command.ts:29-30`; the repo's `npm run knip` gate is clean.
 
-## P3 — Hygiene
+## Done in the prior cycle (record)
 
-- [x] ADR numbering — index created (PR #54): 024/033 collisions and 020/028 gaps documented; next slots 053/054 used by this work.
-- [x] Lint — the 2 non-null assertions and 2 template-literal infos in tests/daemon fixed (PR #54, `0706639`).
-- [x] Lint/knip scope — biome lint covers `scripts/` (574→586 files) and knip entry covers `scripts/*.mjs` (`0a93ed8`).
-- [x] Release — **1.2.0 cut** per RELEASING.md: CHANGELOG dated, versions aligned across root + extension packages, SECURITY.md table already 1.2.0-ready.
-- [x] README — pi link verified, Python-3 prerequisite clarified, package.json description/author filled (PR #54).
-- [x] Review graph — refresh triggered; complexity hotspots to watch: `lib/session-log.ts` (29), `pi-teams/team-registry.ts` (26), `team-node-runner.ts` (26), `boost-descriptor.ts` (24).
-- [x] CI-failure check — main green through 1.2.0; the Aug-28 alternating-failure flake family was resolved by the de-flake commit; one intermediate date-assertion flake in `t873-step1-execution.test.ts` noted at `af6a9e4` (passed in the containing run).
-
-## Remaining, tracked elsewhere
-
-- **T-880** (kanban): land the no-exemptions fitness rule + dispose the remaining test-only modules — boost-stream blocker RESOLVED (stream landed); re-run the rule for the current flagged list and disposition.
-- **T-881** (kanban): pi-matrix fix per Principal screenshot.
-- **P0 above**: resolved — boost dirty tree completed and landed.
+- 2026-09-01: review goal `g-c59d1288` complete — ADR-053 daemon-protocol extraction (published boundary enforced by architecture guard + tarball proof); ADR-054 disposition (4 test-only modules + tests/fixtures deleted, pi-teams child-process boundary zero); CI hygiene via Jules PRs #52/#53/#54; lint+knip scope extended to `scripts/`; ADR index created; **1.2.0 released** (all 13 package versions aligned); the in-flight boost stream completed and landed (ADR-052 single-model default, line-budget module splits, live smoke test removed); the recurring `t873-step1-execution` date-assertion flake root-cause fixed. See `CHANGELOG.md` [1.2.0] and `docs/adr/README.md`.

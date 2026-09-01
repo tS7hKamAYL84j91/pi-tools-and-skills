@@ -10,6 +10,21 @@ import {
 	type LiveBoostHostInjection,
 } from "./boost-extension-wiring.js";
 
+// Reviewed host-constructor bridge (ADR-046): a capable host builds the live
+// runtime from the package entry rather than deep module paths.
+export { HostInjectedLiveBoostRuntime } from "./host-injected-live-boost.js";
+export {
+	createReviewedBoostHost,
+	getReviewedBoostContractIdentity,
+	REVIEWED_BOOST_CONTRACT_PATH,
+	REVIEWED_BOOST_CONTRACT_SHA256,
+} from "./reviewed-boost-host.js";
+export type {
+	ReviewedBoostContractIdentity,
+	ReviewedBoostHost,
+	ReviewedBoostHostInput,
+} from "./reviewed-boost-host.js";
+
 /** Create Boost with an optional host capability, explicit identity boundary, and cognitive runner. */
 export function createBoostExtension(
 	injection?: LiveBoostHostInjection,

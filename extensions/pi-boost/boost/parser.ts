@@ -2,7 +2,7 @@
 
 import { parseFusionRequest } from "./cognitive-parser.js";
 import type { BoostParseErrorCode, BoostParseResult } from "./boost-parse-types.js";
-import type { BoostIsolationMode, BoostRequest } from "./contracts.js";
+import type { BoostIsolationMode } from "./contracts.js";
 
 
 export const BOOST_REVIEW_FRAME = `[BOOST REVIEW FRAME — EPHEMERAL]
@@ -25,24 +25,6 @@ interface ParsedOptions {
 
 export function combineBoostInput(prompt: string): string {
 	return `${BOOST_REVIEW_FRAME}\n${prompt}`;
-}
-
-export function isValidBoostRequest(request: BoostRequest): boolean {
-	if (
-		!Number.isInteger(request.requestedYields) ||
-		request.requestedYields < 1 ||
-		request.requestedYields > 3
-	) {
-		return false;
-	}
-	if (
-		!(["current", "clean", "fresh"] as const).includes(request.isolation) ||
-		request.prompt.length === 0 ||
-		request.combinedInput !== combineBoostInput(request.prompt)
-	) {
-		return false;
-	}
-	return utf8ByteLength(request.combinedInput) <= MAX_BOOST_INPUT_BYTES;
 }
 
 export function parseBoostCommand(input: string): BoostParseResult {

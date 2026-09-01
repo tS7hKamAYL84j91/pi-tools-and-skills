@@ -27,7 +27,7 @@ export interface ReviewedBoostHost {
 export const REVIEWED_BOOST_CONTRACT_PATH =
 	"extensions/pi-boost/live-boost-control-contract.ts" as const;
 export const REVIEWED_BOOST_CONTRACT_SHA256 =
-	"f212881bb8feca1f70e1254212830f194b321a47fb7655722346660110a90cf4" as const;
+	"5b3c85582d9240718353387c7d22384c79cb15ee681375bed6e103fd99a609df" as const;
 
 /** Returns the immutable reviewed identity that a clean-cwd host must attest. */
 export function getReviewedBoostContractIdentity(): ReviewedBoostContractIdentity {

@@ -45,13 +45,7 @@ export function validateLiveBoostControl(
 		Number.isFinite(record.expiresAt) && record.expiresAt > input.now;
 }
 
-export function isLiveBoostControlReference(value: unknown): value is LiveBoostControlReference {
-	return value !== null && typeof value === "object" && !Array.isArray(value) &&
-		hasExactKeys(value as Record<string, unknown>, ["enablementId"]) &&
-		isOpaqueIdentifier((value as { enablementId?: unknown }).enablementId);
-}
-
-export function hasLiveBoostControlFields(value: unknown): value is LiveBoostControlRecord {
+function hasLiveBoostControlFields(value: unknown): value is LiveBoostControlRecord {
 	return value !== null && typeof value === "object" && !Array.isArray(value) &&
 		hasExactKeys(value as Record<string, unknown>, ["enablementId", "principalIssuerId", "maximumYields", "expiresAt", "revision", "enabled"]);
 }

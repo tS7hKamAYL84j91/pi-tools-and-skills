@@ -2,15 +2,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { executeCognitiveLease } from "../../extensions/pi-boost/boost/cognitive-lease.js";
 import {
-	executeCognitiveLease,
 	isValidJudgeJson,
-	planCognitiveFusion,
-	extractPiPrintOutput,
 	renderJudgePrompt,
 	stripMarkdownFences,
 	truncateAtSemanticBoundary,
-} from "../../extensions/pi-boost/boost/cognitive.js";
+} from "../../extensions/pi-boost/boost/cognitive-output.js";
+import { planCognitiveFusion } from "../../extensions/pi-boost/boost/cognitive-planner.js";
+import { extractPiPrintOutput } from "../../extensions/pi-boost/boost/cognitive-runner.js";
 import { createCognitiveAuditSink } from "../../extensions/pi-boost/boost/cognitive-audit.js";
 import { parseBoostCommand } from "../../extensions/pi-boost/boost/parser.js";
 import type { CognitiveModelRunner } from "../../extensions/pi-boost/boost/cognitive-types.js";
