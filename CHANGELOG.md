@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-01
+
 ### Added
 
 - Matrix extension now uses `matrix-js-sdk@41.9.0` instead of the deprecated `matrix-bot-sdk@0.8.0`.
@@ -18,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structured tool-failure metadata (`FailureDetails`) with optional `code`, `retryable`, `action`, `schemaVersion`, `truncated`, and `correlationId`.
 - Deterministic behavioral evaluation harness under `tests/evals/` with tool-selection and team-routing fixtures.
 - CI workflow covering namespace/type/lint/knip/coverage checks, Node 22/24/25 compatibility, production audit, gitleaks secret scan, and per-package install smoke tests.
+- `lib/daemon-protocol/` published daemon protocol surface (ADR-053): paths, capability proof with `AdmissionScope`, registry types, wire codec, and `RegistryEventBuffer` — `pi-panopticon` and per-extension installs now resolve without the private systemd-deployed daemon.
+- ADR index (`docs/adr/README.md`) documenting the 024/033 numbering collisions, the 020/028 gaps, and the next sequential ADR slot.
+- Architecture guard test enforcing zero `daemon/src` imports inside `lib/daemon-protocol/`.
 
 ### Security
 
@@ -27,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `fail()` in `lib/tool-result.ts` now accepts `FailureDetails` while remaining backward compatible with arbitrary `Record<string, unknown>` details.
+- `fitness.yml` now runs only the architecture-fitness suites instead of duplicating the full CI check+test run; `actions/checkout` is commit-SHA-pinned in both workflows; the `install-smoke` matrix covers all 11 extension packages plus the root.
+- Biome lint scope extended to `scripts/`; knip entry extended to `scripts/*.mjs` (closes the orphan-script blind spot).
+- `README.md` prerequisites clarified (Python 3 is only needed for `security:semgrep`); `package.json` `description`/`author` filled.
+- `extensions/pi-panopticon/README.md` drops the provisional MEMORY.md surface references.
+
+### Removed
+
+- Test-only production modules removed per ADR-054 with their tests and fixtures: `pi-teams/worktree-isolation.ts`, `pi-panopticon/ui/memory-renderer.ts`, `pi-panopticon/ui/memory-writer.ts`, and `pi-kanban/lifecycle.ts`; the pi-teams `node:child_process` boundary is now zero. The no-exemptions test-only-import fitness rule is implemented and lands with the remaining module dispositions (tracked separately).
+- Unreferenced scripts removed: `scripts/session-spool-hook.mjs` (ADR-017 POC) and `scripts/t851-artifact-smoke.sh`.
 
 ## [1.1.0] - 2026-06-24
 
