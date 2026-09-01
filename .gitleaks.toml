@@ -15,6 +15,10 @@ paths = [
 ]
 
 # Ignore known safe placeholder tokens used in tests and documentation.
+# 55602cee added a repository username to package.json author metadata; it is not a credential.
+commits = [
+  '''55602cee73e6619a6726ab4ef71ac5b837402ba5''',
+]
 regexes = [
   '''syt_test_token''',
   '''test_token''',

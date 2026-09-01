@@ -27,10 +27,16 @@ export async function openBoostSettingsOverlay(
 	const current = resolveEffectiveBoostSettings(ctx.cwd, isTrusted, hostCapabilities.globalSettingsPath);
 
 	if (!ctx.hasUI) {
+		const execution =
+			current.mode === "single"
+				? "1 model, no judge"
+				: `${current.panelSize} models + judge`;
 		const summary = [
 			`Boost effective settings:`,
+			`  mode: ${current.mode} [${current.sources.mode}]`,
+			`  execution: ${execution}`,
+			`  configured candidates: ${current.models.length} [${current.sources.models}]`,
 			`  profile: ${current.profile} [${current.sources.profile}]`,
-			`  panelSize: ${current.panelSize} [${current.sources.panelSize}]`,
 			`  agentSelfBoost: ${current.agentSelfBoost.enabled ? "enabled" : "disabled"} [${current.sources.agentSelfBoost}]`,
 		].join("\n");
 		ctx.ui.notify(summary, "info");
@@ -38,6 +44,7 @@ export async function openBoostSettingsOverlay(
 	}
 
 	let targetScope: "project" | "global" = isTrusted ? "project" : "global";
+	let selectedMode: "single" | "fusion" = current.mode;
 	let selectedProfile: CognitiveProfile = current.profile;
 	let selectedPanelSize = String(current.panelSize);
 	let selectedAgentSelfBoost = current.agentSelfBoost.enabled ? "enabled" : "disabled";
@@ -63,7 +70,7 @@ export async function openBoostSettingsOverlay(
 			new Text(
 				theme.fg(
 					"dim",
-					` inspect inheritance · fixed models=${current.models.join(",")} [${current.sources.models}] · judge=${current.judge ?? "panel[0]"} [${current.sources.judge}] · timeout=${current.timeoutMs}ms [${current.sources.timeoutMs}]`,
+					` inspect inheritance · mode=${current.mode} [${current.sources.mode}] · configured candidates=${current.models.join(",")} [${current.sources.models}] · execution=${current.mode === "single" ? "1 model, no judge" : `${current.panelSize} models + judge`} · timeout=${current.timeoutMs}ms [${current.sources.timeoutMs}]`,
 				),
 				1,
 				0,
@@ -78,6 +85,12 @@ export async function openBoostSettingsOverlay(
 				values: isTrusted ? ["project", "global"] : ["global"],
 			},
 			{
+				id: "mode",
+				label: `Mode [${current.sources.mode}]`,
+				currentValue: selectedMode,
+				values: ["single", "fusion"],
+			},
+			{
 				id: "profile",
 				label: `Profile [${current.sources.profile}]`,
 				currentValue: selectedProfile,
@@ -85,7 +98,7 @@ export async function openBoostSettingsOverlay(
 			},
 			{
 				id: "panelSize",
-				label: `Panel Size [${current.sources.panelSize}]`,
+				label: `Fusion Panel Size [${current.sources.panelSize}]`,
 				currentValue: selectedPanelSize,
 				values: ["1", "2", "3", "4"],
 			},
@@ -114,6 +127,12 @@ export async function openBoostSettingsOverlay(
 					if (newValue === "project" || newValue === "global") {
 						targetScope = newValue;
 					}
+				} else if (id === "mode") {
+					if (newValue !== "single" && newValue !== "fusion") {
+						return;
+					}
+					selectedMode = newValue;
+					persist({ mode: selectedMode });
 				} else if (id === "profile") {
 					if (
 						newValue !== "fast" &&
