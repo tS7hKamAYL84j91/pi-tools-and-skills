@@ -25,6 +25,7 @@ type SdkLogger = {
 	trace: (...args: unknown[]) => void;
 	debug: (...args: unknown[]) => void;
 	info: (...args: unknown[]) => void;
+	log: (...args: unknown[]) => void;
 	warn: (...args: unknown[]) => void;
 	error: (...args: unknown[]) => void;
 	getChild: (namespace: string) => unknown;
@@ -95,6 +96,7 @@ describe("MatrixJsSdkAdapter sdk logger", () => {
 		expect(() => logger.debug("FetchHttpApi: --> GET /_matrix/client/v3/sync")).not.toThrow();
 		expect(() => logger.trace("noisy")).not.toThrow();
 		expect(() => logger.info("noisy")).not.toThrow();
+		expect(() => logger.log("legacy noisy request log")).not.toThrow();
 		expect(logger.getChild("http")).toBeDefined();
 		expect(onLog).not.toHaveBeenCalled();
 	});

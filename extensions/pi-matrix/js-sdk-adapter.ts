@@ -128,6 +128,9 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			trace: () => {},
 			debug: () => {},
 			info: () => {},
+			// Some matrix-js-sdk internals still use the deprecated `log` alias.
+			// Keep it silent as well so legacy paths cannot bypass the filter.
+			log: () => {},
 			warn: (...args: unknown[]) => {
 				notify?.(args.map(formatLogArg).join(" "), "warning");
 			},
