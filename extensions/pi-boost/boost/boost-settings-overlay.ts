@@ -162,7 +162,7 @@ export async function openBoostSettingsOverlay(
 								persist({ models: selectedModels });
 							},
 							onCancel: () => {
-								doneModels();
+								doneModels(formatModelSelection(selectedModels));
 							},
 						},
 					),
