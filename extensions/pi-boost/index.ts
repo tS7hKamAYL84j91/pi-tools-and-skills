@@ -121,6 +121,15 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
+				const maxYields = await resolveMaxYields(ctx.cwd);
+				if (lease.yieldsUsed >= maxYields) {
+					ctx.ui.notify(
+						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
+						"warning",
+					);
+					return;
+				}
+
 				const configuredId = await resolveBoostModel(ctx.cwd);
 				const boostModel = configuredId
 					? findModel(ctx, configuredId)
@@ -148,7 +157,6 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				lease.yieldsUsed++;
-				const maxYields = await resolveMaxYields(ctx.cwd);
 				const remaining = Math.max(0, maxYields - lease.yieldsUsed);
 				ctx.ui.notify(
 					`Boost: switched to ${modelId(boostModel)} · yield ${lease.yieldsUsed}/${maxYields} · ${remaining} remaining after this turn. Original model restored on turn end.`,
