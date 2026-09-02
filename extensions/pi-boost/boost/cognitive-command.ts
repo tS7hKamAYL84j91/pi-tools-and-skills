@@ -29,9 +29,12 @@ export async function handleCognitiveFusionCommand(
 			return;
 		}
 		const statusNote = result.degraded ? " (degraded)" : "";
+		const errorDetail = result.degraded
+			? `\n\n[models: ${result.nodes.map((n) => `${n.model} → ${n.ok ? "ok" : (n.error ?? "failed")}`).join("; ")}]`
+			: "";
 		notify(
 			ctx,
-			`Boost fusion completed${statusNote}:\n\n${result.answer}`,
+			`Boost fusion completed${statusNote}:\n\n${result.answer}${errorDetail}`,
 			"info",
 		);
 	} catch (error) {
