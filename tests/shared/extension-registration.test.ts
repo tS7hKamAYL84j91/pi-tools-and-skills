@@ -322,6 +322,7 @@ describe("extension registration smoke tests", () => {
 			"agent-list-mode",
 			"agents",
 			"agents-mode",
+			"panopticon-reconcile",
 			"send",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);

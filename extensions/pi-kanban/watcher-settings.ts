@@ -6,7 +6,7 @@ import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 
-export interface WatcherSettings {
+interface WatcherSettings {
 	watchNotifications: boolean;
 }
 

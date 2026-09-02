@@ -33,6 +33,8 @@ import {
 	checkStaleActivity,
 	type ReconciliationFinding,
 } from "./reconciler-findings.js";
+
+export { checkAgentHealth } from "./reconciler-findings.js";
 import {
 	type ReconcilerSettingsScope,
 	resolveReconcilerSettings,
