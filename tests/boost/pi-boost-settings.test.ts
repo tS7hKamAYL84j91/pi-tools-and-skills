@@ -16,9 +16,7 @@ import {
 	listTextCapableModels,
 	toggleModelSelection,
 } from "../../extensions/pi-boost/boost/model-selection.js";
-import {
-	DEFAULT_BOOST_HOST_CAPABILITIES,
-} from "../../extensions/pi-boost/boost/host-capabilities.js";
+import { DEFAULT_BOOST_HOST_CAPABILITIES } from "../../extensions/pi-boost/boost/host-capabilities.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -278,14 +276,12 @@ describe("Boost standard settings precedence and trust", () => {
 		writer.enqueue("global", { models: ["a/one", "b/two"] });
 		await writer.drain();
 		expect(
-			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath)
-				.models,
+			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath).models,
 		).toEqual(["a/one", "b/two"]);
 		writer.enqueue("global", { models: [] });
 		await writer.drain();
 		expect(
-			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath)
-				.models,
+			resolveEffectiveBoostSettings(paths.root, false, paths.globalPath).models,
 		).toEqual([]);
 	});
 

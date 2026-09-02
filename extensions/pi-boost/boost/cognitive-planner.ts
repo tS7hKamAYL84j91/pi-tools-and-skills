@@ -87,7 +87,12 @@ function resolvePanelCandidates(
 	if (args.configuredPanel.length > 0) {
 		return filterModels(args, args.configuredPanel, warnings, "panel");
 	}
-	const visible = filterModels(args, args.visibleModels ?? [], warnings, "visible");
+	const visible = filterModels(
+		args,
+		args.visibleModels ?? [],
+		warnings,
+		"visible",
+	);
 	warnings.push(
 		`no configured panel models; using ${visible.length} host-visible text model(s)`,
 	);
@@ -140,9 +145,7 @@ export function planCognitiveFusion(
 
 	return {
 		panel,
-		panelSourceIndexes: panel.map((model) =>
-			orderedPanel.indexOf(model),
-		),
+		panelSourceIndexes: panel.map((model) => orderedPanel.indexOf(model)),
 		judge,
 		fallback,
 		warnings,

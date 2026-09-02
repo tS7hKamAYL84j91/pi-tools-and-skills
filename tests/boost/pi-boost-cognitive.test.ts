@@ -234,9 +234,7 @@ describe("cognitive boost output and lease lifecycle", () => {
 		expect(calls).toEqual(["a/one"]);
 		expect(result.nodes.map((node) => node.role)).toEqual(["single"]);
 		expect(result.analysis).toBeUndefined();
-		expect(result.warnings.join("\n")).toContain(
-			"no configured panel models",
-		);
+		expect(result.warnings.join("\n")).toContain("no configured panel models");
 	});
 
 	it("runs an unconfigured fusion lease on host-visible models with a judge", async () => {
@@ -259,7 +257,11 @@ describe("cognitive boost output and lease lifecycle", () => {
 			runner,
 		});
 		expect(calls).toEqual(["a/one", "b/two", "a/one"]);
-		expect(result).toMatchObject({ ok: true, degraded: false, answer: "synthesized" });
+		expect(result).toMatchObject({
+			ok: true,
+			degraded: false,
+			answer: "synthesized",
+		});
 		expect(result.nodes.map((node) => node.role)).toEqual([
 			"panel_1",
 			"panel_2",

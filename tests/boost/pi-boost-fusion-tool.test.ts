@@ -253,10 +253,12 @@ describe("boost_fusion authorization and fixed policy", () => {
 		);
 		expect(fusion.content[0]?.text).toBe("final");
 		expect(
-			(fusion.details?.nodes as ReadonlyArray<{
-				role: string;
-				model: string;
-			}>).map((node) => `${node.role}:${node.model}`),
+			(
+				fusion.details?.nodes as ReadonlyArray<{
+					role: string;
+					model: string;
+				}>
+			).map((node) => `${node.role}:${node.model}`),
 		).toEqual(["panel_1:a/one", "panel_2:b/two", "judge:a/one"]);
 	});
 });

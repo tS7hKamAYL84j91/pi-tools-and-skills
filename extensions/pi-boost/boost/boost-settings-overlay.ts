@@ -50,9 +50,10 @@ export async function openBoostSettingsOverlay(
 	);
 
 	if (!ctx.hasUI) {
-		const modelsLabel = current.models.length === 0
-			? AUTO_MODEL_SELECTION_LABEL
-			: current.models.join(",");
+		const modelsLabel =
+			current.models.length === 0
+				? AUTO_MODEL_SELECTION_LABEL
+				: current.models.join(",");
 		const summary = [
 			`Boost effective settings:`,
 			`  mode: ${current.mode} [${current.sources.mode}]`,
@@ -70,8 +71,10 @@ export async function openBoostSettingsOverlay(
 	let selectedMode: "single" | "fusion" = current.mode;
 	let selectedProfile: CognitiveProfile = current.profile;
 	let selectedPanelSize = String(current.panelSize);
-let selectedModels: string[] = [...current.models];
-let selectedAgentSelfBoost = current.agentSelfBoost.enabled ? "enabled" : "disabled";
+	let selectedModels: string[] = [...current.models];
+	let selectedAgentSelfBoost = current.agentSelfBoost.enabled
+		? "enabled"
+		: "disabled";
 	let selectedMaxYields = String(current.agentSelfBoost.maxYields);
 	let selectedMaxPanelModels = String(current.agentSelfBoost.maxPanelModels);
 	let selectedEnvironmental = current.agentSelfBoost.allowEnvironmental
@@ -149,7 +152,9 @@ let selectedAgentSelfBoost = current.agentSelfBoost.enabled ? "enabled" : "disab
 						selectedModels,
 						{
 							onToggle: (modelId) => {
-								selectedModels = [...toggleModelSelection(selectedModels, modelId)];
+								selectedModels = [
+									...toggleModelSelection(selectedModels, modelId),
+								];
 								persist({ models: selectedModels });
 							},
 							onClear: () => {

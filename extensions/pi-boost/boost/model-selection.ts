@@ -14,7 +14,9 @@ import { HARD_MAX_PANEL_MODELS } from "./cognitive-types.js";
 export const AUTO_MODEL_SELECTION_LABEL = "auto (host registry)";
 
 /** Host registry's text-capable model IDs in registry order (ADR-056). */
-export function listTextCapableModels(ctx: ExtensionContext): readonly string[] {
+export function listTextCapableModels(
+	ctx: ExtensionContext,
+): readonly string[] {
 	const available = ctx.modelRegistry.getAvailable();
 	return available
 		.filter((model) => model.input.includes("text"))
