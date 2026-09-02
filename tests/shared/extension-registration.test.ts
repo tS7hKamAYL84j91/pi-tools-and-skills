@@ -116,12 +116,12 @@ function expectDeprecatedGateParameter(
 }
 
 describe("extension registration smoke tests", () => {
-	it("pi-boost registers /boost and lifecycle shutdown", () => {
+	it("pi-boost registers /boost with KISS single-model surface", () => {
 		const { api, registrations } = createFakeApi();
 		boostExtension(api);
 		expectRegistered(registrations.commands, ["boost"]);
-		expectRegistered(registrations.tools, ["boost_fusion"]);
-		expectRegistered(registrations.events, ["session_shutdown"]);
+		expectRegistered(registrations.tools, []);
+		expectRegistered(registrations.events, ["agent_end"]);
 	});
 	it("retains deprecated, ignored gate inputs in Doctor, Goal, and Kanban public schemas", () => {
 		const doctor = createFakeApi();
@@ -319,9 +319,9 @@ describe("extension registration smoke tests", () => {
 			"agent-external-list",
 			"agent-external-register",
 			"agent-external-remove",
-			"agent-list-mode",
 			"agents",
 			"agents-mode",
+			"panopticon-reconcile",
 			"send",
 		]);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+o"]);

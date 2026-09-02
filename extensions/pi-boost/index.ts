@@ -5,7 +5,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
-import { resolveBoostModel } from "./boost-settings.js";
+import { resolveBoostModel, resolveMaxYields } from "./boost-settings.js";
 
 /** Anti-rut framing prepended to every boost prompt (ADR-052). */
 const ANTI_RUT_FRAME =
@@ -61,9 +61,9 @@ function autoPickBoostModel(
 	const candidates = ctx.modelRegistry
 		.getAvailable()
 		.filter((m) => m.input.includes("text"))
-		.filter((m) => `${m.provider}/${m.id}` !== current) as Array<
-		BoostCandidateModel
-	>;
+		.filter(
+			(m) => `${m.provider}/${m.id}` !== current,
+		) as Array<BoostCandidateModel>;
 	return candidates[0];
 }
 
@@ -87,7 +87,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 				if (rest === "status") {
 					ctx.ui.notify(
-						`Boost: yields ${lease.yieldsUsed} used · model=${await resolveBoostModel(ctx.cwd) ?? "auto"} · current=${modelId(ctx.model)}`,
+						`Boost: yields ${lease.yieldsUsed} used · model=${(await resolveBoostModel(ctx.cwd)) ?? "auto"} · current=${modelId(ctx.model)}`,
 						"info",
 					);
 					return;
@@ -148,8 +148,10 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				lease.yieldsUsed++;
+				const maxYields = await resolveMaxYields(ctx.cwd);
+				const remaining = Math.max(0, maxYields - lease.yieldsUsed);
 				ctx.ui.notify(
-					`Boost: switched to ${modelId(boostModel)} (yield ${lease.yieldsUsed}). Original model will be restored after this turn.`,
+					`Boost: switched to ${modelId(boostModel)} · yield ${lease.yieldsUsed}/${maxYields} · ${remaining} remaining after this turn. Original model restored on turn end.`,
 					"info",
 				);
 				pi.sendUserMessage(ANTI_RUT_FRAME + rest);
