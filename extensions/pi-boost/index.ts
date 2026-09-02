@@ -18,10 +18,7 @@ import {
 	leaseExpired,
 	leaseState,
 } from "./lease-state.js";
-import type {
-	BoostCandidateModel,
-	BoostLeaseState,
-} from "./lease-state.js";
+import type { BoostCandidateModel, BoostLeaseState } from "./lease-state.js";
 
 /** Anti-rut framing prepended to every boost prompt (ADR-052). */
 const ANTI_RUT_FRAME =
@@ -74,7 +71,9 @@ function autoPickBoostModel(
 	const candidates = ctx.modelRegistry
 		.getAvailable()
 		.filter((m) => m.input.includes("text"))
-		.filter((m) => `${m.provider}/${m.id}` !== current) as Array<BoostCandidateModel>;
+		.filter(
+			(m) => `${m.provider}/${m.id}` !== current,
+		) as Array<BoostCandidateModel>;
 	return candidates[0];
 }
 
@@ -143,9 +142,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					lease.startedAtMs = undefined;
 					if (lease.revertFailed && lease.originalModel) {
 						try {
-							const switched = await pi.setModel(
-								lease.originalModel as never,
-							);
+							const switched = await pi.setModel(lease.originalModel as never);
 							if (!switched) throw new Error("model switch rejected");
 							lease.originalModel = undefined;
 							lease.revertFailed = false;
@@ -247,8 +244,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 				const message = ANTI_RUT_FRAME + rest;
 				try {
-					const idle =
-						typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
+					const idle = typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
 					if (idle) {
 						pi.sendUserMessage(message);
 					} else {

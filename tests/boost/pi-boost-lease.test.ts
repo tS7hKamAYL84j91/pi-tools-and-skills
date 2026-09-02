@@ -10,7 +10,11 @@ import {
 } from "../../extensions/pi-boost/boost-settings.js";
 
 const BASELINE = { provider: "ollama", id: "glm-5.2:cloud", input: ["text"] };
-const BOOST_MODEL = { provider: "ollama", id: "glm-5.3:cloud", input: ["text"] };
+const BOOST_MODEL = {
+	provider: "ollama",
+	id: "glm-5.3:cloud",
+	input: ["text"],
+};
 const FRAME_PREFIX = "Challenge prior assumptions";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<void>;

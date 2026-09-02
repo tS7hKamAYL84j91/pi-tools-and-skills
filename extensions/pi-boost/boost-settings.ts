@@ -59,7 +59,9 @@ export async function resolveMaxYields(_cwd: string): Promise<number> {
 	return Math.max(1, Math.min(HARD_MAX_YIELDS, maxYields));
 }
 
-function boostBlock(settings: Record<string, unknown>): Record<string, unknown> {
+function boostBlock(
+	settings: Record<string, unknown>,
+): Record<string, unknown> {
 	return typeof settings.boost === "object" && settings.boost !== null
 		? (settings.boost as Record<string, unknown>)
 		: {};
