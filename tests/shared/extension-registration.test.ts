@@ -195,8 +195,9 @@ describe("extension registration smoke tests", () => {
 			"kanban_move",
 			"kanban_snapshot",
 			"kanban_unblock",
+			"kanban_watch",
 		]);
-		expectRegistered(registrations.commands, ["kanban"]);
+		expectRegistered(registrations.commands, ["kanban", "kanban-watch"]);
 		expectRegistered(registrations.flags, []);
 		expectRegistered(registrations.shortcuts, ["ctrl+shift+k"]);
 		expectRegistered(registrations.events, [

@@ -172,8 +172,10 @@ The status bar is intentionally left empty because the widget already shows the 
 
 This watcher is event-driven board-change notification only. It is not a recurring scheduler and must not grow cron or business-policy ownership.
 
-### Slow Path (external board change + idle + cooldown)
-Injects a `followUp` message to the LLM orchestrator:
+### Slow Path (opt-in: external board change + idle + cooldown)
+Automatic `followUp` injection is **off by default** to keep sessions quiet. Enable it for a selected session with `KANBAN_WATCHER_AUTO_FOLLOW_UP=1 pi`, or toggle it at runtime with `/kanban-watch on|off`. Agents can use the `kanban_watch` tool with `action` `on`, `off`, or `status`. Widget and status updates remain enabled regardless.
+
+When enabled, external board changes inject a `followUp` message to the LLM orchestrator:
 ```
 Board updated externally (kanban watcher detected new events).
 Run kanban_snapshot for a compact board summary.
@@ -182,6 +184,7 @@ Use task_id="T-NNN" or detail="full" only when explicit details are needed.
 ```
 
 **Injection safeguards:**
+- Disabled by default; controlled by `KANBAN_WATCHER_AUTO_FOLLOW_UP=1`, `/kanban-watch`, or `kanban_watch`
 - Only fires when `ctx.isIdle()` (agent not mid-turn)
 - **5-minute cooldown** between injections
 - **Max 3 consecutive** auto-injections without human input

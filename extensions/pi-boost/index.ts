@@ -45,7 +45,6 @@ function createDefaultIdentitySource(): BoostIdentitySource {
 	return {
 		selfId: `principal-${process.pid}`,
 		isPrincipalSession: () =>
-			process.env.PI_PRINCIPAL === "1" &&
 			process.env[PANOPTICON_PARENT_ID_ENV] === undefined,
 	};
 }

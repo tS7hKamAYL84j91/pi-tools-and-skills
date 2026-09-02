@@ -26,12 +26,14 @@ import {
 } from "./board.js";
 import { selfAppendedLines } from "./board-transactions.js";
 import { openKanbanOverlay } from "./overlay.js";
+import { registerWatcherControls } from "./watcher-control.js";
 
 // ── Constants ───────────────────────────────────────────────
 
 const DEBOUNCE_MS = 200;
 const INJECT_COOLDOWN_MS = 5 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 3;
+const AUTO_FOLLOW_UP_ENV = "KANBAN_WATCHER_AUTO_FOLLOW_UP";
 
 const KANBAN_WATCHER_INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
@@ -108,6 +110,7 @@ export function buildStatusText(board: BoardState): string {
 // ── Setup ───────────────────────────────────────────────────
 
 export function setupWatcher(pi: ExtensionAPI): void {
+	let autoFollowUpsEnabled = false;
 	const state: WatcherState = {
 		watcher: null,
 		debounceTimer: null,
@@ -151,8 +154,17 @@ export function setupWatcher(pi: ExtensionAPI): void {
 
 	// ── Slow path: inject LLM followUp (gated) ─────────────
 
+	function setAutoFollowUps(enabled: boolean): void {
+		autoFollowUpsEnabled = enabled;
+		ctx?.ui.setStatus("pi-kanban-watch", enabled ? "watch: on" : "watch: off");
+	}
+
+	function watchStatus(): string {
+		return autoFollowUpsEnabled ? "on" : "off";
+	}
+
 	function maybeInject(): void {
-		if (!ctx) return;
+		if (!ctx || !autoFollowUpsEnabled) return;
 
 		// Gate: agent must be idle
 		if (!ctx.isIdle()) return;
@@ -173,7 +185,9 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		state.lastAutoInjectTime = now;
 		state.consecutiveAutoInjects++;
 
-		pi.sendUserMessage(KANBAN_WATCHER_INJECT_MESSAGE, { deliverAs: "followUp" });
+		pi.sendUserMessage(KANBAN_WATCHER_INJECT_MESSAGE, {
+			deliverAs: "followUp",
+		});
 	}
 
 	// ── Debounced file change handler ───────────────────────
@@ -217,6 +231,8 @@ export function setupWatcher(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, c) => {
 		ctx = c;
+		autoFollowUpsEnabled = process.env[AUTO_FOLLOW_UP_ENV] === "1";
+		setAutoFollowUps(autoFollowUpsEnabled);
 		state.lastAutoInjectTime = 0;
 		state.consecutiveAutoInjects = 0;
 		state.lastWidgetHash = "";
@@ -238,7 +254,13 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		});
 	});
 
-	// ── Commands ────────────────────────────────────────────
+	// ── Commands and tools ─────────────────────────────────
+
+	registerWatcherControls(pi, {
+		setEnabled: setAutoFollowUps,
+		getStatus: watchStatus,
+		isEnabled: () => autoFollowUpsEnabled,
+	});
 
 	pi.registerCommand("kanban", {
 		description: "Open full kanban board TUI overlay with live refresh",
