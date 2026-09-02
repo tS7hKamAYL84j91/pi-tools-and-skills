@@ -44,7 +44,10 @@ export async function openModelPicker(ctx: ExtensionContext): Promise<void> {
 		container.addChild(listText);
 		container.addChild(
 			new Text(
-				theme.fg("dim", " type to filter · ↑/↓ select · enter save · esc cancel"),
+				theme.fg(
+					"dim",
+					" type to filter · ↑/↓ select · enter save · esc cancel",
+				),
 				1,
 				0,
 			),
@@ -56,16 +59,17 @@ export async function openModelPicker(ctx: ExtensionContext): Promise<void> {
 		const renderList = (): void => {
 			const items = visible();
 			if (selected >= items.length) selected = Math.max(0, items.length - 1);
-			const start = Math.max(0, Math.min(selected - 6, Math.max(0, items.length - 10)));
-			const lines = items
-				.slice(start, start + 10)
-				.map((id, offset) => {
-					const index = start + offset;
-					const cursor = index === selected ? "▸ " : "  ";
-					const marker = id === configuredModel ? "● " : "  ";
-					const suffix = id === baselineId ? theme.fg("dim", " (baseline)") : "";
-					return `${cursor}${marker}${id}${suffix}`;
-				});
+			const start = Math.max(
+				0,
+				Math.min(selected - 6, Math.max(0, items.length - 10)),
+			);
+			const lines = items.slice(start, start + 10).map((id, offset) => {
+				const index = start + offset;
+				const cursor = index === selected ? "▸ " : "  ";
+				const marker = id === configuredModel ? "● " : "  ";
+				const suffix = id === baselineId ? theme.fg("dim", " (baseline)") : "";
+				return `${cursor}${marker}${id}${suffix}`;
+			});
 			if (lines.length === 0) {
 				lines.push(theme.fg("dim", " no matching models"));
 			}

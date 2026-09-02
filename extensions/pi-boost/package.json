@@ -1,7 +1,15 @@
 {
-  "name": "pi-boost",
-  "version": "1.3.0",
-  "keywords": ["pi-package"],
-  "pi": { "extensions": ["./index.ts"] },
-  "engines": { "node": ">=22" }
+	"name": "pi-boost",
+	"version": "1.3.0",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"engines": {
+		"node": ">=22"
+	}
 }

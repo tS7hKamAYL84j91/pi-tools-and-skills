@@ -4,12 +4,12 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 import {
 	queueSaveBoostSetting,
 	resolveBoostModel,
 	resolveMaxYields,
 } from "./boost-settings.js";
+import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 
 /** Anti-rut framing prepended to every boost prompt (ADR-052). */
 const ANTI_RUT_FRAME =
@@ -81,7 +81,9 @@ function autoPickBoostModel(
 	const candidates = ctx.modelRegistry
 		.getAvailable()
 		.filter((m) => m.input.includes("text"))
-		.filter((m) => `${m.provider}/${m.id}` !== current) as Array<BoostCandidateModel>;
+		.filter(
+			(m) => `${m.provider}/${m.id}` !== current,
+		) as Array<BoostCandidateModel>;
 	return candidates[0];
 }
 
@@ -153,9 +155,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					lease.yieldsUsed = 0;
 					if (lease.revertFailed && lease.originalModel) {
 						try {
-							const switched = await pi.setModel(
-								lease.originalModel as never,
-							);
+							const switched = await pi.setModel(lease.originalModel as never);
 							if (!switched) throw new Error("model switch rejected");
 							lease.originalModel = undefined;
 							lease.revertFailed = false;
@@ -247,8 +247,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 				const message = ANTI_RUT_FRAME + rest;
 				try {
-					const idle =
-						typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
+					const idle = typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
 					if (idle) {
 						pi.sendUserMessage(message);
 					} else {
