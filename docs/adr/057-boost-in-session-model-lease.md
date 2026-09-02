@@ -39,6 +39,7 @@ sequenceDiagram
 5. **Yield cap is hard-bounded at 3** (`resolveMaxYields` clamps to 1..3, ADR-045 §1); the overlay offers 1/2/3 only.
 6. **Settings writes are serialized** through a single write queue (read-modify-write races between overlay callbacks are eliminated).
 7. **Registry is the canonical model source** (ADR-056): no provider IDs in production code; auto mode = first text-capable registry model different from the current model.
+8. **Lease TTL is 10 minutes** (T-854, Principal direction 2026-09-02): a lease expires 600,000 ms after its first successful yield (down from the pre-KISS contract's 7,200,000 ms). Expired leases deny new dispatch fail-closed until `/boost reset` starts a new lease; an in-flight turn still completes and restores the baseline via the normal settle path. Reset clears expiry.
 
 ### UX contract
 
@@ -59,5 +60,5 @@ sequenceDiagram
 
 ## Validation
 
-- Boost tests invoke the production extension (fake `ExtensionAPI`/`ExtensionContext`), covering: auto-pick, framed prompt, restore on settle, revert-blocked + reset-retry, no-auth denial, exhaustion, reset, follow-up delivery, and settings clamping.
+- Boost tests invoke the production extension (fake `ExtensionAPI`/`ExtensionContext`), covering: auto-pick, framed prompt, restore on settle, revert-blocked + reset-retry, no-auth denial, exhaustion, reset, follow-up delivery, settings clamping, and lease expiry (TTL denial + reset recovery + in-flight restore).
 - `npm run check` and `npm test` pass.

@@ -6,10 +6,22 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 import {
+	BOOST_LEASE_TTL_MS,
 	queueSaveBoostSetting,
 	resolveBoostModel,
 	resolveMaxYields,
 } from "./boost-settings.js";
+import {
+	POWERLINE_LABELS,
+	STATUS_LABELS,
+	createLeaseState,
+	leaseExpired,
+	leaseState,
+} from "./lease-state.js";
+import type {
+	BoostCandidateModel,
+	BoostLeaseState,
+} from "./lease-state.js";
 
 /** Anti-rut framing prepended to every boost prompt (ADR-052). */
 const ANTI_RUT_FRAME =
@@ -29,25 +41,6 @@ async function waitForSettled(ctx: ExtensionContext): Promise<void> {
 		if (ctx.isIdle() && !ctx.hasPendingMessages()) return;
 		await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
 	}
-}
-
-/** Minimal model shape used for boost switching (avoids pi's internal Model type). */
-interface BoostCandidateModel {
-	readonly provider: string;
-	readonly id: string;
-	readonly input: readonly string[];
-}
-
-interface BoostLeaseState {
-	yieldsUsed: number;
-	/** Original model to restore when the boost run settles. */
-	originalModel: BoostCandidateModel | undefined;
-	/** Sticky failure: baseline restore failed; dispatch blocked until reset retries it. */
-	revertFailed: boolean;
-}
-
-function createLeaseState(): BoostLeaseState {
-	return { yieldsUsed: 0, originalModel: undefined, revertFailed: false };
 }
 
 function modelId(model: unknown): string {
@@ -93,12 +86,11 @@ async function updateStatus(
 	if (!ctx.hasUI) return;
 	const maxYields = await resolveMaxYields(ctx.cwd);
 	const remaining = Math.max(0, maxYields - lease.yieldsUsed);
-	const state = lease.revertFailed
-		? "blocked · restore failed"
-		: lease.originalModel
-			? "active"
-			: "off";
-	ctx.ui.setStatus("boost", `Boost ${state} · ${remaining} left`);
+	const state = leaseState(lease, Date.now());
+	ctx.ui.setStatus(
+		"boost",
+		`Boost ${POWERLINE_LABELS[state] ?? state} · ${remaining} left`,
+	);
 }
 
 export function createBoostExtension(): (pi: ExtensionAPI) => void {
@@ -136,11 +128,8 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					const maxYields = await resolveMaxYields(ctx.cwd);
 					const configured = (await resolveBoostModel(ctx.cwd)) ?? "auto";
 					const current = modelId(ctx.model);
-					const state = lease.revertFailed
-						? "blocked (restore failed)"
-						: lease.originalModel
-							? "active"
-							: "off";
+					const state =
+						STATUS_LABELS[leaseState(lease, Date.now())] ?? "unknown";
 					ctx.ui.notify(
 						`Boost: ${state} · yields ${lease.yieldsUsed}/${maxYields} used · configured=${configured} · current=${current}`,
 						"info",
@@ -151,6 +140,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 				if (rest === "reset") {
 					lease.yieldsUsed = 0;
+					lease.startedAtMs = undefined;
 					if (lease.revertFailed && lease.originalModel) {
 						try {
 							const switched = await pi.setModel(
@@ -208,6 +198,15 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				const maxYields = await resolveMaxYields(ctx.cwd);
+				if (leaseExpired(lease, Date.now())) {
+					const ttlMinutes = Math.round(BOOST_LEASE_TTL_MS / 60_000);
+					ctx.ui.notify(
+						`Boost denied: lease expired after ${ttlMinutes} minutes (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
+						"warning",
+					);
+					await updateStatus(ctx, lease);
+					return;
+				}
 				if (lease.yieldsUsed >= maxYields) {
 					ctx.ui.notify(
 						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
@@ -242,6 +241,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
+				if (lease.yieldsUsed === 0) lease.startedAtMs = Date.now();
 				lease.yieldsUsed++;
 				await updateStatus(ctx, lease);
 

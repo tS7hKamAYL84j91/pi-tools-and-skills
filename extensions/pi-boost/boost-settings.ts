@@ -11,6 +11,12 @@ const BOOST_MODEL_ID_PATTERN = /^[\w.-]+\/[\w.:-]+$/;
 /** ADR-045 §1 hard maximum: at most 3 human yields per lease. */
 const HARD_MAX_YIELDS = 3;
 
+/**
+ * Lease TTL: a lease expires this long after its first yield and denies
+ * further dispatch until /boost reset starts a new lease (T-854: 2h → 10m).
+ */
+export const BOOST_LEASE_TTL_MS = 600_000;
+
 function piSettingsPath(): string {
 	return join(homedir(), ".pi", "agent", "settings.json");
 }

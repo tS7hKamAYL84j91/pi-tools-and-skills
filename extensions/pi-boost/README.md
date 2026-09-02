@@ -12,7 +12,8 @@ Switch to a boost model, run a prompt with anti-rut framing, switch back (ADR-05
 
 ## Lease behavior
 
-- Powerline shows only lease state and remaining yields: `Boost off · 3 left`, `Boost active · 2 left`, `Boost blocked · restore failed`.
+- A lease covers up to 3 yields and expires 10 minutes after its first yield; expired leases deny dispatch until `/boost reset` starts a new lease (T-854).
+- Powerline shows only lease state and remaining yields: `Boost off · 3 left`, `Boost active · 2 left`, `Boost expired · 2 left`, `Boost blocked · restore failed`.
 - Max yields is hard-capped at 3 per lease.
 - If baseline restoration fails, boost blocks further dispatch until `/boost reset` retries the restore.
 
