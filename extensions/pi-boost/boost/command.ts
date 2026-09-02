@@ -196,6 +196,43 @@ export function registerBoostCommand(
 					};
 					const result = await deps.authority.reserve(reservationInput);
 					if (!result.ok) {
+						if (
+							result.reason === "runtime-unavailable" &&
+							deps.cognitive &&
+							(isPrincipal ||
+								effectiveSettings.agentSelfBoost.allowCognitive)
+						) {
+							// ADR-052: cognitive single-model is the stopgap
+							// while the environmental bridge is unavailable.
+							const cognitiveInput: BoostFusionRequest = {
+								prompt: parsed.command.request.prompt,
+								single: true,
+								...(isPrincipal
+									? {
+											requireApprovalAboveCalls: 5,
+											auditActor: "principal" as const,
+										}
+									: {
+											profile: effectiveSettings.profile,
+											panelSize: 1,
+											models: effectiveSettings.models,
+											...(effectiveSettings.judge
+												? { judge: effectiveSettings.judge }
+												: {}),
+											timeoutMs: effectiveSettings.timeoutMs,
+											requireApprovalAboveCalls: 2,
+											auditActor: "agent" as const,
+										}),
+								auditSurface: "command" as const,
+							};
+							await handleCognitiveFusionCommand(
+								ctx,
+								cognitiveInput,
+								deps.cognitive,
+								deps.notify,
+							);
+							return;
+						}
 						notifyDenial(ctx, deps, result.reason);
 						return;
 					}
