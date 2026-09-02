@@ -13,7 +13,9 @@ interface RawCoasSettings {
 }
 
 function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
 }
 
 function readCoasSettings(path?: string): RawCoasSettings | undefined {
@@ -31,9 +33,10 @@ function expandHome(path: string): string {
 }
 
 function defaultCoasHome(): string {
-	const agentHome = process.env.AGENT_HOME && process.env.AGENT_HOME.trim().length > 0
-		? expandHome(process.env.AGENT_HOME)
-		: homedir();
+	const agentHome =
+		process.env.AGENT_HOME && process.env.AGENT_HOME.trim().length > 0
+			? expandHome(process.env.AGENT_HOME)
+			: homedir();
 	return join(agentHome, ".pi", "coas");
 }
 
@@ -60,7 +63,10 @@ export function resolveCoasConfig(cwd: string = process.cwd()): CoasConfig {
 	return { coasHome: resolve(expandHome(coasHome)) };
 }
 
-export async function resolveCoasConfigForCwd(baseCwd: string, cwd?: string): Promise<CoasConfig> {
+export async function resolveCoasConfigForCwd(
+	baseCwd: string,
+	cwd?: string,
+): Promise<CoasConfig> {
 	const resolvedCwd = cwd ? resolve(cwd) : baseCwd;
 	if (cwd) {
 		const info = await stat(resolvedCwd).catch(() => undefined);
@@ -70,7 +76,9 @@ export async function resolveCoasConfigForCwd(baseCwd: string, cwd?: string): Pr
 	}
 	const config = resolveCoasConfig(resolvedCwd);
 	if (cwd && !pathInside(resolvedCwd, config.coasHome)) {
-		throw new Error(`No CoAS runtime found under ${resolvedCwd} (resolved COAS_HOME=${config.coasHome})`);
+		throw new Error(
+			`No CoAS runtime found under ${resolvedCwd} (resolved COAS_HOME=${config.coasHome})`,
+		);
 	}
 	return config;
 }

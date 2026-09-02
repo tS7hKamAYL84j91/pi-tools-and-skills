@@ -11,9 +11,13 @@ interface SwarmCompatibilityPreflight {
 }
 
 function requireHierarchicalSwarmTeam(cwd: string): TeamSpec {
-	const team = loadTeamRegistry(undefined, { cwd }).teams.get(HIERARCHICAL_SWARM_TEAM_ID);
+	const team = loadTeamRegistry(undefined, { cwd }).teams.get(
+		HIERARCHICAL_SWARM_TEAM_ID,
+	);
 	if (!team?.hierarchicalSwarm) {
-		throw new Error(`Swarm compatibility requires team "${HIERARCHICAL_SWARM_TEAM_ID}".`);
+		throw new Error(
+			`Swarm compatibility requires team "${HIERARCHICAL_SWARM_TEAM_ID}".`,
+		);
 	}
 	return team;
 }
@@ -27,8 +31,10 @@ export function preflightHierarchicalSwarm(args: {
 }): SwarmCompatibilityPreflight {
 	const team = requireHierarchicalSwarmTeam(args.cwd);
 	const bounds = team.hierarchicalSwarm?.bounds;
-	const configuredWip = bounds?.maxWip === undefined ? "unbounded" : String(bounds.maxWip);
-	const requestedWip = args.wip === undefined ? "manifest default" : String(args.wip);
+	const configuredWip =
+		bounds?.maxWip === undefined ? "unbounded" : String(bounds.maxWip);
+	const requestedWip =
+		args.wip === undefined ? "manifest default" : String(args.wip);
 	return {
 		team,
 		text: [

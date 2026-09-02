@@ -2,17 +2,26 @@
  * Exact slash-command regression coverage for related Panopticon commands.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import { registerAgentsCommand } from "../../extensions/pi-panopticon/ui/agents-command.js";
 import { createAgentListModeStore } from "../../extensions/pi-panopticon/ui/list-mode.js";
 import { registerAgentListModeControls } from "../../extensions/pi-panopticon/ui/list-mode-command.js";
-import type { AgentRecord, Registry } from "../../extensions/pi-panopticon/types.js";
+import type {
+	AgentRecord,
+	Registry,
+} from "../../extensions/pi-panopticon/types.js";
 
 interface CommandDefinition {
 	description?: string;
-	handler: (args: string | undefined, ctx: ExtensionCommandContext) => Promise<void>;
+	handler: (
+		args: string | undefined,
+		ctx: ExtensionCommandContext,
+	) => Promise<void>;
 }
 
 interface CapturedUi {
@@ -58,7 +67,9 @@ function createRegistry(self: AgentRecord, peers: AgentRecord[]): Registry {
 	};
 }
 
-function createCommandApi(commands: Map<string, CommandDefinition>): ExtensionAPI {
+function createCommandApi(
+	commands: Map<string, CommandDefinition>,
+): ExtensionAPI {
 	return {
 		registerCommand(name: string, definition: CommandDefinition): void {
 			commands.set(name, definition);
@@ -77,8 +88,20 @@ function createContext(ui: CapturedUi): ExtensionCommandContext {
 			notify(message: string): void {
 				ui.notifications.push(message);
 			},
-			custom<T>(factory: (tui: { requestRender: () => void }, theme: FakeTheme, keyboard: unknown, done: (value: T) => void) => { render: (width: number) => string[] }): Promise<T | null> {
-				const component = factory({ requestRender: () => undefined }, theme, {}, () => undefined);
+			custom<T>(
+				factory: (
+					tui: { requestRender: () => void },
+					theme: FakeTheme,
+					keyboard: unknown,
+					done: (value: T) => void,
+				) => { render: (width: number) => string[] },
+			): Promise<T | null> {
+				const component = factory(
+					{ requestRender: () => undefined },
+					theme,
+					{},
+					() => undefined,
+				);
 				ui.overlays.push(component.render(80).join("\n"));
 				return Promise.resolve(null);
 			},
@@ -95,7 +118,8 @@ async function executeSlashCommand(
 		return false;
 	}
 	const spaceIndex = input.indexOf(" ");
-	const commandName = spaceIndex === -1 ? input.slice(1) : input.slice(1, spaceIndex);
+	const commandName =
+		spaceIndex === -1 ? input.slice(1) : input.slice(1, spaceIndex);
 	const args = spaceIndex === -1 ? "" : input.slice(spaceIndex + 1);
 	const command = commands.get(commandName);
 	if (!command) {
@@ -106,7 +130,11 @@ async function executeSlashCommand(
 }
 
 describe("pi-panopticon slash command resolution", () => {
-	function setup(): { commands: Map<string, CommandDefinition>; ui: CapturedUi; ctx: ExtensionCommandContext } {
+	function setup(): {
+		commands: Map<string, CommandDefinition>;
+		ui: CapturedUi;
+		ctx: ExtensionCommandContext;
+	} {
 		const self = record("self");
 		const commands = new Map<string, CommandDefinition>();
 		const registry = createRegistry(self, [self, record("worker")]);
@@ -127,7 +155,9 @@ describe("pi-panopticon slash command resolution", () => {
 	it("resolves /agents exact-enter to the Agent Panopticon overlay", async () => {
 		const { commands, ui, ctx } = setup();
 
-		await expect(executeSlashCommand("/agents", commands, ctx)).resolves.toBe(true);
+		await expect(executeSlashCommand("/agents", commands, ctx)).resolves.toBe(
+			true,
+		);
 
 		expect(ui.notifications.join("\n")).toContain("self:idle");
 		expect(ui.overlays).toHaveLength(1);
@@ -135,7 +165,10 @@ describe("pi-panopticon slash command resolution", () => {
 		expect(ui.overlays[0]).not.toContain("Agent List Mode");
 	});
 
-	it.each(["/agents-mode", "/agent-list-mode"])("resolves %s exact-enter to the list-mode chooser", async (input) => {
+	it.each([
+		"/agents-mode",
+		"/agent-list-mode",
+	])("resolves %s exact-enter to the list-mode chooser", async (input) => {
 		const { commands, ui, ctx } = setup();
 
 		await expect(executeSlashCommand(input, commands, ctx)).resolves.toBe(true);

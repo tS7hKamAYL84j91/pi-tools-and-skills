@@ -3,24 +3,42 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
-import ollamaModelsExtension, { mergeOllamaModelsConfig, modelFromOllamaShow, modelIdsChanged, parseOllamaList } from "../extensions/pi-ollama-models/index.js";
+import ollamaModelsExtension, {
+	mergeOllamaModelsConfig,
+	modelFromOllamaShow,
+	modelIdsChanged,
+	parseOllamaList,
+} from "../extensions/pi-ollama-models/index.js";
 
 interface OllamaToolResult {
 	details: Record<string, unknown>;
 }
 
 interface RegisteredOllamaTool {
-	parameters: { properties?: Record<string, unknown>; additionalProperties?: boolean };
-	execute: (id: string, params: Record<string, unknown>) => Promise<OllamaToolResult>;
+	parameters: {
+		properties?: Record<string, unknown>;
+		additionalProperties?: boolean;
+	};
+	execute: (
+		id: string,
+		params: Record<string, unknown>,
+	) => Promise<OllamaToolResult>;
 }
 
 describe("pi ollama models extension helpers", () => {
 	it("parses ollama list output", () => {
-		expect(parseOllamaList("NAME ID SIZE MODIFIED\nqwen3:8b abc 5 GB now\ngemma4:26b def 16 GB now\n")).toEqual(["qwen3:8b", "gemma4:26b"]);
+		expect(
+			parseOllamaList(
+				"NAME ID SIZE MODIFIED\nqwen3:8b abc 5 GB now\ngemma4:26b def 16 GB now\n",
+			),
+		).toEqual(["qwen3:8b", "gemma4:26b"]);
 	});
 
 	it("converts ollama show output to pi model config", () => {
-		const model = modelFromOllamaShow("qwen3-think:8b", "architecture qwen3\ncontext length 40960\nparameters reasoning vision");
+		const model = modelFromOllamaShow(
+			"qwen3-think:8b",
+			"architecture qwen3\ncontext length 40960\nparameters reasoning vision",
+		);
 
 		expect(model).toMatchObject({
 			id: "qwen3-think:8b",
@@ -48,7 +66,15 @@ describe("pi ollama models extension helpers", () => {
 
 	it("replaces only the ollama provider models while preserving other providers", () => {
 		const model = modelFromOllamaShow("gemma4:26b", "");
-		const config = mergeOllamaModelsConfig({ providers: { openrouter: { apiKey: "cmd" }, ollama: { baseUrl: "custom", models: [] } } }, [model]);
+		const config = mergeOllamaModelsConfig(
+			{
+				providers: {
+					openrouter: { apiKey: "cmd" },
+					ollama: { baseUrl: "custom", models: [] },
+				},
+			},
+			[model],
+		);
 
 		expect(config.providers?.openrouter).toEqual({ apiKey: "cmd" });
 		expect(config.providers?.ollama?.baseUrl).toBe("custom");
@@ -60,7 +86,9 @@ describe("pi ollama models extension helpers", () => {
 		const existing = mergeOllamaModelsConfig({}, [model]);
 
 		expect(modelIdsChanged(existing, [model])).toBe(false);
-		expect(modelIdsChanged(existing, [modelFromOllamaShow("qwen3:8b", "")])).toBe(true);
+		expect(
+			modelIdsChanged(existing, [modelFromOllamaShow("qwen3:8b", "")]),
+		).toBe(true);
 		expect(modelIdsChanged({}, [model])).toBe(true);
 	});
 
@@ -72,11 +100,14 @@ describe("pi ollama models extension helpers", () => {
 		const previousPath = process.env.PATH;
 		const previousMarker = process.env.ATTACKER_MARKER;
 		try {
-			await writeExecutable(attackerCommand, [
-				"#!/bin/sh",
-				'touch "$ATTACKER_MARKER"',
-				"printf 'NAME ID SIZE MODIFIED\\n'",
-			].join("\n"));
+			await writeExecutable(
+				attackerCommand,
+				[
+					"#!/bin/sh",
+					'touch "$ATTACKER_MARKER"',
+					"printf 'NAME ID SIZE MODIFIED\\n'",
+				].join("\n"),
+			);
 			process.env.PATH = `${root}:${previousPath ?? ""}`;
 			process.env.ATTACKER_MARKER = marker;
 			let registeredTool: RegisteredOllamaTool | undefined;
@@ -91,9 +122,14 @@ describe("pi ollama models extension helpers", () => {
 				throw new Error("Ollama tool was not registered");
 			}
 
-			for (const command of ["ollama", relative(process.cwd(), attackerCommand)]) {
+			for (const command of [
+				"ollama",
+				relative(process.cwd(), attackerCommand),
+			]) {
 				process.env.PI_OLLAMA_COMMAND = command;
-				await expect(registeredTool.execute("call-1", { dryRun: true })).rejects.toThrow(/absolute path/);
+				await expect(
+					registeredTool.execute("call-1", { dryRun: true }),
+				).rejects.toThrow(/absolute path/);
 			}
 			await expect(readFile(marker, "utf8")).rejects.toThrow();
 		} finally {
@@ -118,19 +154,25 @@ describe("pi ollama models extension helpers", () => {
 		const previousMarker = process.env.ATTACKER_MARKER;
 		try {
 			await Promise.all([
-				writeExecutable(trustedCommand, [
-					"#!/bin/sh",
-					'if [ "$1" = "list" ]; then',
-					"  printf 'NAME ID SIZE MODIFIED\\nfixture:latest abc 1 GB now\\n'",
-					"else",
-					"  printf 'architecture llama\\ncontext length 8192\\n'",
-					"fi",
-				].join("\n")),
-				writeExecutable(attackerCommand, [
-					"#!/bin/sh",
-					'touch "$ATTACKER_MARKER"',
-					"printf 'NAME ID SIZE MODIFIED\\n'",
-				].join("\n")),
+				writeExecutable(
+					trustedCommand,
+					[
+						"#!/bin/sh",
+						'if [ "$1" = "list" ]; then',
+						"  printf 'NAME ID SIZE MODIFIED\\nfixture:latest abc 1 GB now\\n'",
+						"else",
+						"  printf 'architecture llama\\ncontext length 8192\\n'",
+						"fi",
+					].join("\n"),
+				),
+				writeExecutable(
+					attackerCommand,
+					[
+						"#!/bin/sh",
+						'touch "$ATTACKER_MARKER"',
+						"printf 'NAME ID SIZE MODIFIED\\n'",
+					].join("\n"),
+				),
 			]);
 			process.env.PI_OLLAMA_COMMAND = trustedCommand;
 			process.env.PI_OLLAMA_MODELS_PATH = trustedModelsPath;
@@ -153,7 +195,9 @@ describe("pi ollama models extension helpers", () => {
 				deprecated: true,
 				description: expect.stringMatching(/ignored/i),
 			});
-			expect(registeredTool?.parameters.properties?.ollamaCommand).toMatchObject({
+			expect(
+				registeredTool?.parameters.properties?.ollamaCommand,
+			).toMatchObject({
 				deprecated: true,
 				description: expect.stringMatching(/ignored.*never executed/i),
 			});
@@ -165,7 +209,9 @@ describe("pi ollama models extension helpers", () => {
 			});
 
 			expect(result?.details.modelsPath).toBe(trustedModelsPath);
-			expect(JSON.parse(await readFile(trustedModelsPath, "utf8"))).toMatchObject({
+			expect(
+				JSON.parse(await readFile(trustedModelsPath, "utf8")),
+			).toMatchObject({
 				providers: { ollama: { models: [{ id: "fixture:latest" }] } },
 			});
 			await expect(readFile(attackerModelsPath, "utf8")).rejects.toThrow();
