@@ -131,6 +131,9 @@ export function registerBoostCommand(
 					const fusionInput: BoostFusionRequest = isPrincipal
 						? {
 								...parsed.command.fusion,
+								...(parsed.command.fusion.models === undefined
+									? { models: effectiveSettings.models }
+									: {}),
 								single: singleMode,
 								requireApprovalAboveCalls: 5,
 								auditActor: "principal",
@@ -200,8 +203,7 @@ export function registerBoostCommand(
 							result.reason === "runtime-unavailable" &&
 							deps.cognitive &&
 							deps.environmentalBridgeAvailable === false &&
-							(isPrincipal ||
-								effectiveSettings.agentSelfBoost.allowCognitive)
+							(isPrincipal || effectiveSettings.agentSelfBoost.allowCognitive)
 						) {
 							// ADR-052: cognitive single-model is the stopgap
 							// while the environmental bridge is unavailable.
@@ -210,6 +212,9 @@ export function registerBoostCommand(
 								single: true,
 								...(isPrincipal
 									? {
+											models: effectiveSettings.models,
+											profile: effectiveSettings.profile,
+											timeoutMs: effectiveSettings.timeoutMs,
 											requireApprovalAboveCalls: 5,
 											auditActor: "principal" as const,
 										}
