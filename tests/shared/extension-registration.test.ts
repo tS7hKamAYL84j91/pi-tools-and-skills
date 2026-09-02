@@ -117,7 +117,7 @@ function expectDeprecatedGateParameter(
 
 describe("extension registration smoke tests", () => {
 	it("pi-boost registers /boost and lifecycle shutdown", () => {
-		const {api, registrations} = createFakeApi();
+		const { api, registrations } = createFakeApi();
 		boostExtension(api);
 		expectRegistered(registrations.commands, ["boost"]);
 		expectRegistered(registrations.tools, ["boost_fusion"]);

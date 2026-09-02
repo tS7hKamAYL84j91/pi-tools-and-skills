@@ -1,125 +1,51 @@
-/** Boost settings resolution and locked persistence through standard Pi settings files. */
+/** Boost settings: model ID and max yields stored in standard pi settings. */
 
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { withAdvisoryLock } from "../../lib/file-lock.js";
-import { writeFileAtomic } from "../../lib/file-persistence.js";
-import { PI_SETTINGS_PATH } from "../../lib/pi-settings.js";
-import {
-	applySettings,
-	DEFAULT_TIMEOUT_MS,
-	type BoostSettings,
-	isRecord,
-	readBoostSettings,
-	type ResolvedBoostSettings,
-	safeReadJson,
-} from "./boost-settings-parse.js";
 
-export const DEFAULT_BOOST_SETTINGS: ResolvedBoostSettings = {
-	mode: "single",
-	profile: "balanced",
-	panelSize: 3,
-	models: [],
-	timeoutMs: DEFAULT_TIMEOUT_MS,
-	agentSelfBoost: {
-		enabled: false,
-		maxYields: 3,
-		maxPanelModels: 3,
-		allowEnvironmental: false,
-		allowCognitive: true,
-	},
-	sources: {
-		mode: "default",
-		profile: "default",
-		panelSize: "default",
-		models: "default",
-		judge: "default",
-		timeoutMs: "default",
-		agentSelfBoost: "default",
-	},
-};
+const BOOST_MODEL_ID_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._:-]+$/;
 
-/** Resolve global settings followed by a trusted project override. */
-export function resolveEffectiveBoostSettings(
-	cwd: string = process.cwd(),
-	isProjectTrusted = false,
-	customGlobalPath?: string,
-): ResolvedBoostSettings {
-	const globalBoost = readBoostSettings(
-		safeReadJson(customGlobalPath ?? PI_SETTINGS_PATH)?.boost,
-	);
-	const projectBoost = isProjectTrusted
-		? readBoostSettings(safeReadJson(join(cwd, ".pi", "settings.json"))?.boost)
-		: undefined;
-	const effective: ResolvedBoostSettings = {
-		...DEFAULT_BOOST_SETTINGS,
-		agentSelfBoost: { ...DEFAULT_BOOST_SETTINGS.agentSelfBoost },
-		sources: { ...DEFAULT_BOOST_SETTINGS.sources },
-	};
-	return applySettings(
-		applySettings(effective, globalBoost, "global"),
-		projectBoost,
-		"project",
-	);
+function piSettingsPath(): string {
+	return join(homedir(), ".pi", "agent", "settings.json");
 }
 
-/** Save only the selected standard Pi settings scope under the namespaced `boost` key. */
-export async function saveBoostSettings(
-	scope: "global" | "project",
-	updates: Partial<BoostSettings>,
-	cwd: string = process.cwd(),
-	customGlobalPath?: string,
-): Promise<void> {
-	const targetPath =
-		scope === "global"
-			? (customGlobalPath ?? PI_SETTINGS_PATH)
-			: join(cwd, ".pi", "settings.json");
-	await withAdvisoryLock(targetPath, async () => {
-		const existing = safeReadJson(targetPath) ?? {};
-		const existingBoost = isRecord(existing.boost) ? existing.boost : {};
-		const nextBoost = {
-			...existingBoost,
-			...updates,
-			...(updates.agentSelfBoost
-				? {
-						agentSelfBoost: {
-							...(isRecord(existingBoost.agentSelfBoost)
-								? existingBoost.agentSelfBoost
-								: {}),
-							...updates.agentSelfBoost,
-						},
-					}
-				: {}),
-		};
-		await writeFileAtomic(
-			targetPath,
-			`${JSON.stringify({ ...existing, boost: nextBoost }, null, 2)}\n`,
-			{ mode: 0o600 },
-		);
-	});
+async function readSettings(): Promise<Record<string, unknown>> {
+	try {
+		const raw = await readFile(piSettingsPath(), "utf8");
+		const parsed: unknown = JSON.parse(raw);
+		return typeof parsed === "object" && parsed !== null
+			? (parsed as Record<string, unknown>)
+			: {};
+	} catch {
+		return {};
+	}
 }
 
-/** Serialize overlay writes so rapid changes cannot reorder standard settings updates. */
-export function createBoostSettingsWriter(
-	cwd: string,
-	customGlobalPath?: string,
-	onError: (error: unknown) => void = () => undefined,
-) {
-	let pending: Promise<void> = Promise.resolve();
-	return {
-		enqueue(
-			scope: "global" | "project",
-			updates: Partial<BoostSettings>,
-		): void {
-			pending = pending
-				.then(async () =>
-					saveBoostSettings(scope, updates, cwd, customGlobalPath),
-				)
-				.catch((error: unknown) => {
-					onError(error);
-				});
-		},
-		async drain(): Promise<void> {
-			await pending;
-		},
-	};
+/** Get the configured boost model ID, or undefined for auto-pick. */
+export async function resolveBoostModel(
+	_cwd: string,
+): Promise<string | undefined> {
+	const settings = await readSettings();
+	const boost = settings.boost;
+	if (typeof boost !== "object" || boost === null) return undefined;
+	const model = (boost as Record<string, unknown>).model;
+	if (typeof model !== "string" || !BOOST_MODEL_ID_PATTERN.test(model)) {
+		return undefined;
+	}
+	return model;
+}
+
+/** Get the max yields before reset is required. */
+export async function resolveMaxYields(
+	_cwd: string,
+): Promise<number> {
+	const settings = await readSettings();
+	const boost = settings.boost;
+	if (typeof boost !== "object" || boost === null) return 3;
+	const maxYields = (boost as Record<string, unknown>).maxYields;
+	if (typeof maxYields !== "number" || !Number.isInteger(maxYields)) {
+		return 3;
+	}
+	return Math.max(1, Math.min(10, maxYields));
 }
