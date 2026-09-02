@@ -21,6 +21,15 @@
 - [x] `package.json:33` gitleaks "generic-api-key" = the author's GitHub username; the repo's own policy (`.gitleaks.toml`) passes green in CI.
 - [x] lens-knip "unused file `boost/command-types.ts`" — it is imported by `boost/command.ts:29-30`; the repo's `npm run knip` gate is clean.
 
+## Next review — user-facing extension cleanup
+
+- [ ] **Clarify pi-coas scheduler documentation (no behavior change).** Document that `pi-coas` owns cron-like scheduled prompt delivery and that enabled schedules run while Pi is open; retain the current scheduler implementation and reconciliation behavior.
+- [ ] **Make Panopticon reconciliation notifications opt-in.** Default to silent sessions; persist the setting in global/project `.pi/settings.json`; retain explicit health/status inspection and event handling.
+- [ ] **Align agent and human tool behavior.** Agent-facing tools must perform the same operation and use the same defaults as their corresponding user commands (especially `/swarm` and `swarm_run`); dry-run must remain an explicit, clearly named mode.
+- [x] **Consolidate duplicate user commands.** `/teams` owns team management/direct runs and `/team` owns session routing; `/agents` opens the overlay and `/agents-mode` selects its filter. Removed redundant `/agent-list-mode` alias; documentation and help now state the split.
+- [ ] **Move extension configuration from environment variables to Pi settings.** Prefer namespaced global/project `.pi/settings.json` values for user-facing configuration; remove environment-variable configuration where practical. Keep team manifests and runtime state files as intentional configuration/state surfaces.
+- [ ] **Leave Matrix review deferred.** No Matrix behavior or permission changes in this cycle; revisit its UX and authorization model separately.
+
 ## Done in the prior cycle (record)
 
 - 2026-09-01: review goal `g-c59d1288` complete — ADR-053 daemon-protocol extraction (published boundary enforced by architecture guard + tarball proof); ADR-054 disposition (4 test-only modules + tests/fixtures deleted, pi-teams child-process boundary zero); CI hygiene via Jules PRs #52/#53/#54; lint+knip scope extended to `scripts/`; ADR index created; **1.2.0 released** (all 13 package versions aligned); the in-flight boost stream completed and landed (ADR-052 single-model default, line-budget module splits, live smoke test removed); the recurring `t873-step1-execution` date-assertion flake root-cause fixed. See `CHANGELOG.md` [1.2.0] and `docs/adr/README.md`.
