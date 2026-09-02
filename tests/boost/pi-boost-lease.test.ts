@@ -15,7 +15,11 @@ function createFakeContext(cwd = "/tmp/test") {
 	return {
 		cwd,
 		hasUI: false,
-		model: { provider: "ollama", id: "glm-5.2:cloud", input: ["text"] } as unknown as FakeModel,
+		model: {
+			provider: "ollama",
+			id: "glm-5.2:cloud",
+			input: ["text"],
+		} as unknown as FakeModel,
 		modelRegistry: {
 			getAvailable: () => [
 				{ provider: "ollama", id: "glm-5.2:cloud", input: ["text"] },
@@ -58,8 +62,6 @@ describe("boost lease model selection", () => {
 		const ANTI_RUT_FRAME =
 			"Challenge prior assumptions and inspect the underlying problem rather than repeating recent failed approaches.\n\n";
 		const prompt = "debug this error";
-		expect(ANTI_RUT_FRAME + prompt).toContain(
-			"Challenge prior assumptions",
-		);
+		expect(ANTI_RUT_FRAME + prompt).toContain("Challenge prior assumptions");
 	});
 });

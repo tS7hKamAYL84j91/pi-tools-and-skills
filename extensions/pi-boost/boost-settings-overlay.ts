@@ -1,16 +1,12 @@
 /** TUI overlay for boost settings: model picker and max yields. */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { writeFileAtomic } from "../../lib/file-persistence.js";
-import {
-	Container,
-	SettingsList,
-	Text,
-} from "@earendil-works/pi-tui";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import { Container, SettingsList, Text } from "@earendil-works/pi-tui";
+import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { resolveBoostModel, resolveMaxYields } from "./boost-settings.js";
 
 function piSettingsPath(): string {
@@ -31,9 +27,10 @@ async function saveBoostSetting(
 	} catch {
 		// Fresh settings file.
 	}
-	const boost = typeof settings.boost === "object" && settings.boost !== null
-		? (settings.boost as Record<string, unknown>)
-		: {};
+	const boost =
+		typeof settings.boost === "object" && settings.boost !== null
+			? (settings.boost as Record<string, unknown>)
+			: {};
 	boost[key] = value;
 	settings.boost = boost;
 	await writeFileAtomic(path, JSON.stringify(settings, null, 2) + "\n", {

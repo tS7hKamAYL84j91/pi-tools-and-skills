@@ -37,9 +37,7 @@ export async function resolveBoostModel(
 }
 
 /** Get the max yields before reset is required. */
-export async function resolveMaxYields(
-	_cwd: string,
-): Promise<number> {
+export async function resolveMaxYields(_cwd: string): Promise<number> {
 	const settings = await readSettings();
 	const boost = settings.boost;
 	if (typeof boost !== "object" || boost === null) return 3;
