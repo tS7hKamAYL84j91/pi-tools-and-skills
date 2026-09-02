@@ -11,6 +11,7 @@ A pi extension that turns an append-only `board.log` into a kanban board with 11
 `board.log` is the single source of truth. Every action appends one or more lines — the board is never mutated in place. `board.ts` replays all events on each read to materialise the current state.
 
 **Event format:**
+
 ```
 <ISO-8601-timestamp> <EVENT> <T-NNN> <agent> [key=value ...]
 ```
@@ -48,6 +49,7 @@ WIP limit: **3** in-progress tasks (configurable via `KANBAN_WIP_LIMIT` env var)
 ### Directory
 
 The extension locates the kanban directory by checking, in order:
+
 1. `KANBAN_DIR` environment variable
 2. `<cwd>/pi-kanban/`
 
@@ -61,6 +63,7 @@ The legacy unprefixed `<cwd>/kanban/` fallback has been removed.
 - Does not inject full board contents automatically; snapshots and detail views are explicit.
 
 Files written:
+
 - `board.log` — event log (source of truth)
 - `snapshot.md` — regenerated on `kanban_snapshot` with the same view requested: compact by default, full only for `detail="full"`, or one-card detail for `task_id`
 - `board.log.bak.<timestamp>` — created before compaction
@@ -84,7 +87,7 @@ External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a
 External schedulers such as `pi-coas` may use the existing `kanban_*` tools as a board API, but `pi-kanban` does not own the cadence or policy that decides when to call them.
 
 | Scheduler need | Tool surface | Safe behavior |
-|---|---|---|
+| --- | --- | --- |
 | Inspect board, backlog, todo, WIP, blocked, done | `kanban_snapshot` default compact view | Read-oriented summary plus `snapshot.md`; no recurring loop is started. |
 | Inspect one card, full board, or older Done history when explicitly needed | `kanban_snapshot task_id="T-NNN"`, `detail="full"`, or `show_all_done=true` | Gradual disclosure keeps default context small; Done is age-filtered by default. |
 | Start one authorized task | `kanban_claim agent=... task_id?` | With no `task_id`, picks highest-priority todo; returns `NO_TASK_AVAILABLE`, `WRONG_COLUMN`, `TASK_NOT_FOUND`, or `WIP_LIMIT_REACHED` without mutating on those failures. |
@@ -161,7 +164,9 @@ KANBAN_BOARD_THEME=focus pi
 `watcher.ts` watches `board.log` for filesystem changes and runs two paths:
 
 ### Fast Path (every change)
+
 Updates the TUI widget immediately — no LLM involved:
+
 ```
 pi-kanban: wip 2/3 | todo 4 | blocked 1 | done 12
   T-042 Implement OAuth (tools-worker)
@@ -173,9 +178,11 @@ The status bar is intentionally left empty because the widget already shows the 
 This watcher is event-driven board-change notification only. It is not a recurring scheduler and must not grow cron or business-policy ownership.
 
 ### Slow Path (opt-in: external board change + idle + cooldown)
-Automatic `followUp` injection is **off by default** to keep sessions quiet. Enable it for a selected session with `KANBAN_WATCHER_AUTO_FOLLOW_UP=1 pi`, or toggle it at runtime with `/kanban-watch on|off`. Agents can use the `kanban_watch` tool with `action` `on`, `off`, or `status`. Widget and status updates remain enabled regardless.
+
+Automatic `followUp` injection is **off by default** to keep sessions quiet. The setting is persisted under `kanban.watchNotifications` in standard Pi `settings.json` (global settings, with trusted project `.pi/settings.json` overriding it). Toggle it at runtime with `/kanban-watch on|off`; agents can use the `kanban_watch` tool with `action` `on`, `off`, or `status`. Widget and status updates remain enabled regardless. `KANBAN_WATCHER_AUTO_FOLLOW_UP=1` remains a temporary startup opt-in.
 
 When enabled, external board changes inject a `followUp` message to the LLM orchestrator:
+
 ```
 Board updated externally (kanban watcher detected new events).
 Run kanban_snapshot for a compact board summary.
@@ -184,7 +191,8 @@ Use task_id="T-NNN" or detail="full" only when explicit details are needed.
 ```
 
 **Injection safeguards:**
-- Disabled by default; controlled by `KANBAN_WATCHER_AUTO_FOLLOW_UP=1`, `/kanban-watch`, or `kanban_watch`
+
+- Disabled by default; controlled by persisted `kanban.watchNotifications`, `/kanban-watch`, or `kanban_watch`
 - Only fires when `ctx.isIdle()` (agent not mid-turn)
 - **5-minute cooldown** between injections
 - **Max 3 consecutive** auto-injections without human input
@@ -201,12 +209,14 @@ Triggered automatically after `kanban_complete` and `kanban_snapshot` if either 
 | Dirty ratio      | 2.0×  | `totalLines / estimatedCompactedLines > 2.0`     |
 
 **What compaction preserves:**
+
 - All non-deleted tasks (reconstructed from current state)
 - Full BLOCK/UNBLOCK history (diagnostic value)
 - All notes for non-done tasks
 - Notes ≤7 days old for done tasks
 
 **What it drops:**
+
 - Superseded MOVE/CLAIM/UNCLAIM events (only final state kept)
 - Notes >7 days old for completed tasks
 
@@ -263,6 +273,7 @@ Each new ticket gets a persistent markdown file at `pi-kanban/tasks/T-NNN.md` wi
 **Updated by:** `kanban_edit` (appends notes or rewrites frontmatter)
 
 **Format:**
+
 ```markdown
 ---
 title: "Task title here"
@@ -278,6 +289,7 @@ created: 2026-04-09T15:00:00Z
 ```
 
 **Behaviour:**
+
 - Existing tickets (created before this feature) do not get migrated — only new tickets written via `kanban_create` produce task files.
 - `kanban_edit` creates a stub file if one doesn't already exist when adding a note.
 - `kanban_edit` preserves existing notes and the original `created` timestamp when rewriting frontmatter.

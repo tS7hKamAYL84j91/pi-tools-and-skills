@@ -5,7 +5,7 @@ import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 
 interface WatcherControl {
-	setEnabled: (enabled: boolean) => void;
+	setEnabled: (enabled: boolean) => Promise<void>;
 	getStatus: () => string;
 	isEnabled: () => boolean;
 }
@@ -20,7 +20,15 @@ export function registerWatcherControls(
 		handler: async (args, commandCtx) => {
 			const action = args.trim().toLowerCase();
 			if (action === "on" || action === "off") {
-				control.setEnabled(action === "on");
+				try {
+					await control.setEnabled(action === "on");
+				} catch {
+					commandCtx.ui.notify(
+						"Unable to persist kanban watcher settings.",
+						"error",
+					);
+					return;
+				}
 				commandCtx.ui.notify(
 					`Kanban watcher follow-ups: ${control.getStatus()}`,
 					"info",
@@ -49,7 +57,7 @@ export function registerWatcherControls(
 		}),
 		async execute(_id, params): Promise<ToolResult> {
 			if (params.action !== "status") {
-				control.setEnabled(params.action === "on");
+				await control.setEnabled(params.action === "on");
 			}
 			const status = control.getStatus();
 			return ok(`Kanban watcher follow-ups: ${status}`, {

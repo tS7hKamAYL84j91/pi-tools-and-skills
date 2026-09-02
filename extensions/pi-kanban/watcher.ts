@@ -27,6 +27,11 @@ import {
 import { selfAppendedLines } from "./board-transactions.js";
 import { openKanbanOverlay } from "./overlay.js";
 import { registerWatcherControls } from "./watcher-control.js";
+import {
+	resolveWatcherSettings,
+	saveWatcherSetting,
+	type WatcherSettingsScope,
+} from "./watcher-settings.js";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -122,8 +127,6 @@ export function setupWatcher(pi: ExtensionAPI): void {
 
 	let ctx: ExtensionContext | null = null;
 
-	// ── Fast path: update widget from board state ───────────
-
 	async function updateWidget(): Promise<void> {
 		if (!ctx) return;
 		try {
@@ -152,11 +155,24 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ── Slow path: inject LLM followUp (gated) ─────────────
+	let settingsScope: WatcherSettingsScope = "global";
 
-	function setAutoFollowUps(enabled: boolean): void {
+	function updateAutoFollowUpStatus(): void {
+		ctx?.ui.setStatus(
+			"pi-kanban-watch",
+			autoFollowUpsEnabled ? "watch: on" : "watch: off",
+		);
+	}
+
+	async function setAutoFollowUps(enabled: boolean): Promise<void> {
 		autoFollowUpsEnabled = enabled;
-		ctx?.ui.setStatus("pi-kanban-watch", enabled ? "watch: on" : "watch: off");
+		const sessionContext = ctx;
+		if (!sessionContext) {
+			updateAutoFollowUpStatus();
+			return;
+		}
+		await saveWatcherSetting(settingsScope, enabled, sessionContext.cwd);
+		updateAutoFollowUpStatus();
 	}
 
 	function watchStatus(): string {
@@ -190,8 +206,6 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		});
 	}
 
-	// ── Debounced file change handler ───────────────────────
-
 	function onFileChange(): void {
 		if (state.debounceTimer) clearTimeout(state.debounceTimer);
 		state.debounceTimer = setTimeout(() => {
@@ -200,8 +214,6 @@ export function setupWatcher(pi: ExtensionAPI): void {
 			});
 		}, DEBOUNCE_MS);
 	}
-
-	// ── Start/stop watcher ──────────────────────────────────
 
 	function startWatcher(): void {
 		stopWatcher();
@@ -227,12 +239,19 @@ export function setupWatcher(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ── Lifecycle hooks ─────────────────────────────────────
-
 	pi.on("session_start", async (_event, c) => {
 		ctx = c;
-		autoFollowUpsEnabled = process.env[AUTO_FOLLOW_UP_ENV] === "1";
-		setAutoFollowUps(autoFollowUpsEnabled);
+		const trusted =
+			"isProjectTrusted" in c && typeof c.isProjectTrusted === "function"
+				? c.isProjectTrusted()
+				: false;
+		settingsScope = trusted ? "project" : "global";
+		autoFollowUpsEnabled = resolveWatcherSettings(
+			c.cwd,
+			trusted,
+		).watchNotifications;
+		if (process.env[AUTO_FOLLOW_UP_ENV] === "1") autoFollowUpsEnabled = true;
+		updateAutoFollowUpStatus();
 		state.lastAutoInjectTime = 0;
 		state.consecutiveAutoInjects = 0;
 		state.lastWidgetHash = "";
