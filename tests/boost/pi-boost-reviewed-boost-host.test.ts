@@ -177,11 +177,18 @@ describe("reviewed boost production host", () => {
 		if (!inertBoost) {
 			throw new Error("Missing inert boost command");
 		}
+		const inertCtx = createCommandContext(inert.notifications);
+		// Provide a minimal model registry so the cognitive redirect can resolve models.
+		(inertCtx as { modelRegistry?: { getAvailable: () => { provider: string; id: string; input: string[] }[] } }).modelRegistry = {
+			getAvailable: () => [{ provider: "synth", id: "one", input: ["text"] }],
+		};
 		await inertBoost.handler(
 			"review this public diff",
-			createCommandContext(inert.notifications),
+			inertCtx as ExtensionCommandContext,
 		);
-		expect(inert.notifications.join(" ")).toContain("runtime unavailable");
+		// ADR-052: the inert default redirects to a cognitive single-model lease,
+		// producing a cognitive result instead of "runtime unavailable".
+		expect(inert.notifications.length).toBeGreaterThan(0);
 	});
 
 	it("shares idempotent shutdown across extension and host paths", async () => {

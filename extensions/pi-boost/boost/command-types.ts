@@ -66,6 +66,7 @@ export interface BoostCommandDeps {
 		level: BoostNotificationLevel,
 	) => void;
 	readonly dispatch: BoostCommandDispatch;
+	readonly environmentalBridgeAvailable?: boolean;
 	readonly hostCapabilities?: BoostHostCapabilities;
 	readonly cognitive?: (
 		input: BoostFusionRequest,

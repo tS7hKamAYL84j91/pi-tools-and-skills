@@ -95,6 +95,7 @@ export function createUnavailableBoostCommandDeps(
 		dispatch: new InertBoostDispatch(),
 		hostCapabilities,
 		cognitive: createCognitiveHandler(options.runner, options.audit),
+		environmentalBridgeAvailable: false,
 	};
 }
 
@@ -162,6 +163,7 @@ export function createHostBoostCommandDeps(
 			},
 		},
 		cognitive: createCognitiveHandler(options.runner, options.audit),
+		environmentalBridgeAvailable: true,
 	};
 }
 

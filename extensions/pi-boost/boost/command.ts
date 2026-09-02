@@ -199,6 +199,7 @@ export function registerBoostCommand(
 						if (
 							result.reason === "runtime-unavailable" &&
 							deps.cognitive &&
+							deps.environmentalBridgeAvailable === false &&
 							(isPrincipal ||
 								effectiveSettings.agentSelfBoost.allowCognitive)
 						) {
