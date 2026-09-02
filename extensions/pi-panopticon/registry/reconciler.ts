@@ -18,187 +18,67 @@
  *   - Only fires when ctx.isIdle()
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { OperationalStateStore } from "./state.js";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import {
+	type CompletionSignal,
+	parseCompletionSignal,
+} from "../../../lib/completion-signal.js";
 import type { Registry } from "../types.js";
-import type { AgentRecord } from "../../../lib/agent-registry.js";
-import { findAgentByName } from "../../../lib/agent-api.js";
-import { parseCompletionSignal, type CompletionSignal } from "../../../lib/completion-signal.js";
+import { registerReconcilerControls } from "./reconciler-control.js";
+import {
+	checkAgentHealth,
+	checkStaleActivity,
+	type ReconciliationFinding,
+} from "./reconciler-findings.js";
+import {
+	type ReconcilerSettingsScope,
+	resolveReconcilerSettings,
+	saveReconcilerSetting,
+} from "./reconciler-settings.js";
+import type { OperationalStateStore } from "./state.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
 const RECONCILE_INTERVAL_MS = 60_000;
 const HEURISTIC_COOLDOWN_MS = 10 * 60_000;
 const MAX_CONSECUTIVE_INJECTS = 2;
-const STALE_ACTIVITY_MS = 30 * 60_000;
-const FRESH_HEARTBEAT_MS = 60_000;
 
 // ── Types ───────────────────────────────────────────────────────
-
-type FindingLevel = "actionable" | "informational";
-
-interface Finding {
-	heuristic: string;
-	summary: string;
-	level: FindingLevel;
-}
-
-type RegistryPeer = AgentRecord;
-
-interface ConfirmedPeerState {
-	id: string;
-	name: string;
-	pid: number;
-	alive: boolean;
-	heartbeatAge: number;
-	status: string;
-	pendingMessages: number;
-	confirmed: boolean;
-}
 
 interface ReconcilerModule {
 	start(ctx: ExtensionContext): void;
 	stop(): void;
 	onAgentEnd(): void;
+	setEnabled(enabled: boolean): Promise<void>;
+	getStatus(): string;
+	isEnabled(): boolean;
 	/** Process an inbound agent message for structured completion signals. */
 	handleInboundMessage(text: string): CompletionSignal | undefined;
 }
 
-// ── Heuristic: stale/silent workers ─────────────────────────────
-
-function confirmedPeerState(peer: RegistryPeer): ConfirmedPeerState {
-	if (peer.kind === "external") {
-		return {
-			id: peer.id,
-			name: peer.name,
-			pid: 0,
-			alive: true,
-			heartbeatAge: 0,
-			status: peer.status === "waiting" ? "waiting" : (peer.status ?? "waiting"),
-			pendingMessages: peer.pendingMessages ?? 0,
-			confirmed: true,
-		};
-	}
-	const info = findAgentByName(peer.name);
-	if (info?.id === peer.id) {
-		return {
-			id: info.id,
-			name: info.name,
-			pid: info.pid,
-			alive: info.alive,
-			heartbeatAge: info.heartbeatAge,
-			status: info.status,
-			pendingMessages: peer.pendingMessages ?? 0,
-			confirmed: true,
-		};
-	}
-
-	return {
-		id: peer.id,
-		name: peer.name,
-		pid: peer.pid,
-		alive: peer.status !== "terminated",
-		heartbeatAge: Date.now() - peer.heartbeat,
-		status: peer.status,
-		pendingMessages: peer.pendingMessages ?? 0,
-		confirmed: false,
-	};
-}
-
-function actionableAgentFindings(peer: RegistryPeer, confirmed: ConfirmedPeerState): Finding[] {
-	const findings: Finding[] = [];
-	if (confirmed.pendingMessages > 0) {
-		findings.push({
-			heuristic: "pending-messages",
-			summary: `Agent "${confirmed.name}" has ${confirmed.pendingMessages} pending message(s).`,
-			level: "actionable",
-		});
-	}
-
-	if (peer.status === "blocked" || confirmed.status === "blocked") {
-		findings.push({
-			heuristic: "blocked-agent",
-			summary: `Agent "${confirmed.name}" self-reports blocked status.`,
-			level: "actionable",
-		});
-	}
-
-	if (confirmed.confirmed && !confirmed.alive && peer.status !== "terminated" && peer.status !== "done" && peer.kind !== "external") {
-		findings.push({
-			heuristic: "silent-done",
-			summary: `Agent "${confirmed.name}" (pid ${confirmed.pid}) appears terminated but registry still shows status="${peer.status}".`,
-			level: "actionable",
-		});
-	}
-
-	if (confirmed.confirmed && confirmed.alive && confirmed.status === "stalled") {
-		findings.push({
-			heuristic: "stale-worker",
-			summary: `Agent "${confirmed.name}" is stalled after confirmation; heartbeat age is ${Math.round(confirmed.heartbeatAge / 60_000)}m.`,
-			level: "actionable",
-		});
-	}
-
-	return findings;
-}
-
-function isOperationallyQuiet(peer: RegistryPeer, confirmed: ConfirmedPeerState): boolean {
-	if (confirmed.pendingMessages > 0) return false;
-	if (peer.status === "blocked" || confirmed.status === "blocked") return false;
-	if (!confirmed.confirmed) return true;
-	if (!confirmed.alive) return peer.status === "done" || peer.status === "terminated";
-	if (confirmed.status === "stalled") return false;
-	if (confirmed.status === "waiting" || confirmed.status === "running" || confirmed.status === "done") return true;
-	return confirmed.heartbeatAge <= FRESH_HEARTBEAT_MS;
-}
-
-export function checkAgentHealth(registry: Registry, selfId: string): Finding[] {
-	const findings: Finding[] = [];
-	const peers = registry.readAllPeers();
-	for (const peer of peers) {
-		if (peer.id === selfId) continue;
-		findings.push(...actionableAgentFindings(peer, confirmedPeerState(peer)));
-	}
-	return findings;
-}
-
-// ── Heuristic: stale workspace activity ─────────────────────────
-
-export function checkStaleActivity(
-	stateStore: OperationalStateStore,
-	registry: Registry,
-	selfId: string,
-): Finding[] {
-	const state = stateStore.getState();
-	if (!state) return [];
-	const age = Date.now() - state.lastActiveAt;
-	if (age <= STALE_ACTIVITY_MS) return [];
-
-	const peers = registry.readAllPeers().filter((peer) => peer.id !== selfId);
-	const allPeersQuiet = peers.every((peer) => isOperationallyQuiet(peer, confirmedPeerState(peer)));
-	if (allPeersQuiet) return [];
-
-	return [{
-		heuristic: "stale-activity",
-		summary: `No workspace activity for ${Math.round(age / 60_000)}m. Last active channel: ${state.sourceChannel}/${state.humanIdentity}.`,
-		level: "informational",
-	}];
-}
-
 // ── Heuristic: resumed session reminder ─────────────────────────
 
-function checkResumeReminder(stateStore: OperationalStateStore, alreadyFired: Set<string>): Finding[] {
+function checkResumeReminder(
+	stateStore: OperationalStateStore,
+	alreadyFired: Set<string>,
+): ReconciliationFinding[] {
 	const state = stateStore.getState();
 	if (!state) return [];
-	if (state.resume.reason !== "resume" || !state.resume.previousSessionFile) return [];
+	if (state.resume.reason !== "resume" || !state.resume.previousSessionFile)
+		return [];
 	const key = `resume:${state.resume.previousSessionFile}`;
 	if (alreadyFired.has(key)) return [];
 	alreadyFired.add(key);
-	return [{
-		heuristic: "resume-reminder",
-		summary: `Session resumed from ${state.resume.previousSessionFile}. Consider reviewing prior context.`,
-		level: "informational",
-	}];
+	return [
+		{
+			heuristic: "resume-reminder",
+			summary: `Session resumed from ${state.resume.previousSessionFile}. Consider reviewing prior context.`,
+			level: "informational",
+		},
+	];
 }
 
 // ── Setup ───────────────────────────────────────────────────────
@@ -211,6 +91,8 @@ export function setupReconciler(
 ): ReconcilerModule {
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let ctx: ExtensionContext | null = null;
+	let settingsScope: ReconcilerSettingsScope = "global";
+	let notificationsEnabled = false;
 	let consecutiveInjects = 0;
 	const lastFiredAt = new Map<string, number>();
 	const resumeReminders = new Set<string>();
@@ -221,11 +103,11 @@ export function setupReconciler(
 	}
 
 	function reconcile(): void {
-		if (!ctx) return;
+		if (!ctx || !notificationsEnabled) return;
 		if (!ctx.isIdle()) return;
 		if (consecutiveInjects >= MAX_CONSECUTIVE_INJECTS) return;
 
-		const allFindings: Finding[] = [];
+		const allFindings: ReconciliationFinding[] = [];
 
 		// Run heuristics, skip those on cooldown
 		const agentFindings = checkAgentHealth(registry, selfId);
@@ -261,6 +143,16 @@ export function setupReconciler(
 		pi.sendUserMessage(message, { deliverAs: "followUp" });
 	}
 
+	registerReconcilerControls(pi, {
+		setEnabled: async (enabled) => {
+			notificationsEnabled = enabled;
+			if (ctx) {
+				await saveReconcilerSetting(settingsScope, enabled, ctx.cwd);
+			}
+		},
+		getStatus: () => (notificationsEnabled ? "on" : "off"),
+	});
+
 	return {
 		handleInboundMessage(text: string): CompletionSignal | undefined {
 			return parseCompletionSignal(text);
@@ -268,6 +160,15 @@ export function setupReconciler(
 
 		start(c: ExtensionContext): void {
 			ctx = c;
+			const trusted =
+				"isProjectTrusted" in c && typeof c.isProjectTrusted === "function"
+					? c.isProjectTrusted()
+					: false;
+			settingsScope = trusted ? "project" : "global";
+			notificationsEnabled = resolveReconcilerSettings(
+				c.cwd,
+				trusted,
+			).reconciliationNotifications;
 			consecutiveInjects = 0;
 			lastFiredAt.clear();
 			resumeReminders.clear();
@@ -286,6 +187,21 @@ export function setupReconciler(
 
 		onAgentEnd(): void {
 			consecutiveInjects = 0;
+		},
+
+		async setEnabled(enabled: boolean): Promise<void> {
+			notificationsEnabled = enabled;
+			if (ctx) {
+				await saveReconcilerSetting(settingsScope, enabled, ctx.cwd);
+			}
+		},
+
+		getStatus(): string {
+			return notificationsEnabled ? "on" : "off";
+		},
+
+		isEnabled(): boolean {
+			return notificationsEnabled;
 		},
 	};
 }

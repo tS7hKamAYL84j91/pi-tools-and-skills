@@ -6,17 +6,23 @@
  * These tests verify setup/lifecycle contracts.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { AgentRecord } from "../../lib/agent-registry.js";
-import { findAgentByName } from "../../lib/agent-api.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAgentHealth,
 	checkStaleActivity,
-	setupReconciler,
-} from "../../extensions/pi-panopticon/registry/reconciler.js";
-import type { Registry } from "../../extensions/pi-panopticon/types.js";
+} from "../../extensions/pi-panopticon/registry/reconciler-findings.js";
+import { setupReconciler } from "../../extensions/pi-panopticon/registry/reconciler.js";
 import type { OperationalStateStore } from "../../extensions/pi-panopticon/registry/state.js";
-import { makeAgentInfo, mockFindAgentStates } from "../helpers/agent-api-mock.js";
+import type { Registry } from "../../extensions/pi-panopticon/types.js";
+import { findAgentByName } from "../../lib/agent-api.js";
+import type { AgentRecord } from "../../lib/agent-registry.js";
+import {
+	makeAgentInfo,
+	mockFindAgentStates,
+} from "../helpers/agent-api-mock.js";
 
 vi.mock("../../lib/agent-api.js", () => ({
 	findAgentByName: vi.fn(() => null),
@@ -59,27 +65,35 @@ function makeRegistry(records: AgentRecord[] = []): Registry {
 
 function makeStateStore(lastActiveAt?: number): OperationalStateStore {
 	return {
-		getState: vi.fn(() => lastActiveAt == null ? undefined : {
-			version: 1,
-			workspaceId: "local:interactive",
-			sourceChannel: "local",
-			humanIdentity: "interactive",
-			lastActiveAt,
-			linkedPaths: { cwd: "/tmp" },
-			pendingFollowUps: [],
-			resume: { reason: "startup" },
-		}),
+		getState: vi.fn(() =>
+			lastActiveAt == null
+				? undefined
+				: {
+						version: 1,
+						workspaceId: "local:interactive",
+						sourceChannel: "local",
+						humanIdentity: "interactive",
+						lastActiveAt,
+						linkedPaths: { cwd: "/tmp" },
+						pendingFollowUps: [],
+						resume: { reason: "startup" },
+					},
+		),
 		restore: vi.fn(),
 		recordInput: vi.fn(),
 	} as unknown as OperationalStateStore;
 }
 
-function makeMockCtx() {
+function makeMockCtx(cwd = "/tmp") {
 	return {
 		isIdle: vi.fn(() => true),
-		cwd: "/tmp",
+		cwd,
+		isProjectTrusted: vi.fn(() => false),
 		ui: { notify: vi.fn(), setStatus: vi.fn(), setWidget: vi.fn() },
-		sessionManager: { getEntries: () => [], getSessionFile: () => "/tmp/s.jsonl" },
+		sessionManager: {
+			getEntries: () => [],
+			getSessionFile: () => "/tmp/s.jsonl",
+		},
 	};
 }
 
@@ -91,8 +105,13 @@ describe("reconciler findings", () => {
 	});
 
 	it("suppresses stale activity when peers are idle and freshly heartbeating", () => {
-		const peer = makeRecord({ status: "waiting", heartbeat: Date.now() - 10_000 });
-		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, { heartbeatAge: 10_000 }));
+		const peer = makeRecord({
+			status: "waiting",
+			heartbeat: Date.now() - 10_000,
+		});
+		mockFindAgentByName.mockReturnValue(
+			makeAgentInfo(peer, { heartbeatAge: 10_000 }),
+		);
 
 		const findings = checkStaleActivity(
 			makeStateStore(Date.now() - 31 * 60_000),
@@ -104,27 +123,50 @@ describe("reconciler findings", () => {
 	});
 
 	it("does not alert on one stale sample when confirmation is fresh", () => {
-		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 10 * 60_000 });
-		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, { heartbeatAge: 5_000 }));
+		const peer = makeRecord({
+			status: "running",
+			heartbeat: Date.now() - 10 * 60_000,
+		});
+		mockFindAgentByName.mockReturnValue(
+			makeAgentInfo(peer, { heartbeatAge: 5_000 }),
+		);
 
 		const findings = checkAgentHealth(makeRegistry([peer]), "self-id");
 
-		expect(findings.map((finding) => finding.heuristic)).not.toContain("stale-worker");
+		expect(findings.map((finding) => finding.heuristic)).not.toContain(
+			"stale-worker",
+		);
 	});
 
 	it("keeps actionable alerts for pending messages, blocked agents, explicit stalls, and silent termination", () => {
-		const pending = makeRecord({ id: "pending", name: "pending", pendingMessages: 2 });
-		const blocked = makeRecord({ id: "blocked", name: "blocked", status: "blocked" });
-		const stale = makeRecord({ id: "stale", name: "stale", status: "running" });
-		const stalled = makeRecord({ id: "stalled", name: "stalled", status: "stalled" });
-		const dead = makeRecord({ id: "dead", name: "dead", status: "running" });
-		mockFindAgentStates(mockFindAgentByName, [pending, blocked, stale, stalled, dead], {
-			pending: { status: "running", heartbeatAge: 5_000 },
-			blocked: { status: "blocked", heartbeatAge: 5_000 },
-			stale: { status: "running", heartbeatAge: 10 * 60_000 },
-			stalled: { status: "stalled", heartbeatAge: 5_000 },
-			dead: { status: "running", alive: false, heartbeatAge: 5_000 },
+		const pending = makeRecord({
+			id: "pending",
+			name: "pending",
+			pendingMessages: 2,
 		});
+		const blocked = makeRecord({
+			id: "blocked",
+			name: "blocked",
+			status: "blocked",
+		});
+		const stale = makeRecord({ id: "stale", name: "stale", status: "running" });
+		const stalled = makeRecord({
+			id: "stalled",
+			name: "stalled",
+			status: "stalled",
+		});
+		const dead = makeRecord({ id: "dead", name: "dead", status: "running" });
+		mockFindAgentStates(
+			mockFindAgentByName,
+			[pending, blocked, stale, stalled, dead],
+			{
+				pending: { status: "running", heartbeatAge: 5_000 },
+				blocked: { status: "blocked", heartbeatAge: 5_000 },
+				stale: { status: "running", heartbeatAge: 10 * 60_000 },
+				stalled: { status: "stalled", heartbeatAge: 5_000 },
+				dead: { status: "running", alive: false, heartbeatAge: 5_000 },
+			},
+		);
 
 		const findings = checkAgentHealth(
 			makeRegistry([pending, blocked, stale, stalled, dead]),
@@ -137,16 +179,23 @@ describe("reconciler findings", () => {
 			"stale-worker",
 			"silent-done",
 		]);
-		expect(findings.every((finding) => finding.level === "actionable")).toBe(true);
+		expect(findings.every((finding) => finding.level === "actionable")).toBe(
+			true,
+		);
 	});
 
 	it("does not alert on heartbeat age alone after confirmation", () => {
-		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 16 * 60_000 });
-		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, {
-			alive: true,
-			heartbeatAge: 16 * 60_000,
+		const peer = makeRecord({
 			status: "running",
-		}));
+			heartbeat: Date.now() - 16 * 60_000,
+		});
+		mockFindAgentByName.mockReturnValue(
+			makeAgentInfo(peer, {
+				alive: true,
+				heartbeatAge: 16 * 60_000,
+				status: "running",
+			}),
+		);
 
 		const findings = checkAgentHealth(makeRegistry([peer]), "self-id");
 
@@ -154,12 +203,17 @@ describe("reconciler findings", () => {
 	});
 
 	it("suppresses stale activity when peers only have stale heartbeats", () => {
-		const peer = makeRecord({ status: "running", heartbeat: Date.now() - 16 * 60_000 });
-		mockFindAgentByName.mockReturnValue(makeAgentInfo(peer, {
-			alive: true,
-			heartbeatAge: 16 * 60_000,
+		const peer = makeRecord({
 			status: "running",
-		}));
+			heartbeat: Date.now() - 16 * 60_000,
+		});
+		mockFindAgentByName.mockReturnValue(
+			makeAgentInfo(peer, {
+				alive: true,
+				heartbeatAge: 16 * 60_000,
+				status: "running",
+			}),
+		);
 
 		const findings = checkStaleActivity(
 			makeStateStore(Date.now() - 52 * 60_000),
@@ -172,11 +226,13 @@ describe("reconciler findings", () => {
 
 	it("does not treat a done agent exit as silent termination", () => {
 		const done = makeRecord({ id: "done", name: "done", status: "done" });
-		mockFindAgentByName.mockReturnValue(makeAgentInfo(done, {
-			alive: false,
-			heartbeatAge: 5_000,
-			status: "terminated",
-		}));
+		mockFindAgentByName.mockReturnValue(
+			makeAgentInfo(done, {
+				alive: false,
+				heartbeatAge: 5_000,
+				status: "terminated",
+			}),
+		);
 
 		const findings = checkAgentHealth(makeRegistry([done]), "self-id");
 
@@ -185,33 +241,107 @@ describe("reconciler findings", () => {
 });
 
 describe("reconciler lifecycle", () => {
-	let pi: { sendUserMessage: ReturnType<typeof vi.fn>; appendEntry: ReturnType<typeof vi.fn> };
+	let pi: {
+		sendUserMessage: ReturnType<typeof vi.fn>;
+		appendEntry: ReturnType<typeof vi.fn>;
+		registerCommand: ReturnType<typeof vi.fn>;
+		registerTool: ReturnType<typeof vi.fn>;
+	};
 
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mockFindAgentByName.mockReset();
-		pi = { sendUserMessage: vi.fn(), appendEntry: vi.fn() };
+		pi = {
+			sendUserMessage: vi.fn(),
+			appendEntry: vi.fn(),
+			registerCommand: vi.fn(),
+			registerTool: vi.fn(),
+		};
 	});
 
 	it("starts and stops without errors", () => {
-		const reconciler = setupReconciler(pi as never, makeRegistry(), "self-id", makeStateStore());
+		const reconciler = setupReconciler(
+			pi as never,
+			makeRegistry(),
+			"self-id",
+			makeStateStore(),
+		);
 		const ctx = makeMockCtx();
 		reconciler.start(ctx as never);
 		reconciler.stop();
 	});
 
 	it("resets consecutive injection counter on agent end", () => {
-		const reconciler = setupReconciler(pi as never, makeRegistry(), "self-id", makeStateStore());
+		const reconciler = setupReconciler(
+			pi as never,
+			makeRegistry(),
+			"self-id",
+			makeStateStore(),
+		);
 		const ctx = makeMockCtx();
 		reconciler.start(ctx as never);
 		reconciler.onAgentEnd();
 		reconciler.stop();
 	});
 
+	it("defaults to quiet notifications", () => {
+		const reconciler = setupReconciler(
+			pi as never,
+			makeRegistry([makeRecord({ status: "blocked" })]),
+			"self-id",
+			makeStateStore(),
+		);
+		const ctx = makeMockCtx();
+		reconciler.start(ctx as never);
+
+		vi.advanceTimersByTime(120_000);
+
+		expect(reconciler.isEnabled()).toBe(false);
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
+		reconciler.stop();
+	});
+
+	it("can toggle notifications at runtime and persist the project setting", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "panopticon-reconciler-"));
+		try {
+			const reconciler = setupReconciler(
+				pi as never,
+				makeRegistry([makeRecord({ status: "blocked" })]),
+				"self-id",
+				makeStateStore(),
+			);
+			const ctx = makeMockCtx(cwd);
+			ctx.isProjectTrusted.mockReturnValue(true);
+			reconciler.start(ctx as never);
+
+			await reconciler.setEnabled(true);
+			expect(reconciler.isEnabled()).toBe(true);
+			expect(reconciler.getStatus()).toBe("on");
+
+			vi.advanceTimersByTime(60_000);
+			expect(pi.sendUserMessage).toHaveBeenCalledWith(
+				expect.stringContaining("[blocked-agent]"),
+				{ deliverAs: "followUp" },
+			);
+
+			await reconciler.setEnabled(false);
+			expect(reconciler.isEnabled()).toBe(false);
+			expect(reconciler.getStatus()).toBe("off");
+			reconciler.stop();
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("does not inject when not idle", () => {
 		const ctx = makeMockCtx();
 		ctx.isIdle.mockReturnValue(false);
-		const reconciler = setupReconciler(pi as never, makeRegistry(), "self-id", makeStateStore());
+		const reconciler = setupReconciler(
+			pi as never,
+			makeRegistry(),
+			"self-id",
+			makeStateStore(),
+		);
 		reconciler.start(ctx as never);
 
 		vi.advanceTimersByTime(120_000);

@@ -19,7 +19,22 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 
 - `/agents` — open the agent overlay for status, detail, direct messages, and stop/kill controls.
 - `/send` — send a direct peer message from the command line.
+- `/panopticon-reconcile on|off` — toggle reconciliation follow-up notifications.
 - `/agent-list-mode` and `/agents-mode` — adjust agent list display mode.
+
+## Reconciliation Notifications
+
+Follow-up injection is off by default. Enable it globally in `~/.pi/agent/settings.json`:
+
+```json
+{
+  "panopticon": {
+    "reconciliationNotifications": true
+  }
+}
+```
+
+A trusted project's `.pi/settings.json` can override the global value. The `/panopticon-reconcile on|off` command persists to the project setting when the project is trusted, or to the global setting otherwise. Health and status reporting remain enabled when notifications are off.
 
 ## Provisional Surfaces
 
