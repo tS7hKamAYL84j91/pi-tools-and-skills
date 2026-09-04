@@ -1,7 +1,12 @@
 /** View, rule and automation validators for .pi/event-loop.json (SPEC §6, §18). */
-import type { AutomationSpec, ProjectionRule, ViewSpec } from "./types.js";
+
+import {
+	checkUnknownKeys,
+	isNonEmptyString,
+	isRecord,
+} from "./config-guards.js";
 import { isValidJsonPointer } from "./json-pointer.js";
-import { checkUnknownKeys, isNonEmptyString, isRecord } from "./config-guards.js";
+import type { AutomationSpec, ProjectionRule, ViewSpec } from "./types.js";
 
 const VIEW_KEYS = ["type", "openOn", "closeOn"] as const;
 const RULE_KEYS = ["event", "keyFrom"] as const;

@@ -1,7 +1,11 @@
 /** Tests for the command queue: identity, dedupe, bounds, cancellation, FIFO (SPEC §10, §11, §13). */
 
 import { describe, expect, it } from "vitest";
-
+import {
+	CONFIG,
+	PROFILE,
+	workItem,
+} from "../../../tests/fixtures/pi-event-loop.js";
 import {
 	buildCommandRecord,
 	cancelQueuedForCompletedItems,
@@ -13,7 +17,6 @@ import {
 	deriveCommandId,
 	type ProfileConfig,
 } from "../types.js";
-import { CONFIG, PROFILE, workItem } from "../../../tests/fixtures/pi-event-loop.js";
 
 describe("buildCommandRecord", () => {
 	it("derives the stable command ID and copies the item contract", () => {

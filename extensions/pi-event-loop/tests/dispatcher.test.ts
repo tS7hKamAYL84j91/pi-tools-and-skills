@@ -1,16 +1,6 @@
 /** Tests for command delivery, settlement transitions and the settle probe (SPEC §5, §10, §11, §17). */
 
 import { describe, expect, it } from "vitest";
-import { createPostAppendPipeline } from "../automator.js";
-import { buildCommandRecord } from "../command-queue.js";
-import {
-	buildCommandMessage,
-	type DeliveryOptions,
-	deliverNextCommand,
-	settleActiveCommand,
-	waitForSettled,
-} from "../dispatcher.js";
-import { createEventLoopRuntime } from "../runtime.js";
 import {
 	CONFIG,
 	PROFILE,
@@ -18,6 +8,18 @@ import {
 	workItem,
 	workRequested,
 } from "../../../tests/fixtures/pi-event-loop.js";
+import { createPostAppendPipeline } from "../automator.js";
+import { buildCommandRecord } from "../command-queue.js";
+import {
+	buildCommandMessage,
+	commandEmittedOutcome,
+	type DeliveryOptions,
+	deliverNextCommand,
+	settleActiveCommand,
+	waitForSettled,
+} from "../dispatcher.js";
+import { createEventLoopRuntime } from "../runtime.js";
+import type { LoopEventData } from "../types.js";
 
 function runtimeWithQueuedCommand(): ReturnType<typeof createEventLoopRuntime> {
 	const runtime = createEventLoopRuntime();
@@ -196,5 +198,37 @@ describe("close events do not create commands", () => {
 		expect(runtime.queue.every((record) => record.status === "cancelled")).toBe(
 			true,
 		);
+	});
+});
+
+describe("commandEmittedOutcome", () => {
+	const command = {
+		commandId: "cmd-1",
+		expectedEvents: ["work.completed", "work.failed"],
+	} as never;
+
+	function outcomeEvent(overrides: Partial<LoopEventData>): LoopEventData {
+		return {
+			eventId: "evt-outcome",
+			type: "work.completed",
+			occurredAt: "2026-01-01T00:00:00.000Z",
+			source: "agent",
+			payload: { workId: "work-1" },
+			...overrides,
+		};
+	}
+
+	it("detects an accepted expected event with the command's causation", () => {
+		expect(
+			commandEmittedOutcome([outcomeEvent({ commandId: "cmd-1" })], command),
+		).toBe(true);
+	});
+
+	it("ignores events of other commands or unexpected types", () => {
+		const other = outcomeEvent({ commandId: "cmd-2" });
+		const unexpected = outcomeEvent({ type: "progress.note" });
+		expect(commandEmittedOutcome([other], command)).toBe(false);
+		expect(commandEmittedOutcome([unexpected], command)).toBe(false);
+		expect(commandEmittedOutcome([], command)).toBe(false);
 	});
 });

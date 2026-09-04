@@ -1,7 +1,7 @@
-/** Live session-scoped runtime state for pi-event-loop (SPEC §11, §14, §17). */
+/** Live session-scoped runtime state for pi-event-loop (SPEC §11, §14, §15, §17). */
 
 import { EMPTY_PROJECTION, type TodoProjection } from "./projector.js";
-import type { CommandRecord, TodoItem } from "./types.js";
+import type { CommandRecord, TimerOccurrenceState, TodoItem } from "./types.js";
 
 /** Mutable state that lives for the lifetime of one extension instance; persisted state lives in the session log. */
 export interface EventLoopRuntime {
@@ -20,6 +20,12 @@ export interface EventLoopRuntime {
 	/** Whether automated delivery is paused, with the operator-visible reason. */
 	paused: boolean;
 	pauseReason: string | undefined;
+	/** Number of log events applied to the live projection (snapshot checkpoint, SPEC §15). */
+	projectedEventCount: number;
+	/** Event id of the last event applied to the live projection (recovery checkpoint, SPEC §15). */
+	lastAppliedEventId: string | undefined;
+	/** Timer occurrence state keyed by timer id (SPEC §12, §15); mutated in place by the timer runner. */
+	timerState: Record<string, TimerOccurrenceState>;
 }
 
 export function createEventLoopRuntime(): EventLoopRuntime {
@@ -32,5 +38,16 @@ export function createEventLoopRuntime(): EventLoopRuntime {
 		consecutiveAutomatedTurns: 0,
 		paused: false,
 		pauseReason: undefined,
+		projectedEventCount: 0,
+		lastAppliedEventId: undefined,
+		timerState: {},
 	};
+}
+
+/**
+ * Reset mutable state in place: tools and the dispatcher hold references to the runtime
+ * object, so a fresh session_start must clear fields instead of replacing the instance.
+ */
+export function resetEventLoopRuntime(runtime: EventLoopRuntime): void {
+	Object.assign(runtime, createEventLoopRuntime());
 }

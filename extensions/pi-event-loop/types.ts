@@ -90,6 +90,9 @@ export interface LoopEventData {
 /** customType for immutable event-log entries. */
 export const EVENT_LOOP_EVENT_CUSTOM_TYPE = "pi-event-loop-event";
 
+/** customType for the bounded checkpoint snapshot (SPEC §15). */
+export const SNAPSHOT_CUSTOM_TYPE = "pi-event-loop-snapshot";
+
 // --- Projections (SPEC §9) ---
 
 export type TodoStatus = "outstanding" | "dispatched" | "completed" | "stalled";
@@ -174,6 +177,8 @@ export interface EventLoopSnapshot {
 	readonly profileName: string;
 	readonly configFingerprint: string;
 	readonly projectedEventCount: number;
+	/** Event id of the last event applied to the checkpoint; recovery replays later events. */
+	readonly lastAppliedEventId?: string;
 	readonly items: readonly TodoItem[];
 	readonly pendingCommands: readonly CommandRecord[];
 	readonly activeCommand?: CommandRecord;

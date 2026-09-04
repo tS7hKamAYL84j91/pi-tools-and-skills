@@ -2,10 +2,14 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { EventLoopConfig, LimitsConfig, ProfileConfig } from "./types.js";
-import { checkUnknownKeys, isNonEmptyString, isRecord } from "./config-guards.js";
+import {
+	checkUnknownKeys,
+	isNonEmptyString,
+	isRecord,
+} from "./config-guards.js";
 import { DEFAULT_LIMITS, validateLimits } from "./config-limits.js";
 import { validateProfile } from "./config-profile.js";
+import type { EventLoopConfig, LimitsConfig, ProfileConfig } from "./types.js";
 
 export const CONFIG_RELATIVE_PATH = ".pi/event-loop.json";
 

@@ -14,15 +14,15 @@ import {
 	loadEventLoopConfig,
 	parseEventLoopConfig,
 } from "./config.js";
+import { evaluateEmission } from "./event-ingress.js";
 import { readEventLog } from "./event-log.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import {
-	EVENT_LOOP_EVENT_CUSTOM_TYPE,
 	type EmitOutcome,
+	EVENT_LOOP_EVENT_CUSTOM_TYPE,
 	type PostAppendEffects,
 	type PostAppendPipeline,
 } from "./types.js";
-import { evaluateEmission } from "./event-ingress.js";
 
 const EMPTY_EFFECTS: PostAppendEffects = { workItemIds: [], commandIds: [] };
 

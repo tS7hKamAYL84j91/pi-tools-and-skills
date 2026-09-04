@@ -1,6 +1,11 @@
 /** Strict limits validation for .pi/event-loop.json (SPEC §6, §18). */
+
+import {
+	checkUnknownKeys,
+	isPositiveInteger,
+	isRecord,
+} from "./config-guards.js";
 import type { LimitsConfig } from "./types.js";
-import { checkUnknownKeys, isPositiveInteger, isRecord } from "./config-guards.js";
 
 export const DEFAULT_LIMITS: LimitsConfig = {
 	maxPendingCommands: 20,

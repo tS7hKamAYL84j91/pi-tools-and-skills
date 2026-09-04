@@ -1,12 +1,15 @@
 /** Tests for the automation scan and post-append pipeline (SPEC §7, §10). */
 
 import { describe, expect, it } from "vitest";
-
+import {
+	CONFIG,
+	workCompleted,
+	workRequested,
+} from "../../../tests/fixtures/pi-event-loop.js";
 import { createPostAppendPipeline, scanAutomations } from "../automator.js";
 import { replayEvents } from "../projector.js";
 import { createEventLoopRuntime } from "../runtime.js";
 import { deriveCommandId, deriveWorkItemId } from "../types.js";
-import { CONFIG, workCompleted, workRequested } from "../../../tests/fixtures/pi-event-loop.js";
 
 /** Deterministic work-item id for a fixture request, matching the projector's identity rule. */
 function requestId(workId: string): string {

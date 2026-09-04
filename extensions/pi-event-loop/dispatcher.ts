@@ -1,12 +1,16 @@
-/** Command delivery as self-describing Pi messages and settlement transitions (SPEC §5, §10, §11, §17). */
+/** Command delivery as self-describing Pi messages and settlement transitions (SPEC §5, §10, §11). */
 
 import { takeNextCommand } from "./command-queue.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import { markItemDispatched, markItemStalled } from "./todo-view.js";
-import { COMMAND_MESSAGE_CUSTOM_TYPE, type CommandRecord } from "./types.js";
+import {
+	COMMAND_MESSAGE_CUSTOM_TYPE,
+	type CommandRecord,
+	type LoopEventData,
+} from "./types.js";
 
 /** Structured command message delivered to the agent (SPEC §10). */
-interface CommandMessage {
+export interface CommandMessage {
 	readonly customType: string;
 	readonly content: string;
 	readonly display: true;
@@ -37,6 +41,21 @@ export function buildCommandMessage(record: CommandRecord): CommandMessage {
 			expectedEvents: record.expectedEvents,
 		},
 	};
+}
+
+/**
+ * True when the command's turn already emitted one of its expected outcome events
+ * (SPEC §11): an accepted event with the command's causal metadata in the log.
+ */
+export function commandEmittedOutcome(
+	events: readonly LoopEventData[],
+	command: CommandRecord,
+): boolean {
+	return events.some(
+		(event) =>
+			event.commandId === command.commandId &&
+			command.expectedEvents.includes(event.type),
+	);
 }
 
 interface DeliveryDeps {
@@ -105,14 +124,19 @@ export async function deliverNextCommand(
 	return { delivered: true, commandId: taken.command.commandId };
 }
 
-/** Probe of Pi session idleness used for settlement detection (see waitForSettled). */
-interface SettleProbe {
+/** Probe of Pi session idleness used for settlement detection (SPEC §17). */
+export interface SettleProbe {
 	readonly isIdle: () => boolean;
 	readonly hasPendingMessages: () => boolean;
 }
 
 const SETTLE_POLL_MS = 100;
 const SETTLE_TIMEOUT_MS = 30_000;
+
+/** Shared settle-poll sleep; injectable via the cycle deps for deterministic tests. */
+export async function defaultSleep(ms: number): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Wait until the agent has fully settled (no streaming, no queued messages).
@@ -124,13 +148,14 @@ export async function waitForSettled(
 	probe: SettleProbe,
 	timeoutMs: number = SETTLE_TIMEOUT_MS,
 	pollMs: number = SETTLE_POLL_MS,
+	sleep: (ms: number) => Promise<void> = defaultSleep,
 ): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		if (probe.isIdle() && !probe.hasPendingMessages()) {
 			return true;
 		}
-		await new Promise((resolve) => setTimeout(resolve, pollMs));
+		await sleep(pollMs);
 	}
 	return false;
 }

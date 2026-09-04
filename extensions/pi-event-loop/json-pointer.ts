@@ -1,7 +1,5 @@
 /** JSON Pointer (RFC 6901) key selection for projection rules (SPEC §6, §9). */
 
-
-
 export function isValidJsonPointer(pointer: string): boolean {
 	if (pointer.length === 0) {
 		return true;

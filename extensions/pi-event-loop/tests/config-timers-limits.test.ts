@@ -1,9 +1,8 @@
 /** Timer and limits validation tests for pi-event-loop configuration (SPEC §6, §12, §18). */
 
 import { describe, expect, it } from "vitest";
-
-import { parseEventLoopConfig } from "../config.js";
 import { configText } from "../../../tests/fixtures/pi-event-loop.js";
+import { parseEventLoopConfig } from "../config.js";
 
 describe("pi-event-loop timers and limits", () => {
 	it("rejects timers that reference undefined events or combine interval and dailyAt", () => {

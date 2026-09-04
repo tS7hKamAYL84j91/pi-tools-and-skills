@@ -1,4 +1,9 @@
 /** Profile validator for .pi/event-loop.json: per-profile slices and cross-reference checks (SPEC §6, §18). */
+
+import { validateCommandSpec, validateEventSpec } from "./config-events.js";
+import { checkUnknownKeys, isRecord } from "./config-guards.js";
+import { validateTimer } from "./config-timers.js";
+import { validateAutomation, validateViewSpec } from "./config-views.js";
 import type {
 	AutomationSpec,
 	CommandSpec,
@@ -7,10 +12,6 @@ import type {
 	TimerSpec,
 	ViewSpec,
 } from "./types.js";
-import { checkUnknownKeys, isRecord } from "./config-guards.js";
-import { validateCommandSpec, validateEventSpec } from "./config-events.js";
-import { validateAutomation, validateViewSpec } from "./config-views.js";
-import { validateTimer } from "./config-timers.js";
 
 const PROFILE_KEYS = [
 	"emissionPolicy",

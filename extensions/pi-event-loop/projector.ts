@@ -1,6 +1,7 @@
 /** Pure, replayable todo projections over the ordered event history (SPEC §9). */
-import type { EventLoopConfig, LoopEventData, TodoItem } from "./types.js";
+
 import { projectionKey } from "./json-pointer.js";
+import type { EventLoopConfig, LoopEventData, TodoItem } from "./types.js";
 import { deriveWorkItemId } from "./types.js";
 
 export interface TodoProjection {

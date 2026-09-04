@@ -1,9 +1,9 @@
 /** Tests for the event_loop_emit ingress decision logic and tool (SPEC §7, AC-2, AC-3). */
 
 import { describe, expect, it } from "vitest";
+import { CONFIG } from "../../../tests/fixtures/pi-event-loop.js";
 import { type EmissionContext, evaluateEmission } from "../event-ingress.js";
 import type { CommandRecord, TodoItem } from "../types.js";
-import { CONFIG } from "../../../tests/fixtures/pi-event-loop.js";
 
 const WORK_ITEM: TodoItem = {
 	workItemId: "item-1",
@@ -228,4 +228,3 @@ describe("emission decision logic", () => {
 		expect(a.ok && b.ok && a.event.eventId === b.event.eventId).toBe(true);
 	});
 });
-

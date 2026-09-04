@@ -1,8 +1,16 @@
 /** Event ingress decision logic: validate emissions against the profile and command contract (SPEC §7). */
-import type { CommandRecord, EmittedEventInput, EventLoopConfig, EventSource, LoopEventData, ProfileConfig } from "./types.js";
-import type { EventLoopRuntime } from "./runtime.js";
-import { deriveEventId } from "./types.js";
+
 import { projectionKey } from "./json-pointer.js";
+import type { EventLoopRuntime } from "./runtime.js";
+import type {
+	CommandRecord,
+	EmittedEventInput,
+	EventLoopConfig,
+	EventSource,
+	LoopEventData,
+	ProfileConfig,
+} from "./types.js";
+import { deriveEventId } from "./types.js";
 
 export interface EmissionContext {
 	readonly config: EventLoopConfig;
@@ -57,7 +65,7 @@ export function evaluateEmission(
 	}
 
 	const payload = input.payload ?? {};
-	const payloadProblem = validatePayload(
+	const payloadProblem = validateEventPayload(
 		spec.requiredPayload,
 		payload,
 		context.config.limits.maxPayloadBytes,
@@ -145,7 +153,8 @@ function checkCommandContract(
 	return undefined;
 }
 
-function validatePayload(
+/** Payload contract check shared with the timer source (SPEC §7, §12). */
+export function validateEventPayload(
 	requiredPayload: readonly string[],
 	payload: Readonly<Record<string, unknown>>,
 	maxPayloadBytes: number,

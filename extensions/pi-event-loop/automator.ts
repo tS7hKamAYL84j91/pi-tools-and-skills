@@ -5,6 +5,7 @@ import {
 	cancelQueuedForCompletedItems,
 	enqueueCommand,
 } from "./command-queue.js";
+import { eventChainDepth, findOpenItemLimitViolation } from "./loop-guards.js";
 import { applyEvent, type TodoProjection } from "./projector.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import { outstandingItems } from "./todo-view.js";
@@ -82,11 +83,29 @@ export function createPostAppendPipeline(
 			profileName,
 			event,
 		);
+		runtime.projectedEventCount++;
+		runtime.lastAppliedEventId = event.eventId;
 		// Only items newly opened by this apply count as effects; replaying an event whose
 		// item already exists must report nothing (deterministic IDs, SPEC §7).
 		const workItemIds = runtime.projection.order.filter(
 			(itemId) => !before.items.has(itemId),
 		);
+
+		// Loop protection (SPEC §14): any limit exhaustion pauses with an operator-visible
+		// reason. Facts stay in the log; only automated delivery stops.
+		const chainDepth = eventChainDepth(event.eventId, runtime.projection);
+		if (chainDepth > config.limits.maxChainDepth) {
+			runtime.paused = true;
+			runtime.pauseReason = `chain-depth: event ${event.eventId} sits at causal depth ${chainDepth}, exceeding maxChainDepth ${config.limits.maxChainDepth}`;
+		}
+		const openLimitReason = findOpenItemLimitViolation(
+			runtime.projection,
+			config.limits,
+		);
+		if (openLimitReason !== undefined) {
+			runtime.paused = true;
+			runtime.pauseReason = openLimitReason;
+		}
 
 		const known = new Set(runtime.queue.map((record) => record.commandId));
 		if (runtime.activeCommand !== undefined) {

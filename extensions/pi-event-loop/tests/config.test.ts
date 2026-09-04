@@ -1,12 +1,11 @@
 /** Tests for pi-event-loop configuration parsing and validation (SPEC §6, §18). */
 
 import { describe, expect, it } from "vitest";
-
-import { CONFIG_RELATIVE_PATH, parseEventLoopConfig } from "../config.js";
 import {
 	configText,
 	fixtureObject,
 } from "../../../tests/fixtures/pi-event-loop.js";
+import { CONFIG_RELATIVE_PATH, parseEventLoopConfig } from "../config.js";
 
 describe("pi-event-loop configuration", () => {
 	it("exports the documented configuration path", () => {
@@ -166,10 +165,6 @@ describe("pi-event-loop configuration", () => {
 		expect(result.ok).toBe(false);
 		expect(result.errors.join(" ")).toContain('duplicate automation id "same"');
 	});
-
-
-
-
 
 	it("rejects emissionPolicy other than command-contract", () => {
 		const raw = JSON.parse(configText()) as {

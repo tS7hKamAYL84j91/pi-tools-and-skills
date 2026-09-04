@@ -1,6 +1,12 @@
 /** Event and command validators for .pi/event-loop.json (SPEC §6, §18). */
+
+import {
+	checkUnknownKeys,
+	isNonEmptyString,
+	isRecord,
+	isStringArray,
+} from "./config-guards.js";
 import type { CommandSpec, EventSpec } from "./types.js";
-import { checkUnknownKeys, isNonEmptyString, isRecord, isStringArray } from "./config-guards.js";
 
 const EVENT_KEYS = [
 	"description",

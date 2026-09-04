@@ -3,11 +3,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import type { ToolResult } from "../../../lib/tool-result.js";
+import { CONFIG } from "../../../tests/fixtures/pi-event-loop.js";
+import { type EmissionContext, evaluateEmission } from "../event-ingress.js";
 import { createEmitTool } from "../event-ingress-tool.js";
-import { evaluateEmission, type EmissionContext } from "../event-ingress.js";
 import { createEventLoopRuntime, type EventLoopRuntime } from "../runtime.js";
 import type { LoopEventData, PostAppendPipeline } from "../types.js";
-import { CONFIG } from "../../../tests/fixtures/pi-event-loop.js";
 
 interface ToolCall {
 	readonly customType: string;
@@ -58,7 +58,9 @@ function makeDeps(
 	};
 }
 
-function emissionContext(knownEventIds: readonly string[] = []): EmissionContext {
+function emissionContext(
+	knownEventIds: readonly string[] = [],
+): EmissionContext {
 	return {
 		config: CONFIG,
 		profileName: "default",

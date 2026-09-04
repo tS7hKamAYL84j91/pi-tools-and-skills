@@ -1,6 +1,12 @@
 /** Timer validator for .pi/event-loop.json (SPEC §6, §12, §18). */
+
+import {
+	checkUnknownKeys,
+	isNonEmptyString,
+	isPositiveInteger,
+	isRecord,
+} from "./config-guards.js";
 import type { TimerSpec } from "./types.js";
-import { checkUnknownKeys, isNonEmptyString, isPositiveInteger, isRecord } from "./config-guards.js";
 
 const TIMER_KEYS = ["id", "intervalMinutes", "dailyAt", "emit"] as const;
 const DAILY_AT_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
