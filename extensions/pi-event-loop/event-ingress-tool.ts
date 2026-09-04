@@ -30,29 +30,16 @@ const EMPTY_EFFECTS: PostAppendEffects = { workItemIds: [], commandIds: [] };
 interface EmitToolDeps {
 	readonly appendEntry: (customType: string, data?: unknown) => void;
 	readonly runtime: EventLoopRuntime;
-	readonly loadConfig: (cwd: string) => Promise<EventLoopConfigResult>;
+	readonly loadConfig?: (cwd: string) => Promise<EventLoopConfigResult>;
+	readonly getConfig?: (
+		cwd: string,
+	) => Promise<EventLoopConfigResult> | EventLoopConfigResult;
 	readonly pipeline: PostAppendPipeline | undefined;
 	/** Overrides the generated description (tests). */
 	readonly description?: string;
 }
 
-export const EMIT_PARAMS = Type.Object({
-	event: Type.String({
-		description: "Event type to emit; must be declared in the active profile.",
-	}),
-	dedupeKey: Type.String({
-		description:
-			"Stable idempotency key for this emission; reuse it when retrying.",
-	}),
-	payload: Type.Optional(
-		Type.Record(Type.String(), Type.Unknown(), {
-			description:
-				"Event payload with the fields required by the event's contract.",
-		}),
-	),
-});
-
-export function buildEmitParams(
+function buildEmitParams(
 	config?: EventLoopConfig,
 	runtime?: EventLoopRuntime,
 ) {
@@ -130,7 +117,11 @@ async function executeEmission(
 	},
 	ctx: ExtensionContext,
 ): Promise<ToolResult> {
-	const configResult = await deps.loadConfig(ctx.cwd);
+	const configResult = deps.getConfig
+		? await deps.getConfig(ctx.cwd)
+		: deps.loadConfig
+			? await deps.loadConfig(ctx.cwd)
+			: await loadEventLoopConfig(ctx.cwd);
 	if (!configResult.ok || configResult.config === undefined) {
 		const detail =
 			configResult.missing === true
@@ -201,6 +192,9 @@ const DEFAULT_DESCRIPTION =
 export interface RegisterEmitToolOptions {
 	readonly description?: string;
 	readonly config?: EventLoopConfig;
+	readonly getConfig?: (
+		cwd: string,
+	) => Promise<EventLoopConfigResult> | EventLoopConfigResult;
 }
 
 function formatEventDoc(name: string, spec: { description: string; requiredPayload: readonly string[]; allowWithoutCommand?: boolean }, withContext = false): string {
@@ -277,10 +271,21 @@ export function registerEmitTool(
 				appendEntry: (customType, data) => pi.appendEntry(customType, data),
 				runtime,
 				loadConfig: loadEventLoopConfig,
+				getConfig: options?.getConfig,
 				pipeline,
 				description: options?.description,
 			},
 			options?.config,
 		),
 	);
+}
+
+/** Refresh the emit tool when configuration or active command transitions. */
+export function refreshEmitTool(
+	pi: ExtensionAPI,
+	runtime: EventLoopRuntime,
+	pipeline: PostAppendPipeline | undefined,
+	optionsOrDescription?: string | RegisterEmitToolOptions,
+): void {
+	registerEmitTool(pi, runtime, pipeline, optionsOrDescription);
 }

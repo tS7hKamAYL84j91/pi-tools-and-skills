@@ -3,14 +3,23 @@
 import { join } from "node:path";
 import type {
 	ExtensionAPI,
+	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import {
 	buildDescriptionFromConfig,
 	buildDescriptionFromProfile,
+	refreshEmitTool,
 	registerEmitTool,
+	type RegisterEmitToolOptions,
 } from "./event-ingress-tool.js";
+import { readEventLog } from "./event-log.js";
+import {
+	type EventLoopRuntimeSeams,
+	registerEventLoopCommands,
+} from "./event-loop-commands.js";
+import { registerContextTool } from "./event-loop-context.js";
 import {
 	createPumpingPipeline,
 	type ExtensionState,
@@ -20,11 +29,38 @@ import {
 	handleSessionShutdown,
 	handleSessionStart,
 } from "./lifecycle.js";
-import { CONFIG_RELATIVE_PATH, loadEventLoopConfig } from "./config.js";
-import { registerEventLoopCommands } from "./event-loop-commands.js";
-import { registerContextTool } from "./event-loop-context.js";
-import { createEventLoopRuntime } from "./runtime.js";
-import { EVENT_LOOP_EVENT_CUSTOM_TYPE, type EventLoopConfig } from "./types.js";
+import { buildSnapshot } from "./session-state.js";
+import {
+	EVENT_LOOP_EVENT_CUSTOM_TYPE,
+	type EventLoopConfig,
+	SNAPSHOT_CUSTOM_TYPE,
+} from "./types.js";
+import {
+	CONFIG_RELATIVE_PATH,
+	type LoadConfigOptions,
+	loadEventLoopConfig,
+} from "./config.js";
+import { createEventLoopRuntime, type EventLoopRuntime } from "./runtime.js";
+
+function isProjectTrusted(ctx?: unknown): boolean {
+	if (
+		ctx !== undefined &&
+		typeof ctx === "object" &&
+		ctx !== null &&
+		"isProjectTrusted" in ctx &&
+		typeof (ctx as { isProjectTrusted?: () => boolean }).isProjectTrusted ===
+			"function"
+	) {
+		// SAFETY: Narrowed via structural inspection of optional SDK method.
+		return (ctx as { isProjectTrusted: () => boolean }).isProjectTrusted();
+	}
+	return true;
+}
+
+function getRuntimeSeams(runtime: EventLoopRuntime): EventLoopRuntimeSeams {
+	// SAFETY: Attaches or retrieves lifecycle seams on the runtime object.
+	return runtime as unknown as EventLoopRuntimeSeams;
+}
 
 async function writeEventLoopConfig(
 	cwd: string,
@@ -64,22 +100,85 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 
 	const pipeline = createPumpingPipeline(state);
 
+	const getConfig = (cwd: string) => {
+		if (state.currentConfig !== undefined) {
+			return {
+				ok: true,
+				config: state.currentConfig,
+				fingerprint: state.currentFingerprint,
+				errors: [],
+			};
+		}
+		const options: LoadConfigOptions = {
+			trusted: isProjectTrusted(state.currentCtx),
+		};
+		return loadEventLoopConfig(cwd, options);
+	};
+
 	function refreshDynamicTools(cwd: string): void {
 		const config = state.currentConfig;
-		registerEmitTool(pi, state.runtime, pipeline, {
+		const options: RegisterEmitToolOptions = {
 			description: config
 				? buildDescriptionFromConfig(config, state.runtime)
 				: buildDescriptionFromProfile(cwd, state.runtime),
 			config,
-		});
+			getConfig,
+		};
+		refreshEmitTool(pi, state.runtime, pipeline, options);
 	}
 
-	registerEmitTool(
-		pi,
-		state.runtime,
-		pipeline,
-		buildDescriptionFromProfile(process.cwd()),
-	);
+	function persistCheckpoint(): void {
+		const config = state.currentConfig;
+		if (config === undefined || state.currentFingerprint === undefined) {
+			return;
+		}
+		const recentEvents = state.currentCtx
+			? readEventLog(state.currentCtx.sessionManager.getBranch())
+			: [];
+		const recentEventIds = recentEvents
+			.slice(-config.limits.maxRecentEvents)
+			.map((e) => e.eventId);
+		pi.appendEntry(
+			SNAPSHOT_CUSTOM_TYPE,
+			buildSnapshot({
+				runtime: state.runtime,
+				config,
+				fingerprint: state.currentFingerprint,
+				recentEventIds,
+			}),
+		);
+	}
+
+	async function runCheckpoint(
+		_ctx?: ExtensionCommandContext,
+	): Promise<void> {
+		const seam = getRuntimeSeams(state.runtime).checkpoint;
+		if (seam !== undefined && _ctx !== undefined) {
+			await seam(_ctx);
+			return;
+		}
+		persistCheckpoint();
+	}
+
+	async function runRestartPump(
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
+		const seam = getRuntimeSeams(state.runtime).restartPump;
+		await seam?.(ctx);
+	}
+
+	// Expose tool refresh seam on runtime for active-command transitions
+	// SAFETY: Augmented runtime provides integration seam.
+	(state.runtime as unknown as { refreshTools?: (cwd?: string) => void })
+		.refreshTools = (cwd?: string) => {
+		const targetCwd = cwd ?? state.currentCtx?.cwd ?? process.cwd();
+		refreshDynamicTools(targetCwd);
+	};
+
+	registerEmitTool(pi, state.runtime, pipeline, {
+		description: buildDescriptionFromProfile(process.cwd(), state.runtime),
+		getConfig,
+	});
 	registerContextTool(pi, {
 		runtime: state.runtime,
 		readEntries: (ctx) => ctx.sessionManager.getBranch(),
@@ -90,19 +189,20 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		readEntries: (ctx) => ctx.sessionManager.getBranch(),
 		appendEntry: (event) => pi.appendEntry(EVENT_LOOP_EVENT_CUSTOM_TYPE, event),
 		writeConfig: async (cwd, config) => writeEventLoopConfig(cwd, config),
-		getConfig: async (cwd) => {
-			if (state.currentConfig !== undefined) {
-				return {
-					ok: true,
-					config: state.currentConfig,
-					fingerprint: state.currentFingerprint,
-					errors: [],
-				};
-			}
-			return loadEventLoopConfig(cwd);
-		},
+		getConfig,
+		checkpoint: runCheckpoint,
+		restartPump: runRestartPump,
 		onReload: async (ctx) => {
-			const result = await loadEventLoopConfig(ctx.cwd);
+			const seam = getRuntimeSeams(state.runtime).onReload;
+			if (seam !== undefined) {
+				const reloadResult = await seam(ctx);
+				if (reloadResult && !reloadResult.ok) {
+					return reloadResult;
+				}
+			}
+			const result = await loadEventLoopConfig(ctx.cwd, {
+				trusted: isProjectTrusted(ctx),
+			});
 			if (!result.ok || result.config === undefined) {
 				return {
 					ok: false,
@@ -141,6 +241,14 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 	);
 	// session_start restores, replays, catches up timers and delivers (SPEC §17).
 	pi.on("session_start", async (_event, ctx) => {
+		state.currentCtx = ctx;
+		if (!isProjectTrusted(ctx)) {
+			ctx.ui.notify(
+				"pi-event-loop: project is untrusted; extension inert",
+				"warning",
+			);
+			return;
+		}
 		await handleSessionStart(state, ctx);
 		refreshDynamicTools(ctx.cwd);
 	});

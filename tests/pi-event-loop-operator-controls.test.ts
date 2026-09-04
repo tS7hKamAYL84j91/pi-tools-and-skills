@@ -150,6 +150,38 @@ describe("/event-loop operator controls", () => {
 		expect(pumpRestartCount).toBe(2);
 		expect(checkpointCount).toBe(2);
 	});
+
+	it("invokes runtime seams for checkpoint, restartPump, and reload when attached to runtime", async () => {
+		const runtime = createEventLoopRuntime();
+		let checkpointCount = 0;
+		let pumpRestartCount = 0;
+		let reloadCount = 0;
+		const runtimeWithSeams = runtime as unknown as {
+			checkpoint: () => Promise<void>;
+			restartPump: () => Promise<void>;
+			onReload: () => Promise<{ ok: boolean }>;
+		};
+		runtimeWithSeams.checkpoint = async () => {
+			checkpointCount++;
+		};
+		runtimeWithSeams.restartPump = async () => {
+			pumpRestartCount++;
+		};
+		runtimeWithSeams.onReload = async () => {
+			reloadCount++;
+			return { ok: true };
+		};
+
+		const ctx = context(configDir());
+		await executeOperatorCommand("reload", ctx, deps(runtime));
+		expect(reloadCount).toBe(1);
+		expect(checkpointCount).toBe(1);
+		expect(pumpRestartCount).toBe(1);
+
+		await executeOperatorCommand("resume", ctx, deps(runtime));
+		expect(checkpointCount).toBe(2);
+		expect(pumpRestartCount).toBe(2);
+	});
 });
 
 describe("event_loop_context", () => {

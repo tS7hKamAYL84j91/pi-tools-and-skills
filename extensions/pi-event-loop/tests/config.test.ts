@@ -1,11 +1,19 @@
 /** Tests for pi-event-loop configuration parsing and validation (SPEC §6, §18). */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { writeFileAtomic } from "../../../lib/file-persistence.js";
 import {
 	configText,
 	fixtureObject,
 } from "../../../tests/fixtures/pi-event-loop.js";
-import { CONFIG_RELATIVE_PATH, parseEventLoopConfig } from "../config.js";
+import {
+	CONFIG_RELATIVE_PATH,
+	loadEventLoopConfig,
+	parseEventLoopConfig,
+} from "../config.js";
 
 describe("pi-event-loop configuration", () => {
 	it("exports the documented configuration path", () => {
@@ -177,5 +185,35 @@ describe("pi-event-loop configuration", () => {
 		expect(result.errors.join(" ")).toContain(
 			'"emissionPolicy" must be "command-contract"',
 		);
+	});
+
+	it("rejects configuration loading when project is untrusted", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-event-loop-untrusted-"));
+		try {
+			await writeFileAtomic(join(cwd, ".pi/event-loop.json"), configText());
+			const result = await loadEventLoopConfig(cwd, { trusted: false });
+			expect(result.ok).toBe(false);
+			expect(result.missing).toBe(false);
+			expect(result.errors.join(" ")).toContain("project is untrusted");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("loads configuration from custom config directory when specified", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-event-loop-custom-dir-"));
+		try {
+			await writeFileAtomic(
+				join(cwd, "custom-dir/event-loop.json"),
+				configText(),
+			);
+			const result = await loadEventLoopConfig(cwd, {
+				configDir: "custom-dir",
+			});
+			expect(result.ok).toBe(true);
+			expect(result.config?.activeProfile).toBe("default");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 });
