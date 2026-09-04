@@ -10,7 +10,7 @@ import {
 	renderContextCall,
 	renderContextResult,
 } from "./event-loop-renderers.js";
-import { loadEventLoopConfig } from "./config.js";
+import type { EventLoopConfigResult } from "./config.js";
 import type { SessionEntryLike } from "./event-log.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import { buildStatus } from "./status.js";
@@ -18,6 +18,9 @@ import { buildStatus } from "./status.js";
 interface EventLoopContextDeps {
 	readonly runtime: EventLoopRuntime;
 	readonly readEntries: (ctx: ExtensionContext) => readonly SessionEntryLike[];
+	readonly getConfig: (
+		cwd: string,
+	) => Promise<EventLoopConfigResult> | EventLoopConfigResult;
 }
 
 const CONTEXT_PARAMS = Type.Object({});
@@ -47,7 +50,7 @@ async function executeContext(
 	deps: EventLoopContextDeps,
 	ctx: ExtensionContext,
 ): Promise<ToolResult> {
-	const result = await loadEventLoopConfig(ctx.cwd);
+	const result = await deps.getConfig(ctx.cwd);
 	if (!result.ok || result.config === undefined) {
 		const reason =
 			result.missing === true ? "no configuration" : result.errors.join("; ");

@@ -212,7 +212,7 @@ with an explicit pinned-API qualification or bounded operational caveat.
 | 9 | Projectors never issue commands; automators never interpret events | COVERED | `tests/architecture/pi-event-loop-isolation.ts` layer-boundary guards (new) |
 | 10 | Command message identifies command, work item, expected events | COVERED | `dispatcher.test.ts` "carries the self-describing contract as structured details (SPEC §10)" |
 | 11 | Dynamic emit tool exposes active command's permitted outcomes | COVERED | `tests/pi-event-loop-ac-coverage.test.ts` emit-tool description contract (new); live per-turn contract reporting is the command message (AC-10) + `event_loop_context` (P7) |
-| 12 | Command from an active turn waits for `agent_settled` | COVERED | `delivery-cycle.test.ts` + lifecycle hooks |
+| 12 | Command from an active turn waits for `agent_settled` | COVERED | `lifecycle.test.ts`, `lifecycle-recovery.test.ts`, and `tests/pi-event-loop-integration.test.ts` |
 | 13 | Multiple commands delivered sequentially, one active | COVERED | `command-queue.test.ts` FIFO/one-active; `dispatcher.test.ts` "refuses delivery when a command is already active"; `tests/pi-event-loop-ac-coverage.test.ts` sequential two-command cycle (new) |
 | 14 | Settlement without expected event stalls item, pauses delivery | COVERED | `dispatcher.test.ts` "without an expected outcome event: stalls the item and pauses delivery"; `tests/pi-event-loop-runtime.test.ts` stall test |
 | 15 | Accepted closing event, not settlement, completes item | COVERED | `tests/pi-event-loop-runtime.test.ts` full-cycle test; `projector.test.ts` AC-6; `dispatcher.test.ts` "settles cleanly and clears the active command" |
@@ -221,7 +221,7 @@ with an explicit pinned-API qualification or bounded operational caveat.
 | 18 | Restart replays only events after latest checkpoint | COVERED | `session-state.test.ts`, `lifecycle.test.ts` |
 | 19 | Config change causes deterministic full projection rebuild | COVERED | `session-state.test.ts` fingerprint-change rebuild cases |
 | 20 | Uncertain active delivery repeats only with same command ID | COVERED | `session-state.test.ts` + stable-ID tests in `command-queue.test.ts`/`automator.test.ts` |
-| 21 | Chain, item and queue limits pause, not unbounded turns | COVERED | `loop-guards.test.ts`, `delivery-cycle.test.ts`, `automator.test.ts` |
+| 21 | Chain, item and queue limits pause, not unbounded turns | COVERED | `loop-guards.test.ts`, `lifecycle-recovery.test.ts`, `automator.test.ts`, and `tests/pi-event-loop-integration.test.ts` |
 | 22 | Compensation as configured facts, views, commands | COVERED | `tests/pi-event-loop-runtime.test.ts` and `tests/pi-event-loop-operator-controls.test.ts` accept declared `correctsEventId` facts; queued cancellation is covered by `command-queue.test.ts` |
 | 23 | Two sessions keep independent histories, projections, queues | COVERED | `tests/pi-event-loop-ac-coverage.test.ts` instance-independence test (new); §4 design evidence |
 | 24 | Works with every other optional extension disabled | COVERED | import-allowlist guard + inventory in §4 (new) |

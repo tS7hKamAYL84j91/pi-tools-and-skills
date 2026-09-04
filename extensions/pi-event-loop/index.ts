@@ -131,6 +131,7 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 	registerContextTool(pi, {
 		runtime: state.runtime,
 		readEntries: (ctx) => ctx.sessionManager.getBranch(),
+		getConfig,
 	});
 	registerEventLoopCommands(pi, {
 		runtime: state.runtime,

@@ -2,7 +2,7 @@
 
 **Source of truth:** `SPEC.md` (final implementation brief). P1–P10 below record the original implementation pass; they do **not** establish current conformance. A 2026-09-04 review against the implementation, current Pi extension/TUI documentation, and `docs/architecture.md` reopened the work in P11–P14. Definition of done = SPEC.md §21; acceptance criteria = SPEC.md §20 (AC-1..26).
 
-**Current verdict:** not definition-complete. Focused tests pass (19 files / 150 tests), but mocks do not cover several host-runtime and operator-control failures. Do not restore the completion claim until every P11 blocker and P14 regression test is closed.
+**Current verdict:** definition-complete after T-889 remediation. P11–P14 are closed with tests-first production-boundary coverage, current Pi SDK/TUI integration, and passing repository gates.
 
 ## P1 — Scaffold and configuration
 

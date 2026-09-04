@@ -261,6 +261,7 @@ describe("event_loop_context", () => {
 			{
 				runtime,
 				readEntries: () => [],
+				getConfig: () => ({ ok: true, config: CONFIG, errors: [] }),
 			},
 		);
 		expect(tools).toHaveLength(1);
