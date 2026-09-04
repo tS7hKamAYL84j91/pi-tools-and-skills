@@ -188,6 +188,37 @@ describe("recoverSessionState", () => {
 		);
 	});
 
+	it("preserves all completed rows and projection byte-equivalence beyond 100 completed rows on recovery (SPEC §15, AC-7, AC-18)", () => {
+		// 105 completed work items before checkpoint
+		const events: ReturnType<typeof workRequested>[] = [];
+		for (let i = 0; i < 105; i++) {
+			events.push(workRequested(`work-${i}`), workCompleted(`work-${i}`));
+		}
+		const before = runtimeWithHistory(events);
+		const snapshot = snapshotFor(before.runtime, events);
+
+		const later = workRequested("work-extra");
+		const allEvents = [...events, later];
+		const restored = createEventLoopRuntime();
+		recoverSessionState({
+			runtime: restored,
+			events: allEvents,
+			config: CONFIG,
+			fingerprint: "fp-1",
+			snapshot,
+			applyEvent: createPostAppendPipeline(restored),
+		});
+
+		const fullReplay = runtimeWithHistory(allEvents);
+		expect(restored.projection.items.size).toBe(106);
+		expect([...restored.projection.items.values()]).toEqual([
+			...fullReplay.runtime.projection.items.values(),
+		]);
+		expect(restored.projection.order).toEqual(
+			fullReplay.runtime.projection.order,
+		);
+	});
+
 	it("keeps two sessions independent (AC-23)", () => {
 		const runtimeA = createEventLoopRuntime();
 		const runtimeB = createEventLoopRuntime();

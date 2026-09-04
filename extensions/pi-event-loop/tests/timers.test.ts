@@ -32,6 +32,7 @@ interface FakeRunnerHost {
 function fakeHost(
 	startMs: number,
 	knownEventIds: readonly string[] = [],
+	onAppend?: (event: LoopEventData) => void,
 ): FakeRunnerHost {
 	const timers: FakeScheduledTimer[] = [];
 	const appended: LoopEventData[] = [];
@@ -44,7 +45,11 @@ function fakeHost(
 		limits: TIMER_LIMITS,
 		knownEventIds: () => new Set(knownEventIds),
 		appendEvent: (event) => {
-			appended.push(event);
+			if (onAppend !== undefined) {
+				onAppend(event);
+			} else {
+				appended.push(event);
+			}
 		},
 		notify: (message) => {
 			notified.push(message);
@@ -181,6 +186,24 @@ describe("createTimerRunner", () => {
 		expect(fake.appended).toHaveLength(0);
 		expect(fake.notified).toHaveLength(1);
 		expect(fake.notified[0]).toContain("broken");
+		// Bookkeeping must not advance occurrence state when payload contract fails
+		expect(state.broken).toBeUndefined();
+	});
+
+	it("does not advance occurrence state when appendEvent fails (SPEC §12)", () => {
+		const fake = fakeHost(0, [], () => {
+			throw new Error("disk full");
+		});
+		const state: Record<string, TimerOccurrenceState> = {};
+		const runner = createTimerRunner(fake.host, state);
+		runner.start();
+		fake.setClock(HOUR_MS);
+		const intervalTimer = fake.timers[0];
+		if (intervalTimer === undefined) {
+			throw new Error("fixture broken: no interval timer");
+		}
+		fake.fire(intervalTimer);
+		expect(state.hourly).toBeUndefined();
 	});
 
 	it("stop clears pending handles: occurrences stop while the session is closed (SPEC §12)", () => {

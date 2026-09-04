@@ -86,4 +86,20 @@ describe("nextDailyOccurrenceMs", () => {
 			nextDailyOccurrenceMs("09:30", "2026-01-05", expectedToday - 1),
 		).toBe(expectedToday + DAY_MS);
 	});
+
+	it("preserves local wall-clock time across DST transitions (SPEC §12)", () => {
+		// March 28 -> March 29, 2026 is a 23-hour day in Europe/London (+0000 -> +0100).
+		const springEve = new Date(2026, 2, 28, 9, 30, 0, 0).getTime();
+		const nextSpring = nextDailyOccurrenceMs("09:30", "2026-03-28", springEve);
+		const springTarget = new Date(nextSpring);
+		expect(springTarget.getHours()).toBe(9);
+		expect(springTarget.getMinutes()).toBe(30);
+
+		// October 24 -> October 25, 2026 is a 25-hour day in Europe/London (+0100 -> +0000).
+		const fallEve = new Date(2026, 9, 24, 9, 30, 0, 0).getTime();
+		const nextFall = nextDailyOccurrenceMs("09:30", "2026-10-24", fallEve);
+		const fallTarget = new Date(nextFall);
+		expect(fallTarget.getHours()).toBe(9);
+		expect(fallTarget.getMinutes()).toBe(30);
+	});
 });
