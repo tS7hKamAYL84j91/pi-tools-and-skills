@@ -254,9 +254,10 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 				ctx?: unknown,
 			) => Promise<unknown>;
 		}> = [];
-		const originalApi = fake.api;
 		fake.api = {
-			...originalApi,
+			on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) => {
+				fake.handlers.set(event, handler);
+			},
 			registerTool: (tool: {
 				name: string;
 				execute: (
@@ -268,6 +269,14 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 				) => Promise<unknown>;
 			}) => {
 				registeredTools.push(tool);
+			},
+			registerCommand: () => undefined,
+			appendEntry: (customType: string, data?: unknown) => {
+				fake.entries.push({ type: "custom", customType, data: data ?? null });
+			},
+			sendMessage: (message: unknown, options: unknown) => {
+				fake.sent.push({ message, options });
+				fake.idle = false;
 			},
 		} as never;
 

@@ -123,7 +123,13 @@ describe("settleActiveCommand", () => {
 		deliverNextCommand({ sendMessage: () => undefined }, runtime);
 		// Mark item completed in projection as an accepted closing event would do
 		const item = runtime.projection.items.get("item-work-42")!;
-		runtime.projection.items.set("item-work-42", { ...item, status: "completed" });
+		runtime.projection = {
+			...runtime.projection,
+			items: new Map([
+				...runtime.projection.items,
+				["item-work-42", { ...item, status: "completed" }],
+			]),
+		};
 		const outcome = settleActiveCommand(runtime, true);
 		expect(outcome).toEqual({ settled: true, stalled: false });
 		expect(runtime.activeCommand).toBeUndefined();
