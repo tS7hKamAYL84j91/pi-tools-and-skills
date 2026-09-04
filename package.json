@@ -56,13 +56,13 @@
 	},
 	"homepage": "https://github.com/tS7hKamAYL84j91/pi-tools-and-skills#readme",
 	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": "^0.74.0",
-		"@earendil-works/pi-tui": "^0.74.0"
+		"@earendil-works/pi-coding-agent": "^0.84.4",
+		"@earendil-works/pi-tui": "^0.84.4"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
-		"@earendil-works/pi-coding-agent": "^0.74.0",
-		"@earendil-works/pi-tui": "^0.74.0",
+		"@earendil-works/pi-coding-agent": "^0.84.4",
+		"@earendil-works/pi-tui": "^0.84.4",
 		"@types/node": "^25.5.2",
 		"@vitest/coverage-v8": "4.1.2",
 		"archunit": "^2.1.66",
