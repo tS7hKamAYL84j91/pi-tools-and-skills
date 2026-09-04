@@ -95,13 +95,19 @@ function collectCausalAncestors(
 		retainedIds.add(item.workItemId);
 		queue.push({ eventId: item.openedByEventId, depth: 0 });
 	}
-	const visitedEvents = new Set<string>();
+	// Track the minimum depth at which each event was reached so a later
+	// shorter path is explored and not discarded by an earlier longer path.
+	const minDepthByEvent = new Map<string, number>();
 	while (queue.length > 0) {
-		const entry = queue.pop();
-		if (entry === undefined || visitedEvents.has(entry.eventId)) {
+		const entry = queue.shift();
+		if (entry === undefined) {
 			continue;
 		}
-		visitedEvents.add(entry.eventId);
+		const previousMin = minDepthByEvent.get(entry.eventId);
+		if (previousMin !== undefined && entry.depth >= previousMin) {
+			continue;
+		}
+		minDepthByEvent.set(entry.eventId, entry.depth);
 		if (entry.depth >= maxDepth) {
 			continue;
 		}
