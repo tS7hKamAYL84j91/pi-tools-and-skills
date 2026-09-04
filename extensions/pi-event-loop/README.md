@@ -16,6 +16,19 @@ self-describing commands that are delivered to the current agent as new turns.
 Design distinctions (SPEC §1): an event is an immutable fact; a view is derived information; a todo
 item is projected work; a command is an intention to act; the agent handles commands and reports
 outcomes as new facts; the automator contains no domain reasoning.
+
+## Operator Status and TUI Inspection
+
+`pi-event-loop` provides native Pi TUI components and non-TUI fallbacks for operator visibility (SPEC §16; TODO P13):
+
+- **Persistent status indicator:** updates `ctx.ui.setStatus("pi-event-loop", ...)` with callback theme colors (running/paused state with reason, active command, and queued count). Cleared on session shutdown, reload, or when inert.
+- **Bounded on-demand inspection overlay:** interactive `EventLoopInspector` rendered via `ctx.ui.custom()` with `{ overlay: true }` (width 80%, minWidth 40, maxHeight 80%, margin 1). Organizes inspection into 3 tabs:
+  - `[1] Status`: profile, pause reason, automated turns counter, active command, pending count, event count.
+  - `[2] Views`: todo rows per projection with status and key; Enter toggles gradual disclosure of source payloads.
+  - `[3] History`: ordered event log; Enter toggles payload detail.
+  - Navigation: `↑/↓` scroll, `1/2/3` or `Tab` switch tab, `Esc` or `q` close. Overflow cues (`[Showing X of Y...]`) appear when rows exceed visible height.
+- **Non-TUI fallback:** When `ctx.hasUI === false` or `ctx.mode !== "tui"`, inspection formats bounded multiline plain text (`formatEventLoopFallback`) suitable for RPC or print mode.
+- **Pure render paths:** Render closures consume precomputed immutable state only; synchronous filesystem access and raw ANSI codes are forbidden, enforced by architecture fitness test `tests/architecture/tui-render-paths.ts`.
 ## What this does NOT do
 
 - Discovers, starts, selects or routes to other agents; no cross-session or multi-agent
