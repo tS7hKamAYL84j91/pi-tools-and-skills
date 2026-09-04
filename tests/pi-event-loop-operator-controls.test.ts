@@ -2,34 +2,66 @@
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, afterEach } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { CONFIG, configText, workItem } from "./fixtures/pi-event-loop.js";
-import {
-	executeOperatorCommand,
-	type EventLoopCommandDeps,
-} from "../extensions/pi-event-loop/event-loop-commands.js";
+import { registerEventLoopCommands } from "../extensions/pi-event-loop/event-loop-commands.js";
 import { registerContextTool } from "../extensions/pi-event-loop/event-loop-context.js";
-import { createEventLoopRuntime } from "../extensions/pi-event-loop/runtime.js";
+import { createEventLoopRuntime, type EventLoopRuntime } from "../extensions/pi-event-loop/runtime.js";
 import type { LoopEventData, PostAppendEffects } from "../extensions/pi-event-loop/types.js";
 
 const tempDirs: string[] = [];
 
 afterEach(() => {
-	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+	for (const dir of tempDirs.splice(0)) {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
 
-function context(cwd: string): Parameters<typeof executeOperatorCommand>[1] {
-	return { cwd, ui: { notify: () => undefined }, sessionManager: { getBranch: () => [] } } as never;
+interface RegisteredCommand {
+	readonly handler: (args: string, ctx: unknown) => Promise<void>;
 }
 
-function deps(runtime = createEventLoopRuntime(), appended: LoopEventData[] = []): EventLoopCommandDeps {
+interface CommandHarnessOptions {
+	readonly runtime?: EventLoopRuntime;
+	readonly appended?: LoopEventData[];
+	readonly onReload?: () => Promise<{ ok: boolean }>;
+	readonly restartPump?: () => Promise<void>;
+	readonly checkpoint?: () => Promise<void>;
+}
+
+function createHarness(options: CommandHarnessOptions = {}) {
+	const runtime = options.runtime ?? createEventLoopRuntime();
+	const appended = options.appended ?? [];
+	const notifications: Array<{ message: string; type?: string }> = [];
+	let registeredHandler: ((args: string, ctx: unknown) => Promise<void>) | undefined;
+	const pi = {
+		registerCommand: (_name: string, definition: RegisteredCommand) => {
+			registeredHandler = definition.handler;
+		},
+	};
 	const effects: PostAppendEffects = { workItemIds: [], commandIds: [] };
-	return {
+	registerEventLoopCommands(pi as never, {
 		runtime,
 		pipeline: () => effects,
 		readEntries: () => [],
 		appendEntry: (event) => appended.push(event),
+		onReload: options.onReload,
+		restartPump: options.restartPump,
+		checkpoint: options.checkpoint,
+	});
+	const dispatchCommand = async (args: string, cwd: string) => {
+		const ctx = {
+			cwd,
+			ui: {
+				notify: (message: string, type?: string) =>
+					notifications.push({ message, type }),
+			},
+			sessionManager: { getBranch: () => [] },
+		};
+		await registeredHandler?.(args, ctx);
+		return notifications.at(-1);
 	};
+	return { dispatchCommand, runtime, appended, notifications };
 }
 
 function configDir(): string {
@@ -42,49 +74,49 @@ function configDir(): string {
 
 describe("/event-loop operator controls", () => {
 	it("reports status without mutation", async () => {
-		const runtime = createEventLoopRuntime();
-		const before = JSON.stringify(runtime);
-		const result = await executeOperatorCommand("status", context(configDir()), deps(runtime));
-		expect(result.isError).toBeUndefined();
-		expect(result.content[0]?.text).toContain("profile: default");
-		expect(JSON.stringify(runtime)).toBe(before);
+		const harness = createHarness();
+		const before = JSON.stringify(harness.runtime);
+		const result = await harness.dispatchCommand("status", configDir());
+		expect(result?.type).toBe("info");
+		expect(result?.message).toContain("profile: default");
+		expect(JSON.stringify(harness.runtime)).toBe(before);
 	});
 
 	it("pauses and resumes with an operator-visible reason", async () => {
-		const runtime = createEventLoopRuntime();
-		const commandDeps = deps(runtime);
-		const ctx = context(configDir());
-		await executeOperatorCommand("pause maintenance", ctx, commandDeps);
-		expect(runtime.paused).toBe(true);
-		expect(runtime.pauseReason).toBe("maintenance");
-		await executeOperatorCommand("resume", ctx, commandDeps);
-		expect(runtime.paused).toBe(false);
+		const harness = createHarness();
+		const cwd = configDir();
+		await harness.dispatchCommand("pause maintenance", cwd);
+		expect(harness.runtime.paused).toBe(true);
+		expect(harness.runtime.pauseReason).toBe("maintenance");
+		await harness.dispatchCommand("resume", cwd);
+		expect(harness.runtime.paused).toBe(false);
 	});
 
 	it("reopens a stalled item on retry", async () => {
-		const runtime = createEventLoopRuntime();
+		const harness = createHarness();
 		const stalled = workItem("stalled");
-		runtime.projection = { items: new Map([[stalled.workItemId, stalled]]), order: [stalled.workItemId] };
-		runtime.paused = true;
-		const result = await executeOperatorCommand(`retry ${stalled.workItemId}`, context(configDir()), deps(runtime));
-		expect(result.isError).toBeUndefined();
-		expect(runtime.projection.items.get(stalled.workItemId)?.status).toBe("outstanding");
-		expect(runtime.paused).toBe(false);
+		harness.runtime.projection = {
+			items: new Map([[stalled.workItemId, stalled]]),
+			order: [stalled.workItemId],
+		};
+		harness.runtime.paused = true;
+		const result = await harness.dispatchCommand(`retry ${stalled.workItemId}`, configDir());
+		expect(result?.type).toBe("info");
+		expect(harness.runtime.projection.items.get(stalled.workItemId)?.status).toBe("outstanding");
+		expect(harness.runtime.paused).toBe(false);
 	});
 
 	it("issues a queued diagnostic command without appending a domain event", async () => {
-		const runtime = createEventLoopRuntime();
-		const appended: LoopEventData[] = [];
-		const result = await executeOperatorCommand(
+		const harness = createHarness();
+		const result = await harness.dispatchCommand(
 			'issue perform-work {"workItemId":"diagnostic-1"}',
-			context(configDir()),
-			deps(runtime, appended),
+			configDir(),
 		);
-		expect(result.isError).toBeUndefined();
-		expect(result.content[0]?.text).toContain("no domain event fabricated");
-		expect(runtime.queue).toHaveLength(1);
-		expect(runtime.projection.order).toHaveLength(1);
-		expect(appended).toHaveLength(0);
+		expect(result?.type).toBe("info");
+		expect(result?.message).toContain("no domain event fabricated");
+		expect(harness.runtime.queue).toHaveLength(1);
+		expect(harness.runtime.projection.order).toHaveLength(1);
+		expect(harness.appended).toHaveLength(0);
 	});
 
 	it("accepts a declared compensation fact through normal ingress", () => {
@@ -110,53 +142,52 @@ describe("/event-loop operator controls", () => {
 	});
 
 	it("reload invokes the injected onReload seam and reports its result", async () => {
-		const runtime = createEventLoopRuntime();
 		let reloaded = false;
-		const commandDeps = {
-			...deps(runtime),
+		const harness = createHarness({
 			onReload: async () => {
 				reloaded = true;
 				return { ok: true };
 			},
-		};
-		const result = await executeOperatorCommand("reload", context(configDir()), commandDeps as unknown as EventLoopCommandDeps);
-		expect(result.isError).toBeUndefined();
+		});
+		const result = await harness.dispatchCommand("reload", configDir());
+		expect(result?.type).toBe("info");
 		expect(reloaded).toBe(true);
 	});
 
 	it("resume and retry restart delivery pump and invoke immediate checkpoint", async () => {
-		const runtime = createEventLoopRuntime();
 		let pumpRestartCount = 0;
 		let checkpointCount = 0;
 		const stalled = workItem("stalled");
-		runtime.projection = { items: new Map([[stalled.workItemId, stalled]]), order: [stalled.workItemId] };
-		runtime.paused = true;
-		const commandDeps = {
-			...deps(runtime),
+		const harness = createHarness({
 			restartPump: async () => {
 				pumpRestartCount++;
 			},
 			checkpoint: async () => {
 				checkpointCount++;
 			},
+		});
+		harness.runtime.projection = {
+			items: new Map([[stalled.workItemId, stalled]]),
+			order: [stalled.workItemId],
 		};
-		const ctx = context(configDir());
-		await executeOperatorCommand("resume", ctx, commandDeps as unknown as EventLoopCommandDeps);
+		harness.runtime.paused = true;
+		const cwd = configDir();
+		await harness.dispatchCommand("resume", cwd);
 		expect(pumpRestartCount).toBe(1);
 		expect(checkpointCount).toBe(1);
 
-		runtime.paused = true;
-		await executeOperatorCommand(`retry ${stalled.workItemId}`, ctx, commandDeps as unknown as EventLoopCommandDeps);
+		harness.runtime.paused = true;
+		await harness.dispatchCommand(`retry ${stalled.workItemId}`, cwd);
 		expect(pumpRestartCount).toBe(2);
 		expect(checkpointCount).toBe(2);
 	});
 
 	it("invokes runtime seams for checkpoint, restartPump, and reload when attached to runtime", async () => {
-		const runtime = createEventLoopRuntime();
 		let checkpointCount = 0;
 		let pumpRestartCount = 0;
 		let reloadCount = 0;
-		const runtimeWithSeams = runtime as unknown as {
+		const harness = createHarness();
+		const runtimeWithSeams = harness.runtime as unknown as {
 			checkpoint: () => Promise<void>;
 			restartPump: () => Promise<void>;
 			onReload: () => Promise<{ ok: boolean }>;
@@ -172,13 +203,13 @@ describe("/event-loop operator controls", () => {
 			return { ok: true };
 		};
 
-		const ctx = context(configDir());
-		await executeOperatorCommand("reload", ctx, deps(runtime));
+		const cwd = configDir();
+		await harness.dispatchCommand("reload", cwd);
 		expect(reloadCount).toBe(1);
 		expect(checkpointCount).toBe(1);
 		expect(pumpRestartCount).toBe(1);
 
-		await executeOperatorCommand("resume", ctx, deps(runtime));
+		await harness.dispatchCommand("resume", cwd);
 		expect(checkpointCount).toBe(2);
 		expect(pumpRestartCount).toBe(2);
 	});
@@ -188,13 +219,24 @@ describe("event_loop_context", () => {
 	it("is read-only and reports the active contract", async () => {
 		const runtime = createEventLoopRuntime();
 		const tools: Array<{ execute: (...args: unknown[]) => Promise<unknown> }> = [];
-		registerContextTool({ registerTool: (tool: unknown) => tools.push(tool as (typeof tools)[number]) } as never, {
-			runtime,
-			readEntries: () => [],
-		});
+		registerContextTool(
+			{
+				registerTool: (tool: unknown) =>
+					tools.push(tool as (typeof tools)[number]),
+			} as never,
+			{
+				runtime,
+				readEntries: () => [],
+			},
+		);
 		expect(tools).toHaveLength(1);
 		const before = JSON.stringify(runtime);
-		const result = await tools[0]!.execute("id", {}, undefined, undefined, context(configDir()));
+		const ctx = {
+			cwd: configDir(),
+			ui: { notify: () => undefined },
+			sessionManager: { getBranch: () => [] },
+		};
+		const result = await tools[0]!.execute("id", {}, undefined, undefined, ctx);
 		expect((result as { isError?: boolean }).isError).toBeUndefined();
 		expect(JSON.stringify(runtime)).toBe(before);
 	});

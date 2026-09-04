@@ -43,6 +43,14 @@ function resolveJsonPointer(
 		if (current === null || typeof current !== "object") {
 			return { found: false, value: undefined };
 		}
+		// Security: block prototype keys and require own properties (read-only traversal; no mutation).
+		if (
+			token === "__proto__" ||
+			token === "constructor" ||
+			token === "prototype"
+		) {
+			return { found: false, value: undefined };
+		}
 		const container = current as Record<string, unknown>;
 		if (!Object.hasOwn(container, token)) {
 			return { found: false, value: undefined };

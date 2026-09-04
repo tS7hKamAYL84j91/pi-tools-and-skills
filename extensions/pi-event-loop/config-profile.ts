@@ -1,7 +1,8 @@
-/** Profile validator for .pi/event-loop.json: per-profile slices and cross-reference checks (SPEC §6, §18). */
+/** Profile validator for .pi/event-loop.json: per-profile slices and structural parsing (SPEC §6, §18). */
 
 import { validateCommandSpec, validateEventSpec } from "./config-events.js";
 import { checkUnknownKeys, isRecord } from "./config-guards.js";
+import { validateProfileCrossReferences } from "./config-profile-crossref.js";
 import { validateTimer } from "./config-timers.js";
 import { validateAutomation, validateViewSpec } from "./config-views.js";
 import type {
@@ -22,6 +23,149 @@ const PROFILE_KEYS = [
 	"timers",
 ] as const;
 
+interface ParseResult<T> {
+	readonly value: T;
+	readonly names: ReadonlySet<string>;
+	readonly valid: boolean;
+}
+
+function parseProfileEvents(
+	path: string,
+	raw: unknown,
+	errors: string[],
+): ParseResult<Record<string, EventSpec>> {
+	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
+	const events: Record<string, EventSpec> = {};
+	if (!isRecord(raw)) {
+		errors.push(`${path}.events: must be an object`);
+		return { value: events, names, valid: false };
+	}
+	let valid = true;
+	for (const [name, entryRaw] of Object.entries(raw)) {
+		const spec = validateEventSpec(`${path}.events.${name}`, entryRaw, errors);
+		if (spec === undefined) {
+			valid = false;
+			continue;
+		}
+		events[name] = spec;
+	}
+	return { value: events, names, valid };
+}
+
+function parseProfileCommands(
+	path: string,
+	raw: unknown,
+	errors: string[],
+): ParseResult<Record<string, CommandSpec>> {
+	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
+	const commands: Record<string, CommandSpec> = {};
+	if (!isRecord(raw)) {
+		errors.push(`${path}.commands: must be an object`);
+		return { value: commands, names, valid: false };
+	}
+	let valid = true;
+	for (const [name, entryRaw] of Object.entries(raw)) {
+		const spec = validateCommandSpec(
+			`${path}.commands.${name}`,
+			entryRaw,
+			errors,
+		);
+		if (spec === undefined) {
+			valid = false;
+			continue;
+		}
+		commands[name] = spec;
+	}
+	return { value: commands, names, valid };
+}
+
+function parseProfileViews(
+	path: string,
+	raw: unknown,
+	errors: string[],
+): ParseResult<Record<string, ViewSpec>> {
+	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
+	const views: Record<string, ViewSpec> = {};
+	if (!isRecord(raw)) {
+		errors.push(`${path}.views: must be an object`);
+		return { value: views, names, valid: false };
+	}
+	let valid = true;
+	for (const [name, entryRaw] of Object.entries(raw)) {
+		const spec = validateViewSpec(`${path}.views.${name}`, entryRaw, errors);
+		if (spec === undefined) {
+			valid = false;
+			continue;
+		}
+		views[name] = spec;
+	}
+	return { value: views, names, valid };
+}
+
+function parseProfileAutomations(
+	path: string,
+	raw: unknown,
+	errors: string[],
+): { readonly automations: AutomationSpec[]; readonly valid: boolean } {
+	const automations: AutomationSpec[] = [];
+	if (!Array.isArray(raw)) {
+		errors.push(`${path}.automations: must be an array`);
+		return { automations, valid: false };
+	}
+	let valid = true;
+	const seenIds = new Set<string>();
+	for (const [index, entryRaw] of raw.entries()) {
+		const spec = validateAutomation(
+			`${path}.automations[${index}]`,
+			entryRaw,
+			errors,
+		);
+		if (spec === undefined) {
+			valid = false;
+			continue;
+		}
+		if (seenIds.has(spec.id)) {
+			errors.push(
+				`${path}.automations[${index}]: duplicate automation id "${spec.id}"`,
+			);
+			valid = false;
+			continue;
+		}
+		seenIds.add(spec.id);
+		automations.push(spec);
+	}
+	return { automations, valid };
+}
+
+function parseProfileTimers(
+	path: string,
+	raw: unknown,
+	errors: string[],
+): { readonly timers: TimerSpec[]; readonly valid: boolean } {
+	const timers: TimerSpec[] = [];
+	if (!Array.isArray(raw)) {
+		errors.push(`${path}.timers: must be an array`);
+		return { timers, valid: false };
+	}
+	let valid = true;
+	const seenIds = new Set<string>();
+	for (const [index, entryRaw] of raw.entries()) {
+		const spec = validateTimer(`${path}.timers[${index}]`, entryRaw, errors);
+		if (spec === undefined) {
+			valid = false;
+			continue;
+		}
+		if (seenIds.has(spec.id)) {
+			errors.push(`${path}.timers[${index}]: duplicate timer id "${spec.id}"`);
+			valid = false;
+			continue;
+		}
+		seenIds.add(spec.id);
+		timers.push(spec);
+	}
+	return { timers, valid };
+}
+
 export function validateProfile(
 	name: string,
 	raw: unknown,
@@ -40,222 +184,51 @@ export function validateProfile(
 		valid = false;
 	}
 
-	const eventsRaw = raw["events"];
-	const eventNames = new Set<string>(
-		isRecord(eventsRaw) ? Object.keys(eventsRaw) : [],
+	const parsedEvents = parseProfileEvents(path, raw["events"], errors);
+	const parsedCommands = parseProfileCommands(path, raw["commands"], errors);
+	const parsedViews = parseProfileViews(path, raw["views"], errors);
+	const parsedAutomations = parseProfileAutomations(
+		path,
+		raw["automations"],
+		errors,
 	);
-	const events: Record<string, EventSpec> = {};
-	if (isRecord(eventsRaw)) {
-		for (const [eventName, eventRaw] of Object.entries(eventsRaw)) {
-			const spec = validateEventSpec(
-				`${path}.events.${eventName}`,
-				eventRaw,
-				errors,
-			);
-			if (spec === undefined) {
-				valid = false;
-				continue;
-			}
-			events[eventName] = spec;
-		}
-	} else {
-		errors.push(`${path}: "events" must be an object`);
+	const parsedTimers = parseProfileTimers(path, raw["timers"], errors);
+
+	if (
+		!parsedEvents.valid ||
+		!parsedCommands.valid ||
+		!parsedViews.valid ||
+		!parsedAutomations.valid ||
+		!parsedTimers.valid
+	) {
 		valid = false;
 	}
 
-	const commandsRaw = raw["commands"];
-	const commandNames = new Set<string>(
-		isRecord(commandsRaw) ? Object.keys(commandsRaw) : [],
+	const crossRefsValid = validateProfileCrossReferences(
+		{
+			path,
+			eventNames: parsedEvents.names,
+			events: parsedEvents.value,
+			commandNames: parsedCommands.names,
+			commands: parsedCommands.value,
+			viewNames: parsedViews.names,
+			views: parsedViews.value,
+			automations: parsedAutomations.automations,
+			timers: parsedTimers.timers,
+		},
+		errors,
 	);
-	const commands: Record<string, CommandSpec> = {};
-	if (isRecord(commandsRaw)) {
-		for (const [commandName, commandRaw] of Object.entries(commandsRaw)) {
-			const spec = validateCommandSpec(
-				`${path}.commands.${commandName}`,
-				commandRaw,
-				errors,
-			);
-			if (spec === undefined) {
-				valid = false;
-				continue;
-			}
-			commands[commandName] = spec;
-		}
-	} else {
-		errors.push(`${path}: "commands" must be an object`);
-		valid = false;
-	}
 
-	const viewsRaw = raw["views"];
-	const viewNames = new Set<string>(
-		isRecord(viewsRaw) ? Object.keys(viewsRaw) : [],
-	);
-	const views: Record<string, ViewSpec> = {};
-	if (isRecord(viewsRaw)) {
-		for (const [viewName, viewRaw] of Object.entries(viewsRaw)) {
-			const spec = validateViewSpec(
-				`${path}.views.${viewName}`,
-				viewRaw,
-				errors,
-			);
-			if (spec === undefined) {
-				valid = false;
-				continue;
-			}
-			views[viewName] = spec;
-		}
-	} else {
-		errors.push(`${path}: "views" must be an object`);
-		valid = false;
-	}
-
-	const automationsRaw = raw["automations"];
-	const automations: AutomationSpec[] = [];
-	const seenAutomationIds = new Set<string>();
-	if (Array.isArray(automationsRaw)) {
-		for (const [index, automationRaw] of automationsRaw.entries()) {
-			const spec = validateAutomation(
-				`${path}.automations[${index}]`,
-				automationRaw,
-				errors,
-			);
-			if (spec === undefined) {
-				valid = false;
-				continue;
-			}
-			if (seenAutomationIds.has(spec.id)) {
-				errors.push(
-					`${path}.automations[${index}]: duplicate automation id "${spec.id}"`,
-				);
-				valid = false;
-				continue;
-			}
-			seenAutomationIds.add(spec.id);
-			automations.push(spec);
-		}
-	} else {
-		errors.push(`${path}: "automations" must be an array`);
-		valid = false;
-	}
-
-	const timersRaw = raw["timers"];
-	const timers: TimerSpec[] = [];
-	const seenTimerIds = new Set<string>();
-	if (Array.isArray(timersRaw)) {
-		for (const [index, timerRaw] of timersRaw.entries()) {
-			const spec = validateTimer(`${path}.timers[${index}]`, timerRaw, errors);
-			if (spec === undefined) {
-				valid = false;
-				continue;
-			}
-			if (seenTimerIds.has(spec.id)) {
-				errors.push(
-					`${path}.timers[${index}]: duplicate timer id "${spec.id}"`,
-				);
-				valid = false;
-				continue;
-			}
-			seenTimerIds.add(spec.id);
-			timers.push(spec);
-		}
-	} else {
-		errors.push(`${path}: "timers" must be an array`);
-		valid = false;
-	}
-
-	// Cross-references (SPEC §18): defined-name sets tolerate entries that were
-	// themselves invalid, so cross-reference errors stay meaningful. Cross-reference
-	// checks run even when structural errors exist, so reference mistakes surface
-	// alongside the structural errors in the same result.
-	for (const [commandName, command] of Object.entries(commands)) {
-		for (const eventName of command.expectedEvents) {
-			if (!eventNames.has(eventName)) {
-				errors.push(
-					`${path}.commands.${commandName}: expected event "${eventName}" is not defined`,
-				);
-				valid = false;
-				continue;
-			}
-			const eventSpec = events[eventName];
-			if (eventSpec !== undefined && !eventSpec.allowAgentEmit) {
-				errors.push(
-					`${path}.commands.${commandName}: expected event "${eventName}" does not allow agent emission`,
-				);
-				valid = false;
-			}
-		}
-	}
-	for (const [viewName, view] of Object.entries(views)) {
-		const openKeys = new Set<string>();
-		for (const rule of view.openOn) {
-			if (!eventNames.has(rule.event)) {
-				errors.push(
-					`${path}.views.${viewName}: openOn event "${rule.event}" is not defined`,
-				);
-				valid = false;
-			}
-			openKeys.add(rule.keyFrom);
-		}
-		for (const rule of view.closeOn) {
-			if (!eventNames.has(rule.event)) {
-				errors.push(
-					`${path}.views.${viewName}: closeOn event "${rule.event}" is not defined`,
-				);
-				valid = false;
-			}
-			if (!openKeys.has(rule.keyFrom)) {
-				errors.push(
-					`${path}.views.${viewName}: closeOn keyFrom "${rule.keyFrom}" does not match any openOn key path`,
-				);
-				valid = false;
-			}
-		}
-	}
-	for (const automation of automations) {
-		if (!viewNames.has(automation.view)) {
-			errors.push(
-				`${path}.automations.${automation.id}: view "${automation.view}" is not defined`,
-			);
-			valid = false;
-		}
-		if (!commandNames.has(automation.issue)) {
-			errors.push(
-				`${path}.automations.${automation.id}: command "${automation.issue}" is not defined`,
-			);
-			valid = false;
-		}
-		const view = views[automation.view];
-		const command = commands[automation.issue];
-		if (view !== undefined && command !== undefined) {
-			const closeEvents = new Set(view.closeOn.map((rule) => rule.event));
-			for (const expectedEvent of command.expectedEvents) {
-				if (!closeEvents.has(expectedEvent)) {
-					errors.push(
-						`${path}.automations.${automation.id}: command "${automation.issue}" expected event "${expectedEvent}" does not close view "${automation.view}"`,
-					);
-					valid = false;
-				}
-			}
-		}
-	}
-	for (const timer of timers) {
-		if (!eventNames.has(timer.emit)) {
-			errors.push(
-				`${path}.timers.${timer.id}: emit event "${timer.emit}" is not defined`,
-			);
-			valid = false;
-		}
-	}
-
-	if (!valid) {
+	if (!valid || !crossRefsValid) {
 		return undefined;
 	}
+
 	return {
 		emissionPolicy: "command-contract",
-		events,
-		commands,
-		views,
-		automations,
-		timers,
+		events: parsedEvents.value,
+		commands: parsedCommands.value,
+		views: parsedViews.value,
+		automations: parsedAutomations.automations,
+		timers: parsedTimers.timers,
 	};
 }

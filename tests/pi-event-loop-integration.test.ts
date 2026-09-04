@@ -198,7 +198,7 @@ describe("pi-event-loop production wiring", () => {
 
 		const initialTool = harness.toolsByName.get("event_loop_emit");
 		expect(initialTool).toBeDefined();
-		expect(initialTool?.parameters.properties["event"]).toMatchObject({
+		expect(initialTool?.parameters.properties.event).toMatchObject({
 			const: "progress.note",
 		});
 
@@ -207,7 +207,7 @@ describe("pi-event-loop production wiring", () => {
 		await vi.runOnlyPendingTimersAsync();
 
 		const activeTool = harness.toolsByName.get("event_loop_emit");
-		expect(activeTool?.parameters.properties["event"]).toMatchObject({
+		expect(activeTool?.parameters.properties.event).toMatchObject({
 			anyOf: [{ const: "work.completed" }, { const: "work.failed" }],
 		});
 		expect(activeTool?.description).toContain("Active command: \"perform-work\"");
@@ -228,7 +228,7 @@ describe("pi-event-loop production wiring", () => {
 		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
 
 		const settledTool = harness.toolsByName.get("event_loop_emit");
-		expect(settledTool?.parameters.properties["event"]).toMatchObject({
+		expect(settledTool?.parameters.properties.event).toMatchObject({
 			const: "progress.note",
 		});
 		expect(settledTool?.description).not.toContain("Active command");

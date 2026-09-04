@@ -60,6 +60,7 @@ describe("pi-event-loop custom renderers", () => {
 
 		const renderer = harness.messageRenderers.get(COMMAND_MESSAGE_CUSTOM_TYPE);
 		expect(renderer, "COMMAND_MESSAGE_CUSTOM_TYPE renderer must be registered").toBeDefined();
+		if (renderer === undefined) throw new Error("renderer undefined");
 
 		const message = {
 			customType: COMMAND_MESSAGE_CUSTOM_TYPE,
@@ -77,18 +78,20 @@ describe("pi-event-loop custom renderers", () => {
 		};
 
 		// Compact rendering: default bounded view, shows type/id, excludes raw payload
-		const compactComponent = renderer!(message, { expanded: false }, harness.theme);
+		const compactComponent = renderer(message, { expanded: false }, harness.theme);
 		expect(compactComponent).toBeDefined();
-		const compactLines = compactComponent!.render(100).join("\n");
+		if (compactComponent === undefined) throw new Error("compactComponent undefined");
+		const compactLines = compactComponent.render(100).join("\n");
 		expect(compactLines).toContain("perform-work");
 		expect(compactLines).toContain("cmd-123");
 		expect(compactLines).not.toContain("secretToken");
 		expect(compactLines).toContain("[fg:");
 
 		// Expanded rendering: reveals expected outcomes and untrusted payload clearly labeled
-		const expandedComponent = renderer!(message, { expanded: true }, harness.theme);
+		const expandedComponent = renderer(message, { expanded: true }, harness.theme);
 		expect(expandedComponent).toBeDefined();
-		const expandedLines = expandedComponent!.render(100).join("\n");
+		if (expandedComponent === undefined) throw new Error("expandedComponent undefined");
+		const expandedLines = expandedComponent.render(100).join("\n");
 		expect(expandedLines).toContain("cmd-123");
 		expect(expandedLines).toContain("work.completed");
 		expect(expandedLines).toContain("untrusted");
@@ -103,6 +106,9 @@ describe("pi-event-loop custom renderers", () => {
 		expect(tool).toBeDefined();
 		expect(tool?.renderCall, "emit tool must define renderCall").toBeDefined();
 		expect(tool?.renderResult, "emit tool must define renderResult").toBeDefined();
+		if (tool?.renderCall === undefined || tool.renderResult === undefined) {
+			throw new Error("tool renderers undefined");
+		}
 
 		const args = {
 			event: "work.completed",
@@ -112,7 +118,7 @@ describe("pi-event-loop custom renderers", () => {
 
 		// Compact call: shows tool and event, omits payload
 		const compactCallContext = { expanded: false, cwd: "/test" };
-		const compactCall = tool!.renderCall!(args, harness.theme, compactCallContext);
+		const compactCall = tool.renderCall(args, harness.theme, compactCallContext);
 		const compactCallLines = compactCall.render(100).join("\n");
 		expect(compactCallLines).toContain("work.completed");
 		expect(compactCallLines).toContain("key-999");
@@ -121,7 +127,7 @@ describe("pi-event-loop custom renderers", () => {
 
 		// Expanded call: shows payload
 		const expandedCallContext = { expanded: true, cwd: "/test" };
-		const expandedCall = tool!.renderCall!(args, harness.theme, expandedCallContext);
+		const expandedCall = tool.renderCall(args, harness.theme, expandedCallContext);
 		const expandedCallLines = expandedCall.render(100).join("\n");
 		expect(expandedCallLines).toContain("work.completed");
 		expect(expandedCallLines).toContain("w-1");
@@ -135,13 +141,13 @@ describe("pi-event-loop custom renderers", () => {
 				type: "work.completed",
 			},
 		};
-		const compactResult = tool!.renderResult!(result, { expanded: false }, harness.theme, compactCallContext);
+		const compactResult = tool.renderResult(result, { expanded: false }, harness.theme, compactCallContext);
 		const compactResultLines = compactResult.render(100).join("\n");
 		expect(compactResultLines).toContain("evt-100");
 		expect(compactResultLines).toContain("[fg:");
 
 		// Expanded result: full details
-		const expandedResult = tool!.renderResult!(result, { expanded: true }, harness.theme, expandedCallContext);
+		const expandedResult = tool.renderResult(result, { expanded: true }, harness.theme, expandedCallContext);
 		const expandedResultLines = expandedResult.render(100).join("\n");
 		expect(expandedResultLines).toContain("evt-100");
 	});
@@ -154,8 +160,11 @@ describe("pi-event-loop custom renderers", () => {
 		expect(tool).toBeDefined();
 		expect(tool?.renderCall, "context tool must define renderCall").toBeDefined();
 		expect(tool?.renderResult, "context tool must define renderResult").toBeDefined();
+		if (tool?.renderCall === undefined || tool.renderResult === undefined) {
+			throw new Error("context renderers undefined");
+		}
 
-		const compactCall = tool!.renderCall!({}, harness.theme, { expanded: false, cwd: "/test" });
+		const compactCall = tool.renderCall({}, harness.theme, { expanded: false, cwd: "/test" });
 		const compactCallLines = compactCall.render(100).join("\n");
 		expect(compactCallLines).toContain("event_loop_context");
 		expect(compactCallLines).toContain("[fg:");
@@ -171,13 +180,13 @@ describe("pi-event-loop custom renderers", () => {
 		};
 
 		// Compact result: concise status/counts
-		const compactResult = tool!.renderResult!(result, { expanded: false }, harness.theme, { expanded: false, cwd: "/test" });
+		const compactResult = tool.renderResult(result, { expanded: false }, harness.theme, { expanded: false, cwd: "/test" });
 		const compactResultLines = compactResult.render(100).join("\n");
 		expect(compactResultLines).toContain("perform-work");
 		expect(compactResultLines).toContain("[fg:");
 
 		// Expanded result: detailed breakdown
-		const expandedResult = tool!.renderResult!(result, { expanded: true }, harness.theme, { expanded: true, cwd: "/test" });
+		const expandedResult = tool.renderResult(result, { expanded: true }, harness.theme, { expanded: true, cwd: "/test" });
 		const expandedResultLines = expandedResult.render(100).join("\n");
 		expect(expandedResultLines).toContain("cmd-abc");
 	});

@@ -38,7 +38,7 @@ interface EventLoopRuntimeSeams {
 	readonly refreshTools?: (cwd?: string) => void;
 }
 
-export interface EventLoopCommandDeps {
+interface EventLoopCommandDeps {
 	readonly runtime: EventLoopRuntime;
 	readonly pipeline: PostAppendPipeline;
 	readonly readEntries: (
@@ -115,7 +115,7 @@ export function registerEventLoopCommands(
 }
 
 /** Execute one operator command without selecting arbitrary agent commands. */
-export async function executeOperatorCommand(
+async function executeOperatorCommand(
 	args: string,
 	ctx: ExtensionCommandContext,
 	deps: EventLoopCommandDeps,
