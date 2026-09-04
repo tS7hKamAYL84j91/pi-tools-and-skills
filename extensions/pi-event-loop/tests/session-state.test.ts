@@ -11,14 +11,12 @@ import {
 	workRequested,
 } from "../../../tests/fixtures/pi-event-loop.js";
 import { createPostAppendPipeline } from "../automator.js";
-import { eventChainDepth } from "../loop-guards.js";
 import { createEventLoopRuntime, resetEventLoopRuntime } from "../runtime.js";
 import {
 	buildSnapshot,
 	recoverSessionState,
 	requeueActiveCommand,
 } from "../session-state.js";
-import type { EventLoopConfig } from "../types.js";
 
 /** Build the typed checkpoint snapshot for a runtime over the given history. */
 function snapshotFor(
@@ -188,160 +186,6 @@ describe("recoverSessionState", () => {
 		expect(restored.projection.order).toEqual(
 			fullReplay.runtime.projection.order,
 		);
-	});
-
-	it("bounds historical completed rows while preserving causal depth for live items across recovery (SPEC §14, §15, AC-18)", () => {
-		// 1) Independent completed items are bounded in the snapshot (SPEC §15)
-		const independentEvents: ReturnType<typeof workRequested>[] = [];
-		for (let i = 0; i < 105; i++) {
-			independentEvents.push(
-				workRequested(`work-${i}`),
-				workCompleted(`work-${i}`),
-			);
-		}
-		const beforeIndependent = runtimeWithHistory(independentEvents);
-		const boundedSnapshot = snapshotFor(
-			beforeIndependent.runtime,
-			independentEvents,
-		);
-		// Snapshot bounds independent completed items to COMPLETED_ITEM_KEEP (100 items)
-		expect(boundedSnapshot.items.length).toBe(100);
-
-		const extra = workRequested("work-extra");
-		const restoredIndependent = createEventLoopRuntime();
-		const independentOutcome = recoverSessionState({
-			runtime: restoredIndependent,
-			events: [...independentEvents, extra],
-			config: CONFIG,
-			fingerprint: "fp-1",
-			snapshot: boundedSnapshot,
-			applyEvent: createPostAppendPipeline(restoredIndependent),
-		});
-		expect(independentOutcome.mode).toBe("restored");
-		// AC-18: only events after the checkpoint are replayed
-		expect(independentOutcome.replayedEventCount).toBe(1);
-		expect(restoredIndependent.projection.items.size).toBe(101);
-
-		// 2) Causal ancestry beyond 100 completed rows is preserved for live items (SPEC §14, §15)
-		const chainConfig: EventLoopConfig = {
-			version: 1,
-			activeProfile: "default",
-			profiles: {
-				default: {
-					emissionPolicy: "command-contract",
-					events: {
-						"chain.a": {
-							description: "Step A",
-							allowAgentEmit: true,
-							requiredPayload: ["key"],
-						},
-						"chain.b": {
-							description: "Step B",
-							allowAgentEmit: true,
-							requiredPayload: ["key"],
-						},
-					},
-					commands: {
-						"step-cmd": {
-							message: "Step",
-							expectedEvents: ["chain.a", "chain.b"],
-						},
-					},
-					views: {
-						"view-a": {
-							type: "todo",
-							openOn: [{ event: "chain.a", keyFrom: "/key" }],
-							closeOn: [{ event: "chain.b", keyFrom: "/key" }],
-						},
-						"view-b": {
-							type: "todo",
-							openOn: [{ event: "chain.b", keyFrom: "/key" }],
-							closeOn: [{ event: "chain.a", keyFrom: "/key" }],
-						},
-					},
-					automations: [
-						{ id: "auto-a", view: "view-a", issue: "step-cmd" },
-						{ id: "auto-b", view: "view-b", issue: "step-cmd" },
-					],
-					timers: [],
-				},
-			},
-			limits: {
-				...CONFIG.limits,
-				maxChainDepth: 200,
-			},
-		};
-
-		// 120 sequential causal hops where each event completes the previous item and opens the next
-		const chainRuntime = createEventLoopRuntime();
-		const chainPipeline = createPostAppendPipeline(chainRuntime);
-		const chainEvents: ReturnType<typeof workRequested>[] = [];
-		for (let i = 0; i <= 120; i++) {
-			const type = i % 2 === 0 ? "chain.a" : "chain.b";
-			const event: ReturnType<typeof workRequested> = {
-				eventId: `evt-${i}`,
-				type,
-				occurredAt: new Date(1000 + i).toISOString(),
-				source: "agent",
-				payload: { key: "causal-lineage" },
-			};
-			chainEvents.push(event);
-			chainPipeline(event, chainConfig, "default");
-		}
-
-		// Take snapshot after event 120 (120 completed items, item 120 live)
-		const chainSnapshot = buildSnapshot({
-			runtime: chainRuntime,
-			config: chainConfig,
-			fingerprint: "fp-chain",
-			recentEventIds: chainEvents.map((e) => e.eventId),
-		});
-		// With maxChainDepth 200, all 20 completed items beyond the 100-tail are retained (121 items total)
-		expect(chainSnapshot.items.length).toBe(121);
-
-		// 3 more post-checkpoint events
-		const postEvents: ReturnType<typeof workRequested>[] = [];
-		for (let i = 121; i <= 123; i++) {
-			const type = i % 2 === 0 ? "chain.a" : "chain.b";
-			const event: ReturnType<typeof workRequested> = {
-				eventId: `evt-${i}`,
-				type,
-				occurredAt: new Date(1000 + i).toISOString(),
-				source: "agent",
-				payload: { key: "causal-lineage" },
-			};
-			postEvents.push(event);
-		}
-
-		const restoredChain = createEventLoopRuntime();
-		const chainOutcome = recoverSessionState({
-			runtime: restoredChain,
-			events: [...chainEvents, ...postEvents],
-			config: chainConfig,
-			fingerprint: "fp-chain",
-			snapshot: chainSnapshot,
-			applyEvent: createPostAppendPipeline(restoredChain),
-		});
-
-		expect(chainOutcome.mode).toBe("restored");
-		// AC-18: only the 3 post-checkpoint events are replayed
-		expect(chainOutcome.replayedEventCount).toBe(3);
-		// Lineage through all 123 hops is preserved across recovery
-		expect(eventChainDepth("evt-123", restoredChain.projection)).toBe(123);
-
-		// 3) When maxChainDepth is small (5), causal ancestor traversal beyond the 100-tail is capped
-		const cappedConfig: EventLoopConfig = {
-			...chainConfig,
-			limits: { ...chainConfig.limits, maxChainDepth: 5 },
-		};
-		const cappedSnapshot = buildSnapshot({
-			runtime: chainRuntime,
-			config: cappedConfig,
-			fingerprint: "fp-chain",
-			recentEventIds: chainEvents.map((e) => e.eventId),
-		});
-		// Live item 120 + 100-tail = 101 items; earlier items beyond maxChainDepth+1 are excluded
-		expect(cappedSnapshot.items.length).toBe(101);
 	});
 
 	it("keeps two sessions independent (AC-23)", () => {

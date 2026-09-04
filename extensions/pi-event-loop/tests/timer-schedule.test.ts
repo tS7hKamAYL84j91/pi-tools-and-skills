@@ -88,18 +88,40 @@ describe("nextDailyOccurrenceMs", () => {
 	});
 
 	it("preserves local wall-clock time across DST transitions (SPEC §12)", () => {
-		// March 28 -> March 29, 2026 is a 23-hour day in Europe/London (+0000 -> +0100).
-		const springEve = new Date(2026, 2, 28, 9, 30, 0, 0).getTime();
-		const nextSpring = nextDailyOccurrenceMs("09:30", "2026-03-28", springEve);
-		const springTarget = new Date(nextSpring);
-		expect(springTarget.getHours()).toBe(9);
-		expect(springTarget.getMinutes()).toBe(30);
+		const prevTz = process.env["TZ"];
+		try {
+			// Pin timezone to Europe/London so the DST transition is deterministic in all test environments
+			process.env["TZ"] = "Europe/London";
 
-		// October 24 -> October 25, 2026 is a 25-hour day in Europe/London (+0100 -> +0000).
-		const fallEve = new Date(2026, 9, 24, 9, 30, 0, 0).getTime();
-		const nextFall = nextDailyOccurrenceMs("09:30", "2026-10-24", fallEve);
-		const fallTarget = new Date(nextFall);
-		expect(fallTarget.getHours()).toBe(9);
-		expect(fallTarget.getMinutes()).toBe(30);
+			// March 28 -> March 29, 2026 is a 23-hour day in Europe/London (+0000 -> +0100).
+			const springEve = new Date(2026, 2, 28, 9, 30, 0, 0).getTime();
+
+			// Prove pre-fix DAY_MS (24 * 3600_000) arithmetic fails to preserve 09:30 wall-clock time on a 23h day
+			const preFixSpring = new Date(springEve + 24 * 60 * 60_000);
+			expect(preFixSpring.getHours()).toBe(10); // Shifts by 1 hour to 10:30
+
+			const nextSpring = nextDailyOccurrenceMs("09:30", "2026-03-28", springEve);
+			const springTarget = new Date(nextSpring);
+			expect(springTarget.getHours()).toBe(9);
+			expect(springTarget.getMinutes()).toBe(30);
+
+			// October 24 -> October 25, 2026 is a 25-hour day in Europe/London (+0100 -> +0000).
+			const fallEve = new Date(2026, 9, 24, 9, 30, 0, 0).getTime();
+
+			// Prove pre-fix DAY_MS arithmetic fails on a 25h day
+			const preFixFall = new Date(fallEve + 24 * 60 * 60_000);
+			expect(preFixFall.getHours()).toBe(8); // Shifts by 1 hour to 08:30
+
+			const nextFall = nextDailyOccurrenceMs("09:30", "2026-10-24", fallEve);
+			const fallTarget = new Date(nextFall);
+			expect(fallTarget.getHours()).toBe(9);
+			expect(fallTarget.getMinutes()).toBe(30);
+		} finally {
+			if (prevTz !== undefined) {
+				process.env["TZ"] = prevTz;
+			} else {
+				delete process.env["TZ"];
+			}
+		}
 	});
 });
