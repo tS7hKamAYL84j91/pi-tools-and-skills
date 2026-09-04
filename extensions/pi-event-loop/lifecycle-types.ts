@@ -22,4 +22,5 @@ export interface ExtensionState {
 	/** Monotonic token invalidating in-flight cycles. */
 	generation: number;
 	timers: TimerRunner | undefined;
+	onTransition?: () => void;
 }

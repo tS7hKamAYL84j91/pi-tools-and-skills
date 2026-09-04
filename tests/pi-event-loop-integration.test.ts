@@ -24,17 +24,30 @@ afterEach(() => {
 	}
 });
 
+interface HarnessTool {
+	readonly name: string;
+	readonly parameters: { readonly properties: Record<string, unknown> };
+	readonly description: string;
+	readonly execute?: (
+		callId: string,
+		params: unknown,
+		signal?: unknown,
+		onUpdate?: unknown,
+		ctx?: unknown,
+	) => Promise<unknown>;
+}
+
 function createProductionHarness() {
 	const handlers = new Map<string, Handler>();
 	const entries: Array<{ type: string; customType: string; data: unknown }> = [];
 	const sent: unknown[] = [];
 	const sentDeliveries: Array<{ message: unknown; options?: unknown }> = [];
-	const toolsByName = new Map<string, { name: string; parameters: { properties: Record<string, unknown> }; description: string }>();
+	const toolsByName = new Map<string, HarnessTool>();
 	const messageRenderers = new Map<string, unknown>();
 	const statuses = new Map<string, string | undefined>();
 	const pi = {
 		on: (event: string, handler: Handler) => handlers.set(event, handler),
-		registerTool: vi.fn((tool: { name: string; parameters: { properties: Record<string, unknown> }; description: string }) => {
+		registerTool: vi.fn((tool: HarnessTool) => {
 			toolsByName.set(tool.name, tool);
 		}),
 		registerCommand: (_name: string, definition: { handler: Handler }) =>
@@ -169,7 +182,17 @@ describe("pi-event-loop production wiring", () => {
 		vi.useFakeTimers();
 		const harness = createProductionHarness();
 		eventLoopExtension(harness.pi as never);
-		const cwd = configDirectory();
+		const base = JSON.parse(configText()) as Record<string, unknown>;
+		const profiles = base["profiles"] as Record<string, Record<string, unknown>>;
+		const defaultProfile = profiles["default"] as Record<string, unknown>;
+		const events = defaultProfile["events"] as Record<string, unknown>;
+		events["progress.note"] = {
+			description: "A free observation.",
+			allowAgentEmit: true,
+			requiredPayload: [],
+			allowWithoutCommand: true,
+		};
+		const cwd = configDirectory(CONFIG_RELATIVE_PATH, JSON.stringify(base));
 		const ctx = harness.context(cwd);
 		await harness.handlers.get("session_start")?.({}, ctx);
 
@@ -189,18 +212,19 @@ describe("pi-event-loop production wiring", () => {
 		});
 		expect(activeTool?.description).toContain("Active command: \"perform-work\"");
 
-		const completedEvent = {
-			eventId: "evt-complete-1",
-			type: "work.completed",
-			occurredAt: new Date().toISOString(),
-			source: "agent" as const,
-			payload: { workId: "w-narrow", resultPath: "/out/1" },
-			commandId: (harness.sent[0] as { details: { commandId: string } }).details.commandId,
-			workItemId: itemIdOf(workRequested("w-narrow"), "w-narrow"),
-			correlationId: "w-narrow",
-			causationId: (harness.sent[0] as { details: { commandId: string } }).details.commandId,
-		};
-		harness.entries.push(eventEntry(completedEvent));
+		const emitTool = harness.toolsByName.get("event_loop_emit");
+		expect(emitTool?.execute).toBeDefined();
+		await emitTool?.execute?.(
+			"call-narrow-complete",
+			{
+				event: "work.completed",
+				dedupeKey: "narrow-complete-key",
+				payload: { workId: "w-narrow", resultPath: "/out/1" },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
 		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
 
 		const settledTool = harness.toolsByName.get("event_loop_emit");
@@ -226,24 +250,22 @@ describe("pi-event-loop production wiring", () => {
 		expect(harness.sentDeliveries).toHaveLength(1);
 		expect(harness.sentDeliveries[0]?.options).toMatchObject({ triggerTurn: true });
 
-		const firstCommandId = (harness.sent[0] as { details: { commandId: string } }).details.commandId;
-		const firstWorkItemId = itemIdOf(workRequested("w-host-1"), "w-host-1");
-
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(harness.sentDeliveries).toHaveLength(1);
 
-		const completeEvent = {
-			eventId: "evt-host-1",
-			type: "work.completed",
-			occurredAt: new Date().toISOString(),
-			source: "agent" as const,
-			payload: { workId: "w-host-1", resultPath: "/tmp/host-1" },
-			commandId: firstCommandId,
-			workItemId: firstWorkItemId,
-			correlationId: "w-host-1",
-			causationId: firstCommandId,
-		};
-		harness.entries.push(eventEntry(completeEvent));
+		const emitTool = harness.toolsByName.get("event_loop_emit");
+		expect(emitTool?.execute).toBeDefined();
+		await emitTool?.execute?.(
+			"call-host-1-done",
+			{
+				event: "work.completed",
+				dedupeKey: "host-1-done-key",
+				payload: { workId: "w-host-1", resultPath: "/tmp/host-1" },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
 		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
 		await vi.runOnlyPendingTimersAsync();
 

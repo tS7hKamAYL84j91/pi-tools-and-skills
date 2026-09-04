@@ -30,8 +30,13 @@ import {
 	handleSessionShutdown,
 	handleSessionStart,
 } from "./lifecycle.js";
-import { EVENT_LOOP_EVENT_CUSTOM_TYPE, type EventLoopConfig } from "./types.js";
+import {
+	COMMAND_MESSAGE_CUSTOM_TYPE,
+	EVENT_LOOP_EVENT_CUSTOM_TYPE,
+	type EventLoopConfig,
+} from "./types.js";
 import { type LoadConfigOptions, loadEventLoopConfig } from "./config.js";
+import { renderCommandMessage } from "./event-loop-renderers.js";
 import { createEventLoopRuntime } from "./runtime.js";
 
 async function writeEventLoopConfig(
@@ -104,6 +109,24 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		refreshEmitTool(pi, state.runtime, pipeline, options);
 	}
 
+	function onTransition(): void {
+		refreshDynamicTools();
+		refreshStatus();
+	}
+	state.onTransition = onTransition;
+
+	if (typeof pi.registerMessageRenderer === "function") {
+		pi.registerMessageRenderer(
+			COMMAND_MESSAGE_CUSTOM_TYPE,
+			(message, options, theme) =>
+				renderCommandMessage(
+					message as { details?: Record<string, unknown>; content?: string },
+					options,
+					theme,
+				),
+		);
+	}
+
 	registerEmitTool(pi, state.runtime, pipeline, { getConfig });
 	registerContextTool(pi, {
 		runtime: state.runtime,
@@ -135,21 +158,21 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 				},
 			);
 		},
-		onTransition: refreshStatus,
+		onTransition,
 	});
 	// Genuine interactive input resets loop protection; extension-delivered turns
 	// do not (SPEC §14).
 	pi.on("input", (event) => {
 		handleInput(state, event);
-		refreshStatus();
+		onTransition();
 	});
 	pi.on("agent_start", () => {
 		handleAgentStart(state);
-		refreshStatus();
+		onTransition();
 	});
 	pi.on("agent_settled", (_event, ctx) => {
 		handleAgentSettled(state, ctx);
-		refreshStatus();
+		onTransition();
 	});
 	// session_start restores, replays, catches up timers and delivers (SPEC §17).
 	pi.on("session_start", async (_event, ctx) => {
@@ -163,11 +186,10 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		await handleSessionStart(state, ctx);
-		refreshDynamicTools();
-		refreshStatus();
+		onTransition();
 	});
 	pi.on("session_shutdown", () => {
 		handleSessionShutdown(state);
-		refreshStatus();
+		onTransition();
 	});
 }

@@ -6,6 +6,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
+import {
+	renderContextCall,
+	renderContextResult,
+} from "./event-loop-renderers.js";
 import { loadEventLoopConfig } from "./config.js";
 import type { SessionEntryLike } from "./event-log.js";
 import type { EventLoopRuntime } from "./runtime.js";
@@ -33,6 +37,9 @@ function createContextTool(
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			return executeContext(deps, ctx);
 		},
+		renderCall: (args, theme, context) => renderContextCall(args, theme, context),
+		renderResult: (result, options, theme, context) =>
+			renderContextResult(result, options, theme, context),
 	};
 }
 

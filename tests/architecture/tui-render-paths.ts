@@ -14,6 +14,7 @@ const TEAM_OVERLAY_FILES = [
 const EVENT_LOOP_TUI_FILES = [
 	"extensions/pi-event-loop/event-loop-tui.ts",
 	"extensions/pi-event-loop/event-loop-tui-render.ts",
+	"extensions/pi-event-loop/event-loop-renderers.ts",
 ];
 
 const FORBIDDEN_RENDER_CALLS = new Set([

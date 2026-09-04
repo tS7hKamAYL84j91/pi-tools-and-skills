@@ -127,6 +127,8 @@ function scheduleDeliveryCycle(state: ExtensionState): void {
 			);
 			if (!outcome.delivered) {
 				state.runtime.busy = false;
+			} else {
+				state.onTransition?.();
 			}
 		} catch (error: unknown) {
 			state.runtime.busy = false;
@@ -207,6 +209,7 @@ export function handleAgentSettled(
 			];
 		}
 		persistCheckpoint(state);
+		state.onTransition?.();
 		if (settlement.stalled) {
 			notify(
 				state,
