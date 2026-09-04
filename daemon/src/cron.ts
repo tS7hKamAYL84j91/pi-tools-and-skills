@@ -1,7 +1,7 @@
 /**
  * Five-field cron matching for the daemon-ticked scheduler. Semantics match
  * the in-pi scheduler evaluation (minute hour day-of-month month day-of-week,
-* `*`, lists, ranges, steps; day-of-week 0-7 with 7 == Sunday). Schedule files
+ * `*`, lists, ranges, steps; day-of-week 0-7 with 7 == Sunday). Schedule files
  * are consumed unchanged (design doc: no schedule-file format change).
  */
 import { join } from "node:path";
@@ -39,14 +39,25 @@ export function cronExpressionError(expr: string): string | undefined {
 			const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
 			if (!stepMatch) return `invalid field ${index + 1}: ${field}`;
 			const base = stepMatch[1] ?? "";
-			const step = stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
-			if (!Number.isInteger(step) || step < 1) return `invalid step in field ${index + 1}: ${field}`;
+			const step =
+				stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
+			if (!Number.isInteger(step) || step < 1)
+				return `invalid step in field ${index + 1}: ${field}`;
 			if (base === "*") continue;
 			const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
 			if (!rangeMatch) return `invalid field ${index + 1}: ${field}`;
 			const start = Number.parseInt(rangeMatch[1] ?? "", 10);
-			const end = rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
-			if (Number.isNaN(start) || Number.isNaN(end) || start < min || end > max || start > end) {
+			const end =
+				rangeMatch[2] !== undefined
+					? Number.parseInt(rangeMatch[2], 10)
+					: start;
+			if (
+				Number.isNaN(start) ||
+				Number.isNaN(end) ||
+				start < min ||
+				end > max ||
+				start > end
+			) {
 				return `field ${index + 1} out of range [${min}-${max}]: ${field}`;
 			}
 		}
@@ -60,7 +71,10 @@ export function cronExpressionError(expr: string): string | undefined {
  * steps) and adjacent firing minutes closer than the cap are refused —
  * comma lists cannot bypass the check (re-review B7).
  */
-export function scheduleFrequencyCapError(expr: string, capMinutes = SCHEDULE_FREQUENCY_CAP_MINUTES): string | undefined {
+export function scheduleFrequencyCapError(
+	expr: string,
+	capMinutes = SCHEDULE_FREQUENCY_CAP_MINUTES,
+): string | undefined {
 	const fields = expr.trim().split(/\s+/);
 	const minuteField = fields[0] ?? "";
 	const minutes = new Set<number>();
@@ -68,16 +82,24 @@ export function scheduleFrequencyCapError(expr: string, capMinutes = SCHEDULE_FR
 		const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
 		if (!stepMatch) return undefined; // malformed: cron validation reports it
 		const base = stepMatch[1] ?? "";
-		const step = stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
+		const step =
+			stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
 		if (base === "*") {
-			for (let candidate = 0; candidate <= 59; candidate += step) minutes.add(candidate);
+			for (let candidate = 0; candidate <= 59; candidate += step)
+				minutes.add(candidate);
 			continue;
 		}
 		const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
 		if (!rangeMatch) return undefined;
 		const start = Number.parseInt(rangeMatch[1] ?? "0", 10);
-		const end = rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
-		for (let candidate = start; candidate <= Math.min(end, 59); candidate += step) minutes.add(candidate);
+		const end =
+			rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
+		for (
+			let candidate = start;
+			candidate <= Math.min(end, 59);
+			candidate += step
+		)
+			minutes.add(candidate);
 	}
 	if (minutes.size === 0) return undefined;
 	const sorted = [...minutes].sort((first, second) => first - second);
@@ -93,13 +115,19 @@ export function scheduleFrequencyCapError(expr: string, capMinutes = SCHEDULE_FR
 	return undefined;
 }
 
-function fieldMatches(field: string, value: number, min: number, max: number): boolean {
+function fieldMatches(
+	field: string,
+	value: number,
+	min: number,
+	max: number,
+): boolean {
 	if (field === "*") return true;
 	for (const part of field.split(",")) {
 		const stepMatch = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
 		if (!stepMatch) continue;
 		const base = stepMatch[1] ?? "";
-		const step = stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
+		const step =
+			stepMatch[2] !== undefined ? Number.parseInt(stepMatch[2], 10) : 1;
 		if (base === "*") {
 			for (let candidate = min; candidate <= max; candidate += step) {
 				if (candidate === value) return true;
@@ -109,7 +137,8 @@ function fieldMatches(field: string, value: number, min: number, max: number): b
 		const rangeMatch = /^(\d+)(?:-(\d+))?$/.exec(base);
 		if (!rangeMatch) continue;
 		const start = Number.parseInt(rangeMatch[1] ?? "", 10);
-		const end = rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
+		const end =
+			rangeMatch[2] !== undefined ? Number.parseInt(rangeMatch[2], 10) : start;
 		for (let candidate = start; candidate <= end; candidate += step) {
 			if (candidate === value) return true;
 		}
@@ -131,7 +160,8 @@ export function scheduleMatchesDate(expr: string, date: Date): boolean {
 		fieldMatches(hour, date.getHours(), 0, 23) &&
 		fieldMatches(month, date.getMonth() + 1, 1, 12) &&
 		fieldMatches(dayOfMonth, date.getDate(), 1, 31) &&
-		(fieldMatches(dayOfWeek, date.getDay(), 0, 7) || (date.getDay() === 0 && fieldMatches(dayOfWeek, 7, 0, 7)))
+		(fieldMatches(dayOfWeek, date.getDay(), 0, 7) ||
+			(date.getDay() === 0 && fieldMatches(dayOfWeek, 7, 0, 7)))
 	);
 }
 
@@ -155,7 +185,10 @@ function parseEnvLine(content: string): Record<string, string> {
 		const key = trimmed.slice(0, index);
 		if (/^[A-Z0-9_]+$/.test(key)) {
 			let value = trimmed.slice(index + 1).trim();
-			if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) {
+			if (
+				(value.startsWith("'") && value.endsWith("'")) ||
+				(value.startsWith('"') && value.endsWith('"'))
+			) {
 				value = value.slice(1, -1);
 			}
 			values[key] = value;
@@ -169,7 +202,10 @@ function parseEnvLine(content: string): Record<string, string> {
  * consumed unchanged). Invalid crons, sub-5-minute frequencies, and unsafe
  * ids are refused with an audit event — never silently skipped.
  */
-export async function loadSchedules(coasSchedulesDir: string, audit?: (event: Record<string, unknown>) => Promise<void>): Promise<ScheduleEntry[]> {
+export async function loadSchedules(
+	coasSchedulesDir: string,
+	audit?: (event: Record<string, unknown>) => Promise<void>,
+): Promise<ScheduleEntry[]> {
 	const { readdir } = await import("node:fs/promises");
 	const entries: ScheduleEntry[] = [];
 	let files: string[] = [];
@@ -182,10 +218,13 @@ export async function loadSchedules(coasSchedulesDir: string, audit?: (event: Re
 	}
 	for (const file of files) {
 		try {
-			const parsed = parseEnvLine(await readFile(join(coasSchedulesDir, file), "utf8")) as RawScheduleEnv;
+			const parsed = parseEnvLine(
+				await readFile(join(coasSchedulesDir, file), "utf8"),
+			) as RawScheduleEnv;
 			const taskId = parsed.TASK_ID ?? file.replace(/\.env$/, "");
 			assertSafeId("task id", taskId);
-			if (parsed.WORKSPACE_ID !== undefined) assertSafeId("workspace id", parsed.WORKSPACE_ID);
+			if (parsed.WORKSPACE_ID !== undefined)
+				assertSafeId("workspace id", parsed.WORKSPACE_ID);
 			const cronExpr = parsed.CRON_EXPR ?? "";
 			const cronError = cronExpressionError(cronExpr);
 			if (cronError !== undefined) {
@@ -203,19 +242,32 @@ export async function loadSchedules(coasSchedulesDir: string, audit?: (event: Re
 				cronExpr,
 				enabled: (parsed.ENABLED ?? "1") === "1",
 				workspaceId: parsed.WORKSPACE_ID ?? "",
-				...(parsed.WRITER_TAG === "gravitas" ? { writerTag: "gravitas" as const } : {}),
-				...(parsed.TARGET_AGENT !== undefined ? { targetAgent: parsed.TARGET_AGENT } : {}),
+				...(parsed.WRITER_TAG === "gravitas"
+					? { writerTag: "gravitas" as const }
+					: {}),
+				...(parsed.TARGET_AGENT !== undefined
+					? { targetAgent: parsed.TARGET_AGENT }
+					: {}),
 				prompt: "",
 			});
 		} catch (error) {
-			await audit?.({ kind: "schedule_refused", file, reason: (error as Error).message });
+			await audit?.({
+				kind: "schedule_refused",
+				file,
+				reason: (error as Error).message,
+			});
 		}
 	}
-	return entries.sort((first, second) => first.taskId.localeCompare(second.taskId));
+	return entries.sort((first, second) =>
+		first.taskId.localeCompare(second.taskId),
+	);
 }
 
 /** Load the prompt body for a task (separate .prompt file, consumed unchanged). */
-export async function loadSchedulePrompt(coasSchedulesDir: string, taskId: string): Promise<string | undefined> {
+export async function loadSchedulePrompt(
+	coasSchedulesDir: string,
+	taskId: string,
+): Promise<string | undefined> {
 	try {
 		assertSafeId("task id", taskId);
 		return await readFile(join(coasSchedulesDir, `${taskId}.prompt`), "utf8");
