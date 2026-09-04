@@ -242,8 +242,8 @@ The operator interface consists of a persistent status indicator and an on-deman
 
 ## 8. Validation at audit time
 
-- `npx vitest run tests/pi-event-loop-ac-coverage.test.ts tests/architecture.test.ts` — 71 passed.
-- `npx vitest run extensions/pi-event-loop tests/pi-event-loop-runtime.test.ts tests/pi-event-loop-ac-coverage.test.ts tests/pi-event-loop-operator-controls.test.ts` — all touched tests pass.
+- `npx vitest run tests/pi-event-loop-ac-coverage.test.ts tests/architecture.test.ts` — passes.
+- `npx vitest run extensions/pi-event-loop tests/pi-event-loop-runtime.test.ts tests/pi-event-loop-ac-coverage.test.ts tests/pi-event-loop-operator-controls.test.ts tests/pi-event-loop-integration.test.ts tests/pi-event-loop-renderers.test.ts` — passes.
 - `npx tsc --noEmit` — clean; `npm run check` — passes (knip clean, type-coverage 99.23%).
-- Full `npm test` — 201 files / 1469 tests passed; architecture and test-quality fitness pass with no exceptions.
-- File budgets: `tests/pi-event-loop-ac-coverage.test.ts` 162 lines, `tests/architecture/pi-event-loop-isolation.ts` 140 lines (< 300 default).
+- Full `npm test` — 208 files / 1513 tests passed; architecture and test-quality fitness pass with no exceptions.
+- File budgets: `tests/pi-event-loop-ac-coverage.test.ts` 164 lines, `tests/architecture/pi-event-loop-isolation.ts` 149 lines (< 300 default).
