@@ -61,6 +61,8 @@ export interface EventLoopCommandDeps {
 		ctx: ExtensionCommandContext,
 		newProfile: string,
 	) => Promise<void> | void;
+	readonly inspect?: (ctx: ExtensionCommandContext) => Promise<void> | void;
+	readonly onTransition?: () => void;
 }
 
 function getRuntimeSeams(runtime: EventLoopRuntime): EventLoopRuntimeSeams {
@@ -101,6 +103,7 @@ export function registerEventLoopCommands(
 		description: "Inspect and operate the session-local pi-event-loop runtime",
 		handler: async (args, ctx) => {
 			const result = await executeOperatorCommand(args, ctx, deps);
+			deps.onTransition?.();
 			if (result !== undefined) {
 				ctx.ui.notify(
 					result.content[0]?.text ?? "",
@@ -132,6 +135,12 @@ export async function executeOperatorCommand(
 	const status = buildStatus(deps.runtime, config, entries);
 
 	switch (action) {
+		case "inspect":
+			if (deps.inspect === undefined) {
+				return fail("Inspection is unavailable", { code: "internal" });
+			}
+			await deps.inspect(ctx);
+			return ok("Opened pi-event-loop inspection");
 		case "status": {
 			const details = { ...status };
 			return ok(formatStatus(status), details);
@@ -227,7 +236,7 @@ export async function executeOperatorCommand(
 		}
 		default:
 			return fail(
-				"Usage: /event-loop status|views|history|pause|resume|retry|reload|use|emit|issue",
+				"Usage: /event-loop status|views|history|pause|resume|retry|reload|use|emit|issue|inspect",
 				{ code: "validation" },
 			);
 	}

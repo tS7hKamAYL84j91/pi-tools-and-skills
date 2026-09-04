@@ -63,12 +63,14 @@ export function setEventLoopStatus(
 		ui.setStatus("pi-event-loop", undefined);
 		return;
 	}
-	ui.setStatus("pi-event-loop", formatEventLoopStatusLine(snapshot, ui.theme));
+	if (typeof ui.setStatus !== "function") return;
+	const theme = ui.theme ?? { fg: (_color: string, text: string) => text };
+	ui.setStatus("pi-event-loop", formatEventLoopStatusLine(snapshot, theme));
 }
 
 /** Clear the persistent status from the footer. */
-export function clearEventLoopStatus(ui: { setStatus: (key: string, value: string | undefined) => void }): void {
-	ui.setStatus("pi-event-loop", undefined);
+export function clearEventLoopStatus(ui: { setStatus?: (key: string, value: string | undefined) => void }): void {
+	ui.setStatus?.("pi-event-loop", undefined);
 }
 
 /** Non-TUI compact multiline text fallback for RPC and print modes. */
@@ -109,7 +111,7 @@ export async function openEventLoopInspector(
 	const uiTarget = "ui" in host && host.ui !== undefined ? host.ui : (host as ExtensionUIContext);
 	const isInteractiveTui =
 		("hasUI" in host ? host.hasUI !== false : true) &&
-		("mode" in host ? host.mode === "interactive" || host.mode === "tui" || host.mode === undefined : true);
+		("mode" in host ? host.mode === "tui" || host.mode === undefined : true);
 
 	if (!isInteractiveTui || typeof uiTarget.custom !== "function") {
 		uiTarget.notify(formatEventLoopFallback(status, history), "info");

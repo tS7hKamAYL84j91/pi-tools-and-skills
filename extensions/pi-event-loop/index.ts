@@ -16,6 +16,12 @@ import {
 import { registerEventLoopCommands } from "./event-loop-commands.js";
 import { registerContextTool } from "./event-loop-context.js";
 import {
+	clearEventLoopStatus,
+	openEventLoopInspector,
+	setEventLoopStatus,
+} from "./event-loop-tui.js";
+import { buildStatus } from "./status.js";
+import {
 	createLifecycleService,
 	createPumpingPipeline,
 	type ExtensionState,
@@ -87,6 +93,21 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 	const pipeline = createPumpingPipeline(state);
 	const lifecycle = createLifecycleService(state);
 
+	function refreshStatus(): void {
+		const ctx = state.currentCtx;
+		if (ctx === undefined || !state.sessionOpen || state.currentConfig === undefined) {
+			if (ctx !== undefined) clearEventLoopStatus(ctx.ui);
+			return;
+		}
+		const status = buildStatus(state.runtime, state.currentConfig, ctx.sessionManager.getBranch());
+		setEventLoopStatus(ctx.ui, {
+			paused: status.paused,
+			pauseReason: status.pauseReason,
+			activeCommandType: status.activeCommand?.type,
+			pendingCount: status.pendingCommandCount,
+		});
+	}
+
 	const getConfig = (cwd: string) => {
 		if (state.currentConfig !== undefined) {
 			return {
@@ -142,26 +163,42 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		onProfileSwitched: async (ctx) => {
 			await lifecycle.reload(ctx);
 		},
+		inspect: async (ctx) => {
+			if (state.currentConfig === undefined) return;
+			await openEventLoopInspector(
+				{ hasUI: ctx.hasUI, mode: ctx.mode, ui: ctx.ui },
+				{
+					runtime: state.runtime,
+					config: state.currentConfig,
+					entries: ctx.sessionManager.getBranch(),
+				},
+			);
+		},
+		onTransition: refreshStatus,
 	});
 	// Genuine interactive input resets loop protection; extension-delivered turns
 	// do not (SPEC §14).
 	pi.on("input", (event) => {
 		handleInput(state, event);
+		refreshStatus();
 	});
 	pi.on("agent_start", () => {
 		handleAgentStart(state);
+		refreshStatus();
 	});
 	// SAFETY: Pi exposes agent_settled at runtime; its installed 0.74 typings predate that hook.
 	(pi as unknown as AgentSettledRegistrar).on(
 		"agent_settled",
 		(_event, ctx) => {
 			handleAgentSettled(state, ctx);
+			refreshStatus();
 		},
 	);
 	// session_start restores, replays, catches up timers and delivers (SPEC §17).
 	pi.on("session_start", async (_event, ctx) => {
 		state.currentCtx = ctx;
 		if (!isProjectTrusted(ctx)) {
+			clearEventLoopStatus(ctx.ui);
 			ctx.ui.notify(
 				"pi-event-loop: project is untrusted; extension inert",
 				"warning",
@@ -170,8 +207,10 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		}
 		await handleSessionStart(state, ctx);
 		refreshDynamicTools(ctx.cwd);
+		refreshStatus();
 	});
 	pi.on("session_shutdown", () => {
 		handleSessionShutdown(state);
+		refreshStatus();
 	});
 }

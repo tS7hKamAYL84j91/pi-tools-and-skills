@@ -46,6 +46,7 @@ function createProductionHarness() {
 			notify: vi.fn(),
 			setStatus: (key: string, value: string | undefined) => statuses.set(key, value),
 			custom: undefined,
+			theme: { fg: (_color: string, text: string) => text },
 		},
 		sessionManager: { getBranch: () => entries },
 		configDir: options.configDir,
