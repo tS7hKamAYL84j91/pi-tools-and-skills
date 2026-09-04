@@ -363,7 +363,12 @@ export function contextFor(fake: FakeEventLoopPi, cwd: string): unknown {
 		cwd,
 		hasUI: true,
 		mode: "tui",
-		ui: { notify: fake.notify },
+		isProjectTrusted: () => true,
+		ui: {
+			notify: fake.notify,
+			setStatus: () => {},
+			theme: { fg: (_color: string, text: string) => text },
+		},
 		sessionManager: { getBranch: () => fake.entries },
 		isIdle: () => fake.idle,
 		hasPendingMessages: () => false,
