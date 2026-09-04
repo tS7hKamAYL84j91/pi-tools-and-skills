@@ -57,7 +57,7 @@ describe("buildCommandMessage", () => {
 });
 
 describe("deliverNextCommand", () => {
-	it("delivers the next queued command with nextTurn delivery options", async () => {
+	it("delivers the next queued command with triggering delivery options", async () => {
 		const runtime = runtimeWithQueuedCommand();
 		const sent: Array<{ message: unknown; options: DeliveryOptions }> = [];
 		const outcome = await deliverNextCommand(
@@ -71,7 +71,6 @@ describe("deliverNextCommand", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.options).toEqual({
 			triggerTurn: true,
-			deliverAs: "nextTurn",
 		});
 		expect(runtime.activeCommand?.status).toBe("delivered");
 		expect(runtime.activeWorkItem?.key).toBe("work-42");
@@ -119,14 +118,27 @@ describe("deliverNextCommand", () => {
 });
 
 describe("settleActiveCommand", () => {
-	it("with an expected outcome event: settles cleanly and clears the active command", () => {
+	it("with an expected outcome event: settles cleanly only when item is completed", () => {
 		const runtime = runtimeWithQueuedCommand();
 		deliverNextCommand({ sendMessage: () => undefined }, runtime);
+		// Mark item completed in projection as an accepted closing event would do
+		const item = runtime.projection.items.get("item-work-42")!;
+		runtime.projection.items.set("item-work-42", { ...item, status: "completed" });
 		const outcome = settleActiveCommand(runtime, true);
 		expect(outcome).toEqual({ settled: true, stalled: false });
 		expect(runtime.activeCommand).toBeUndefined();
 		expect(runtime.activeWorkItem).toBeUndefined();
 		expect(runtime.paused).toBe(false);
+	});
+
+	it("with an expected event that did not complete the item: stalls and pauses (AC-14, AC-15)", () => {
+		const runtime = runtimeWithQueuedCommand();
+		deliverNextCommand({ sendMessage: () => undefined }, runtime);
+		// Work item is still dispatched, not completed
+		const outcome = settleActiveCommand(runtime, true);
+		expect(outcome).toEqual({ settled: true, stalled: true });
+		expect(runtime.paused).toBe(true);
+		expect(runtime.pauseReason).toContain("missing-outcome");
 	});
 
 	it("without an expected outcome event: stalls the item and pauses delivery (SPEC §11)", () => {

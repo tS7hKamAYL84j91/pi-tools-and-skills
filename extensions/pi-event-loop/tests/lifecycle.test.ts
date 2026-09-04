@@ -235,6 +235,68 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 		runShutdown(fake);
 		expect(snapshots(fake)).toHaveLength(0);
 	});
+
+	it("registers agent_settled lifecycle hook", () => {
+		const fake = createFakeEventLoopPi();
+		eventLoopExtension(fake.api);
+		expect(handlersOf(fake).has("agent_settled")).toBe(true);
+	});
+
+	it("delivery pump is re-entrant: empty initial cycle followed by later event delivers", async () => {
+		const fake = createFakeEventLoopPi();
+		const registeredTools: Array<{
+			name: string;
+			execute: (
+				id: string,
+				params: unknown,
+				ext?: unknown,
+				sig?: unknown,
+				ctx?: unknown,
+			) => Promise<unknown>;
+		}> = [];
+		const originalApi = fake.api;
+		fake.api = {
+			...originalApi,
+			registerTool: (tool: {
+				name: string;
+				execute: (
+					id: string,
+					params: unknown,
+					ext?: unknown,
+					sig?: unknown,
+					ctx?: unknown,
+				) => Promise<unknown>;
+			}) => {
+				registeredTools.push(tool);
+			},
+		} as never;
+
+		eventLoopExtension(fake.api);
+		const cwd = writeConfigDir(configText());
+
+		await runSessionStart(fake, cwd);
+		expect(fake.sent).toHaveLength(0);
+
+		// Emit an event after the initial cycle exited
+		const emitTool = registeredTools.find((t) => t.name === "event_loop_emit");
+		expect(emitTool).toBeDefined();
+
+		await emitTool!.execute(
+			"call-1",
+			{
+				event: "work.requested",
+				dedupeKey: "work-reentry-1",
+				payload: { workId: "work-reentry-1" },
+			},
+			undefined,
+			undefined,
+			contextFor(fake, cwd),
+		);
+		await vi.advanceTimersByTimeAsync(5);
+
+		// Should deliver the command for the new item
+		expect(fake.sent).toHaveLength(1);
+	});
 });
 
 const CONFIG_LIMITS_FIXTURE: EventLoopConfig["limits"] = {
