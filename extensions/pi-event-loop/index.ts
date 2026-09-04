@@ -1,14 +1,13 @@
 /** pi-event-loop extension entry point: session-local Event Modeling automation runtime. */
 
 import { join } from "node:path";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
+import {
+	CONFIG_DIR_NAME,
+	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import {
 	buildDescriptionFromConfig,
-	buildDescriptionFromProfile,
 	refreshEmitTool,
 	registerEmitTool,
 	type RegisterEmitToolOptions,
@@ -32,49 +31,18 @@ import {
 	handleSessionStart,
 } from "./lifecycle.js";
 import { EVENT_LOOP_EVENT_CUSTOM_TYPE, type EventLoopConfig } from "./types.js";
-import {
-	CONFIG_RELATIVE_PATH,
-	type LoadConfigOptions,
-	loadEventLoopConfig,
-} from "./config.js";
+import { type LoadConfigOptions, loadEventLoopConfig } from "./config.js";
 import { createEventLoopRuntime } from "./runtime.js";
-
-function isProjectTrusted(ctx?: unknown): boolean {
-	if (
-		ctx !== undefined &&
-		typeof ctx === "object" &&
-		ctx !== null &&
-		"isProjectTrusted" in ctx &&
-		typeof (ctx as { isProjectTrusted?: () => boolean }).isProjectTrusted ===
-			"function"
-	) {
-		// SAFETY: Narrowed via structural inspection of optional SDK method.
-		return (ctx as { isProjectTrusted: () => boolean }).isProjectTrusted();
-	}
-	return true;
-}
 
 async function writeEventLoopConfig(
 	cwd: string,
 	config: EventLoopConfig,
 ): Promise<void> {
 	await writeFileAtomic(
-		join(cwd, CONFIG_RELATIVE_PATH),
+		join(cwd, CONFIG_DIR_NAME, "event-loop.json"),
 		`${JSON.stringify(config, null, "\t")}\n`,
 		{ encoding: "utf8" },
 	);
-}
-
-interface AgentSettledEvent {
-	readonly type: "agent_settled";
-}
-
-/** Compatibility seam for the runtime hook absent from the repository's 0.74 typings. */
-interface AgentSettledRegistrar {
-	readonly on: (
-		event: "agent_settled",
-		handler: (event: AgentSettledEvent, ctx: ExtensionContext) => void,
-	) => void;
 }
 
 export default function eventLoopExtension(pi: ExtensionAPI): void {
@@ -117,33 +85,26 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 				errors: [],
 			};
 		}
-		// SAFETY: Pi contexts may carry the configured extension directory at runtime.
-		const candidate = state.currentCtx as unknown as { configDir?: unknown };
 		const options: LoadConfigOptions = {
-			trusted: isProjectTrusted(state.currentCtx),
-			...(typeof candidate.configDir === "string"
-				? { configDir: candidate.configDir }
-				: {}),
+			trusted: state.currentCtx?.isProjectTrusted() ?? false,
+			configDir: CONFIG_DIR_NAME,
 		};
 		return loadEventLoopConfig(cwd, options);
 	};
 
-	function refreshDynamicTools(cwd: string): void {
+	function refreshDynamicTools(): void {
 		const config = state.currentConfig;
 		const options: RegisterEmitToolOptions = {
 			description: config
 				? buildDescriptionFromConfig(config, state.runtime)
-				: buildDescriptionFromProfile(cwd, state.runtime),
+				: undefined,
 			config,
 			getConfig,
 		};
 		refreshEmitTool(pi, state.runtime, pipeline, options);
 	}
 
-	registerEmitTool(pi, state.runtime, pipeline, {
-		description: buildDescriptionFromProfile(process.cwd(), state.runtime),
-		getConfig,
-	});
+	registerEmitTool(pi, state.runtime, pipeline, { getConfig });
 	registerContextTool(pi, {
 		runtime: state.runtime,
 		readEntries: (ctx) => ctx.sessionManager.getBranch(),
@@ -186,18 +147,14 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		handleAgentStart(state);
 		refreshStatus();
 	});
-	// SAFETY: Pi exposes agent_settled at runtime; its installed 0.74 typings predate that hook.
-	(pi as unknown as AgentSettledRegistrar).on(
-		"agent_settled",
-		(_event, ctx) => {
-			handleAgentSettled(state, ctx);
-			refreshStatus();
-		},
-	);
+	pi.on("agent_settled", (_event, ctx) => {
+		handleAgentSettled(state, ctx);
+		refreshStatus();
+	});
 	// session_start restores, replays, catches up timers and delivers (SPEC §17).
 	pi.on("session_start", async (_event, ctx) => {
 		state.currentCtx = ctx;
-		if (!isProjectTrusted(ctx)) {
+		if (!ctx.isProjectTrusted()) {
 			clearEventLoopStatus(ctx.ui);
 			ctx.ui.notify(
 				"pi-event-loop: project is untrusted; extension inert",
@@ -206,7 +163,7 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		await handleSessionStart(state, ctx);
-		refreshDynamicTools(ctx.cwd);
+		refreshDynamicTools();
 		refreshStatus();
 	});
 	pi.on("session_shutdown", () => {

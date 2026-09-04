@@ -109,7 +109,7 @@ describe("pi-event-loop host configuration boundary", () => {
 		const entry = extensionSources().find((source) => source.file === "index.ts");
 		expect(entry?.content).toContain("CONFIG_DIR_NAME");
 		expect(entry?.content).not.toContain("process.cwd()");
-		expect(entry?.content).not.toMatch(/currentCtx[\s\S]{0,80}configDir/);
+		expect(entry?.content).not.toContain(".configDir");
 	});
 });
 

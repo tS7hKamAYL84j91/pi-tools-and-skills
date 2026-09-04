@@ -1,6 +1,9 @@
 /** Configuration, recovery, and timer transitions owned by the event-loop lifecycle. */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	CONFIG_DIR_NAME,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import {
 	type LoadConfigOptions,
 	loadEventLoopConfig,
@@ -14,22 +17,10 @@ import { createTimerRunner } from "./timers.js";
 import type { EventLoopConfig, PostAppendPipeline } from "./types.js";
 import { EVENT_LOOP_EVENT_CUSTOM_TYPE } from "./types.js";
 
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-	// SAFETY: The trust hook is present on current Pi contexts but absent in older typings.
-	const candidate = ctx as unknown as { isProjectTrusted?: unknown };
-	return typeof candidate.isProjectTrusted === "function"
-		? (candidate.isProjectTrusted as () => boolean)()
-		: true;
-}
-
 export function configLoadOptions(ctx: ExtensionContext): LoadConfigOptions {
-	// SAFETY: Pi contexts may carry the configured extension directory at runtime.
-	const candidate = ctx as unknown as { configDir?: unknown };
 	return {
-		trusted: isProjectTrusted(ctx),
-		...(typeof candidate.configDir === "string"
-			? { configDir: candidate.configDir }
-			: {}),
+		trusted: ctx.isProjectTrusted(),
+		configDir: CONFIG_DIR_NAME,
 	};
 }
 
