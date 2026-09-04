@@ -230,13 +230,17 @@ describe("event_loop_context", () => {
 			},
 		);
 		expect(tools).toHaveLength(1);
+		const tool = tools[0];
+		if (tool === undefined) {
+			throw new Error("event_loop_context tool was not registered");
+		}
 		const before = JSON.stringify(runtime);
 		const ctx = {
 			cwd: configDir(),
 			ui: { notify: () => undefined },
 			sessionManager: { getBranch: () => [] },
 		};
-		const result = await tools[0]!.execute("id", {}, undefined, undefined, ctx);
+		const result = await tool.execute("id", {}, undefined, undefined, ctx);
 		expect((result as { isError?: boolean }).isError).toBeUndefined();
 		expect(JSON.stringify(runtime)).toBe(before);
 	});

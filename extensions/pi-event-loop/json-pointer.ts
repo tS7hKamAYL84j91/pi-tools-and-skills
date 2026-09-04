@@ -52,10 +52,11 @@ function resolveJsonPointer(
 			return { found: false, value: undefined };
 		}
 		const container = current as Record<string, unknown>;
-		if (!Object.hasOwn(container, token)) {
+		const descriptor = Object.getOwnPropertyDescriptor(container, token);
+		if (descriptor === undefined || !("value" in descriptor)) {
 			return { found: false, value: undefined };
 		}
-		current = container[token];
+		current = descriptor.value;
 	}
 	return { found: true, value: current };
 }

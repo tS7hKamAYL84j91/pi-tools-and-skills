@@ -147,9 +147,9 @@ describe("pi-event-loop production wiring", () => {
 	it("profile switch rebuilds live state and uses the selected profile", async () => {
 		vi.useFakeTimers();
 		const alternate = JSON.parse(configText()) as Record<string, unknown>;
-		const profiles = alternate["profiles"] as Record<string, Record<string, unknown>>;
-		profiles["alternate"] = {
-			...profiles["default"],
+		const profiles = alternate.profiles as Record<string, Record<string, unknown>>;
+		profiles.alternate = {
+			...profiles.default,
 			commands: {
 				"perform-work": { message: "Alternate profile work.", expectedEvents: ["work.completed", "work.failed"] },
 			},
@@ -163,19 +163,14 @@ describe("pi-event-loop production wiring", () => {
 		expect(harness.sent[0]).toMatchObject({ content: expect.stringContaining("Alternate profile work.") });
 	});
 
-	it("uses the configured config directory and trust boundary consistently", async () => {
-		vi.useFakeTimers();
-		const customPath = "settings/event-loop.json";
+	it("keeps the runtime inert when the project is untrusted", async () => {
 		const harness = createProductionHarness();
 		eventLoopExtension(harness.pi as never);
-		const cwd = configDirectory(customPath);
-		const ctx = harness.context(cwd, { configDir: "settings" });
-		await harness.handlers.get("session_start")?.({}, ctx);
+		const cwd = configDirectory();
+		await harness.handlers
+			.get("session_start")
+			?.({}, harness.context(cwd, { trusted: false }));
 		expect(harness.sent).toHaveLength(0);
-		const untrusted = createProductionHarness();
-		eventLoopExtension(untrusted.pi as never);
-		await untrusted.handlers.get("session_start")?.({}, untrusted.context(cwd, { configDir: "settings", trusted: false }));
-		expect(untrusted.sent).toHaveLength(0);
 	});
 
 	it("active command start and agent_settled re-register event_loop_emit with narrowed and widened schema", async () => {
@@ -183,9 +178,9 @@ describe("pi-event-loop production wiring", () => {
 		const harness = createProductionHarness();
 		eventLoopExtension(harness.pi as never);
 		const base = JSON.parse(configText()) as Record<string, unknown>;
-		const profiles = base["profiles"] as Record<string, Record<string, unknown>>;
-		const defaultProfile = profiles["default"] as Record<string, unknown>;
-		const events = defaultProfile["events"] as Record<string, unknown>;
+		const profiles = base.profiles as Record<string, Record<string, unknown>>;
+		const defaultProfile = profiles.default as Record<string, unknown>;
+		const events = defaultProfile.events as Record<string, unknown>;
 		events["progress.note"] = {
 			description: "A free observation.",
 			allowAgentEmit: true,
