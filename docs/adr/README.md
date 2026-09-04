@@ -63,6 +63,7 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 055 | Default `/goal run` to bounded continuous execution | [055-pi-goal-run-default-until-complete.md](055-pi-goal-run-default-until-complete.md) |
 | 056 | Boost model selection from the host model registry | [056-boost-model-registry-selection.md](056-boost-model-registry-selection.md) |
 | 057 | Boost is an in-session model lease that automates the manual model flip | [057-boost-in-session-model-lease.md](057-boost-in-session-model-lease.md) |
+| 058 | Single-ticket delivery event profile — evaluation only | [058-single-ticket-delivery-event-profile.md](058-single-ticket-delivery-event-profile.md) |
 
 ## ADR Registry Notes
 
@@ -72,4 +73,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - The next sequential ADR slot to assign is **057**.
+  - The next sequential ADR slot to assign is **059**.

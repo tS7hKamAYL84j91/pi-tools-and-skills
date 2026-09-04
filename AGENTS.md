@@ -24,6 +24,7 @@
 - **Coordinate, review, and integrate.** The General Manager's primary job is to ensure the right work is done by the right agent, that quality gates pass, and that the final patch is coherent.
 - **Delegate implementation.** Prefer Jules for approved, well-scoped repo changes with clear tests. Implementation may be delegated to workers; the GM must not silently become the hidden coder by doing large implementation alone without oversight or delegation.
 - **Use spawned/local agents for audits, validation, monitoring, and focused research.** They should not be used as a generic implementation workforce unless explicitly delegated.
+- **Subagent model (Principal direction):** Explicitly select `openai-codex/gpt-5.6-luna` for spawned subagents in this repo. If unavailable, report the blocker rather than silently substituting another model. This does not change root-session or global model defaults.
 - **Small mechanical edits, unblockers, and documentation corrections are allowed** for the GM when delegation would add friction without value.
 - **Own integration quality.** Review delegated patches locally, run validation, resolve conflicts, and get pair review before merging substantive changes.
 - **Council for large work.** Use council review for architecture changes, broad refactors, tool-surface changes, security-sensitive work, and any change with cross-repo impact.
@@ -35,7 +36,9 @@
 - Keep priority, scope, ownership, and completion authoritative in Kanban. Link repo-local specifications, implementation plans, and ADRs from the ticket rather than maintaining a parallel backlog.
 - A local `TODO.md` may be a board pointer or a bounded execution projection/scratch checklist linked to its ticket. It must not become a second authority.
 - Update Kanban when work changes or completes; a checked-off `TODO.md` alone is not completion evidence. Preserve verification gates and distinguish implemented work from won't-do/superseded dispositions.
-- Respect repo boundaries: route shared-board updates through its authorized owner when direct writes would mutate another repository. Report pending updates honestly until acknowledged.
+- **Repo-scoped Kanban operations are explicitly authorized.** This GM may directly create, claim, and update `pi-tools-and-skills` tickets through the configured Kanban tools, including when the shared board is stored in `working-notes`. Routine ticket operations do not require relay through Gravitas. This is a narrow exception to the cross-repo file-mutation boundary, not authority over other repositories' tickets or Executive Office orchestration.
+- Claim only authorized repo-local work within WIP limits; preserve existing ownership unless reassignment is explicitly authorized. Complete work only with required verification evidence; record explicit reasons for authorized won't-do/superseded closures.
+- Use Kanban tools rather than directly editing board logs or task files. The exception covers tool-managed ticket artifacts only; unrelated `working-notes` files, shared policy, and other repos' work remain outside this GM's authority.
 
 ## TypeScript Style — [Google TS Style Guide](https://google.github.io/styleguide/tsguide.html)
 
