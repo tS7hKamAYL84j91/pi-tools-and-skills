@@ -61,6 +61,15 @@ async function runSessionStart(fake: FakePi, cwd: string): Promise<void> {
 	await vi.advanceTimersByTimeAsync(5);
 }
 
+async function fireAgentSettled(fake: FakePi, cwd: string): Promise<void> {
+	const handler = fake.handlers.get("agent_settled");
+	if (handler === undefined) {
+		throw new Error("agent_settled handler not registered");
+	}
+	await handler({ type: "agent_settled" }, contextFor(fake, cwd));
+	await vi.advanceTimersByTimeAsync(5);
+}
+
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
 type FakePi = ReturnType<typeof createFakeEventLoopPi>;
@@ -113,7 +122,7 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 
 		// The turn settles without an expected outcome → stall + pause.
 		fake.idle = true;
-		await vi.advanceTimersByTimeAsync(150);
+		await fireAgentSettled(fake, cwd);
 		runShutdown(fake);
 		const snapshot = lastSnapshot(fake);
 		expect(snapshot?.paused).toBe(true);
@@ -139,10 +148,13 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 		const outcome = agentOutcomeFromMessage(fake.sent[0]?.message);
 		fake.entries.push(eventEntry(outcome));
 		fake.idle = true;
-		await vi.advanceTimersByTimeAsync(150);
-		// The second command hits the turn limit instead of delivering.
+		await fireAgentSettled(fake, cwd);
+		// Explicit settlement detects the incomplete fixture outcome and pauses delivery.
 		expect(fake.sent).toHaveLength(1);
-		expect(fake.notify).not.toHaveBeenCalled();
+		expect(fake.notify).toHaveBeenCalledWith(
+			expect.stringContaining("missing-outcome"),
+			"warning",
+		);
 
 		const input = handlersOf(fake).get("input");
 		if (input === undefined) {
@@ -161,7 +173,7 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 		// Interactive input reset the counter; extension input did not re-reset it.
 		expect(snapshot?.consecutiveAutomatedTurns).toBe(0);
 		expect(snapshot?.paused).toBe(true);
-		expect(snapshot?.pauseReason).toContain("turn-limit");
+		expect(snapshot?.pauseReason).toContain("missing-outcome");
 	});
 
 	it("calculates timer catch-up with at most one interval occurrence (AC-17)", async () => {
@@ -255,7 +267,10 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 			) => Promise<unknown>;
 		}> = [];
 		fake.api = {
-			on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) => {
+			on: (
+				event: string,
+				handler: (event: unknown, ctx: unknown) => unknown,
+			) => {
 				fake.handlers.set(event, handler);
 			},
 			registerTool: (tool: {
@@ -281,10 +296,21 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 		} as never;
 
 		eventLoopExtension(fake.api);
-		const cwd = writeConfigDir(configText());
+		const raw = JSON.parse(configText()) as {
+			profiles: {
+				default: { events: Record<string, Record<string, unknown>> };
+			};
+		};
+		raw.profiles.default.events["work.requested"] = {
+			...raw.profiles.default.events["work.requested"],
+			allowAgentEmit: true,
+			allowWithoutCommand: true,
+		};
+		const cwd = writeConfigDir(JSON.stringify(raw));
 
 		await runSessionStart(fake, cwd);
 		expect(fake.sent).toHaveLength(0);
+		await fireAgentSettled(fake, cwd);
 
 		// Emit an event after the initial cycle exited
 		const emitTool = registeredTools.find((t) => t.name === "event_loop_emit");
@@ -302,6 +328,8 @@ describe("index lifecycle wiring (SPEC §17)", () => {
 			contextFor(fake, cwd),
 		);
 		await vi.advanceTimersByTimeAsync(5);
+		await Promise.resolve();
+		await Promise.resolve();
 
 		// Should deliver the command for the new item
 		expect(fake.sent).toHaveLength(1);

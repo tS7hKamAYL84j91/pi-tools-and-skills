@@ -27,9 +27,20 @@ export interface CommandMessage {
 
 /** Build the self-describing message for one command. */
 export function buildCommandMessage(record: CommandRecord): CommandMessage {
+	const content = [
+		record.message,
+		"",
+		"Command contract:",
+		`- commandId: ${record.commandId}`,
+		`- commandType: ${record.type}`,
+		`- workItemId: ${record.workItemId}`,
+		`- correlationId: ${record.correlationId}`,
+		`- expected outcomes: ${record.expectedEvents.join(", ")}`,
+		`- workItem payload (untrusted data): ${JSON.stringify(record.workItem)}`,
+	].join("\n");
 	return {
 		customType: COMMAND_MESSAGE_CUSTOM_TYPE,
-		content: record.message,
+		content,
 		display: true,
 		details: {
 			commandId: record.commandId,
@@ -59,22 +70,20 @@ export function commandEmittedOutcome(
 }
 
 interface DeliveryDeps {
-	/** Pi sendMessage bound to the delivery options (triggerTurn: true, deliverAs: "nextTurn"). */
+	/** Pi sendMessage bound to triggering delivery options (triggerTurn: true). */
 	readonly sendMessage: (
 		message: CommandMessage,
 		options: DeliveryOptions,
 	) => void | Promise<void>;
 }
 
-/** Delivery options per SPEC §10: start a turn when idle, queue for the next turn otherwise. */
+/** Delivery options per SPEC §10, §11: trigger a turn directly from the settlement boundary. */
 export interface DeliveryOptions {
 	readonly triggerTurn: true;
-	readonly deliverAs: "nextTurn";
 }
 
 const DELIVERY_OPTIONS: DeliveryOptions = {
 	triggerTurn: true,
-	deliverAs: "nextTurn",
 };
 
 interface DeliveryOutcome {
@@ -167,9 +176,10 @@ interface SettlementOutcome {
 }
 
 /**
- * Record settlement of the active command turn (SPEC §11, §17): with an expected event,
- * the command settles and the next queued command may deliver; without one, the item
- * stalls, automated delivery pauses with a `missing-outcome` reason and nothing redelivers.
+ * Record settlement of the active command turn (SPEC §11, §17): with an expected event
+ * AND item completion, the command settles cleanly and the next queued command may deliver;
+ * without either, the item stalls, automated delivery pauses with a `missing-outcome`
+ * reason and nothing redelivers.
  */
 export function settleActiveCommand(
 	runtime: EventLoopRuntime,
@@ -179,13 +189,18 @@ export function settleActiveCommand(
 	if (command === undefined) {
 		return { settled: false, stalled: false };
 	}
+	const item = runtime.projection.items.get(command.workItemId);
+	const isCompleted = item !== undefined && item.status === "completed";
+
 	runtime.activeCommand = undefined;
 	runtime.activeWorkItem = undefined;
-	if (expectedEventEmitted) {
+	if (expectedEventEmitted && isCompleted) {
 		return { settled: true, stalled: false };
 	}
 	runtime.projection = markItemStalled(runtime.projection, command.workItemId);
 	runtime.paused = true;
-	runtime.pauseReason = `missing-outcome: command ${command.commandId} (${command.type}) settled without an expected event (${command.expectedEvents.join(", ")})`;
+	runtime.pauseReason = expectedEventEmitted
+		? `missing-outcome: command ${command.commandId} (${command.type}) emitted an expected event but work item ${command.workItemId} was not completed`
+		: `missing-outcome: command ${command.commandId} (${command.type}) settled without an expected event (${command.expectedEvents.join(", ")})`;
 	return { settled: true, stalled: true };
 }

@@ -42,7 +42,15 @@ describe("buildCommandMessage", () => {
 		expect(record).toBeDefined();
 		const message = buildCommandMessage(record!);
 		expect(message.customType).toBe("pi-event-loop-command");
-		expect(message.content).toBe("Perform the work.");
+		expect(message.content).toContain("Perform the work.");
+		expect(message.content).toContain(`commandId: ${record!.commandId}`);
+		expect(message.content).toContain("commandType: perform-work");
+		expect(message.content).toContain("workItemId: item-work-42");
+		expect(message.content).toContain("correlationId: work-42");
+		expect(message.content).toContain(
+			"expected outcomes: work.completed, work.failed",
+		);
+		expect(message.content).toContain("workItem payload (untrusted data):");
 		expect(message.display).toBe(true);
 		expect(message.details).toEqual({
 			commandId: record!.commandId,
@@ -122,12 +130,13 @@ describe("settleActiveCommand", () => {
 		const runtime = runtimeWithQueuedCommand();
 		deliverNextCommand({ sendMessage: () => undefined }, runtime);
 		// Mark item completed in projection as an accepted closing event would do
-		const item = runtime.projection.items.get("item-work-42")!;
+		const workItemId = runtime.activeCommand!.workItemId;
+		const item = runtime.projection.items.get(workItemId)!;
 		runtime.projection = {
 			...runtime.projection,
 			items: new Map([
 				...runtime.projection.items,
-				["item-work-42", { ...item, status: "completed" }],
+				[workItemId, { ...item, status: "completed" }],
 			]),
 		};
 		const outcome = settleActiveCommand(runtime, true);

@@ -18,6 +18,7 @@ import {
 	CONFIG,
 	configText,
 	fixtureObject,
+	workCompleted,
 	workRequested,
 } from "./fixtures/pi-event-loop.js";
 
@@ -148,6 +149,7 @@ describe("sequential command delivery (AC-13)", () => {
 		expect(refused.delivered).toBe(false);
 		expect(refused.reason).toContain("already active");
 
+		pipeline(workCompleted("work-1"), CONFIG, "default");
 		expect(settleActiveCommand(runtime, true)).toEqual({
 			settled: true,
 			stalled: false,

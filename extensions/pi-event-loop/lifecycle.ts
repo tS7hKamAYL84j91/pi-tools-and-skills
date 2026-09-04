@@ -7,9 +7,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { createPostAppendPipeline } from "./automator.js";
 import { loadEventLoopConfig } from "./config.js";
-import { runDeliveryCycle } from "./delivery-cycle.js";
+import {
+	commandEmittedOutcome,
+	deliverNextCommand,
+	settleActiveCommand,
+} from "./dispatcher.js";
 import { readEventLog } from "./event-log.js";
-import type { EventLoopRuntime } from "./runtime.js";
+import { type EventLoopRuntime, resetEventLoopRuntime } from "./runtime.js";
 import { buildSnapshot, recoverSessionState } from "./session-state.js";
 import { readLatestSnapshot } from "./snapshot-format.js";
 import { createTimerRunner, type TimerRunner } from "./timers.js";
@@ -19,13 +23,6 @@ import type {
 	PostAppendPipeline,
 } from "./types.js";
 import { EVENT_LOOP_EVENT_CUSTOM_TYPE, SNAPSHOT_CUSTOM_TYPE } from "./types.js";
-
-/** Settle-poll cadence: ctx.isIdle() && !ctx.hasPendingMessages() (pi 0.74 pattern). */
-const SETTLE_POLL_MS = 100;
-/** Bound on waiting for a delivered turn to actually start. */
-const TURN_START_TIMEOUT_MS = 30_000;
-/** Turn settlement may legitimately run long; the next pipeline event re-enters the cycle. */
-const SETTLE_TIMEOUT_MS = 3_600_000;
 
 /** Mutable wiring state shared by the lifecycle hooks of one extension instance. */
 export interface ExtensionState {
@@ -94,42 +91,80 @@ function persistCheckpoint(state: ExtensionState): void {
 }
 
 /**
- * Single-flight delivery cycle: delivers queued commands and settles each active
- * command via the polling probe. Triggered by session_start and by every accepted
- * event whose pipeline queued work (SPEC §17).
+ * Single-flight delivery pump: delivers queued commands when idle and settles
+ * each active command turn upon agent_settled (SPEC §5, §11, §17).
  */
-function scheduleDeliveryCycle(state: ExtensionState): void {
-	if (!state.sessionOpen || !state.currentConfig || state.pumping) {
+export function scheduleDeliveryCycle(state: ExtensionState): void {
+	if (
+		!state.sessionOpen ||
+		!state.currentConfig ||
+		state.pumping ||
+		state.runtime.paused ||
+		state.runtime.busy ||
+		state.runtime.activeCommand !== undefined
+	) {
 		return;
 	}
+
+	const hasQueued = state.runtime.queue.some(
+		(record) => record.status === "queued",
+	);
+	if (!hasQueued) {
+		return;
+	}
+
+	if (
+		state.runtime.consecutiveAutomatedTurns >=
+		state.currentConfig.limits.maxConsecutiveTurns
+	) {
+		state.runtime.paused = true;
+		state.runtime.pauseReason = `turn-limit: ${state.runtime.consecutiveAutomatedTurns} consecutive automated turns reached maxConsecutiveTurns ${state.currentConfig.limits.maxConsecutiveTurns}; interactive user input resets the counter`;
+		persistCheckpoint(state);
+		notify(state, state.runtime.pauseReason, "warning");
+		return;
+	}
+
 	state.pumping = true;
 	const run = state.generation;
-	void runDeliveryCycle({
-		runtime: state.runtime,
-		probe: {
-			isIdle: () => state.currentCtx?.isIdle() ?? true,
-			hasPendingMessages: () => state.currentCtx?.hasPendingMessages() ?? false,
-		},
-		sendMessage: (message, options) => {
-			state.pi.sendMessage(message, options);
-		},
-		readEvents: () => readEvents(state),
-		persist: () => {
+
+	void (async () => {
+		try {
 			persistCheckpoint(state);
-		},
-		limits: state.currentConfig.limits,
-		sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-		pollMs: SETTLE_POLL_MS,
-		turnStartTimeoutMs: TURN_START_TIMEOUT_MS,
-		settleTimeoutMs: SETTLE_TIMEOUT_MS,
-		isActive: () => state.generation === run && state.sessionOpen,
-	}).catch((error: unknown) => {
-		notify(
-			state,
-			`delivery cycle failed: ${error instanceof Error ? error.message : String(error)}`,
-			"error",
-		);
-	});
+			state.runtime.busy = true;
+			const outcome = await deliverNextCommand(
+				{
+					sendMessage: (message, options) => {
+						state.pi.sendMessage(message, options);
+					},
+				},
+				state.runtime,
+			);
+			if (!outcome.delivered) {
+				state.runtime.busy = false;
+			}
+		} catch (error: unknown) {
+			state.runtime.busy = false;
+			const message = error instanceof Error ? error.message : String(error);
+			if (state.runtime.activeCommand !== undefined) {
+				settleActiveCommand(state.runtime, false);
+				state.runtime.pauseReason = `delivery failed: ${message}`;
+				persistCheckpoint(state);
+			}
+			notify(state, `delivery failed: ${message}`, "error");
+		} finally {
+			state.pumping = false;
+			if (
+				state.generation === run &&
+				state.sessionOpen &&
+				!state.runtime.paused &&
+				!state.runtime.busy &&
+				state.runtime.activeCommand === undefined &&
+				state.runtime.queue.some((record) => record.status === "queued")
+			) {
+				scheduleDeliveryCycle(state);
+			}
+		}
+	})();
 }
 
 /** Genuine interactive input resets loop protection; extension turns do not (SPEC §14). */
@@ -143,6 +178,37 @@ export function handleAgentStart(state: ExtensionState): void {
 	state.runtime.busy = true;
 }
 
+export function handleAgentSettled(
+	state: ExtensionState,
+	ctx?: ExtensionContext,
+): void {
+	if (ctx !== undefined) {
+		state.currentCtx = ctx;
+	}
+	state.runtime.busy = false;
+
+	if (!state.sessionOpen || !state.currentConfig) {
+		return;
+	}
+
+	const active = state.runtime.activeCommand;
+	if (active !== undefined) {
+		const expectedEmitted = commandEmittedOutcome(readEvents(state), active);
+		const settlement = settleActiveCommand(state.runtime, expectedEmitted);
+		persistCheckpoint(state);
+		if (settlement.stalled) {
+			notify(
+				state,
+				state.runtime.pauseReason ?? "delivery paused: missing outcome",
+				"warning",
+			);
+			return;
+		}
+	}
+
+	scheduleDeliveryCycle(state);
+}
+
 export async function handleSessionStart(
 	state: ExtensionState,
 	ctx: ExtensionContext,
@@ -150,6 +216,7 @@ export async function handleSessionStart(
 	state.currentCtx = ctx;
 	state.generation++;
 	state.sessionOpen = false;
+	state.pumping = false;
 	state.runtime.busy = false;
 	stopTimers(state);
 
@@ -201,7 +268,7 @@ function restoreSessionState(
 ): void {
 	const entries = ctx.sessionManager.getBranch();
 	const events = readEventLog(entries);
-	resetRuntime(state.runtime);
+	resetEventLoopRuntime(state.runtime);
 	recoverSessionState({
 		runtime: state.runtime,
 		events,
@@ -209,23 +276,6 @@ function restoreSessionState(
 		fingerprint: state.currentFingerprint ?? "",
 		snapshot: readLatestSnapshot(entries),
 		applyEvent: createPumpingPipeline(state),
-	});
-}
-
-function resetRuntime(runtime: EventLoopRuntime): void {
-	// Fields are cleared in place: tools and the dispatcher hold this instance.
-	Object.assign(runtime, {
-		activeCommand: undefined,
-		activeWorkItem: undefined,
-		projection: { items: new Map(), order: [] },
-		queue: [],
-		busy: false,
-		consecutiveAutomatedTurns: 0,
-		paused: false,
-		pauseReason: undefined,
-		projectedEventCount: 0,
-		lastAppliedEventId: undefined,
-		timerState: {},
 	});
 }
 
@@ -274,6 +324,7 @@ function startTimers(state: ExtensionState, config: EventLoopConfig): void {
 export function handleSessionShutdown(state: ExtensionState): void {
 	state.generation++;
 	state.sessionOpen = false;
+	state.pumping = false;
 	stopTimers(state);
 	state.runtime.busy = false;
 	persistCheckpoint(state);
