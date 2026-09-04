@@ -104,6 +104,15 @@ describe("pi-event-loop layer boundaries (AC-9)", () => {
 	});
 });
 
+describe("pi-event-loop host configuration boundary", () => {
+	it("uses the host CONFIG_DIR_NAME instead of process.cwd or an invented context field", () => {
+		const entry = extensionSources().find((source) => source.file === "index.ts");
+		expect(entry?.content).toContain("CONFIG_DIR_NAME");
+		expect(entry?.content).not.toContain("process.cwd()");
+		expect(entry?.content).not.toMatch(/currentCtx[\s\S]{0,80}configDir/);
+	});
+});
+
 describe("pi-event-loop isolation (SPEC §2, AC-24, AC-25)", () => {
 	it("imports only intra-extension, shared lib, node builtins and the pi host API (AC-24)", () => {
 		const allowedBareImports = new Set([
