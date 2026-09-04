@@ -10,7 +10,7 @@
 - **No Persona Noise:** Avoid roleplay, in-jokes, and decorative identity text. Be clear, parsimonious, and useful.
 
 ## Operating Guidelines
-- **Measure Twice, Cut Once:** Create a \`.md\` spec/plan before writing large code blocks to ensure alignment with minimal token waste.
+- **Measure Twice, Cut Once:** Record scope, acceptance criteria, and the implementation plan in the Kanban ticket before writing large code blocks. Use linked repo-local specifications or ADRs for detail that needs a separate document.
 - **No Brute Force:** If a solution fails, stop and pivot rather than retrying the same path.
 - **Diagrams:** Use Mermaid for all architecture, sequence, and data-flow diagrams.
 - **Reporting:** Only provide text output for:
@@ -28,6 +28,14 @@
 - **Own integration quality.** Review delegated patches locally, run validation, resolve conflicts, and get pair review before merging substantive changes.
 - **Council for large work.** Use council review for architecture changes, broad refactors, tool-surface changes, security-sensitive work, and any change with cross-repo impact.
 - **Keep watch without meddling.** Monitor delegated work, nudge only when blocked/stalled, and avoid rewriting a worker's patch unless needed for safety or correctness.
+
+## Work Tracking — Kanban Authority (T-890)
+
+- **Kanban ticket bodies are the default durable TODO/plan authority.** Record scope, acceptance criteria, owner, blockers, evidence, and next actions in the ticket.
+- Keep priority, scope, ownership, and completion authoritative in Kanban. Link repo-local specifications, implementation plans, and ADRs from the ticket rather than maintaining a parallel backlog.
+- A local `TODO.md` may be a board pointer or a bounded execution projection/scratch checklist linked to its ticket. It must not become a second authority.
+- Update Kanban when work changes or completes; a checked-off `TODO.md` alone is not completion evidence. Preserve verification gates and distinguish implemented work from won't-do/superseded dispositions.
+- Respect repo boundaries: route shared-board updates through its authorized owner when direct writes would mutate another repository. Report pending updates honestly until acknowledged.
 
 ## TypeScript Style — [Google TS Style Guide](https://google.github.io/styleguide/tsguide.html)
 

@@ -4,6 +4,23 @@ Short reference docs for `pi-tools-and-skills` architecture decisions and extens
 
 ---
 
+## Work-planning authority (T-890)
+
+Kanban ticket bodies are the durable work/plan authority. Repository documents hold linked design detail; local execution checklists are bounded projections, not independent priority, ownership, or completion records. This is an operating boundary, not a new runtime service or automatic synchronization mechanism.
+
+```mermaid
+C4Context
+    title Repository work-planning authority
+    Person(gm, "Repository GM", "Owns repo-local delivery and evidence")
+    Person(boardOwner, "Authorized board owner", "Applies shared-board updates within repo boundaries")
+    System(board, "Kanban", "Authoritative tickets: scope, acceptance, owner, blockers, evidence, next actions")
+    System(docs, "Repository documents", "Linked specifications, ADRs, and bounded execution projections")
+    Rel(gm, boardOwner, "Requests shared-board updates when required by repo boundaries")
+    Rel(boardOwner, board, "Records work changes and verified dispositions")
+    Rel(gm, docs, "Maintains design detail and ticket-linked scratch plans")
+    Rel(board, docs, "Links supporting artifacts; retains work authority")
+```
+
 ## F.I.R.E. Review
 
 **Date:** 2026-05-09
