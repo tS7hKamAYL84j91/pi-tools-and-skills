@@ -227,4 +227,44 @@ describe("emission decision logic", () => {
 		});
 		expect(a.ok && b.ok && a.event.eventId === b.event.eventId).toBe(true);
 	});
+
+	it("rejects an event during active command turn if allowAgentEmit is false even if listed in expectedEvents", () => {
+		const nonAgentCommand: CommandRecord = {
+			...ACTIVE_COMMAND,
+			expectedEvents: ["work.requested"],
+		};
+		const active = context({
+			activeCommand: nonAgentCommand,
+			activeWorkItem: WORK_ITEM,
+		});
+		const decision = evaluateEmission(active, {
+			event: "work.requested",
+			dedupeKey: "req-1",
+			payload: { workId: "work-42" },
+		});
+		expect(decision.ok).toBe(false);
+		if (!decision.ok) {
+			expect(decision.reason).toContain("does not allow agent emission");
+		}
+	});
+
+	it("rejects an expected event during command turn if it has no closeOn rule in the active item's view", () => {
+		const commandWithNonClosingEvent: CommandRecord = {
+			...ACTIVE_COMMAND,
+			expectedEvents: ["work.completed", "progress.note"],
+		};
+		const active = context({
+			activeCommand: commandWithNonClosingEvent,
+			activeWorkItem: WORK_ITEM,
+		});
+		const decision = evaluateEmission(active, {
+			event: "progress.note",
+			dedupeKey: "note-1",
+			payload: {},
+		});
+		expect(decision.ok).toBe(false);
+		if (!decision.ok) {
+			expect(decision.reason).toContain("does not close view");
+		}
+	});
 });
