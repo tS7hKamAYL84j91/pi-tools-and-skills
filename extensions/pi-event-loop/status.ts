@@ -4,7 +4,7 @@ import { readEventLog } from "./event-log.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import type { EventLoopConfig, ProfileConfig, TodoItem } from "./types.js";
 
-interface EventLoopStatus {
+export interface EventLoopStatus {
 	readonly profileName: string;
 	readonly paused: boolean;
 	readonly pauseReason?: string;

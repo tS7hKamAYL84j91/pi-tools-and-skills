@@ -17,7 +17,6 @@ import type { LoopEventData } from "../types.js";
 
 const FAKE_THEME: EventLoopTheme = {
 	fg: (_color: string, text: string) => `[fg:${_color}]${text}[/fg]`,
-	bg: (_color: string, text: string) => `[bg:${_color}]${text}[/bg]`,
 	bold: (text: string) => `[b]${text}[/b]`,
 };
 
@@ -134,7 +133,7 @@ describe("EventLoopInspector", () => {
 		});
 		const lines = inspector.render(80);
 		expect(lines.length).toBeGreaterThan(0);
-		expect(lines.some((l) => l.includes("Status") || l.includes("Views"))).toBe(true);
+		expect(lines.some((l: string) => l.includes("Status") || l.includes("Views"))).toBe(true);
 	});
 
 	it("strictly respects narrow widths (40, 60, 80 columns) without line overflow", () => {
