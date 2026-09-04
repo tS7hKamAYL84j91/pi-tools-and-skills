@@ -41,7 +41,8 @@ function createFakeCtx(cwd: string): FakeContext {
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
-	};
+		// SAFETY: This test only exercises team runtime fields; unused SDK context fields are not observed.
+	} as FakeContext;
 }
 
 function createFakeTeamHandler(resultText: string, stopped = false) {

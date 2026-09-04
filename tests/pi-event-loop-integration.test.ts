@@ -81,6 +81,7 @@ describe("pi-event-loop production wiring", () => {
 		harness.entries.push(eventEntry(workRequested("w-2")));
 		const ctx = harness.context(cwd);
 		await harness.handlers.get("session_start")?.({}, ctx);
+		await vi.runOnlyPendingTimersAsync();
 		harness.sent.length = 0;
 		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
 		await harness.handlers.get("command")?.(`retry ${itemIdOf(workRequested("w-2"), "w-2")}`, ctx);
@@ -116,8 +117,9 @@ describe("pi-event-loop production wiring", () => {
 		eventLoopExtension(harness.pi as never);
 		const cwd = configDirectory(CONFIG_RELATIVE_PATH, JSON.stringify({ ...alternate, activeProfile: "alternate" }));
 		const ctx = harness.context(cwd);
+		harness.entries.push(eventEntry(workRequested("w-profile")));
 		await harness.handlers.get("session_start")?.({}, ctx);
-		expect(harness.sent[0]).toMatchObject({ details: { message: "Alternate profile work." } });
+		expect(harness.sent[0]).toMatchObject({ content: expect.stringContaining("Alternate profile work.") });
 	});
 
 	it("uses the configured config directory and trust boundary consistently", async () => {

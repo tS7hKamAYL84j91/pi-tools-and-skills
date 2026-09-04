@@ -1,44 +1,30 @@
 /** Session lifecycle machinery for pi-event-loop (SPEC §12, §14, §15, §17). */
 
 import type {
-	ExtensionAPI,
 	ExtensionContext,
 	InputEvent,
 } from "@earendil-works/pi-coding-agent";
 import { createPostAppendPipeline } from "./automator.js";
 import { loadEventLoopConfig } from "./config.js";
+import type { ExtensionState } from "./lifecycle-types.js";
+import { buildSnapshot } from "./session-state.js";
+import {
+	configLoadOptions,
+	prepareConfig,
+	restoreSessionState,
+	startTimers,
+	stopTimers,
+} from "./lifecycle-state.js";
 import {
 	commandEmittedOutcome,
 	deliverNextCommand,
 	settleActiveCommand,
 } from "./dispatcher.js";
 import { readEventLog } from "./event-log.js";
-import { type EventLoopRuntime, resetEventLoopRuntime } from "./runtime.js";
-import { buildSnapshot, recoverSessionState } from "./session-state.js";
-import { readLatestSnapshot } from "./snapshot-format.js";
-import { createTimerRunner, type TimerRunner } from "./timers.js";
-import type {
-	EventLoopConfig,
-	LoopEventData,
-	PostAppendPipeline,
-} from "./types.js";
-import { EVENT_LOOP_EVENT_CUSTOM_TYPE, SNAPSHOT_CUSTOM_TYPE } from "./types.js";
+import type { LoopEventData, PostAppendPipeline } from "./types.js";
+import { SNAPSHOT_CUSTOM_TYPE } from "./types.js";
 
-/** Mutable wiring state shared by the lifecycle hooks of one extension instance. */
-export interface ExtensionState {
-	readonly runtime: EventLoopRuntime;
-	readonly pi: ExtensionAPI;
-	currentCtx: ExtensionContext | undefined;
-	currentConfig: EventLoopConfig | undefined;
-	currentFingerprint: string | undefined;
-	/** Timers run only while the session is open (SPEC §12). */
-	sessionOpen: boolean;
-	/** Single-flight guard for the delivery cycle. */
-	pumping: boolean;
-	/** Monotonic token; a new session start/shutdown invalidates in-flight cycles. */
-	generation: number;
-	timers: TimerRunner | undefined;
-}
+export type { ExtensionState } from "./lifecycle-types.js";
 
 /** Post-append pipeline for one extension instance: project → scan → queue → schedule. */
 export function createPumpingPipeline(
@@ -178,6 +164,25 @@ export function handleAgentStart(state: ExtensionState): void {
 	state.runtime.busy = true;
 }
 
+/** Runtime service owned by the lifecycle, used by operator commands. */
+export function createLifecycleService(state: ExtensionState) {
+	return {
+		checkpoint: () => persistCheckpoint(state),
+		restartPump: () => scheduleDeliveryCycle(state),
+		reload: async (ctx: ExtensionContext) => {
+			const result = await loadEventLoopConfig(ctx.cwd, configLoadOptions(ctx));
+			if (!result.ok || result.config === undefined) {
+				return {
+					ok: false,
+					reason: result.missing ? "no configuration" : result.errors.join("; "),
+				};
+			}
+			await handleSessionStart(state, ctx);
+			return { ok: true };
+		},
+	};
+}
+
 export function handleAgentSettled(
 	state: ExtensionState,
 	ctx?: ExtensionContext,
@@ -195,6 +200,12 @@ export function handleAgentSettled(
 	if (active !== undefined) {
 		const expectedEmitted = commandEmittedOutcome(readEvents(state), active);
 		const settlement = settleActiveCommand(state.runtime, expectedEmitted);
+		if (settlement.stalled) {
+			state.runtime.queue = [
+				...state.runtime.queue,
+				{ ...active, status: "queued" },
+			];
+		}
 		persistCheckpoint(state);
 		if (settlement.stalled) {
 			notify(
@@ -220,104 +231,21 @@ export async function handleSessionStart(
 	state.runtime.busy = false;
 	stopTimers(state);
 
-	const config = await prepareConfig(state, ctx);
+	const config = await prepareConfig(state, ctx, (message, type) =>
+		notify(state, message, type),
+	);
 	if (config === undefined) {
 		return;
 	}
-	restoreSessionState(state, config, ctx);
-	startTimers(state, config);
+	restoreSessionState(state, config, ctx, createPumpingPipeline(state));
+	startTimers(
+		state,
+		config,
+		createPumpingPipeline(state),
+		(message) => notify(state, message),
+	);
 	state.sessionOpen = true;
 	scheduleDeliveryCycle(state);
-}
-
-/** Load and validate configuration; a missing file keeps the extension inert (SPEC §6). */
-async function prepareConfig(
-	state: ExtensionState,
-	ctx: ExtensionContext,
-): Promise<EventLoopConfig | undefined> {
-	const result = await loadEventLoopConfig(ctx.cwd);
-	if (!result.ok || result.config === undefined) {
-		if (!result.missing && result.errors.length > 0) {
-			notify(
-				state,
-				`invalid configuration — ${result.errors.join("; ")}`,
-				"error",
-			);
-		}
-		return undefined;
-	}
-	const profile = result.config.profiles[result.config.activeProfile];
-	if (profile === undefined) {
-		notify(
-			state,
-			`active profile "${result.config.activeProfile}" is not defined`,
-			"error",
-		);
-		return undefined;
-	}
-	state.currentConfig = result.config;
-	state.currentFingerprint = result.fingerprint;
-	return result.config;
-}
-
-/** Restore, replay and rebuild projections per the snapshot fingerprint (SPEC §15). */
-function restoreSessionState(
-	state: ExtensionState,
-	config: EventLoopConfig,
-	ctx: ExtensionContext,
-): void {
-	const entries = ctx.sessionManager.getBranch();
-	const events = readEventLog(entries);
-	resetEventLoopRuntime(state.runtime);
-	recoverSessionState({
-		runtime: state.runtime,
-		events,
-		config,
-		fingerprint: state.currentFingerprint ?? "",
-		snapshot: readLatestSnapshot(entries),
-		applyEvent: createPumpingPipeline(state),
-	});
-}
-
-function stopTimers(state: ExtensionState): void {
-	state.timers?.stop();
-	state.timers = undefined;
-}
-
-/** Timer catch-up and scheduling: occurrences are facts on the normal append path (SPEC §12). */
-function startTimers(state: ExtensionState, config: EventLoopConfig): void {
-	const profile = config.profiles[config.activeProfile];
-	if (profile === undefined || state.currentFingerprint === undefined) {
-		return;
-	}
-	state.timers = createTimerRunner(
-		{
-			profileName: config.activeProfile,
-			profile,
-			limits: config.limits,
-			knownEventIds: () =>
-				new Set(readEvents(state).map((event) => event.eventId)),
-			appendEvent: (event) => {
-				state.pi.appendEntry(EVENT_LOOP_EVENT_CUSTOM_TYPE, event);
-				createPumpingPipeline(state)(event, config, config.activeProfile);
-			},
-			notify: (message) => {
-				notify(state, message);
-			},
-			now: () => Date.now(),
-			schedule: (callback, delayMs) => {
-				const handle = setTimeout(callback, delayMs);
-				handle.unref?.();
-				return {
-					clear: () => {
-						clearTimeout(handle);
-					},
-				};
-			},
-		},
-		state.runtime.timerState,
-	);
-	state.timers.start();
 }
 
 /** Checkpoint on shutdown; the next session_start restores from it (SPEC §15, §17). */

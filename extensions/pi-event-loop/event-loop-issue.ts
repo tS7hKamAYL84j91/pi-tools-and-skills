@@ -159,6 +159,9 @@ export function retryItem(
 			code: "validation",
 		});
 	runtime.projection = markItemOutstanding(runtime.projection, workItemId);
+	// A stalled active command is requeued by the settlement boundary; retry leaves
+	// already queued records untouched.
+	runtime.queue = runtime.queue.map((record) => record);
 	runtime.paused = false;
 	runtime.pauseReason = undefined;
 	return ok(`Retry requested for ${workItemId}; item reopened for automation.`);

@@ -3,7 +3,6 @@
 import { join } from "node:path";
 import type {
 	ExtensionAPI,
-	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
@@ -14,13 +13,10 @@ import {
 	registerEmitTool,
 	type RegisterEmitToolOptions,
 } from "./event-ingress-tool.js";
-import { readEventLog } from "./event-log.js";
-import {
-	type EventLoopRuntimeSeams,
-	registerEventLoopCommands,
-} from "./event-loop-commands.js";
+import { registerEventLoopCommands } from "./event-loop-commands.js";
 import { registerContextTool } from "./event-loop-context.js";
 import {
+	createLifecycleService,
 	createPumpingPipeline,
 	type ExtensionState,
 	handleAgentSettled,
@@ -29,18 +25,13 @@ import {
 	handleSessionShutdown,
 	handleSessionStart,
 } from "./lifecycle.js";
-import { buildSnapshot } from "./session-state.js";
-import {
-	EVENT_LOOP_EVENT_CUSTOM_TYPE,
-	type EventLoopConfig,
-	SNAPSHOT_CUSTOM_TYPE,
-} from "./types.js";
+import { EVENT_LOOP_EVENT_CUSTOM_TYPE, type EventLoopConfig } from "./types.js";
 import {
 	CONFIG_RELATIVE_PATH,
 	type LoadConfigOptions,
 	loadEventLoopConfig,
 } from "./config.js";
-import { createEventLoopRuntime, type EventLoopRuntime } from "./runtime.js";
+import { createEventLoopRuntime } from "./runtime.js";
 
 function isProjectTrusted(ctx?: unknown): boolean {
 	if (
@@ -55,11 +46,6 @@ function isProjectTrusted(ctx?: unknown): boolean {
 		return (ctx as { isProjectTrusted: () => boolean }).isProjectTrusted();
 	}
 	return true;
-}
-
-function getRuntimeSeams(runtime: EventLoopRuntime): EventLoopRuntimeSeams {
-	// SAFETY: Attaches or retrieves lifecycle seams on the runtime object.
-	return runtime as unknown as EventLoopRuntimeSeams;
 }
 
 async function writeEventLoopConfig(
@@ -99,6 +85,7 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 	};
 
 	const pipeline = createPumpingPipeline(state);
+	const lifecycle = createLifecycleService(state);
 
 	const getConfig = (cwd: string) => {
 		if (state.currentConfig !== undefined) {
@@ -109,8 +96,13 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 				errors: [],
 			};
 		}
+		// SAFETY: Pi contexts may carry the configured extension directory at runtime.
+		const candidate = state.currentCtx as unknown as { configDir?: unknown };
 		const options: LoadConfigOptions = {
 			trusted: isProjectTrusted(state.currentCtx),
+			...(typeof candidate.configDir === "string"
+				? { configDir: candidate.configDir }
+				: {}),
 		};
 		return loadEventLoopConfig(cwd, options);
 	};
@@ -127,54 +119,6 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		refreshEmitTool(pi, state.runtime, pipeline, options);
 	}
 
-	function persistCheckpoint(): void {
-		const config = state.currentConfig;
-		if (config === undefined || state.currentFingerprint === undefined) {
-			return;
-		}
-		const recentEvents = state.currentCtx
-			? readEventLog(state.currentCtx.sessionManager.getBranch())
-			: [];
-		const recentEventIds = recentEvents
-			.slice(-config.limits.maxRecentEvents)
-			.map((e) => e.eventId);
-		pi.appendEntry(
-			SNAPSHOT_CUSTOM_TYPE,
-			buildSnapshot({
-				runtime: state.runtime,
-				config,
-				fingerprint: state.currentFingerprint,
-				recentEventIds,
-			}),
-		);
-	}
-
-	async function runCheckpoint(
-		_ctx?: ExtensionCommandContext,
-	): Promise<void> {
-		const seam = getRuntimeSeams(state.runtime).checkpoint;
-		if (seam !== undefined && _ctx !== undefined) {
-			await seam(_ctx);
-			return;
-		}
-		persistCheckpoint();
-	}
-
-	async function runRestartPump(
-		ctx: ExtensionCommandContext,
-	): Promise<void> {
-		const seam = getRuntimeSeams(state.runtime).restartPump;
-		await seam?.(ctx);
-	}
-
-	// Expose tool refresh seam on runtime for active-command transitions
-	// SAFETY: Augmented runtime provides integration seam.
-	(state.runtime as unknown as { refreshTools?: (cwd?: string) => void })
-		.refreshTools = (cwd?: string) => {
-		const targetCwd = cwd ?? state.currentCtx?.cwd ?? process.cwd();
-		refreshDynamicTools(targetCwd);
-	};
-
 	registerEmitTool(pi, state.runtime, pipeline, {
 		description: buildDescriptionFromProfile(process.cwd(), state.runtime),
 		getConfig,
@@ -190,38 +134,13 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		appendEntry: (event) => pi.appendEntry(EVENT_LOOP_EVENT_CUSTOM_TYPE, event),
 		writeConfig: async (cwd, config) => writeEventLoopConfig(cwd, config),
 		getConfig,
-		checkpoint: runCheckpoint,
-		restartPump: runRestartPump,
+		checkpoint: () => lifecycle.checkpoint(),
+		restartPump: () => lifecycle.restartPump(),
 		onReload: async (ctx) => {
-			const seam = getRuntimeSeams(state.runtime).onReload;
-			if (seam !== undefined) {
-				const reloadResult = await seam(ctx);
-				if (reloadResult && !reloadResult.ok) {
-					return reloadResult;
-				}
-			}
-			const result = await loadEventLoopConfig(ctx.cwd, {
-				trusted: isProjectTrusted(ctx),
-			});
-			if (!result.ok || result.config === undefined) {
-				return {
-					ok: false,
-					reason: result.missing ? "no configuration" : result.errors.join("; "),
-				};
-			}
-			state.currentConfig = result.config;
-			state.currentFingerprint = result.fingerprint;
-			refreshDynamicTools(ctx.cwd);
-			return { ok: true };
+			return lifecycle.reload(ctx);
 		},
-		onProfileSwitched: (ctx, newProfile) => {
-			if (state.currentConfig?.profiles[newProfile] !== undefined) {
-				state.currentConfig = {
-					...state.currentConfig,
-					activeProfile: newProfile,
-				};
-				refreshDynamicTools(ctx.cwd);
-			}
+		onProfileSwitched: async (ctx) => {
+			await lifecycle.reload(ctx);
 		},
 	});
 	// Genuine interactive input resets loop protection; extension-delivered turns
