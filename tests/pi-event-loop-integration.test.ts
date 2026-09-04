@@ -28,6 +28,7 @@ function createProductionHarness() {
 	const handlers = new Map<string, Handler>();
 	const entries: Array<{ type: string; customType: string; data: unknown }> = [];
 	const sent: unknown[] = [];
+	const statuses = new Map<string, string | undefined>();
 	const pi = {
 		on: (event: string, handler: Handler) => handlers.set(event, handler),
 		registerTool: vi.fn(),
@@ -41,14 +42,18 @@ function createProductionHarness() {
 		cwd,
 		hasUI: true,
 		mode: "tui" as const,
-		ui: { notify: vi.fn() },
+		ui: {
+			notify: vi.fn(),
+			setStatus: (key: string, value: string | undefined) => statuses.set(key, value),
+			custom: undefined,
+		},
 		sessionManager: { getBranch: () => entries },
 		configDir: options.configDir,
 		isProjectTrusted: () => options.trusted !== false,
 		isIdle: () => true,
 		hasPendingMessages: () => false,
 	});
-	return { handlers, entries, sent, pi, context };
+	return { handlers, entries, sent, statuses, pi, context };
 }
 
 function configDirectory(configPath = CONFIG_RELATIVE_PATH, text = configText()): string {
@@ -71,6 +76,17 @@ describe("pi-event-loop production wiring", () => {
 		await harness.handlers.get("command")?.("resume", ctx);
 		await vi.runOnlyPendingTimersAsync();
 		expect(harness.sent).toHaveLength(1);
+	});
+
+	it("production transitions publish status and expose inspect fallback", async () => {
+		const harness = createProductionHarness();
+		eventLoopExtension(harness.pi as never);
+		const cwd = configDirectory();
+		const ctx = harness.context(cwd);
+		await harness.handlers.get("session_start")?.({}, ctx);
+		expect(harness.statuses.has("pi-event-loop")).toBe(true);
+		await harness.handlers.get("command")?.("inspect", ctx);
+		expect((ctx.ui.notify as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
 	});
 
 	it("retry restarts the production pump after an agent outcome is missing", async () => {
