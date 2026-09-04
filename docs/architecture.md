@@ -426,6 +426,32 @@ flowchart TD
 
 TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules are enforced through shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts`, with `tests/architecture.test.ts` enforcing the stable policy.
 
+## Pi Event Loop Extension
+
+```mermaid
+flowchart TD
+  Agent[Current Pi Agent] -->|event_loop_emit| Ingress[Event Ingress]
+  Ingress --> Log[(Session Event Log)]
+  Log --> Projector[Todo Projector]
+  Projector --> Views[(Todo Views)]
+  Views --> Automator[Pure Automator]
+  Automator --> Queue[Command Queue]
+  Queue --> Dispatcher[Dispatcher]
+  Dispatcher -->|deliver command turn| Agent
+
+  Runtime[EventLoopRuntime] --> Status[status.ts / event-loop-tui.ts]
+  Status --> Footer[ctx.ui.setStatus footer line\n● state + active/pending]
+  Status --> Overlay[ctx.ui.custom EventLoopInspector overlay\n80% width / min 40 cols / max 80% height]
+  Status --> Fallback[Non-TUI fallback for RPC/print]
+```
+
+### Context policy
+- **Status ownership:** `pi-event-loop` manages a compact persistent status indicator via `ctx.ui.setStatus("pi-event-loop", ...)`. It reflects paused reason, active command, and pending count using callback theme colors without raw ANSI escape sequences. Status is refreshed on runtime state transitions and cleared on shutdown or when inert.
+- **Overlay flow and bounds:** On-demand inspection opens via `ctx.ui.custom()` with `{ overlay: true, overlayOptions: { width: "80%", minWidth: 40, maxHeight: "80%", anchor: "center", margin: 1 } }`. It presents 3 navigable tabs (Status, Views, History) with keyboard controls (`1/2/3`, `Tab`, `↑/↓`, `Enter` gradual disclosure, `Esc/q` close).
+- **Non-TUI fallback:** When `ctx.hasUI === false` or `ctx.mode !== "tui"`, inspection falls back to `formatEventLoopFallback(status, history)` delivered as plain text through `ctx.ui.notify()`.
+- **Pure render paths:** Render closures consume precomputed immutable status snapshots and session event history. No synchronous filesystem reads or blocking calls occur in `render()`, enforced by `tests/architecture/tui-render-paths.ts`.
+- **Shutdown cleanup:** All timer handles and persistent footer statuses are cleared on `session_shutdown`, reload, or profile switch.
+
 ## Kanban Extension
 
 ```mermaid

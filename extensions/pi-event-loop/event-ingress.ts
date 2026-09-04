@@ -137,15 +137,15 @@ function checkCommandContract(
 	if (context.source !== "agent") {
 		return undefined;
 	}
+	if (!allowAgentEmit) {
+		return `event "${eventType}" does not allow agent emission`;
+	}
 	const command = context.activeCommand;
 	if (command !== undefined) {
 		if (!command.expectedEvents.includes(eventType)) {
 			return `event "${eventType}" is not one of the active command "${command.type}" expected events (${command.expectedEvents.join(", ")})`;
 		}
 		return undefined;
-	}
-	if (!allowAgentEmit) {
-		return `event "${eventType}" does not allow agent emission`;
 	}
 	if (!allowWithoutCommand) {
 		return `event "${eventType}" may only be emitted during an active command turn (command-contract policy)`;
@@ -189,13 +189,34 @@ function checkCorrelation(
 	if (!command.expectedEvents.includes(eventType)) {
 		return undefined;
 	}
+	const isSynthetic =
+		item.viewId === "operator-issue" || item.viewId.startsWith("operator-");
+	if (isSynthetic) {
+		const automations = profile.automations.filter(
+			(a) => a.issue === command.type,
+		);
+		for (const auto of automations) {
+			const autoView = profile.views[auto.view];
+			const rule = autoView?.closeOn.find((r) => r.event === eventType);
+			if (rule !== undefined) {
+				const expectedKey = projectionKey(item.sourcePayload, rule.keyFrom);
+				if (expectedKey) {
+					const actualKey = projectionKey(payload, rule.keyFrom);
+					if (actualKey !== expectedKey) {
+						return `correlation key mismatch: payload has "${actualKey ?? "none"}", work item has "${expectedKey}"`;
+					}
+				}
+			}
+		}
+		return undefined;
+	}
 	const view = profile.views[item.viewId];
 	if (view === undefined) {
-		return undefined;
+		return `active work item view "${item.viewId}" is not defined in profile`;
 	}
 	const rule = view.closeOn.find((closeRule) => closeRule.event === eventType);
 	if (rule === undefined) {
-		return undefined;
+		return `outcome "${eventType}" does not close view "${item.viewId}" of active work item "${item.workItemId}"`;
 	}
 	const key = projectionKey(payload, rule.keyFrom);
 	if (key !== item.key) {

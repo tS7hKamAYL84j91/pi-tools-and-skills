@@ -1,4 +1,4 @@
-/** Tests for command delivery, settlement transitions and the settle probe (SPEC §5, §10, §11, §17). */
+/** Tests for command delivery and settlement transitions (SPEC §§5, 10, 11). */
 
 import { describe, expect, it } from "vitest";
 import {
@@ -16,7 +16,6 @@ import {
 	type DeliveryOptions,
 	deliverNextCommand,
 	settleActiveCommand,
-	waitForSettled,
 } from "../dispatcher.js";
 import { createEventLoopRuntime } from "../runtime.js";
 import type { LoopEventData } from "../types.js";
@@ -176,43 +175,6 @@ describe("settleActiveCommand", () => {
 			settled: false,
 			stalled: false,
 		});
-	});
-});
-
-describe("waitForSettled", () => {
-	it("returns immediately when the probe reports idle with no pending messages", async () => {
-		const settled = await waitForSettled(
-			{ isIdle: () => true, hasPendingMessages: () => false },
-			50,
-			5,
-		);
-		expect(settled).toBe(true);
-	});
-
-	it("keeps waiting while a turn is streaming or messages are queued", async () => {
-		let polls = 0;
-		const settled = await waitForSettled(
-			{
-				isIdle: () => {
-					polls++;
-					return polls >= 3;
-				},
-				hasPendingMessages: () => false,
-			},
-			1000,
-			5,
-		);
-		expect(settled).toBe(true);
-		expect(polls).toBeGreaterThanOrEqual(3);
-	});
-
-	it("returns false on timeout instead of waiting forever", async () => {
-		const settled = await waitForSettled(
-			{ isIdle: () => false, hasPendingMessages: () => false },
-			30,
-			5,
-		);
-		expect(settled).toBe(false);
 	});
 });
 

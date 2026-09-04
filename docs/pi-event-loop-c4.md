@@ -5,9 +5,8 @@ queue, dispatcher, lifecycle, timers, operator controls) integrated on `feat/pi-
 **Source of truth:** [`extensions/pi-event-loop/SPEC.md`](../extensions/pi-event-loop/SPEC.md)
 (§4-§5 diagrams, §20 acceptance criteria AC-1..26, §21 definition of done).
 
-P5-P10 implementation is complete. The audit below records final coverage and any remaining
-API qualification (the pinned Pi 0.74 API has no `agent_settled` hook, so lifecycle uses bounded
-idle/pending polling as documented in `extensions/pi-event-loop/lifecycle.ts`).
+P5-P10 implementation is complete. The audit below records final coverage and verification
+against current Pi runtime contracts and acceptance criteria.
 
 ## 1. System context (C4)
 
@@ -92,7 +91,7 @@ interpret events. Enforced by `tests/architecture/pi-event-loop-isolation.ts` (i
 
 ### Runtime cycle
 
-Port of SPEC §5; settlement uses bounded idle/pending polling because Pi 0.74 has no `agent_settled` event.
+Port of SPEC §5; command delivery settles on the `agent_settled` lifecycle hook before advancing.
 
 ```mermaid
 sequenceDiagram
@@ -213,7 +212,7 @@ with an explicit pinned-API qualification or bounded operational caveat.
 | 9 | Projectors never issue commands; automators never interpret events | COVERED | `tests/architecture/pi-event-loop-isolation.ts` layer-boundary guards (new) |
 | 10 | Command message identifies command, work item, expected events | COVERED | `dispatcher.test.ts` "carries the self-describing contract as structured details (SPEC §10)" |
 | 11 | Dynamic emit tool exposes active command's permitted outcomes | COVERED | `tests/pi-event-loop-ac-coverage.test.ts` emit-tool description contract (new); live per-turn contract reporting is the command message (AC-10) + `event_loop_context` (P7) |
-| 12 | Command from an active turn waits for `agent_settled` | QUALIFIED | `delivery-cycle.test.ts` + lifecycle polling; Pi 0.74 has no `agent_settled`, so `isIdle() && !hasPendingMessages()` polling is the equivalent settlement boundary |
+| 12 | Command from an active turn waits for `agent_settled` | COVERED | `delivery-cycle.test.ts` + lifecycle hooks |
 | 13 | Multiple commands delivered sequentially, one active | COVERED | `command-queue.test.ts` FIFO/one-active; `dispatcher.test.ts` "refuses delivery when a command is already active"; `tests/pi-event-loop-ac-coverage.test.ts` sequential two-command cycle (new) |
 | 14 | Settlement without expected event stalls item, pauses delivery | COVERED | `dispatcher.test.ts` "without an expected outcome event: stalls the item and pauses delivery"; `tests/pi-event-loop-runtime.test.ts` stall test |
 | 15 | Accepted closing event, not settlement, completes item | COVERED | `tests/pi-event-loop-runtime.test.ts` full-cycle test; `projector.test.ts` AC-6; `dispatcher.test.ts` "settles cleanly and clears the active command" |
@@ -231,7 +230,17 @@ with an explicit pinned-API qualification or bounded operational caveat.
 
 Test evidence paths are relative to `extensions/pi-event-loop/tests/` unless prefixed `tests/`.
 
-## 7. Validation at audit time
+## 7. Operator TUI and Status Boundary (SPEC §16; TODO P13)
+
+The operator interface consists of a persistent status indicator and an on-demand inspection overlay:
+
+- **Status Ownership:** `pi-event-loop` manages a compact single-line indicator via `ctx.ui.setStatus("pi-event-loop", ...)`. It surfaces paused state with reason, active command, and pending count using callback theme colors without raw ANSI sequences. The status line is refreshed on runtime state transitions and cleared on shutdown or when inert.
+- **Overlay Flow & Bounds:** Bounded on-demand inspection opens via `ctx.ui.custom()` with `{ overlay: true, overlayOptions: { width: "80%", minWidth: 40, maxHeight: "80%", anchor: "center", margin: 1 } }`. It presents 3 navigable tabs (Status, Views, History) with keyboard navigation (`1/2/3`, `Tab`, `↑/↓`, `Enter` gradual disclosure, `Esc/q` close). Visible rows are bounded by `maxVisibleRows` with overflow scroll cues (`formatScrollCue`).
+- **Non-TUI Fallback:** In non-interactive environments (`ctx.hasUI === false` or `ctx.mode !== "tui"`), inspection formats a bounded multiline text report (`formatEventLoopFallback`) delivered through `ctx.ui.notify()`.
+- **Pure Render Paths:** Render closures consume precomputed immutable state (`EventLoopStatus` and `history` array) prepared before opening the component. No synchronous filesystem reads or blocking operations occur in `render()`, enforced by `tests/architecture/tui-render-paths.ts`.
+- **Shutdown Cleanup:** Timer handles are unref'd and cleared, and the footer status indicator is reset to `undefined` upon session shutdown or profile reload.
+
+## 8. Validation at audit time
 
 - `npx vitest run tests/pi-event-loop-ac-coverage.test.ts tests/architecture.test.ts` — 71 passed.
 - `npx vitest run extensions/pi-event-loop tests/pi-event-loop-runtime.test.ts tests/pi-event-loop-ac-coverage.test.ts tests/pi-event-loop-operator-controls.test.ts` — all touched tests pass.

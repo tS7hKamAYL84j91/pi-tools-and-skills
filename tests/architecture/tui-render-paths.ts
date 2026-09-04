@@ -11,6 +11,11 @@ const TEAM_OVERLAY_FILES = [
 	"extensions/pi-teams/team-picker.ts",
 ];
 
+const EVENT_LOOP_TUI_FILES = [
+	"extensions/pi-event-loop/event-loop-tui.ts",
+	"extensions/pi-event-loop/event-loop-tui-render.ts",
+];
+
 const FORBIDDEN_RENDER_CALLS = new Set([
 	"existsSync",
 	"loadTeamRegistry",
@@ -62,5 +67,9 @@ function forbiddenCalls(file: string): string[] {
 describe("TUI render paths", () => {
 	it("team overlay render closures do not perform synchronous registry or filesystem reads", () => {
 		expect(TEAM_OVERLAY_FILES.flatMap(forbiddenCalls)).toEqual([]);
+	});
+
+	it("event loop TUI render closures do not perform synchronous filesystem reads", () => {
+		expect(EVENT_LOOP_TUI_FILES.flatMap(forbiddenCalls)).toEqual([]);
 	});
 });

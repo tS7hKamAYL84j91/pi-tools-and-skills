@@ -160,4 +160,39 @@ describe("event_loop_emit tool", () => {
 		expect(String(result.content[0]?.text ?? "")).toContain("not usable");
 		expect(calls).toHaveLength(0);
 	});
+
+	it("consumes injected active config without reloading config from disk", async () => {
+		const calls: ToolCall[] = [];
+		let loadConfigCalled = false;
+		let getConfigCalled = false;
+		const depsWithProvider = {
+			...makeDeps(createEventLoopRuntime(), calls),
+			loadConfig: async () => {
+				loadConfigCalled = true;
+				throw new Error(
+					"loadConfig should not be called when active config provider is present",
+				);
+			},
+			getConfig: () => {
+				getConfigCalled = true;
+				return {
+					ok: true,
+					config: CONFIG,
+					fingerprint: "active-fp",
+					errors: [],
+				};
+			},
+		};
+		const tool = createEmitTool(
+			depsWithProvider as unknown as Parameters<typeof createEmitTool>[0],
+		);
+		const result = await runTool(
+			tool,
+			{ event: "progress.note", dedupeKey: "note-prov", payload: {} },
+			fakeCtx([]),
+		);
+		expect(result.isError).toBeUndefined();
+		expect(getConfigCalled).toBe(true);
+		expect(loadConfigCalled).toBe(false);
+	});
 });
