@@ -80,7 +80,7 @@ function persistCheckpoint(state: ExtensionState): void {
  * Single-flight delivery pump: delivers queued commands when idle and settles
  * each active command turn upon agent_settled (SPEC §5, §11, §17).
  */
-export function scheduleDeliveryCycle(state: ExtensionState): void {
+function scheduleDeliveryCycle(state: ExtensionState): void {
 	if (
 		!state.sessionOpen ||
 		!state.currentConfig ||

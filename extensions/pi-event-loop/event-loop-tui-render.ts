@@ -13,7 +13,7 @@ export interface EventLoopTheme {
 	readonly bold?: (text: string) => string;
 }
 
-export interface EventLoopInspectorDeps {
+interface EventLoopInspectorDeps {
 	readonly status: EventLoopStatus;
 	readonly history: readonly LoopEventData[];
 	readonly onDone: () => void;

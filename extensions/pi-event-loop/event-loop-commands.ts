@@ -29,7 +29,7 @@ import type {
 	PostAppendPipeline,
 } from "./types.js";
 
-export interface EventLoopRuntimeSeams {
+interface EventLoopRuntimeSeams {
 	readonly checkpoint?: (ctx: ExtensionCommandContext) => Promise<void> | void;
 	readonly restartPump?: (ctx: ExtensionCommandContext) => Promise<void> | void;
 	readonly onReload?: (

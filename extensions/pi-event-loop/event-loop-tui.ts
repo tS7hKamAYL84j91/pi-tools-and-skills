@@ -5,14 +5,13 @@ import type { Component, TUI } from "@earendil-works/pi-tui";
 import { type SessionEntryLike, readEventLog } from "./event-log.js";
 import {
 	EventLoopInspector,
-	type EventLoopInspectorDeps,
 	type EventLoopTheme,
 } from "./event-loop-tui-render.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import { type EventLoopStatus, buildStatus, formatStatus, formatViews } from "./status.js";
 import type { EventLoopConfig, LoopEventData } from "./types.js";
 
-export { EventLoopInspector, type EventLoopInspectorDeps, type EventLoopTheme };
+export { EventLoopInspector, type EventLoopTheme };
 
 export interface EventLoopStatusSnapshot {
 	readonly paused: boolean;
@@ -21,7 +20,7 @@ export interface EventLoopStatusSnapshot {
 	readonly pendingCount: number;
 }
 
-export interface InspectorHost {
+interface InspectorHost {
 	readonly hasUI?: boolean;
 	readonly mode?: string;
 	readonly ui?: Pick<ExtensionUIContext, "custom" | "notify" | "setStatus">;

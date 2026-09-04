@@ -10,7 +10,7 @@ import {
 } from "./types.js";
 
 /** Structured command message delivered to the agent (SPEC §10). */
-export interface CommandMessage {
+interface CommandMessage {
 	readonly customType: string;
 	readonly content: string;
 	readonly display: true;
@@ -131,42 +131,6 @@ export async function deliverNextCommand(
 		...DELIVERY_OPTIONS,
 	});
 	return { delivered: true, commandId: taken.command.commandId };
-}
-
-/** Probe of Pi session idleness used for settlement detection (SPEC §17). */
-export interface SettleProbe {
-	readonly isIdle: () => boolean;
-	readonly hasPendingMessages: () => boolean;
-}
-
-const SETTLE_POLL_MS = 100;
-const SETTLE_TIMEOUT_MS = 30_000;
-
-/** Shared settle-poll sleep; injectable via the cycle deps for deterministic tests. */
-export async function defaultSleep(ms: number): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Wait until the agent has fully settled (no streaming, no queued messages).
- * The pinned pi extension API (0.74) exposes no `agent_settled` event, so settlement
- * is detected with the same idle/pending polling pattern pi-boost uses; swap to the
- * `agent_settled` hook when the API provides it (SPEC §17).
- */
-export async function waitForSettled(
-	probe: SettleProbe,
-	timeoutMs: number = SETTLE_TIMEOUT_MS,
-	pollMs: number = SETTLE_POLL_MS,
-	sleep: (ms: number) => Promise<void> = defaultSleep,
-): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		if (probe.isIdle() && !probe.hasPendingMessages()) {
-			return true;
-		}
-		await sleep(pollMs);
-	}
-	return false;
 }
 
 interface SettlementOutcome {
