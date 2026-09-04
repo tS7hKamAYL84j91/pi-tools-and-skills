@@ -130,6 +130,7 @@ describe("pi-event-loop custom renderers", () => {
 		const expandedCall = tool.renderCall(args, harness.theme, expandedCallContext);
 		const expandedCallLines = expandedCall.render(100).join("\n");
 		expect(expandedCallLines).toContain("work.completed");
+		expect(expandedCallLines).toContain("[untrusted data]");
 		expect(expandedCallLines).toContain("w-1");
 
 		// Compact result: concise status
@@ -189,5 +190,61 @@ describe("pi-event-loop custom renderers", () => {
 		const expandedResult = tool.renderResult(result, { expanded: true }, harness.theme, { expanded: true, cwd: "/test" });
 		const expandedResultLines = expandedResult.render(100).join("\n");
 		expect(expandedResultLines).toContain("cmd-abc");
+	});
+
+	it("bounds expanded command message payload and emits hidden count / truncation cue", () => {
+		const harness = createRendererHarness();
+		eventLoopExtension(harness.pi as never);
+		const renderer = harness.messageRenderers.get(COMMAND_MESSAGE_CUSTOM_TYPE);
+		if (renderer === undefined) throw new Error("renderer undefined");
+
+		const largePayload: Record<string, string> = {};
+		for (let i = 0; i < 50; i++) {
+			largePayload[`key_${i}`] = `value_${i}_`.repeat(10);
+		}
+
+		const message = {
+			customType: COMMAND_MESSAGE_CUSTOM_TYPE,
+			content: "Perform work",
+			display: true as const,
+			details: {
+				commandId: "cmd-large",
+				commandType: "perform-work",
+				workItemId: "work-large",
+				correlationId: "corr-large",
+				causedBy: "evt-001",
+				workItem: largePayload,
+				expectedEvents: ["work.completed"],
+			},
+		};
+
+		const expanded = renderer(message, { expanded: true }, harness.theme);
+		if (expanded === undefined) throw new Error("expanded undefined");
+		const rendered = expanded.render(100).join("\n");
+		expect(rendered).toContain("[untrusted data]");
+		expect(rendered).toMatch(/more lines|hidden|truncated/i);
+	});
+
+	it("bounds expanded emit call payload and labels untrusted data with hidden count", () => {
+		const harness = createRendererHarness();
+		eventLoopExtension(harness.pi as never);
+		const tool = harness.tools.get("event_loop_emit");
+		if (tool?.renderCall === undefined) throw new Error("renderCall undefined");
+
+		const largePayload: Record<string, string> = {};
+		for (let i = 0; i < 50; i++) {
+			largePayload[`field_${i}`] = `payload_content_${i}`;
+		}
+
+		const args = {
+			event: "work.completed",
+			dedupeKey: "key-large",
+			payload: largePayload,
+		};
+
+		const expandedCall = tool.renderCall(args, harness.theme, { expanded: true, cwd: "/test" });
+		const rendered = expandedCall.render(100).join("\n");
+		expect(rendered).toContain("[untrusted data]");
+		expect(rendered).toMatch(/more lines|hidden|truncated/i);
 	});
 });
