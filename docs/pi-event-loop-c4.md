@@ -1,13 +1,13 @@
 # pi-event-loop — C4 architecture, isolation audit, and AC coverage
 
-**Scope:** P1-P4 modules (config, event log, ingress, projections, automator, command queue,
-dispatcher) at commit `7da1b6b` on `t887/pi-event-loop-docs`.
+**Scope:** Complete P1-P10 implementation (config, event log, ingress, projections, automator,
+queue, dispatcher, lifecycle, timers, operator controls) integrated on `feat/pi-event-loop-v2`.
 **Source of truth:** [`extensions/pi-event-loop/SPEC.md`](../extensions/pi-event-loop/SPEC.md)
 (§4-§5 diagrams, §20 acceptance criteria AC-1..26, §21 definition of done).
 
-P5+ (session-state, timers, lifecycle hooks, loop-protection enforcement, operator controls,
-retraction slices) is owned by sibling workers and marked BLOCKED-P* in the audit table below;
-this doc records coverage, not implementation.
+P5-P10 implementation is complete. The audit below records final coverage and any remaining
+API qualification (the pinned Pi 0.74 API has no `agent_settled` hook, so lifecycle uses bounded
+idle/pending polling as documented in `extensions/pi-event-loop/lifecycle.ts`).
 
 ## 1. System context (C4)
 
@@ -57,7 +57,7 @@ C4Container
 
 ## 3. Components
 
-Port of SPEC §4; runtime wiring of dispatcher/queue/ingress into Pi lifecycle hooks is P5.
+Port of SPEC §4; dispatcher/queue/ingress are wired into lifecycle hooks.
 
 ```mermaid
 C4Component
@@ -66,7 +66,7 @@ C4Component
   Container(pi, "Current Pi session", "Pi runtime", "Hosts one agent and its conversation")
 
   Container_Boundary(loop, "pi-event-loop extension") {
-    Component(timer, "Timer source", "Node timers (P5)", "Emits deterministic time facts")
+    Component(timer, "Timer source", "Node timers", "Emits deterministic time facts")
     Component(ingress, "Event ingress", "event_loop_emit (P1-P4)", "Validates and appends agent facts")
     ComponentDb(log, "Event log", "Pi custom session entries", "Immutable domain and runtime facts")
     Component(projector, "Projector", "Pure TypeScript", "Builds todo views from facts")
@@ -92,7 +92,7 @@ interpret events. Enforced by `tests/architecture/pi-event-loop-isolation.ts` (i
 
 ### Runtime cycle
 
-Port of SPEC §5; `agent_settled` wiring is P5.
+Port of SPEC §5; settlement uses bounded idle/pending polling because Pi 0.74 has no `agent_settled` event.
 
 ```mermaid
 sequenceDiagram
@@ -197,9 +197,8 @@ retraction is expressed as configured facts, views and commands — history is n
 
 ## 6. Acceptance-criteria coverage audit (SPEC §20, AC-1..26)
 
-Statuses: **COVERED** = automated test evidence exists; **PARTIAL** = P1-P4-verifiable part
-covered, remainder needs a later phase; **BLOCKED-P*** = needs the owning module (P5
-session-state/timers/lifecycle, P6 loop protection, P7 operator controls, P8 retraction).
+Statuses: **COVERED** = automated test evidence exists; **QUALIFIED** = behavior is implemented
+with an explicit pinned-API qualification or bounded operational caveat.
 
 | AC | Requirement (abridged) | Status | Evidence |
 | --- | --- | --- | --- |
@@ -214,28 +213,28 @@ session-state/timers/lifecycle, P6 loop protection, P7 operator controls, P8 ret
 | 9 | Projectors never issue commands; automators never interpret events | COVERED | `tests/architecture/pi-event-loop-isolation.ts` layer-boundary guards (new) |
 | 10 | Command message identifies command, work item, expected events | COVERED | `dispatcher.test.ts` "carries the self-describing contract as structured details (SPEC §10)" |
 | 11 | Dynamic emit tool exposes active command's permitted outcomes | COVERED | `tests/pi-event-loop-ac-coverage.test.ts` emit-tool description contract (new); live per-turn contract reporting is the command message (AC-10) + `event_loop_context` (P7) |
-| 12 | Command from an active turn waits for `agent_settled` | PARTIAL | `dispatcher.test.ts` "delivers the next queued command with nextTurn delivery options"; `waitForSettled` tests; hook wiring BLOCKED-P5 |
+| 12 | Command from an active turn waits for `agent_settled` | QUALIFIED | `delivery-cycle.test.ts` + lifecycle polling; Pi 0.74 has no `agent_settled`, so `isIdle() && !hasPendingMessages()` polling is the equivalent settlement boundary |
 | 13 | Multiple commands delivered sequentially, one active | COVERED | `command-queue.test.ts` FIFO/one-active; `dispatcher.test.ts` "refuses delivery when a command is already active"; `tests/pi-event-loop-ac-coverage.test.ts` sequential two-command cycle (new) |
 | 14 | Settlement without expected event stalls item, pauses delivery | COVERED | `dispatcher.test.ts` "without an expected outcome event: stalls the item and pauses delivery"; `tests/pi-event-loop-runtime.test.ts` stall test |
 | 15 | Accepted closing event, not settlement, completes item | COVERED | `tests/pi-event-loop-runtime.test.ts` full-cycle test; `projector.test.ts` AC-6; `dispatcher.test.ts` "settles cleanly and clears the active command" |
-| 16 | Timer occurrence appends deterministic event before commands | BLOCKED-P5 | `timers.ts` not yet implemented; timer config validation covered by `config-timers-limits.test.ts` |
-| 17 | Timer catch-up appends at most one event per timer | BLOCKED-P5 | `timers.ts` catch-up not yet implemented |
-| 18 | Restart replays only events after latest checkpoint | BLOCKED-P5 | `session-state.ts` not yet implemented; projection replay itself covered (AC-7, `event-log.test.ts`) |
-| 19 | Config change causes deterministic full projection rebuild | PARTIAL | fingerprint determinism covered by `tests/pi-event-loop-ac-coverage.test.ts` (new, `config.ts`); rebuild-on-fingerprint-change BLOCKED-P5 |
-| 20 | Uncertain active delivery repeats only with same command ID | PARTIAL | stable command IDs covered (`command-queue.test.ts` "is deterministic…", `automator.test.ts`); redelivery-on-resume BLOCKED-P5 |
-| 21 | Chain, item and queue limits pause, not unbounded turns | PARTIAL | queue bound pause covered (`automator.test.ts` "pauses with an operator-visible reason…", `command-queue.test.ts`); chain-depth/consecutive-turn/per-view-open enforcement BLOCKED-P6 |
-| 22 | Compensation as configured facts, views, commands | PARTIAL | runtime mechanic covered (`command-queue.test.ts` "cancels only queued commands whose work item is completed"); retraction slice example above; `correctsEventId` acceptance path BLOCKED-P8 |
+| 16 | Timer occurrence appends deterministic event before commands | COVERED | `timers.test.ts` and `lifecycle.test.ts` |
+| 17 | Timer catch-up appends at most one event per timer | COVERED | `timer-schedule.test.ts`, `timers.test.ts` |
+| 18 | Restart replays only events after latest checkpoint | COVERED | `session-state.test.ts`, `lifecycle.test.ts` |
+| 19 | Config change causes deterministic full projection rebuild | COVERED | `session-state.test.ts` fingerprint-change rebuild cases |
+| 20 | Uncertain active delivery repeats only with same command ID | COVERED | `session-state.test.ts` + stable-ID tests in `command-queue.test.ts`/`automator.test.ts` |
+| 21 | Chain, item and queue limits pause, not unbounded turns | COVERED | `loop-guards.test.ts`, `delivery-cycle.test.ts`, `automator.test.ts` |
+| 22 | Compensation as configured facts, views, commands | COVERED | `tests/pi-event-loop-runtime.test.ts` and `tests/pi-event-loop-operator-controls.test.ts` accept declared `correctsEventId` facts; queued cancellation is covered by `command-queue.test.ts` |
 | 23 | Two sessions keep independent histories, projections, queues | COVERED | `tests/pi-event-loop-ac-coverage.test.ts` instance-independence test (new); §4 design evidence |
 | 24 | Works with every other optional extension disabled | COVERED | import-allowlist guard + inventory in §4 (new) |
 | 25 | No OODA/experiment/Panopticon/cross-session logic | COVERED | forbidden-logic guard + grep evidence in §4 (new) |
-| 26 | Repo check, test and security gates pass without exceptions | PARTIAL | `npx tsc --noEmit`, biome, `npm run check` (knip clean, type-coverage 99.21%) and touched-test vitest run green at `7da1b6b`; one pre-existing failure: `tests/shared/test-quality.test.ts` flags `dispatcher.ts` as test-only-imported until P5 wires it into `index.ts` (fails identically at HEAD without this work; see findings note) |
+| 26 | Repo check, test and security gates pass without exceptions | COVERED | `npm run check` and full `npm test` pass after P5-P7 integration; architecture and test-quality fitness pass |
 
 Test evidence paths are relative to `extensions/pi-event-loop/tests/` unless prefixed `tests/`.
 
 ## 7. Validation at audit time
 
 - `npx vitest run tests/pi-event-loop-ac-coverage.test.ts tests/architecture.test.ts` — 71 passed.
-- `npx vitest run extensions/pi-event-loop tests/pi-event-loop-runtime.test.ts` — 84 pre-existing P1-P4 tests passed (unchanged by this work).
-- `npx tsc --noEmit` — clean; biome format/lint — clean on all touched files; `npm run check` — passes (knip clean, type-coverage 99.21%).
-- Full `npx vitest run`: 1413/1414 passed. The single failure is **pre-existing at `7da1b6b`** (verified on a clean HEAD worktree): `tests/shared/test-quality.test.ts` flags `extensions/pi-event-loop/dispatcher.ts` as having only test importers, because P5 lifecycle wiring (the `index.ts` hooks that will call the dispatcher) is a sibling lane. It resolves when P5 lands; adding a fitness-test exception is explicitly not allowed.
+- `npx vitest run extensions/pi-event-loop tests/pi-event-loop-runtime.test.ts tests/pi-event-loop-ac-coverage.test.ts tests/pi-event-loop-operator-controls.test.ts` — all touched tests pass.
+- `npx tsc --noEmit` — clean; `npm run check` — passes (knip clean, type-coverage 99.23%).
+- Full `npm test` — 201 files / 1469 tests passed; architecture and test-quality fitness pass with no exceptions.
 - File budgets: `tests/pi-event-loop-ac-coverage.test.ts` 162 lines, `tests/architecture/pi-event-loop-isolation.ts` 140 lines (< 300 default).

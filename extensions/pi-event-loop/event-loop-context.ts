@@ -11,7 +11,7 @@ import type { SessionEntryLike } from "./event-log.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import { buildStatus } from "./status.js";
 
-export interface EventLoopContextDeps {
+interface EventLoopContextDeps {
 	readonly runtime: EventLoopRuntime;
 	readonly readEntries: (ctx: ExtensionContext) => readonly SessionEntryLike[];
 }
@@ -19,7 +19,7 @@ export interface EventLoopContextDeps {
 const CONTEXT_PARAMS = Type.Object({});
 
 /** Build a read-only event_loop_context tool; execution never mutates runtime state. */
-export function createContextTool(
+function createContextTool(
 	deps: EventLoopContextDeps,
 ): ToolDefinition<typeof CONTEXT_PARAMS, Record<string, unknown>> {
 	return {

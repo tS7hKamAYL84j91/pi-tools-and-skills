@@ -7,14 +7,15 @@ import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { CONFIG_RELATIVE_PATH, loadEventLoopConfig } from "./config.js";
 import { evaluateEmission } from "./event-ingress.js";
 import { readEventLog, type SessionEntryLike } from "./event-log.js";
+import { issueDiagnostic } from "./event-loop-issue.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import {
-	activeProfile,
 	buildStatus,
 	formatHistory,
 	formatStatus,
 	formatViews,
 } from "./status.js";
+import { markItemOutstanding } from "./todo-view.js";
 import type {
 	EventLoopConfig,
 	LoopEventData,
@@ -72,11 +73,10 @@ export async function executeOperatorCommand(
 	const status = buildStatus(deps.runtime, config, entries);
 
 	switch (action) {
-		case "status":
-			return ok(
-				formatStatus(status),
-				status as unknown as Record<string, unknown>,
-			);
+		case "status": {
+			const details = { ...status };
+			return ok(formatStatus(status), details);
+		}
 		case "views":
 			return ok(formatViews(status, rest[0]));
 		case "history": {
@@ -133,11 +133,10 @@ function retryItem(
 		return fail(`Work item ${workItemId} is not stalled`, {
 			code: "validation",
 		});
+	runtime.projection = markItemOutstanding(runtime.projection, workItemId);
 	runtime.paused = false;
 	runtime.pauseReason = undefined;
-	return ok(
-		`Retry requested for ${workItemId}; the next automation scan may reissue it.`,
-	);
+	return ok(`Retry requested for ${workItemId}; item reopened for automation.`);
 }
 
 async function useProfile(
@@ -211,49 +210,4 @@ async function emitOperatorEvent(
 		eventId: decision.event.eventId,
 		...effects,
 	});
-}
-
-function issueDiagnostic(
-	args: readonly string[],
-	config: EventLoopConfig,
-	runtime: EventLoopRuntime,
-): ToolResult {
-	const commandType = args[0];
-	if (!commandType)
-		return fail("Usage: /event-loop issue <command-type> [json-work-item]", {
-			code: "validation",
-		});
-	const profile = activeProfile(config);
-	const command = profile?.commands[commandType];
-	if (command === undefined)
-		return fail(`Unknown command type: ${commandType}`, { code: "validation" });
-	let workItem: Record<string, unknown> = {};
-	if (args[1] !== undefined) {
-		try {
-			const parsed: unknown = JSON.parse(args.slice(1).join(" "));
-			if (
-				typeof parsed !== "object" ||
-				parsed === null ||
-				Array.isArray(parsed)
-			)
-				throw new Error("work item must be an object");
-			workItem = parsed as Record<string, unknown>;
-		} catch (error) {
-			return fail(
-				`Invalid JSON work item: ${error instanceof Error ? error.message : String(error)}`,
-				{ code: "validation" },
-			);
-		}
-	}
-	// Diagnostic hatch: describe the command without fabricating a domain event.
-	return ok(
-		`Diagnostic command ${commandType} prepared (no domain event fabricated).`,
-		{
-			commandType,
-			expectedEvents: command.expectedEvents,
-			workItem,
-			queued: false,
-			activeCommand: runtime.activeCommand?.commandId,
-		},
-	);
 }

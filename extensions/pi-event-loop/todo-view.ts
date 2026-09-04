@@ -62,6 +62,24 @@ export function markItemDispatched(
 	return { items, order: projection.order };
 }
 
+/** Reopen a stalled item for an explicit operator retry; returns a new projection. */
+export function markItemOutstanding(
+	projection: TodoProjection,
+	workItemId: string,
+): TodoProjection {
+	const item = projection.items.get(workItemId);
+	if (item === undefined || item.status !== "stalled") {
+		return projection;
+	}
+	const items = new Map(projection.items);
+	items.set(workItemId, {
+		...item,
+		status: "outstanding",
+		commandId: undefined,
+	});
+	return { items, order: projection.order };
+}
+
 /** Mark an item stalled after settlement without an expected outcome (SPEC §11); returns a new projection. */
 export function markItemStalled(
 	projection: TodoProjection,

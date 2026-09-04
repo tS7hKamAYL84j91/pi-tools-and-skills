@@ -344,6 +344,7 @@ export function createFakeEventLoopPi(): FakeEventLoopPi {
 			handlers.set(event, handler);
 		},
 		registerTool: (_tool: unknown) => undefined,
+		registerCommand: (_name: string, _options: unknown) => undefined,
 		appendEntry: (customType: string, data?: unknown) => {
 			entries.push({ type: "custom", customType, data: data ?? null });
 		},
