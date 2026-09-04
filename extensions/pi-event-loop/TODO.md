@@ -69,7 +69,7 @@
 
 ### High-priority correctness
 
-- [ ] **Generate and refresh the emit tool contract from live state.** `EMIT_PARAMS` is static, the description is built once from `process.cwd()`, and it never reflects the active command, session cwd, reload, or profile switch. Generate both schema and description from the active profile and permitted active-command outcomes; re-register dynamically when that contract changes. (`event-ingress-tool.ts`, `index.ts`; SPEC §7; AC-11)
+- [x] **Generate and refresh the emit tool contract from live state.** `EMIT_PARAMS` is static, the description is built once from `process.cwd()`, and it never reflects the active command, session cwd, reload, or profile switch. Generate both schema and description from the active profile and permitted active-command outcomes; re-register dynamically when that contract changes. (`event-ingress-tool.ts`, `index.ts`; SPEC §7; AC-11)
 - [x] **Enforce `allowAgentEmit` during command turns.** The active-command branch currently checks only `expectedEvents`, allowing an expected event whose declaration has `allowAgentEmit: false`. Reject invalid profiles or enforce both constraints at ingress. (`event-ingress.ts`; SPEC §7, §18; AC-3)
 - [x] **Preserve replay and causal lineage across bounded snapshots.** `boundedItems()` drops completed rows beyond 100 while recovery replays only post-checkpoint events; this changes recovered view state and loses ancestry used by `eventChainDepth()`. Store the minimal complete lineage/index needed for deterministic projection and chain-limit enforcement, or replay enough history to reconstruct it. (`session-state.ts`, `loop-guards.ts`; SPEC §14–15; AC-7, AC-18, AC-21)
 - [x] **Fix timer contract and timezone edges.** Reject timer targets whose required payload cannot be produced from `{scheduledFor}`; do not advance occurrence state when append fails; compute the next `dailyAt` by local calendar date rather than adding 24 hours so DST preserves wall-clock time. (`config-profile.ts`, `timers.ts`, `timer-schedule.ts`; SPEC §12, §18; AC-16–17)
@@ -82,10 +82,10 @@
 - [x] **Collapse obsolete settlement machinery.** After adopting `agent_settled`, remove `waitForTurnStart`, hour-long idle polling, duplicate timeout constants, and the polling-specific `delivery-cycle.ts` state machine. Keep one small event-driven queue transition service.
 - [x] **Remove duplicate runtime reset logic.** Use `resetEventLoopRuntime()` from `runtime.ts` instead of maintaining a second field-by-field reset in `lifecycle.ts`.
 - [x] **Centralize operator JSON-object parsing and deterministic canonicalization.** `emitOperatorEvent()` and `issueDiagnostic()` duplicate parsing/validation; stable IDs currently depend on `JSON.stringify` property order.
-- [ ] **Split `validateProfile()` by responsibility.** The 240-line, complexity-38 validator mixes structural parsing, identifier collection, and cross-slice compatibility. Extract pure cross-reference/automation-contract validation without adding a framework.
+- [x] **Split `validateProfile()` by responsibility.** The 240-line, complexity-38 validator mixes structural parsing, identifier collection, and cross-slice compatibility. Extract pure cross-reference/automation-contract validation without adding a framework.
 - [x] **Consolidate todo status transitions.** `todo-view.ts` duplicates map-copy/update logic for dispatched, stalled, and outstanding transitions; use one private immutable update helper.
-- [ ] **Reduce accidental public API.** Remove exports used only by tests/internal wiring (`EventLoopCommandDeps`, `executeOperatorCommand`, and similar) or test through the registered boundary. Keep exported symbols to independently consumed contracts.
-- [ ] **Resolve review diagnostics without exemptions.** Remove the operator JSON duplicate block and todo transition clones reported by jscpd. Review the JSON Pointer prototype-pollution warning; record a justified false-positive disposition if read-only `Object.hasOwn` traversal is retained rather than weakening pointer support.
+- [x] **Reduce accidental public API.** Remove exports used only by tests/internal wiring (`EventLoopCommandDeps`, `executeOperatorCommand`, and similar) or test through the registered boundary. Keep exported symbols to independently consumed contracts.
+- [x] **Resolve review diagnostics without exemptions.** Remove the operator JSON duplicate block and todo transition clones reported by jscpd. Review the JSON Pointer prototype-pollution warning; record a justified false-positive disposition if read-only `Object.hasOwn` traversal is retained rather than weakening pointer support.
 
 ## P13 — TUI and operator UX alignment
 
@@ -93,17 +93,17 @@
 - [x] **Provide bounded on-demand inspection.** The current slash command sends multiline views/history through `ui.notify`, which is transient and can be very large. Keep `/event-loop status` compact; render views/history in a native, width-bounded, scrollable `ctx.ui.custom()` surface in TUI mode, with compact text fallback for RPC/print. Use `formatScrollCue`/`formatHiddenCountCue` and gradual disclosure instead of dumping payloads by default.
 - [x] **Use native TUI components and theme/keybinding APIs.** Prefer `Text`, `Container`, `SelectList`, and `DynamicBorder`; use callback `theme`, injected keybindings, `tui.requestRender()` after state changes, and `truncateToWidth`/ANSI-aware wrapping. No raw ANSI, synchronous filesystem reads in `render()`, or custom controls where native components suffice.
 - [x] **Bound any overlay explicitly.** If inspection is an overlay, declare `width`, `minWidth`, `maxHeight`, `anchor`, and `margin`; close with configured cancel keys and create a fresh component on each opening. Guard terminal-only UI with `ctx.mode === "tui"` and notification/dialog calls with `ctx.hasUI`.
-- [ ] **Add compact custom renderers.** Register a message renderer for `pi-event-loop-command` and compact `renderCall`/`renderResult` output for both tools. Default output should show type/id/state; expanded output may show expected events and bounded, clearly data-labelled payloads.
+- [x] **Add compact custom renderers.** Register a message renderer for `pi-event-loop-command` and compact `renderCall`/`renderResult` output for both tools. Default output should show type/id/state; expanded output may show expected events and bounded, clearly data-labelled payloads.
 - [x] **Keep render paths pure and state precomputed.** Read configuration/session entries before opening the component; render closures consume an immutable snapshot only. Add the event-loop surface to TUI render-path fitness coverage.
 - [x] **Document the TUI contract.** Extend `README.md` and `docs/pi-event-loop-c4.md` with status ownership, inspection flow, non-TUI fallback, disclosure bounds, and cleanup lifecycle. Remove the obsolete “Pi 0.74 has no `agent_settled`” qualification.
 
 ## P14 — Regression tests and completion gates
 
-- [ ] Host-semantics test: a command queued after idle startup triggers a turn, waits for real `agent_settled`, then delivers the next command; no polling or real sleep.
+- [x] Host-semantics test: a command queued after idle startup triggers a turn, waits for real `agent_settled`, then delivers the next command; no polling or real sleep.
 - [x] Pump test: empty initial cycle → later agent/operator/timer event → delivery; repeat after pause/resume, retry, issue, reload, and profile switch.
 - [x] Contract tests: every automation outcome closes its own view/key; an expected-but-non-closing event stalls rather than strands a dispatched item.
-- [ ] Dynamic-tool tests: session cwd, profile switch, active command, and reload all refresh permitted event enum/description; `allowAgentEmit: false` remains uncallable.
+- [x] Dynamic-tool tests: session cwd, profile switch, active command, and reload all refresh permitted event enum/description; `allowAgentEmit: false` remains uncallable.
 - [x] Recovery tests with more than 100 completed rows and a deep causal chain prove bounded snapshot restoration, post-checkpoint-only replay, shortest-path retention, and preserved chain-limit behavior.
 - [x] Timer tests cover DST transitions, incompatible required payloads, append failure, duplicate occurrence, and at-most-one catch-up.
 - [x] TUI tests cover narrow widths, long IDs/payloads, scrolling/hidden counts, theme invalidation, configured keys, status cleanup, and TUI/RPC/JSON/print behavior.
-- [ ] Re-run `npm run check`, focused event-loop tests, full `npm test`, and `lens_diagnostics mode=all`; update AC evidence only from tests that exercise the production boundary rather than permissive mocks.
+- [x] Re-run `npm run check`, focused event-loop tests, full `npm test`, and `lens_diagnostics mode=all`; update AC evidence only from tests that exercise the production boundary rather than permissive mocks.
