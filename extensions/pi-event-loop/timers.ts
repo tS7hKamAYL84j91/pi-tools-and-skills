@@ -70,18 +70,26 @@ function emitTimerOccurrence(
 	context: TimerContext,
 	spec: TimerSpec,
 	scheduledForMs: number,
-): void {
+): boolean {
 	const event = buildTimerEvent(context.host, spec, scheduledForMs);
 	if (event === undefined) {
 		context.host.notify?.(
 			`timer "${spec.id}" occurrence skipped: event "${spec.emit}" is undeclared or its payload contract failed`,
 		);
-		return;
+		return false;
 	}
 	if (context.host.knownEventIds().has(event.eventId)) {
-		return;
+		return true;
 	}
-	context.host.appendEvent(event);
+	try {
+		context.host.appendEvent(event);
+		return true;
+	} catch (error) {
+		context.host.notify?.(
+			`timer "${spec.id}" append failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return false;
+	}
 }
 
 function recordTimerOccurrence(
@@ -135,8 +143,10 @@ function onTimerFired(
 		scheduleTimer(context, spec);
 		return;
 	}
-	emitTimerOccurrence(context, spec, target);
-	recordTimerOccurrence(context, spec, target);
+	const emitted = emitTimerOccurrence(context, spec, target);
+	if (emitted) {
+		recordTimerOccurrence(context, spec, target);
+	}
 	scheduleTimer(context, spec);
 }
 
@@ -153,8 +163,10 @@ function catchUpTimer(context: TimerContext, spec: TimerSpec): void {
 	if (occurrence === undefined) {
 		return;
 	}
-	emitTimerOccurrence(context, spec, occurrence);
-	recordTimerOccurrence(context, spec, occurrence);
+	const emitted = emitTimerOccurrence(context, spec, occurrence);
+	if (emitted) {
+		recordTimerOccurrence(context, spec, occurrence);
+	}
 }
 
 /**

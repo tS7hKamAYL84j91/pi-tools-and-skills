@@ -47,19 +47,33 @@ export function openItemCount(
 	return count;
 }
 
+function updateTodoItem(
+	projection: TodoProjection,
+	workItemId: string,
+	predicate: (item: TodoItem) => boolean,
+	patch: (item: TodoItem) => Partial<TodoItem>,
+): TodoProjection {
+	const item = projection.items.get(workItemId);
+	if (item === undefined || !predicate(item)) {
+		return projection;
+	}
+	const items = new Map(projection.items);
+	items.set(workItemId, { ...item, ...patch(item) });
+	return { items, order: projection.order };
+}
+
 /** Mark a delivered command's item as dispatched; returns a new projection. */
 export function markItemDispatched(
 	projection: TodoProjection,
 	workItemId: string,
 	commandId: string,
 ): TodoProjection {
-	const item = projection.items.get(workItemId);
-	if (item === undefined || item.status === "completed") {
-		return projection;
-	}
-	const items = new Map(projection.items);
-	items.set(workItemId, { ...item, status: "dispatched", commandId });
-	return { items, order: projection.order };
+	return updateTodoItem(
+		projection,
+		workItemId,
+		(item) => item.status !== "completed",
+		() => ({ status: "dispatched", commandId }),
+	);
 }
 
 /** Reopen a stalled item for an explicit operator retry; returns a new projection. */
@@ -67,17 +81,12 @@ export function markItemOutstanding(
 	projection: TodoProjection,
 	workItemId: string,
 ): TodoProjection {
-	const item = projection.items.get(workItemId);
-	if (item === undefined || item.status !== "stalled") {
-		return projection;
-	}
-	const items = new Map(projection.items);
-	items.set(workItemId, {
-		...item,
-		status: "outstanding",
-		commandId: undefined,
-	});
-	return { items, order: projection.order };
+	return updateTodoItem(
+		projection,
+		workItemId,
+		(item) => item.status === "stalled",
+		() => ({ status: "outstanding", commandId: undefined }),
+	);
 }
 
 /** Mark an item stalled after settlement without an expected outcome (SPEC §11); returns a new projection. */
@@ -85,11 +94,10 @@ export function markItemStalled(
 	projection: TodoProjection,
 	workItemId: string,
 ): TodoProjection {
-	const item = projection.items.get(workItemId);
-	if (item === undefined || item.status === "completed") {
-		return projection;
-	}
-	const items = new Map(projection.items);
-	items.set(workItemId, { ...item, status: "stalled" });
-	return { items, order: projection.order };
+	return updateTodoItem(
+		projection,
+		workItemId,
+		(item) => item.status !== "completed",
+		() => ({ status: "stalled" }),
+	);
 }

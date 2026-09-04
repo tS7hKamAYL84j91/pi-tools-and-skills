@@ -10,7 +10,6 @@ import type {
 import { deriveEventId } from "./types.js";
 
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
 
 /** Cancel handle for one scheduled occurrence. */
 export interface TimerHandle {
@@ -126,7 +125,19 @@ export function nextDailyOccurrenceMs(
 		lastDailyDate !== undefined &&
 		localDateKey(target.getTime()) === lastDailyDate;
 	if (target.getTime() <= nowMs || todayFired) {
-		target = new Date(target.getTime() + DAY_MS);
+		let dayOffset = 1;
+		do {
+			target = new Date(
+				now.getFullYear(),
+				now.getMonth(),
+				now.getDate() + dayOffset,
+				hours,
+				minutes,
+				0,
+				0,
+			);
+			dayOffset++;
+		} while (target.getTime() <= nowMs);
 	}
 	return target.getTime();
 }

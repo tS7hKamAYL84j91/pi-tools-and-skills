@@ -31,7 +31,7 @@ export function buildSnapshot(params: {
 		configFingerprint: params.fingerprint,
 		projectedEventCount: runtime.projectedEventCount,
 		lastAppliedEventId: runtime.lastAppliedEventId,
-		items: boundedItems(runtime.projection),
+		items: boundedItems(runtime.projection, config.limits.maxChainDepth + 1),
 		pendingCommands: runtime.queue.filter(
 			(record) => record.status === "queued",
 		),
@@ -44,10 +44,12 @@ export function buildSnapshot(params: {
 	};
 }
 
-/** Non-completed items in row order plus the most recent completed items for lineage. */
-function boundedItems(projection: TodoProjection): readonly TodoItem[] {
-	const live: TodoItem[] = [];
-	let completedTail: TodoItem[] = [];
+function collectCompletedByMap(
+	projection: TodoProjection,
+	completedTail: TodoItem[],
+	live: TodoItem[],
+): Map<string, TodoItem[]> {
+	const completedBy = new Map<string, TodoItem[]>();
 	for (const itemId of projection.order) {
 		const item = projection.items.get(itemId);
 		if (item === undefined) {
@@ -59,10 +61,89 @@ function boundedItems(projection: TodoProjection): readonly TodoItem[] {
 		}
 		completedTail.push(item);
 		if (completedTail.length > COMPLETED_ITEM_KEEP) {
-			completedTail = completedTail.slice(1);
+			completedTail.shift();
+		}
+		if (item.completedByEventId !== undefined) {
+			let list = completedBy.get(item.completedByEventId);
+			if (list === undefined) {
+				list = [];
+				completedBy.set(item.completedByEventId, list);
+			}
+			list.push(item);
 		}
 	}
-	return [...live, ...completedTail];
+	return completedBy;
+}
+
+interface AncestorQueueEntry {
+	readonly eventId: string;
+	readonly depth: number;
+}
+
+function collectCausalAncestors(
+	completedBy: Map<string, TodoItem[]>,
+	live: readonly TodoItem[],
+	completedTail: readonly TodoItem[],
+	maxDepth: number,
+): Set<string> {
+	const retainedIds = new Set<string>();
+	for (const item of completedTail) {
+		retainedIds.add(item.workItemId);
+	}
+	const queue: AncestorQueueEntry[] = [];
+	for (const item of live) {
+		retainedIds.add(item.workItemId);
+		queue.push({ eventId: item.openedByEventId, depth: 0 });
+	}
+	const visitedEvents = new Set<string>();
+	while (queue.length > 0) {
+		const entry = queue.pop();
+		if (entry === undefined || visitedEvents.has(entry.eventId)) {
+			continue;
+		}
+		visitedEvents.add(entry.eventId);
+		if (entry.depth >= maxDepth) {
+			continue;
+		}
+		const parents = completedBy.get(entry.eventId);
+		if (parents !== undefined) {
+			for (const parent of parents) {
+				retainedIds.add(parent.workItemId);
+				queue.push({
+					eventId: parent.openedByEventId,
+					depth: entry.depth + 1,
+				});
+			}
+		}
+	}
+	return retainedIds;
+}
+
+/** Non-completed items, the bounded completed tail, and bounded causal ancestors (SPEC §14, §15). */
+function boundedItems(
+	projection: TodoProjection,
+	maxDepth = 13,
+): readonly TodoItem[] {
+	const live: TodoItem[] = [];
+	const completedTail: TodoItem[] = [];
+	const completedBy = collectCompletedByMap(projection, completedTail, live);
+	const retainedIds = collectCausalAncestors(
+		completedBy,
+		live,
+		completedTail,
+		maxDepth,
+	);
+
+	const result: TodoItem[] = [];
+	for (const itemId of projection.order) {
+		if (retainedIds.has(itemId)) {
+			const item = projection.items.get(itemId);
+			if (item !== undefined) {
+				result.push(item);
+			}
+		}
+	}
+	return result;
 }
 
 /** Restore runtime mutable state from a snapshot (SPEC §15). */
