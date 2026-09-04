@@ -7,6 +7,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import {
+	buildDescriptionFromConfig,
 	buildDescriptionFromProfile,
 	registerEmitTool,
 } from "./event-ingress-tool.js";
@@ -19,7 +20,7 @@ import {
 	handleSessionShutdown,
 	handleSessionStart,
 } from "./lifecycle.js";
-import { CONFIG_RELATIVE_PATH } from "./config.js";
+import { CONFIG_RELATIVE_PATH, loadEventLoopConfig } from "./config.js";
 import { registerEventLoopCommands } from "./event-loop-commands.js";
 import { registerContextTool } from "./event-loop-context.js";
 import { createEventLoopRuntime } from "./runtime.js";
@@ -62,6 +63,17 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 	};
 
 	const pipeline = createPumpingPipeline(state);
+
+	function refreshDynamicTools(cwd: string): void {
+		const config = state.currentConfig;
+		registerEmitTool(pi, state.runtime, pipeline, {
+			description: config
+				? buildDescriptionFromConfig(config, state.runtime)
+				: buildDescriptionFromProfile(cwd, state.runtime),
+			config,
+		});
+	}
+
 	registerEmitTool(
 		pi,
 		state.runtime,
@@ -78,6 +90,39 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		readEntries: (ctx) => ctx.sessionManager.getBranch(),
 		appendEntry: (event) => pi.appendEntry(EVENT_LOOP_EVENT_CUSTOM_TYPE, event),
 		writeConfig: async (cwd, config) => writeEventLoopConfig(cwd, config),
+		getConfig: async (cwd) => {
+			if (state.currentConfig !== undefined) {
+				return {
+					ok: true,
+					config: state.currentConfig,
+					fingerprint: state.currentFingerprint,
+					errors: [],
+				};
+			}
+			return loadEventLoopConfig(cwd);
+		},
+		onReload: async (ctx) => {
+			const result = await loadEventLoopConfig(ctx.cwd);
+			if (!result.ok || result.config === undefined) {
+				return {
+					ok: false,
+					reason: result.missing ? "no configuration" : result.errors.join("; "),
+				};
+			}
+			state.currentConfig = result.config;
+			state.currentFingerprint = result.fingerprint;
+			refreshDynamicTools(ctx.cwd);
+			return { ok: true };
+		},
+		onProfileSwitched: (ctx, newProfile) => {
+			if (state.currentConfig?.profiles[newProfile] !== undefined) {
+				state.currentConfig = {
+					...state.currentConfig,
+					activeProfile: newProfile,
+				};
+				refreshDynamicTools(ctx.cwd);
+			}
+		},
 	});
 	// Genuine interactive input resets loop protection; extension-delivered turns
 	// do not (SPEC §14).
@@ -95,7 +140,10 @@ export default function eventLoopExtension(pi: ExtensionAPI): void {
 		},
 	);
 	// session_start restores, replays, catches up timers and delivers (SPEC §17).
-	pi.on("session_start", (_event, ctx) => handleSessionStart(state, ctx));
+	pi.on("session_start", async (_event, ctx) => {
+		await handleSessionStart(state, ctx);
+		refreshDynamicTools(ctx.cwd);
+	});
 	pi.on("session_shutdown", () => {
 		handleSessionShutdown(state);
 	});

@@ -4,10 +4,18 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
-import { CONFIG_RELATIVE_PATH, loadEventLoopConfig } from "./config.js";
+import {
+	CONFIG_RELATIVE_PATH,
+	type EventLoopConfigResult,
+	loadEventLoopConfig,
+} from "./config.js";
 import { evaluateEmission } from "./event-ingress.js";
 import { readEventLog, type SessionEntryLike } from "./event-log.js";
-import { issueDiagnostic } from "./event-loop-issue.js";
+import {
+	canonicalJsonString,
+	issueDiagnostic,
+	parseJsonObject,
+} from "./event-loop-issue.js";
 import type { EventLoopRuntime } from "./runtime.js";
 import {
 	buildStatus,
@@ -33,6 +41,18 @@ export interface EventLoopCommandDeps {
 		config: EventLoopConfig,
 	) => Promise<void>;
 	readonly appendEntry?: (event: LoopEventData) => void;
+	readonly getConfig?: (
+		cwd: string,
+	) => Promise<EventLoopConfigResult> | EventLoopConfigResult;
+	readonly onReload?: (
+		ctx: ExtensionCommandContext,
+	) => Promise<{ ok: boolean; reason?: string } | void>;
+	readonly restartPump?: (ctx: ExtensionCommandContext) => Promise<void> | void;
+	readonly checkpoint?: (ctx: ExtensionCommandContext) => Promise<void> | void;
+	readonly onProfileSwitched?: (
+		ctx: ExtensionCommandContext,
+		newProfile: string,
+	) => Promise<void> | void;
 }
 
 /** Register `/event-loop` and its explicitly bounded operator subcommands. */
@@ -61,7 +81,9 @@ export async function executeOperatorCommand(
 	deps: EventLoopCommandDeps,
 ): Promise<ToolResult> {
 	const [action = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
-	const configResult = await loadEventLoopConfig(ctx.cwd);
+	const configResult = deps.getConfig
+		? await deps.getConfig(ctx.cwd)
+		: await loadEventLoopConfig(ctx.cwd);
 	if (!configResult.ok || configResult.config === undefined) {
 		return fail(
 			`pi-event-loop unavailable: ${configResult.missing ? "no configuration" : configResult.errors.join("; ")}`,
@@ -95,21 +117,63 @@ export async function executeOperatorCommand(
 		case "pause":
 			deps.runtime.paused = true;
 			deps.runtime.pauseReason = rest.join(" ").trim() || "paused by operator";
+			await deps.checkpoint?.(ctx);
 			return ok(`pi-event-loop paused: ${deps.runtime.pauseReason}`);
 		case "resume":
 			deps.runtime.paused = false;
 			deps.runtime.pauseReason = undefined;
+			await deps.checkpoint?.(ctx);
+			await deps.restartPump?.(ctx);
 			return ok("pi-event-loop resumed");
-		case "retry":
-			return retryItem(rest[0], deps.runtime);
-		case "reload":
+		case "retry": {
+			const result = retryItem(rest[0], deps.runtime);
+			if (!result.isError) {
+				await deps.checkpoint?.(ctx);
+				await deps.restartPump?.(ctx);
+			}
+			return result;
+		}
+		case "reload": {
+			if (deps.onReload !== undefined) {
+				const reloadOutcome = await deps.onReload(ctx);
+				if (reloadOutcome && !reloadOutcome.ok) {
+					return fail(
+						`pi-event-loop reload failed: ${reloadOutcome.reason ?? "unknown error"}`,
+						{ code: "validation" },
+					);
+				}
+			}
 			return ok(`Configuration reloaded from ${CONFIG_RELATIVE_PATH}`);
-		case "use":
-			return useProfile(rest[0], config, ctx.cwd, deps.writeConfig);
+		}
+		case "use": {
+			const useResult = await useProfile(
+				rest[0],
+				config,
+				ctx.cwd,
+				deps.writeConfig,
+			);
+			if (!useResult.isError) {
+				const target = rest[0];
+				if (deps.onProfileSwitched !== undefined && target !== undefined) {
+					await deps.onProfileSwitched(ctx, target);
+				} else if (deps.onReload !== undefined) {
+					await deps.onReload(ctx);
+				}
+				await deps.checkpoint?.(ctx);
+				await deps.restartPump?.(ctx);
+			}
+			return useResult;
+		}
 		case "emit":
 			return emitOperatorEvent(rest, ctx, config, deps);
-		case "issue":
-			return issueDiagnostic(rest, config, deps.runtime);
+		case "issue": {
+			const issueResult = issueDiagnostic(rest, config, deps.runtime);
+			if (!issueResult.isError) {
+				await deps.checkpoint?.(ctx);
+				await deps.restartPump?.(ctx);
+			}
+			return issueResult;
+		}
 		default:
 			return fail(
 				"Usage: /event-loop status|views|history|pause|resume|retry|reload|use|emit|issue",
@@ -168,23 +232,15 @@ async function emitOperatorEvent(
 		});
 	let payload: Record<string, unknown> = {};
 	if (args[1] !== undefined) {
-		try {
-			const parsed: unknown = JSON.parse(args.slice(1).join(" "));
-			if (
-				typeof parsed !== "object" ||
-				parsed === null ||
-				Array.isArray(parsed)
-			)
-				throw new Error("payload must be an object");
-			payload = parsed as Record<string, unknown>;
-		} catch (error) {
-			return fail(
-				`Invalid JSON payload: ${error instanceof Error ? error.message : String(error)}`,
-				{ code: "validation" },
-			);
+		const parsed = parseJsonObject(args.slice(1).join(" "));
+		if (!parsed.ok) {
+			return fail(`Invalid JSON payload: ${parsed.error}`, {
+				code: "validation",
+			});
 		}
+		payload = parsed.value;
 	}
-	const dedupeKey = `${eventType}:${JSON.stringify(payload)}`;
+	const dedupeKey = `${eventType}:${canonicalJsonString(payload)}`;
 	const decision = evaluateEmission(
 		{
 			config,
@@ -206,6 +262,8 @@ async function emitOperatorEvent(
 	// Operator emission follows the normal append → project → automate path.
 	deps.appendEntry?.(decision.event);
 	const effects = deps.pipeline(decision.event, config, config.activeProfile);
+	await deps.checkpoint?.(ctx);
+	await deps.restartPump?.(ctx);
 	return ok(`Event accepted: ${decision.event.eventId}`, {
 		eventId: decision.event.eventId,
 		...effects,

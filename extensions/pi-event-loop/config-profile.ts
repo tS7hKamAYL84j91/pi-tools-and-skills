@@ -174,6 +174,14 @@ export function validateProfile(
 					`${path}.commands.${commandName}: expected event "${eventName}" is not defined`,
 				);
 				valid = false;
+				continue;
+			}
+			const eventSpec = events[eventName];
+			if (eventSpec !== undefined && !eventSpec.allowAgentEmit) {
+				errors.push(
+					`${path}.commands.${commandName}: expected event "${eventName}" does not allow agent emission`,
+				);
+				valid = false;
 			}
 		}
 	}
@@ -215,6 +223,19 @@ export function validateProfile(
 				`${path}.automations.${automation.id}: command "${automation.issue}" is not defined`,
 			);
 			valid = false;
+		}
+		const view = views[automation.view];
+		const command = commands[automation.issue];
+		if (view !== undefined && command !== undefined) {
+			const closeEvents = new Set(view.closeOn.map((rule) => rule.event));
+			for (const expectedEvent of command.expectedEvents) {
+				if (!closeEvents.has(expectedEvent)) {
+					errors.push(
+						`${path}.automations.${automation.id}: command "${automation.issue}" expected event "${expectedEvent}" does not close view "${automation.view}"`,
+					);
+					valid = false;
+				}
+			}
 		}
 	}
 	for (const timer of timers) {

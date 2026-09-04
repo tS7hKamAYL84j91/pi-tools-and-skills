@@ -6,6 +6,44 @@ import { activeProfile } from "./status.js";
 import type { CommandRecord, EventLoopConfig } from "./types.js";
 import { deriveCommandId, deriveWorkItemId } from "./types.js";
 
+/** Parse and validate that a string is a JSON object literal. */
+export function parseJsonObject(
+	raw: string,
+): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			Array.isArray(parsed)
+		) {
+			return { ok: false, error: "must be a JSON object" };
+		}
+		return { ok: true, value: parsed as Record<string, unknown> };
+	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+/** Serialize a value with sorted object keys for deterministic identity hashing. */
+export function canonicalJsonString(value: unknown): string {
+	if (value === null || typeof value !== "object") {
+		return JSON.stringify(value);
+	}
+	if (Array.isArray(value)) {
+		return `[${value.map((entry) => canonicalJsonString(entry)).join(",")}]`;
+	}
+	const obj = value as Record<string, unknown>;
+	const keys = Object.keys(obj).sort();
+	const entries = keys.map(
+		(k) => `${JSON.stringify(k)}:${canonicalJsonString(obj[k])}`,
+	);
+	return `{${entries.join(",")}}`;
+}
+
 export function issueDiagnostic(
 	args: readonly string[],
 	config: EventLoopConfig,
@@ -24,27 +62,18 @@ export function issueDiagnostic(
 	}
 	let workItem: Record<string, unknown> = {};
 	if (args[1] !== undefined) {
-		try {
-			const parsed: unknown = JSON.parse(args.slice(1).join(" "));
-			if (
-				typeof parsed !== "object" ||
-				parsed === null ||
-				Array.isArray(parsed)
-			) {
-				throw new Error("work item must be an object");
-			}
-			workItem = parsed as Record<string, unknown>;
-		} catch (error) {
-			return fail(
-				`Invalid JSON work item: ${error instanceof Error ? error.message : String(error)}`,
-				{ code: "validation" },
-			);
+		const parsed = parseJsonObject(args.slice(1).join(" "));
+		if (!parsed.ok) {
+			return fail(`Invalid JSON work item: ${parsed.error}`, {
+				code: "validation",
+			});
 		}
+		workItem = parsed.value;
 	}
 	const key =
 		typeof workItem["workItemId"] === "string"
 			? workItem["workItemId"]
-			: `operator:${commandType}:${JSON.stringify(workItem)}`;
+			: `operator:${commandType}:${canonicalJsonString(workItem)}`;
 	const openingId = `operator-issue:${commandType}:${key}`;
 	const workItemId = deriveWorkItemId(
 		config.activeProfile,
@@ -69,14 +98,7 @@ export function issueDiagnostic(
 		workItem,
 		status: "queued",
 	};
-	const queueResult = enqueueCommand(runtime.queue, record, {
-		maxPendingCommands: 20,
-		maxOpenItemsPerView: 1000,
-		maxPayloadBytes: 65536,
-		maxChainDepth: 64,
-		maxConsecutiveTurns: 64,
-		maxRecentEvents: 10000,
-	});
+	const queueResult = enqueueCommand(runtime.queue, record, config.limits);
 	if (!queueResult.ok) {
 		return fail(`Diagnostic command rejected: ${queueResult.reason}`, {
 			code: "validation",

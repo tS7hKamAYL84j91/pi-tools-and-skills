@@ -205,8 +205,20 @@ export async function loadEventLoopConfig(
 	let text: string;
 	try {
 		text = await readFile(join(cwd, CONFIG_RELATIVE_PATH), "utf8");
-	} catch {
-		return { ok: false, missing: true, errors: [] };
+	} catch (error) {
+		const isEnoent =
+			error instanceof Error &&
+			"code" in error &&
+			(error as NodeJS.ErrnoException).code === "ENOENT";
+		if (isEnoent) {
+			return { ok: false, missing: true, errors: [] };
+		}
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			ok: false,
+			missing: false,
+			errors: [`I/O error loading configuration: ${message}`],
+		};
 	}
 	return parseEventLoopConfig(text);
 }
