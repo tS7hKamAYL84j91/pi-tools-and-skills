@@ -41,9 +41,6 @@ function createFakeCtx(cwd: string): FakeContext {
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
-		mode: "tui" as const,
-		scopedModels: [],
-		isProjectTrusted: () => true,
 	};
 }
 
