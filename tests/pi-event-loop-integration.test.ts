@@ -28,15 +28,26 @@ function createProductionHarness() {
 	const handlers = new Map<string, Handler>();
 	const entries: Array<{ type: string; customType: string; data: unknown }> = [];
 	const sent: unknown[] = [];
+	const sentDeliveries: Array<{ message: unknown; options?: unknown }> = [];
+	const toolsByName = new Map<string, { name: string; parameters: { properties: Record<string, unknown> }; description: string }>();
+	const messageRenderers = new Map<string, unknown>();
 	const statuses = new Map<string, string | undefined>();
 	const pi = {
 		on: (event: string, handler: Handler) => handlers.set(event, handler),
-		registerTool: vi.fn(),
+		registerTool: vi.fn((tool: { name: string; parameters: { properties: Record<string, unknown> }; description: string }) => {
+			toolsByName.set(tool.name, tool);
+		}),
 		registerCommand: (_name: string, definition: { handler: Handler }) =>
 			handlers.set("command", definition.handler),
+		registerMessageRenderer: vi.fn((customType: string, renderer: unknown) => {
+			messageRenderers.set(customType, renderer);
+		}),
 		appendEntry: (customType: string, data?: unknown) =>
 			entries.push({ type: "custom", customType, data }),
-		sendMessage: (message: unknown) => sent.push(message),
+		sendMessage: (message: unknown, options?: unknown) => {
+			sent.push(message);
+			sentDeliveries.push({ message, options });
+		},
 	};
 	const context = (cwd: string, options: { configDir?: string; trusted?: boolean } = {}) => ({
 		cwd,
@@ -54,7 +65,7 @@ function createProductionHarness() {
 		isIdle: () => true,
 		hasPendingMessages: () => false,
 	});
-	return { handlers, entries, sent, statuses, pi, context };
+	return { handlers, entries, sent, sentDeliveries, toolsByName, messageRenderers, statuses, pi, context };
 }
 
 function configDirectory(configPath = CONFIG_RELATIVE_PATH, text = configText()): string {
@@ -152,5 +163,92 @@ describe("pi-event-loop production wiring", () => {
 		eventLoopExtension(untrusted.pi as never);
 		await untrusted.handlers.get("session_start")?.({}, untrusted.context(cwd, { configDir: "settings", trusted: false }));
 		expect(untrusted.sent).toHaveLength(0);
+	});
+
+	it("active command start and agent_settled re-register event_loop_emit with narrowed and widened schema", async () => {
+		vi.useFakeTimers();
+		const harness = createProductionHarness();
+		eventLoopExtension(harness.pi as never);
+		const cwd = configDirectory();
+		const ctx = harness.context(cwd);
+		await harness.handlers.get("session_start")?.({}, ctx);
+
+		const initialTool = harness.toolsByName.get("event_loop_emit");
+		expect(initialTool).toBeDefined();
+		expect(initialTool?.parameters.properties["event"]).toMatchObject({
+			const: "progress.note",
+		});
+
+		harness.entries.push(eventEntry(workRequested("w-narrow")));
+		await harness.handlers.get("command")?.("reload", ctx);
+		await vi.runOnlyPendingTimersAsync();
+
+		const activeTool = harness.toolsByName.get("event_loop_emit");
+		expect(activeTool?.parameters.properties["event"]).toMatchObject({
+			anyOf: [{ const: "work.completed" }, { const: "work.failed" }],
+		});
+		expect(activeTool?.description).toContain("Active command: \"perform-work\"");
+
+		const completedEvent = {
+			eventId: "evt-complete-1",
+			type: "work.completed",
+			occurredAt: new Date().toISOString(),
+			source: "agent" as const,
+			payload: { workId: "w-narrow", resultPath: "/out/1" },
+			commandId: (harness.sent[0] as { details: { commandId: string } }).details.commandId,
+			workItemId: itemIdOf(workRequested("w-narrow"), "w-narrow"),
+			correlationId: "w-narrow",
+			causationId: (harness.sent[0] as { details: { commandId: string } }).details.commandId,
+		};
+		harness.entries.push(eventEntry(completedEvent));
+		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+
+		const settledTool = harness.toolsByName.get("event_loop_emit");
+		expect(settledTool?.parameters.properties["event"]).toMatchObject({
+			const: "progress.note",
+		});
+		expect(settledTool?.description).not.toContain("Active command");
+	});
+
+	it("host semantics: command delivery triggers turn, command remains active until agent_settled, then next command delivers without polling", async () => {
+		vi.useFakeTimers();
+		const harness = createProductionHarness();
+		eventLoopExtension(harness.pi as never);
+		const cwd = configDirectory();
+		const ctx = harness.context(cwd);
+
+		harness.entries.push(eventEntry(workRequested("w-host-1")));
+		harness.entries.push(eventEntry(workRequested("w-host-2")));
+
+		await harness.handlers.get("session_start")?.({}, ctx);
+		await vi.runOnlyPendingTimersAsync();
+
+		expect(harness.sentDeliveries).toHaveLength(1);
+		expect(harness.sentDeliveries[0]?.options).toMatchObject({ triggerTurn: true });
+
+		const firstCommandId = (harness.sent[0] as { details: { commandId: string } }).details.commandId;
+		const firstWorkItemId = itemIdOf(workRequested("w-host-1"), "w-host-1");
+
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(harness.sentDeliveries).toHaveLength(1);
+
+		const completeEvent = {
+			eventId: "evt-host-1",
+			type: "work.completed",
+			occurredAt: new Date().toISOString(),
+			source: "agent" as const,
+			payload: { workId: "w-host-1", resultPath: "/tmp/host-1" },
+			commandId: firstCommandId,
+			workItemId: firstWorkItemId,
+			correlationId: "w-host-1",
+			causationId: firstCommandId,
+		};
+		harness.entries.push(eventEntry(completeEvent));
+		await harness.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+		await vi.runOnlyPendingTimersAsync();
+
+		expect(harness.sentDeliveries).toHaveLength(2);
+		expect(harness.sentDeliveries[1]?.options).toMatchObject({ triggerTurn: true });
+		expect((harness.sentDeliveries[1]?.message as { details: { correlationId: string } }).details.correlationId).toBe("w-host-2");
 	});
 });
