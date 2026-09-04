@@ -209,7 +209,6 @@ export async function loadSchedules(coasSchedulesDir: string, audit?: (event: Re
 			});
 		} catch (error) {
 			await audit?.({ kind: "schedule_refused", file, reason: (error as Error).message });
-			continue;
 		}
 	}
 	return entries.sort((first, second) => first.taskId.localeCompare(second.taskId));
