@@ -216,6 +216,40 @@ describe("/event-loop operator controls", () => {
 });
 
 describe("event_loop_context", () => {
+	it("uses the lifecycle-owned configuration authority", async () => {
+		const runtime = createEventLoopRuntime();
+		const tools: Array<{ execute: (...args: unknown[]) => Promise<unknown> }> = [];
+		let configReads = 0;
+		const deps = {
+			runtime,
+			readEntries: () => [],
+			getConfig: () => {
+				configReads++;
+				return { ok: true, config: CONFIG, errors: [] };
+			},
+		};
+		registerContextTool(
+			{
+				registerTool: (tool: unknown) =>
+					tools.push(tool as (typeof tools)[number]),
+			} as never,
+			deps,
+		);
+		const tool = tools[0];
+		if (tool === undefined) {
+			throw new Error("event_loop_context tool was not registered");
+		}
+		const result = await tool.execute(
+			"id",
+			{},
+			undefined,
+			undefined,
+			{ cwd: "/no-config-on-disk" },
+		);
+		expect((result as { isError?: boolean }).isError).toBeUndefined();
+		expect(configReads).toBe(1);
+	});
+
 	it("is read-only and reports the active contract", async () => {
 		const runtime = createEventLoopRuntime();
 		const tools: Array<{ execute: (...args: unknown[]) => Promise<unknown> }> = [];
