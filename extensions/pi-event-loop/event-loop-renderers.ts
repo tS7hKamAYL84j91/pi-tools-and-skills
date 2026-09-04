@@ -2,6 +2,7 @@
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { formatHiddenCountCue } from "../../lib/tui-overflow.js";
 
 interface CommandMessageDetails {
 	readonly commandId?: string;
@@ -58,6 +59,38 @@ interface ContextResultLike {
 	readonly details?: ContextResultDetails;
 }
 
+const MAX_EXPANDED_PAYLOAD_LINES = 15;
+const MAX_EXPANDED_PAYLOAD_BYTES = 2048;
+
+function formatBoundedPayload(
+	payload: unknown,
+	theme: Theme,
+	label: string,
+): string[] {
+	let raw = JSON.stringify(payload, null, 2);
+	let byteTruncated = false;
+	if (raw.length > MAX_EXPANDED_PAYLOAD_BYTES) {
+		raw = raw.slice(0, MAX_EXPANDED_PAYLOAD_BYTES);
+		byteTruncated = true;
+	}
+	const lines = raw.split("\n");
+	const header = `${theme.fg("warning", `[untrusted data] ${label}:`)}`;
+	if (lines.length <= MAX_EXPANDED_PAYLOAD_LINES && !byteTruncated) {
+		return [`${header} ${raw}`];
+	}
+	const displayed = lines.slice(0, MAX_EXPANDED_PAYLOAD_LINES);
+	const hiddenLines = lines.length - displayed.length;
+	const cue =
+		formatHiddenCountCue(hiddenLines, "line") ??
+		(byteTruncated ? "[truncated]" : `(${hiddenLines} more lines hidden)`);
+	const suffix = byteTruncated && !cue.includes("truncated") ? `${cue} [truncated]` : cue;
+	return [
+		header,
+		...displayed,
+		theme.fg("dim", `... (${suffix})`),
+	];
+}
+
 function resolveTextComponent(context?: RenderContextLike): Text {
 	if (context?.lastComponent instanceof Text) {
 		return context.lastComponent;
@@ -89,9 +122,7 @@ export function renderCommandMessage(
 	];
 
 	if (details?.workItem !== undefined) {
-		lines.push(
-			`${theme.fg("warning", "[untrusted data] workItem:")} ${JSON.stringify(details.workItem, null, 2)}`,
-		);
+		lines.push(...formatBoundedPayload(details.workItem, theme, "workItem"));
 	}
 
 	return new Text(lines.join("\n"), 0, 0);
@@ -114,7 +145,7 @@ export function renderEmitCall(
 
 	const lines = [`${toolLabel} ${eventLabel} ${keyLabel}`];
 	if (args.payload !== undefined) {
-		lines.push(`${theme.fg("muted", "payload:")} ${JSON.stringify(args.payload, null, 2)}`);
+		lines.push(...formatBoundedPayload(args.payload, theme, "payload"));
 	}
 	text.setText(lines.join("\n"));
 	return text;

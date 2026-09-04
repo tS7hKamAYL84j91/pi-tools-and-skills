@@ -2,7 +2,6 @@
 
 import { validateCommandSpec, validateEventSpec } from "./config-events.js";
 import { checkUnknownKeys, isRecord } from "./config-guards.js";
-import { validateProfileCrossReferences } from "./config-profile-crossref.js";
 import { validateTimer } from "./config-timers.js";
 import { validateAutomation, validateViewSpec } from "./config-views.js";
 import type {
@@ -29,141 +28,165 @@ interface ParseResult<T> {
 	readonly valid: boolean;
 }
 
-function parseProfileEvents(
+function parseProfileRecord<T>(
 	path: string,
 	raw: unknown,
+	validator: (path: string, entry: unknown, errors: string[]) => T | undefined,
 	errors: string[],
-): ParseResult<Record<string, EventSpec>> {
+): ParseResult<Record<string, T>> {
 	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
-	const events: Record<string, EventSpec> = {};
+	const result: Record<string, T> = {};
 	if (!isRecord(raw)) {
-		errors.push(`${path}.events: must be an object`);
-		return { value: events, names, valid: false };
+		errors.push(`${path}: must be an object`);
+		return { value: result, names, valid: false };
 	}
 	let valid = true;
 	for (const [name, entryRaw] of Object.entries(raw)) {
-		const spec = validateEventSpec(`${path}.events.${name}`, entryRaw, errors);
+		const spec = validator(`${path}.${name}`, entryRaw, errors);
 		if (spec === undefined) {
 			valid = false;
 			continue;
 		}
-		events[name] = spec;
+		result[name] = spec;
 	}
-	return { value: events, names, valid };
+	return { value: result, names, valid };
 }
 
-function parseProfileCommands(
+function parseProfileList<T extends { readonly id: string }>(
 	path: string,
 	raw: unknown,
+	itemLabel: string,
+	validator: (path: string, entry: unknown, errors: string[]) => T | undefined,
 	errors: string[],
-): ParseResult<Record<string, CommandSpec>> {
-	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
-	const commands: Record<string, CommandSpec> = {};
-	if (!isRecord(raw)) {
-		errors.push(`${path}.commands: must be an object`);
-		return { value: commands, names, valid: false };
-	}
-	let valid = true;
-	for (const [name, entryRaw] of Object.entries(raw)) {
-		const spec = validateCommandSpec(
-			`${path}.commands.${name}`,
-			entryRaw,
-			errors,
-		);
-		if (spec === undefined) {
-			valid = false;
-			continue;
-		}
-		commands[name] = spec;
-	}
-	return { value: commands, names, valid };
-}
-
-function parseProfileViews(
-	path: string,
-	raw: unknown,
-	errors: string[],
-): ParseResult<Record<string, ViewSpec>> {
-	const names = new Set<string>(isRecord(raw) ? Object.keys(raw) : []);
-	const views: Record<string, ViewSpec> = {};
-	if (!isRecord(raw)) {
-		errors.push(`${path}.views: must be an object`);
-		return { value: views, names, valid: false };
-	}
-	let valid = true;
-	for (const [name, entryRaw] of Object.entries(raw)) {
-		const spec = validateViewSpec(`${path}.views.${name}`, entryRaw, errors);
-		if (spec === undefined) {
-			valid = false;
-			continue;
-		}
-		views[name] = spec;
-	}
-	return { value: views, names, valid };
-}
-
-function parseProfileAutomations(
-	path: string,
-	raw: unknown,
-	errors: string[],
-): { readonly automations: AutomationSpec[]; readonly valid: boolean } {
-	const automations: AutomationSpec[] = [];
+): { readonly items: T[]; readonly valid: boolean } {
+	const items: T[] = [];
 	if (!Array.isArray(raw)) {
-		errors.push(`${path}.automations: must be an array`);
-		return { automations, valid: false };
+		errors.push(`${path}: must be an array`);
+		return { items, valid: false };
 	}
 	let valid = true;
 	const seenIds = new Set<string>();
 	for (const [index, entryRaw] of raw.entries()) {
-		const spec = validateAutomation(
-			`${path}.automations[${index}]`,
-			entryRaw,
-			errors,
-		);
+		const spec = validator(`${path}[${index}]`, entryRaw, errors);
 		if (spec === undefined) {
 			valid = false;
 			continue;
 		}
 		if (seenIds.has(spec.id)) {
-			errors.push(
-				`${path}.automations[${index}]: duplicate automation id "${spec.id}"`,
-			);
+			errors.push(`${path}[${index}]: duplicate ${itemLabel} id "${spec.id}"`);
 			valid = false;
 			continue;
 		}
 		seenIds.add(spec.id);
-		automations.push(spec);
+		items.push(spec);
 	}
-	return { automations, valid };
+	return { items, valid };
 }
 
-function parseProfileTimers(
-	path: string,
-	raw: unknown,
-	errors: string[],
-): { readonly timers: TimerSpec[]; readonly valid: boolean } {
-	const timers: TimerSpec[] = [];
-	if (!Array.isArray(raw)) {
-		errors.push(`${path}.timers: must be an array`);
-		return { timers, valid: false };
-	}
+interface ProfileSlices {
+	readonly path: string;
+	readonly eventNames: ReadonlySet<string>;
+	readonly events: Readonly<Record<string, EventSpec>>;
+	readonly commandNames: ReadonlySet<string>;
+	readonly commands: Readonly<Record<string, CommandSpec>>;
+	readonly viewNames: ReadonlySet<string>;
+	readonly views: Readonly<Record<string, ViewSpec>>;
+	readonly automations: readonly AutomationSpec[];
+	readonly timers: readonly TimerSpec[];
+}
+
+function validateCommandCrossReferences(slices: ProfileSlices, errors: string[]): boolean {
 	let valid = true;
-	const seenIds = new Set<string>();
-	for (const [index, entryRaw] of raw.entries()) {
-		const spec = validateTimer(`${path}.timers[${index}]`, entryRaw, errors);
-		if (spec === undefined) {
-			valid = false;
-			continue;
+	const { path, commands, events, eventNames } = slices;
+	for (const [commandName, command] of Object.entries(commands)) {
+		for (const eventName of command.expectedEvents) {
+			if (!eventNames.has(eventName)) {
+				errors.push(`${path}.commands.${commandName}: expected event "${eventName}" is not defined`);
+				valid = false;
+				continue;
+			}
+			const eventSpec = events[eventName];
+			if (eventSpec !== undefined && !eventSpec.allowAgentEmit) {
+				errors.push(`${path}.commands.${commandName}: expected event "${eventName}" does not allow agent emission`);
+				valid = false;
+			}
 		}
-		if (seenIds.has(spec.id)) {
-			errors.push(`${path}.timers[${index}]: duplicate timer id "${spec.id}"`);
-			valid = false;
-			continue;
-		}
-		seenIds.add(spec.id);
-		timers.push(spec);
 	}
-	return { timers, valid };
+	return valid;
+}
+
+function validateViewCrossReferences(slices: ProfileSlices, errors: string[]): boolean {
+	let valid = true;
+	const { path, views, eventNames } = slices;
+	for (const [viewName, view] of Object.entries(views)) {
+		const openKeys = new Set<string>();
+		for (const rule of view.openOn) {
+			if (!eventNames.has(rule.event)) {
+				errors.push(`${path}.views.${viewName}: openOn event "${rule.event}" is not defined`);
+				valid = false;
+			}
+			openKeys.add(rule.keyFrom);
+		}
+		for (const rule of view.closeOn) {
+			if (!eventNames.has(rule.event)) {
+				errors.push(`${path}.views.${viewName}: closeOn event "${rule.event}" is not defined`);
+				valid = false;
+			}
+			if (!openKeys.has(rule.keyFrom)) {
+				errors.push(`${path}.views.${viewName}: closeOn keyFrom "${rule.keyFrom}" does not match any openOn key path`);
+				valid = false;
+			}
+		}
+	}
+	return valid;
+}
+
+function validateAutomationCrossReferences(slices: ProfileSlices, errors: string[]): boolean {
+	let valid = true;
+	const { path, automations, views, commands, viewNames, commandNames } = slices;
+	for (const automation of automations) {
+		if (!viewNames.has(automation.view)) {
+			errors.push(`${path}.automations.${automation.id}: view "${automation.view}" is not defined`);
+			valid = false;
+		}
+		if (!commandNames.has(automation.issue)) {
+			errors.push(`${path}.automations.${automation.id}: command "${automation.issue}" is not defined`);
+			valid = false;
+		}
+		const view = views[automation.view];
+		const command = commands[automation.issue];
+		if (view !== undefined && command !== undefined) {
+			const closeEvents = new Set(view.closeOn.map((rule) => rule.event));
+			for (const expectedEvent of command.expectedEvents) {
+				if (!closeEvents.has(expectedEvent)) {
+					errors.push(`${path}.automations.${automation.id}: command "${automation.issue}" expected event "${expectedEvent}" does not close view "${automation.view}"`);
+					valid = false;
+				}
+			}
+		}
+	}
+	return valid;
+}
+
+function validateTimerCrossReferences(slices: ProfileSlices, errors: string[]): boolean {
+	let valid = true;
+	const { path, timers, eventNames } = slices;
+	for (const timer of timers) {
+		if (!eventNames.has(timer.emit)) {
+			errors.push(`${path}.timers.${timer.id}: emit event "${timer.emit}" is not defined`);
+			valid = false;
+		}
+	}
+	return valid;
+}
+
+/** Private cross-slice reference and automation contract validator (SPEC §18). */
+function validateProfileCrossReferences(slices: ProfileSlices, errors: string[]): boolean {
+	const commandsValid = validateCommandCrossReferences(slices, errors);
+	const viewsValid = validateViewCrossReferences(slices, errors);
+	const automationsValid = validateAutomationCrossReferences(slices, errors);
+	const timersValid = validateTimerCrossReferences(slices, errors);
+	return commandsValid && viewsValid && automationsValid && timersValid;
 }
 
 export function validateProfile(
@@ -184,15 +207,11 @@ export function validateProfile(
 		valid = false;
 	}
 
-	const parsedEvents = parseProfileEvents(path, raw["events"], errors);
-	const parsedCommands = parseProfileCommands(path, raw["commands"], errors);
-	const parsedViews = parseProfileViews(path, raw["views"], errors);
-	const parsedAutomations = parseProfileAutomations(
-		path,
-		raw["automations"],
-		errors,
-	);
-	const parsedTimers = parseProfileTimers(path, raw["timers"], errors);
+	const parsedEvents = parseProfileRecord(`${path}.events`, raw["events"], validateEventSpec, errors);
+	const parsedCommands = parseProfileRecord(`${path}.commands`, raw["commands"], validateCommandSpec, errors);
+	const parsedViews = parseProfileRecord(`${path}.views`, raw["views"], validateViewSpec, errors);
+	const parsedAutomations = parseProfileList(`${path}.automations`, raw["automations"], "automation", validateAutomation, errors);
+	const parsedTimers = parseProfileList(`${path}.timers`, raw["timers"], "timer", validateTimer, errors);
 
 	if (
 		!parsedEvents.valid ||
@@ -213,8 +232,8 @@ export function validateProfile(
 			commands: parsedCommands.value,
 			viewNames: parsedViews.names,
 			views: parsedViews.value,
-			automations: parsedAutomations.automations,
-			timers: parsedTimers.timers,
+			automations: parsedAutomations.items,
+			timers: parsedTimers.items,
 		},
 		errors,
 	);
@@ -228,7 +247,7 @@ export function validateProfile(
 		events: parsedEvents.value,
 		commands: parsedCommands.value,
 		views: parsedViews.value,
-		automations: parsedAutomations.automations,
-		timers: parsedTimers.timers,
+		automations: parsedAutomations.items,
+		timers: parsedTimers.items,
 	};
 }
