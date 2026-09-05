@@ -64,5 +64,5 @@ kanban_create → kanban_move to=todo → kanban_claim → kanban_edit note=... 
 - WIP limit is 3 in-progress tasks.
 - Metadata edits are allowed only for backlog/todo tasks; notes can be added to any existing task.
 - `kanban_complete` only works on in-progress tasks.
-- `kanban_delete` cannot delete in-progress or blocked tasks.
+- `kanban_delete` can delete blocked tasks after confirmation; it cannot delete in-progress tasks.
 - Each created task gets `kanban/tasks/T-NNN.md`; notes append there as well as to `board.log`.

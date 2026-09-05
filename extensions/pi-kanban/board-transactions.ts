@@ -84,9 +84,9 @@ export async function deleteTask(
 		if (task.deleted) {
 			throw new Error(`Task ${taskId} has already been deleted`);
 		}
-		if (["in-progress", "blocked"].includes(task.col)) {
+		if (task.col === "in-progress") {
 			throw new Error(
-				`Cannot delete task ${taskId}: it is currently in '${task.col}'. Complete or unblock the task before deleting it.`,
+				`Cannot delete task ${taskId}: it is currently in 'in-progress'. Complete the task before deleting it.`,
 			);
 		}
 		const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";

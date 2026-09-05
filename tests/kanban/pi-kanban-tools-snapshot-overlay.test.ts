@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import type { TUI } from "@earendil-works/pi-tui";
+import { join } from "node:path";
+import { parseBoard } from "../../extensions/pi-kanban/board.js";
+import { KanbanOverlay } from "../../extensions/pi-kanban/overlay.js";
 import { callTool, setupKanbanToolHarness } from "./kanban-test-helpers.js";
 
 const harness = setupKanbanToolHarness();
@@ -228,7 +232,7 @@ describe("kanban_snapshot UX improvements", () => {
 describe("overlay guard logic", () => {
 	// These tests verify the guard behavior indirectly through the overlay controller.
 	// The overlay.ts module uses internal class state; we test snapshot/render functions instead.
-	// Guard logic is: move-picker only for backlog/todo, delete only for backlog/todo/done.
+	// Guard logic is: move-picker only for backlog/todo, delete for every column except in-progress.
 
 	it("delete rejects in-progress task", async () => {
 		await callTool(harness.tools, "kanban_create", {
@@ -252,7 +256,7 @@ describe("overlay guard logic", () => {
 		).rejects.toThrow(/Cannot delete task T-120.*in-progress/);
 	});
 
-	it("delete rejects blocked task", async () => {
+	it("deletes a blocked task and preserves DELETE audit/replay", async () => {
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-121",
 			agent: "lead",
@@ -274,9 +278,61 @@ describe("overlay guard logic", () => {
 			reason: "stuck",
 		});
 
-		await expect(
-			callTool(harness.tools, "kanban_delete", { task_id: "T-121", agent: "lead" }),
-		).rejects.toThrow(/Cannot delete task T-121.*blocked/);
+		const result = await callTool(harness.tools, "kanban_delete", {
+			task_id: "T-121",
+			agent: "lead",
+			reason: "stale blocker",
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.details.previousCol).toBe("blocked");
+		expect(harness.readBoardLog()).toMatch(/DELETE T-121 lead reason="stale blocker"/);
+
+		await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
+		expect(readFileSync(join(harness.tmpDir, "snapshot.md"), "utf8")).not.toContain("T-121");
+	});
+
+	it("confirmed blocked deletion runs through the TUI controller", async () => {
+		await callTool(harness.tools, "kanban_create", {
+			task_id: "T-124",
+			agent: "lead",
+			title: "Controller blocked delete",
+			priority: "high",
+		});
+		await callTool(harness.tools, "kanban_move", {
+			task_id: "T-124",
+			agent: "lead",
+			to: "todo",
+		});
+		await callTool(harness.tools, "kanban_claim", {
+			task_id: "T-124",
+			agent: "worker-1",
+		});
+		await callTool(harness.tools, "kanban_block", {
+			task_id: "T-124",
+			agent: "worker-1",
+			reason: "stuck",
+		});
+
+		const overlay = new KanbanOverlay(
+			{ requestRender: () => undefined } as unknown as TUI,
+			{
+				fg: (_color: string, text: string) => text,
+				bold: (text: string) => text,
+			} as unknown as Theme,
+			await parseBoard(),
+			() => undefined,
+		);
+		overlay.handleInput("\x1b[C");
+		overlay.handleInput("d");
+		expect(overlay.render(80).join("\n")).toContain("Delete Task?");
+		overlay.handleInput("n");
+		expect(harness.readBoardLog()).not.toContain("DELETE T-124");
+		overlay.handleInput("d");
+		overlay.handleInput("y");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		overlay.dispose();
+
+		expect(harness.readBoardLog()).toMatch(/DELETE T-124 lead/);
 	});
 
 	it("delete allows backlog task", async () => {

@@ -48,7 +48,7 @@ const OVERLAY_AGENT = "lead";
 
 type Mode = "board" | "detail" | "confirm-delete" | "move-picker" | "search";
 
-class KanbanOverlay implements Component {
+export class KanbanOverlay implements Component {
 	private board: BoardState;
 	private activeColIdx = 2; // in-progress by default
 	private activeRow = 0;
@@ -286,10 +286,6 @@ class KanbanOverlay implements Component {
 			if (!task) return;
 			if (task.col === "in-progress") {
 				this.statusMessage = "Delete unavailable: complete the task first";
-				return;
-			}
-			if (task.col === "blocked") {
-				this.statusMessage = "Delete unavailable: unblock the task first";
 				return;
 			}
 			this.pendingDeleteTask = task;
