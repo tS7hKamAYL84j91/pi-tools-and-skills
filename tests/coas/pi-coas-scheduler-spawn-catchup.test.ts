@@ -142,6 +142,84 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		await scheduler.stop();
 	});
 
+	it("does not replay a catchup slot after a scheduler restart", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+		vi.setSystemTime("2026-01-06T09:00:00Z");
+		const coasHome = makeCoasHome();
+		writeSchedule(coasHome, "restart-task", "room-a", "0 9 * * 1");
+
+		const firstPi = makePi();
+		const firstScheduler = new CoasInternalScheduler(firstPi as never);
+		await firstScheduler.start({ coasHome });
+		await firstScheduler.flush();
+		await firstScheduler.stop();
+
+		const secondPi = makePi();
+		const secondScheduler = new CoasInternalScheduler(secondPi as never);
+		await secondScheduler.start({ coasHome });
+		await secondScheduler.flush();
+		await secondScheduler.stop();
+
+		expect(firstPi.sent).toHaveLength(1);
+		expect(secondPi.sent).toHaveLength(0);
+	});
+
+	it("deduplicates each task independently during one catchup", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+		vi.setSystemTime("2026-01-06T09:00:00Z");
+		const coasHome = makeCoasHome();
+		writeSchedule(coasHome, "first-task", "room-a", "0 9 * * 1");
+		writeSchedule(coasHome, "second-task", "room-a", "0 9 * * 1");
+
+		const pi = makePi();
+		const scheduler = new CoasInternalScheduler(pi as never);
+		await scheduler.start({ coasHome });
+		await scheduler.flush();
+		await scheduler.tick(new Date("2026-01-06T09:00:00Z"));
+		await scheduler.flush();
+		await scheduler.stop();
+
+		expect(pi.sent).toHaveLength(2);
+		expect(pi.sent.map((sent) => sent.message)).toEqual(expect.arrayContaining([
+			expect.stringContaining("first-task"),
+			expect.stringContaining("second-task"),
+		]));
+	});
+
+	it("does not replace a genuinely missed slot with a clock-edge duplicate", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+		const coasHome = makeCoasHome();
+		const pi = makePi();
+		writeSchedule(coasHome, "edge-task", "room-a", "0 9 * * 1");
+		const scheduler = new CoasInternalScheduler(pi as never);
+		await scheduler.reconcile({ coasHome });
+
+		await scheduler.tick(new Date("2026-01-05T09:00:59.999Z"));
+		await scheduler.flush();
+		await scheduler.tick(new Date("2026-01-05T09:01:00.001Z"));
+		await scheduler.flush();
+		await scheduler.stop();
+
+		expect(pi.sent).toHaveLength(1);
+	});
+
+	it("ignores an out-of-order older tick after a newer slot was delivered", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
+		const coasHome = makeCoasHome();
+		const pi = makePi();
+		writeSchedule(coasHome, "ordered-task", "room-a", "* * * * *");
+		const scheduler = new CoasInternalScheduler(pi as never);
+		await scheduler.reconcile({ coasHome });
+
+		await scheduler.tick(new Date("2026-01-05T09:01:00Z"));
+		await scheduler.flush();
+		await scheduler.tick(new Date("2026-01-05T09:00:00Z"));
+		await scheduler.flush();
+		await scheduler.stop();
+
+		expect(pi.sent).toHaveLength(1);
+	});
+
 	it("catchup prevents duplicate fire on the first tick", async () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = makeCoasHome();

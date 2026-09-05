@@ -4,7 +4,8 @@ import { constants } from "node:fs";
 import type { Dirent, Stats } from "node:fs";
 import { access, chmod, lstat, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { appendLogLine, writeFileAtomic } from "./file-persistence.js";
+import { appendLogLine, writeFileAtomic, writeFileExclusive } from "./file-persistence.js";
+import { withAdvisoryLock as withFileAdvisoryLock, type AdvisoryLockOptions } from "./file-lock.js";
 import { assertInside } from "./path-inside.js";
 import {
 	assertAbsolutePath,
@@ -120,6 +121,20 @@ export class ConfinedStore {
 		await this.guard(path);
 		await writeFileAtomic(path, content, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
 		await chmod(path, PRIVATE_FILE_MODE);
+	}
+
+	async writePrivateFileExclusive(path: string, content: string): Promise<boolean> {
+		await this.guard(path);
+		await this.ensurePrivateDir(dirname(path));
+		await this.guard(path);
+		const created = await writeFileExclusive(path, content, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
+		if (created) { await chmod(path, PRIVATE_FILE_MODE); }
+		return created;
+	}
+
+	async withAdvisoryLock<T>(path: string, fn: () => Promise<T>, options?: AdvisoryLockOptions): Promise<T> {
+		await this.guard(path);
+		return withFileAdvisoryLock(path, fn, options);
 	}
 
 	async appendPrivateLog(path: string, line: string): Promise<void> {

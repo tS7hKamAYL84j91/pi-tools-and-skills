@@ -22,6 +22,10 @@ interface RunOnceContext {
 	readonly canDispatch: () => boolean;
 	readonly currentModel?: () => string | undefined;
 	readonly registerActiveRun: (runId: string, startedAt: string, approvalRequestId?: string) => void;
+	readonly admit: () => Promise<boolean>;
+	readonly markApprovalPending: () => Promise<boolean>;
+	readonly claimToken?: string;
+	readonly slotKey?: string;
 }
 
 export interface RunOnceMetrics {
@@ -37,6 +41,8 @@ export interface RunOnceMetrics {
 
 interface RunOnceResult {
 	queued: boolean;
+	outcome: "sent" | "no-send" | "failed";
+	handoff: "not-started" | "started" | "unknown";
 	runId?: string;
 	approvalRequestId?: string;
 	reason?: string;
@@ -53,7 +59,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		metrics.lastFailedAt = isoUtc();
 		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: "dropped" });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `DROPPED ${identityLog} reason=${reason}`, metrics);
-		return { queued: false, reason };
+		return { queued: false, outcome: "no-send", handoff: "not-started", reason };
 	}
 
 	// Model drift guard (fail closed): a schedule pinned to model A must never
@@ -70,7 +76,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 			// Alert is best-effort: a failed alert must not turn the skip into a failure.
 			metrics.lastError = `drift_alert_failed: ${(error as Error).message}`;
 		}
-		return { queued: false, reason: drift };
+		return { queued: false, outcome: "no-send", handoff: "not-started", reason: drift };
 	}
 
 	const quota = await shouldRunForSchedule({ config, schedule, now });
@@ -79,7 +85,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		metrics.lastTaskId = schedule.taskId;
 		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: quota.reason as ScheduleRunOutcome });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `SKIPPED ${identityLog} reason=${quota.reason}`, metrics);
-		return { queued: false, reason: quota.reason };
+		return { queued: false, outcome: "no-send", handoff: "not-started", reason: quota.reason };
 	}
 
 	const priorSummary = schedule.continuation ? await import("./scheduler-run-state.js").then((m) => m.readPriorSummary(config, schedule, now)) : undefined;
@@ -87,12 +93,13 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	const prompt = renderPromptWithMarker(schedule, runId, priorSummary);
 	let approvalRequestId: string | undefined;
 	if (requiresPrincipalApproval(schedule, prompt)) {
-		const gate = await openApprovalGate({ pi, config, schedule, runId, prompt, now });
+		const gate = await openApprovalGate({ pi, config, schedule, runId, prompt, now, claimToken: ctx.claimToken, slotKey: ctx.slotKey });
 		if (gate.parked) {
 			await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "awaiting-approval" });
-			return { queued: false, runId, approvalRequestId: gate.approvalRequestId, reason: "awaiting_approval" };
+			await ctx.markApprovalPending();
+			return { queued: false, outcome: "no-send", handoff: "not-started", runId, approvalRequestId: gate.approvalRequestId, reason: "awaiting_approval" };
 		}
-		if (!gate.approved) return { queued: false, reason: "approval_denied" };
+		if (!gate.approved) return { queued: false, outcome: "no-send", handoff: "not-started", reason: "approval_denied" };
 		approvalRequestId = gate.approvalRequestId;
 	}
 
@@ -110,30 +117,20 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	}
 
 	if (!ctx.canDispatch()) {
-		return { queued: false, runId, approvalRequestId, reason: "dispatch_paused" };
+		return { queued: false, outcome: "no-send", handoff: "not-started", runId, approvalRequestId, reason: "dispatch_paused" };
 	}
 
 	try {
+		if (!await ctx.admit()) return { queued: false, outcome: "no-send", handoff: "not-started", runId, approvalRequestId, reason: "admission_conflict" };
 		pi.sendUserMessage(prompt, { deliverAs: "followUp" });
 	} catch (error) {
 		metrics.failedCount++;
 		metrics.lastFailedAt = isoUtc();
 		metrics.lastTaskId = schedule.taskId;
 		metrics.lastError = (error as Error).message;
-		if (schedule.continuation || approvalRequestId) {
-			await saveRunState(config, schedule.taskId, {
-				taskId: schedule.taskId,
-				runId,
-				...(approvalRequestId ? { requestId: approvalRequestId } : {}),
-				status: "interrupted",
-				startedAt: isoUtc(now),
-				reason: `send_failed: ${(error as Error).message}`,
-				lastUpdatedAt: isoUtc(),
-			});
-		}
-		await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "interrupted", summary: `send_failed: ${(error as Error).message}` });
+		await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "interrupted", summary: `ambiguous_send: ${(error as Error).message}` });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `FAILED internal ${(error as Error).message}`, metrics);
-		return { queued: false, runId, approvalRequestId, reason: "send_failed" };
+		return { queued: false, outcome: "failed", handoff: "unknown", runId, approvalRequestId, reason: "send_failed" };
 	}
 
 	metrics.queuedCount++;
@@ -145,7 +142,7 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 	// run-queue dedupe (taskId + minuteKey) already holds the claim.
 	await recordRunOutcome({ config, taskId: schedule.taskId, runId, outcome: "queued" });
 	await appendScheduleLogBestEffort(config, schedule.taskId, `QUEUED ${identityLog} host=${hostname()}`, metrics);
-	return { queued: true, runId, approvalRequestId };
+	return { queued: true, outcome: "sent", handoff: "started", runId, approvalRequestId };
 }
 
 async function appendScheduleLogBestEffort(config: CoasConfig, taskId: string, message: string, metrics: RunOnceMetrics): Promise<void> {

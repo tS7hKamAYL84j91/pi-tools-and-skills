@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { join } from "node:path";
+import { minuteKey } from "../../extensions/pi-coas/scheduler-util.js";
 import { tmpdir } from "node:os";
 import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
 import { approveApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-coas/approval-inbox.js";
@@ -94,9 +95,45 @@ describe("CoAS approval inbox", () => {
 		expect((await approveApproval({ coasHome: home }, requestId)).status).toBe("approved");
 		expect(await scheduler.resumeApprovedRun({ coasHome: home }, requestId)).toBe(true);
 		expect(calls).toHaveLength(1);
+		const slotPath = join(home, "schedule-runs", `gated.slot-${Buffer.from(minuteKey(new Date("2026-01-05T09:00:00Z"))).toString("base64url")}.json`);
+		expect(JSON.parse(await readFile(slotPath, "utf8")).status).toBe("host_call_returned");
 		await scheduler.handleAgentEnd([{ role: "user", content: calls[0] }, { role: "assistant", content: "DONE: gated work." }]);
 		expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("completed");
 		expect(scheduler.snapshot().awaitingApprovalCount).toBe(0);
+		await scheduler.stop();
+	});
+
+	it("marks an ambiguous approval-resumed send uncertain without replay", async () => {
+		const home = join(tmpdir(), `pi-coas-approval-uncertain-${process.pid}-${Date.now()}`);
+		homes.push(home);
+		const schedules = join(home, "schedules");
+		await mkdir(schedules, { recursive: true });
+		const promptPath = join(schedules, "gated.prompt");
+		await writeFile(promptPath, "Run gated work.\n", "utf8");
+		await writeFile(join(schedules, "gated.env"), [
+			"TASK_ID=gated",
+			"TASK_NAME=Gated",
+			"ROOM_ID=general",
+			"WORKSPACE_ID=room-a",
+			"CRON_EXPR=0 9 * * 1",
+			`PROMPT_FILE=${promptPath}`,
+			"APPROVAL_REQUIRED=1",
+			"ENABLED=1",
+			"",
+		].join("\n"));
+		process.env.COAS_WORKSPACE_ID = "room-a";
+		const scheduler = new CoasInternalScheduler({ sendUserMessage() { throw new Error("ambiguous host failure"); }, getSessionName() { return undefined; } } as never);
+		await scheduler.reconcile({ coasHome: home });
+		await scheduler.tick(new Date("2026-01-05T09:00:00Z"));
+		await scheduler.flush();
+		const requestId = (await listApprovalArtifacts({ coasHome: home }))[0]?.requestId;
+		if (!requestId) throw new Error("approval artifact was not created");
+		process.env.PI_PRINCIPAL = "1";
+		await approveApproval({ coasHome: home }, requestId);
+		expect(await scheduler.resumeApprovedRun({ coasHome: home }, requestId)).toBe(false);
+		const slotPath = join(home, "schedule-runs", `gated.slot-${Buffer.from(minuteKey(new Date("2026-01-05T09:00:00Z"))).toString("base64url")}.json`);
+		expect(JSON.parse(await readFile(slotPath, "utf8")).status).toBe("uncertain");
+		expect(await scheduler.resumeApprovedRun({ coasHome: home }, requestId)).toBe(false);
 		await scheduler.stop();
 	});
 

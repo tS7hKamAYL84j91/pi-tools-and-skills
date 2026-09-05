@@ -914,6 +914,32 @@ C4Component
     Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
 ```
 
+### ADR-060 bounded scheduler-slot admission
+
+```mermaid
+flowchart LR
+  Scheduler[Scheduler tick / startup catch-up] --> Reserve[Exclusive slot token reservation]
+  Reserve --> Tx[Per-slot lock-held CAS
+  reread + validate token/status + atomic replace]
+  Tx --> Approval{Approval required?}
+  Approval -->|yes| Pending[approval_pending
+  same slot token artifact]
+  Pending --> Resume[Authorized same-token resume]
+  Approval -->|no| Admit[admitted]
+  Resume --> Admit
+  Admit --> Host[Host sendUserMessage boundary]
+  Host --> Returned[host_call_returned
+  not provider acknowledgement]
+  Host --> Uncertain[uncertain
+  blocked, no automatic retry]
+  Tx --> NoSend[rejected / deferred / dispatch pause
+  explicit no-send outcome]
+  Tx --> PreFail[failed_pre_handoff
+  only retryable outcome]
+```
+
+The slot transaction uses the shared `ConfinedStore`; it does not claim TOCTOU elimination. Reserved, approval-pending, admitted, host-called, returned, and uncertain records block automatic duplicate admission.
+
 ### Acceptance criteria
 
 - `pi-coas` starts/stops an internal scheduler on session lifecycle.

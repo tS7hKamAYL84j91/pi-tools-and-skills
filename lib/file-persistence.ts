@@ -51,6 +51,23 @@ export async function writeFileAtomic(
 	}
 }
 
+/** Create a private file only when it does not already exist. */
+export async function writeFileExclusive(path: string, data: FileData, options: WriteFileAtomicOptions = {}): Promise<boolean> {
+	await mkdir(dirname(path), { recursive: true });
+	try {
+		const file = await open(path, "wx", options.mode ?? 0o600);
+		try {
+			await file.writeFile(data, typeof data === "string" ? (options.encoding ?? "utf8") : undefined);
+		} finally {
+			await file.close();
+		}
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+		throw error;
+	}
+}
+
 /** Append one complete log line, adding a trailing newline if needed. */
 export async function appendLogLine(
 	path: string,

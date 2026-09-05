@@ -1,5 +1,6 @@
 /** Durable approval-inbox claim-check artifacts for gated CoAS runs. */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { ConfinedStore } from "./store.js";
@@ -18,6 +19,8 @@ interface ApprovalArtifact {
 	readonly requestId: string;
 	readonly taskId: string;
 	readonly runId: string;
+	readonly claimToken: string;
+	readonly slotKey?: string;
 	readonly status: ApprovalStatus;
 	readonly prompt: string;
 	readonly createdAt: string;
@@ -51,7 +54,7 @@ function sanitizeText(value: string, maxChars: number): string {
 function parseArtifact(value: unknown, requestId: string): ApprovalArtifact | undefined {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
 	const item = value as Record<string, unknown>;
-	if (item.version !== VERSION || item.requestId !== requestId || typeof item.taskId !== "string" || typeof item.runId !== "string" || !isStatus(item.status) || typeof item.prompt !== "string" || typeof item.createdAt !== "string" || typeof item.updatedAt !== "string") return undefined;
+	if (item.version !== VERSION || item.requestId !== requestId || typeof item.taskId !== "string" || typeof item.runId !== "string" || typeof item.claimToken !== "string" || item.claimToken.length < 16 || (item.slotKey !== undefined && typeof item.slotKey !== "string") || !isStatus(item.status) || typeof item.prompt !== "string" || typeof item.createdAt !== "string" || typeof item.updatedAt !== "string") return undefined;
 	try {
 		assertSafeId("task id", item.taskId);
 		if (!isSafeRunId(item.runId)) throw new Error("unsafe run id");
@@ -63,6 +66,8 @@ function parseArtifact(value: unknown, requestId: string): ApprovalArtifact | un
 		requestId,
 		taskId: item.taskId,
 		runId: item.runId,
+		claimToken: item.claimToken,
+		slotKey: typeof item.slotKey === "string" ? item.slotKey : undefined,
 		status: item.status,
 		prompt: sanitizeText(item.prompt, 4_000),
 		createdAt: item.createdAt,
@@ -96,6 +101,8 @@ interface ApprovalRequest {
 	readonly taskId: string;
 	readonly runId: string;
 	readonly prompt: string;
+	readonly claimToken?: string;
+	readonly slotKey?: string;
 	readonly requestId?: string;
 }
 
@@ -106,6 +113,8 @@ interface ApprovalGateRequest {
 	readonly taskId: string;
 	readonly runId: string;
 	readonly prompt: string;
+	readonly claimToken?: string;
+	readonly slotKey?: string;
 }
 
 interface ApprovalGateResult {
@@ -122,6 +131,9 @@ export async function claimApproval(request: ApprovalGateRequest): Promise<Appro
 		await parkApproval({ ...request, requestId });
 		return { requestId, parked: true, approved: false };
 	}
+	if (request.claimToken !== undefined && approval.claimToken !== request.claimToken) {
+		return { requestId, parked: false, approved: false };
+	}
 	return { requestId, parked: false, approved: approval.status === "approved" };
 }
 
@@ -132,7 +144,7 @@ export async function parkApproval(request: ApprovalRequest): Promise<ApprovalAr
 	const now = isoUtc();
 	assertSafeId("task id", request.taskId);
 	if (!isSafeRunId(request.runId)) throw new Error(`Invalid run id: ${request.runId}`);
-	const artifact: ApprovalArtifact = { version: VERSION, requestId, taskId: request.taskId, runId: request.runId, status: "awaiting-approval", prompt: sanitizeText(request.prompt, 4_000), createdAt: now, updatedAt: now };
+	const artifact: ApprovalArtifact = { version: VERSION, requestId, taskId: request.taskId, runId: request.runId, claimToken: request.claimToken ?? randomUUID(), ...(request.slotKey ? { slotKey: request.slotKey } : {}), status: "awaiting-approval", prompt: sanitizeText(request.prompt, 4_000), createdAt: now, updatedAt: now };
 	await writeApprovalArtifact(request.config, artifact);
 	return artifact;
 }

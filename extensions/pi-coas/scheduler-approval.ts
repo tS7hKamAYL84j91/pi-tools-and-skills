@@ -29,6 +29,8 @@ export async function openApprovalGate(
 		runId: string;
 		prompt: string;
 		now: Date;
+		claimToken?: string;
+		slotKey?: string;
 	},
 ): Promise<ApprovalGateResult> {
 	const approvalRequestId = `${args.schedule.taskId}-${args.runId}`;
@@ -39,6 +41,8 @@ export async function openApprovalGate(
 		taskId: args.schedule.taskId,
 		runId: args.runId,
 		prompt: args.prompt,
+		claimToken: args.claimToken,
+		slotKey: args.slotKey,
 	});
 	if (gate.parked) {
 		const startedAt = isoUtc(args.now);

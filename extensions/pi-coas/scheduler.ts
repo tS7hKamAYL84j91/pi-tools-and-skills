@@ -20,6 +20,7 @@ import { listSchedules } from "./schedules.js";
 import { subscribeModelSelect } from "./scheduler-model-tracking.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
 import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
+import { createScheduleSlotState } from "./scheduler-slot-state.js";
 import { SchedulerWorkTracker } from "./scheduler-work-tracker.js";
 import type { CoasConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
 
@@ -38,7 +39,7 @@ export class CoasInternalScheduler {
 	private config: CoasConfig | undefined;
 	private interval: NodeJS.Timeout | undefined;
 	private readonly activeScheduledRuns = new Map<string, ActiveScheduledRun>();
-	private readonly runQueue = new SchedulerRunQueue();
+	private readonly runQueue: SchedulerRunQueue;
 	private metrics: RunOnceMetrics = {
 		droppedScheduleRuns: 0,
 		failedCount: 0,
@@ -63,13 +64,14 @@ export class CoasInternalScheduler {
 		subscribeModelSelect(pi, (model) => {
 			this.currentModel = model;
 		});
+		this.runQueue = new SchedulerRunQueue(createScheduleSlotState(() => this.config));
 	}
 
 	async start(config: CoasConfig): Promise<void> {
 		if (!this.work.start()) return;
 		this.config = config;
 		this.startedAt = this.startedAt ?? isoUtc();
-		this.work.track(this.recoverInterruptedRuns(config)).catch((error: unknown) => {
+		this.work.track(recoverInterruptedRuns(config)).catch((error: unknown) => {
 			this.metrics.lastError = (error as Error).message;
 		});
 		try {
@@ -146,6 +148,7 @@ export class CoasInternalScheduler {
 			decrementAwaitingApproval: () => {
 				this.awaitingApprovalCount = Math.max(0, this.awaitingApprovalCount - 1);
 			},
+			slotState: createScheduleSlotState(() => this.config),
 		};
 	}
 
@@ -236,10 +239,6 @@ export class CoasInternalScheduler {
 		this.continuationCount = 0;
 		this.continuationReady = 0;
 		this.awaitingApprovalCount = 0;
-	}
-
-	private async recoverInterruptedRuns(config: CoasConfig): Promise<void> {
-		await recoverInterruptedRuns(config);
 	}
 
 	private async markActiveRunsInterrupted(reason: string): Promise<void> {
