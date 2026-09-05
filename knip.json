@@ -6,13 +6,15 @@
     "lib/*.ts",
     "lib/**/*.ts",
     "scripts/session-*-cli.ts",
-    "scripts/*.mjs"
+    "scripts/*.mjs",
+    "fleet-mcp/index.ts"
   ],
   "project": [
     "extensions/**/*.ts",
     "daemon/src/**/*.ts",
     "lib/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "fleet-mcp/**/*.ts"
   ],
   "tags": [
     "-lintignore"
