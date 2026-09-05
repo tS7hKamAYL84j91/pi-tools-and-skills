@@ -1,6 +1,10 @@
 /** Pure data preparation for the Kanban overlay view. */
 
-import type { BoardState, TaskState } from "./board.js";
+import {
+	sortTasksByPriority,
+	type BoardState,
+	type TaskState,
+} from "./board.js";
 
 export const COLUMNS = [
 	"backlog",
@@ -43,8 +47,11 @@ export function tasksInColumn(
 		if (query && !taskMatchesFilter(task, query)) continue;
 		tasks.push(task);
 	}
-	if (column !== "done" || !limitDone) return tasks;
-	return tasks.slice(-DONE_LIMIT).reverse();
+	if (column === "done") {
+		if (!limitDone) return tasks;
+		return tasks.slice(-DONE_LIMIT).reverse();
+	}
+	return sortTasksByPriority(tasks);
 }
 
 interface OverlayViewModelInput {

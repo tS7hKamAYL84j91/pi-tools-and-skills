@@ -23,6 +23,22 @@ export const PRIORITY_ORDER: Record<string, number> = {
 	low: 4,
 };
 
+/** Returns the display/claim rank, with legacy and unknown values last. */
+function priorityRank(priority: string): number {
+	return PRIORITY_ORDER[priority.trim().toLowerCase()] ?? (PRIORITY_ORDER.low ?? 4) + 1;
+}
+
+/** Sorts active-column tasks by priority while retaining canonical board order on ties. */
+export function sortTasksByPriority(tasks: TaskState[]): TaskState[] {
+	return tasks
+		.map((task, index) => ({ task, index }))
+		.sort((left, right) =>
+			priorityRank(left.task.priority) - priorityRank(right.task.priority) ||
+			left.index - right.index,
+		)
+		.map(({ task }) => task);
+}
+
 // ── Path helpers ────────────────────────────────────────────────
 
 function findKanbanDir(): string | null {

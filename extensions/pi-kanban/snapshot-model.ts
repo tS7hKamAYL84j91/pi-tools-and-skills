@@ -1,6 +1,10 @@
 /** Pure board folding and visibility rules used by snapshot serialization. */
 
-import type { BoardState, TaskState } from "./board.js";
+import {
+	sortTasksByPriority,
+	type BoardState,
+	type TaskState,
+} from "./board.js";
 
 export const DEFAULT_DONE_MAX_AGE_DAYS = 30;
 
@@ -38,6 +42,10 @@ export function bucketSnapshotTasks(board: BoardState): SnapshotBuckets {
 				break;
 		}
 	}
+	buckets.backlog = sortTasksByPriority(buckets.backlog);
+	buckets.todo = sortTasksByPriority(buckets.todo);
+	buckets["in-progress"] = sortTasksByPriority(buckets["in-progress"]);
+	buckets.blocked = sortTasksByPriority(buckets.blocked);
 	return buckets;
 }
 

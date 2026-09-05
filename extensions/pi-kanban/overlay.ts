@@ -35,6 +35,11 @@ import {
 	renderMovePicker,
 } from "./overlay-render.js";
 import { applyKanbanTheme, kanbanThemeHelp, kanbanThemeName } from "./theme.js";
+import {
+	clampScrollOffset,
+	restoreSelectedRow,
+	selectedTaskId,
+} from "./overlay-selection.js";
 
 const DEBOUNCE_MS = 150;
 
@@ -57,6 +62,7 @@ class KanbanOverlay implements Component {
 	private mode: Mode = "board";
 	private statusMessage = "";
 	private filterQuery = "";
+	private filterSelectionId: string | undefined;
 	private pendingDeleteTask: TaskState | null = null;
 	private pendingMoveTask: TaskState | null = null;
 	private watcher: FSWatcher | null = null;
@@ -78,12 +84,21 @@ class KanbanOverlay implements Component {
 	private startWatcher(): void {
 		try {
 			this.watcher = watch(boardLogPath(), () => {
+				// Capture identity at event time, before debounce or another input can move the row.
+				const selectedId =
+					this.mode === "search"
+						? (this.filterSelectionId ?? this.selectedTask()?.id)
+						: this.selectedTask()?.id;
 				if (this.debounceTimer) clearTimeout(this.debounceTimer);
 				this.debounceTimer = setTimeout(() => {
 					parseBoard()
 						.then((b) => {
+							// A direct rewrite can briefly expose an empty log between truncate and write.
+							// Keep the last complete board until a populated parse arrives.
+							if (b.tasks.size === 0 && this.board.tasks.size > 0) return;
 							this.board = b;
-							this.clampSelection();
+							if (this.mode === "search") this.restoreFilterSelection();
+							else this.restoreSelection(selectedId);
 							this.tui.requestRender();
 						})
 						.catch(() => {
@@ -127,44 +142,28 @@ class KanbanOverlay implements Component {
 		return this.tasksIn(this.activeColumn())[this.activeRow];
 	}
 
-	private clampSelection(): void {
+	private restoreSelection(selectedId: string | undefined): void {
 		const tasks = this.tasksIn(this.activeColumn());
 		if (tasks.length === 0) {
+			const nextColumnIndex = COLUMNS.findIndex(
+				(column) => this.tasksIn(column).length > 0,
+			);
+			if (nextColumnIndex >= 0) this.activeColIdx = nextColumnIndex;
 			this.activeRow = 0;
 			return;
 		}
-		if (this.activeRow >= tasks.length) {
-			this.activeRow = Math.max(0, tasks.length - 1);
-		}
-	}
-
-	private clampFilteredSelection(): void {
-		if (this.tasksIn(this.activeColumn()).length > 0) {
-			this.clampSelection();
-			return;
-		}
-		const nextColumnIndex = COLUMNS.findIndex(
-			(col) => this.tasksIn(col).length > 0,
-		);
-		if (nextColumnIndex >= 0) {
-			this.activeColIdx = nextColumnIndex;
-		}
-		this.activeRow = 0;
+		this.activeRow = restoreSelectedRow(tasks, selectedId, this.activeRow);
 	}
 
 	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
 		const col = this.activeColumn();
 		const tasks = colTasks[this.activeColIdx] ?? [];
-		if (tasks.length === 0) {
-			this.scroll[col] = 0;
-			return;
-		}
-		const offset = this.scroll[col];
-		if (this.activeRow < offset) {
-			this.scroll[col] = this.activeRow;
-		} else if (this.activeRow >= offset + visibleRows) {
-			this.scroll[col] = this.activeRow - visibleRows + 1;
-		}
+		this.scroll[col] = clampScrollOffset(
+			tasks.length,
+			this.activeRow,
+			visibleRows,
+			this.scroll[col],
+		);
 	}
 
 	// ── Input handling ──────────────────────────────────────────
@@ -236,24 +235,34 @@ class KanbanOverlay implements Component {
 			this.filterQuery = "";
 			this.mode = "board";
 			this.statusMessage = "";
-			this.clampFilteredSelection();
+			this.restoreFilterSelection();
+			this.filterSelectionId = undefined;
 			return;
 		}
 		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
 			this.mode = "board";
 			this.statusMessage = "";
-			this.clampFilteredSelection();
+			this.restoreFilterSelection();
+			this.filterSelectionId = undefined;
 			return;
 		}
 		if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
 			this.filterQuery = this.filterQuery.slice(0, -1);
-			this.clampFilteredSelection();
+			this.restoreFilterSelection();
 			return;
 		}
 		if (data.length === 1 && data >= " ") {
 			this.filterQuery += data;
-			this.clampFilteredSelection();
+			this.restoreFilterSelection();
 		}
+	}
+
+	private restoreFilterSelection(): void {
+		this.activeRow = restoreSelectedRow(
+			this.tasksIn(this.activeColumn()),
+			this.filterSelectionId,
+			this.activeRow,
+		);
 	}
 
 	private handleBoardInput(data: string): void {
@@ -263,6 +272,10 @@ class KanbanOverlay implements Component {
 		}
 
 		if (matchesKey(data, "/")) {
+			this.filterSelectionId = selectedTaskId(
+				this.tasksIn(this.activeColumn()),
+				this.activeRow,
+			);
 			this.mode = "search";
 			this.statusMessage = "";
 			return;

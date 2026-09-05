@@ -479,6 +479,7 @@ flowchart TD
   Pi --> Tools[Kanban tool adapters\n11 model-visible tools]
   Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
+  Overlay --> Selection[Shared selection/scroll helper\ntask-ID anchor and bounded offsets]
   Overlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
   Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
@@ -489,6 +490,9 @@ flowchart TD
   Lock --> Log[(pi-kanban/board.log\nauthority)]
   Compaction[compaction.ts\nbackup + atomic replacement] --> Lock
   Watcher --> Board
+  Board --> Priority[Deterministic display priority ordering\nactive columns only; stable board-order ties]
+  Priority --> Overlay
+  Priority --> Snapshot
   Board --> Tasks[(pi-kanban/tasks/T-NNN.md\nderived)]
 
   Tools --> Snapshot[snapshot.ts renderers]
