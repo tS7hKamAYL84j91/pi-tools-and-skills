@@ -490,6 +490,7 @@ flowchart TD
 ```
 
 ### Context policy
+
 - **Status ownership:** `pi-event-loop` manages a compact persistent status indicator via `ctx.ui.setStatus("pi-event-loop", ...)`. It reflects paused reason, active command, and pending count using callback theme colors without raw ANSI escape sequences. Status is refreshed on runtime state transitions and cleared on shutdown or when inert.
 - **Overlay flow and bounds:** On-demand inspection opens via `ctx.ui.custom()` with `{ overlay: true, overlayOptions: { width: "80%", minWidth: 40, maxHeight: "80%", anchor: "center", margin: 1 } }`. It presents 3 navigable tabs (Status, Views, History) with keyboard controls (`1/2/3`, `Tab`, `↑/↓`, `Enter` gradual disclosure, `Esc/q` close).
 - **Non-TUI fallback:** When `ctx.hasUI === false` or `ctx.mode !== "tui"`, inspection falls back to `formatEventLoopFallback(status, history)` delivered as plain text through `ctx.ui.notify()`.
@@ -505,6 +506,7 @@ flowchart TD
   Pi --> Tools[Kanban tool adapters\n11 model-visible tools]
   Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
+  Overlay --> Selection[Shared selection/scroll helper\ntask-ID anchor and bounded offsets]
   Overlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
   Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
 
@@ -515,6 +517,9 @@ flowchart TD
   Lock --> Log[(pi-kanban/board.log\nauthority)]
   Compaction[compaction.ts\nbackup + atomic replacement] --> Lock
   Watcher --> Board
+  Board --> Priority[Deterministic display priority ordering\nactive columns only; stable board-order ties]
+  Priority --> Overlay
+  Priority --> Snapshot
   Board --> Tasks[(pi-kanban/tasks/T-NNN.md\nderived)]
 
   Tools --> Snapshot[snapshot.ts renderers]
@@ -528,6 +533,18 @@ flowchart TD
   Pi -->|default kanban_snapshot| Compact
   Pi -->|explicit task_id| TaskDetail
   Pi -->|explicit detail=full or /kanban| Full
+```
+
+```mermaid
+C4Component
+    title Confirmed Kanban deletion transaction
+    Component(overlay, "Kanban TUI overlay", "Controller", "Requires explicit y/Enter confirmation")
+    Component(tx, "Shared deleteTask transaction", "board-transactions.ts", "Rejects only in-progress tasks; validates and appends atomically")
+    Component(log, "Authoritative board.log", "Event log", "Retains DELETE audit event")
+    Component(replay, "Board replay", "board.ts", "Reconstructs deleted state and excludes deleted tasks")
+    Rel(overlay, tx, "confirms blocked deletion")
+    Rel(tx, log, "appends DELETE under board.log.lock")
+    Rel(log, replay, "replays DELETE")
 ```
 
 ### Context policy

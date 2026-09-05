@@ -214,12 +214,13 @@ export function renderBoard(
 
 	// Top border + header
 	const title = theme.bold(theme.fg("accent", " Kanban Board"));
+	const sortIndicator = theme.fg("dim", " [priority ↓]");
 	const hints = theme.fg(
 		"dim",
 		"← → column   ↑ ↓ row   / filter   enter detail   d delete   m move   esc/q close",
 	);
 	lines.push(frameTop(totalInner, theme));
-	const headerRow = padVisible(`${title}   ${hints}`, totalInner);
+	const headerRow = padVisible(`${title}${sortIndicator}   ${hints}`, totalInner);
 	lines.push(modalTruncatedLine(headerRow, totalInner, theme));
 	if (view.filterQuery || view.isFiltering) {
 		const marker = view.isFiltering ? "Filter:" : "Filtered:";

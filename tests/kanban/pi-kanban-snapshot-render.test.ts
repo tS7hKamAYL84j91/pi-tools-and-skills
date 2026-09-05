@@ -1,7 +1,10 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { parseBoard } from "../../extensions/pi-kanban/board.js";
-import { buildOverlayViewModel } from "../../extensions/pi-kanban/overlay-model.js";
+import {
+	buildOverlayViewModel,
+	tasksInColumn,
+} from "../../extensions/pi-kanban/overlay-model.js";
 import {
 	COLUMNS,
 	renderBoard,
@@ -115,6 +118,56 @@ describe("kanban snapshot/overlay rendering", () => {
 			statusMessage: "",
 		};
 	}
+
+	it("maps omitted parser priority to the legacy medium default", async () => {
+		harness.writeBoardLog(
+			'2026-01-01T00:00:00Z CREATE T-009 lead title="Legacy" tags=""\n2026-01-01T00:00:01Z MOVE T-009 lead from=backlog to=todo',
+		);
+		const board = await parseBoard();
+		expect(board.tasks.get("T-009")?.priority).toBe("medium");
+		expect(tasksInColumn(board, "todo").map((task) => task.id)).toEqual([
+			"T-009",
+		]);
+	});
+
+	it("orders active columns by priority with canonical-order ties and fallback", () => {
+		const low = makeTask("T-001", "todo", "Low", "low");
+		const unknown = makeTask("T-002", "todo", "Unknown", "legacy");
+		const high = makeTask("T-003", "todo", "High", "high");
+		const highTie = makeTask("T-004", "todo", "High tie", "HIGH");
+		const board = {
+			tasks: new Map([low, unknown, high, highTie].map((task) => [task.id, task])),
+			order: [low.id, unknown.id, high.id, highTie.id],
+			totalEvents: 4,
+		};
+
+		expect(tasksInColumn(board, "todo").map((task) => task.id)).toEqual([
+			"T-003",
+			"T-004",
+			"T-001",
+			"T-002",
+		]);
+		expect(bucketSnapshotTasks(board).todo.map((task) => task.id)).toEqual([
+			"T-003",
+			"T-004",
+			"T-001",
+			"T-002",
+		]);
+	});
+
+	it("keeps Done recency order independent of priority", () => {
+		const old = makeTask("T-001", "done", "Old", "low");
+		const recent = makeTask("T-002", "done", "Recent", "critical");
+		const board = {
+			tasks: new Map([old, recent].map((task) => [task.id, task])),
+			order: [old.id, recent.id],
+			totalEvents: 2,
+		};
+		expect(tasksInColumn(board, "done").map((task) => task.id)).toEqual([
+			"T-002",
+			"T-001",
+		]);
+	});
 
 	it("folds ordered active tasks into snapshot columns", () => {
 		const first = makeTask("T-001", "todo");

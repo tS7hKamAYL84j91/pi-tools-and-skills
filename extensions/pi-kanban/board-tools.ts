@@ -240,8 +240,8 @@ function registerKanbanDelete(pi: ExtensionAPI): void {
 		name: "kanban_delete",
 		label: "Kanban Delete",
 		description:
-			"Permanently remove a kanban task from the board by appending a DELETE event. " +
-			"Tasks that are in-progress or blocked cannot be deleted — complete or unblock them first. " +
+			"Soft-delete a kanban task from the board by appending a DELETE event. " +
+			"Blocked tasks may be deleted after confirmation; in-progress tasks cannot be deleted. " +
 			"The deletion is recorded in board.log for audit purposes and the task will no longer " +
 			"appear in kanban_snapshot output.",
 		promptSnippet: "Delete a kanban task from the board",

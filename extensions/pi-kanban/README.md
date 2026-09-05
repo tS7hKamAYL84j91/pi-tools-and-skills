@@ -108,7 +108,7 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 | `kanban_unblock`  | `task_id`, `agent`, `reason?`                   | Moves blocked task back to todo                |
 | `kanban_move`     | `task_id`, `agent`, `to`                        | Moves between backlog and todo only            |
 | `kanban_edit`     | `task_id`, `agent`, `title?`, `priority?`, `tags?`, `description?`, `note?` | Edits backlog/todo task metadata, or appends a progress note to any task |
-| `kanban_delete`   | `task_id`, `agent`, `reason?`                   | Soft-deletes backlog/todo/done tasks           |
+| `kanban_delete`   | `task_id`, `agent`, `reason?`                   | Soft-deletes blocked/backlog/todo/done tasks; rejects in-progress |
 | `kanban_export_json` | none                                         | Read-only JSON export of active tasks/counts   |
 
 ### Board Operations
@@ -121,6 +121,8 @@ Schedulers should treat `details.result` from `kanban_claim` as the idempotency/
 ### Priority Order
 
 `kanban_claim` without `task_id` selects by: `critical → high → medium → low`, then by lowest T-NNN number within the same priority.
+
+Display views use the same priority direction for active columns (`backlog`, `todo`, `in-progress`, and `blocked`). The `/kanban` header shows a fixed `priority ↓` indicator; it is informational, not a manual sort control. Equal priorities retain canonical board order, so filtering and live refreshes remain deterministic. Priority matching is case-insensitive for legacy values; missing, empty, and unknown values sort after `low` and retain canonical order among themselves. Done is excluded from this sort: its existing recent-first bounded view and age/window behavior are unchanged. Display ordering does not add a rank field or change claim, WIP, or board events.
 
 ### Feature/epic tag convention
 

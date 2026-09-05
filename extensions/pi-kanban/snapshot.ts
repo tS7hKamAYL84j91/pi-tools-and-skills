@@ -201,6 +201,7 @@ export function generateSnapshotSummary(
 		"# Kanban — Compact Summary",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
 		`_Done shows tasks completed in the last ${DEFAULT_DONE_MAX_AGE_DAYS} days by default; pass show_all_done=true to include older completed tasks._`,
+		"_Active columns are sorted by priority ↓; ties retain canonical board order. Missing/unknown priorities sort last. Done keeps recency order._",
 		'_Gradual disclosure: task descriptions/notes are not included here. Use kanban_snapshot with task_id="T-NNN" for one card or detail="full" for the whole board._',
 		"",
 		...renderSummaryColumn(buckets.backlog ?? [], "backlog"),
@@ -234,6 +235,7 @@ export function generateSnapshot(
 		"# Kanban — Snapshot",
 		`_Generated: ${now} | Log events: ${totalEvents} | WIP: ${wip}/${WIP_LIMIT}_`,
 		`_Done shows tasks completed in the last ${DEFAULT_DONE_MAX_AGE_DAYS} days by default; pass show_all_done=true to include older completed tasks._`,
+		"_Active columns are sorted by priority ↓; ties retain canonical board order. Missing/unknown priorities sort last. Done keeps recency order._",
 		"",
 		...renderColumn(
 			buckets.backlog ?? [],
