@@ -115,8 +115,6 @@ flowchart TD
   TeamProfiles --> Navigator[Navigator bounded consult]
   ProfileFixtures[Deterministic profile fixtures and rubric] -. validates contracts .-> TeamProfiles
   LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
-  Pi --> Bionic
-  Pi --> Doctor
   Pi --> Kanban
   Pi --> FileWatch
   Pi --> COAS
@@ -130,8 +128,6 @@ flowchart TD
   OllamaModels --> SharedLib
   Panopticon --> SharedLib
   Teams --> SharedLib
-  Bionic --> SharedLib
-  Doctor --> SharedLib
   Kanban --> SharedLib
   FileWatch --> SharedLib
   COAS --> SharedLib
@@ -308,7 +304,6 @@ flowchart LR
 flowchart LR
   Model[Model / tool caller] --> GoalTool[goal_complete\nevidence only]
   Model --> KanbanTool[kanban_complete\ntask data + check evidence]
-  Model --> Doctor[pi_doctor\nread-only diagnostics]
   Operator[Trusted operator environment] --> GoalConfig[PI_GOAL_GATE_COMMAND]
   Operator --> KanbanConfig[KANBAN_GATE_COMMAND]
   GoalConfig --> GoalTool

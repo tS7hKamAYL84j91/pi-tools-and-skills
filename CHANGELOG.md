@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Retired `pi-bionic`, `pi-doctor`, and `pi-event-loop` extensions, manifests, tests, fixtures, examples, and operator documentation; the retained CoAS scheduler is now exposed as `pi-scheduler`.
+- Removed the superseded hierarchical Teams/swarm runtime, compatibility commands/tools, manifests, and tests; retained `pi-teams` now provides only consult, debate, and research protocols.
 - Test-only production modules removed per ADR-054 with their tests and fixtures: `pi-teams/worktree-isolation.ts`, `pi-panopticon/ui/memory-renderer.ts`, `pi-panopticon/ui/memory-writer.ts`, and `pi-kanban/lifecycle.ts`; the pi-teams `node:child_process` boundary is now zero. The no-exemptions test-only-import fitness rule is implemented and lands with the remaining module dispositions (tracked separately).
 - Unreferenced scripts removed: `scripts/session-spool-hook.mjs` (ADR-017 POC) and `scripts/t851-artifact-smoke.sh`.
 

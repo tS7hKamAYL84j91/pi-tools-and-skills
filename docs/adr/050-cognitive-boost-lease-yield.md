@@ -163,4 +163,3 @@ sequenceDiagram
 - ADR-046: Standalone `pi-boost` extension
 - ADR-047: Shared declarative configuration discovery
 - ADR-048: Standalone `pi-teams` public ownership boundary
-- `planning/FUSION-BOOST-DECOMMISSION-PLAN.md`
