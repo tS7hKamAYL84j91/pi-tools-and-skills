@@ -12,6 +12,12 @@ paths = [
   '''tests/matrix/pi-matrix-extension.test.ts''',
   '''node_modules/''',
   '''package-lock.json''',
+  # The repository-root CoAS checkout is a separate gitignored repository with
+  # its own secret scanning; its runtime artifacts are not committable here.
+  '''^coas/''',
+  # .pi/ is gitignored pi-agent runtime state (session/goal artifacts), not
+  # repository content.
+  '''^\.pi/''',
 ]
 
 # Ignore known safe placeholder tokens used in tests and documentation.
