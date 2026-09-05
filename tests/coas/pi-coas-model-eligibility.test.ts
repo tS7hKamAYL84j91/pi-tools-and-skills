@@ -3,7 +3,7 @@ import { eligibleModelsFor } from "../../lib/coas-governance.js";
 
 const privateInput = { classification: "private" as const, matchedTriggers: ["credential"], reason: "matched" };
 
-describe("hierarchical swarm model eligibility", () => {
+describe("private model eligibility", () => {
 	it("does not treat advisory candidates as evidence of locality", () => {
 		const result = eligibleModelsFor(privateInput, ["cloud/remote", "ollama/advisory"]);
 		expect(result.eligibleModels).toEqual([]);

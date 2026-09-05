@@ -217,10 +217,6 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		warnings.push(`${id}: protocol is required`);
 		return undefined;
 	}
-	if (protocol === "hierarchical-swarm") {
-		warnings.push(`${id}: hierarchical-swarm protocol is no longer supported`);
-		return undefined;
-	}
 	const name = optionalString(frontMatter.name) ?? id;
 	const description = optionalString(frontMatter.description);
 	const agentBindings = agentBindingsFromObjects(frontMatter.agents);

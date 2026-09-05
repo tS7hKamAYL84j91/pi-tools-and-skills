@@ -10,7 +10,7 @@ import type { ForkTurnsMode, ModelRun } from "./types.js";
 const NODE_HEARTBEAT_INTERVAL_MS = 5_000;
 
 export interface NodeRun {
-	/** Stable runtime-tree path; defaults to the node role outside hierarchical swarms. */
+	/** Stable runtime-tree path; defaults to the node role. */
 	nodeId?: string;
 	role: string;
 	binding: TeamAgentBinding;

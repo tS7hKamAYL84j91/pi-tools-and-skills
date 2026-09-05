@@ -150,8 +150,8 @@ C4Component
     title Standalone pi-teams public ownership boundary
     Container(pi, "pi session", "Extension host", "Loads independently installed extensions")
     Component(registry, "pi package registry", "Package settings", "Selects pi-teams as an installable package")
-    Component(teams, "pi-teams", "Extension", "Registers team, runtime, and swarm surfaces")
-    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, research, and hierarchical swarm")
+    Component(teams, "pi-teams", "Extension", "Registers retained team and runtime surfaces")
+    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, and research")
     Component(state, "Team session state", "Session custom entries", "Persists bounded run events and rehydrates run state")
     Component(results, "Team result root", "Private claim-check files", "Stores completed async results under the configured team root")
     Component(shared, "Shared runtime libraries", "lib/", "Provides agent APIs, child-process, transport, persistence, and runtime helpers")
@@ -975,7 +975,7 @@ one bounded snapshot per task.
 
 ## Standalone boost boundary
 
-`pi-boost` owns the mutable Principal lease and runtime lifecycle. `pi-panopticon` observes swarm state only and has no boost registration or authority dependency.
+`pi-boost` owns the mutable Principal lease and runtime lifecycle. `pi-panopticon` observes agent and team runtime state only and has no boost registration or authority dependency.
 
 ```mermaid
 flowchart LR
@@ -983,7 +983,7 @@ flowchart LR
   Boost --> Authority[Lease authority]
   Boost --> Audit[Persistence and audit]
   Boost --> Runtime[External config + provider adapter]
-  Panopticon[pi-panopticon] --> Swarm[Swarm observation]
+  Panopticon[pi-panopticon] --> Runtime[Agent/team runtime observation]
 ```
 
 ## Daemon Protocol Boundary (ADR-053)

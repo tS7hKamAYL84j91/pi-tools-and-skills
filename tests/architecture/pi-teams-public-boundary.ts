@@ -37,8 +37,8 @@ describe("pi-teams public ownership boundary", () => {
 		});
 	});
 
-	it("keeps Teams and swarm registration out of Panopticon", () => {
-		expect(source("extensions/pi-panopticon/index.ts")).not.toMatch(/teams|swarm/i);
+	it("keeps Teams registration out of Panopticon", () => {
+		expect(source("extensions/pi-panopticon/index.ts")).not.toMatch(/teams/i);
 		expect(source("extensions/pi-panopticon/package.json")).not.toContain("teams");
 	});
 

@@ -1,6 +1,6 @@
 # Pi Teams Extension
 
-Standalone declarative team workflows for lightweight review, council-style debate, hierarchical swarms, and deep-research pipelines. Install `extensions/pi-teams` independently alongside any other pi extensions.
+Standalone declarative team workflows for lightweight review, council-style debate, and deep-research pipelines. Install `extensions/pi-teams` independently alongside any other pi extensions.
 
 ## Installation
 
