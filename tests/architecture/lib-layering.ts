@@ -27,6 +27,7 @@ const SHARED_LIB_FILES = new Set([
 	"coas-types.ts",
 	"completion-signal.ts",
 	"confined-store.ts",
+	"confined-store-security.ts",
 	"declarative-discovery.ts",
 	"file-lock.ts",
 	"file-persistence.ts",

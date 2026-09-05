@@ -2,40 +2,28 @@
 
 import { lstat, stat, statfs } from "node:fs/promises";
 import type { Dirent, Stats, StatsFs } from "node:fs";
-import { parse as parsePath, isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { ConfinedStore as GenericConfinedStore } from "../../lib/confined-store.js";
 import { pathInside } from "../../lib/path-inside.js";
+import {
+	assertAbsolutePath,
+	assertNoSymlinkPath,
+	assertRootNotSymlink,
+} from "../../lib/confined-store-security.js";
+
+async function assertCoasRootNotSymlink(path: string): Promise<void> {
+	try {
+		await assertRootNotSymlink(path);
+	} catch (error) {
+		const message = (error as Error).message;
+		if (message.includes("Refusing symlinked root")) {
+			throw new Error(message.replace("Refusing symlinked root", "Refusing symlinked CoAS root"));
+		}
+		throw error;
+	}
+}
 import { lockRoot, scheduleLogRoot, scheduleRoot, workspaceRoot } from "./store-paths.js";
 import type { CoasConfig } from "./types.js";
-
-function assertAbsolutePath(label: string, path: string): void {
-	if (!isAbsolute(path)) throw new Error(`${label} must be absolute: ${path}`);
-}
-
-async function assertRootNotSymlink(path: string): Promise<void> {
-	try {
-		if ((await lstat(path)).isSymbolicLink()) throw new Error(`Refusing symlinked CoAS root: ${path}`);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-}
-
-async function assertNoSymlinkPath(path: string): Promise<void> {
-	assertAbsolutePath("CoAS target", path);
-	const absolutePath = resolve(path);
-	const filesystemRoot = parsePath(absolutePath).root;
-	let current = filesystemRoot;
-	for (const segment of absolutePath.slice(filesystemRoot.length).split(/[\\/]+/).filter(Boolean)) {
-		current = join(current, segment);
-		try {
-			const info = await lstat(current);
-			if (info.isSymbolicLink()) throw new Error(`Refusing symlinked CoAS path component: ${current}`);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-			throw error;
-		}
-	}
-}
 
 /** CoAS-root-bound filesystem capability. */
 export class ConfinedStore extends GenericConfinedStore {
@@ -44,7 +32,7 @@ export class ConfinedStore extends GenericConfinedStore {
 	}
 
 	static async forCoasHome(config: CoasConfig): Promise<ConfinedStore> {
-		await assertRootNotSymlink(config.coasHome);
+		await assertCoasRootNotSymlink(config.coasHome);
 		const root = resolve(config.coasHome);
 		const store = await GenericConfinedStore.openRoot(root);
 		if (!store) throw Object.assign(new Error(`CoAS root does not exist: ${config.coasHome}`), { code: "ENOENT" });
@@ -52,14 +40,14 @@ export class ConfinedStore extends GenericConfinedStore {
 	}
 
 	static async openCoasHome(config: CoasConfig): Promise<ConfinedStore | undefined> {
-		await assertRootNotSymlink(config.coasHome);
+		await assertCoasRootNotSymlink(config.coasHome);
 		const root = resolve(config.coasHome);
 		const store = await GenericConfinedStore.openRoot(root);
 		return store ? new ConfinedStore(store.getRoot()) : undefined;
 	}
 
 	static async createCoasHome(config: CoasConfig): Promise<ConfinedStore> {
-		await assertRootNotSymlink(config.coasHome);
+		await assertCoasRootNotSymlink(config.coasHome);
 		const root = resolve(config.coasHome);
 		const store = await GenericConfinedStore.createRoot(root);
 		return new ConfinedStore(store.getRoot());
@@ -151,7 +139,16 @@ export class ConfinedStore extends GenericConfinedStore {
 	async guard(path: string): Promise<void> {
 		assertAbsolutePath("CoAS target", path);
 		if (!pathInside(this.getRoot(), path)) throw new Error(`Path escapes ${this.getRoot()}: ${path}`);
-		await assertNoSymlinkPath(path);
+		try {
+			await assertNoSymlinkPath(path);
+			await this.assertResolvedPathInside(path);
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked path component")) {
+				throw new Error(message.replace("Refusing symlinked path component", "Refusing symlinked CoAS path component"));
+			}
+			throw error;
+		}
 	}
 }
 

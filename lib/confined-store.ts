@@ -3,63 +3,19 @@
 import { constants } from "node:fs";
 import type { Dirent, Stats } from "node:fs";
 import { access, chmod, lstat, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
-import { parse as parsePath, dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { appendLogLine, writeFileAtomic } from "./file-persistence.js";
 import { assertInside } from "./path-inside.js";
+import {
+	assertAbsolutePath,
+	assertNoSymlinkPath,
+	assertResolvedPathInside,
+	assertRootNotSymlink,
+	inspectDirectoryChain,
+} from "./confined-store-security.js";
 
 const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
-
-function assertAbsolutePath(label: string, path: string): void {
-	if (!isAbsolute(path)) throw new Error(`${label} must be absolute: ${path}`);
-}
-
-async function inspectDirectoryChain(path: string, create: boolean): Promise<boolean> {
-	assertAbsolutePath("root", path);
-	const absolutePath = resolve(path);
-	const filesystemRoot = parsePath(absolutePath).root;
-	let current = filesystemRoot;
-	for (const segment of absolutePath.slice(filesystemRoot.length).split(/[\\/]+/).filter(Boolean)) {
-		current = join(current, segment);
-		let info: Stats;
-		try {
-			info = await lstat(current);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-			if (!create) return false;
-			await mkdir(current, { mode: PRIVATE_DIR_MODE });
-			info = await lstat(current);
-		}
-		if (info.isSymbolicLink()) throw new Error(`Refusing symlinked path component: ${current}`);
-		if (!info.isDirectory()) throw new Error(`Path component is not a directory: ${current}`);
-	}
-	return true;
-}
-
-async function assertRootNotSymlink(path: string): Promise<void> {
-	try {
-		if ((await lstat(path)).isSymbolicLink()) throw new Error(`Refusing symlinked root: ${path}`);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-}
-
-async function assertNoSymlinkPath(path: string): Promise<void> {
-	assertAbsolutePath("target", path);
-	const absolutePath = resolve(path);
-	const filesystemRoot = parsePath(absolutePath).root;
-	let current = filesystemRoot;
-	for (const segment of absolutePath.slice(filesystemRoot.length).split(/[\\/]+/).filter(Boolean)) {
-		current = join(current, segment);
-		try {
-			const info = await lstat(current);
-			if (info.isSymbolicLink()) throw new Error(`Refusing symlinked path component: ${current}`);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-			throw error;
-		}
-	}
-}
 
 export class ConfinedStore {
 	protected constructor(private readonly root: string) {}
@@ -106,6 +62,9 @@ export class ConfinedStore {
 	async ensurePrivateDir(path: string): Promise<void> {
 		await this.guard(path);
 		await mkdir(path, { recursive: true, mode: PRIVATE_DIR_MODE });
+		await this.guard(path);
+		const info = await lstat(path);
+		if (!info.isDirectory()) throw new Error(`Path is not a directory: ${path}`);
 		await chmod(path, PRIVATE_DIR_MODE);
 	}
 
@@ -123,6 +82,8 @@ export class ConfinedStore {
 	async readOptionalFile(path: string): Promise<string | undefined> {
 		await this.guard(path);
 		try {
+			const info = await lstat(path);
+			if (!info.isFile()) throw new Error(`Path is not a regular file: ${path}`);
 			return await readFile(path, "utf8");
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -132,11 +93,15 @@ export class ConfinedStore {
 
 	async readRequiredFile(path: string): Promise<string> {
 		await this.guard(path);
+		const info = await lstat(path);
+		if (!info.isFile()) throw new Error(`Path is not a regular file: ${path}`);
 		return readFile(path, "utf8");
 	}
 
 	async readFilePrefix(path: string, maxBytes: number): Promise<{ readonly size: number; readonly text: string }> {
-		const info = await this.fileStat(path);
+		await this.guard(path);
+		const info = await lstat(path);
+		if (!info.isFile()) throw new Error(`Path is not a regular file: ${path}`);
 		const length = Math.min(info.size, maxBytes);
 		const handle = await open(path, "r");
 		try {
@@ -150,14 +115,18 @@ export class ConfinedStore {
 
 	async writePrivateFileAtomic(path: string, content: string): Promise<void> {
 		await this.guard(path);
+		await this.assertExistingRegularFileOrMissing(path);
 		await this.ensurePrivateDir(dirname(path));
+		await this.guard(path);
 		await writeFileAtomic(path, content, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
 		await chmod(path, PRIVATE_FILE_MODE);
 	}
 
 	async appendPrivateLog(path: string, line: string): Promise<void> {
 		await this.guard(path);
+		await this.assertExistingRegularFileOrMissing(path);
 		await this.ensurePrivateDir(dirname(path));
+		await this.guard(path);
 		await appendLogLine(path, line, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
 		await chmod(path, PRIVATE_FILE_MODE);
 	}
@@ -181,9 +150,23 @@ export class ConfinedStore {
 		return stat(path);
 	}
 
+	private async assertExistingRegularFileOrMissing(path: string): Promise<void> {
+		try {
+			const info = await lstat(path);
+			if (!info.isFile()) throw new Error(`Path is not a regular file: ${path}`);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+	}
+
 	protected async guard(path: string): Promise<void> {
 		assertAbsolutePath("target", path);
 		assertInside(this.root, path);
 		await assertNoSymlinkPath(path);
+		await this.assertResolvedPathInside(path);
+	}
+
+	protected async assertResolvedPathInside(path: string): Promise<void> {
+		await assertResolvedPathInside(this.root, path);
 	}
 }

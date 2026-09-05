@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { appendWorkspaceContext } from "../../extensions/pi-coas/workspace-context.js";
 import { ConfinedStore } from "../../extensions/pi-coas/store.js";
 
 const testRoots: string[] = [];
@@ -64,6 +65,42 @@ describe("ConfinedStore operations", () => {
 
 		await expect(store.readRequiredFile(join(root, "linked", "secret.txt"))).rejects.toThrow(/symlinked CoAS path component/);
 		await expect(store.readRequiredFile(join(root, "final-link"))).rejects.toThrow(/symlinked CoAS path component/);
+	});
+
+	it("rejects non-regular read targets", async () => {
+		const root = await createRoot();
+		const directory = join(root, "not-a-file");
+		await mkdir(directory);
+		const store = await ConfinedStore.forCoasHome({ coasHome: root });
+
+		await expect(store.readOptionalFile(directory)).rejects.toThrow(/regular file/);
+		await expect(store.readRequiredFile(directory)).rejects.toThrow(/regular file/);
+	});
+
+	it("rejects symlink components while creating a missing descendant", async () => {
+		const root = await createRoot();
+		const outside = await createRoot();
+		await symlink(outside, join(root, "new-link"));
+		const store = await ConfinedStore.forCoasHome({ coasHome: root });
+
+		await expect(store.ensurePrivateDir(join(root, "new-link", "created"))).rejects.toThrow(/symlinked CoAS path component/);
+		await expect(store.writePrivateFileAtomic(join(root, "new-link", "created.txt"), "escape")).rejects.toThrow(/symlinked CoAS path component/);
+	});
+
+	it("preserves authorized external-workspace archive compaction", async () => {
+		const workspace = await createRoot();
+		await mkdir(join(workspace, ".pi", "coas"), { recursive: true });
+		await writeFile(join(workspace, ".pi", "coas", "workspace.env"), "WORKSPACE_ID=external\\n", "utf8");
+		await writeFile(join(workspace, "CONTEXT.md"), `# External\\n\\n${"detail\\n".repeat(9000)}`, "utf8");
+
+		const result = await appendWorkspaceContext({ coasHome: join(workspace, "other-coas") }, workspace, workspace, "stable fact");
+
+		await expect(readFile(result.path, "utf8")).resolves.toContain("# CoAS Workspace Context (SPR)");
+		const archiveEntries = await readdir(join(workspace, "archive"));
+		expect(archiveEntries).toHaveLength(1);
+		const archiveName = archiveEntries[0];
+		if (!archiveName) throw new Error("archive entry missing");
+		await expect(readFile(join(workspace, "archive", archiveName), "utf8")).resolves.toContain("# External");
 	});
 
 	it("reads a required file and preserves ENOENT failures", async () => {

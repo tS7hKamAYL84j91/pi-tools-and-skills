@@ -860,16 +860,17 @@ flowchart LR
   Consumers[Schedule / status / workspace / approval consumers] --> Paths[store-paths.ts\npure validated paths, IDs, env format]
   Consumers --> Store[ConfinedStore\nconfig or authorized-root bound]
   Paths --> Store
-  Store --> Guard[Absolute containment + no symlink components]
+  Store --> Guard[Shared confined-store-security.ts\nlexical + resolved containment; no symlink components\nregular-file and post-creation checks]
   Guard --> Home[(COAS_HOME managed roots)]
   External[Explicit external workspace] --> Metadata[.pi/coas/workspace.env authorization]
   Metadata --> ExternalStore[ConfinedStore bound to validated real root]
-  ExternalStore --> ExternalGuard[Absolute containment + no symlink components]
-  ExternalGuard --> ExternalRoot[(Authorized external workspace root)]
+  ExternalStore --> Guard
+  Guard --> ExternalRoot[(Authorized external workspace root)]
 ```
 
 - `store-paths.ts` performs no IO; it owns lexical path construction, ID validation, and schedule/workspace env formatting.
 - `ConfinedStore` is the sole CoAS-owned filesystem primitive boundary. It validates the complete absolute path chain, binds an authorized root, rejects symlink components and directory entries, and validates a deletion batch before mutation.
+- These checks provide ordinary substitution/non-regular hardening and resolved-path defense in depth, not race-resistant filesystem operations: concurrent check-then-use replacement remains outside the guarantee.
 - `COAS_HOME` bootstrap creates one path component at a time without following symlinks. Managed schedule, log, lock, run-state, approval, and workspace IO uses a config-bound store.
 - External workspaces remain available only when their validated root contains a non-symlinked `.pi/coas/workspace.env`; context IO stays confined to that root.
 - `tests/architecture/coas-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
