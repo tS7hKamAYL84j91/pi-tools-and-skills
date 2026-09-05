@@ -22,6 +22,22 @@ C4Context
     Rel(board, docs, "Links supporting artifacts; retains work authority")
 ```
 
+## Fleet MCP standalone boundary
+
+`fleet-mcp/` is a standalone application boundary, not a Pi extension. MCP transport handling depends on `FleetGateway`; the gateway owns authorization and durable protocol semantics; `DirectMaildirBackend` alone adapts the existing Panopticon registrar and Maildir transport. `FleetStateStore` owns versioned private state and serializes mutations. This keeps MCP/session concerns out of Panopticon and prevents transport handlers from selecting filesystem paths or sender identities.
+
+```mermaid
+flowchart LR
+  Client[Authenticated MCP client] --> Transport[stdio or loopback HTTP]
+  Transport --> Gateway[FleetGateway\nfixed principal policy]
+  Gateway --> State[FleetStateStore\nversioned atomic state]
+  Gateway --> Backend[DirectMaildirBackend]
+  Backend --> Registry[Panopticon external registrar]
+  Backend --> Maildir[Persistent Maildir]
+```
+
+The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and one configured bearer token authenticates the same fixed principal used by stdio. CoAS owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision. Daemon transport, multi-principal HTTP authorization, and deployment machinery remain outside this repository boundary.
+
 ## F.I.R.E. Review
 
 **Date:** 2026-05-09

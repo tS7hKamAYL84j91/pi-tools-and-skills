@@ -8,6 +8,8 @@
 	"scripts": {
 		"check:namespace": "node scripts/check-namespace.mjs",
 		"check:template-safety": "node scripts/check-template-safety.mjs",
+		"build:fleet-mcp": "tsc -p fleet-mcp/tsconfig.build.json",
+		"start:fleet-mcp": "node dist/fleet-mcp/index.js",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome lint fleet-mcp/ extensions/ lib/ tests/ daemon/ scripts/",
 		"type-coverage": "type-coverage --strict --at-least 95",

@@ -1,22 +1,36 @@
 #!/usr/bin/env node
-import { parseFleetConfig } from "./config.js";
-import type { FleetConfig } from "./config.js";
-import { FleetGateway } from "./gateway.js";
-import { createMcpServer, startHttp } from "./server.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { startFleet } from "./app.js";
+import { parseFleetConfig, type FleetConfig } from "./config.js";
 
-let config: FleetConfig;
-try {
-  config = parseFleetConfig(JSON.parse(process.env.FLEET_MCP_CONFIG ?? "{}"));
-} catch {
-  process.stderr.write("Invalid fleet configuration\n");
-  process.exit(1);
+function loadConfig(): FleetConfig | undefined {
+	try {
+		return parseFleetConfig(JSON.parse(process.env.FLEET_MCP_CONFIG ?? "{}"));
+	} catch {
+		process.stderr.write("Invalid fleet configuration\n");
+		process.exitCode = 1;
+		return undefined;
+	}
 }
-const gateway = new FleetGateway(config);
-await gateway.init();
-if (config.transport === "stdio" || config.transport === "both") {
-  const server = createMcpServer(config, gateway);
-  await server.connect(new StdioServerTransport());
+
+async function main(): Promise<void> {
+	const config = loadConfig();
+	if (!config) return;
+	const runtime = await startFleet(config);
+	let closing = false;
+	const close = async () => {
+		if (closing) return;
+		closing = true;
+		try {
+			await runtime.close();
+		} catch {
+			process.exitCode = 1;
+		}
+	};
+	process.once("SIGTERM", close);
+	process.once("SIGINT", close);
 }
-if (config.transport === "http" || config.transport === "both") await startHttp(config, gateway);
-process.once("SIGTERM", () => process.exit(0));
+
+main().catch(() => {
+	process.stderr.write("Fleet MCP startup failed\n");
+	process.exitCode = 1;
+});
