@@ -257,17 +257,17 @@ Each production pi-goal read/write resolves the latest `pi-goal:binding` custom 
 
 ```mermaid
 C4Component
-    title pi-goal bounded driver and session replacement
+    title pi-goal direct continuous driver and session replacement
     Container_Boundary(goal, "pi-goal") {
-        Component(commands, "Commands/tools", "TypeScript", "Bound operator transitions and evidence gates")
+        Component(commands, "Commands/tools", "TypeScript", "Immediate execution, explicit controls, evidence-based completion")
         Component(driver, "Goal run loop", "TypeScript", "Only execution driver; local goal/token/session identity")
         Component(events, "Lifecycle/watchdog", "TypeScript", "Settles matching waiter; observes only locally owned runs")
         Component(store, "Goal transactions", "TypeScript", "Confined short lock, revision and owner CAS, authority before projections")
         Component(files, "Goal files", "TypeScript", "Confinement, known-artifact cleanup, derived paths")
     }
     Container(host, "Pi host", "SDK", "Idle wait; shutdown/setup/new extension/withSession")
-    Rel(commands, store, "Create/edit/revoke/verify/complete")
-    Rel(commands, driver, "Explicit run/resume")
+    Rel(commands, store, "Create/edit/revoke/complete")
+    Rel(commands, driver, "Automatic create plus explicit run/resume")
     Rel(driver, store, "Claim, reserve, admit, account, release")
     Rel(driver, host, "Send outside lock, only fresh context")
     Rel(events, driver, "Identity-matched waiter settlement")
@@ -275,7 +275,9 @@ C4Component
     Rel(store, files, "Confined authority and projection paths")
 ```
 
-`agent_end` never starts an independent continuation driver. A persisted token alone does not authorize a local watchdog. Replacement reserves authority before switching, binds the new session in setup, validates its workspace/session/binding, and consumes the reservation with admission before sending. Old shutdown removes only old resources during a reserved handoff. Stop/edit/plan/clear/completion/timeout revoke ownership in the authority transaction before local settlement. Legacy snapshot-write APIs are removed; ordinary test fixtures use the transaction seam.
+`agent_end` never starts an independent continuation driver. A persisted token alone does not authorize a local watchdog. Replacement reserves authority before switching, binds the new session in setup, validates its workspace/session/binding, and consumes the reservation with admission before sending. Old shutdown removes only old resources during a reserved handoff. Stop/edit/clear/completion/timeout revoke ownership in the authority transaction before local settlement. Legacy snapshot-write APIs are removed; ordinary test fixtures use the transaction seam.
+
+Plain text and file goals start immediately with an unbounded turn sentinel and continue until the root agent calls `goal_complete`. Planning, milestone verification, and approval are not runtime gates; legacy planned states are flattened on run/resume. Explicit `--turns N`, pause/stop, ownership, liveness containment, and the trusted completion gate remain available.
 
 One local driver is permitted per Pi process; its waiter carries the immutable goal/token/generation identity across extension reload during handoff. Same-goal cross-process claims are excluded without holding locks over host calls. No age/PID/TTL takeover exists: explicitly stop/pause, inspect uncertain old host work, then run/resume. Already-admitted calls cannot be retracted; void SDK sends are not delivery acknowledgments. Detected symlink substitutions fail closed, but Node check/use operations do not promise kernel-level protection against hostile directory replacement.
 

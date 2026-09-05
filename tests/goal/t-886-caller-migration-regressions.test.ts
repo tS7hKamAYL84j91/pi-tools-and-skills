@@ -152,7 +152,9 @@ function createHost(cwd: string, failBinding = false): TestHost {
 		on: () => undefined,
 		appendEntry: (_type: string, data: { readonly goalId: string | null }) => appendBinding(data.goalId),
 		sendMessage: () => undefined,
-		sendUserMessage: () => undefined,
+		sendUserMessage: () => {
+			queueMicrotask(() => getGoalRuntime().resolve?.([]));
+		},
 	} as unknown as ExtensionAPI;
 	registerGoalCommands(pi, getGoalRuntime());
 	const context = createContext(cwd, branch, () => undefined);

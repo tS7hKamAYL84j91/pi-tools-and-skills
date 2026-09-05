@@ -46,8 +46,6 @@ describe("renderGoalOverlayLines", () => {
 			"Goal goal-1",
 			"Status: active",
 			"Source: brief.md",
-			"Plan: approved · milestone 1/1",
-			"Current milestone: Implement (in_progress)",
 			"Objective: Ship the deterministic overlay",
 			"Evidence: Evidence recorded",
 		]);

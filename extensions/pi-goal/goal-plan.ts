@@ -6,13 +6,8 @@ import type {
 	GoalLifecycleEvent,
 	GoalRunMode,
 	GoalState,
-	GoalStatus,
 	Milestone,
 } from "./goal-types.js";
-
-export function getCurrentMilestone(state: GoalState): Milestone | undefined {
-	return state.milestones[state.currentMilestoneIndex];
-}
 
 function defaultMilestones(objective: string): Milestone[] {
 	const tasks: string[] = [];
@@ -64,38 +59,18 @@ export function generatePlanState(
 	}), "plan_updated", "Plan updated; milestone verification was invalidated.");
 }
 
-export function approvePlan(state: GoalState): GoalState {
-	if (!state.planRequired) {
-		throw new Error("No plan is required for this goal.");
-	}
-	const milestones: readonly Milestone[] = state.milestones.length > 0
-		? state.milestones.map((m, i) =>
-			m.status === "pending" && i === state.currentMilestoneIndex
-				? { ...m, status: "in_progress" as const }
-				: m,
-		)
-		: state.milestones;
+/** Remove obsolete plan/approval state before direct execution. */
+export function removePlan(state: GoalState): GoalState {
+	if (!state.planRequired && state.milestones.length === 0) return state;
 	return withLifecycle(updateGoal(state, {
-		planApproved: true,
-		status: state.status === "planning" ? "active" : state.status,
-		executionState: state.runActive ? "in_progress" : (state.executionState ?? "idle"),
-		milestones,
-	}), "plan_updated", "Plan approved.");
-}
-
-export function invalidatePlan(state: GoalState): GoalState {
-	const resetMilestones: readonly Milestone[] = state.milestones.map((m) =>
-		({ ...m, status: "pending" as const }),
-	);
-	return withLifecycle(updateGoal(state, {
+		planRequired: false,
 		planApproved: false,
-		runActive: false,
 		currentMilestoneIndex: 0,
-		status: state.status === "complete" ? "active" : (state.status as GoalStatus),
+		milestones: [],
 		lastVerification: undefined,
-		milestones: resetMilestones,
+		status: state.status === "planning" ? "active" : state.status,
 		milestoneRevision: (state.milestoneRevision ?? 0) + 1,
-	}), "plan_updated", "Objective changed; plan and verification were invalidated.");
+	}), "plan_updated", "Removed legacy plan gate; goal now executes directly.");
 }
 
 export function updateGoal(
@@ -109,7 +84,7 @@ export function updateGoal(
 	};
 }
 
-export function getRunMode(state: GoalState): GoalRunMode {
+function getRunMode(state: GoalState): GoalRunMode {
 	return state.runMode ?? "manual";
 }
 

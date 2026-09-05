@@ -3,7 +3,7 @@
  */
 import { createGoalSessionScope, type GoalSessionScope } from "./goal-binding.js";
 import { loadGoal } from "./goal-persist.js";
-import type { GoalRunMode, GoalState } from "./goal-types.js";
+import type { GoalState } from "./goal-types.js";
 
 export function goalScopeForContext(
 	ctx: { readonly cwd: string; readonly sessionManager?: unknown },
@@ -12,8 +12,7 @@ export function goalScopeForContext(
 	return createGoalSessionScope(ctx, appendBinding);
 }
 
-const DEFAULT_TURNS = 3;
-export const UNTIL_COMPLETE_TURNS = 20;
+export const UNBOUNDED_TURN_BUDGET = 0;
 
 const KNOWN_ACTIONS = new Set([
 	"show",
@@ -34,14 +33,12 @@ const KNOWN_ACTIONS = new Set([
 export const GOAL_HELP_COMMANDS = [
 	"/goal help — show this command summary",
 	"/goal status — show the current goal",
-	"/goal <text> [--continuous|--until-complete] — create a text goal and start a bounded run",
-	"/goal file <path> [goal start|--continuous|--until-complete] — create a file-backed goal",
-	"/goal plan [milestone title] — generate a reviewable plan and pause for approval",
-	"/goal approve — accept the generated plan and allow implementation",
-	"/goal run [--turns N|--until-complete] — continue an active or paused goal (defaults to 20-turn continuous)",
+	"/goal <text> — create a text goal and run until completion",
+	"/goal file <path> — create a file-backed goal and run until completion",
+	"/goal run [--turns N] — resume until completion (or set an explicit bounded turn count)",
 	"/goal pause | resume | stop — manage the current goal run",
 	"/goal steer <text> — send untrusted guidance to the current run",
-	"/goal edit <text> — update the objective of the active goal (invalidates the plan)",
+	"/goal edit <text> — update the objective of the active goal",
 	"/goal clear — remove .pi/goal/ state and local run artifacts for this workspace",
 ] as const;
 
@@ -85,21 +82,14 @@ export function parseFileGoal(args: string): FileGoalArgs {
 	return { path, untilComplete };
 }
 
-export function parseRunMode(args: string): GoalRunMode {
-	return /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(args) ? "continuous" : "manual";
-}
-
 export function stripRunMode(args: string): string {
 	return args.replace(/(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/g, " ").trim();
 }
 
 /** Parse run turn options. */
 export function parseTurns(args: string): number {
-	if (!args.trim()) {
-		return DEFAULT_TURNS;
-	}
-	if (/(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(args)) {
-		return UNTIL_COMPLETE_TURNS;
+	if (!args.trim() || /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(args)) {
+		return UNBOUNDED_TURN_BUDGET;
 	}
 	const match = args.match(/(?:^|\s)--turns(?:=|\s+)(\d+)(?:\s|$)/);
 	if (!match) {
@@ -110,32 +100,6 @@ export function parseTurns(args: string): number {
 		throw new Error("--turns must be an integer from 1 to 20");
 	}
 	return value;
-}
-
-/** Parse milestone titles from raw command rest. */
-export function parseMilestonesFromRest(
-	rest: string,
-): { id: string; title: string; validationCommand: string; status: "pending" }[] | undefined {
-	const trimmed = rest.trim();
-	if (!trimmed) return undefined;
-	const lines = trimmed
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0);
-	return lines.map((line, index) => ({
-		id: `m-${index + 1}`,
-		title: line,
-		validationCommand: "npm run check && npm test",
-		status: "pending" as const,
-	}));
-}
-
-/** Render a plan-review prompt from generated milestones. */
-export function buildPlanReviewPrompt(state: GoalState): string {
-	const milestoneList = state.milestones
-		.map((m, i) => `${i + 1}. ${m.title}\n   Validate: \`${m.validationCommand}\``)
-		.join("\n");
-	return `A reviewable plan has been generated for this goal.\n\n${milestoneList}\n\nReview or edit .pi/goal/instances/<goalId>/PLAN.md, then run /goal approve or /goal run to start implementation.`;
 }
 
 /** Throw if no goal is active for this workspace. */
@@ -154,8 +118,10 @@ export function goalHelpText(): string {
 
 /** Human-readable message when a goal run stops. */
 export function goalStoppedMessage(state: GoalState): string {
-	const reason = state.turnsUsed >= state.turnBudget ? "turn budget reached" : "stop requested";
-	return `Goal run stopped after ${state.turnsUsed}/${state.turnBudget} turns (${reason}). Use /goal run to continue (or --turns N for a shorter bounded run).`;
+	const bounded = state.turnBudget > 0;
+	const reason = bounded && state.turnsUsed >= state.turnBudget ? "turn budget reached" : "stop requested";
+	const progress = bounded ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}`;
+	return `Goal run stopped after ${progress} turns (${reason}). Use /goal run to continue (or --turns N for a bounded run).`;
 }
 
 export function collectChangedFiles(messages: readonly unknown[], existing: readonly string[] = []): readonly string[] {

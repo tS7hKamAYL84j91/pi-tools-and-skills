@@ -25,10 +25,7 @@ function pinnedScope(ctx: ExtensionCommandContext): GoalSessionScope {
  return { cwd: ctx.cwd, ...(entries ? { sessionManager: { getBranch: () => entries } } : {}) };
 }
 
-export async function runGoalLoop(pi: ExtensionAPI, runtime: GoalRuntime, ctx: ExtensionCommandContext, initialState: GoalState): Promise<void> {
- if (initialState.planRequired && !initialState.planApproved) {
-  ctx.ui.notify("Plan required but not approved. Run /goal plan first, then /goal approve or /goal run.", "warning"); return;
- }
+export async function runGoalLoop(pi: ExtensionAPI, runtime: GoalRuntime, ctx: ExtensionCommandContext, _initialState: GoalState): Promise<void> {
  if (runtime.driver) { ctx.ui.notify("A local goal driver is still settling; stop it before starting another run.", "warning"); return; }
  const cwd = await realpath(ctx.cwd);
  const scope = pinnedScope(ctx);
@@ -48,7 +45,7 @@ export async function runGoalLoop(pi: ExtensionAPI, runtime: GoalRuntime, ctx: E
    await activeCtx.waitForIdle();
    const current = await loadGoal(cwd, scope);
    if (!sameOwner(current, driver) || !current.runActive || current.status !== "active") { return; }
-   if (current.turnsUsed >= current.turnBudget) { await interrupt("Goal turn budget exhausted."); return; }
+   if (current.turnBudget > 0 && current.turnsUsed >= current.turnBudget) { await interrupt("Goal turn budget exhausted."); return; }
    const attempt = current.turnsUsed + 1;
    const marker = continuationMarker(current.goalId, attempt);
    const prompt = attempt === 1 ? kickoffPrompt(current) : `${continuationPrompt(current)}\n\n${continuationMarkerComment(marker)}`;
@@ -58,7 +55,8 @@ export async function runGoalLoop(pi: ExtensionAPI, runtime: GoalRuntime, ctx: E
     const admitted = await admitGoal(cwd, scope, driver, attempt);
     if (admitted.status !== "applied" || admitted.projection !== "complete" || runtime.stopRequested) { return; }
     if (!activeCtx.isIdle() || activeCtx.hasPendingMessages()) { throw new Error("Goal host became busy before dispatch; resume explicitly"); }
-    activeCtx.ui.setStatus("goal", `goal: running ${current.turnsUsed}/${current.turnBudget}`);
+    const progress = current.turnBudget > 0 ? `${current.turnsUsed}/${current.turnBudget}` : `${current.turnsUsed}/∞`;
+    activeCtx.ui.setStatus("goal", `goal: running ${progress}`);
     pi.sendUserMessage(prompt);
    } else {
     const reserved = await reserveReplacement(cwd, scope, driver, attempt);

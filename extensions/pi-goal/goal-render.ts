@@ -1,8 +1,7 @@
 /**
  * Markdown rendering helpers for pi-goal durable artifacts.
  */
-import { getCurrentMilestone } from "./goal-plan.js";
-import type { GoalState, Milestone } from "./goal-types.js";
+import type { GoalState } from "./goal-types.js";
 
 export function renderGoalOverlayLines(text: string, maxLines: number): string[] {
 	const lines = text.split("\n");
@@ -17,22 +16,14 @@ export function renderGoalSummary(state: GoalState): string {
 	const mode = state.runMode ? `\nRun mode: ${state.runMode}` : "";
 	const execution = state.executionState ? `\nExecution: ${state.executionState}` : "";
 	const run = state.runActive
-		? `\nRun: ${state.turnsUsed}/${state.turnBudget}`
+		? `\nRun: ${state.turnBudget > 0 ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}/∞`}`
 		: "";
 	const evidence = state.completionEvidence
 		? `\nEvidence: ${state.completionEvidence}`
 		: "";
 	const error = state.lastError ? `\nLast error: ${state.lastError}` : "";
-	const plan = state.planRequired
-		? `\nPlan: ${state.planApproved ? "approved" : "pending approval"} · milestone ${state.currentMilestoneIndex + 1}/${state.milestones.length}`
-		: "";
-	const milestone = getCurrentMilestone(state);
-	const milestoneLine = milestone ? `\nCurrent milestone: ${milestone.title} (${milestone.status})` : "";
-	const evidenceSummary = state.lastVerification
-		? `\nVerification evidence (untrusted report): ${state.lastVerification.outputSummary.slice(0, 200)}`
-		: "";
 	const objectiveLabel = state.schemaVersion >= 3 ? "Objective (untrusted)" : "Objective";
-	return `Goal ${state.goalId}\nStatus: ${state.status}${mode}${execution}${source}${run}${plan}${milestoneLine}\n${objectiveLabel}: ${state.objective}${evidence}${evidenceSummary}${error}`;
+	return `Goal ${state.goalId}\nStatus: ${state.status}${mode}${execution}${source}${run}\n${objectiveLabel}: ${state.objective}${evidence}${error}`;
 }
 
 export function renderGoalMarkdown(state: GoalState): string {
@@ -44,31 +35,18 @@ export function renderIterationMarkdown(state: GoalState, iteration: number): st
 }
 
 export function renderSpecMarkdown(state: GoalState): string {
-	const doneWhen = state.planRequired && state.milestones.length > 0
-		? state.milestones.map((m) => `- ${m.title}: \`${m.validationCommand}\``).join("\n")
-		: "- Concrete evidence is recorded by calling goal_complete.";
-	return `# SPEC — Goal Specification\n\n## Goal\n\n${state.objective}\n\n## Non-goals\n\n(None recorded yet.)\n\n## Constraints\n\n- Work stays inside this workspace.\n- No secrets, credentials, or API keys in goal artifacts.\n- Milestone validation evidence is structured and persisted; the extension does not execute arbitrary shell commands.\n\n## Done when\n\n${doneWhen}\n`;
+	return `# SPEC — Goal Specification\n\n## Goal\n\n${state.objective}\n\n## Constraints\n\n- Work stays inside this workspace.\n- No secrets, credentials, or API keys in goal artifacts.\n- Execute directly without a planning or approval gate.\n- The root agent records concrete completion evidence; only the trusted operator-configured completion gate is executed.\n\n## Done when\n\n- Concrete evidence is recorded by calling goal_complete.\n`;
 }
 
-export function renderPlanMarkdown(state: GoalState): string {
-	const lines = state.milestones.map((m, i) => {
-		const marker = milestoneMarker(m.status);
-		return `${marker} ${i + 1}. ${m.title}\n   - Validate: \`${m.validationCommand}\`${m.decisionNotes ? `\n   - Decision notes: ${m.decisionNotes}` : ""}`;
-	});
-	return `# PLAN — Ordered Milestones\n\n${lines.join("\n\n")}\n\n---\n\n## Decision notes\n\nUse this section to record why the plan changed, what alternatives were rejected, and any blockers. Dated entries help later turns avoid re-litigating decisions.\n`;
+/** Retained projection path for compatibility; planning is intentionally disabled. */
+export function renderPlanMarkdown(_state: GoalState): string {
+	return "# PLAN — Disabled\n\nGoals execute directly until completion; no plan or approval step is required.\n";
 }
 
 export function renderStatusMarkdown(state: GoalState): string {
-	const milestone = getCurrentMilestone(state);
-	const verification = state.lastVerification
-		? `Last verification: milestone ${state.lastVerification.milestoneIndex + 1} · \`${state.lastVerification.command}\` · exitCode=${state.lastVerification.exitCode} · ${state.lastVerification.timestamp}`
-		: "No verification recorded for the current milestone.";
-	const checklist = state.milestones.length === 0
-		? "- No milestone checklist is active."
-		: state.milestones.map((item) => `- [${item.status === "done" ? "x" : " "}] ${item.title}`).join("\n");
 	const lifecycle = (state.lifecycle ?? []).slice(-5).map((event) => `- ${event.timestamp} ${event.kind}: ${event.summary}`).join("\n") || "- none";
 	const changedFiles = (state.changedFiles ?? []).slice(-20).map((file) => `- ${file}`).join("\n") || "- none reported";
-	return `# STATUS — Live Audit Log\n\n- Execution: ${state.executionState ?? (state.runActive ? "in_progress" : state.status)}\n- Run mode: ${state.runMode ?? "manual"}\n- Current milestone: ${milestone ? `${milestone.title} (${milestone.status})` : "none"}\n- ${verification}\n- Turns used: ${state.turnsUsed}/${state.turnBudget}\n- Last progress: ${state.lastProgressAt ?? "unknown"}\n- Last error: ${state.lastError ?? "none"}\n\n## Milestone checklist\n\n${checklist}\n\n## Recent lifecycle (bounded)\n\n${lifecycle}\n\n## Changed files (bounded, reported)\n\n${changedFiles}\n\n## Iteration notes\n\nChanged files and evidence summaries are bounded, untrusted reports. Record blockers, decisions, and validation outcomes here after each turn.\n`;
+	return `# STATUS — Live Audit Log\n\n- Execution: ${state.executionState ?? (state.runActive ? "in_progress" : state.status)}\n- Run mode: ${state.runMode ?? "continuous"}\n- Turns used: ${state.turnBudget > 0 ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}/∞`}\n- Last progress: ${state.lastProgressAt ?? "unknown"}\n- Last error: ${state.lastError ?? "none"}\n\n## Recent lifecycle (bounded)\n\n${lifecycle}\n\n## Changed files (bounded, reported)\n\n${changedFiles}\n\n## Iteration notes\n\nChanged files and evidence summaries are bounded, untrusted reports. Record blockers and validation outcomes here after each turn.\n`;
 }
 
 export function renderTodoMarkdown(objective: string): string {
@@ -87,8 +65,8 @@ The implementation agent is expected to complete outstanding items without askin
 - Use the smallest useful change.
 - Preserve useful content; do not delete source material unless it is clearly duplicate, empty, generated junk, or moved with an auditable note.
 - Prefer moves/renames over rewrites.
-- Escalate architecture, security, broad policy decisions, or destructive cleanup to \`llm-council\` when available.
-- Use \`navigator\` review when substantial repo changes are made and team tools are available.
+- Execute directly without creating a plan or waiting for approval.
+- Stop only for a genuine blocker, explicit operator request, or failed safety/validation gate.
 
 Progress markers:
 - \`[ ]\` Planned
@@ -124,13 +102,4 @@ Progress markers:
 - Required validation has passed or has a documented reason why it cannot run.
 - Final state and evidence are recorded in this file.
 `;
-}
-
-function milestoneMarker(status: Milestone["status"]): string {
-	switch (status) {
-		case "done": return "[x]";
-		case "in_progress": return "[~]";
-		case "blocked": return "[!]";
-		default: return "[ ]";
-	}
 }

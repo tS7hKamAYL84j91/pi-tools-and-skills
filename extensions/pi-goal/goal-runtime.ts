@@ -74,10 +74,11 @@ export async function refreshUi(ctx: ExtensionContext, runtime: GoalRuntime, sta
 		return;
 	}
 	const stop = runtime.stopRequested ? " stopping" : "";
-	const run = current.runActive ? ` ${current.turnsUsed}/${current.turnBudget}${stop}` : "";
+	const progress = current.turnBudget > 0 ? `${current.turnsUsed}/${current.turnBudget}` : `${current.turnsUsed}/∞`;
+	const run = current.runActive ? ` ${progress}${stop}` : "";
 	const phase = current.runActive ? "running" : current.status;
 	ctx.ui.setStatus("goal", `goal: ${phase}${run}`);
-	ctx.ui.setWidget("goal", [`goal: ${phase} ${current.turnsUsed}/${current.turnBudget} · /goal status for details`]);
+	ctx.ui.setWidget("goal", [`goal: ${phase} ${progress} · /goal status for details`]);
 }
 
 export function findFinalAssistantMessage(messages: readonly unknown[]): { role: string; stopReason?: string; errorMessage?: string } | undefined {

@@ -7,8 +7,6 @@
 export type { GoalState } from "./goal-types.js";
 export { renderGoalSummary } from "./goal-render.js";
 export {
-	generatePlanState,
-	getCurrentMilestone,
 	startRun,
 	updateGoal,
 } from "./goal-plan.js";

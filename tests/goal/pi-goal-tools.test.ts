@@ -80,7 +80,7 @@ describe("pi-goal extension", () => {
 		goalExtension(pi as unknown as ExtensionAPI);
 
 		expect(pi.commands.has("goal")).toBe(true);
-		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_plan", "goal_verify", "goal_complete"]);
+		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete"]);
 	});
 
 	it("/goal with no args shows command help", async () => {
@@ -120,10 +120,13 @@ describe("pi-goal extension", () => {
 		await expect(readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
-	it("/goal file <path> awaits file-goal creation before persistence", async () => {
+	it("/goal file <path> creates its TODO and starts direct execution", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
-		const ctx = createFakeContext(tempDir);
+		const ctx = createFakeContext(tempDir, pi);
+		pi.sendUserMessage = async () => {
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", stopReason: "aborted", content: "" }]);
+		};
 		await writeFile(join(tempDir, "goal.txt"), "Ship the file-backed goal.", "utf8");
 
 		await runGoalCommand(pi, "file goal.txt", ctx);
@@ -131,11 +134,13 @@ describe("pi-goal extension", () => {
 		const persisted = await readInstanceGoal(tempDir);
 		expect(persisted).toMatchObject({
 			objective: "Complete the work described by goal.txt",
-			sourcePath: "goal.txt",
+			sourcePath: ".pi/goal/TODO.md",
+			turnBudget: 0,
+			runMode: "continuous",
 		});
 	});
 
-	it("/goal file <path> goal start creates a TODO and starts a 20-turn run", async () => {
+	it("legacy file start syntax also starts an unbounded direct run", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir, pi);
@@ -148,7 +153,7 @@ describe("pi-goal extension", () => {
 
 		const persisted = await readInstanceGoal(tempDir);
 		const todo = await readFile(join(tempDir, persisted.sourcePath ?? ".pi/goal/TODO.md"), "utf8");
-		expect(persisted).toMatchObject({ runActive: false, turnBudget: 20 });
+		expect(persisted).toMatchObject({ runActive: false, turnBudget: 0, runMode: "continuous" });
 		expect(persisted.sourcePath).toBe(".pi/goal/TODO.md");
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
@@ -193,14 +198,14 @@ describe("pi-goal extension", () => {
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean };
 		expect(persisted.runActive).toBe(false);
 		expect(ctx.ui.notifications).toContainEqual({
-			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run to continue (or --turns N for a shorter bounded run).",
+			message: "Goal run stopped after 0/3 turns (stop requested). Use /goal run to continue (or --turns N for a bounded run).",
 			level: "info",
 		});
 		expect(ctx.ui.statuses.at(-1)?.key).toBe("goal");
 		expect(ctx.ui.statuses.at(-1)?.value).toBe("goal: active");
 	});
 
-	it("plain /goal run defaults to a bounded continuous run", async () => {
+	it("plain /goal run continues without a turn budget", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir, pi);
@@ -224,7 +229,7 @@ describe("pi-goal extension", () => {
 			runActive: boolean;
 		};
 		expect(persisted).toMatchObject({
-			turnBudget: 20,
+			turnBudget: 0,
 			runMode: "continuous",
 			runActive: true,
 		});
@@ -290,8 +295,13 @@ describe("pi-goal extension", () => {
 		resolveNewSession?.({ cancelled: false });
 		await runPromise;
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as { runActive: boolean; turnsUsed: number };
-		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 1 });
+		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
+			runActive: boolean;
+			turnsUsed: number;
+			turnBudget: number;
+			runMode: string;
+		};
+		expect(persisted).toMatchObject({ runActive: false, turnsUsed: 1, turnBudget: 0, runMode: "continuous" });
 	});
 
 	it("session shutdown cancels the watchdog timer", async () => {
@@ -323,7 +333,7 @@ describe("pi-goal extension", () => {
 		expect(persisted?.runActive).toBe(false);
 	});
 
-	it("/goal resume preserves consumed turns and budget accounting", async () => {
+	it("/goal resume preserves consumed turns and switches to unbounded execution", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir, pi);
@@ -338,19 +348,19 @@ describe("pi-goal extension", () => {
 		ctx.newSession = async (options) => {
 			await options?.withSession?.({ ...ctx, sendUserMessage: async () => {
 				sends += 1;
-				await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", content: "finished" }]);
+				await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "aborted", content: "" }]);
 			} });
 			return { cancelled: false };
 		};
 		pi.sendUserMessage = async () => {
 			sends += 1;
-			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "finished" }]);
+			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", stopReason: "aborted", content: "" }]);
 		};
 		await runGoalCommand(pi, "resume", ctx);
 		const persisted = await loadGoal(tempDir);
-		expect(persisted?.status).toBe("active");
-		expect(persisted?.turnsUsed).toBe(5);
-		expect(persisted?.turnBudget).toBe(5);
+		expect(persisted?.status).toBe("paused");
+		expect(persisted?.turnsUsed).toBe(2);
+		expect(persisted?.turnBudget).toBe(0);
 		expect(persisted?.runId).not.toBe(started.runId);
 		expect(sends).toBeGreaterThan(0);
 	});
@@ -403,8 +413,8 @@ describe("pi-goal extension", () => {
 		expect(persisted.objective).toBe("revised objective text");
 		expect(persisted.turnsUsed).toBe(2);
 		expect(persisted.turnBudget).toBe(5);
-		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated. The plan has been invalidated; run /goal plan to replan.", level: "info" });
-		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: active 2/5 · /goal status for details"]);
+		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated. Use /goal run to continue direct execution.", level: "info" });
+		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: running 2/5 · /goal status for details"]);
 	});
 
 	it("continuation marker guard swallows cancelled extension input", async () => {
