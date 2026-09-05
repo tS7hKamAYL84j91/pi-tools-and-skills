@@ -42,8 +42,54 @@ export interface VerificationRecord {
 	readonly milestoneRevision?: number;
 }
 
+export interface GoalExpectedCurrent {
+	readonly goalId: string;
+	readonly revision: number;
+	readonly owner?: GoalOwnerIdentity;
+}
+
+export interface GoalOwnerIdentity {
+	readonly token: string;
+	readonly generation: number;
+}
+
+export interface GoalAdmission {
+	readonly attempt: number;
+	readonly generation: number;
+}
+
+export interface GoalReplacementReservation {
+	readonly attempt: number;
+	readonly generation: number;
+	readonly revision: number;
+}
+
+export type GoalExpected = "absent" | GoalExpectedCurrent;
+
+export interface GoalMutationApplied {
+	readonly status: "applied";
+	readonly previousRevision: number | "absent";
+	readonly state: GoalState | null;
+	readonly projection: "complete" | "failed";
+	readonly projectionError?: string;
+}
+
+export interface GoalMutationConflict {
+	readonly status: "conflict";
+	readonly expected: GoalExpected;
+	readonly actual: GoalState | null;
+}
+
+export type GoalMutationResult = GoalMutationApplied | GoalMutationConflict;
+
 export interface GoalState {
 	readonly schemaVersion: 1 | 2 | 3;
+	readonly revision: number;
+	readonly owner?: GoalOwnerIdentity;
+	/** Highest generation ever claimed; retained across release to prevent ABA reuse. */
+	readonly ownerGeneration?: number;
+	readonly admission?: GoalAdmission;
+	readonly replacement?: GoalReplacementReservation;
 	readonly goalId: string;
 	readonly objective: string;
 	readonly sourcePath?: string;
@@ -82,6 +128,7 @@ interface GoalPaths {
 	readonly specPath: string;
 	readonly planPath: string;
 	readonly statusPath: string;
+	readonly runsPath: string;
 }
 
 export const STATE_DIR = join(".pi", "goal");
@@ -114,5 +161,6 @@ export function goalPaths(cwd: string, goalId?: string): GoalPaths {
 		specPath: join(dir, SPEC_FILE),
 		planPath: join(dir, PLAN_FILE),
 		statusPath: join(dir, STATUS_FILE),
+		runsPath: join(dir, "runs"),
 	};
 }

@@ -3,12 +3,20 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadGoal } from "./goal-persist.js";
 import { goalScopeForContext } from "./goal-helpers.js";
 import type { GoalSessionScope } from "./goal-binding.js";
-import type { GoalState } from "./goal-types.js";
+import type { GoalOwnerIdentity, GoalState } from "./goal-types.js";
 
 const MAX_CANCELLED_MARKERS = 20;
 const GOAL_RUNTIME_KEY = Symbol.for("pi-goal.runtime");
 
+export interface GoalDriver extends GoalOwnerIdentity {
+	readonly cwd: string;
+	readonly goalId: string;
+	sessionId?: string;
+	handoff: boolean;
+}
+
 export interface GoalRuntime {
+	driver?: GoalDriver;
 	resolve: ((messages: readonly unknown[]) => void) | null;
 	stopRequested: boolean;
 	pendingMarker: string | null;
@@ -43,8 +51,23 @@ export function isCancelledContinuation(runtime: GoalRuntime, prompt: string, ex
 	return marker !== undefined && runtime.cancelledMarkers.has(marker);
 }
 
+export function ownsGoal(runtime: GoalRuntime, state: GoalState): boolean {
+	return runtime.driver?.goalId === state.goalId && runtime.driver.token === state.owner?.token && runtime.driver.generation === state.owner?.generation;
+}
+
+/** Stops only the local run associated with this goal; never adopts persisted owners. */
+export function stopLocalRun(runtime: GoalRuntime, goalId?: string): void {
+	if (goalId !== undefined && runtime.driver?.goalId !== goalId) { return; }
+	runtime.stopRequested = true;
+	cancelContinuationPending(runtime);
+	const resolve = runtime.resolve;
+	runtime.resolve = null;
+	resolve?.([]);
+}
+
 export async function refreshUi(ctx: ExtensionContext, runtime: GoalRuntime, state?: GoalState | null, scope?: GoalSessionScope): Promise<void> {
 	const current = state === undefined ? await loadGoal(ctx.cwd, scope ?? goalScopeForContext(ctx)) : state;
+	if (current && !current.runActive) { stopLocalRun(runtime, current.goalId); }
 	if (!current || current.status === "complete") {
 		ctx.ui.setStatus("goal", undefined);
 		ctx.ui.setWidget("goal", undefined);

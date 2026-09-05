@@ -66,6 +66,9 @@ export function parseCommand(args: string): ParsedCommand {
 	const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
 	const action = match?.[1] ?? "show";
 	const rest = match?.[2] ?? "";
+	if (action === "continue" && !rest) {
+		return { action: "resume", rest };
+	}
 	if (KNOWN_ACTIONS.has(action)) {
 		return { action, rest };
 	}

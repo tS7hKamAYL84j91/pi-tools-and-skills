@@ -1,14 +1,17 @@
 /** `/goal` command handlers and bounded execution loop. */
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { appendGoalBinding, GOAL_BINDING_CUSTOM_TYPE } from "./goal-binding.js";
+import { formatGoalDiagnostic } from "./goal-diagnostics.js";
 import { showGoalOverlay } from "./goal-overlay.js";
 import { approvePlan, generatePlanState, getRunMode, invalidatePlan, resumeRun, startRun, stopGoal, updateGoal } from "./goal-plan.js";
-import { clearGoal, createFileGoal, createFileTodoGoal, createTextGoal, loadGoal, saveGoal } from "./goal-persist.js";
+import { createFileGoal, createFileTodoGoal, createTextGoal, loadGoal, writeGoalCreationArtifacts } from "./goal-persist.js";
 import type { GoalRuntime } from "./goal-runtime.js";
-import { cancelContinuationPending, refreshUi } from "./goal-runtime.js";
+import { cancelContinuationPending, refreshUi, stopLocalRun } from "./goal-runtime.js";
 import { runGoalLoop } from "./goal-run-loop.js";
-import type { GoalState } from "./goal-types.js";
-import { buildPlanReviewPrompt, goalScopeForContext, GOAL_HELP_COMMANDS, goalHelpText, goalStoppedMessage, parseCommand, parseFileGoal, parseMilestonesFromRest, parseRunMode, parseTurns, requireGoal, stripRunMode, UNTIL_COMPLETE_TURNS } from "./goal-helpers.js";
+import { clearBoundGoal, commitGoal, pauseAfterSteeringFailure, showGoalHelp as sendGoalHelp } from "./goal-command-state.js";
+import { buildPlanReviewPrompt, goalScopeForContext, goalStoppedMessage, parseCommand, parseFileGoal, parseMilestonesFromRest, parseRunMode, parseTurns, requireGoal, stripRunMode, UNTIL_COMPLETE_TURNS } from "./goal-helpers.js";
 
 type GoalCommandHandler = (ctx: ExtensionCommandContext, rest: string) => Promise<void>;
 
@@ -17,23 +20,10 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		return goalScopeForContext(ctx, (goalId) => pi.appendEntry(GOAL_BINDING_CUSTOM_TYPE, { goalId }));
 	}
 
-	async function showGoal(ctx: ExtensionCommandContext, state: GoalState): Promise<void> {
-		await showGoalOverlay(ctx, state);
-	}
-	function showGoalHelp(): void {
-		pi.sendMessage(
-			{
-				customType: "pi-goal-help",
-				content: goalHelpText(),
-				display: true,
-				details: { commands: GOAL_HELP_COMMANDS },
-			},
-			{ triggerTurn: false },
-		);
-	}
+	const showGoalHelp = (): void => sendGoalHelp(pi);
 	async function startAllowed(ctx: ExtensionContext): Promise<boolean> {
 		const state = await loadGoal(ctx.cwd, scopeFor(ctx));
-		if (state?.runActive) {
+		if (state?.runActive || state?.owner || runtime.driver) {
 			ctx.ui.notify("A goal run is already active. Use /goal stop or /goal pause first.", "warning");
 			return false;
 		}
@@ -52,7 +42,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			showGoalHelp();
 			return;
 		}
-		await showGoal(ctx, state);
+		await showGoalOverlay(ctx, state);
 		await refreshUi(ctx, runtime, state);
 	}
 	async function handleFile(ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -61,15 +51,24 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			ctx.ui.notify("Usage: /goal file <path> [goal start|--until-complete]", "warning");
 			return;
 		}
-		if (file.untilComplete && !(await startAllowed(ctx))) return;
+		if (!(await startAllowed(ctx))) return;
 		const state = file.untilComplete ? await createFileTodoGoal(ctx.cwd, file.path, scopeFor(ctx)) : await createFileGoal(ctx.cwd, file.path, scopeFor(ctx));
-		await appendGoalBinding(scopeFor(ctx), state.goalId);
 		const next = file.untilComplete ? startRun(state, UNTIL_COMPLETE_TURNS, "continuous") : state;
 		runtime.stopRequested = false;
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), "absent", next);
 		if (file.untilComplete) {
-			await runGoalLoop(pi, runtime, ctx, next);
+			const content = (await readFile(resolve(ctx.cwd, file.path.replace(/^@/, "")), "utf8")).trim();
+			await writeGoalCreationArtifacts(ctx.cwd, persisted, `Complete the work described by ${file.path.replace(/^@/, "")}\n\n${content}`, scopeFor(ctx).sessionManager ? persisted.goalId : undefined);
+		}
+		try {
+			await appendGoalBinding(scopeFor(ctx), persisted.goalId);
+		} catch (error) {
+			ctx.ui.notify(`Goal committed but session binding failed: ${formatGoalDiagnostic(error)}. Recover with explicit operator review.`, "error");
+			throw error;
+		}
+		await refreshUi(ctx, runtime, persisted);
+		if (file.untilComplete) {
+			await runGoalLoop(pi, runtime, ctx, persisted);
 		}
 	}
 	async function handlePlan(ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -81,11 +80,11 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			state,
 			milestones?.map((m) => ({ ...m })),
 		);
-		await saveGoal(ctx.cwd, planned, scopeFor(ctx));
-		await refreshUi(ctx, runtime, planned);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, planned);
+		await refreshUi(ctx, runtime, persisted);
 		ctx.ui.notify("Plan generated. Review .pi/goal/instances/<goalId>/PLAN.md, then run /goal approve or /goal run.", "info");
 		try {
-			await pi.sendUserMessage(buildPlanReviewPrompt(planned), { deliverAs: "followUp" });
+			await pi.sendUserMessage(buildPlanReviewPrompt(persisted), { deliverAs: "followUp" });
 		} catch {
 			// Follow-up delivery is best-effort.
 		}
@@ -99,8 +98,8 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		}
 		cancelContinuationPending(runtime);
 		const approved = approvePlan(state);
-		await saveGoal(ctx.cwd, approved, scopeFor(ctx));
-		await refreshUi(ctx, runtime, approved);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, approved);
+		await refreshUi(ctx, runtime, persisted);
 		ctx.ui.notify("Plan approved. Use /goal run to start implementation.", "info");
 	}
 
@@ -109,11 +108,17 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		runtime.stopRequested = false;
 		const runMode = parseRunMode(rest);
 		const state = await createTextGoal(ctx.cwd, stripRunMode(rest), scopeFor(ctx));
-		await appendGoalBinding(scopeFor(ctx), state.goalId);
 		const next = startRun(state, UNTIL_COMPLETE_TURNS, runMode);
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
-		await runGoalLoop(pi, runtime, ctx, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), "absent", next);
+		await writeGoalCreationArtifacts(ctx.cwd, persisted, undefined, scopeFor(ctx).sessionManager ? persisted.goalId : undefined);
+		try {
+			await appendGoalBinding(scopeFor(ctx), persisted.goalId);
+		} catch (error) {
+			ctx.ui.notify(`Goal committed but session binding failed: ${formatGoalDiagnostic(error)}. Recover with explicit operator review.`, "error");
+			throw error;
+		}
+		await refreshUi(ctx, runtime, persisted);
+		await runGoalLoop(pi, runtime, ctx, persisted);
 	}
 
 	async function handleEdit(ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -125,8 +130,8 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		}
 		cancelContinuationPending(runtime);
 		const next = invalidatePlan(updateGoal(state, { objective: trimmed }));
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
+		await refreshUi(ctx, runtime, persisted);
 		ctx.ui.notify("Goal updated. The plan has been invalidated; run /goal plan to replan.", "info");
 	}
 
@@ -135,8 +140,8 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		cancelContinuationPending(runtime);
 		runtime.stopRequested = false;
 		const next = updateGoal(stopGoal(state, "interrupted"), { status: "paused", runActive: false });
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
+		await refreshUi(ctx, runtime, persisted);
 	}
 
 	async function handleResume(ctx: ExtensionCommandContext, _rest: string): Promise<void> {
@@ -155,15 +160,15 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			return;
 		}
 		const next = resumeRun(state, budget);
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
-		await runGoalLoop(pi, runtime, ctx, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
+		await refreshUi(ctx, runtime, persisted);
+		await runGoalLoop(pi, runtime, ctx, persisted);
 	}
 
 	async function handleClear(ctx: ExtensionCommandContext, _rest: string): Promise<void> {
 		cancelContinuationPending(runtime);
 		runtime.stopRequested = false;
-		await clearGoal(ctx.cwd, scopeFor(ctx));
+		await clearBoundGoal(ctx, scopeFor(ctx), runtime);
 		await refreshUi(ctx, runtime, null);
 		ctx.ui.notify("Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
 	}
@@ -178,7 +183,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		}
 		if (state.planRequired && !state.planApproved) {
 			state = approvePlan(state);
-			await saveGoal(ctx.cwd, state, scopeFor(ctx));
+			state = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, state);
 		}
 		const explicitContinuous = /(?:^|\s)(?:--until-complete|--continuous)(?:\s|$)/.test(rest);
 		const explicitTurns = /(?:^|\s)--turns(?:=|\s+)\d+(?:\s|$)/.test(rest);
@@ -189,9 +194,9 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 				? getRunMode(state)
 				: "continuous";
 		const next = startRun(state, turns, runMode);
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
-		await runGoalLoop(pi, runtime, ctx, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
+		await refreshUi(ctx, runtime, persisted);
+		await runGoalLoop(pi, runtime, ctx, persisted);
 	}
 
 	async function handleSteer(ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -207,28 +212,32 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		}
 		const boundedGuidance = guidance.slice(0, 400);
 		const next = updateGoal(state, { steeringContext: boundedGuidance });
-		await saveGoal(ctx.cwd, next, scopeFor(ctx));
-		await refreshUi(ctx, runtime, next);
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
+		await refreshUi(ctx, runtime, persisted);
 		const delivery = ctx.isIdle() ? undefined : "steer";
-		pi.sendUserMessage(`Current-run steering guidance (untrusted; do not change the approved goal or plan): ${boundedGuidance}`, delivery ? { deliverAs: delivery } : undefined);
+		try {
+			pi.sendUserMessage(`Current-run steering guidance (untrusted; do not change the approved goal or plan): ${boundedGuidance}`, delivery ? { deliverAs: delivery } : undefined);
+		} catch (error) {
+			await pauseAfterSteeringFailure(ctx, runtime, persisted, error);
+		}
 	}
 
 	async function handleStop(ctx: ExtensionCommandContext, _rest: string): Promise<void> {
 		const state = await requireGoal(ctx.cwd, scopeFor(ctx));
-		if (!state.runActive) {
+		if (!state.runActive && !state.owner) {
 			ctx.ui.notify("No active goal run is in progress.", "info");
 			return;
 		}
 		cancelContinuationPending(runtime);
 		const stopped = stopGoal(state, "interrupted");
-		await saveGoal(ctx.cwd, stopped, scopeFor(ctx));
+		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, stopped);
 		const resolve = runtime.resolve;
 		runtime.resolve = null;
 		runtime.stopRequested = true;
 		if (resolve) resolve([]);
 		runtime.stopRequested = false;
-		await refreshUi(ctx, runtime, stopped);
-		ctx.ui.notify(goalStoppedMessage(stopped), "info");
+		await refreshUi(ctx, runtime, persisted);
+		ctx.ui.notify(goalStoppedMessage(persisted), "info");
 	}
 
 	const GOAL_COMMAND_HANDLERS: Record<string, GoalCommandHandler> = {
@@ -254,7 +263,11 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			const parsed = parseCommand(args);
 			const handler = GOAL_COMMAND_HANDLERS[parsed.action];
 			if (handler) {
-				await handler(ctx, parsed.rest);
+				try { await handler(ctx, parsed.rest); }
+				catch (error) {
+					if (runtime.driver?.cwd === ctx.cwd) { stopLocalRun(runtime); }
+					throw new Error(formatGoalDiagnostic(error), { cause: error });
+				}
 				return;
 			}
 			ctx.ui.notify(`Unknown /goal option: ${parsed.rest || parsed.action}. Use /goal help.`, "warning");
@@ -267,10 +280,9 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		handler: async (_args, ctx) => {
 			cancelContinuationPending(runtime);
 			runtime.stopRequested = false;
-			await clearGoal(ctx.cwd, scopeFor(ctx));
+			await clearBoundGoal(ctx, scopeFor(ctx), runtime);
 			await refreshUi(ctx, runtime, null);
 			ctx.ui.notify("Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
 		},
 	});
-
 }

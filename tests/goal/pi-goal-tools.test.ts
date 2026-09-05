@@ -1,14 +1,16 @@
 /**
  * Direct behavior tests for the pi-goal extension.
  */
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import { createFileGoal, createFileTodoGoal, loadGoal } from "../../extensions/pi-goal/goal-persist.js";
-import { createTextGoal, saveGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
+import { createTextGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
+
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 
 interface RegisteredCommand {
 	readonly description: string;
@@ -34,7 +36,7 @@ interface FakeCommandContext {
 	readonly ui: FakeUi;
 	waitForIdle(): Promise<void>;
 	readonly sessionManager: { getSessionFile(): string | undefined };
-	newSession(): Promise<{ cancelled: boolean }>;
+	newSession(options?: { withSession?: (ctx: FakeCommandContext) => Promise<void> }): Promise<{ cancelled: boolean }>;
 	sendUserMessage(message: string, options?: unknown): Promise<void>;
 	hasPendingMessages(): boolean;
 	isIdle(): boolean;
@@ -126,10 +128,7 @@ describe("pi-goal extension", () => {
 
 		await runGoalCommand(pi, "file goal.txt", ctx);
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
-			objective: string;
-			sourcePath: string;
-		};
+		const persisted = await readInstanceGoal(tempDir);
 		expect(persisted).toMatchObject({
 			objective: "Complete the work described by goal.txt",
 			sourcePath: "goal.txt",
@@ -147,13 +146,10 @@ describe("pi-goal extension", () => {
 
 		await runGoalCommand(pi, "file goal.txt goal start", ctx);
 
-		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
-			runActive: boolean;
-			turnBudget: number;
-			sourcePath: string;
-		};
-		const todo = await readFile(join(tempDir, ".pi/goal", "TODO.md"), "utf8");
-		expect(persisted).toMatchObject({ runActive: false, turnBudget: 20, sourcePath: ".pi/goal/TODO.md" });
+		const persisted = await readInstanceGoal(tempDir);
+		const todo = await readFile(join(tempDir, persisted.sourcePath ?? ".pi/goal/TODO.md"), "utf8");
+		expect(persisted).toMatchObject({ runActive: false, turnBudget: 20 });
+		expect(persisted.sourcePath).toBe(".pi/goal/TODO.md");
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
 
@@ -312,7 +308,7 @@ describe("pi-goal extension", () => {
 		await shutdownHandler?.({ reason: "quit" }, ctx as unknown as FakeContext);
 		expect(clearTimeoutSpy).toHaveBeenCalled();
 		clearTimeoutSpy.mockRestore();
-		expect(shutdown).toBeUndefined();
+		expect(shutdown).toHaveLength(1); // Registered once, not nested per session_start.
 	});
 
 	it("/goal pause records an interrupted run", async () => {
@@ -339,9 +335,11 @@ describe("pi-goal extension", () => {
 		});
 		await saveGoal(tempDir, started);
 		let sends = 0;
-		ctx.newSession = async () => {
-			sends += 1;
-			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "finished" }]);
+		ctx.newSession = async (options) => {
+			await options?.withSession?.({ ...ctx, sendUserMessage: async () => {
+				sends += 1;
+				await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", content: "finished" }]);
+			} });
 			return { cancelled: false };
 		};
 		pi.sendUserMessage = async () => {
@@ -379,7 +377,9 @@ describe("pi-goal extension", () => {
 		const ctx = createFakeContext(tempDir);
 		const state = updateGoal(startRun(await createTextGoal(tempDir, "budget stop"), 1), { turnsUsed: 0 });
 		await saveGoal(tempDir, state);
-		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", content: "finished" }]);
+		pi.sendUserMessage = () => { void triggerAgentEndEvent(pi, ctx, [{ role: "assistant", content: "finished" }]); };
+		await runGoalCommand(pi, "stop", ctx);
+		await runGoalCommand(pi, "run --turns 1", ctx);
 		const persisted = await loadGoal(tempDir);
 		expect(persisted?.runActive).toBe(false);
 		expect(persisted?.turnsUsed).toBe(1);
@@ -404,7 +404,7 @@ describe("pi-goal extension", () => {
 		expect(persisted.turnsUsed).toBe(2);
 		expect(persisted.turnBudget).toBe(5);
 		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated. The plan has been invalidated; run /goal plan to replan.", level: "info" });
-		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: running 2/5 · /goal status for details"]);
+		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: active 2/5 · /goal status for details"]);
 	});
 
 	it("continuation marker guard swallows cancelled extension input", async () => {
@@ -446,7 +446,9 @@ describe("pi-goal extension", () => {
 		const state = startRun(await createTextGoal(tempDir, "auto pause test"), 5);
 		await saveGoal(tempDir, state);
 
-		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "error", content: "oops" }]);
+		pi.sendUserMessage = () => { void triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "error", content: "oops" }]); };
+		await runGoalCommand(pi, "stop", ctx);
+		await runGoalCommand(pi, "run --turns 5", ctx);
 
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
 			status: string;
@@ -467,7 +469,9 @@ describe("pi-goal extension", () => {
 		const state = startRun(await createTextGoal(tempDir, "auto pause aborted"), 5);
 		await saveGoal(tempDir, state);
 
-		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "aborted", content: "" }]);
+		pi.sendUserMessage = () => { void triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "aborted", content: "" }]); };
+		await runGoalCommand(pi, "stop", ctx);
+		await runGoalCommand(pi, "run --turns 5", ctx);
 
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as {
 			status: string;
@@ -553,8 +557,8 @@ function createFakeContext(cwd: string, pi?: FakePi): FakeCommandContext {
 		ctx.sendUserMessage = async () => {
 			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
 		};
-		ctx.newSession = async () => {
-			await triggerAgentEndEvent(pi, ctx as unknown as FakeContext, [{ role: "assistant", content: "" }]);
+		ctx.newSession = async (options) => {
+			await options?.withSession?.(ctx);
 			return { cancelled: false };
 		};
 	}
@@ -594,6 +598,26 @@ function createFakeUi(): FakeUi {
 		notify(message, level) {
 			notifications.push({ message, level });
 		},
+	};
+}
+
+async function readInstanceGoal(cwd: string): Promise<{ readonly goalId: string; readonly objective: string; readonly sourcePath?: string; readonly runActive: boolean; readonly turnBudget: number }> {
+	let path = join(cwd, ".pi/goal", "goal.json");
+	try {
+		const instanceIds = await readdir(join(cwd, ".pi/goal/instances"));
+		expect(instanceIds).toHaveLength(1);
+		const goalId = instanceIds[0];
+		if (goalId === undefined) throw new Error("Expected one goal instance");
+		path = join(cwd, ".pi/goal", "instances", goalId, "goal.json");
+	} catch (error) {
+		if (!(error instanceof Error) || !error.message.includes("ENOENT")) throw error;
+	}
+	return JSON.parse(await readFile(path, "utf8")) as {
+		readonly goalId: string;
+		readonly objective: string;
+		readonly sourcePath?: string;
+		readonly runActive: boolean;
+		readonly turnBudget: number;
 	};
 }
 

@@ -29,6 +29,18 @@ An operator may set `PI_GOAL_GATE_COMMAND` before starting pi. When configured, 
 
 The public `goal_complete` schema retains deprecated `gate_command` only as ignored compatibility input. Its value is never executed and cannot select or override the command; the environment is the trusted operator configuration boundary. Structured `goal_verify` evidence remains separate and supported.
 
+## Ownership and recovery (ADR-059)
+
+`/goal continue` is an alias for `/goal resume`; ordinary multi-word objectives remain supported. Only the explicitly claimed command loop drives turns. `agent_end` settles its matching waiter and cannot launch a second loop. Runs wait for the host to settle before another send or replacement.
+
+Each claim has an opaque token, monotonic generation, and revision-checked state. A competing process cannot acquire it even after the original process exits. To recover, inspect any uncertain old work, use an authorized bound session's `/goal stop` or `/goal pause`, then explicitly `/goal run` or `/goal resume`. There is no age/TTL/PID takeover, automatic replay, or claim of remote quiescence. Malformed ownership fails closed and needs operator repair; do not delete it merely to force a retry.
+
+Replacement reserves the current attempt before switching, installs the lineage binding in `setup`, validates the fresh callback session, then atomically consumes the reservation with admission. Stop/edit/plan/completion/timeout revoke before local waiter settlement. One local driver is allowed per Pi process. A persisted token alone never grants an observing watchdog permission to act.
+
+A void SDK send records an admitted attempt, not acknowledged delivery. An awaited replacement-send rejection can also have an uncertain outcome. Pause and inspect rather than blindly replaying. Filesystem checks reject detected symlinks/nonregular authority; they cannot eliminate every hostile-directory check/use race.
+
+`/goal clear` deletes authoritative state, known projections, and recognized generated run files only. Unknown files and nonempty directories are preserved. Projection/cleanup failure after authority commit is reported separately, never as rollback.
+
 ## Provisional Surfaces
 
 - `.pi/goal/instances/<goalId>/TODO.md` extraction logic.

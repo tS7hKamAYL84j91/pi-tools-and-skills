@@ -4,15 +4,17 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createTextGoal,
-	saveGoal,
 	startRun,
 	updateGoal,
 } from "../../extensions/pi-goal/state.js";
 import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { claimGoal } from "../../extensions/pi-goal/goal-ownership.js";
 import {
 	readGoalWatchdogConfig,
 	startGoalWatchdog,
 } from "../../extensions/pi-goal/goal-watchdog.js";
+
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 
 const directories: string[] = [];
 
@@ -36,6 +38,7 @@ describe("pi-goal continuous liveness recovery", () => {
 			cwd,
 			updateGoal(started, { lastProgressAt: new Date(0).toISOString() }),
 		);
+		await claimGoal(cwd, undefined, "watchdog-owner");
 		const persistedBeforeWatchdog = await loadGoal(cwd);
 		expect(persistedBeforeWatchdog?.livenessWarningIssued).toBe(false);
 		expect(persistedBeforeWatchdog?.lastProgressAt).toBe(
@@ -54,6 +57,7 @@ describe("pi-goal continuous liveness recovery", () => {
 					return {};
 				},
 				cancel: () => undefined,
+				getOwner: () => ({ token: "watchdog-owner", generation: 1 }),
 				isTurnActive: () => active,
 				hasQueuedContinuation: () => false,
 				notify: (_message, level) => {
@@ -87,6 +91,7 @@ describe("pi-goal continuous liveness recovery", () => {
 			cwd,
 			updateGoal(started, { lastProgressAt: new Date(0).toISOString() }),
 		);
+		await claimGoal(cwd, undefined, "watchdog-owner");
 		const scheduled: Array<() => void> = [];
 		let nudges = 0;
 		const stop = startGoalWatchdog(
@@ -99,6 +104,7 @@ describe("pi-goal continuous liveness recovery", () => {
 				},
 				cancel: () => undefined,
 				isTurnActive: () => false,
+				getOwner: () => ({ token: "watchdog-owner", generation: 1 }),
 				hasQueuedContinuation: () => true,
 				notify: () => undefined,
 				sendNudge: () => {
@@ -142,6 +148,7 @@ describe("pi-goal continuous liveness recovery", () => {
 			cwd,
 			updateGoal(started, { lastProgressAt: new Date(0).toISOString() }),
 		);
+		await claimGoal(cwd, undefined, "watchdog-owner");
 		expect((await loadGoal(cwd))?.lastProgressAt).toBe(
 			new Date(0).toISOString(),
 		);
@@ -161,6 +168,7 @@ describe("pi-goal continuous liveness recovery", () => {
 				notify: (_message, level) => {
 					if (level === "error") errors += 1;
 				},
+				getOwner: () => ({ token: "watchdog-owner", generation: 1 }),
 				sendNudge: () => undefined,
 			},
 			{ softTimeoutMs: 1_000, hardTimeoutMs: 2_000 },

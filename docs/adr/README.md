@@ -64,6 +64,7 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 056 | Boost model selection from the host model registry | [056-boost-model-registry-selection.md](056-boost-model-registry-selection.md) |
 | 057 | Boost is an in-session model lease that automates the manual model flip | [057-boost-in-session-model-lease.md](057-boost-in-session-model-lease.md) |
 | 058 | Single-ticket delivery event profile — evaluation only | [058-single-ticket-delivery-event-profile.md](058-single-ticket-delivery-event-profile.md) |
+| 059 | Per-goal driver ownership and send admission | [059-goal-driver-ownership.md](059-goal-driver-ownership.md) |
 
 ## ADR Registry Notes
 
@@ -73,4 +74,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - The next sequential ADR slot to assign is **059**.
+  - ADR **060** is reserved by the isolated T-888 scheduler admission work; the next unreserved sequential slot is **061**.

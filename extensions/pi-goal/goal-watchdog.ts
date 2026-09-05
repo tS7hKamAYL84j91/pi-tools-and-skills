@@ -1,8 +1,10 @@
 /** Session-scoped, bounded liveness recovery for an active pi-goal run. */
 import type { GoalSessionScope } from "./goal-binding.js";
-import { loadGoal, saveGoal } from "./goal-persist.js";
+import { loadGoal, transactGoal } from "./goal-persist.js";
+import { admitGoal } from "./goal-ownership.js";
+import { formatGoalDiagnostic } from "./goal-diagnostics.js";
 import { stopGoal, updateGoal, withLifecycle } from "./goal-plan.js";
-import type { GoalState } from "./goal-types.js";
+import type { GoalExpected, GoalOwnerIdentity, GoalState } from "./goal-types.js";
 
 const DEFAULT_SOFT_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_HARD_TIMEOUT_MS = 15 * 60 * 1000;
@@ -14,6 +16,16 @@ interface TimerHandle {
 	unref?: () => void;
 }
 
+async function commitWatchdogGoal(host: GoalWatchdogHost, state: GoalState): Promise<GoalState> {
+	const expected: GoalExpected = { goalId: state.goalId, revision: state.revision, owner: host.getOwner?.() };
+	if (!expected.owner || expected.owner.token !== state.owner?.token || expected.owner.generation !== state.owner?.generation) { throw new Error("Goal watchdog no longer owns this run"); }
+	const result = await transactGoal(host.cwd, host.scope, expected, () => state);
+	if (result.status === "conflict") throw new Error("Goal watchdog mutation conflicted with a newer revision");
+	if (result.projection === "failed") throw new Error(`Goal authority committed but projection failed: ${result.projectionError ?? "unknown projection error"}`);
+	if (result.state === null) throw new Error("Goal watchdog mutation unexpectedly deleted the goal");
+	return result.state;
+}
+
 interface GoalWatchdogConfig {
 	readonly softTimeoutMs: number;
 	readonly hardTimeoutMs: number;
@@ -22,6 +34,8 @@ interface GoalWatchdogConfig {
 interface GoalWatchdogHost {
 	readonly cwd: string;
 	readonly scope?: GoalSessionScope;
+	/** Local capability only; never derive it from a loaded persisted token. */
+	readonly getOwner?: () => GoalOwnerIdentity | undefined;
 	readonly now?: () => number;
 	readonly schedule?: (callback: () => void, delayMs: number) => TimerHandle;
 	readonly cancel?: (handle: TimerHandle) => void;
@@ -64,7 +78,8 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		if (stopped) return;
 		try {
 			const state = await loadGoal(host.cwd, host.scope);
-			if (state?.runActive && state.executionState !== "completed") {
+			const owner = host.getOwner?.();
+			if (!stopped && owner && state?.runActive && state.owner?.token === owner.token && state.owner.generation === owner.generation && state.executionState !== "completed") {
 				await evaluate(state);
 			}
 		} catch (error) {
@@ -84,9 +99,9 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		const elapsed = Math.max(0, now() - progressAt);
 		if (elapsed >= config.hardTimeoutMs) {
 			const failed = stopGoal(state, "failed", "Goal liveness hard timeout reached; run paused. Resume explicitly after checking the current turn and repository state.");
-			await saveGoal(host.cwd, failed, host.scope);
-			host.notify(failed.lastError ?? "Goal liveness hard timeout reached.", "error");
-			await host.refresh?.(failed);
+			const persisted = await commitWatchdogGoal(host, failed);
+			host.notify(persisted.lastError ?? "Goal liveness hard timeout reached.", "error");
+			await host.refresh?.(persisted);
 			return;
 		}
 		if (elapsed < config.softTimeoutMs) return;
@@ -94,23 +109,28 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		let current = state;
 		if (!state.livenessWarningIssued) {
 			current = withLifecycle(updateGoal(state, { livenessWarningIssued: true }), "progress", "Liveness soft threshold reached; recovery is bounded.");
-			await saveGoal(host.cwd, current, host.scope);
+			current = await commitWatchdogGoal(host, current);
 			host.notify("Goal run has made no recorded progress; watching for an idle recovery opportunity.", "warning");
 			await host.refresh?.(current);
 		}
 		if (current.livenessNudgeIssued || host.isTurnActive() || host.hasQueuedContinuation()) return;
 
+		if (stopped) { return; }
 		const nudged = updateGoal(current, { livenessNudgeIssued: true });
-		await saveGoal(host.cwd, nudged, host.scope);
+		const persisted = await commitWatchdogGoal(host, nudged);
 		try {
-			host.sendNudge(nudged);
-		host.notify("Goal liveness recovery nudged the idle current run once.", "info");
+			const owner = host.getOwner?.();
+			if (stopped || !owner || host.isTurnActive() || host.hasQueuedContinuation()) { return; }
+			const admitted = await admitGoal(host.cwd, host.scope, owner, persisted.turnsUsed + 1);
+			if (admitted.status !== "applied" || admitted.state === null || stopped || host.isTurnActive() || host.hasQueuedContinuation()) return;
+			host.sendNudge(admitted.state);
+			host.notify("Goal liveness recovery nudged the idle current run once.", "info");
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		const failed = stopGoal(nudged, "failed", `Goal liveness nudge failed: ${message}`);
-		await saveGoal(host.cwd, failed, host.scope);
-		host.notify(failed.lastError ?? "Goal liveness nudge failed.", "error");
-		await host.refresh?.(failed);
+		const message = formatGoalDiagnostic(error);
+		const failed = stopGoal(persisted, "failed", `Goal liveness nudge failed: ${message}`);
+		const persistedFailure = await commitWatchdogGoal(host, failed);
+		host.notify(persistedFailure.lastError ?? "Goal liveness nudge failed.", "error");
+		await host.refresh?.(persistedFailure);
 	}
 	};
 

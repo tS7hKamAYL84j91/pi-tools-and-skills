@@ -89,6 +89,7 @@ export function invalidatePlan(state: GoalState): GoalState {
 	);
 	return withLifecycle(updateGoal(state, {
 		planApproved: false,
+		runActive: false,
 		currentMilestoneIndex: 0,
 		status: state.status === "complete" ? "active" : (state.status as GoalStatus),
 		lastVerification: undefined,
@@ -170,4 +171,3 @@ export function stopGoal(state: GoalState, kind: "interrupted" | "failed", error
 	});
 	return withLifecycle(next, kind, error ?? "Goal run stopped.");
 }
-

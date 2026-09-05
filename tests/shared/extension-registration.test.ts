@@ -293,6 +293,7 @@ describe("extension registration smoke tests", () => {
 			"before_agent_start",
 			"input",
 			"session_start",
+			"session_shutdown",
 		]);
 	});
 

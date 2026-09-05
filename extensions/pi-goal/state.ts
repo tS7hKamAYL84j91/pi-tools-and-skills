@@ -15,5 +15,4 @@ export {
 export {
 	createTextGoal,
 	loadGoal,
-	saveGoal,
 } from "./goal-persist.js";

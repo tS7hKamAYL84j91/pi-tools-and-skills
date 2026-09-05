@@ -11,11 +11,12 @@ import {
 	createTextGoal,
 	generatePlanState,
 	loadGoal,
-	saveGoal,
 	startRun,
 	updateGoal,
 	type GoalState,
 } from "../../extensions/pi-goal/state.js";
+
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 
 interface FakeUi {
 	readonly statuses: Array<{ key: string; value: string | undefined }>;
@@ -88,7 +89,7 @@ describe("pi-goal plan mode and verification gate", () => {
 		expect(loaded?.lastVerification).toBeUndefined();
 	});
 
-	it("durably migrates v2 state and keeps restart correlation stable", async () => {
+	it("reads v2 state without authority rewrite and keeps restart correlation stable", async () => {
 		const updatedAt = "2026-08-21T00:00:00.000Z";
 		const legacy = {
 			schemaVersion: 2,
@@ -108,11 +109,12 @@ describe("pi-goal plan mode and verification gate", () => {
 		const migrated = await loadGoal(tempDir);
 		const persisted = JSON.parse(await readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")) as GoalState;
 		expect(migrated?.schemaVersion).toBe(3);
-		expect(persisted.schemaVersion).toBe(3);
-		expect(persisted.runMode).toBe("manual");
-		expect(persisted.lastProgressAt).toBe(updatedAt);
-		expect(persisted.milestoneRevision).toBe(1);
-		expect(persisted.lastVerification).toBeUndefined();
+		expect(persisted.schemaVersion).toBe(2);
+		expect(persisted.runMode).toBeUndefined();
+		expect(persisted.lastProgressAt).toBeUndefined();
+		expect(persisted.milestoneRevision).toBeUndefined();
+		expect(persisted.lastVerification).toMatchObject({ command: "npm test" });
+		expect(migrated?.lastVerification).toBeUndefined();
 		expect((await loadGoal(tempDir))?.lastProgressAt).toBe(updatedAt);
 	});
 

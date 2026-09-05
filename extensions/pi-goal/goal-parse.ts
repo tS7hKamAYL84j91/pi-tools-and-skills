@@ -23,6 +23,11 @@ export function parseGoalState(value: unknown): GoalState {
 	const base: GoalState = {
 		schemaVersion: 3,
 		goalId: readString(value.goalId, "goalId"),
+		revision: readRevision(value.revision),
+		owner: readOwner(value),
+		admission: readAdmission(value.admission),
+		ownerGeneration: readOptionalGeneration(value.ownerGeneration),
+		replacement: readReplacement(value.replacement),
 		objective: readString(value.objective, "objective"),
 		sourcePath: readOptionalString(value.sourcePath),
 		status,
@@ -51,7 +56,44 @@ export function parseGoalState(value: unknown): GoalState {
 		lifecycle: readLifecycle(value.lifecycle),
 		changedFiles: readStringArray(value.changedFiles, 20),
 	};
+	if (base.owner && (base.ownerGeneration ?? base.owner.generation) < base.owner.generation) { throw new Error("Invalid goal state: regressed owner generation"); }
 	return base;
+}
+
+function readAdmission(value: unknown): GoalState["admission"] {
+	if (value === undefined) { return undefined; }
+	if (!isRecord(value) || typeof value.attempt !== "number" || !Number.isSafeInteger(value.attempt) || value.attempt < 1 || typeof value.generation !== "number" || !Number.isSafeInteger(value.generation) || value.generation < 1) { throw new Error("Invalid goal state: admission"); }
+	return { attempt: value.attempt, generation: value.generation };
+}
+
+function readRevision(value: unknown): number {
+	if (value === undefined) return 0;
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+		throw new Error("Invalid goal state: revision must be a non-negative integer");
+	}
+	return value;
+}
+
+function readOptionalGeneration(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Invalid goal state: ownerGeneration must be a non-negative safe integer");
+	return value;
+}
+
+function readReplacement(value: unknown): GoalState["replacement"] {
+	if (value === undefined) return undefined;
+	if (!isRecord(value) || typeof value.attempt !== "number" || !Number.isSafeInteger(value.attempt) || value.attempt < 1 || typeof value.generation !== "number" || !Number.isSafeInteger(value.generation) || value.generation < 1) throw new Error("Invalid goal state: replacement reservation");
+	if (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 1) throw new Error("Invalid goal state: replacement reservation revision");
+	return { attempt: value.attempt, generation: value.generation, revision: value.revision };
+}
+
+function readOwner(record: Record<string, unknown>): GoalState["owner"] {
+	if (!Object.hasOwn(record, "owner")) return undefined;
+	const value = record.owner;
+	if (!isRecord(value) || typeof value.token !== "string" || value.token.length === 0 || value.token.length > 128 || typeof value.generation !== "number" || !Number.isSafeInteger(value.generation) || value.generation < 1) {
+		throw new Error("Invalid goal state: owner must contain an exact token and positive safe generation");
+	}
+	return { token: value.token, generation: value.generation };
 }
 
 function readVersion(value: unknown): 1 | 2 | 3 {

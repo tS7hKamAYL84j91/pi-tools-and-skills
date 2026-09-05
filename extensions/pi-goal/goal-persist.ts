@@ -1,21 +1,22 @@
 /** Goal persistence, confined instances, legacy migration, and projections. */
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, realpath, rm } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { assertNoSymlinkComponents, assertSafeGoalRoot, ensureRuntimeIgnored, normalizeProjectPath, removeKnownRunArtifacts, assertSafeEntry } from "./goal-files.js";
 import { randomUUID } from "node:crypto";
 import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { migrateLegacyGoal } from "./goal-migration.js";
+import { formatGoalDiagnostic } from "./goal-diagnostics.js";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import {
-	appendGoalBinding,
 	readGoalBinding,
 	type GoalSessionScope,
 } from "./goal-binding.js";
 import {
 	assertGoalId,
 	goalPaths,
-	INSTANCES_DIR,
-	STATE_DIR,
+	type GoalExpected,
+	type GoalMutationResult,
 	type GoalState,
 } from "./goal-types.js";
 import {
@@ -36,6 +37,8 @@ export async function loadGoal(cwd: string, scope?: GoalSessionScope): Promise<G
 	const paths = goalPaths(cwd, goalId);
 	await assertSafeGoalRoot(cwd, goalId);
 	return withAdvisoryLock(paths.statePath, async () => {
+		await assertSafeGoalRoot(cwd, goalId);
+		await assertSafeEntry(paths.statePath, "authority");
 		if (!existsSync(paths.statePath)) return null;
 		const raw = await readFile(paths.statePath, "utf8");
 		// Malformed persisted state is intentionally surfaced; silently recovering could load the wrong goal.
@@ -47,28 +50,97 @@ export async function loadGoal(cwd: string, scope?: GoalSessionScope): Promise<G
 		}
 		const { parseGoalState } = await import("./goal-parse.js");
 		const state = parseGoalState(parsed);
-		if (state.schemaVersion === 3 && isLegacyState(parsed)) {
-			await writeFileAtomic(paths.statePath, `${JSON.stringify(state, null, 2)}\n`);
-		}
+		if (goalId !== undefined && state.goalId !== goalId) { throw new Error("Goal authority does not match bound instance"); }
 		await regenerateDerivedFiles(cwd, state, goalId);
 		return state;
 	});
 }
 
-/** Saves an explicitly bound goal instance. The unscoped form is test/legacy compatibility only. */
-export async function saveGoal(cwd: string, state: GoalState, scope?: GoalSessionScope): Promise<void> {
-	const goalId = scope?.sessionManager ? requireScopedGoalId(scope, state.goalId) : undefined;
+export async function transactGoal(
+	cwd: string,
+	scope: GoalSessionScope | undefined,
+	expected: GoalExpected,
+	reducer: (current: GoalState | null) => GoalState | null,
+	options?: { readonly allowOwnerChange?: boolean },
+): Promise<GoalMutationResult> {
+	const goalId = scope?.sessionManager ? await resolveScopedGoalId(scope) : undefined;
+	if (scope?.sessionManager && goalId === undefined) return { status: "conflict", expected, actual: null };
+	return transactGoalAt(cwd, goalId, expected, reducer, options);
+}
+
+export async function transactGoalAt(
+	cwd: string,
+	goalId: string | undefined,
+	expected: GoalExpected,
+	reducer: (current: GoalState | null) => GoalState | null,
+	options?: { readonly allowOwnerChange?: boolean },
+): Promise<GoalMutationResult> {
 	const paths = goalPaths(cwd, goalId);
 	await assertSafeGoalRoot(cwd, goalId);
-	await withAdvisoryLock(paths.statePath, async () => {
-		await mkdir(paths.dir, { recursive: true });
-		await writeFileAtomic(paths.statePath, `${JSON.stringify(state, null, 2)}\n`);
-		await writeFileAtomic(paths.summaryPath, renderGoalMarkdown(state));
-		await writeFileAtomic(paths.specPath, renderSpecMarkdown(state));
-		await writeFileAtomic(paths.planPath, renderPlanMarkdown(state));
-		await writeFileAtomic(paths.statusPath, renderStatusMarkdown(state));
-		await ensureRuntimeIgnored(cwd);
+	return withAdvisoryLock(paths.statePath, async () => {
+		await assertSafeGoalRoot(cwd, goalId);
+		await assertSafeEntry(paths.statePath, "authority");
+		const current = await readAuthoritativeGoal(paths.statePath);
+		if (goalId !== undefined && current !== null && current.goalId !== goalId) { throw new Error("Goal authority does not match bound instance"); }
+		if (!matchesExpected(current, expected)) return { status: "conflict", expected, actual: current };
+		const reduced = reducer(current);
+		if (isPromiseLike(reduced)) throw new Error("Goal transaction reducer must be synchronous");
+		if (reduced !== null) validateReducerOutput(current, reduced, options?.allowOwnerChange === true);
+		if (!Number.isSafeInteger((current?.revision ?? 0) + 1)) { throw new Error("Goal revision exhausted; operator repair required"); }
+		// Every terminal/operator stop revokes authority in the SAME revision commit.
+		const revoked = reduced !== null && (!reduced.runActive || reduced.status !== "active");
+		const next = reduced === null ? null : { ...reduced, ...(revoked ? { owner: undefined, admission: undefined, replacement: undefined } : {}), revision: (current?.revision ?? 0) + 1 };
+		if (next === null) {
+			await rm(paths.statePath, { force: true });
+		} else {
+			await writeFileAtomic(paths.statePath, `${JSON.stringify(next, null, 2)}\n`);
+		}
+		try {
+			if (next === null) {
+				const projectionPaths = [paths.summaryPath, paths.todoPath, paths.specPath, paths.planPath, paths.statusPath];
+				for (const path of projectionPaths) await assertSafeEntry(path, "projection");
+				await Promise.all(projectionPaths.map((path) => rm(path, { force: true })));
+				await removeKnownRunArtifacts(paths.runsPath);
+			} else {
+				await regenerateDerivedFiles(cwd, next, goalId);
+			}
+			return { status: "applied", previousRevision: current?.revision ?? "absent", state: next, projection: "complete" };
+		} catch (error: unknown) {
+			return { status: "applied", previousRevision: current?.revision ?? "absent", state: next, projection: "failed", projectionError: formatGoalDiagnostic(error) };
+		}
 	});
+}
+
+function validateReducerOutput(current: GoalState | null, next: GoalState, allowOwnerChange = false): void {
+	assertGoalId(next.goalId);
+	if (current !== null && next.goalId !== current.goalId) {
+		throw new Error("Goal transaction reducer cannot change goalId");
+	}
+	validateOwner(next.owner);
+	if (current !== null && !sameOwner(current.owner, next.owner) && !allowOwnerChange) {
+		throw new Error("Goal transaction reducer cannot change owner identity");
+	}
+}
+
+function validateOwner(owner: GoalState["owner"]): void {
+	if (owner === undefined) return;
+	if (typeof owner.token !== "string" || owner.token.length === 0 || owner.token.length > 128 || !Number.isInteger(owner.generation) || owner.generation < 1) {
+		throw new Error("Invalid goal owner identity");
+	}
+}
+
+function sameOwner(left: GoalState["owner"], right: GoalState["owner"]): boolean {
+	return left?.token === right?.token && left?.generation === right?.generation;
+}
+
+function matchesExpected(current: GoalState | null, expected: GoalExpected): boolean {
+	if (expected === "absent") return current === null;
+	return current !== null && current.goalId === expected.goalId && current.revision === expected.revision &&
+		(expected.owner === undefined || (current.owner?.token === expected.owner.token && current.owner.generation === expected.owner.generation));
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+	return typeof value === "object" && value !== null && "then" in value && typeof value.then === "function";
 }
 
 async function resolveScopedGoalId(scope: GoalSessionScope): Promise<string | undefined> {
@@ -100,14 +172,24 @@ function requireScopedGoalId(scope: GoalSessionScope, expected: string): string 
 	return goalId;
 }
 
-function isLegacyState(value: unknown): boolean {
-	if (!isRecord(value)) return false;
-	return value.schemaVersion === 1 || value.schemaVersion === 2 || typeof value.runMode !== "string" || typeof value.lastProgressAt !== "string";
+async function readAuthoritativeGoal(statePath: string): Promise<GoalState | null> {
+	await assertSafeEntry(statePath, "authority");
+	if (!existsSync(statePath)) return null;
+	const raw = await readFile(statePath, "utf8");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw) as unknown;
+	} catch (error: unknown) {
+		throw error instanceof Error ? error : new Error(String(error));
+	}
+	const { parseGoalState } = await import("./goal-parse.js");
+	return parseGoalState(parsed);
 }
 
 async function regenerateDerivedFiles(cwd: string, state: GoalState, goalId?: string): Promise<void> {
 	const paths = goalPaths(cwd, goalId);
 	await mkdir(paths.dir, { recursive: true });
+	for (const path of [paths.summaryPath, paths.specPath, paths.planPath, paths.statusPath]) { await assertSafeEntry(path, "projection"); }
 	await writeFileAtomic(paths.summaryPath, renderGoalMarkdown(state));
 	await writeFileAtomic(paths.specPath, renderSpecMarkdown(state));
 	await writeFileAtomic(paths.planPath, renderPlanMarkdown(state));
@@ -121,32 +203,15 @@ export async function writeGoalIteration(
 	options: { readonly messages: readonly unknown[]; readonly scope?: GoalSessionScope },
 ): Promise<void> {
 	const goalId = options.scope?.sessionManager ? requireScopedGoalId(options.scope, state.goalId) : undefined;
-	const runId = state.runId ?? "manual";
+	const runId = assertGoalId(state.runId ?? "manual");
 	const now = new Date();
 	const dir = join(goalPaths(cwd, goalId).dir, "runs", String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0"));
 	await assertSafeGoalRoot(cwd, goalId);
+	await assertNoSymlinkComponents(cwd, dir);
 	await mkdir(dir, { recursive: true });
 	const prefix = `${runId}-iter-${String(iteration).padStart(3, "0")}`;
 	await writeFileAtomic(join(dir, `${prefix}.jsonl`), `${options.messages.map((message) => JSON.stringify(message)).join("\n")}\n`);
 	await writeFileAtomic(join(dir, `${prefix}.md`), renderIterationMarkdown(state, iteration));
-}
-
-export async function clearGoal(cwd: string, scope?: GoalSessionScope): Promise<void> {
-	if (!scope) {
-		await rm(goalPaths(cwd).dir, { recursive: true, force: true });
-		return;
-	}
-	if (!scope.sessionManager) {
-		await rm(goalPaths(cwd).dir, { recursive: true, force: true });
-		return;
-	}
-	const goalId = readGoalBinding(scope);
-	if (goalId === undefined) return;
-	if (goalId === null) return;
-	const validGoalId = assertGoalId(goalId);
-	await assertSafeGoalRoot(cwd, validGoalId);
-	await rm(goalPaths(cwd, validGoalId).dir, { recursive: true, force: true });
-	await appendGoalBinding(scope, null);
 }
 
 export async function createFileGoal(cwd: string, inputPath: string, scope?: GoalSessionScope): Promise<GoalState> {
@@ -158,13 +223,17 @@ export async function createFileTodoGoal(cwd: string, inputPath: string, scope?:
 	const { sourcePath, sourceRealPath } = await normalizeProjectPath(cwd, inputPath);
 	const content = (await readFile(sourceRealPath, "utf8")).trim();
 	if (!content) throw new Error(`Goal source file is empty: ${inputPath}`);
-	const objective = `Complete the work described by ${sourcePath}\n\n${content}`;
 	const state = newGoal(`Complete the work described by ${sourcePath}`, sourcePath, scope);
 	const paths = goalPaths(cwd, scope?.sessionManager ? state.goalId : undefined);
-	await mkdir(paths.dir, { recursive: true });
-	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(objective));
-	await ensureRuntimeIgnored(cwd);
 	return updateSourcePath(state, relative(cwd, paths.todoPath));
+}
+
+/** Writes creation-only artifacts after the authority transaction has committed. */
+export async function writeGoalCreationArtifacts(cwd: string, state: GoalState, todoContent?: string, goalId?: string): Promise<void> {
+	const paths = goalPaths(cwd, goalId);
+	await mkdir(paths.dir, { recursive: true });
+	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(todoContent ?? state.objective));
+	await ensureRuntimeIgnored(cwd);
 }
 
 export async function createTextGoal(cwd: string, objective: string, scope?: GoalSessionScope): Promise<GoalState> {
@@ -172,9 +241,6 @@ export async function createTextGoal(cwd: string, objective: string, scope?: Goa
 	if (!cleaned) throw new Error("Goal text must be non-empty");
 	const state = newGoal(cleaned, undefined, scope);
 	const paths = goalPaths(cwd, scope?.sessionManager ? state.goalId : undefined);
-	await mkdir(paths.dir, { recursive: true });
-	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(cleaned));
-	await ensureRuntimeIgnored(cwd);
 	return updateSourcePath(state, relative(cwd, paths.todoPath));
 }
 
@@ -183,6 +249,7 @@ function newGoal(objective: string, sourcePath: string | undefined, _scope?: Goa
 	return {
 		schemaVersion: 3,
 		goalId: `g-${randomUUID()}`,
+		revision: 0,
 		objective,
 		...(sourcePath ? { sourcePath } : {}),
 		status: "active",
@@ -207,73 +274,4 @@ function newGoal(objective: string, sourcePath: string | undefined, _scope?: Goa
 
 function updateSourcePath(state: GoalState, sourcePath: string): GoalState {
 	return { ...state, sourcePath };
-}
-
-function isConfinedPath(root: string, target: string): boolean {
-	const pathFromRoot = relative(root, target);
-	return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
-}
-
-interface NormalizedProjectPath { readonly sourcePath: string; readonly sourceRealPath: string; }
-
-async function normalizeProjectPath(cwd: string, inputPath: string): Promise<NormalizedProjectPath> {
-	const cleaned = inputPath.startsWith("@") ? inputPath.slice(1) : inputPath;
-	const projectPath = resolve(cwd);
-	const absolute = resolve(projectPath, cleaned);
-	const rel = relative(projectPath, absolute);
-	if (rel === "" || !isConfinedPath(projectPath, absolute)) throw new Error(`Goal source must be inside the project: ${inputPath}`);
-	let current = projectPath;
-	for (const part of rel.split(/[\\/]+/).filter((segment) => segment.length > 0)) {
-		current = join(current, part);
-		const info = await lstat(current).catch((error: unknown) => {
-			if (isErrorCode(error, "ENOENT")) throw new Error(`Goal source file does not exist: ${inputPath}`);
-			throw error;
-		});
-		if (info.isSymbolicLink()) throw new Error(`Goal source must not contain symlink components: ${inputPath}`);
-	}
-	const [projectRealPath, sourceRealPath] = await Promise.all([realpath(projectPath), realpath(absolute)]);
-	if (!isConfinedPath(projectRealPath, sourceRealPath) || sourceRealPath === projectRealPath) throw new Error(`Goal source must resolve inside the project: ${inputPath}`);
-	return { sourcePath: rel, sourceRealPath };
-}
-
-async function assertSafeGoalRoot(cwd: string, goalId?: string): Promise<void> {
-	const root = resolve(cwd, STATE_DIR);
-	await assertNoSymlinkComponents(cwd, root);
-	if (goalId !== undefined) {
-		assertGoalId(goalId);
-		await assertNoSymlinkComponents(cwd, resolve(cwd, INSTANCES_DIR));
-		await assertNoSymlinkComponents(cwd, goalPaths(cwd, goalId).dir);
-	}
-}
-
-async function assertNoSymlinkComponents(cwd: string, target: string): Promise<void> {
-	const project = resolve(cwd);
-	const absolute = resolve(target);
-	if (!isConfinedPath(project, absolute)) throw new Error(`pi-goal path escapes the project: ${target}`);
-	const rel = relative(project, absolute);
-	let current = project;
-	for (const part of rel.split(/[\\/]+/).filter(Boolean)) {
-		current = join(current, part);
-		const info = await lstat(current).catch((error: unknown) => isErrorCode(error, "ENOENT") ? undefined : Promise.reject(error));
-		if (info?.isSymbolicLink()) throw new Error(`pi-goal path contains a symlink: ${current}`);
-	}
-}
-
-async function ensureRuntimeIgnored(cwd: string): Promise<void> {
-	const gitExclude = join(cwd, ".git", "info", "exclude");
-	if (!existsSync(dirname(gitExclude))) return;
-	let current = "";
-	if (existsSync(gitExclude)) current = await readFile(gitExclude, "utf8");
-	const ignoredPath = `${STATE_DIR}/`;
-	if (current.split(/\r?\n/).includes(ignoredPath)) return;
-	const prefix = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
-	await writeFileAtomic(gitExclude, `${current}${prefix}${ignoredPath}\n`);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-	return isRecord(error) && error.code === code;
 }

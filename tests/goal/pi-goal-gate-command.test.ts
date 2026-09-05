@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGoal, saveGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 import { registerGoalTools } from "../../extensions/pi-goal/goal-tools.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
@@ -12,6 +13,7 @@ const originalGateCommand = process.env.PI_GOAL_GATE_COMMAND;
 function makeGoal(): GoalState {
 	return {
 		schemaVersion: 2,
+		revision: 0,
 		goalId: "goal-1",
 		objective: "Test autonomous gate",
 		status: "active",

@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "@sinclair/typebox";
 import { ok } from "../../lib/tool-result.js";
 import { runGateCommand } from "../../lib/gate-command.js";
-import { loadGoal, saveGoal } from "./goal-persist.js";
+import { loadGoal, transactGoal } from "./goal-persist.js";
 import {
 	generatePlanState,
 	getCurrentMilestone,
@@ -17,8 +17,17 @@ import {
 } from "./goal-plan.js";
 import { goalScopeForContext, requireGoal } from "./goal-helpers.js";
 import { renderGoalSummary } from "./goal-render.js";
-import type { GoalState } from "./goal-types.js";
+import type { GoalExpected, GoalState } from "./goal-types.js";
 import type { GoalRuntime } from "./goal-runtime.js";
+
+async function commitToolGoal(ctx: ExtensionContext, state: GoalState, candidate: GoalState): Promise<GoalState> {
+	const expected: GoalExpected = { goalId: state.goalId, revision: state.revision };
+	const result = await transactGoal(ctx.cwd, goalScopeForContext(ctx), expected, () => candidate);
+	if (result.status === "conflict") throw new Error("Goal mutation conflicted with a newer authoritative revision");
+	if (result.projection === "failed") throw new Error(`Goal authority committed but projection failed: ${result.projectionError ?? "unknown projection error"}`);
+	if (result.state === null) throw new Error("Goal mutation unexpectedly deleted the goal");
+	return result.state;
+}
 
 export function registerGoalTools(
 	pi: ExtensionAPI,
@@ -69,11 +78,11 @@ export function registerGoalTools(
 					}))
 				: undefined;
 			const planned = generatePlanState(state, milestones);
-			await saveGoal(ctx.cwd, planned, goalScopeForContext(ctx));
-			await refreshUi(ctx, planned);
+			const persisted = await commitToolGoal(ctx, state, planned);
+			await refreshUi(ctx, persisted);
 			return ok(
-				`Plan generated with ${planned.milestones.length} milestone(s). Review .pi/goal/instances/<goalId>/PLAN.md, then use /goal approve or /goal run.`,
-				{ ...planned } as Record<string, unknown>,
+				`Plan generated with ${persisted.milestones.length} milestone(s). Review .pi/goal/instances/<goalId>/PLAN.md, then use /goal approve or /goal run.`,
+				{ ...persisted } as Record<string, unknown>,
 			);
 		},
 	});
@@ -128,11 +137,11 @@ export function registerGoalTools(
 			const next = params.exitCode === 0
 				? markProgress(updateGoal(state, { lastVerification: record }), `Verification passed for milestone ${idx + 1}.`)
 				: stopGoal(updateGoal(state, { lastVerification: record }), "failed", `Verification failed for milestone ${idx + 1} (exitCode=${params.exitCode}).`);
-			await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
-			await refreshUi(ctx, next);
+			const persisted = await commitToolGoal(ctx, state, next);
+			await refreshUi(ctx, persisted);
 			return ok(
 				`Verification recorded for milestone ${idx + 1} (${milestone.title}): exitCode=${params.exitCode}`,
-				{ ...next } as Record<string, unknown>,
+				{ ...persisted } as Record<string, unknown>,
 			);
 		},
 	});
@@ -221,11 +230,11 @@ export function registerGoalTools(
 						runActive: getRunMode(state) === "continuous" && state.runActive,
 						milestoneRevision: (state.milestoneRevision ?? 0) + 1,
 					}), "progress", `Milestone ${state.currentMilestoneIndex + 1} completed.`), `Advanced to milestone ${nextIndex + 1}.`);
-					await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
-					await refreshUi(ctx, next);
+					const persisted = await commitToolGoal(ctx, state, next);
+					await refreshUi(ctx, persisted);
 					return ok(
-						`Milestone ${state.currentMilestoneIndex + 1} complete. Next milestone: ${nextMilestone.title}.${next.runActive ? " Continuous execution will continue." : " Continue with /goal run."}`,
-						{ ...next } as Record<string, unknown>,
+						`Milestone ${state.currentMilestoneIndex + 1} complete. Next milestone: ${nextMilestone.title}.${persisted.runActive ? " Continuous execution will continue." : " Continue with /goal run."}`,
+						{ ...persisted } as Record<string, unknown>,
 					);
 				}
 
@@ -239,10 +248,10 @@ export function registerGoalTools(
 					lastVerification: undefined,
 					milestoneRevision: (state.milestoneRevision ?? 0) + 1,
 				}), "completed", "Final milestone completed by root audit.");
-				await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
-				await refreshUi(ctx, next);
+				const persisted = await commitToolGoal(ctx, state, next);
+				await refreshUi(ctx, persisted);
 				return {
-					...ok(`Goal complete. Evidence: ${evidence}`, { ...next } as Record<string, unknown>),
+					...ok(`Goal complete. Evidence: ${evidence}`, { ...persisted } as Record<string, unknown>),
 					terminate: true,
 				};
 			}
@@ -253,19 +262,19 @@ export function registerGoalTools(
 				runActive: false,
 				completionEvidence: evidence,
 			}), "completed", "Goal completed by root audit.");
-			await saveGoal(ctx.cwd, next, goalScopeForContext(ctx));
-			await refreshUi(ctx, next);
+			const persisted = await commitToolGoal(ctx, state, next);
+			await refreshUi(ctx, persisted);
 			return {
-				...ok(`Goal complete. Evidence: ${evidence}`, { ...next } as Record<string, unknown>),
+				...ok(`Goal complete. Evidence: ${evidence}`, { ...persisted } as Record<string, unknown>),
 				terminate: true,
 			};
 		},
 	});
 	async function saveFailedGoal(ctx: ExtensionContext, state: GoalState, error: string): Promise<GoalState> {
 		const failed = stopGoal(state, "failed", error);
-		await saveGoal(ctx.cwd, failed, goalScopeForContext(ctx));
-		await refreshUi(ctx, failed);
-		return failed;
+		const persisted = await commitToolGoal(ctx, state, failed);
+		await refreshUi(ctx, persisted);
+		return persisted;
 	}
 
 	// Keep lint happy: runtime is used by callers via the shared global runtime object,

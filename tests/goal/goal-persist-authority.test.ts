@@ -25,7 +25,8 @@ vi.mock("../../lib/file-persistence.js", async (importOriginal) => {
 	};
 });
 
-import { loadGoal, saveGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 import {
 	renderGoalMarkdown,
 	renderPlanMarkdown,
@@ -51,6 +52,7 @@ function goal(objective: string): GoalState {
 	return {
 		schemaVersion: 1,
 		goalId: "goal-authority-test",
+		revision: 0,
 		objective,
 		status: "active",
 		createdAt: "2026-08-12T00:00:00.000Z",
@@ -124,7 +126,6 @@ describe("Goal authority and projection ordering", () => {
 
 		expect(await readProjections(tempDir)).toEqual(expectedProjections(loaded));
 		expect(atomicControl.writes).toEqual([
-			paths.statePath,
 			paths.summaryPath,
 			paths.specPath,
 			paths.planPath,

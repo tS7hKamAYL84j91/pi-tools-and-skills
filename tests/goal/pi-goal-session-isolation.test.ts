@@ -11,7 +11,8 @@ import {
 	type GoalSessionScope,
 } from "../../extensions/pi-goal/goal-binding.js";
 import { assertGoalId, goalPaths } from "../../extensions/pi-goal/goal-types.js";
-import { createTextGoal, loadGoal, saveGoal, clearGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { createTextGoal, loadGoal, transactGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 import { updateGoal } from "../../extensions/pi-goal/goal-plan.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
@@ -85,11 +86,14 @@ describe("ADR-051 session-lineage isolation", () => {
 		const firstState = await createBoundGoal(cwd, first, "first goal");
 		const secondState = await createBoundGoal(cwd, second, "second goal");
 
-		await clearGoal(cwd, scope(cwd, first));
+		const current = await loadGoal(cwd, scope(cwd, first));
+		if (!current) { throw new Error("Missing bound goal"); }
+		await transactGoal(cwd, scope(cwd, first), { goalId: current.goalId, revision: current.revision }, () => null);
+		await appendGoalBinding(scope(cwd, first), null);
 		expect(readGoalBinding(scope(cwd, first))).toBeNull();
 		expect(await loadGoal(cwd, scope(cwd, first))).toBeNull();
 		expect((await loadGoal(cwd, scope(cwd, second)))?.goalId).toBe(secondState.goalId);
-		await expect(lstat(goalPaths(cwd, firstState.goalId).dir)).rejects.toThrow();
+		await expect(lstat(goalPaths(cwd, firstState.goalId).statePath)).rejects.toThrow();
 	});
 
 	it("reconstructs a replacement session binding before continuation", async () => {
@@ -135,6 +139,7 @@ describe("ADR-051 session-lineage isolation", () => {
 		const manager = new FakeSessionManager();
 		const state: GoalState = {
 			schemaVersion: 3,
+			revision: 0,
 			goalId: "safe-goal",
 			objective: "x",
 			status: "active",

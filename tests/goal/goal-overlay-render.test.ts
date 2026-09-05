@@ -6,6 +6,7 @@ import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 function makeGoal(overrides: Partial<GoalState> = {}): GoalState {
 	return {
 		schemaVersion: 2,
+		revision: 0,
 		goalId: "goal-1",
 		objective: "Ship the deterministic overlay",
 		status: "active",
