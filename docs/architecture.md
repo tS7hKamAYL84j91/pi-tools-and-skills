@@ -93,8 +93,6 @@ flowchart TD
     OllamaModels[pi-ollama-models]
     Panopticon[pi-panopticon]
     Teams[pi-teams]
-    Bionic[pi-bionic]
-    Doctor[pi-doctor]
   end
 
   subgraph ProjectExt[Project-local extensions]
@@ -108,11 +106,6 @@ flowchart TD
   Pi --> OllamaModels
   Pi --> Panopticon
   Pi --> Teams
-  Teams --> Swarm[protocol: hierarchical-swarm]
-  Swarm --> Managers[manifest-bound orchestrator nodes]
-  Managers --> SwarmWorkers[bounded manager or leaf-worker children]
-  SwarmWorkers --> RuntimePlane[shared runtime child entities]
-  Swarm --> Governance[ADR-035 eligible model routing at each spawn]
   Teams --> RuntimePlane
   Teams --> TeamResults[Private team result root\nuser team root/results]
   TeamResults --> AsyncDelivery[Claim-check async delivery]
@@ -150,7 +143,7 @@ flowchart TD
 
 ### Standalone Teams extension boundary (ADR-048)
 
-`pi-teams` is independently installable and owns team/swarm registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. Fusion is decommissioned and is no longer a `pi-teams` topology; `pi-teams` owns only the `consult`, `debate`, `research`, and `hierarchical-swarm` protocols. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
+`pi-teams` is independently installable and owns consult, debate, and research team registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
 
 ```mermaid
 C4Component
@@ -224,12 +217,10 @@ flowchart LR
 | --- | --- | --- | --- |
 | `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
 | `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and lifecycle controls | Panopticon registry/session state |
-| `pi-teams` | user/global | Standalone declarative team protocols, profiles, hierarchical swarm compatibility, and run controls | Team session events plus private result artifacts under the configured team root |
+| `pi-teams` | user/global | Standalone declarative consult, debate, and research protocols, profiles, and run controls | Team session events plus private result artifacts under the configured team root |
 | `pi-boost` | user/global | Bounded environmental leases plus cognitive panel/judge lease-yield; Principal or trusted pre-granted agent capability | Environmental WAL/reversion state plus private redacted audits; cognitive leases retain no panel state |
 | `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
-| `pi-bionic` | user/global | Local-only clean-room bionic-reading text transform | Stateless first slice; no persisted state |
-| `pi-doctor` | user/global | Read-only diagnostics for extension manifests, command namespaces, and required package scripts/dependencies | Stateless; reads workspace/package metadata only |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
 | `pi-file-watch` | project-local | Watches explicitly configured files and wakes the active session with bounded redacted updates | Runtime watchers only; reads `.pi/file-watch.json` and configured files |
 | `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
@@ -327,8 +318,7 @@ flowchart LR
   Runner --> Shell[Workspace-local child process]
 ```
 
-- Public Doctor, Goal completion, and Kanban completion schemas retain their previous gate fields as deprecated, ignored compatibility inputs. Caller values never reach the gate runner and cannot select or override a command.
-- `/pi-doctor --gate` remains accepted with a deprecation notice, but `pi-doctor` has no gate path and never spawns a command.
+- Goal completion and Kanban completion schemas retain their previous gate fields as deprecated, ignored compatibility inputs. Caller values never reach the gate runner and cannot select or override a command.
 - Goal and Kanban execute a completion gate only when their trusted operator environment variable is configured. These environment variables are operator configuration, not model/tool input. Gate failure blocks completion and reports bounded diagnostics; no configured gate preserves existing completion behavior.
 - Structured milestone/task check evidence remains model-visible data and is not treated as proof that the extension executed the reported command.
 
@@ -469,33 +459,6 @@ flowchart TD
 ## UX and Tool Policy
 
 TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules are enforced through shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts`, with `tests/architecture.test.ts` enforcing the stable policy.
-
-## Pi Event Loop Extension
-
-```mermaid
-flowchart TD
-  Agent[Current Pi Agent] -->|event_loop_emit| Ingress[Event Ingress]
-  Ingress --> Log[(Session Event Log)]
-  Log --> Projector[Todo Projector]
-  Projector --> Views[(Todo Views)]
-  Views --> Automator[Pure Automator]
-  Automator --> Queue[Command Queue]
-  Queue --> Dispatcher[Dispatcher]
-  Dispatcher -->|deliver command turn| Agent
-
-  Runtime[EventLoopRuntime] --> Status[status.ts / event-loop-tui.ts]
-  Status --> Footer[ctx.ui.setStatus footer line\n● state + active/pending]
-  Status --> Overlay[ctx.ui.custom EventLoopInspector overlay\n80% width / min 40 cols / max 80% height]
-  Status --> Fallback[Non-TUI fallback for RPC/print]
-```
-
-### Context policy
-
-- **Status ownership:** `pi-event-loop` manages a compact persistent status indicator via `ctx.ui.setStatus("pi-event-loop", ...)`. It reflects paused reason, active command, and pending count using callback theme colors without raw ANSI escape sequences. Status is refreshed on runtime state transitions and cleared on shutdown or when inert.
-- **Overlay flow and bounds:** On-demand inspection opens via `ctx.ui.custom()` with `{ overlay: true, overlayOptions: { width: "80%", minWidth: 40, maxHeight: "80%", anchor: "center", margin: 1 } }`. It presents 3 navigable tabs (Status, Views, History) with keyboard controls (`1/2/3`, `Tab`, `↑/↓`, `Enter` gradual disclosure, `Esc/q` close).
-- **Non-TUI fallback:** When `ctx.hasUI === false` or `ctx.mode !== "tui"`, inspection falls back to `formatEventLoopFallback(status, history)` delivered as plain text through `ctx.ui.notify()`.
-- **Pure render paths:** Render closures consume precomputed immutable status snapshots and session event history. No synchronous filesystem reads or blocking calls occur in `render()`, enforced by `tests/architecture/tui-render-paths.ts`.
-- **Shutdown cleanup:** All timer handles and persistent footer statuses are cleared on `session_shutdown`, reload, or profile switch.
 
 ## Kanban Extension
 
@@ -875,7 +838,7 @@ flowchart LR
 - External workspaces remain available only when their validated root contains a non-symlinked `.pi/coas/workspace.env`; context IO stays confined to that root.
 - `tests/architecture/coas-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
 
-## CoAS Internal Scheduler
+## pi-scheduler (CoAS-hosted scheduler)
 
 ### Goal
 
@@ -897,7 +860,7 @@ WIP pick routines, morning briefs, state capture, and recurring reviews.
 
 ```mermaid
 C4Component
-    title pi-coas internal scheduler
+    title pi-scheduler (CoAS-hosted)
     Container(pi, "pi session", "Extension host", "Runs extension lifecycle and message injection")
     Component(coas, "pi-coas", "Extension", "Owns schedule tools, commands, and lifecycle")
     Component(files, "Schedule files", ".pi/coas/schedules or COAS_HOME/schedules", "Desired schedule state")

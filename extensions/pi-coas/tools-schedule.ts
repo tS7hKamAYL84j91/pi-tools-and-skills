@@ -10,7 +10,7 @@ import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
-import type { CoasInternalScheduler } from "./scheduler.js";
+import type { PiScheduler } from "./pi-scheduler.js";
 import { formatModelLabel } from "./scheduler-util.js";
 import {
 	addSchedule,
@@ -31,7 +31,7 @@ async function _configFor(
 
 export function registerCoasScheduleListTool(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	pi.registerTool({
 		name: "coas_schedule_list",
@@ -96,7 +96,7 @@ export function registerCoasSchedulePreviewTool(pi: ExtensionAPI): void {
 
 export function registerCoasScheduleAddTool(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	pi.registerTool({
 		name: "coas_schedule_add",
@@ -209,7 +209,7 @@ export function registerCoasScheduleRunTool(pi: ExtensionAPI): void {
 
 export function registerCoasScheduleRemoveTool(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	pi.registerTool({
 		name: "coas_schedule_remove",

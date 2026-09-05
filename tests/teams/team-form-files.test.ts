@@ -361,29 +361,4 @@ describe("team file mutations", () => {
 		});
 	});
 
-	it("team_form creates a valid, compilable hierarchical-swarm team manifest", async () => {
-		await withTempProjectRoot("team-form-swarm-", async (project) => {
-			const result = await createTeamFiles({
-				id: "custom-swarm",
-				protocol: "hierarchical-swarm",
-				agents: ["swarm_root", "swarm_mgr", "swarm_worker"],
-				scope: "project",
-			}, project);
-			const registry = loadTeamRegistry(undefined, { cwd: project });
-			const team = requireTeam(registry, "custom-swarm");
-
-			expect(result.teamPath).toBe(join(project, ".pi", "teams", "teams", "custom-swarm.md"));
-			expect(team.protocol).toBe("hierarchical-swarm");
-			expect(team.hierarchicalSwarm).toBeDefined();
-			expect(team.hierarchicalSwarm?.bounds.maxWip).toBe(3);
-			expect(team.hierarchicalSwarm?.roleTemplates).toHaveLength(3);
-			expect(team.hierarchicalSwarm?.roleTemplates[0]?.role).toBe("root");
-			expect(team.hierarchicalSwarm?.roleTemplates[0]?.bindingRole).toBe("root_orchestrator");
-			expect(team.agentBindings).toHaveLength(3);
-			expect(team.agentBindings[0]?.subagent).toBe("swarm_root");
-			expect(team.agentBindings[1]?.subagent).toBe("swarm_mgr");
-			expect(team.agentBindings[2]?.subagent).toBe("swarm_worker");
-		});
-	});
-
 });

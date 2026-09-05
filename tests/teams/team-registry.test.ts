@@ -28,7 +28,6 @@ describe("loadTeamRegistry", () => {
 
 		expect([...registry.teams.keys()].sort()).toEqual([
 			"deep-research",
-			"hierarchical-swarm-default",
 			"llm-council",
 			"navigator",
 		]);

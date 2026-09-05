@@ -28,7 +28,6 @@ const KNOWN_SOURCE_TOOLS = new Set([
 	"agent_status",
 	"message_read",
 	"team_run",
-	"swarm_run",
 ]);
 
 const KNOWN_ARTIFACT_TOOLS = new Set([

@@ -26,9 +26,9 @@ CoAS rather than `pi-kanban`.
 | `coas_workspace_create` | Create a workspace record without Matrix room creation |
 | `coas_schedule_list` | List file-backed schedules; optional `cwd` targets another project's CoAS runtime |
 | `coas_schedule_preview` | Read-only preview of enabled schedules; optional `cwd` targets another project's runtime |
-| `coas_schedule_add` | Add a file-backed schedule and reconcile the internal scheduler when targeting the current runtime; optional `cwd` adds to another project |
+| `coas_schedule_add` | Add a file-backed schedule and reconcile the pi-scheduler when targeting the current runtime; optional `cwd` adds to another project |
 | `coas_schedule_run` | Dry-run a schedule; optional `cwd` targets another project's runtime |
-| `coas_schedule_remove` | Remove a schedule file pair and reconcile the internal scheduler when targeting the current runtime; optional `cwd` removes from another project |
+| `coas_schedule_remove` | Remove a schedule file pair and reconcile the pi-scheduler when targeting the current runtime; optional `cwd` removes from another project |
 | `coas_governance_resolve` | Classify input against privacy keywords and advise on LLM model routing. Advisory only. |
 
 ### Commands
@@ -37,7 +37,7 @@ CoAS rather than `pi-kanban`.
 - `/coas-doctor`
 - `/coas-workspaces`
 - `/coas-schedules`
-- `/coas-scheduler` — show and reconcile the in-process scheduler
+- `/pi-scheduler` — show and reconcile the in-process scheduler
 
 ## Provisional Surfaces
 
@@ -148,17 +148,17 @@ The tool returns purely advisory metadata; it never alters the active session mo
 - Does not run schedules while pi is closed.
 - Does not own kanban board mechanics; scheduled prompts may use `kanban_*` tools but cadence/policy stays in CoAS.
 - Does not create Matrix rooms or mutate external services.
-- The internal scheduler tracks ephemeral queue-level telemetry (queued/failed counts and last task timestamps) only while pi is open. It does not correlate agent-turn completion, store long-term metrics, or expose a telemetry tool.
+- The pi-scheduler tracks ephemeral queue-level telemetry (queued/failed counts and last task timestamps) only while pi is open. It does not correlate agent-turn completion, store long-term metrics, or expose a telemetry tool.
 - Does not store secrets in workspace context.
 
 ## Safety
 
 - No model-callable tool can install cron or modify host scheduler state.
-- The internal scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
+- The pi-scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
 - CoAS schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
 - Workspace reads/writes are confined to `${COAS_HOME}/workspace` unless the target already has `.pi/coas/workspace.env` metadata.
 - Workspace context reads default to bounded summaries; full/section reads have hard size guards.
 - Workspace context updates use pi's file mutation queue, reject symlinked `CONTEXT.md` files, and archive before compacting oversized active context.
 - Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.
 - Tool output is truncated before entering model context.
-- The internal scheduler implements an ADR-0008 delivery guard: it checks the active conversation's workspace identity and spawned-agent scope before injecting a scheduled prompt. Workspace schedules are dropped (and logged) when the active session is a task-scoped spawned agent or belongs to a different workspace, unless the schedule has an explicit `TARGET_AGENT` that matches the active agent. Dropped cycles increment `droppedScheduleRuns` in the scheduler snapshot and TUI status slot.
+- The pi-scheduler implements an ADR-0008 delivery guard: it checks the active conversation's workspace identity and spawned-agent scope before injecting a scheduled prompt. Workspace schedules are dropped (and logged) when the active session is a task-scoped spawned agent or belongs to a different workspace, unless the schedule has an explicit `TARGET_AGENT` that matches the active agent. Dropped cycles increment `droppedScheduleRuns` in the scheduler snapshot and TUI status slot.

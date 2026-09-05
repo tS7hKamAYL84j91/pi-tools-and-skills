@@ -5,7 +5,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 import { addSchedule, listSchedules } from "../../extensions/pi-coas/schedules.js";
 import { formatModelLabel } from "../../extensions/pi-coas/scheduler-util.js";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
@@ -73,7 +73,7 @@ async function writeSchedule(coasHome: string, taskId: string, modelSnapshot?: s
 	await writeFile(join(schedulesDir, `${taskId}.env`), lines.join("\n"));
 }
 
-describe("CoasInternalScheduler model drift guard", () => {
+describe("PiScheduler model drift guard", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
 		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
@@ -100,7 +100,7 @@ describe("CoasInternalScheduler model drift guard", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = join(tmpdir(), `pi-coas-md-match-${process.pid}-${Date.now()}`);
 		const pi = makePiWithModelBus();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		pi.emitModelSelect({ model: { provider: "test-provider", id: "model-a" } });
 		try {
 			await writeSchedule(coasHome, "daily", MODEL_A);
@@ -120,7 +120,7 @@ describe("CoasInternalScheduler model drift guard", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = join(tmpdir(), `pi-coas-md-drift-${process.pid}-${Date.now()}`);
 		const pi = makePiWithModelBus();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		pi.emitModelSelect({ model: { provider: "test-provider", id: "model-b" } });
 		try {
 			await writeSchedule(coasHome, "daily", MODEL_A);
@@ -146,7 +146,7 @@ describe("CoasInternalScheduler model drift guard", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = join(tmpdir(), `pi-coas-md-resolve-${process.pid}-${Date.now()}`);
 		const pi = makePiWithModelBus();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		pi.emitModelSelect({ model: { provider: "test-provider", id: "model-b" } });
 		try {
 			await writeSchedule(coasHome, "daily", MODEL_A);
@@ -173,7 +173,7 @@ describe("CoasInternalScheduler model drift guard", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "room-a";
 		const coasHome = join(tmpdir(), `pi-coas-md-ungov-${process.pid}-${Date.now()}`);
 		const pi = makePiWithModelBus();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		pi.emitModelSelect({ model: { provider: "test-provider", id: "model-b" } });
 		try {
 			await writeSchedule(coasHome, "daily");

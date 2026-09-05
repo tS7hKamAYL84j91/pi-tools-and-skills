@@ -195,6 +195,13 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 		targetDate: "2026-09-22",
 	},
 	{
+		modules: ["coas", "lib"],
+		maxCommits90d: 5,
+		reason: "T-795/T-888 intentionally share the confined filesystem and persistence boundary; decoupling is not safe while scheduler slot admission depends on those primitives. Decoupling plan target 2026-09-22: retain one narrow lib-owned boundary and prevent extension-to-extension runtime coupling.",
+		createdAt: "2026-09-05",
+		targetDate: "2026-09-22",
+	},
+	{
 		modules: ["coas", "kanban"],
 		maxCommits90d: 8,
 		reason: "Recent T-801/T-802/T-821 work touched scheduler/continuation, kanban completion gate, and shared gate_command helper across lifecycle/orchestration extensions. Decoupling plan target 2026-09-22: keep shared surface limited to lib/gate-command.ts; no direct coas<->kanban runtime calls.",

@@ -9,7 +9,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import coasExtension from "../../extensions/pi-coas/index.js";
-import doctorExtension from "../../extensions/pi-doctor/index.js";
 import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import kanbanExtension from "../../extensions/pi-kanban/index.js";
@@ -123,15 +122,7 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.tools, []);
 		expectRegistered(registrations.events, ["agent_end"]);
 	});
-	it("retains deprecated, ignored gate inputs in Doctor, Goal, and Kanban public schemas", () => {
-		const doctor = createFakeApi();
-		doctorExtension(doctor.api);
-		expectDeprecatedGateParameter(
-			doctor.registrations,
-			"pi_doctor",
-			"gateCommand",
-		);
-
+	it("retains deprecated, ignored gate inputs in Goal and Kanban public schemas", () => {
 		const goal = createFakeApi();
 		goalExtension(goal.api);
 		expectDeprecatedGateParameter(
@@ -156,10 +147,6 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.tools, [
 			"runtime_status",
 			"runtime_stop",
-			"swarm_list",
-			"swarm_run",
-			"swarm_status",
-			"swarm_stop",
 			"team_delete",
 			"team_describe",
 			"team_form",
@@ -169,7 +156,7 @@ describe("extension registration smoke tests", () => {
 			"team_runs",
 			"team_stop",
 		]);
-		expectRegistered(registrations.commands, ["swarm", "teams", "team"]);
+		expectRegistered(registrations.commands, ["teams", "team"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
 			"input",
@@ -262,7 +249,7 @@ describe("extension registration smoke tests", () => {
 		]);
 		expectRegistered(registrations.commands, [
 			"coas-doctor",
-			"coas-scheduler",
+			"pi-scheduler",
 			"coas-schedules",
 			"coas-status",
 			"coas-workspaces",

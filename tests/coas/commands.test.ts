@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerCoasCommands } from "../../extensions/pi-coas/commands.js";
-import type { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import type { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 
 interface CommandDefinition {
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
@@ -15,7 +15,7 @@ interface CommandFixture {
 	notify: ReturnType<typeof vi.fn>;
 	custom: ReturnType<typeof vi.fn>;
 	ctx: ExtensionCommandContext;
-	scheduler: CoasInternalScheduler;
+	scheduler: PiScheduler;
 }
 
 function makeCommandFixture(cwd: string): CommandFixture {
@@ -30,7 +30,7 @@ function makeCommandFixture(cwd: string): CommandFixture {
 	const scheduler = {
 		snapshot: vi.fn(() => ({ running: false, enabledSchedules: 0, activeRuns: 0, spawnedRuns: 0 })),
 		reconcile: vi.fn(async () => undefined),
-	} as unknown as CoasInternalScheduler;
+	} as unknown as PiScheduler;
 	registerCoasCommands(api, scheduler);
 	const ctx = { cwd, ui: { notify, custom } } as unknown as ExtensionCommandContext;
 	return { commands, notify, custom, ctx, scheduler };
@@ -57,7 +57,7 @@ describe("CoAS slash commands", () => {
 		home = await makeCoasHome();
 		const fixture = makeCommandFixture(home);
 		expect([...fixture.commands.keys()]).toEqual([
-			"coas-status", "coas-doctor", "coas-workspaces", "coas-schedules", "coas-scheduler",
+			"coas-status", "coas-doctor", "coas-workspaces", "coas-schedules", "pi-scheduler",
 		]);
 	});
 
@@ -85,10 +85,10 @@ describe("CoAS slash commands", () => {
 		const fixture = makeCommandFixture(home);
 		await fixture.commands.get("coas-status")?.handler("", fixture.ctx);
 		await fixture.commands.get("coas-doctor")?.handler("", fixture.ctx);
-		await fixture.commands.get("coas-scheduler")?.handler("", fixture.ctx);
+		await fixture.commands.get("pi-scheduler")?.handler("", fixture.ctx);
 		expect(fixture.notify).toHaveBeenCalledWith("CoAS status", "info");
 		expect(fixture.notify).toHaveBeenCalledWith(expect.stringContaining("CoAS doctor exit="), expect.any(String));
-		expect(fixture.notify).toHaveBeenCalledWith("CoAS scheduler", "info");
+		expect(fixture.notify).toHaveBeenCalledWith("Pi scheduler", "info");
 		expect(fixture.scheduler.reconcile).toHaveBeenCalled();
 	});
 });

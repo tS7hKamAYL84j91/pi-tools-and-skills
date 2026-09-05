@@ -1,4 +1,4 @@
-/** Pure schedule evaluation helpers shared by the registry and internal scheduler. */
+/** Pure schedule evaluation helpers shared by the registry and pi-scheduler. */
 
 import type { ScheduleEntry } from "./types.js";
 

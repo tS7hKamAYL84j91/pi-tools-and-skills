@@ -1,10 +1,6 @@
 /** Manifest compiler validation for declarative team specs. */
 
 import type {
-	HierarchicalSwarmBounds,
-	HierarchicalSwarmConfig,
-	HierarchicalSwarmRole,
-	TeamAgentBinding,
 	TeamApprovalConfig,
 	TeamModelSlotSpec,
 	TeamModels,
@@ -76,59 +72,6 @@ function validateModelSlots(slots: readonly TeamModelSlotSpec[] | undefined): vo
 	}
 }
 
-function validateOptionalBound(value: number | undefined, label: string): void {
-	if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
-		throw new Error(`${label} must be a positive integer when configured.`);
-	}
-}
-
-function validateHierarchicalBounds(bounds: HierarchicalSwarmBounds): void {
-	validateOptionalBound(bounds.maxDepth, "hierarchicalSwarm.bounds.maxDepth");
-	validateOptionalBound(bounds.maxChildrenPerNode, "hierarchicalSwarm.bounds.maxChildrenPerNode");
-	validateOptionalBound(bounds.maxTotalNodes, "hierarchicalSwarm.bounds.maxTotalNodes");
-	validateOptionalBound(bounds.maxWip, "hierarchicalSwarm.bounds.maxWip");
-	validateOptionalBound(bounds.maxRepairCycles, "hierarchicalSwarm.bounds.maxRepairCycles");
-	validateOptionalBound(bounds.ttlMs, "hierarchicalSwarm.bounds.ttlMs");
-	if (bounds.writeIsolation.mode !== "tree-global-exclusive") {
-		throw new Error("hierarchicalSwarm.bounds.writeIsolation.mode must be tree-global-exclusive.");
-	}
-	if (bounds.writeIsolation.approvedWorktreePolicy !== undefined) {
-		assertNonEmpty(bounds.writeIsolation.approvedWorktreePolicy, "hierarchicalSwarm.bounds.writeIsolation.approvedWorktreePolicy");
-	}
-}
-
-function validateWorkerCapabilities(binding: TeamAgentBinding): void {
-	const forbidden = binding.tools?.find((tool) => /spawn|team|swarm/i.test(tool));
-	if (forbidden) {
-		throw new Error(`hierarchicalSwarm worker binding must not expose spawn/team/swarm capability "${forbidden}".`);
-	}
-}
-
-function validateHierarchicalSwarm(config: HierarchicalSwarmConfig, team: TeamSpec): void {
-	const roles: HierarchicalSwarmRole[] = ["root", "manager", "worker"];
-	assertUnique(config.roleTemplates.map((template) => template.role), "hierarchicalSwarm.roleTemplates");
-	for (const role of roles) {
-		const template = config.roleTemplates.find((entry) => entry.role === role);
-		if (!template) throw new Error(`hierarchicalSwarm.roleTemplates must define ${role}.`);
-		assertNonEmpty(template.bindingRole, `hierarchicalSwarm.roleTemplates.${role}.bindingRole`);
-		if (!team.agentBindings.some((binding) => binding.role === template.bindingRole)) {
-			throw new Error(`hierarchicalSwarm.roleTemplates.${role}.bindingRole must reference an agent binding.`);
-		}
-		const reviewerRole = template.review.reviewerRole;
-		if ((role === "worker" && reviewerRole !== "manager") || (role !== "worker" && reviewerRole !== "root")) {
-			throw new Error(`hierarchicalSwarm.roleTemplates.${role}.review.reviewerRole violates hierarchy authority.`);
-		}
-		if (template.review.required !== true) {
-			throw new Error(`hierarchicalSwarm.roleTemplates.${role}.review.required must be true.`);
-		}
-	}
-	const workerTemplate = config.roleTemplates.find((entry) => entry.role === "worker");
-	const workerBinding = workerTemplate && team.agentBindings.find((binding) => binding.role === workerTemplate.bindingRole);
-	if (!workerBinding) throw new Error("hierarchicalSwarm worker binding is unavailable.");
-	validateWorkerCapabilities(workerBinding);
-	validateHierarchicalBounds(config.bounds);
-}
-
 /** Validates compiled team manifest metadata. */
 export function validateTeamManifest(team: TeamSpec): TeamManifestValidationResult {
 	if (team.schemaVersion !== 2) throw new Error(`Team manifest "${team.id}" must declare schemaVersion: 2.`);
@@ -139,11 +82,5 @@ export function validateTeamManifest(team: TeamSpec): TeamManifestValidationResu
 	validateApproval(team.approval);
 	validatePromptContracts(team.promptContracts);
 	validateModelSlots(team.modelSlots);
-	if (team.protocol === "hierarchical-swarm") {
-		if (team.hierarchicalSwarm === undefined) throw new Error("hierarchical-swarm protocol requires hierarchicalSwarm.");
-		validateHierarchicalSwarm(team.hierarchicalSwarm, team);
-	} else if (team.hierarchicalSwarm !== undefined) {
-		throw new Error("hierarchicalSwarm is only valid for protocol hierarchical-swarm.");
-	}
 	return { ok: true };
 }

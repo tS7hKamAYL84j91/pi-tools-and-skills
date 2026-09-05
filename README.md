@@ -64,12 +64,12 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
 | **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, and lifecycle management |
 | **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
-| **pi-teams**          | User         | Standalone declarative teams, profiles, hierarchical swarm compatibility, and `team_*` / `runtime_*` tools |
+| **pi-teams**          | User         | Standalone declarative consult, debate, and research teams with `team_*` / `runtime_*` tools |
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
 | **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
 | **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
 | **pi-ollama-models**  | User         | Auto-sync local Ollama models into pi's models.json on session start/reload                              |
-| **pi-coas**           | Project      | CoAS status, doctor, workspace, and schedule control surface                                            |
+| **pi-coas**           | Project      | CoAS status, diagnostics, workspace, and pi-scheduler control surface                                  |
 
 ### Skills
 
@@ -114,13 +114,13 @@ Everything goes through `make`:
 ```text
 extensions/           Extensions:
   pi-panopticon/        Global — multi-agent messaging, spawning, health
-  pi-teams/              User — standalone declarative teams and swarm compatibility
+  pi-teams/              User — standalone declarative consult, debate, and research teams
   pi-goal/              Global — bounded /goal workflow and completion audit
   pi-kanban/           Project — event-sourced task board + TUI overlay
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-file-watch/        Project — explicit non-recursive file watch
   pi-ollama-models/     User — auto-sync local Ollama models into models.json
-  pi-coas/              Project — CoAS status, doctor, workspaces, schedules
+  pi-coas/              Project — CoAS status, diagnostics, workspaces, pi-scheduler
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Shared agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)

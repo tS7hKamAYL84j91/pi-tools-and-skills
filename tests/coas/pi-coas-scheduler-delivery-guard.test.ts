@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 
 const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
@@ -41,7 +41,7 @@ function makePi(sessionName?: string): { sendUserMessage: () => void; getSession
 	};
 }
 
-describe("CoasInternalScheduler delivery guard", () => {
+describe("PiScheduler delivery guard", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
 		[PANOPTICON_SPAWN_NAME_ENV]: process.env[PANOPTICON_SPAWN_NAME_ENV],
@@ -68,7 +68,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 		process.env.COAS_WORKSPACE_ID = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-dg-match-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
@@ -88,7 +88,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 		process.env[PANOPTICON_SPAWN_NAME_ENV] = "kaggle-worker";
 		const coasHome = join(tmpdir(), `pi-coas-dg-task-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
@@ -106,7 +106,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 		process.env.COAS_WORKSPACE_ID = "pi-tools-and-skills";
 		const coasHome = join(tmpdir(), `pi-coas-dg-mismatch-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
@@ -125,7 +125,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 		process.env[PANOPTICON_SPAWN_NAME_ENV] = "authorized-worker";
 		const coasHome = join(tmpdir(), `pi-coas-dg-target-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", "authorized-worker");
 			await scheduler.reconcile({ coasHome });
@@ -145,7 +145,7 @@ describe("CoasInternalScheduler delivery guard", () => {
 		process.env[PANOPTICON_SPAWN_NAME_ENV] = "other-worker";
 		const coasHome = join(tmpdir(), `pi-coas-dg-target-mismatch-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", "authorized-worker");
 			await scheduler.reconcile({ coasHome });

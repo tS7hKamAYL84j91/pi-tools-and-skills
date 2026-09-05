@@ -4,7 +4,7 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { minuteKey } from "../../extensions/pi-coas/scheduler-util.js";
 import { tmpdir } from "node:os";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 import { approveApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-coas/approval-inbox.js";
 import { ConfinedStore } from "../../extensions/pi-coas/store.js";
 import { registerCoasApprovalTools } from "../../extensions/pi-coas/tools-approval.js";
@@ -76,7 +76,7 @@ describe("CoAS approval inbox", () => {
 		delete process.env[PANOPTICON_SCOPE_ENV];
 		delete process.env[PANOPTICON_SPAWN_NAME_ENV];
 		const calls: string[] = [];
-		const scheduler = new CoasInternalScheduler({ sendUserMessage(message: string) { calls.push(message); }, getSessionName() { return undefined; } } as never);
+		const scheduler = new PiScheduler({ sendUserMessage(message: string) { calls.push(message); }, getSessionName() { return undefined; } } as never);
 		await scheduler.reconcile({ coasHome: home });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
 			await scheduler.flush();
@@ -122,7 +122,7 @@ describe("CoAS approval inbox", () => {
 			"",
 		].join("\n"));
 		process.env.COAS_WORKSPACE_ID = "room-a";
-		const scheduler = new CoasInternalScheduler({ sendUserMessage() { throw new Error("ambiguous host failure"); }, getSessionName() { return undefined; } } as never);
+		const scheduler = new PiScheduler({ sendUserMessage() { throw new Error("ambiguous host failure"); }, getSessionName() { return undefined; } } as never);
 		await scheduler.reconcile({ coasHome: home });
 		await scheduler.tick(new Date("2026-01-05T09:00:00Z"));
 		await scheduler.flush();

@@ -5,7 +5,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 import { parkApproval } from "../../extensions/pi-coas/approval-inbox.js";
 import { appendRunHistory, type ScheduleRunHistoryEntry } from "../../extensions/pi-coas/scheduler-run-state.js";
 import { isoUtc } from "../../extensions/pi-coas/store-paths.js";
@@ -75,7 +75,7 @@ async function seedHistory(
 	}
 }
 
-describe("CoasInternalScheduler should-run quota gate", () => {
+describe("PiScheduler should-run quota gate", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
 		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
@@ -102,7 +102,7 @@ describe("CoasInternalScheduler should-run quota gate", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-pass-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await scheduler.reconcile({ coasHome });
@@ -121,7 +121,7 @@ describe("CoasInternalScheduler should-run quota gate", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-dim-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", { lookback: 3 });
 			await seedHistory(coasHome, "daily", "skipped-diminishing", 3);
@@ -140,7 +140,7 @@ describe("CoasInternalScheduler should-run quota gate", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-appr-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant");
 			await mkdir(join(coasHome, "schedule-runs", "awaiting-approval"), { recursive: true });
@@ -166,7 +166,7 @@ describe("CoasInternalScheduler should-run quota gate", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-budget-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", { runBudget: 2 });
 			await seedHistory(coasHome, "daily", "queued", 2);
@@ -185,7 +185,7 @@ describe("CoasInternalScheduler should-run quota gate", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-recover-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", { lookback: 3 });
 			await seedHistory(coasHome, "daily", "skipped-diminishing", 2);

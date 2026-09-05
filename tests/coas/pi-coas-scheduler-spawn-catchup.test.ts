@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 
 interface SentPrompt {
@@ -50,7 +50,7 @@ function writeSchedule(coasHome: string, taskId: string, workspaceId: string, cr
 	writeFileSync(join(schedulesDir, `${taskId}.env`), lines.join("\n"), "utf8");
 }
 
-describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
+describe("PiScheduler spawn-don't-await + catchup", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
 		PI_PRINCIPAL: process.env.PI_PRINCIPAL,
@@ -93,7 +93,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		writeSchedule(coasHome, "approval-task", "room-a", "0 9 * * 1", true);
 		writeSchedule(coasHome, "sibling-task", "room-a", "0 9 * * 1");
 
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
 		expect(scheduler.snapshot().spawnedRuns).toBeGreaterThan(0);
@@ -109,7 +109,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const pi = makePi();
 		writeSchedule(coasHome, "slow-task", "room-a", "0 9 * * 1");
 
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
 
@@ -133,7 +133,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const pi = makePi();
 		writeSchedule(coasHome, "catchup-task", "room-a", "0 9 * * 1");
 
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.start({ coasHome });
 		await scheduler.flush();
 
@@ -149,13 +149,13 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		writeSchedule(coasHome, "restart-task", "room-a", "0 9 * * 1");
 
 		const firstPi = makePi();
-		const firstScheduler = new CoasInternalScheduler(firstPi as never);
+		const firstScheduler = new PiScheduler(firstPi as never);
 		await firstScheduler.start({ coasHome });
 		await firstScheduler.flush();
 		await firstScheduler.stop();
 
 		const secondPi = makePi();
-		const secondScheduler = new CoasInternalScheduler(secondPi as never);
+		const secondScheduler = new PiScheduler(secondPi as never);
 		await secondScheduler.start({ coasHome });
 		await secondScheduler.flush();
 		await secondScheduler.stop();
@@ -172,7 +172,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		writeSchedule(coasHome, "second-task", "room-a", "0 9 * * 1");
 
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.start({ coasHome });
 		await scheduler.flush();
 		await scheduler.tick(new Date("2026-01-06T09:00:00Z"));
@@ -191,7 +191,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const coasHome = makeCoasHome();
 		const pi = makePi();
 		writeSchedule(coasHome, "edge-task", "room-a", "0 9 * * 1");
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 
 		await scheduler.tick(new Date("2026-01-05T09:00:59.999Z"));
@@ -208,7 +208,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const coasHome = makeCoasHome();
 		const pi = makePi();
 		writeSchedule(coasHome, "ordered-task", "room-a", "* * * * *");
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 
 		await scheduler.tick(new Date("2026-01-05T09:01:00Z"));
@@ -226,7 +226,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const pi = makePi();
 		writeSchedule(coasHome, "once-task", "room-a", "0 9 * * 1");
 
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 		await scheduler.tick(new Date("2026-01-05T09:00:00"));
 		await scheduler.flush();
@@ -242,7 +242,7 @@ describe("CoasInternalScheduler spawn-don't-await + catchup", () => {
 		const pi = makePi();
 		writeSchedule(coasHome, "after-tick", "room-a", "0 9 * * 1");
 
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		await scheduler.reconcile({ coasHome });
 
 		const tickPromise = scheduler.tick(new Date("2026-01-05T09:00:00"));

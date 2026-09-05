@@ -1,4 +1,4 @@
-/** Model drift guard for the pi-coas internal scheduler (fail closed on drift). */
+/** Model drift guard for the pi-coas pi-scheduler (fail closed on drift). */
 
 const MAX_ALERT_CHARS = 400;
 

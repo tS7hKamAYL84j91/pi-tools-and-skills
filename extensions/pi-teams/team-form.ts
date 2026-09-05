@@ -99,7 +99,7 @@ async function chooseTargetModel(ctx: ExtensionContext, label: string, target: {
 }
 
 function validateFormInput(input: TeamFormInput): void {
-	const supported = new Set(["consult", "debate", "research", "hierarchical-swarm"]);
+	const supported = new Set(["consult", "debate", "research"]);
 	if (!supported.has(input.protocol) && (!input.agentBindings || input.agentBindings.length === 0)) {
 		throw new Error(`Unsupported team protocol ${input.protocol}.`);
 	}

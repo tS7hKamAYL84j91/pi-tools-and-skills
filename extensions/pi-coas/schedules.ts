@@ -214,7 +214,7 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 				`session-dir: ${sessionDir}`,
 				`lock: ${lockPath}`,
 				`log: ${logFile}`,
-				"runner: pi-hosted internal scheduler",
+				"runner: pi-hosted pi-scheduler",
 				"prompt:",
 				...prompt.split("\n").filter((line) => line.length > 0).map((line) => `  ${line}`),
 			].join("\n"),
@@ -222,13 +222,13 @@ export async function runSchedule(config: CoasConfig, taskId: string, dryRun: bo
 	}
 	await ensureRuntimeDirs(config);
 	await logTask(config, schedule.taskId, `SKIP execution unsupported host=${hostname()}`);
-	return { code: 1, stdout: "", stderr: "coas-schedule: direct execution is disabled; enabled schedules run through the pi-hosted internal scheduler" };
+	return { code: 1, stdout: "", stderr: "coas-schedule: direct execution is disabled; enabled schedules run through the pi-hosted pi-scheduler" };
 }
 
 export async function renderInternalSchedulePlan(config: CoasConfig): Promise<CommandResult> {
 	const schedules = (await listSchedules(config)).filter((schedule) => schedule.enabled);
 	const body = schedules.length > 0
-		? schedules.map((schedule) => `${schedule.cronExpr} ${schedule.taskId} -> pi internal scheduler`).join("\n")
+		? schedules.map((schedule) => `${schedule.cronExpr} ${schedule.taskId} -> pi-scheduler`).join("\n")
 		: "no enabled CoAS schedules";
-	return { code: 0, stderr: "", stdout: ["CoAS internal scheduler plan", "============================", body].join("\n") };
+	return { code: 0, stderr: "", stdout: ["CoAS pi-scheduler plan", "============================", body].join("\n") };
 }

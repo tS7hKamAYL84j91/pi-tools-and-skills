@@ -1,4 +1,4 @@
-/** Quota-aware should-run gate for the pi-coas internal scheduler. */
+/** Quota-aware should-run gate for the pi-coas pi-scheduler. */
 
 import { listApprovalArtifacts } from "./approval-inbox.js";
 import { appendRunHistory, countRecentOutcomes, loadRunHistory, type ScheduleRunHistoryEntry, type ScheduleRunOutcome } from "./scheduler-run-state.js";

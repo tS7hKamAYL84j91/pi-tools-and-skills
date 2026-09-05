@@ -12,12 +12,12 @@ vi.mock("../../lib/file-persistence.js", async (importOriginal) => ({
 	}),
 }));
 
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 
 const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
 const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
-describe("CoasInternalScheduler log-write failure", () => {
+describe("PiScheduler log-write failure", () => {
 	it("records queued telemetry only and bounds lastError when log write fails after sendUserMessage succeeds", async () => {
 		const previousEnv: Record<string, string | undefined> = {
 			[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
@@ -43,7 +43,7 @@ describe("CoasInternalScheduler log-write failure", () => {
 			"",
 		].join("\n"));
 		const calls: string[] = [];
-		const scheduler = new CoasInternalScheduler({
+		const scheduler = new PiScheduler({
 			sendUserMessage(message: string) {
 				calls.push(message);
 			},

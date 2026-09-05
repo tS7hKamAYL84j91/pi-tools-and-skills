@@ -12,7 +12,7 @@ import { resolveCoasConfigForCwd } from "./config.js";
 import { commandSummary } from "./format.js";
 import { registerGovernanceTools } from "./governance-tools.js";
 import { registerCoasApprovalTools } from "./tools-approval.js";
-import type { CoasInternalScheduler } from "./scheduler.js";
+import type { PiScheduler } from "./pi-scheduler.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import type { CoasConfig } from "./types.js";
 
@@ -39,7 +39,7 @@ async function configFor(
 
 function registerCoasStatusTool(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	pi.registerTool({
 		name: "coas_status",
@@ -64,7 +64,7 @@ function registerCoasStatusTool(
 
 function registerCoasDoctorTool(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	pi.registerTool({
 		name: "coas_doctor",
@@ -89,7 +89,7 @@ function registerCoasDoctorTool(
 
 export function registerCoasTools(
 	pi: ExtensionAPI,
-	scheduler: CoasInternalScheduler,
+	scheduler: PiScheduler,
 ): void {
 	registerCoasStatusTool(pi, scheduler);
 	registerCoasDoctorTool(pi, scheduler);

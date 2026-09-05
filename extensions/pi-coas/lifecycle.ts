@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { resolveCoasConfig } from "./config.js";
 import { pathInside, workspaceRoot } from "./store-paths.js";
 import { ConfinedStore } from "./store.js";
-import type { CoasInternalScheduler } from "./scheduler.js";
+import type { PiScheduler } from "./pi-scheduler.js";
 import type { SchedulerSnapshot } from "./types.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
@@ -24,7 +24,7 @@ export function formatCoasStatusSlot(workspace?: string, scheduler?: SchedulerSn
 	return `coas: ${scope} ${health}${scheduleText}${queueText}${failText}${droppedText}`;
 }
 
-async function updateStatus(ctx: ExtensionContext, scheduler: CoasInternalScheduler): Promise<void> {
+async function updateStatus(ctx: ExtensionContext, scheduler: PiScheduler): Promise<void> {
 	const config = resolveCoasConfig(ctx.cwd);
 	const workspace = await currentWorkspaceLabel(config, ctx.cwd);
 	if (!workspace && !await ConfinedStore.openCoasHome(config)) {
@@ -46,7 +46,7 @@ async function contextInstruction(ctx: ExtensionContext): Promise<string | undef
 	].join("\n");
 }
 
-export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
+export function registerCoasLifecycle(pi: ExtensionAPI, scheduler: PiScheduler): void {
 	pi.on("session_start", async (_event, ctx) => {
 		scheduler.start(resolveCoasConfig(ctx.cwd));
 		await updateStatus(ctx, scheduler);

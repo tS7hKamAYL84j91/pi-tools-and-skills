@@ -10,7 +10,7 @@ pi install /absolute/path/to/extensions/pi-teams
 make setup-package PACKAGE=pi-teams
 ```
 
-The package manifest loads `index.ts` and the bundled `pi-team-consultation` skill. It owns the `team_*`, `runtime_*`, and `swarm_*` surfaces described below; no other extension needs to register them.
+The package manifest loads `index.ts` and the bundled `pi-team-consultation` skill. It owns the retained `team_*` and `runtime_*` surfaces described below; no other extension needs to register them.
 
 ## Stable Tools/Commands
 
@@ -30,10 +30,6 @@ These tools are the agent-facing compatibility interface and are registered by `
 | `runtime_stop` | Stop an explicit team run entity by required `id` through unified runtime semantics. |
 | `team_runs` | Inspect active/recent team run state, including aggregate status/artifact counts. |
 | `team_stop` | Compatibility team-run stop surface; `runId` is optional and defaults deterministically to the newest pending/running run. |
-| `swarm_run` | Run or preflight the hierarchical-swarm compatibility workflow (`dry_run` defaults to `true`). |
-| `swarm_status` | Inspect one hierarchical-swarm compatibility run. |
-| `swarm_list` | List hierarchical-swarm compatibility runs. |
-| `swarm_stop` | Stop one hierarchical-swarm compatibility run. |
 
 ### Commands
 
@@ -43,7 +39,6 @@ These tools are the agent-facing compatibility interface and are registered by `
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
 - `/teams stop [runId]` — request cancellation of an explicit run, or the newest pending/running run when omitted.
 - `/team on|auto|off|status|once [prompt] [--topology llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `llm-council` and `balanced`.
-- `/swarm <goal> [--profile fast|balanced|thorough] [--dry-run]` — human-facing hierarchical-swarm command; executes by default, with explicit `--dry-run` for preflight. Agent callers should use the `swarm_*` tools above.
 
 ## Provisional Surfaces
 
@@ -57,7 +52,7 @@ These tools are the agent-facing compatibility interface and are registered by `
 
 ## Protocols
 
-`pi-teams` supports four bounded protocols: `consult` (`navigator`), `debate` (`llm-council`), `research` (`deep-research`), and `hierarchical-swarm` (`/swarm`). Fusion is decommissioned and is no longer a `pi-teams` topology. Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
+`pi-teams` supports three bounded protocols: `consult` (`navigator`), `debate` (`llm-council`), and `research` (`deep-research`). Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
 
 ### Profiles and precedence
 

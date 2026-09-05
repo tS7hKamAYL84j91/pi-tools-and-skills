@@ -50,23 +50,13 @@ export function defaultAgentBindings(args: TeamFormInput): TeamAgentBinding[] {
 			{ role: "synthesis", subagent: synthesis, ...(models.synthesis ? { model: models.synthesis } : {}) },
 		];
 	}
-	if (args.protocol === "hierarchical-swarm") {
-		const root = args.agents[0] ?? subagentIdFromTeam(args.id, "root_orchestrator");
-		const manager = args.agents[1] ?? subagentIdFromTeam(args.id, "sub_orchestrator");
-		const worker = args.agents[2] ?? subagentIdFromTeam(args.id, "leaf_worker");
-		return [
-			{ role: "root_orchestrator", subagent: root, ...(models.navigator ? { model: models.navigator } : {}) },
-			{ role: "sub_orchestrator", subagent: manager, ...(models.navigator ? { model: models.navigator } : {}) },
-			{ role: "leaf_worker", subagent: worker, ...(models.members?.[0] ? { model: models.members[0] } : {}) },
-		];
-	}
 	return args.agents.map((subagent) => ({ role: "agent", subagent }));
 }
 
 export function applyModelsToBindings(bindings: TeamAgentBinding[], models: TeamFormModels, allRolesAreMembers = false): TeamAgentBinding[] {
 	let memberIndex = 0;
 	return bindings.map((binding) => {
-		if (allRolesAreMembers || roleMatches(binding.role, "member") || roleMatches(binding.role, "leaf_worker")) {
+		if (allRolesAreMembers || roleMatches(binding.role, "member")) {
 			const model = models.members?.[memberIndex];
 			memberIndex++;
 			return { ...binding, ...(model ? { model } : {}) };
@@ -77,7 +67,7 @@ export function applyModelsToBindings(bindings: TeamAgentBinding[], models: Team
 		if (roleMatches(binding.role, "driver") || roleMatches(binding.role, "fallback")) {
 			return { ...binding, ...(models.driver ? { model: models.driver } : {}) };
 		}
-		if (roleMatches(binding.role, "navigator") || roleMatches(binding.role, "root_orchestrator") || roleMatches(binding.role, "sub_orchestrator")) {
+		if (roleMatches(binding.role, "navigator")) {
 			return { ...binding, ...(models.navigator ? { model: models.navigator } : {}) };
 		}
 		return binding;

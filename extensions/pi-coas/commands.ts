@@ -7,7 +7,7 @@ import { Container, matchesKey, SelectList, Text, type SelectItem } from "@earen
 import { resolveCoasConfig } from "./config.js";
 import { commandSummary, widgetLines } from "./format.js";
 import { renderSchedulerSnapshot } from "./format.js";
-import type { CoasInternalScheduler } from "./scheduler.js";
+import type { PiScheduler } from "./pi-scheduler.js";
 import { formatScheduleList, listSchedules, removeSchedule, renderInternalSchedulePlan, runSchedule } from "./schedules.js";
 import { coasDoctor, coasStatus } from "./status.js";
 import { formatWorkspaceList, listWorkspaces } from "./workspaces.js";
@@ -100,7 +100,7 @@ async function showWorkspaceBrowser(ctx: ExtensionCommandContext): Promise<void>
 	}, { overlay: true, overlayOptions: { width: "80%", minWidth: 60, maxHeight: "80%", anchor: "center", margin: 2 } });
 }
 
-async function showScheduleBrowser(ctx: ExtensionCommandContext, scheduler: CoasInternalScheduler): Promise<void> {
+async function showScheduleBrowser(ctx: ExtensionCommandContext, scheduler: PiScheduler): Promise<void> {
 	const config = resolveCoasConfig(ctx.cwd);
 	const schedules = await listSchedules(config);
 	const items: SelectItem[] = schedules.length === 0
@@ -149,7 +149,7 @@ async function showScheduleBrowser(ctx: ExtensionCommandContext, scheduler: Coas
 	await showText(ctx, `CoAS schedule dry-run: ${action.taskId}`, commandSummary("coas-schedule run", result), result.code === 0 ? "info" : "warning");
 }
 
-export function registerCoasCommands(pi: ExtensionAPI, scheduler: CoasInternalScheduler): void {
+export function registerCoasCommands(pi: ExtensionAPI, scheduler: PiScheduler): void {
 	pi.registerCommand("coas-status", {
 		description: "Show fast CoAS operational status",
 		handler: async (_args, ctx) => {
@@ -193,11 +193,11 @@ export function registerCoasCommands(pi: ExtensionAPI, scheduler: CoasInternalSc
 		},
 	});
 
-	pi.registerCommand("coas-scheduler", {
-		description: "Show and reconcile the CoAS internal scheduler",
+	pi.registerCommand("pi-scheduler", {
+		description: "Show and reconcile the pi-hosted scheduler",
 		handler: async (_args, ctx) => {
 			await scheduler.reconcile(resolveCoasConfig(ctx.cwd));
-			await showText(ctx, "CoAS scheduler", renderSchedulerSnapshot(scheduler.snapshot()));
+			await showText(ctx, "Pi scheduler", renderSchedulerSnapshot(scheduler.snapshot()));
 		},
 	});
 }

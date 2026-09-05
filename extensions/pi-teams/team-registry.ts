@@ -4,7 +4,6 @@ import { basename } from "node:path";
 import { readMarkdownDescriptors, type RawMarkdownDescriptor } from "./front-matter.js";
 import { findAgentByName, listLiveAgents } from "../../lib/agent-api.js";
 import { isLiveAgentRef, liveAgentName } from "./live-agent.js";
-import { compileHierarchicalSwarmConfig } from "./team-hierarchical-swarm-config.js";
 import { validateTeamManifest } from "./team-manifest.js";
 import { DEFAULT_CONFIG_JSON, teamDirectories } from "./team-paths.js";
 import type {
@@ -218,6 +217,10 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		warnings.push(`${id}: protocol is required`);
 		return undefined;
 	}
+	if (protocol === "hierarchical-swarm") {
+		warnings.push(`${id}: hierarchical-swarm protocol is no longer supported`);
+		return undefined;
+	}
 	const name = optionalString(frontMatter.name) ?? id;
 	const description = optionalString(frontMatter.description);
 	const agentBindings = agentBindingsFromObjects(frontMatter.agents);
@@ -237,14 +240,6 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		warnings.push(`${id}: modelSlots entries must include id and kind`);
 		return undefined;
 	}
-	const hierarchy = compileHierarchicalSwarmConfig(frontMatter.hierarchicalSwarm ?? {
-		roleTemplates: frontMatter.hierarchicalSwarmRoleTemplates,
-		bounds: frontMatter.hierarchicalSwarmBounds,
-	});
-	if (protocol === "hierarchical-swarm" && !hierarchy) {
-		warnings.push(`${id}: hierarchical-swarm requires valid hierarchicalSwarm roleTemplates and bounds`);
-		return undefined;
-	}
 	const agents = unique(agentBindings.map((binding) => binding.subagent));
 	const timeoutMs = optionalNumber(frontMatter.timeoutMs);
 	const maxFixPasses = optionalNumber(frontMatter.maxFixPasses);
@@ -262,7 +257,6 @@ function compileTeamManifest(descriptor: RawMarkdownDescriptor, warnings: string
 		prompts: promptRefs(frontMatter.prompts),
 		...(contracts ? { promptContracts: contracts } : {}),
 		...(slots ? { modelSlots: slots } : {}),
-		...(hierarchy ? { hierarchicalSwarm: hierarchy } : {}),
 		agents,
 		agentBindings,
 		models: modelsFromBindings(agentBindings),

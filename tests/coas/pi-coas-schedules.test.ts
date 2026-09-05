@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-	CoasInternalScheduler,
+	PiScheduler,
 	renderScheduledPrompt,
 	scheduleMatchesDate,
-} from "../../extensions/pi-coas/scheduler.js";
+} from "../../extensions/pi-coas/pi-scheduler.js";
 import {
 	addSchedule,
 	validateCronExpr,
@@ -104,7 +104,7 @@ describe("schedules", () => {
 		});
 	});
 
-	describe("CoasInternalScheduler", () => {
+	describe("PiScheduler", () => {
 		const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
 		const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 		const previousEnv: Record<string, string | undefined> = {
@@ -130,7 +130,7 @@ describe("schedules", () => {
 		});
 
 		it("clears runtime state on stop", async () => {
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage() {},
 				getSessionName() {
 					return undefined;
@@ -184,7 +184,7 @@ describe("schedules", () => {
 			);
 			const calls: string[] = [];
 			let activeDuringSend = 0;
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage(message: string) {
 					activeDuringSend = scheduler.snapshot().activeRuns;
 					calls.push(message);
@@ -233,7 +233,7 @@ describe("schedules", () => {
 					"",
 				].join("\n"),
 			);
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage() {
 					throw new Error("injection refused");
 				},
@@ -279,7 +279,7 @@ describe("schedules", () => {
 					"",
 				].join("\n"),
 			);
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage() {},
 				getSessionName() {
 					return undefined;
@@ -327,7 +327,7 @@ describe("schedules", () => {
 				join(schedulesDir, "bad.env"),
 				"TASK_ID=bad\nCRON_EXPR=not-enough\nPROMPT_FILE=bad.prompt\nWORKSPACE_ID=room-a\n",
 			);
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage() {},
 				getSessionName() {
 					return undefined;
@@ -367,7 +367,7 @@ describe("schedules", () => {
 					"",
 				].join("\n"),
 			);
-			const scheduler = new CoasInternalScheduler({
+			const scheduler = new PiScheduler({
 				sendUserMessage() {},
 				getSessionName() {
 					return undefined;
@@ -433,7 +433,7 @@ describe("schedules", () => {
 
 				expect(result.code).toBe(0);
 				expect(result.stdout).toContain(
-					"0 9 * * 1 daily-check -> pi internal scheduler",
+					"0 9 * * 1 daily-check -> pi-scheduler",
 				);
 				expect(result.stdout).not.toContain("private prompt sentinel");
 			} finally {

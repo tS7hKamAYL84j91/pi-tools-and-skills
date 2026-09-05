@@ -6,7 +6,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoasInternalScheduler } from "../../extensions/pi-coas/scheduler.js";
+import { PiScheduler } from "../../extensions/pi-coas/pi-scheduler.js";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 
 const COAS_WORKSPACE_ID_ENV = "COAS_WORKSPACE_ID";
@@ -60,7 +60,7 @@ function userMessage(text: string): { role: string; content: string } {
 
 const PANOPTICON_SCOPE_ENV = "PI_PANOPTICON_SCOPE";
 
-describe("CoasInternalScheduler continuation", () => {
+describe("PiScheduler continuation", () => {
 	const previousEnv: Record<string, string | undefined> = {
 		[COAS_WORKSPACE_ID_ENV]: process.env[COAS_WORKSPACE_ID_ENV],
 		[PANOPTICON_SCOPE_ENV]: process.env[PANOPTICON_SCOPE_ENV],
@@ -87,7 +87,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-cont-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -119,7 +119,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-no-prior-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -137,7 +137,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-shape-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -172,7 +172,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-bloat-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -207,7 +207,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-stale-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await mkdir(join(coasHome, "schedule-runs"), { recursive: true });
@@ -240,7 +240,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-stop-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -265,7 +265,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-interrupt-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -289,7 +289,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-stateless-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", false);
 			await scheduler.reconcile({ coasHome });
@@ -309,7 +309,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-remove-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });
@@ -331,7 +331,7 @@ describe("CoasInternalScheduler continuation", () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "wrong-workspace";
 		const coasHome = join(tmpdir(), `pi-coas-cont-guard-${process.pid}-${Date.now()}`);
 		const pi = makePi();
-		const scheduler = new CoasInternalScheduler(pi as never);
+		const scheduler = new PiScheduler(pi as never);
 		try {
 			await writeSchedule(coasHome, "daily", "admin-assistant", true);
 			await scheduler.reconcile({ coasHome });

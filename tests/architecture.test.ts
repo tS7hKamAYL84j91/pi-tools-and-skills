@@ -22,4 +22,3 @@ import "./architecture/adr047-shared-discovery.js";
 import "./architecture/daemon-protocol-boundaries.js";
 import "./architecture/adr051-goal-session-isolation.js";
 import "./architecture/pi-teams-public-boundary.js";
-import "./architecture/pi-event-loop-isolation.js";

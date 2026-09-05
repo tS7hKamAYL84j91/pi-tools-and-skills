@@ -1,4 +1,4 @@
-/** Continuation run-state persistence for the pi-coas internal scheduler. */
+/** Continuation run-state persistence for the pi-coas pi-scheduler. */
 
 import { ConfinedStore } from "./store.js";
 import { loadRunState as loadSharedRunState, saveRunState as saveSharedRunState } from "./lib/coas-run-state.js";

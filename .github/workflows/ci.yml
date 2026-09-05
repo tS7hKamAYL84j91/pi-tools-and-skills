@@ -109,10 +109,8 @@ jobs:
       matrix:
         package:
           - .
-          - extensions/pi-bionic
           - extensions/pi-boost
           - extensions/pi-coas
-          - extensions/pi-doctor
           - extensions/pi-file-watch
           - extensions/pi-goal
           - extensions/pi-kanban

@@ -35,7 +35,7 @@ interface ActiveScheduledRun {
 	readonly approvalRequestId?: string;
 }
 
-export class CoasInternalScheduler {
+export class PiScheduler {
 	private config: CoasConfig | undefined;
 	private interval: NodeJS.Timeout | undefined;
 	private readonly activeScheduledRuns = new Map<string, ActiveScheduledRun>();
