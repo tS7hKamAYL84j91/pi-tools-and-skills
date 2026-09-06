@@ -1,4 +1,6 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, open } from "node:fs/promises";
+import { assertPrivateFileForRead, assertPrivateFileTarget, auditPrivateDirectory } from "../lib/private-local-mode.js";
 import { join } from "node:path";
 import * as z from "zod/v4";
 import { writeFileAtomic } from "../lib/file-persistence.js";
@@ -15,11 +17,18 @@ export interface Registration {
 	displayName: string;
 }
 
+export interface BroadcastSnapshot {
+	fingerprint: string;
+	targets: string[];
+	results: Array<{ recipient_id: string; receipt?: SendReceipt; error?: { code: string; retryable: boolean } }>;
+}
+
 interface FleetState {
 	registrations: Map<string, Registration>;
 	idempotency: Map<string, { fingerprint: string; receipt: SendReceipt }>;
 	acknowledged: Map<string, Set<string>>;
 	unregistered: Map<string, string>;
+	broadcasts: Map<string, BroadcastSnapshot>;
 }
 
 const receiptSchema = z.strictObject({
@@ -29,7 +38,7 @@ const receiptSchema = z.strictObject({
 	correlation_id: z.string().optional(),
 });
 const diskSchema = z.strictObject({
-	version: z.literal(1),
+	version: z.union([z.literal(1), z.literal(2)]),
 	registrations: z.array(
 		z.strictObject({ principal: z.string().min(1), agentId: z.string().min(1), displayName: z.string() }),
 	),
@@ -40,6 +49,10 @@ const diskSchema = z.strictObject({
 		z.strictObject({ principal: z.string().min(1), messageIds: z.array(z.string().min(1)) }),
 	),
 	unregistered: z.array(z.strictObject({ principal: z.string().min(1), agentId: z.string().min(1) })),
+	broadcasts: z.array(z.strictObject({
+		key: z.string(), fingerprint: z.string(), targets: z.array(z.string()).max(100),
+		results: z.array(z.strictObject({ recipient_id: z.string(), receipt: receiptSchema.optional(), error: z.strictObject({ code: z.string(), retryable: z.boolean() }).optional() })).max(100),
+	})).default([]),
 });
 const legacySchema = z.strictObject({
 	registrations: z.record(z.string(), z.string()),
@@ -52,6 +65,7 @@ function emptyState(): FleetState {
 		idempotency: new Map(),
 		acknowledged: new Map(),
 		unregistered: new Map(),
+		broadcasts: new Map(),
 	};
 }
 
@@ -61,13 +75,14 @@ function cloneState(state: FleetState): FleetState {
 		idempotency: new Map(state.idempotency),
 		acknowledged: new Map([...state.acknowledged].map(([key, ids]) => [key, new Set(ids)])),
 		unregistered: new Map(state.unregistered),
+		broadcasts: new Map(state.broadcasts),
 	};
 }
 
 function decodeState(input: unknown): FleetState {
 	const current = diskSchema.safeParse(input);
 	if (current.success) {
-		return {
+		const state: FleetState = {
 			registrations: new Map(
 				current.data.registrations.map(({ principal, agentId, displayName }) => [
 					principal,
@@ -84,7 +99,9 @@ function decodeState(input: unknown): FleetState {
 				current.data.acknowledged.map(({ principal, messageIds }) => [principal, new Set(messageIds)]),
 			),
 			unregistered: new Map(current.data.unregistered.map(({ principal, agentId }) => [principal, agentId])),
+			broadcasts: new Map(current.data.broadcasts.map(({ key, ...snapshot }) => [key, snapshot])),
 		};
+		return current.data.version === 1 ? upgradeGenerationKeys(state) : state;
 	}
 
 	const legacy = legacySchema.safeParse(input);
@@ -96,12 +113,34 @@ function decodeState(input: unknown): FleetState {
 	for (const [principalKey, entry] of Object.entries(legacy.data.idempotency)) {
 		state.idempotency.set(principalKey, entry);
 	}
+	return upgradeGenerationKeys(state);
+}
+
+/** External registration IDs are unique generations; retain older receipts without reusing them. */
+function upgradeGenerationKeys(state: FleetState): FleetState {
+	for (const [key, receipt] of [...state.idempotency]) {
+		let parts: unknown;
+		try { parts = JSON.parse(key); } catch { continue; }
+		if (!Array.isArray(parts) || parts.length !== 2 || !parts.every((part) => typeof part === "string")) continue;
+		const principal = parts[0];
+		if (principal === undefined) continue;
+		const registration = state.registrations.get(principal);
+		if (!registration) continue;
+		state.idempotency.set(JSON.stringify([parts[0], registration.agentId, parts[1]]), receipt);
+		state.idempotency.delete(key);
+	}
+	for (const [principal, registration] of state.registrations) {
+		const acknowledgements = state.acknowledged.get(principal);
+		if (!acknowledgements) continue;
+		state.acknowledged.set(JSON.stringify([principal, registration.agentId]), acknowledgements);
+		state.acknowledged.delete(principal);
+	}
 	return state;
 }
 
 function encodeState(state: FleetState): string {
 	return `${JSON.stringify({
-		version: 1,
+		version: 2,
 		registrations: [...state.registrations].map(([principal, registration]) => ({
 			principal,
 			...registration,
@@ -112,6 +151,7 @@ function encodeState(state: FleetState): string {
 			messageIds: [...messageIds],
 		})),
 		unregistered: [...state.unregistered].map(([principal, agentId]) => ({ principal, agentId })),
+		broadcasts: [...state.broadcasts].map(([key, snapshot]) => ({ key, ...snapshot })),
 	})}\n`;
 }
 
@@ -130,9 +170,15 @@ export class FleetStateStore {
 	}
 
 	async init(): Promise<void> {
+		assertPrivateFileTarget(this.path);
 		await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
+		if (!auditPrivateDirectory(this.stateDir).ok) throw new Error("Fleet state directory must be private");
 		try {
-			this.state = decodeState(JSON.parse(await readFile(this.path, "utf8")));
+			const file = await open(this.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+			try {
+				assertPrivateFileForRead(this.path);
+				this.state = decodeState(JSON.parse(await file.readFile("utf8")));
+			} finally { await file.close(); }
 		} catch (error) {
 			if (!isMissingFile(error)) throw error;
 		}
@@ -151,8 +197,11 @@ export class FleetStateStore {
 		});
 		await previous;
 		try {
+			assertPrivateFileTarget(this.path);
+			if (!auditPrivateDirectory(this.stateDir).ok) throw new Error("Fleet state directory must be private");
 			const draft = cloneState(this.state);
 			const result = await mutation(draft);
+			assertPrivateFileTarget(this.path);
 			await writeFileAtomic(this.path, encodeState(draft), { mode: 0o600 });
 			this.state = draft;
 			return result;

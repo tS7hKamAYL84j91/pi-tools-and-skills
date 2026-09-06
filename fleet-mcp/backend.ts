@@ -1,15 +1,19 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentRecord } from "../lib/agent-registry.js";
-import { createMaildirTransport } from "../lib/transports/maildir.js";
+import { createMaildirTransport, inboxPaths } from "../lib/transports/maildir.js";
 import {
 	listExternalAgents,
 	registerExternalAgent,
 	unregisterExternalAgent,
 } from "../extensions/pi-panopticon/registry/external-registrar.js";
 import type { FleetConfig } from "./config.js";
+import { nativeInboxAvailable, visibleNativePeers } from "./native-peers.js";
 
 export interface BackendMessage {
 	id: string;
 	from: string;
+	senderId?: string;
 	text: string;
 	ts: number;
 }
@@ -24,25 +28,25 @@ export interface FleetBackend {
 	pending(owner: AgentRecord): number;
 }
 
-/** Adapter for the approved v1 backend: Panopticon registration plus direct Maildir messaging. */
+/** Same-host Panopticon registration and direct Maildir messaging. */
 export class DirectMaildirBackend implements FleetBackend {
 	private readonly transport = createMaildirTransport();
 	private readonly registrarConfig: { workspaceRoot: string; mailboxRoot: string };
 
-	constructor(config: FleetConfig) {
+	constructor(private readonly config: FleetConfig) {
 		this.registrarConfig = { workspaceRoot: config.workspaceRoot, mailboxRoot: config.mailboxRoot };
 	}
 
-	register(displayName: string): Promise<AgentRecord> {
-		return registerExternalAgent(this.registrarConfig, { name: displayName });
+	async register(displayName: string): Promise<AgentRecord> {
+		return registerExternalAgent(this.registrarConfig, { name: displayName }, await visibleNativePeers(this.config.nativeAgentId));
 	}
 
 	unregister(agentId: string): Promise<void> {
 		return unregisterExternalAgent(this.registrarConfig, agentId);
 	}
 
-	agents(): Promise<AgentRecord[]> {
-		return listExternalAgents(this.registrarConfig);
+	async agents(): Promise<AgentRecord[]> {
+		return [...await listExternalAgents(this.registrarConfig), ...await visibleNativePeers(this.config.nativeAgentId)];
 	}
 
 	async send(
@@ -50,7 +54,8 @@ export class DirectMaildirBackend implements FleetBackend {
 		recipient: AgentRecord,
 		text: string,
 	): Promise<{ accepted: boolean; reference?: string }> {
-		const delivery = await this.transport.send(recipient, sender.id, text);
+		if (recipient.kind !== "external" && !nativeInboxAvailable(recipient)) return { accepted: false };
+		const delivery = await this.transport.send(recipient, sender.name, text, sender.id);
 		return { accepted: delivery.accepted, ...(delivery.reference ? { reference: delivery.reference } : {}) };
 	}
 
@@ -60,6 +65,7 @@ export class DirectMaildirBackend implements FleetBackend {
 
 	ack(owner: AgentRecord, messageId: string): void {
 		this.transport.ack(owner.id, messageId, owner.mailboxPath);
+		if (existsSync(join(inboxPaths(owner.id, owner.mailboxPath).new, messageId))) throw new Error("Inbox acknowledgement was not persisted");
 	}
 
 	pending(owner: AgentRecord): number {

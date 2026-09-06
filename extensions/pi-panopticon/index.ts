@@ -13,7 +13,7 @@ import {
 } from "../../lib/message-transport.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import { createMessaging } from "./messaging/messaging.js";
-import { loadExternalAgents } from "./registry/external-registrar.js";
+import { setupExternalPeerSource } from "./registry/external-peer-source.js";
 import { setupHealth } from "./registry/health.js";
 import { setupPeek } from "./registry/peek.js";
 import { getSelfName } from "./registry/peers.js";
@@ -42,6 +42,7 @@ export default defaultExtension;
 function setupPanopticon(pi: ExtensionAPI): void {
 	const selfId = `${process.pid}-${Date.now().toString(36)}`;
 	const registry = new Registry(selfId, () => pi.getSessionName());
+	const externalPeers = setupExternalPeerSource(pi, registry);
 	const listMode = createAgentListModeStore();
 
 	// M6 handoff (design doc section 7): when COAS_DAEMON_ENABLED=1 the daemon
@@ -54,7 +55,7 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	const maildir = getMaildirTransport();
 	registerChannel("agent", maildir);
 	const sendAgentMessage: AgentMessageSender = async (peer, message) => {
-		const result = await maildir.send(peer, getSelfName(registry), message);
+		const result = await maildir.send(peer, getSelfName(registry), message, selfId);
 		return {
 			accepted: result.accepted,
 			...(result.error ? { error: result.error } : {}),
@@ -90,8 +91,7 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	setupMissingDoneNotice(pi, spawner);
 
 	pi.on("session_start", async (event, ctx) => {
-		const externalAgents = await loadExternalAgents({ workspaceRoot: ctx.cwd });
-		registry.setExternalPeers(externalAgents);
+		await externalPeers.refresh(ctx.cwd);
 		registry.register(ctx);
 		if (daemonClient !== undefined) {
 			registry.setDaemonClient(daemonClient);

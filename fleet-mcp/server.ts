@@ -1,4 +1,5 @@
-import { timingSafeEqual, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { authenticatePrincipal } from "./auth.js";
 import { createServer, type IncomingMessage, type Server as HttpServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -41,7 +42,7 @@ async function invoke(operation: () => Promise<unknown>) {
 const workspace = z.string().min(1);
 
 export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): McpServer {
-	const server = new McpServer({ name: "fleet-mcp", version: "1.1.0" });
+	const server = new McpServer({ name: "fleet-mcp", version: "1.2.0" });
 
 	server.registerTool(
 		"fleet_register_external",
@@ -55,7 +56,7 @@ export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): Mc
 	server.registerTool(
 		"fleet_agents",
 		{
-			description: "List external agents visible in the configured workspace.",
+			description: "List workspace external agents and native peers visible through the operator-configured live reference identity.",
 			inputSchema: z.strictObject({ workspace }),
 			annotations: { readOnlyHint: true, openWorldHint: false },
 		},
@@ -84,6 +85,15 @@ export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): Mc
 					args.correlation_id,
 				),
 			),
+	);
+	server.registerTool(
+		"fleet_broadcast",
+		{
+			description: "Broadcast to a frozen snapshot of at most 100 visible peers, excluding self. Retries reuse successful receipts and retry remaining targets.",
+			inputSchema: z.strictObject({ workspace, text: z.string(), idempotency_key: z.string().min(1).max(256), filter: z.string().max(128).optional() }),
+			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		},
+		(args) => invoke(() => gateway.broadcast(args.workspace, args.text, args.idempotency_key, args.filter)),
 	);
 	server.registerTool(
 		"fleet_inbox",
@@ -127,15 +137,6 @@ export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): Mc
 	return server;
 }
 
-function authorized(request: IncomingMessage, expectedToken: string): boolean {
-	const prefix = "Bearer ";
-	const header = request.headers.authorization;
-	if (!header?.startsWith(prefix)) return false;
-	const supplied = Buffer.from(header.slice(prefix.length));
-	const expected = Buffer.from(expectedToken);
-	return supplied.length === expected.length && timingSafeEqual(supplied, expected);
-}
-
 class HttpRequestError extends Error {
 	constructor(readonly status: number) {
 		super(`HTTP ${status}`);
@@ -159,7 +160,9 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 export async function startHttp(config: FleetConfig, gateway: FleetGateway): Promise<HttpServer> {
-	if (!config.bearerToken) throw new Error("HTTP bearer token is not configured");
+	const identities = config.httpPrincipals ?? (config.bearerToken ? [{ principal: config.principal, bearerToken: config.bearerToken }] : []);
+	if (identities.length === 0) throw new Error("HTTP authentication is not configured");
+	const gateways = new Map(identities.map(({ principal }) => [principal, gateway.forPrincipal(principal)]));
 	const server = createServer(async (request, response) => {
 		const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
 		if (pathname === "/healthz") {
@@ -177,7 +180,9 @@ export async function startHttp(config: FleetConfig, gateway: FleetGateway): Pro
 			response.writeHead(404).end();
 			return;
 		}
-		if (!authorized(request, config.bearerToken ?? "")) {
+		const principal = authenticatePrincipal(request.headers.authorization, identities);
+		const caller = principal === undefined ? undefined : gateways.get(principal);
+		if (!caller) {
 			response.writeHead(401, { "www-authenticate": "Bearer" }).end();
 			return;
 		}
@@ -189,7 +194,7 @@ export async function startHttp(config: FleetConfig, gateway: FleetGateway): Pro
 		try {
 			const body = await readJsonBody(request);
 			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-			mcp = createMcpServer(config, gateway);
+			mcp = createMcpServer(config, caller);
 			await mcp.connect(transport);
 			await transport.handleRequest(request, response, body);
 		} catch (error) {

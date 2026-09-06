@@ -96,9 +96,12 @@ export function durableWrite(
 	targetId: string,
 	from: string,
 	text: string,
-	mailboxPath?: string,
+	target?: string | { mailboxPath?: string; senderId?: string },
 ): DeliveryResult {
 	try {
+		const mailboxPath = typeof target === "string" ? target : target?.mailboxPath;
+		const senderId = typeof target === "string" ? undefined : target?.senderId;
+		if (senderId !== undefined) assertSafeAgentId(senderId);
 		const base = inboxPaths(targetId, mailboxPath).base;
 		ensurePrivateDirectory(base);
 		ensurePrivateDirectory(join(base, "tmp"));
@@ -109,7 +112,7 @@ export function durableWrite(
 		const filename = `${ts}-${uuid}.json`;
 		const tmpPath = join(base, "tmp", filename);
 		assertPrivateFileTarget(tmpPath);
-		writeNewPrivateFileSync(tmpPath, JSON.stringify({ id: uuid, from, text, ts }));
+		writeNewPrivateFileSync(tmpPath, JSON.stringify({ id: uuid, from, text, ts, ...(senderId ? { senderId } : {}) }));
 		const newPath = join(base, "new", filename);
 		assertPrivateFileTarget(newPath);
 		renameSync(tmpPath, newPath);
@@ -119,7 +122,7 @@ export function durableWrite(
 	}
 }
 class MaildirTransport implements MessageTransport {
-	async send(peer: AgentRecord, from: string, message: string): Promise<DeliveryResult> {
+	async send(peer: AgentRecord, from: string, message: string, senderId?: string): Promise<DeliveryResult> {
 		if (peer.kind === "external" && !peer.mailboxPath) {
 			return {
 				accepted: false,
@@ -128,7 +131,7 @@ class MaildirTransport implements MessageTransport {
 			};
 		}
 		const mailboxPath = peer.kind === "external" ? peer.mailboxPath : undefined;
-		return durableWrite(peer.id, from, message, mailboxPath);
+		return durableWrite(peer.id, from, message, { mailboxPath, senderId });
 	}
 	receive(agentId: string, mailboxPath?: string): InboundMessage[] {
 		return inboxReadNew(agentId, mailboxPath).map(({ filename, message }) => ({

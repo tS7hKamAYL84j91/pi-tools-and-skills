@@ -5,7 +5,7 @@
  * No real dirs or transports touched.
  */
 
-import { describe, it, expect, vi, beforeEach, type MockedFunction } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockedFunction } from "vitest";
 
 vi.mock("../../lib/agent-registry.js", () => ({
 	REGISTRY_DIR: "/fake/.pi/agents",
@@ -96,6 +96,8 @@ beforeEach(async () => {
 	);
 });
 
+afterEach(() => messagingModule.dispose());
+
 function executeTool(name: string, params: Record<string, unknown>) {
 	const tool = api.registeredTools.get(name);
 	if (!tool) throw new Error(`Tool "${name}" not registered`);
@@ -117,7 +119,7 @@ describe("agent_send", () => {
 
 	it("sends via the send transport", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello");
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello", SELF.id);
 		expect(toolText(result)).toContain("Sent to alice");
 	});
 
@@ -208,7 +210,7 @@ describe("/send command", () => {
 	it("sends via send transport", async () => {
 		const { promise, ui } = runSend("alice hello from cmd");
 		await promise;
-		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello from cmd");
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello from cmd", SELF.id);
 		expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("alice"), "info");
 	});
 

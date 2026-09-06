@@ -46,6 +46,8 @@ export interface InboundMessage {
 	/** Opaque identifier — pass back to `ack()` after processing. */
 	id: string;
 	from: string;
+	/** Canonical sender registry ID when supplied by the native caller; not proof of authentication. */
+	senderId?: string;
 	text: string;
 	ts: number;
 	attachments?: InboundAttachment[];
@@ -59,6 +61,7 @@ export interface MessageTransport {
 		peer: AgentRecord,
 		from: string,
 		message: string,
+		senderId?: string,
 	): Promise<DeliveryResult>;
 
 	/** Return all pending inbound messages for `agentId`, oldest first. */

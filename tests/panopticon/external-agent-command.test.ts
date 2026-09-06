@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { registerExternalAgentCommands } from "../../extensions/pi-panopticon/ui/external-agent-command.js";
 import {
@@ -40,6 +40,8 @@ function commandContext() {
 	};
 }
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("external agent commands", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -62,6 +64,19 @@ describe("external agent commands", () => {
 			[self],
 		);
 		expect(registry.setExternalPeers).toHaveBeenCalledWith([EXTERNAL]);
+	});
+
+	it("uses the same operator-configured shared authority as peer tools", async () => {
+		vi.stubEnv("PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT", "/shared");
+		vi.stubEnv("PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT", "/mail");
+		const registry = makeRegistry(undefined, []);
+		const api = makeMockExtensionApi();
+		registrarMocks.register.mockResolvedValue(EXTERNAL);
+		registrarMocks.list.mockResolvedValue([EXTERNAL]);
+		registerExternalAgentCommands(asExtensionApi(api), registry);
+		await api.registeredCommands.get("agent-external-register")?.handler("worker", commandContext() as never);
+		expect(registrarMocks.register).toHaveBeenCalledWith({ workspaceRoot: "/shared", mailboxRoot: "/mail" }, { name: "worker" }, []);
+		expect(registrarMocks.list).toHaveBeenCalledWith({ workspaceRoot: "/shared", mailboxRoot: "/mail" });
 	});
 
 	it("removes only the registration and refreshes current-session peers", async () => {

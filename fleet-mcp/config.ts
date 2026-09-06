@@ -1,4 +1,5 @@
 import { isAbsolute, resolve } from "node:path";
+import { parseHttpPrincipals, type HttpPrincipal } from "./auth.js";
 
 export interface FleetLimits {
 	pageSize: number;
@@ -16,6 +17,9 @@ export interface FleetConfig {
 	listenPort: number;
 	mcpPath: string;
 	bearerToken?: string;
+	httpPrincipals?: HttpPrincipal[];
+	/** Real native reference identity; absent means no native access. */
+	nativeAgentId?: string;
 	principal: string;
 	limits: FleetLimits;
 }
@@ -30,6 +34,8 @@ const CONFIG_KEYS = new Set([
 	"listenPort",
 	"mcpPath",
 	"bearerToken",
+	"httpPrincipals",
+	"nativeAgentId",
 	"principal",
 	"limits",
 ]);
@@ -83,13 +89,17 @@ export function parseFleetConfig(input: unknown): FleetConfig {
 	}
 
 	const bearerToken = raw.bearerToken;
-	if (transport !== "stdio" && (typeof bearerToken !== "string" || bearerToken.length < 16)) {
+	const httpPrincipals = parseHttpPrincipals(raw.httpPrincipals);
+	if (httpPrincipals && (bearerToken !== undefined || transport === "stdio")) throw new Error("Ambiguous HTTP authentication configuration");
+	if (transport !== "stdio" && !httpPrincipals && (typeof bearerToken !== "string" || bearerToken.length < 16)) {
 		throw new Error("HTTP bearerToken is required and must contain at least 16 characters");
 	}
 
 	const mcpPath = raw.mcpPath === undefined ? "/mcp" : requiredString(raw.mcpPath, "mcpPath");
 	if (!mcpPath.startsWith("/") || mcpPath.includes("?")) throw new Error("Invalid mcpPath");
 
+	const nativeAgentId = raw.nativeAgentId === undefined ? undefined : requiredString(raw.nativeAgentId, "nativeAgentId");
+	if (nativeAgentId && (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(nativeAgentId) || nativeAgentId.startsWith("ext-"))) throw new Error("Invalid nativeAgentId");
 	const limits = raw.limits === undefined ? {} : objectRecord(raw.limits, "limits");
 	for (const key of Object.keys(limits)) {
 		if (!LIMIT_KEYS.has(key)) throw new Error(`Unknown limit: ${key}`);
@@ -105,6 +115,8 @@ export function parseFleetConfig(input: unknown): FleetConfig {
 		listenPort: positiveInteger(raw.listenPort, 8787, "listenPort", 65_535),
 		mcpPath,
 		bearerToken: typeof bearerToken === "string" ? bearerToken : undefined,
+		...(httpPrincipals ? { httpPrincipals } : {}),
+		...(nativeAgentId ? { nativeAgentId } : {}),
 		principal: raw.principal === undefined ? "local-stdio" : requiredString(raw.principal, "principal"),
 		limits: {
 			pageSize: positiveInteger(limits.pageSize, 20, "pageSize", 100),

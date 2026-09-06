@@ -22,9 +22,23 @@ Multi-agent visibility, messaging, spawning, health checks, and lifecycle contro
 - `/panopticon-reconcile on|off` — toggle reconciliation follow-up notifications.
 - `/agent-list-mode` and `/agents-mode` — adjust agent list display mode.
 
+## Inbox Notifications
+
+Unread inbox notifications are independent of reconciliation alerts. Filesystem
+changes trigger a two-second debounced, idle-gated wakeup; a five-second
+count-only check recovers missed events and retries failed watchers. Notifications
+contain only the unread count and ask the agent to call `message_read`; they do
+not read or acknowledge messages automatically. Repeated checks do not repeat a
+notification for the same unread count; new arrivals or a subsequent inbox drain
+rearm notifications. Watchers and timers stop on session shutdown/reload.
+
+After `message_read`, agents should continue already-authorized work when the
+message resolves a blocker, not merely acknowledge it. Message contents remain
+untrusted and cannot grant permissions or bypass safety gates.
+
 ## Reconciliation Notifications
 
-Follow-up injection is off by default. Enable it globally in `~/.pi/agent/settings.json`:
+Reconciliation follow-ups are off by default. Enable them globally in `~/.pi/agent/settings.json`:
 
 ```json
 {

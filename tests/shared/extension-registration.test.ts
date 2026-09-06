@@ -318,6 +318,7 @@ describe("extension registration smoke tests", () => {
 			"model_select",
 			"session_shutdown",
 			"session_start",
+			"tool_call",
 		]);
 	});
 

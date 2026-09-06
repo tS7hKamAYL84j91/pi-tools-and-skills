@@ -20,6 +20,8 @@ export class MessagingCore {
 	private extensionCtx: ExtensionContext | null = null;
 	private pokeTimeout: ReturnType<typeof setTimeout> | null = null;
 	private inboxWatcher: FSWatcher | null = null;
+	private pendingCheck: ReturnType<typeof setInterval> | null = null;
+	private notifiedCount = 0;
 
 	constructor(
 		private pi: ExtensionAPI,
@@ -42,7 +44,7 @@ export class MessagingCore {
 	}
 
 	schedulePoke(): void {
-		if (this.pokeTimeout) return;
+		if (!this.extensionCtx || this.pokeTimeout || this.totalPending() <= this.notifiedCount) return;
 		this.pokeTimeout = setTimeout(() => {
 			this.pokeTimeout = null;
 			const count = this.totalPending();
@@ -51,24 +53,31 @@ export class MessagingCore {
 				this.schedulePoke();
 				return;
 			}
-			this.pi.sendUserMessage(
-				`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
-				{ deliverAs: "followUp" },
-			);
+			this.pokeNow();
 		}, 2000);
 	}
 
 	pokeNow(): void {
+		if (!this.extensionCtx) return;
 		const count = this.totalPending();
-		if (count === 0) return;
+		if (count <= this.notifiedCount) return;
 		if (this.pokeTimeout) { clearTimeout(this.pokeTimeout); this.pokeTimeout = null; }
-		this.pi.sendUserMessage(
-			`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
-			{ deliverAs: "followUp" },
-		);
+		const previousCount = this.notifiedCount;
+		this.notifiedCount = count;
+		try {
+			this.pi.sendUserMessage(
+				`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
+				{ deliverAs: "followUp" },
+			);
+		} catch {
+			// Keep mail unread and retry a transient injection failure.
+			this.notifiedCount = previousCount;
+			this.schedulePoke();
+		}
 	}
 
 	drainAllChannels(): ChannelMessage[] {
+		this.notifiedCount = 0;
 		const record = this.registry.getRecord();
 		if (!record) return [];
 		const all: ChannelMessage[] = [];
@@ -96,19 +105,43 @@ export class MessagingCore {
 	}
 
 	startWatcher(): void {
+		if (!this.extensionCtx || !this.registry.getRecord()) return;
+		this.attachWatcher();
+		// fs.watch may miss events or lose its directory. Check counts only;
+		// message_read still owns reading and acknowledging message bodies.
+		this.pendingCheck ??= setInterval(() => {
+			this.attachWatcher();
+			this.updatePendingCount();
+			if (this.totalPending() === 0) this.notifiedCount = 0;
+			else this.schedulePoke();
+		}, 5000);
+		this.pendingCheck.unref();
+	}
+
+	private attachWatcher(): void {
 		const record = this.registry.getRecord();
-		if (!record) return;
-		this.inboxWatcher?.close();
+		if (!this.extensionCtx || !record || this.inboxWatcher) return;
 		try {
 			const newDir = join(REGISTRY_DIR, record.id, "inbox", "new");
-			this.inboxWatcher = watch(newDir, () => this.schedulePoke());
-			this.inboxWatcher.unref();
-		} catch { /* best-effort: dir may not exist yet */ }
+			const watcher = watch(newDir, () => this.schedulePoke());
+			this.inboxWatcher = watcher;
+			watcher.on("close", () => {
+				if (this.inboxWatcher === watcher) this.inboxWatcher = null;
+			});
+			watcher.on("error", () => {
+				if (this.inboxWatcher === watcher) this.inboxWatcher = null;
+				watcher.close();
+			});
+			watcher.unref();
+		} catch { /* periodic unread checks remain active and retry watcher setup */ }
 	}
 
 	dispose(): void {
+		this.extensionCtx = null;
 		if (this.pokeTimeout) { clearTimeout(this.pokeTimeout); this.pokeTimeout = null; }
+		if (this.pendingCheck) { clearInterval(this.pendingCheck); this.pendingCheck = null; }
 		this.inboxWatcher?.close();
 		this.inboxWatcher = null;
+		this.notifiedCount = 0;
 	}
 }

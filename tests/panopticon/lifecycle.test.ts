@@ -191,6 +191,7 @@ describe("session_start", () => {
 
 		expect(externalRegistrarMocks.load).toHaveBeenCalledWith({ workspaceRoot: "/tmp/project" });
 		expect(order).toEqual([
+			"setExternalPeers",
 			"loadExternalAgents",
 			"setExternalPeers",
 			"register",

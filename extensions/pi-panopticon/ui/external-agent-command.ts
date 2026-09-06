@@ -8,14 +8,9 @@ import {
 	unregisterExternalAgent,
 } from "../registry/external-registrar.js";
 import type { Registry } from "../types.js";
+import { externalPeerConfig as configFromCwd } from "../registry/external-peer-source.js";
 
-interface ExternalRuntimeConfig {
-	workspaceRoot: string;
-}
-
-function configFromCwd(cwd: string): ExternalRuntimeConfig {
-	return { workspaceRoot: cwd };
-}
+type ExternalRuntimeConfig = ReturnType<typeof configFromCwd>;
 
 async function refreshExternalPeers(registry: Registry, config: ExternalRuntimeConfig): Promise<void> {
 	registry.setExternalPeers(await listExternalAgents(config));
