@@ -1,4 +1,8 @@
-# Current Session State
+# Historical Session State — 2026-06-21
+
+Archived context, not current instructions or a work queue. The record below is
+preserved for history; use Jim's request, AGENTS.md, and current code/checks for
+present work. Do not resume its tasks or update this log automatically.
 
 ## Metadata
 - **Project:** pi-tools-and-skills

@@ -230,9 +230,9 @@ export function registerTeamRunTool(
 		description: "Run a declarative team by id. The id selects the team/protocol route; use team_list first if you do not know the team id.",
 		promptSnippet: "Run the smallest sufficient declarative team by id",
 		promptGuidelines: [
-			"Choose the smallest sufficient team; do not use teams as a generic autonomous-agent framework.",
-			"Use team_run with id=navigator for lightweight focused review.",
-			"Use team_run with id=llm-council for architecture, public API, persistence, security, or contested strategy where disagreement is valuable.",
+			"Do the work and self-check first. Teams are optional assistance, not approval steps; preserve explicit safety and permission gates.",
+			"Use team_run with id=navigator only when a bounded independent review materially helps.",
+			"Reserve team_run with id=llm-council for exceptional unresolved tradeoffs or an explicit user request, not routine architecture or API changes.",
 			"Use team_run with id=deep-research only for research that needs evidence gathering plus Explorer -> Verifier gap feedback -> Synthesis.",
 			"Prefer async: true for non-blocking reviews and long research runs; use synchronous calls only when the next step depends on the answer.",
 		],

@@ -7,15 +7,12 @@ KISS and FIRE: Fast, Inexpensive, Restrained, Elegant. Make the smallest useful
 change. Do not add coordination machinery, workflow engines, or speculative
 features.
 
-Do the work yourself. Critically review it and run relevant checks. Use a
-bounded Navigator review when independent review materially improves the result.
-The default review order is self-check first, Navigator second, council only for
-exceptional unresolved disagreement, and Principal as a last resort for genuine
-authority, safety, permission, or risk issues. Build and self-check useful outputs
-for Jim to review rather than waiting for Principal approval. Council, mandatory
-delegation, acknowledgements, status relays, Kanban claims,
-handoff rituals, ADRs, and C4 updates are not prerequisites for implementation;
-add durable records afterward only when they provide concrete operational value.
+Do the work yourself. Critically self-review and run relevant checks. Use a
+bounded Navigator review only when an independent check materially helps.
+Ask Jim when a real requirement, permission, or safety decision blocks the work.
+Wait for a request; do not invent startup work or reports. Report the result,
+validation, and remaining issues concisely. Add documentation only when it helps
+someone use or maintain the result, not to satisfy a workflow.
 
 Do not load or manage Kanban from project agents. Gravitas owns the optional
 human-facing oversight view. Do not duplicate project state or transcripts.
@@ -25,8 +22,10 @@ Matrix, File Watch, CoAS scheduling, and Gravitas's Kanban view. Retire only
 when retained behavior is verified. Do not change live configuration as part of
 a code change without approval.
 
-Preserve existing permissions, transport validation, approvals, and secret
-boundaries. Never expose secrets or raw sensitive logs.
+Preserve uncommitted work, session history, permissions, transport validation,
+approvals, and secret boundaries. Inspect git status before edits. Never expose
+secrets or raw sensitive logs. Do not change model defaults, schedule cadence,
+or residency without Jim's approval, or acquire Matrix/human-relay privileges.
 
 Checks: `npm run check`, `npm test`, and `git diff --check` when practical.
 

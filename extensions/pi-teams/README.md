@@ -52,7 +52,7 @@ These tools are the agent-facing compatibility interface and are registered by `
 
 ## Protocols
 
-`pi-teams` supports three bounded protocols: `consult` (`navigator`), `debate` (`llm-council`), and `research` (`deep-research`). Choose the simplest protocol that can succeed. Use `async: true` for non-blocking reviews or long research runs; use synchronous `team_run` only when the next step depends on the answer.
+`pi-teams` supports three bounded protocols: `consult` (`navigator`), `debate` (`llm-council`), and `research` (`deep-research`). Work directly and self-check first; teams are optional assistance, not approval steps. Use the smallest sufficient team only when independent input materially helps or the user requests it. Use `async: true` when work can continue; use synchronous `team_run` when the next step depends on the answer. Explicit safety and permission gates still apply.
 
 ### Profiles and precedence
 
@@ -67,7 +67,7 @@ Deterministic profile evaluation runs in normal CI from `tests/evals/fixtures/te
 | Built-in team | Protocol pattern | Use when |
 | --- | --- | --- |
 | `navigator` | Routing + focused evaluator | One bounded reviewer can check correctness, scope, tests, or docs. |
-| `llm-council` | Parallelization + synthesis | Architecture, public API, persistence, security, or contested tradeoffs need explicit disagreement. |
+| `llm-council` | Parallelization + synthesis | Exceptional unresolved tradeoffs benefit from multiple views, or the user explicitly requests council. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
 
 ### `/team on` / `/team once` context enrichment

@@ -28,4 +28,4 @@ git show --stat b14979a  # close LangGraph evaluation
 - Use `navigator` when one focused skeptical review is enough.
 - Use `llm-council` when disagreement is the point.
 - Keep prompts compact and decision-oriented.
-- Record accepted high-impact decisions as ADRs.
+- Record decision rationale only when it will help future maintenance; an ADR is optional unless explicitly required by the task.

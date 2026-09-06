@@ -5,9 +5,12 @@ description: Kanban board interactions to create, claim, update, snapshot, and c
 
 # Pi Kanban
 
-Use this skill when working with the project kanban extension.
+Use this skill only for requested, authorized board work. It is a tool reference,
+not a requirement to track implementation in Kanban. Follow project-specific
+restrictions on who may access the board; do not sweep, claim, or update it as
+startup work or duplicate execution records.
 
-## Core workflow
+## Board lifecycle reference
 
 ```text
 kanban_create → kanban_move to=todo → kanban_claim → kanban_edit note=... → kanban_complete
@@ -65,4 +68,6 @@ kanban_create → kanban_move to=todo → kanban_claim → kanban_edit note=... 
 - Metadata edits are allowed only for backlog/todo tasks; notes can be added to any existing task.
 - `kanban_complete` only works on in-progress tasks.
 - `kanban_delete` can delete blocked tasks after confirmation; it cannot delete in-progress tasks.
-- Each created task gets `kanban/tasks/T-NNN.md`; notes append there as well as to `board.log`.
+- Each created task gets `pi-kanban/tasks/T-NNN.md`; notes append there as well as to `board.log`.
+- Preserve owner checks, configured WIP limits, verification evidence, completion
+  gates, and deletion confirmation. Optional board use does not bypass its safeguards.

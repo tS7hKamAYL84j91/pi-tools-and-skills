@@ -5,7 +5,9 @@ description: Coordinate work across pi peer agents. Use when spawning agents, as
 
 # Pi Agent Orchestration
 
-Use this skill when work should be delegated to one or more pi agents.
+Do the work yourself by default. Use this skill only when the user requests
+agents or an independent parallel subtask materially benefits from a worker.
+Spawning, monitoring, and handoffs are not prerequisites for implementation.
 
 ## When to use
 
@@ -21,9 +23,9 @@ Do not use this skill for simple single-agent tasks.
 ## Workflow
 
 1. **Decide topology**
-   - Use a single worker for sequential coding/debug tasks.
-   - Use multiple workers only for parallelisable research or scanning.
-   - Keep WIP small and avoid spawning agents without a clear owner.
+   - Keep sequential coding/debug work in the current agent.
+   - Use workers only for independently useful, bounded parallel subtasks.
+   - Keep concurrency small and scope each worker's task clearly.
 
 2. **Spawn with a structured brief**
    - Prefer `brief` over `task`.
@@ -141,25 +143,10 @@ Recovery checklist when an agent exits without DONE/BLOCKED/FAILED:
 4. If a pattern of 143 deaths emerges across similar agent types (e.g. auditors), the task scope or timeout may need adjusting — don't blindly respawn the same task repeatedly.
 5. Clean up: `kill_agent` removes the agent from the spawned list. Orphaned agents should not accumulate.
 
-## Pipeline orchestration
+## Integrating results
 
-Complex work follows a recurring pipeline pattern:
-
-```
-1. Create planning doc (docs/<name>.md)
-2. council review (team_run id="llm-council" async=true)
-3. Spawn subagents for parallel workstreams
-4. Monitor with agent_status (not polling)
-5. Review subagent output, integrate patches
-6. navigator review (team_run id="navigator" async=true)
-7. Commit and push
-```
-
-Pipeline rules:
-- Stagger spawns: don't launch 10 agents simultaneously. Batch in groups of 2–3.
-- Each subagent gets a focused brief scoped to one workstream.
-- The orchestrator integrates, never subagents.
-- Update the planning doc as evidence of progress (checked items, notes).
-- Use `agent_status` checkpoints after each pipeline stage, not continuously.
-- If a subagent dies (exit 143), decide restart vs abandon before advancing to the next stage.
-- Never block the pipeline waiting for the user; the planning doc is the authority.
+Inspect worker output, preserve unrelated changes, and run relevant checks.
+A worker's success claim is not validation. Report the useful result and any
+remaining issue without duplicating transcripts or maintaining a progress log.
+Commit or push only when authorized. A brief or planning document does not grant
+permissions; ask the user if a genuine requirement or safety decision blocks work.
