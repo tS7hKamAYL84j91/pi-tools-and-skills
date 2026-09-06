@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
-import { generatePlanState, removePlan } from "../../extensions/pi-goal/goal-plan.js";
+import { removePlan } from "../../extensions/pi-goal/goal-plan.js";
+import { parseCommand } from "../../extensions/pi-goal/goal-helpers.js";
 import { createTextGoal, loadGoal } from "../../extensions/pi-goal/state.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
@@ -96,22 +97,13 @@ describe("pi-goal direct execution migration", () => {
 		expect(persisted.schemaVersion).toBe(2);
 	});
 
-	it("keeps /goal plan and /goal approve as harmless compatibility no-ops", async () => {
-		const pi = createFakePi();
-		goalExtension(pi as unknown as ExtensionAPI);
-		const ctx = createFakeContext(tempDir);
-		await saveGoal(tempDir, await createTextGoal(tempDir, "execute directly"));
-
-		await runGoalCommand(pi, "plan", ctx);
-		await runGoalCommand(pi, "approve", ctx);
-
-		const persisted = await loadGoal(tempDir);
-		expect(persisted).toMatchObject({ planRequired: false, planApproved: false, milestones: [] });
-		expect(ctx.ui.notifications.map((entry) => entry.message).join(" ")).toContain("execute directly");
+	it("does not reserve plan or approve as no-op commands", () => {
+		expect(parseCommand("plan")).toEqual({ action: "goal", rest: "plan" });
+		expect(parseCommand("approve the implementation")).toEqual({ action: "goal", rest: "approve the implementation" });
 	});
 
 	it("removes a legacy plan without requiring approval or verification", async () => {
-		const planned = generatePlanState(await createTextGoal(tempDir, "old planned goal\n- old milestone"));
+		const planned = legacyPlan(await createTextGoal(tempDir, "old planned goal\n- old milestone"));
 		const direct = removePlan(planned);
 		expect(direct).toMatchObject({
 			status: "active",
@@ -127,7 +119,7 @@ describe("pi-goal direct execution migration", () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
-		await saveGoal(tempDir, generatePlanState(await createTextGoal(tempDir, "complete directly")));
+		await saveGoal(tempDir, legacyPlan(await createTextGoal(tempDir, "complete directly")));
 
 		const complete = findTool(pi, "goal_complete");
 		await complete.execute("call-c", { evidence: "tests pass" }, undefined, undefined, ctx);
@@ -143,9 +135,9 @@ describe("pi-goal direct execution migration", () => {
 
 	it("regenerates missing derived files", async () => {
 		await saveGoal(tempDir, await createTextGoal(tempDir, "recover me"));
-		await rm(join(tempDir, ".pi/goal", "STATUS.md"), { force: true });
+		await rm(join(tempDir, ".pi/goal", "GOAL.md"), { force: true });
 		expect(await loadGoal(tempDir)).toBeDefined();
-		await expect(readFile(join(tempDir, ".pi/goal", "STATUS.md"), "utf8")).resolves.toContain("Turns used");
+		await expect(readFile(join(tempDir, ".pi/goal", "GOAL.md"), "utf8")).resolves.toContain("recover me");
 	});
 });
 
@@ -213,8 +205,6 @@ function findTool(
 	return tool;
 }
 
-async function runGoalCommand(pi: FakePi, args: string, ctx: FakeCommandContext): Promise<void> {
-	const command = pi.commands.get("goal");
-	if (!command) throw new Error("goal command not registered");
-	await command.handler(args, ctx);
+function legacyPlan(state: GoalState): GoalState {
+	return { ...state, status: "planning", planRequired: true, planApproved: false, milestones: [{ id: "m-1", title: "Historical milestone", validationCommand: "npm test", status: "in_progress" }] };
 }

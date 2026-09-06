@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 const TEST_FILE_MAX_LINES = 1_000;
 
 /** Production roots whose modules must be production-reachable (ADR-054). */
-const PRODUCTION_MODULE_ROOTS = ["extensions", "lib", join("daemon", "src")];
+const PRODUCTION_MODULE_ROOTS = ["extensions", "lib"];
 
 /** Roots scanned for importers: production roots plus tests and script CLIs. */
 const IMPORTER_SCAN_ROOTS = [...PRODUCTION_MODULE_ROOTS, "tests", "scripts"];
@@ -60,20 +60,9 @@ function isTestFile(file: string): boolean {
 	return path.endsWith(".test.ts") || path.startsWith(`tests${sep}`);
 }
 
-// Entry files are excluded from the rule's target set by definition, not by
-// exemption: extension entry/barrel files (any path ending in index.ts) are
-// reached through package pi.extensions manifests, and every daemon/src/*.ts
-// is a published entry root (knip entry list; the daemon main plus the operator
-// admin CLI), so import-graph reachability does not apply to them.
+// Extension entry/barrel files are reached through package manifests.
 function isProductionEntry(path: string): boolean {
-	if (path.endsWith(`${sep}index.ts`)) {
-		return true;
-	}
-	const daemonSrcPrefix = join("daemon", "src") + sep;
-	return (
-		path.startsWith(daemonSrcPrefix) &&
-		!path.slice(daemonSrcPrefix.length).includes(sep)
-	);
+	return path.endsWith(`${sep}index.ts`);
 }
 
 /** Resolve a relative import specifier to a repo-local .ts file, or null. */

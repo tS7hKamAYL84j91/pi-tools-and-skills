@@ -19,7 +19,6 @@ import { setupPeek } from "./registry/peek.js";
 import { getSelfName } from "./registry/peers.js";
 import { setupReconciler } from "./registry/reconciler.js";
 import Registry from "./registry/registry.js";
-import { createDaemonClientIfEnabled } from "./registry/daemon-registry-source.js";
 import { OperationalStateStore } from "./registry/state.js";
 import { stopPeerAgent } from "./spawner/agent-stop.js";
 import { setupMissingDoneNotice } from "./spawner/missing-done-notice.js";
@@ -44,10 +43,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	const registry = new Registry(selfId, () => pi.getSessionName());
 	const externalPeers = setupExternalPeerSource(pi, registry);
 	const listMode = createAgentListModeStore();
-
-	// M6 handoff (design doc section 7): when COAS_DAEMON_ENABLED=1 the daemon
-	// registry is the authority and this client is its read-only consumer.
-	const daemonClient = createDaemonClientIfEnabled();
 
 	// Set up modules — registers tools/commands, returns module handles
 	const operationalState = new OperationalStateStore(pi);
@@ -93,10 +88,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	pi.on("session_start", async (event, ctx) => {
 		await externalPeers.refresh(ctx.cwd);
 		registry.register(ctx);
-		if (daemonClient !== undefined) {
-			registry.setDaemonClient(daemonClient);
-			daemonClient.start();
-		}
 		operationalState.restore(ctx, event);
 		messaging.init(ctx);
 		reconciler.start(ctx);
@@ -141,7 +132,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 		messaging.dispose();
 		unregisterChannel("agent");
 		ui.stop();
-		daemonClient?.stop();
 		registry.unregister();
 	});
 }

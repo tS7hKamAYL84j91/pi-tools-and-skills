@@ -1,6 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { TeamStateManager } from "../../extensions/pi-teams/state.js";
 import { registerTeamCommands } from "../../extensions/pi-teams/team-commands.js";
 
@@ -20,7 +19,7 @@ function setup(): {
 		registerCommand: (name: string, definition: CommandDefinition) => commands.set(name, definition),
 	} as unknown as ExtensionAPI;
 	const stateManager = new TeamStateManager();
-	registerTeamCommands(api, { stateManager, runtime: new RuntimeControlPlane() });
+	registerTeamCommands(api, { stateManager });
 	const command = commands.get("teams");
 	if (!command) throw new Error("teams command missing");
 	const notify = vi.fn();
@@ -28,7 +27,18 @@ function setup(): {
 	return { command, stateManager, notify, ctx };
 }
 
-describe("/teams stop", () => {
+describe("/teams status and stop", () => {
+	it("reports the same live and terminal state used by stop", async () => {
+		const { command, stateManager, notify, ctx } = setup();
+		const id = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "x" });
+		await command.handler(`status ${id}`, ctx);
+		expect(notify).toHaveBeenLastCalledWith(expect.stringContaining("pending"), "info");
+		stateManager.recordRunCompleted(id, 1);
+		await command.handler(`status ${id}`, ctx);
+		expect(notify).toHaveBeenLastCalledWith(expect.stringContaining("completed"), "info");
+		await expect(command.handler(`stop ${id}`, ctx)).rejects.toThrow("No active team run");
+	});
+
 	it("stops an explicit run id and documents the command", async () => {
 		const { command, stateManager, notify, ctx } = setup();
 		const runId = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "x" });

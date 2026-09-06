@@ -19,6 +19,5 @@ import "./architecture/hotspots.js";
 import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";
 import "./architecture/adr047-shared-discovery.js";
-import "./architecture/daemon-protocol-boundaries.js";
 import "./architecture/adr051-goal-session-isolation.js";
 import "./architecture/pi-teams-public-boundary.js";

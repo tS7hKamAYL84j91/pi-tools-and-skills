@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "extensions/*/index.ts",
-    "daemon/src/*.ts",
     "lib/*.ts",
     "lib/**/*.ts",
     "scripts/session-*-cli.ts",
@@ -11,7 +10,6 @@
   ],
   "project": [
     "extensions/**/*.ts",
-    "daemon/src/**/*.ts",
     "lib/**/*.ts",
     "tests/**/*.ts",
     "fleet-mcp/**/*.ts"

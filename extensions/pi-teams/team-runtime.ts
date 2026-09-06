@@ -1,7 +1,6 @@
 /** Mutating team tools and execution dispatch for declarative team specs. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { RuntimeControlPlane, type RuntimeEntityRef } from "../../lib/runtime-control-plane.js";
 import { ok } from "../../lib/tool-result.js";
 import type { TeamRunToolResult } from "./team-run-completion.js";
 import { completeRun, coerceTeamRunResult } from "./team-run-completion.js";
@@ -20,7 +19,6 @@ export { computeNodeStall, summarizeTeamRuns, requestTeamRunStop } from "./team-
 
 export interface TeamRunRegistration {
 	stateManager: TeamStateManager;
-	runtime?: RuntimeControlPlane;
 }
 
 const TeamFormSchema = Type.Object({
@@ -116,7 +114,6 @@ export async function runTeam(args: {
 	params: TeamRunInput;
 	ctx: ExtensionContext;
 	stateManager: TeamStateManager;
-	runtime?: RuntimeControlPlane;
 	resultRoot?: string;
 }): Promise<TeamRunToolResult> {
 	const team = requireTeam(args.params.id, args.ctx.cwd);
@@ -127,16 +124,11 @@ export async function runTeam(args: {
 	const startedAt = Date.now();
 	const runId = args.stateManager.startRun({ teamId: team.id, protocol: team.protocol, prompt: args.params.prompt });
 	const unsubscribe = args.stateManager.subscribe(runId, () => refreshTeamWidget(args.ctx, args.stateManager, runId));
-	let runtimeRef: RuntimeEntityRef | undefined;
 
 	try {
 		refreshTeamWidget(args.ctx, args.stateManager, runId);
 		const controller = new AbortController();
 		args.stateManager.registerAbortController(runId, controller);
-		runtimeRef = registerTeamRunRuntimeEntity(args.runtime, runId, team, (reason) => {
-			args.stateManager.requestStop(runId, reason);
-		});
-		args.runtime?.updateStatus(runtimeRef, "running");
 		const result = await handler.run({
 			team,
 			params: args.params,
@@ -145,7 +137,7 @@ export async function runTeam(args: {
 			runId,
 			signal: controller.signal,
 		});
-		const completion = await completeRun({
+		await completeRun({
 			runId,
 			teamId: team.id,
 			startedAt,
@@ -154,12 +146,10 @@ export async function runTeam(args: {
 			cwd: args.ctx.cwd,
 			resultRoot: args.resultRoot,
 		});
-		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, completion.status);
 		return coerceTeamRunResult(result, runId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		args.stateManager.recordRunFailed(runId, message);
-		if (runtimeRef) args.runtime?.updateStatus(runtimeRef, "failed");
 		throw error;
 	} finally {
 		unsubscribe();
@@ -199,31 +189,14 @@ function registerTeamModelsTool(pi: ExtensionAPI): void {
 	});
 }
 
-function registerTeamRunRuntimeEntity(
-	runtime: RuntimeControlPlane | undefined,
-	runId: string,
-	team: TeamSpec,
-	stop: (reason: string) => void,
-): RuntimeEntityRef {
-	const ref: RuntimeEntityRef = { kind: "team_run", id: runId };
-	if (!runtime) return ref;
-	return runtime.registerEntity({
-		...ref,
-		label: `${team.id} (${team.protocol})`,
-		status: "pending",
-		stop,
-	});
-}
-
 export function registerTeamRunTool(
 	pi: ExtensionAPI,
 	registration: TeamRunRegistration,
 ): void {
-	const runtime = registration.runtime ?? new RuntimeControlPlane();
 	registerTeamFormTool(pi);
 	registerTeamModelsTool(pi);
 	registerTeamDeleteTool(pi);
-	registerTeamControlTools(pi, registration.stateManager, runtime);
+	registerTeamControlTools(pi, registration.stateManager);
 	pi.registerTool({
 		name: "team_run",
 		label: "Run Team",
@@ -239,10 +212,10 @@ export function registerTeamRunTool(
 		parameters: TeamRunSchema,
 		async execute(_id, params: TeamRunInput, _signal, _onUpdate, ctx) {
 			if (params.async) {
-				return startTeamRunAsync({ pi, params, ctx, run: (runParams, resultRoot) => runTeam({ params: runParams, ctx, stateManager: registration.stateManager, runtime, resultRoot }) });
+				return startTeamRunAsync({ pi, params, ctx, run: (runParams, resultRoot) => runTeam({ params: runParams, ctx, stateManager: registration.stateManager, resultRoot }) });
 			}
 			try {
-				return await runTeam({ params, ctx, stateManager: registration.stateManager, runtime });
+				return await runTeam({ params, ctx, stateManager: registration.stateManager });
 			} finally {
 				ctx.ui.setStatus(TEAM_STATUS_KEY, "teams: ready");
 			}

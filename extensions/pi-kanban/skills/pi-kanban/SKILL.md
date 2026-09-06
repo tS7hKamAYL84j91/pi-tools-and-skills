@@ -46,10 +46,20 @@ kanban_create → kanban_move to=todo → kanban_claim → kanban_edit note=... 
 - Complete a task:
   `kanban_complete task_id={{T-NNN}} agent={{name}} duration={{45m|2h}}`
 
-- View board state with gradual disclosure:
+- View board state with gradual disclosure (read-only, no file writes or compaction):
   `kanban_snapshot`
   `kanban_snapshot task_id={{T-NNN}}`
   `kanban_snapshot detail=full`
+
+- Explicitly export a Markdown snapshot when requested:
+  `kanban_export detail={{compact|full}}`
+  `kanban_export task_id={{T-NNN}}`
+
+- Explicitly compact history, preserving an original-log backup:
+  `kanban_compact`
+
+Viewing, exporting and completion do not trigger compaction. Do not export or
+compact merely because you inspected the board.
 
 ## Patterns
 

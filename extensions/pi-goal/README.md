@@ -5,12 +5,11 @@ Project-goal execution that starts immediately and continues until the root agen
 ## Commands
 
 - `/goal <text>` — create a goal and immediately run it until completion.
-- `/goal file <path>` — create a file-backed goal/TODO and immediately run it until completion.
+- `/goal file <path>` — use the original source file directly and immediately run the goal until completion.
 - `/goal status` — show the current goal.
 - `/goal run` or `/goal resume` — resume direct unbounded execution.
 - `/goal run --turns N` — explicitly request a bounded 1–20 turn run.
 - `/goal pause`, `/goal stop`, `/goal steer <text>`, `/goal edit <text>`, `/goal clear` — lifecycle controls.
-- `/goal plan` and `/goal approve` — retained only as compatibility no-ops; they never pause or mutate the goal.
 
 Plain goal creation and resume use `turnBudget: 0` as the persisted unbounded sentinel. Runs continue across fresh sessions until `goal_complete`, an explicit pause/stop, a genuine runtime failure, or the operator-configured completion gate stops them. There is no plan generation, milestone verification, or approval gate.
 
@@ -40,12 +39,10 @@ Use `/goal stop` or `/goal pause` to contain uncertain work, inspect it, then `/
 State lives under `.pi/goal/instances/<goalId>/`:
 
 - `goal.json` — authoritative schema-v3 state.
-- `GOAL.md` — readable summary.
-- `TODO.md` — lightweight execution tracker.
-- `SPEC.md` — objective, direct-execution constraints, and done condition.
-- `PLAN.md` — retained compatibility projection stating that planning is disabled.
-- `STATUS.md` — execution, turn, lifecycle, changed-file, and blocker evidence.
+- `GOAL.md` — the single active human-readable summary, including bounded reported activity and changed files.
 - `runs/YYYY/MM/DD/*.{jsonl,md}` — per-invocation records.
+
+Text goals store the objective in `goal.json`; file goals retain their original source path without copying or rewriting the source. New goals do not generate TODO, SPEC, PLAN, or STATUS scaffolding. Existing documents and run history are left intact on load/resume. `/goal plan` and `/goal approve` are no longer commands; plain non-command text is treated as a new objective.
 
 Legacy v1/v2 and planned v3 states remain readable. Starting/resuming them removes obsolete plan, milestone, approval, and verification state before direct execution.
 

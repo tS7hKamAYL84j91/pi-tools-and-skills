@@ -1,7 +1,7 @@
 /** Goal persistence, confined instances, legacy migration, and projections. */
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { assertNoSymlinkComponents, assertSafeGoalRoot, ensureRuntimeIgnored, normalizeProjectPath, removeKnownRunArtifacts, assertSafeEntry } from "./goal-files.js";
 import { randomUUID } from "node:crypto";
 import { withAdvisoryLock } from "../../lib/file-lock.js";
@@ -22,10 +22,6 @@ import {
 import {
 	renderGoalMarkdown,
 	renderIterationMarkdown,
-	renderPlanMarkdown,
-	renderSpecMarkdown,
-	renderStatusMarkdown,
-	renderTodoMarkdown,
 } from "./goal-render.js";
 
 
@@ -189,11 +185,8 @@ async function readAuthoritativeGoal(statePath: string): Promise<GoalState | nul
 async function regenerateDerivedFiles(cwd: string, state: GoalState, goalId?: string): Promise<void> {
 	const paths = goalPaths(cwd, goalId);
 	await mkdir(paths.dir, { recursive: true });
-	for (const path of [paths.summaryPath, paths.specPath, paths.planPath, paths.statusPath]) { await assertSafeEntry(path, "projection"); }
+	await assertSafeEntry(paths.summaryPath, "projection");
 	await writeFileAtomic(paths.summaryPath, renderGoalMarkdown(state));
-	await writeFileAtomic(paths.specPath, renderSpecMarkdown(state));
-	await writeFileAtomic(paths.planPath, renderPlanMarkdown(state));
-	await writeFileAtomic(paths.statusPath, renderStatusMarkdown(state));
 }
 
 export async function writeGoalIteration(
@@ -215,33 +208,15 @@ export async function writeGoalIteration(
 }
 
 export async function createFileGoal(cwd: string, inputPath: string, scope?: GoalSessionScope): Promise<GoalState> {
-	const { sourcePath } = await normalizeProjectPath(cwd, inputPath);
+	const { sourcePath, sourceRealPath } = await normalizeProjectPath(cwd, inputPath);
+	if (!(await readFile(sourceRealPath, "utf8")).trim()) throw new Error(`Goal source file is empty: ${inputPath}`);
 	return newGoal(`Complete the work described by ${sourcePath}`, sourcePath, scope);
 }
 
-export async function createFileTodoGoal(cwd: string, inputPath: string, scope?: GoalSessionScope): Promise<GoalState> {
-	const { sourcePath, sourceRealPath } = await normalizeProjectPath(cwd, inputPath);
-	const content = (await readFile(sourceRealPath, "utf8")).trim();
-	if (!content) throw new Error(`Goal source file is empty: ${inputPath}`);
-	const state = newGoal(`Complete the work described by ${sourcePath}`, sourcePath, scope);
-	const paths = goalPaths(cwd, scope?.sessionManager ? state.goalId : undefined);
-	return updateSourcePath(state, relative(cwd, paths.todoPath));
-}
-
-/** Writes creation-only artifacts after the authority transaction has committed. */
-export async function writeGoalCreationArtifacts(cwd: string, state: GoalState, todoContent?: string, goalId?: string): Promise<void> {
-	const paths = goalPaths(cwd, goalId);
-	await mkdir(paths.dir, { recursive: true });
-	await writeFileAtomic(paths.todoPath, renderTodoMarkdown(todoContent ?? state.objective));
-	await ensureRuntimeIgnored(cwd);
-}
-
-export async function createTextGoal(cwd: string, objective: string, scope?: GoalSessionScope): Promise<GoalState> {
+export async function createTextGoal(_cwd: string, objective: string, scope?: GoalSessionScope): Promise<GoalState> {
 	const cleaned = objective.trim();
 	if (!cleaned) throw new Error("Goal text must be non-empty");
-	const state = newGoal(cleaned, undefined, scope);
-	const paths = goalPaths(cwd, scope?.sessionManager ? state.goalId : undefined);
-	return updateSourcePath(state, relative(cwd, paths.todoPath));
+	return newGoal(cleaned, undefined, scope);
 }
 
 function newGoal(objective: string, sourcePath: string | undefined, _scope?: GoalSessionScope): GoalState {
@@ -270,8 +245,4 @@ function newGoal(objective: string, sourcePath: string | undefined, _scope?: Goa
 		lifecycle: [],
 		changedFiles: [],
 	};
-}
-
-function updateSourcePath(state: GoalState, sourcePath: string): GoalState {
-	return { ...state, sourcePath };
 }

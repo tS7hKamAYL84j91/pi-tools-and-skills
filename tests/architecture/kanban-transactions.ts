@@ -25,7 +25,7 @@ describe("Kanban board transaction boundary", () => {
 		const compaction = source(`${KANBAN_ROOT}/compaction.ts`);
 		expect(compaction).toContain('import { withBoardLock } from "./board-transactions.js"');
 		expect(compaction).toMatch(
-			/return withBoardLock\(\(\) => runCompactionLocked\(agentLabel, triggerParam\)\)/,
+			/return await withBoardLock\(\(\) => runCompactionLocked\(\)\)/,
 		);
 	});
 

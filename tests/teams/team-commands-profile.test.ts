@@ -1,7 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const runTeamMock = vi.fn(async () => ({ content: [{ type: "text" as const, text: "team output" }] }));
+const runTeamMock = vi.fn(async () => ({ content: [{ type: "text" as const, text: "team output" }], details: { runId: "team-fixture" } }));
+vi.mock("../../extensions/pi-teams/team-result-artifact.js", () => ({ readTeamRunResultArtifact: async () => undefined }));
 
 vi.mock("../../extensions/pi-teams/team-runtime.js", () => ({
 	runTeam: runTeamMock,
@@ -19,14 +20,17 @@ function setupCommand(): {
 	ctx: ExtensionCommandContext;
 	notify: ReturnType<typeof vi.fn>;
 	sendMessage: ReturnType<typeof vi.fn>;
+	sendUserMessage: ReturnType<typeof vi.fn>;
 } {
 	let command: CommandDefinition | undefined;
 	const sendMessage = vi.fn();
+	const sendUserMessage = vi.fn();
 	const pi = {
 		registerCommand(name: string, definition: CommandDefinition) {
 			if (name === "teams") command = definition;
 		},
 		sendMessage,
+		sendUserMessage,
 	} as unknown as ExtensionAPI;
 	registerTeamCommands(pi, { stateManager: {} as never });
 	if (!command) throw new Error("teams command was not registered");
@@ -36,10 +40,11 @@ function setupCommand(): {
 		ui: {
 			editor: vi.fn(async () => "editor prompt"),
 			notify,
+			setStatus: vi.fn(),
 		},
 		waitForIdle: vi.fn(async () => undefined),
 	} as unknown as ExtensionCommandContext;
-	return { command, ctx, notify, sendMessage };
+	return { command, ctx, notify, sendMessage, sendUserMessage };
 }
 
 describe("team command profile parsing", () => {
@@ -85,12 +90,13 @@ describe("team command profile parsing", () => {
 	});
 
 	it("accepts profiles for asynchronous team runs", async () => {
-		const { command, ctx, notify } = setupCommand();
+		const { command, ctx, notify, sendUserMessage } = setupCommand();
 		await command.handler("async llm-council --profile=thorough review architecture", ctx);
 
 		expect(runTeamMock).toHaveBeenCalledWith(expect.objectContaining({
 			params: { id: "llm-council", prompt: "review architecture", profile: "thorough" },
 		}));
 		expect(notify).toHaveBeenCalledWith(expect.stringContaining("profile=thorough asynchronously"), "info");
+		await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledWith(expect.stringContaining("team output"), { deliverAs: "followUp" }));
 	});
 });

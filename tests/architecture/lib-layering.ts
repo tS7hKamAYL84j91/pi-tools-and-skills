@@ -18,7 +18,6 @@ const CORE_LIB_FILES = new Set([
 
 /** Every entry is a deliberately shared primitive and has multiple callers. */
 const SHARED_LIB_FILES = new Set([
-	"admission.ts",
 	"agent-api.ts",
 	"agent-names.ts",
 	"agent-registry.ts",
@@ -35,12 +34,8 @@ const SHARED_LIB_FILES = new Set([
 	"gate-command.ts",
 	"message-transport.ts",
 	"path-inside.ts",
-	"paths.ts",
 	"pi-settings.ts",
 	"private-local-mode.ts",
-	"registry-event-buffer.ts",
-	"registry-protocol.ts",
-	"registry-types.ts",
 	"runtime-agent-messaging.ts",
 	"runtime-child-process.ts",
 	"runtime-control-plane.ts",

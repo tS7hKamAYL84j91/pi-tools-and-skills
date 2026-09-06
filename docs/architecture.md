@@ -4,23 +4,12 @@ Short reference docs for `pi-tools-and-skills` architecture decisions and extens
 
 ---
 
-## Work-planning authority (T-890)
+## Work scope and optional overview
 
-Kanban ticket bodies are the durable work/plan authority. Repository documents hold linked design detail; local execution checklists are bounded projections, not independent priority, ownership, or completion records. GMs may directly create, claim, and update repo-scoped tickets through Kanban tools even when the board lives in working-notes; tool-managed ticket artifacts are a narrow exception to cross-repo file boundaries. Shared policy and other repos' work still require the authorized owner. This is an operating boundary, not a new runtime service or automatic synchronization mechanism.
-
-```mermaid
-C4Context
-    title Repository work-planning authority
-    Person(gm, "Repository GM", "Owns repo-local delivery and evidence")
-    Person(boardOwner, "Authorized board owner", "Applies shared-board updates within repo boundaries")
-    System(board, "Kanban", "Authoritative tickets: scope, acceptance, owner, blockers, evidence, next actions")
-    System(docs, "Repository documents", "Linked specifications, ADRs, and bounded execution projections")
-    Rel(gm, board, "Creates, claims, and updates repo-scoped tickets through Kanban tools")
-    Rel(gm, boardOwner, "Routes shared-policy and cross-repo decisions")
-    Rel(boardOwner, board, "Records work changes and verified dispositions")
-    Rel(gm, docs, "Maintains design detail and ticket-linked scratch plans")
-    Rel(board, docs, "Links supporting artifacts; retains work authority")
-```
+Jim's requests and current repository evidence guide execution. Project agents
+work directly; they do not load or manage Kanban. Gravitas owns the optional
+human-facing overview. Board claims, status relays and planning documents are not
+implementation prerequisites. See AGENTS.md for permissions and safety boundaries.
 
 ## Fleet MCP standalone boundary
 
@@ -36,7 +25,7 @@ flowchart LR
   Backend --> Maildir[Persistent Maildir]
 ```
 
-The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and one configured bearer token authenticates the same fixed principal used by stdio. CoAS owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision. Daemon transport, multi-principal HTTP authorization, and deployment machinery remain outside this repository boundary.
+The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and authenticates either a fixed principal or an operator-provisioned credential map. Native access uses an explicitly configured live Panopticon reference and the file-backed registry. CoAS owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision.
 
 ## F.I.R.E. Review
 
@@ -339,7 +328,7 @@ flowchart LR
 
 1. **Concurrency discipline:** Continue moving state writes through `lib/file-persistence.ts` helpers or documented domain-specific transactions.
 2. **README contract clarity:** Keep each extension README explicit about stable tools/commands, provisional surfaces, and cross-extension dependencies.
-3. **Kanban disclosure boundary:** `pi-kanban` snapshots persist the requested disclosure level: compact by default, explicit full-board/task detail only on request.
+3. **Kanban disclosure boundary:** `kanban_snapshot` reads the requested view without writes: compact by default, full-board/task detail on request. Only `kanban_export` persists Markdown; only `kanban_compact` rewrites history.
 4. **Progress UX:** Keep long-running Teams/`pi-goal` work visible with phase, elapsed time, last action, cancellation affordance, and artifact paths.
 5. **Transport diagnostics:** Keep `globalThis`/transport registry behavior documented with diagnostics and fallback behavior.
 
@@ -552,13 +541,14 @@ flowchart LR
   Subscribers --> Widget[Compact team:runId widget\nall concurrent nodes]
   Stop[team_stop or /teams stop] --> Select[Newest active selector\nstartedAt then id]
   Select --> State
-  RuntimeStop[runtime_stop with required id] --> State
+  Status[team_runs or /teams status] --> State
   State -. no subscription events .-> Events
 ```
 
 - Run events remain the only persisted team progress state; subscriptions are isolated, in-memory, and removed when each run settles.
 - Widgets use per-run keys so concurrent teams do not overwrite each other, and refresh only after state events rather than on a polling interval.
-- No-ID cancellation considers only `pending` and `running` records and deterministically chooses greatest `startedAt`, then lexicographically greatest id. `stopping` and terminal runs are excluded; `runtime_stop` remains explicit-id only.
+- No-ID cancellation considers only `pending` and `running` records and deterministically chooses greatest `startedAt`, then lexicographically greatest id. Terminal runs reject stop without new events.
+- `TeamStateManager` is the only team lifecycle authority. The duplicate runtime registry, `runtime_status`/`runtime_stop` aliases and `/team` interception modes are removed. Explicit run/async commands share the tool execution and async delivery paths; model/profile defaults are unchanged.
 
 ## Pi Teams Browser Render Boundary
 
@@ -782,10 +772,10 @@ flowchart TD
 flowchart TD
   User[Human / root agent] --> Command[/goal command]
   Agent[Active agent turn] --> Tools[goal_get / goal_complete]
-  Command --> State[(.pi/goal/goal.json)]
-  Command --> Summary[(.pi/goal/GOAL.md)]
-  Command --> Todo[(.pi/goal/TODO.md)]
-  Command --> Runner[Bounded run loop]
+  Command --> State[(.pi/goal/instances/goalId/goal.json)]
+  State --> Summary[(GOAL.md: one active summary)]
+  Command --> Source[Original source file: not copied or rewritten]
+  Command --> Runner[Owned run loop with stop and liveness containment]
   Runner --> Fresh[Fresh pi session per turn]
   Fresh --> Agent
   Agent --> Tools
@@ -802,7 +792,8 @@ flowchart TD
 - `.pi/goal/` is project-local runtime state and is automatically added to `.git/info/exclude` when possible.
 - `pi-goal` owns `.pi/goal/`; other extensions, including `pi-panopticon`, must not read, parse, write, or infer behavior from those files.
 - Cross-extension goal orchestration must use public runtime surfaces: `/goal`, `goal_get`, `goal_complete`, agent messages/tools, or extension host APIs.
-- `/goal` bounds autonomous progress by turn budget; `/goal stop` requests graceful stopping at safe turn boundaries.
+- `/goal` executes immediately until completion; an explicit `--turns N` adds a turn bound. Stop/pause, ownership, session lineage, liveness containment and trusted completion gates remain enforced.
+- New goals generate no TODO/SPEC/PLAN/STATUS scaffolding. Existing source documents and historical artifacts survive loading and resume; explicit clear remains confined to known generated state.
 - `goal_complete` is root-owned and requires concrete evidence after re-reading source requirements and checking validation state.
 - Goal text and source files are treated as untrusted input; current repository/filesystem state remains authoritative.
 
@@ -814,18 +805,18 @@ sequenceDiagram
     participant Goal as pi-goal authority
     participant Pi as pi session
     participant Watchdog as unref watchdog
-    Operator->>Goal: /goal ... --continuous
-    Goal->>Goal: start runId + milestoneRevision
-    Goal->>Pi: bounded turn
-    Pi->>Goal: goal_verify + root goal_complete
-    Goal->>Goal: correlate evidence, advance revision
-    Goal->>Pi: next turn only for non-final continuous milestone
+    Operator->>Goal: /goal objective
+    Goal->>Goal: claim driver token + generation + revision
+    Goal->>Pi: execute authorized objective
+    Pi->>Goal: root goal_complete with concrete evidence
+    Goal->>Goal: validate trusted gate and revoke driver
+    Goal->>Pi: continue only while goal remains active
     Watchdog->>Goal: inspect persisted lastProgressAt
     Watchdog->>Pi: one idle nudge per liveness epoch
     Watchdog->>Goal: hard timeout pauses run
 ```
 
-`goal.json` is authoritative for `runMode`, normalized `executionState`, `runId`, `milestoneRevision`, and bounded lifecycle/liveness dispositions. Verification records must match the current goal, run, milestone, and revision; old records are ignored during migration. Continuous mode never invokes root-owned completion, and manual mode pauses after a milestone. The session watchdog starts only after `session_start`, uses operator-configured bounded thresholds, never nudges an active turn, and is cleared on `session_shutdown`.
+`goal.json` is authoritative for execution, revision-checked driver ownership and bounded lifecycle/liveness dispositions. `GOAL.md` is a derived summary, not an execution log or approval checklist. The root records completion evidence; old plan state is cleared before direct execution. The watchdog uses operator-configured thresholds, does not nudge active work, and is disposed on shutdown. Source documents and recorded session/run history remain intact.
 
 ---
 
@@ -1001,37 +992,10 @@ flowchart LR
   Panopticon[pi-panopticon] --> Runtime[Agent/team runtime observation]
 ```
 
-## Daemon Protocol Boundary (ADR-053)
+## Registry and scheduling
 
-Extracted so the published package never depends on the private, systemd-deployed daemon implementation. The client-facing protocol surface lives in `lib/daemon-protocol/` (shipped via the npm `files` whitelist); the daemon's operational internals stay under `daemon/src/` (private).
-
-```mermaid
-C4Component
-  Container_Boundary(lib, "lib/daemon-protocol (published)") {
-    Component(protocolPaths, "paths: socketPath/daemonRoots")
-    Component(protocolAdmission, "admission: capabilityProof + AdmissionScope")
-    Component(protocolTypes, "registry-types: RegistryEntry/RegistryEvent/RegistrySnapshot")
-    Component(protocolCodec, "wire codec: encode/parseWireMessage")
-    Component(protocolBuffer, "RegistryEventBuffer")
-  }
-  Container_Boundary(daemon, "daemon/src (private, systemd-deployed)") {
-    Component(registry, "DaemonRegistry + acceptRegistrySyncConnection")
-    Component(admission, "verifyCapabilityProof")
-  }
-  Container_Boundary(panopticon, "extensions/pi-panopticon (published)") {
-    Component(client, "daemon-registry-client")
-    Component(source, "daemon-registry-source")
-  }
-  Rel(client, protocolPaths, "imports")
-  Rel(client, protocolAdmission, "imports")
-  Rel(client, protocolTypes, "imports")
-  Rel(client, protocolCodec, "imports")
-  Rel(client, protocolBuffer, "imports")
-  Rel(source, protocolTypes, "imports")
-  Rel(source, protocolPaths, "imports")
-  Rel(registry, protocolTypes, "re-exports")
-  Rel(registry, protocolBuffer, "re-exports")
-  Rel(admission, protocolAdmission, "re-exports")
-```
-
-Invariants: `lib/daemon-protocol/**` has zero imports from `daemon/src/**`, enforced by `tests/architecture/daemon-protocol-boundaries.ts`; the wire codec and `capabilityProof` are byte-identical to pre-extraction behavior (pure moves); the daemon-side connection handler and proof verification remain private because they depend on daemon-internal state.
+Panopticon owns the file-backed native registry and Maildir messaging. External
+registrations use the validated workspace manifest. Fleet reads native records
+without reaping them and applies the existing visibility policy. CoAS schedules
+run through the Pi-hosted scheduler while Pi is open; there is no independent
+background scheduler or alternate registry backend.

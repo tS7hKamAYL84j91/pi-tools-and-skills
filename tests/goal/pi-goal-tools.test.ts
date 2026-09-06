@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
-import { createFileGoal, createFileTodoGoal, loadGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { createFileGoal, loadGoal } from "../../extensions/pi-goal/goal-persist.js";
 import { createTextGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
 
 import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
@@ -120,7 +120,7 @@ describe("pi-goal extension", () => {
 		await expect(readFile(join(tempDir, ".pi/goal", "goal.json"), "utf8")).rejects.toThrow();
 	});
 
-	it("/goal file <path> creates its TODO and starts direct execution", async () => {
+	it("/goal file <path> keeps its source unchanged and starts direct execution", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir, pi);
@@ -134,7 +134,7 @@ describe("pi-goal extension", () => {
 		const persisted = await readInstanceGoal(tempDir);
 		expect(persisted).toMatchObject({
 			objective: "Complete the work described by goal.txt",
-			sourcePath: ".pi/goal/TODO.md",
+			sourcePath: "goal.txt",
 			turnBudget: 0,
 			runMode: "continuous",
 		});
@@ -152,9 +152,9 @@ describe("pi-goal extension", () => {
 		await runGoalCommand(pi, "file goal.txt goal start", ctx);
 
 		const persisted = await readInstanceGoal(tempDir);
-		const todo = await readFile(join(tempDir, persisted.sourcePath ?? ".pi/goal/TODO.md"), "utf8");
+		const todo = await readFile(join(tempDir, persisted.sourcePath ?? "goal.txt"), "utf8");
 		expect(persisted).toMatchObject({ runActive: false, turnBudget: 0, runMode: "continuous" });
-		expect(persisted.sourcePath).toBe(".pi/goal/TODO.md");
+		expect(persisted.sourcePath).toBe("goal.txt");
 		expect(todo).toContain("Ship the requested file-backed goal flow.");
 	});
 
@@ -178,7 +178,7 @@ describe("pi-goal extension", () => {
 			await writeFile(join(outside, "nested", "secret.txt"), "outside content", "utf8");
 			await symlink(join(outside, "nested"), join(tempDir, "linked-dir"));
 
-			await expect(createFileTodoGoal(tempDir, "linked-dir/secret.txt"))
+			await expect(createFileGoal(tempDir, "linked-dir/secret.txt"))
 				.rejects.toThrow("Goal source must not contain symlink components");
 			await expect(readFile(join(tempDir, ".pi", "goal", "TODO.md"), "utf8")).rejects.toThrow();
 		} finally {

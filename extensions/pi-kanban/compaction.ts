@@ -2,23 +2,16 @@
  * Kanban board.log compaction.
  *
  * Rewrites board.log to a minimal reconstruction of current state, preserving
- * BLOCK/UNBLOCK diagnostic history and recent notes. Used both automatically
- * (after kanban_complete / kanban_snapshot) and manually (kanban_compact tool).
- *
- * Auto-compaction triggers if EITHER:
- *   - totalLines > 500           (absolute size threshold)
- *   - dirty ratio > 2.0          (totalLines / compactedEstimate)
- *
- * A module-level re-entrance guard prevents concurrent runs across both the
- * automatic and manual paths.
+ * BLOCK/UNBLOCK diagnostic history and recent notes. Runs only when explicitly
+ * requested through kanban_compact; viewing and completing tasks do not compact.
  */
 
 import { mkdir, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 
 import {
-	type BoardState,
 	boardLogPath,
 	escapeLogValue,
 	nowZ,
@@ -28,26 +21,8 @@ import { withBoardLock } from "./board-transactions.js";
 
 // ── Re-entrance guard ────────────────────────────────────────────
 
-/** Shared between auto and manual compaction; prevents concurrent runs. */
+/** Prevent overlapping explicit compaction requests. */
 let compacting = false;
-
-// ── Estimation ───────────────────────────────────────────────────
-
-/**
- * Estimate how many log lines a compacted board.log would contain.
- * Used to compute the dirty ratio without doing a full dry-run.
- */
-function estimateCompactedLines(board: BoardState): number {
-	let count = 0;
-	for (const task of board.tasks.values()) {
-		if (task.deleted) continue;
-		count += 1; // CREATE
-		if (task.col !== "backlog") count += 1; // MOVE or COMPLETE
-		if (task.col === "in-progress" && task.claimed) count += 1; // CLAIM
-		count += task.notes.length; // NOTE lines
-	}
-	return Math.max(count + 1, 1); // +1 for the COMPACT marker
-}
 
 // ── Core compaction ──────────────────────────────────────────────
 
@@ -61,15 +36,8 @@ interface CompactionResult {
 /**
  * Core compaction: read board.log, build minimal reconstruction,
  * back up the old log, and write the new one.
- *
- * @param agentLabel  Written as the "agent" field in the COMPACT event
- *                    ("compact" for manual, "auto-compact" for automatic)
- * @param triggerParam  Optional trigger reason appended as trigger=<value>
  */
-async function runCompactionLocked(
-	agentLabel: string,
-	triggerParam?: string,
-): Promise<CompactionResult> {
+async function runCompactionLocked(): Promise<CompactionResult> {
 	const logPath = boardLogPath();
 	const raw = await readFile(logPath, "utf-8");
 	const originalLines = raw.split("\n").filter((l) => l.trim());
@@ -80,7 +48,7 @@ async function runCompactionLocked(
 	const backupTs = nowZ().replace(/:/g, "-");
 	const archiveDir = join(dirname(logPath), "archive");
 	await mkdir(archiveDir, { recursive: true });
-	const backupPath = join(archiveDir, `board.log.bak.${backupTs}`);
+	const backupPath = join(archiveDir, `board.log.bak.${backupTs}-${randomUUID()}`);
 	await writeFileAtomic(backupPath, raw, { encoding: "utf-8" });
 
 	// Preserve BLOCK/UNBLOCK diagnostic history per task
@@ -157,67 +125,25 @@ async function runCompactionLocked(
 	const tasksPreserved = [...board.tasks.values()].filter(
 		(t) => !t.deleted,
 	).length;
-	const triggerSuffix = triggerParam ? ` trigger=${triggerParam}` : "";
 	const eventsAfter = newLines.length + 1;
 	newLines.push(
-		`${ts} COMPACT T-000 ${agentLabel} events_before=${eventsBefore} events_after=${eventsAfter}${triggerSuffix}`,
+		`${ts} COMPACT T-000 compact events_before=${eventsBefore} events_after=${eventsAfter}`,
 	);
 	await writeFileAtomic(logPath, `${newLines.join("\n")}\n`, { encoding: "utf-8" });
 
 	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
 }
 
-async function runCompaction(
-	agentLabel: string,
-	triggerParam?: string,
-): Promise<CompactionResult> {
-	return withBoardLock(() => runCompactionLocked(agentLabel, triggerParam));
-}
-
-// ── Public entry points ──────────────────────────────────────────
-
-/**
- * Check whether compaction is warranted and, if so, run it.
- *
- * Returns { ran: false } immediately if the guard is already set or
- * neither threshold is exceeded.
- */
-export async function compactIfNeeded(
-	board: BoardState,
-	totalLines: number,
-	trigger: string,
-): Promise<{
-	ran: boolean;
-	eventsBefore?: number;
-	eventsAfter?: number;
-	backupPath?: string;
-}> {
-	if (compacting) return { ran: false };
-
-	const compactedEstimate = estimateCompactedLines(board);
-	const dirtyRatio = totalLines / compactedEstimate;
-
-	if (totalLines <= 500 && dirtyRatio <= 2.0) return { ran: false };
-
-	compacting = true;
-	try {
-		const result = await runCompaction("auto-compact", trigger);
-		return { ran: true, ...result };
-	} finally {
-		compacting = false;
-	}
-}
-
 /**
  * Manual compaction entry point used by the kanban_compact tool.
- * Throws if a compaction (auto or manual) is already in progress.
+ * Throws if a compaction is already in progress.
  */
 export async function runManualCompaction(): Promise<CompactionResult> {
 	if (compacting)
 		throw new Error("Compaction is already in progress — try again shortly");
 	compacting = true;
 	try {
-		return await runCompaction("compact");
+		return await withBoardLock(() => runCompactionLocked());
 	} finally {
 		compacting = false;
 	}

@@ -9,7 +9,6 @@ import {
 	escapeLogValue,
 	getTask,
 	nowZ,
-	parseBoard,
 	sanitiseAgent,
 	type TaskState,
 	type TaskVerificationCheck,
@@ -17,7 +16,6 @@ import {
 import { withBoardTransaction } from "./board-transactions.js";
 import { formatChecks } from "./board-event-handlers.js";
 import { CHECK_ITEM_SCHEMA, TASK_ID_SCHEMA } from "./schemas.js";
-import { compactIfNeeded } from "./compaction.js";
 
 function normalizeChecks(raw: unknown): TaskVerificationCheck[] {
 	if (!Array.isArray(raw)) return [];
@@ -146,9 +144,6 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 					result: undefined,
 				};
 			});
-			// Auto-compaction checkpoint: completing a task is a natural housekeeping moment
-			const boardAfter = await parseBoard();
-			await compactIfNeeded(boardAfter, boardAfter.totalEvents, "complete");
 			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, {
 				task_id,
 				agent,

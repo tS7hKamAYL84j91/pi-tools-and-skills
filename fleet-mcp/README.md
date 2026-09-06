@@ -46,7 +46,7 @@ State schema version 2 stores registrations, generation-scoped send receipts and
 
 ## Native interoperability
 
-Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Panopticon today. Missing/stale references fail closed; native session restart requires operator rebinding. Daemon mode is explicitly unsupported: there is no silent file-registry fallback.
+Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Panopticon today. Missing/stale references fail closed; native session restart requires operator rebinding. The file-backed Panopticon registry is the only native backend.
 
 Native recipients must already have a Maildir inbox. Configure opted-in native Pi sessions with `PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT` matching Fleet's host `workspaceRoot` and `PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT` matching `mailboxRoot`. Panopticon refreshes that validated source before peer tools resolve names, so registration/removal is visible without restarting sessions. Defaults retain the native session's workspace and standard persistent mailbox root. These settings require operator approval; Fleet never changes them.
 
@@ -81,4 +81,4 @@ The opt-in check invokes actual `mcporter@0.13.10` over HTTP against disposable 
 
 ## Explicit limits
 
-No daemon backend, deployment logic, Tailscale configuration, credential provisioning, cursor pagination, or cross-process state locking. Maildir publication and gateway receipt persistence are not one transaction: a crash between them can duplicate a retried send/broadcast. Registration and acknowledgement have analogous cross-store crash windows. No exactly-once guarantee is made. CoAS owns mounts, secret injection, private ingress, supervision, and approved live smoke tests.
+No deployment logic, Tailscale configuration, credential provisioning, cursor pagination, or cross-process state locking. Maildir publication and gateway receipt persistence are not one transaction: a crash between them can duplicate a retried send/broadcast. Registration and acknowledgement have analogous cross-store crash windows. No exactly-once guarantee is made. CoAS owns mounts, secret injection, private ingress, supervision, and approved live smoke tests.

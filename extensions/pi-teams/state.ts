@@ -67,7 +67,6 @@ export class TeamStateManager {
 	private readonly sessionRecords = new Map<string, TeamRunRecord>();
 	private readonly stopReasons = new Map<string, string>();
 	private readonly abortControllers = new Map<string, AbortController>();
-	private sessionHydrated = false;
 
 	constructor(private readonly options: TeamStateManagerOptions = {}) {}
 
@@ -167,7 +166,6 @@ export class TeamStateManager {
 		const entries = sessionManager.getBranch?.() ?? sessionManager.getEntries?.() ?? [];
 		const events = parseTeamRunEvents(entries);
 		this.sessionRecords.clear();
-		this.sessionHydrated = true;
 		for (const [id, record] of reduceTeamRunEvents(events)) this.sessionRecords.set(id, record);
 		this.sequenceByRun.clear();
 		this.stopReasons.clear();
@@ -200,7 +198,7 @@ export class TeamStateManager {
 	}
 
 	list(): TeamRunRecord[] {
-		return this.sessionHydrated ? [...this.sessionRecords.values()] : [];
+		return [...this.sessionRecords.values()];
 	}
 
 	remove(id: string): void {
@@ -212,7 +210,7 @@ export class TeamStateManager {
 
 	findOrphans(): TeamRunRecord[] {
 		return this.list().filter((record) => {
-			if (record.status === "completed" || record.status === "failed") return false;
+			if (record.status === "completed" || record.status === "failed" || record.status === "stopped") return false;
 			return !isPidAlive(record.orchestratorPid);
 		});
 	}

@@ -1,5 +1,6 @@
 /** Host-native registry fixtures never touch the live Panopticon registry. */
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -25,11 +26,11 @@ const paths = vi.hoisted(() => ({ registry: "" }));
 vi.mock("../lib/agent-registry.js", async (original) => ({
 	...await original<typeof import("../lib/agent-registry.js")>(),
 	get REGISTRY_DIR() { return paths.registry; },
+	ensureRegistryDir: () => mkdirSync(paths.registry, { recursive: true, mode: 0o700 }),
 }));
 let root: string;
 let native: ReturnType<typeof makeAgentRecord>;
 beforeEach(async () => {
-	vi.stubEnv("COAS_DAEMON_ENABLED", "0");
 	root = await mkdtemp(join(tmpdir(), "fleet-native-"));
 	paths.registry = join(root, "agents");
 	await mkdir(paths.registry, { mode: 0o700 });
@@ -171,14 +172,12 @@ describe("Fleet native discovery and delivery", () => {
 		expect(transport.receive(native.id)[0]).not.toHaveProperty("senderId");
 	});
 
-	it("rejects stale references, daemon mode and native name collisions", async () => {
+	it("rejects stale references and native name collisions", async () => {
 		const gateway = new FleetGateway(config(native.id));
 		await gateway.init();
 		await expect(gateway.register("test", native.name)).rejects.toMatchObject({ code: "CONFLICT" });
 		await saveNative({ ...native, heartbeat: Date.now() - 60_000 });
 		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
-		vi.stubEnv("COAS_DAEMON_ENABLED", "1");
-		await expect(visibleNativePeers(native.id)).rejects.toThrow("daemon mode");
 	});
 
 	it("ignores corrupt, forged and symlinked records without modifying them", async () => {

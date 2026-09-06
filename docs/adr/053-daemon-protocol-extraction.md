@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted — 2026-09-01 by llm-council review (4/4 unanimous, thorough profile) plus GM code verification of all five open questions. Implements T-876 Decision A.
+Retired — Jim requested removal of the daemon, its client and protocol, with no
+compatibility mode. The design below is historical, not current implementation
+guidance. Panopticon now uses only its file-backed registry and Maildir transport.
+
+Originally accepted on 2026-09-01; implemented T-876 Decision A.
 
 ## Context
 

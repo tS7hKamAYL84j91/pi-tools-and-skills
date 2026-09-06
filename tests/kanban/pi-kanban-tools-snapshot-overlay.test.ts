@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import type { TUI } from "@earendil-works/pi-tui";
@@ -10,7 +10,7 @@ import { callTool, setupKanbanToolHarness } from "./kanban-test-helpers.js";
 const harness = setupKanbanToolHarness();
 
 describe("kanban_snapshot", () => {
-	it("writes and returns compact summary by default", async () => {
+	it("returns a compact summary without writing a snapshot or board events", async () => {
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-060",
 			agent: "lead",
@@ -23,16 +23,18 @@ describe("kanban_snapshot", () => {
 			agent: "lead",
 			note: "private-ish detail",
 		});
+		const before = harness.readBoardLog();
 		const result = await callTool(harness.tools, "kanban_snapshot", {});
 
+		expect(harness.readBoardLog()).toBe(before);
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("T-060");
 		expect(result.content[0]?.text).toContain("Compact Summary");
-		expect(result.content[0]?.text).toContain("Persisted/returned view: compact");
+		expect(result.content[0]?.text).toContain("View: compact");
 		expect(result.content[0]?.text).not.toContain("private-ish detail");
-		expect(existsSync(join(harness.tmpDir, "snapshot.md"))).toBe(true);
+		expect(existsSync(join(harness.tmpDir, "snapshot.md"))).toBe(false);
 
-		const snap = readFileSync(join(harness.tmpDir, "snapshot.md"), "utf-8");
+		const snap = result.content[0]?.text ?? "";
 		expect(snap).toContain("T-060");
 		expect(snap).toContain("Snap me");
 		expect(snap).toContain("Compact Summary");
@@ -56,7 +58,7 @@ describe("kanban_snapshot", () => {
 		const result = await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0]?.text).toContain("Persisted/returned view: full");
+		expect(result.content[0]?.text).toContain("View: full");
 		expect(result.content[0]?.text).toContain("Notes for T-061");
 		expect(result.content[0]?.text).toContain(
 			"Only include this in explicit full output",
@@ -90,7 +92,7 @@ describe("kanban_snapshot", () => {
 		});
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0]?.text).toContain("Persisted/returned view: task");
+		expect(result.content[0]?.text).toContain("View: task");
 		expect(result.content[0]?.text).toContain("# Kanban Task T-062");
 		expect(result.content[0]?.text).toContain("Specific card context");
 		expect(result.content[0]?.text).toContain("specific note");
@@ -222,7 +224,7 @@ describe("kanban_snapshot UX improvements", () => {
 
 		const result = await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
 		expect(result.isError).toBeFalsy();
-		const snap = readFileSync(join(harness.tmpDir, "snapshot.md"), "utf-8");
+		const snap = result.content[0]?.text ?? "";
 		// Should show "(3)" not "(last 10 of 3)"
 		expect(snap).toMatch(/Done \(3\)/);
 		expect(snap).not.toContain("last 10 of 3");
@@ -287,8 +289,8 @@ describe("overlay guard logic", () => {
 		expect(result.details.previousCol).toBe("blocked");
 		expect(harness.readBoardLog()).toMatch(/DELETE T-121 lead reason="stale blocker"/);
 
-		await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
-		expect(readFileSync(join(harness.tmpDir, "snapshot.md"), "utf8")).not.toContain("T-121");
+		const view = await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
+		expect(view.content[0]?.text).not.toContain("T-121");
 	});
 
 	it("confirmed blocked deletion runs through the TUI controller", async () => {

@@ -145,8 +145,6 @@ describe("extension registration smoke tests", () => {
 		teamExtension(api);
 
 		expectRegistered(registrations.tools, [
-			"runtime_status",
-			"runtime_stop",
 			"team_delete",
 			"team_describe",
 			"team_form",
@@ -156,10 +154,9 @@ describe("extension registration smoke tests", () => {
 			"team_runs",
 			"team_stop",
 		]);
-		expectRegistered(registrations.commands, ["teams", "team"]);
+		expectRegistered(registrations.commands, ["teams"]);
 		expectRegistered(registrations.events, [
 			"before_provider_request",
-			"input",
 			"session_start",
 			"session_tree",
 		]);
@@ -178,6 +175,7 @@ describe("extension registration smoke tests", () => {
 			"kanban_create",
 			"kanban_delete",
 			"kanban_edit",
+			"kanban_export",
 			"kanban_export_json",
 			"kanban_move",
 			"kanban_snapshot",

@@ -9,11 +9,9 @@ import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { nowZ, parseBoard, sanitiseAgent, snapshotPath } from "./board.js";
 import {
 	deleteTask,
-	logAppend,
 	moveTask,
 	withBoardTransaction,
 } from "./board-transactions.js";
-import { compactIfNeeded } from "./compaction.js";
 import { exportBoardJson } from "./export.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 import {
@@ -22,35 +20,33 @@ import {
 	generateTaskDetail,
 } from "./snapshot.js";
 
-async function executeSnapshot(
-	detail?: string,
-	task_id?: string,
-	show_all_done?: boolean,
-): Promise<ToolResult> {
+interface SnapshotOptions {
+	detail?: string;
+	task_id?: string;
+	show_all_done?: boolean;
+}
+
+function renderSnapshot(board: Awaited<ReturnType<typeof parseBoard>>, options: SnapshotOptions) {
+	const view = options.task_id ? "task" : (options.detail ?? "compact");
+	return { view, text: selectSnapshotView(board, view, { showAllDone: options.show_all_done ?? false }, options.task_id) };
+}
+
+async function executeSnapshot(options: SnapshotOptions): Promise<ToolResult> {
 	const board = await parseBoard();
-	const snapshotOptions = { showAllDone: show_all_done ?? false };
-	const view = task_id ? "task" : (detail ?? "compact");
-	const returnedView = selectSnapshotView(board, view, snapshotOptions, task_id);
-	const sp = snapshotPath();
-	await writeFileAtomic(sp, returnedView);
-	await logAppend(
-		`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`,
-	);
-	// Auto-compaction checkpoint: snapshot is the natural housekeeping moment
-	const compactResult = await compactIfNeeded(
-		board,
-		board.totalEvents,
-		"snapshot",
-	);
-	return ok(
-		`Snapshot written to ${sp}\nTotal events in log: ${board.totalEvents}\nPersisted/returned view: ${view}${formatCompactNote(compactResult)}\n\n---\n\n${returnedView}`,
-		{
-			snapshotPath: sp,
-			totalEvents: board.totalEvents,
-			autoCompacted: compactResult.ran,
-			view,
-		},
-	);
+	const { view, text } = renderSnapshot(board, options);
+	return ok(`View: ${view}\nTotal events in log: ${board.totalEvents}\n\n${text}`, { totalEvents: board.totalEvents, view, readOnly: true });
+}
+
+async function executeSnapshotExport(options: SnapshotOptions): Promise<ToolResult> {
+	return withBoardTransaction(async (board) => {
+		const { view, text } = renderSnapshot(board, options);
+		const path = snapshotPath();
+		await writeFileAtomic(path, text);
+		return {
+			events: [`${nowZ()} SNAPSHOT T-SYS orchestrator seq=${board.totalEvents}`],
+			result: ok(`Snapshot written to ${path}\nView: ${view}\n\n${text}`, { snapshotPath: path, totalEvents: board.totalEvents, view }),
+		};
+	});
 }
 
 function selectSnapshotView(
@@ -62,12 +58,6 @@ function selectSnapshotView(
 	if (taskId) return generateTaskDetail(board, taskId);
 	if (view === "full") return generateSnapshot(board, options);
 	return generateSnapshotSummary(board, options);
-}
-
-function formatCompactNote(compactResult: { ran: boolean; eventsBefore?: number; eventsAfter?: number }): string {
-	return compactResult.ran
-		? `\n\n⚙️ Auto-compacted: ${compactResult.eventsBefore} → ${compactResult.eventsAfter} events (backup created)`
-		: "";
 }
 
 async function executeExportJson(): Promise<ToolResult> {
@@ -141,16 +131,7 @@ async function executeDelete(
 }
 
 function registerKanbanSnapshot(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: "kanban_snapshot",
-		label: "Kanban Snapshot",
-		description:
-			"Regenerate snapshot.md from board.log and return a compact board summary by default. " +
-			"Done is age-filtered by default; pass show_all_done=true for all completed tasks. " +
-			'Uses gradual disclosure: pass detail="full" for the full board or task_id for one card\'s details.',
-		promptSnippet:
-			"Regenerate the kanban board snapshot and return a compact summary",
-		parameters: Type.Object({
+	const parameters = Type.Object({
 			detail: Type.Optional(
 				Type.String({
 					description: 'Return view: "compact" (default) or "full"',
@@ -166,14 +147,22 @@ function registerKanbanSnapshot(pi: ExtensionAPI): void {
 					default: false,
 				}),
 			),
-		}),
-		async execute(_id, params, _signal): Promise<ToolResult> {
-			return executeSnapshot(
-				params.detail,
-				params.task_id,
-				params.show_all_done,
-			);
-		},
+	});
+	pi.registerTool({
+		name: "kanban_snapshot",
+		label: "View Kanban",
+		description: "Read a compact board summary, full board (detail=full), or one card (task_id). No file writes, board events or compaction. Done is age-filtered unless show_all_done=true.",
+		promptSnippet: "Read the kanban board or one task without changing files",
+		parameters,
+		async execute(_id, params): Promise<ToolResult> { return executeSnapshot(params); },
+	});
+	pi.registerTool({
+		name: "kanban_export",
+		label: "Export Kanban Snapshot",
+		description: "Explicitly write a Markdown snapshot.md and record its SNAPSHOT event. Uses the same compact/full/task views as kanban_snapshot. Does not compact the board.",
+		promptSnippet: "Explicitly export a kanban Markdown snapshot",
+		parameters,
+		async execute(_id, params): Promise<ToolResult> { return executeSnapshotExport(params); },
 	});
 }
 

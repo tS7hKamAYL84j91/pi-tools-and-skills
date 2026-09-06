@@ -19,8 +19,6 @@ const KNOWN_ACTIONS = new Set([
 	"status",
 	"help",
 	"file",
-	"plan",
-	"approve",
 	"pause",
 	"resume",
 	"clear",

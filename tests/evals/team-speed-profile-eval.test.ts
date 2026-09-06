@@ -5,7 +5,7 @@ import {
 	type TeamProfile,
 } from "../../extensions/pi-teams/team-profiles.js";
 import { directTeamResultBody } from "../../extensions/pi-teams/team-result.js";
-import { isTopology } from "../../extensions/pi-teams/team-routes.js";
+import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
 
 const RUBRIC_FIELDS = ["routing", "bounds", "validity", "behavior"] as const;
 
@@ -69,7 +69,7 @@ describe("team speed profile deterministic evaluation", () => {
 	for (const testCase of fixture.cases) {
 		it(`${testCase.id} satisfies routing, bounds, validity, and result behavior`, () => {
 			const profile = resolveTeamProfile(testCase.profile);
-			expect(isTopology(testCase.selectedRoute)).toBe(true);
+			expect(loadTeamRegistry(undefined, { roots: [] }).teams.has(testCase.selectedRoute)).toBe(true);
 			expect(testCase.selectedRoute).toBe(testCase.team);
 			expect(profile).toMatchObject({
 				...(testCase.expected.navigatorMaxTokens === undefined

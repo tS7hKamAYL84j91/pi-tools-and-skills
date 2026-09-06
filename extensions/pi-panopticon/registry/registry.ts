@@ -25,8 +25,7 @@ import {
 } from "../../../lib/agent-registry.js";
 import type { Registry as RegistryInterface } from "../types.js";
 import { buildRecord, pickActiveName } from "./record-utils.js";
-import { readPeerRecords } from "./daemon-registry-source.js";
-import type { DaemonRegistryClient } from "../daemon-client/daemon-registry-client.js";
+import { readVolatileRegistryRecords } from "./registry-reader.js";
 import { flushRecord } from "./registry-persistence.js";
 
 export { classifyRecord } from "./registry-reader.js";
@@ -46,7 +45,6 @@ export default class Registry implements RegistryInterface {
 	readonly selfId: string;
 	private record: AgentRecord | undefined;
 	private externalPeers: AgentRecord[] = [];
-	private daemonClient: DaemonRegistryClient | undefined;
 	private lastSyncedSessionName: string | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
@@ -197,15 +195,6 @@ export default class Registry implements RegistryInterface {
 		this.externalPeers = records.filter((record) => record.kind === "external");
 	}
 
-	/**
-	 * Attach the daemon-registry client (M6 handoff). Called by the daemon-mode
-	 * wiring before the client starts; the read path switches to the daemon
-	 * snapshot for as long as the client is live.
-	 */
-	setDaemonClient(client: DaemonRegistryClient): void {
-		this.daemonClient = client;
-	}
-
 	flush(): void {
 		flushRecord(this.record);
 	}
@@ -215,11 +204,7 @@ export default class Registry implements RegistryInterface {
 	 * Reaps dead agents (deletes their files + runs cleanup hooks).
 	 */
 	readAllPeers(): AgentRecord[] {
-		// Exactly one registry authority per workspace state, chosen at session
-		// start (design doc section 7, no dual-write): the daemon snapshot when
-		// the daemon-mode wiring attached a client, the incumbent shared-disk
-		// registry otherwise. The swap policy lives in daemon-registry-source.
-		return readPeerRecords(this.externalPeers, this.daemonClient);
+		return [...this.externalPeers, ...readVolatileRegistryRecords()];
 	}
 
 	// ── Internal: Heartbeat ──────────────────────────────────────

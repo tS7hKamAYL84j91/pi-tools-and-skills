@@ -29,9 +29,6 @@ import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
 import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
 import {
 	renderGoalMarkdown,
-	renderPlanMarkdown,
-	renderSpecMarkdown,
-	renderStatusMarkdown,
 } from "../../extensions/pi-goal/goal-render.js";
 import { goalPaths, type GoalState } from "../../extensions/pi-goal/goal-types.js";
 
@@ -69,18 +66,12 @@ async function readProjections(cwd: string): Promise<string[]> {
 	const paths = goalPaths(cwd);
 	return Promise.all([
 		readFile(paths.summaryPath, "utf8"),
-		readFile(paths.specPath, "utf8"),
-		readFile(paths.planPath, "utf8"),
-		readFile(paths.statusPath, "utf8"),
 	]);
 }
 
 function expectedProjections(state: GoalState): string[] {
 	return [
 		renderGoalMarkdown(state),
-		renderSpecMarkdown(state),
-		renderPlanMarkdown(state),
-		renderStatusMarkdown(state),
 	];
 }
 
@@ -107,14 +98,13 @@ describe("Goal authority and projection ordering", () => {
 		const newState = goal("new authority");
 		await saveGoal(tempDir, oldState);
 		const paths = goalPaths(tempDir);
-		atomicControl.failPath = paths.specPath;
+		atomicControl.failPath = paths.summaryPath;
 
 		await expect(saveGoal(tempDir, newState)).rejects.toThrow("injected atomic write failure");
 
 		const authority = JSON.parse(await readFile(paths.statePath, "utf8")) as GoalState;
 		expect(authority.objective).toBe("new authority");
-		expect(await readFile(paths.summaryPath, "utf8")).toBe(renderGoalMarkdown(newState));
-		expect(await readFile(paths.specPath, "utf8")).toBe(renderSpecMarkdown(oldState));
+		expect(await readFile(paths.summaryPath, "utf8")).toBe(renderGoalMarkdown(oldState));
 
 		atomicControl.failPath = undefined;
 		atomicControl.writes = [];
@@ -127,9 +117,6 @@ describe("Goal authority and projection ordering", () => {
 		expect(await readProjections(tempDir)).toEqual(expectedProjections(loaded));
 		expect(atomicControl.writes).toEqual([
 			paths.summaryPath,
-			paths.specPath,
-			paths.planPath,
-			paths.statusPath,
 		]);
 	});
 });

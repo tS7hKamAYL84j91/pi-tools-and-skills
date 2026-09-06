@@ -63,10 +63,10 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | Extension             | Type         | What it does                                                                                            |
 | --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
 | **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, and lifecycle management |
-| **pi-goal**           | Global       | Bounded `/goal` workflow with project-local state, progress, stop/resume, and completion audit tools    |
-| **pi-teams**          | User         | Standalone declarative consult, debate, and research teams with `team_*` / `runtime_*` tools |
+| **pi-goal**           | Global       | Direct `/goal` execution with one summary, stop/resume, recovery, and completion audit tools    |
+| **pi-teams**          | User         | Explicit consult, debate, and research via `team_run`, `team_runs`, and `team_stop` |
 | **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
-| **pi-kanban**         | Project      | Event-sourced task board — tools, TUI overlay (`/kanban`), auto-compaction, snapshot renderer           |
+| **pi-kanban**         | Project      | Optional task board — read-only views, TUI (`/kanban`), explicit export and compaction           |
 | **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
 | **pi-ollama-models**  | User         | Auto-sync local Ollama models into pi's models.json on session start/reload                              |
 | **pi-coas**           | Project      | CoAS status, diagnostics, workspace, and pi-scheduler control surface                                  |
@@ -82,7 +82,7 @@ Reusable skills for pi-platform tooling and compact reference guidance. Extensio
 | **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
 | **pi-model-selection**     | shared        | Verify pi-visible models and route work to the right provider/model               |
 | **pi-session-management**  | shared        | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
-| **pi-team-consultation**   | pi-teams | Route review and decisions through `navigator` or `llm-council` teams        |
+| **pi-team-consultation**   | pi-teams | Optional focused review or exceptional multi-model consultation        |
 | **skill-creator**          | shared        | Meta-skill for creating and improving skills                                      |
 
 ---

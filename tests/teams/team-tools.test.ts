@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 import { TeamStateManager } from "../../extensions/pi-teams/state.js";
 import { registerTeamRunTool, summarizeTeamRuns } from "../../extensions/pi-teams/team-runtime.js";
 import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { registerTeamTools } from "../../extensions/pi-teams/team-tools.js";
 import { createFakeApi, writeSubagent, writeTeam } from "./team-test-helpers.js";
 
@@ -209,7 +208,7 @@ describe("team tools", () => {
 			summary: "summary total=1 running=0 pending=1 stopping=0 completed=0 failed=0 stopped=0 artifacts=0",
 			statusLine: "navigator consult pending phases=0 nodes=0 (running=0 stalled=0 done=0) details=0 current=-",
 		},
-	])("preserves team and runtime status output for $scenario runs", async ({ scenario, summary, statusLine }) => {
+	])("preserves team list and detail output for $scenario runs", async ({ scenario, summary, statusLine }) => {
 		const clock = vi.spyOn(Date, "now").mockReturnValue(100_000);
 		try {
 			const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
@@ -228,32 +227,28 @@ describe("team tools", () => {
 			const { api, tools } = createFakeApi();
 			registerTeamRunTool(api, { stateManager });
 			const peek = tools.get("team_runs");
-			const status = tools.get("runtime_status");
-			if (!peek || !status) throw new Error("status tools missing");
+			if (!peek) throw new Error("team_runs missing");
 
 			const peekResult = await peek.execute("test", {});
-			const listResult = await status.execute("test", {});
-			const detailResult = await status.execute("test", { id: runId });
+			const detailResult = await peek.execute("test", { runId });
 			const line = `${runId} ${statusLine}`;
 			expect(peekResult.content[0]?.text).toBe(`${summary}\n${line}`);
-			expect(listResult.content[0]?.text).toBe(`${summary}\nteam_run ${line}`);
-			expect(detailResult.content[0]?.text).toBe(`team_run ${line}`);
-			expect(listResult.details.summary).toEqual(peekResult.details.summary);
+			expect(detailResult).toEqual(peekResult);
 			expect(peekResult.details.runs).toEqual(stateManager.list());
-			expect(listResult.details.entities).toEqual(stateManager.list().map((run) => ({ kind: "team_run", ...run })));
 		} finally {
 			clock.mockRestore();
 		}
 	});
 
-	it("preserves distinct empty status messages", async () => {
+	it("exposes one status surface and rejects unknown run IDs", async () => {
 		const { api, tools } = createFakeApi();
 		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
 		const peek = tools.get("team_runs");
-		const status = tools.get("runtime_status");
-		if (!peek || !status) throw new Error("status tools missing");
+		if (!peek) throw new Error("team_runs missing");
 		expect((await peek.execute("test", {})).content[0]?.text).toBe("No team runs in current session state.");
-		expect((await status.execute("test", {})).content[0]?.text).toBe("No runtime team_run entities in current session state.");
+		await expect(peek.execute("test", { runId: "missing" })).rejects.toThrow("No team run missing");
+		expect(tools.has("runtime_status")).toBe(false);
+		expect(tools.has("runtime_stop")).toBe(false);
 	});
 
 	it("team_stop omits runId to stop the deterministic newest active run", async () => {
@@ -276,51 +271,44 @@ describe("team tools", () => {
 		expect(schema.required ?? []).not.toContain("runId");
 	});
 
-	it("runtime_status and runtime_stop expose team runs through unified runtime names", async () => {
+	it("uses the same state for live status, cancellation and restored status", async () => {
 		const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
 		const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
 		const runId = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "test" });
-		stateManager.recordPhaseStarted(runId, "consult", "Consult");
-		stateManager.rehydrateFromSession({ getEntries: () => entries });
+		const controller = new AbortController();
+		stateManager.registerAbortController(runId, controller);
 		const { api, tools } = createFakeApi();
 		registerTeamRunTool(api, { stateManager });
-		const status = tools.get("runtime_status");
-		const stop = tools.get("runtime_stop");
-		if (!status || !stop) throw new Error("runtime control tools missing");
-		const runtimeStopSchema = stop.parameters as { required?: string[] };
-		expect(runtimeStopSchema.required).toContain("id");
-
-		const statusResult = await status.execute("test", { kind: "team_run", id: runId } as never, undefined, undefined, { cwd: process.cwd() });
-		expect(statusResult.content[0]?.text).toContain(`team_run ${runId}`);
-		expect(statusResult.details.entities).toEqual([
-			expect.objectContaining({ kind: "team_run", id: runId, status: "running" }),
-		]);
-
-		const stopResult = await stop.execute("test", { kind: "team_run", id: runId, reason: "runtime stop" } as never, undefined, undefined, { cwd: process.cwd() });
-		expect(stopResult.details).toEqual(expect.objectContaining({ kind: "team_run", id: runId, status: "stopping" }));
+		const peek = tools.get("team_runs"), stop = tools.get("team_stop");
+		if (!peek || !stop) throw new Error("team tools missing");
+		expect((await peek.execute("test", { runId })).details.runs).toEqual([expect.objectContaining({ status: "pending" })]);
+		await stop.execute("test", { runId });
+		expect(controller.signal.aborted).toBe(true);
+		const eventCount = entries.length;
+		const repeated = await stop.execute("test", { runId, reason: "different reason" });
+		expect(repeated.details.reason).toBe("stop requested");
+		expect(entries).toHaveLength(eventCount);
+		const restored = new TeamStateManager();
+		restored.rehydrateFromSession({ getEntries: () => entries });
+		expect(restored.list()).toEqual(stateManager.list());
+		expect((await peek.execute("test", { runId })).details.runs).toEqual([expect.objectContaining({ status: "stopping" })]);
 	});
 
-	it("runtime_stop delegates through the Panopticon runtime control plane", async () => {
-		let stoppedReason = "";
-		const runtime = new RuntimeControlPlane();
-		runtime.registerEntity({
-			id: "team-run-runtime-1",
-			kind: "team_run",
-			label: "Runtime team run",
-			status: "running",
-			stop: (reason) => {
-				stoppedReason = reason;
-			},
-		});
+	it.each(["completed", "failed", "stopped"])("rejects stopping a %s run without altering history", async (status) => {
+		const entries: unknown[] = [];
+		const stateManager = new TeamStateManager({ appendEntry: (_type, entry) => entries.push(entry) });
+		const runId = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "test" });
+		if (status === "completed") stateManager.recordRunCompleted(runId, 1);
+		else if (status === "failed") stateManager.recordRunFailed(runId, "failure");
+		else stateManager.recordRunStopped(runId, 1, "stopped");
+		const count = entries.length;
 		const { api, tools } = createFakeApi();
-		registerTeamRunTool(api, { stateManager: new TeamStateManager(), runtime });
-		const stop = tools.get("runtime_stop");
-		if (!stop) throw new Error("runtime_stop missing");
-
-		await stop.execute("test", { kind: "team_run", id: "team-run-runtime-1", reason: "runtime delegated stop" } as never, undefined, undefined, { cwd: process.cwd() });
-
-		expect(stoppedReason).toBe("runtime delegated stop");
-		expect(runtime.inspectEntity({ kind: "team_run", id: "team-run-runtime-1" })?.status).toBe("stopping");
+		registerTeamRunTool(api, { stateManager });
+		const stop = tools.get("team_stop");
+		if (!stop) throw new Error("team_stop missing");
+		await expect(stop.execute("test", { runId })).rejects.toThrow("No active team run");
+		expect(entries).toHaveLength(count);
+		expect(stateManager.get(runId)?.status).toBe(status);
 	});
 
 	it("team_run exposes the shared typed profile schema", () => {

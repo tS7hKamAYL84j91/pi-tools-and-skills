@@ -10,7 +10,7 @@ pi install /absolute/path/to/extensions/pi-teams
 make setup-package PACKAGE=pi-teams
 ```
 
-The package manifest loads `index.ts` and the bundled `pi-team-consultation` skill. It owns the retained `team_*` and `runtime_*` surfaces described below; no other extension needs to register them.
+The package manifest loads `index.ts` and the bundled `pi-team-consultation` skill. It owns the `team_*` tools and `/teams` command described below; no other extension needs to register them.
 
 ## Stable Tools/Commands
 
@@ -26,10 +26,8 @@ These tools are the agent-facing compatibility interface and are registered by `
 | `team_models` | Update model bindings for a team. |
 | `team_delete` | Delete a user/project team. |
 | `team_run` | Run a team by `id` with optional `profile: fast | balanced | thorough`; choose the smallest sufficient route. |
-| `runtime_status` | Inspect team run entities from the unified runtime surface, including aggregate status/artifact counts. |
-| `runtime_stop` | Stop an explicit team run entity by required `id` through unified runtime semantics. |
-| `team_runs` | Inspect active/recent team run state, including aggregate status/artifact counts. |
-| `team_stop` | Compatibility team-run stop surface; `runId` is optional and defaults deterministically to the newest pending/running run. |
+| `team_runs` | Inspect session-backed runs; optional `runId` selects one run. Includes aggregate status/artifact counts. |
+| `team_stop` | Stop an active run; optional `runId` defaults to the newest pending/running run. Terminal runs are rejected without changing history. |
 
 ### Commands
 
@@ -37,8 +35,10 @@ These tools are the agent-facing compatibility interface and are registered by `
 - `/teams run [id] [prompt] [--profile fast|balanced|thorough]` — run synchronously (default profile: `balanced`). The option may appear before or after the prompt and also accepts `--profile=<value>`; use `--` before literal prompt text containing `--profile`.
 - `/teams async [id] [prompt] [--profile fast|balanced|thorough]` — start the same profiled run asynchronously and deliver its result as a follow-up.
 - `/teams seed [--force]` — project built-in team seeds into the user scope (`~/.pi/agent/teams`). Idempotent and never overwrites existing user files; `--force` overwrites user-scope copies of built-in ids (with confirmation).
+- `/teams status [runId]` — inspect the same state exposed by `team_runs`.
 - `/teams stop [runId]` — request cancellation of an explicit run, or the newest pending/running run when omitted.
-- `/team on|auto|off|status|once [prompt] [--topology llm-council|navigator] [--profile fast|balanced|thorough] [--max-models 1-5]` — session-only team interaction mode. `on` is deterministic, `auto` is assistant-mediated, and `once <prompt>` runs immediately. Defaults to `llm-council` and `balanced`.
+
+The canonical execution interface is **run → status → stop**: `team_run` / `team_runs` / `team_stop` for agents, `/teams run|async|status|stop` for humans. `/teams` still browses team definitions. The `/team` interaction modes, implicit run shorthand, typo aliases, and `runtime_status`/`runtime_stop` tools are removed, not forwarded through compatibility wrappers. Ordinary prompts are never automatically routed into a team.
 
 ## Provisional Surfaces
 
@@ -47,7 +47,7 @@ These tools are the agent-facing compatibility interface and are registered by `
 
 ## Module Dependencies
 
-- Uses the shared pi runtime-control, agent-registry, maildir, and child-process utilities; no host-extension imports are required.
+- Uses shared agent-registry, maildir, and child-process utilities. Team lifecycle state is owned solely by `TeamStateManager`, with status views derived from its session events.
 - Can utilize `pi-research-tools` if deep-research is invoked.
 
 ## Protocols
@@ -56,7 +56,7 @@ These tools are the agent-facing compatibility interface and are registered by `
 
 ### Profiles and precedence
 
-`team_run` and `/team` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Navigator output remains direct.
+`team_run` and `/teams run|async` share three profiles: `fast` minimizes calls, context, retries, and output; `balanced` is the default bounded behavior; `thorough` allows deeper bounded output/context. Resolution order is **explicit `team_run` models/limits → profile defaults → team manifest/settings defaults**, followed by protocol safety caps. Navigator output remains direct.
 
 Canonical profile output caps are translated at the provider payload boundary: Google GenerateContent and Cloud Code Assist use `maxOutputTokens`, OpenAI Responses uses `max_output_tokens`, and message-based OpenAI-compatible payloads use `max_tokens`. Unrecognized payload shapes are left unchanged rather than receiving `maxTokens` blindly.
 
@@ -70,19 +70,17 @@ Deterministic profile evaluation runs in normal CI from `tests/evals/fixtures/te
 | `llm-council` | Parallelization + synthesis | Exceptional unresolved tradeoffs benefit from multiple views, or the user explicitly requests council. |
 | `deep-research` | Orchestrator-workers + evaluator-optimizer | Evidence gathering and verification loops are required before synthesis. |
 
-### `/team on` / `/team once` context enrichment
-
-Deterministic `balanced` team runs prepend at most the last five user/assistant text turns and 4,000 history characters. `fast` sends only the current prompt; `thorough` permits at most eight turns and 8,000 characters. Turns are truncated oldest-first, non-user/assistant content is skipped, and likely secrets are redacted. Context assembly remains isolated in `buildTeamContext`.
+Team requests use the explicitly supplied prompt; removed interaction modes no longer copy session history into requests. Existing model bindings, routing choices and profile defaults are unchanged.
 
 ## Configuration
 
-Team specs live under `extensions/pi-teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. Runtime state is persisted through pi session custom entries. Each active run owns a compact `team:<runId>` progress widget, refreshed by transient in-memory state subscriptions rather than polling; subscriptions themselves are never persisted. Team runs are exposed as `team_run` runtime entities via `runtime_status`/`runtime_stop`.
+Team specs live under `extensions/pi-teams/config/` as immutable packaged seeds. On `session_start(startup)` they are projected verbatim into the user team directory (`~/.pi/agent/teams` by default, or the configured `teams.roots` user root) so the live copy is the editable source of truth for each team; existing user/project files are never overwritten. Unavailable pinned models fail loudly and actionably — the system does not silently substitute models. Runtime state is persisted through pi session custom entries. Each active run owns a compact `team:<runId>` progress widget, refreshed by transient in-memory state subscriptions rather than polling; subscriptions themselves are never persisted. Run/status/stop, progress widgets and restored session views all use `TeamStateManager`; there is no parallel runtime entity registry.
 
 ## What this does NOT do
 
 - Does not replace normal model/tool execution for simple tasks.
 - Does not own provider credentials or add model providers; it uses the active pi model registry.
-- Does not persist `/team` interaction mode across sessions or turn it on by default.
+- Does not intercept ordinary prompts or enable automatic team interaction modes.
 - Does not force dynamic graph execution for every workflow; protocols are direct and intentionally restrained.
 - Does not provide a generic DAG, topology lowering layer, scheduler, or template engine.
 - Does not make deep-research provider calls itself; research tool availability is provided by registered tools such as `pi-research-tools`.

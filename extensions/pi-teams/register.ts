@@ -3,20 +3,17 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
 import { omitEmptyTools } from "./provider-payload.js";
 import { TeamStateManager } from "./state.js";
 import { registerTeamCommands } from "./team-commands.js";
 import { projectBuiltinTeams } from "./team-projection.js";
 import { registerTeamRunTool } from "./team-runtime.js";
-import { registerTeamSessionMode } from "./team-session-mode.js";
 import { registerTeamTools } from "./team-tools.js";
 
-export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPlane): void {
+export function registerTeams(pi: ExtensionAPI): void {
 	const stateManager = new TeamStateManager({
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 	});
-	const runtime = sharedRuntime ?? new RuntimeControlPlane();
 
 	pi.on("before_provider_request", (event) => omitEmptyTools(event.payload));
 	pi.on("session_start", async (event, ctx) => {
@@ -38,8 +35,7 @@ export function registerTeams(pi: ExtensionAPI, sharedRuntime?: RuntimeControlPl
 	pi.on("session_tree", (_event, ctx) => stateManager.rehydrateFromSession(ctx.sessionManager));
 
 	registerTeamTools(pi);
-	registerTeamRunTool(pi, { stateManager, runtime });
-	registerTeamCommands(pi, { stateManager, runtime });
-	registerTeamSessionMode(pi, { stateManager, runtime });
+	registerTeamRunTool(pi, { stateManager });
+	registerTeamCommands(pi, { stateManager });
 }
 

@@ -1,63 +1,12 @@
 /**
- * Plan generation and plan-state transition helpers.
+ * Goal execution transitions and cleanup of historical plan state.
  */
 import { randomUUID } from "node:crypto";
 import type {
 	GoalLifecycleEvent,
 	GoalRunMode,
 	GoalState,
-	Milestone,
 } from "./goal-types.js";
-
-function defaultMilestones(objective: string): Milestone[] {
-	const tasks: string[] = [];
-	for (const line of objective.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		const bullet = trimmed.match(/^[-*]\s+(.+)$/);
-		const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
-		const match = bullet ?? numbered;
-		if (match?.[1]) tasks.push(match[1]);
-	}
-	if (tasks.length === 0) {
-		return [{
-			id: "m-1",
-			title: "Implement and validate the objective",
-			validationCommand: "npm run check && npm test",
-			status: "pending",
-		}];
-	}
-	return tasks.map((task, index) => ({
-		id: `m-${index + 1}`,
-		title: task,
-		validationCommand: "npm run check && npm test",
-		status: "pending",
-	}));
-}
-
-export function generatePlanState(
-	state: GoalState,
-	milestones?: readonly Milestone[],
-): GoalState {
-	const effectiveMilestones = milestones && milestones.length > 0
-		? milestones
-		: defaultMilestones(state.objective);
-	const next = effectiveMilestones.map((m, i) =>
-		i === 0 ? { ...m, status: "in_progress" as const } : m,
-	);
-	return withLifecycle(updateGoal(state, {
-		schemaVersion: 3,
-		status: "planning",
-		executionState: "idle",
-		runActive: false,
-		planRequired: true,
-		planApproved: false,
-		currentMilestoneIndex: 0,
-		milestones: next,
-		lastVerification: undefined,
-		milestoneRevision: (state.milestoneRevision ?? 0) + 1,
-	}), "plan_updated", "Plan updated; milestone verification was invalidated.");
-}
 
 /** Remove obsolete plan/approval state before direct execution. */
 export function removePlan(state: GoalState): GoalState {

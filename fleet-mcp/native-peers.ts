@@ -6,7 +6,6 @@ import * as z from "zod/v4";
 import { REGISTRY_DIR, STALE_MS, isPidAlive, type AgentRecord } from "../lib/agent-registry.js";
 import { assertPrivateFileForRead, auditPrivateDirectory } from "../lib/private-local-mode.js";
 import { canSee } from "../extensions/pi-panopticon/registry/visibility.js";
-import { isDaemonRegistryEnabled } from "../extensions/pi-panopticon/registry/daemon-registry-source.js";
 
 const idSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const nativeRecord = z.object({
@@ -40,7 +39,6 @@ async function readNativeRecord(file: string): Promise<AgentRecord | undefined> 
 /** Missing grant means no native access; invalid/stale grants fail closed. */
 export async function visibleNativePeers(referenceId: string | undefined): Promise<AgentRecord[]> {
 	if (!referenceId) return [];
-	if (isDaemonRegistryEnabled()) throw new Error("Native file backend is unavailable in daemon mode");
 	if (!auditPrivateDirectory(REGISTRY_DIR).ok) throw new Error("Native registry unavailable");
 	const files = (await readdir(REGISTRY_DIR)).filter((file) => /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(file));
 	const records: AgentRecord[] = [];

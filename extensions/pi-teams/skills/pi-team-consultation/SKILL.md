@@ -27,8 +27,9 @@ permissions or override configured gates.
 
 Use `team_run`; prefer `async: true` when useful work can continue while it runs.
 Use a synchronous call when the next step depends on the answer. Bound the scope,
-timeout, and retries. Inspect or stop a run only when needed with `runtime_status`
-or `runtime_stop`; `team_runs` and `team_stop` remain available for team runs.
+timeout, and retries. Inspect runs with `team_runs` (optional `runId` for one run)
+and cancel with `team_stop`. These read and change the same session-backed state.
+For human commands, use `/teams run`, `/teams async`, `/teams status`, and `/teams stop`.
 
 ```ts
 team_run({
