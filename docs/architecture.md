@@ -863,7 +863,8 @@ WIP pick routines, morning briefs, state capture, and recurring reviews.
 
 ### Constraints
 
-- Preserve existing schedule file format and model-callable parameters.
+- Preserve existing schedule file compatibility and model-callable parameters; legacy `MODEL_SNAPSHOT` fields are ignored.
+- Scope schedules to the session/workspace or explicit target agent, never the active LLM model.
 - Do not execute schedules outside pi.
 - Do not modify user crontab.
 - Keep schedule execution explicit: inject a user message into pi when due.
@@ -886,7 +887,7 @@ C4Component
     Rel(store, files, "reads/writes after confinement checks")
     Rel(coas, scheduler, "starts/stops/reconciles")
     Rel(scheduler, store, "polls desired state through")
-    Rel(scheduler, agent, "sendUserMessage")
+    Rel(scheduler, agent, "sendUserMessage independent of active model")
     Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
 ```
 
@@ -926,7 +927,8 @@ The slot transaction uses the shared `ConfinedStore`; it does not claim TOCTOU e
   `lastQueuedAt`/`lastFailedAt`/`lastTaskId` surfaced through existing status channels, reset on stop.
   No public telemetry tool, durable metrics store, event bus, or cross-extension import is introduced.
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
-- Tests cover due-time matching, schedule prompt rendering, and scheduler telemetry accounting.
+- Tests cover due-time matching, schedule prompt rendering, scheduler telemetry accounting, and delivery across active-model changes.
+- Schedule creation emits no model identity; model selection/restoration cannot skip or mutate a due run.
 - CoAS remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
 
 ---

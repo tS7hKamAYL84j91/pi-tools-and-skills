@@ -3,7 +3,6 @@
 import { hostname } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { activeIdentity, shouldDeliver } from "./scheduler-delivery.js";
-import { modelDriftReason, renderDriftAlert } from "./scheduler-drift.js";
 import { appendScheduleLog } from "./scheduler-log.js";
 import { renderPromptWithMarker } from "./scheduler-prompt.js";
 import { saveRunState } from "./scheduler-run-state.js";
@@ -20,7 +19,6 @@ interface RunOnceContext {
 	readonly schedule: ScheduleEntry;
 	readonly now: Date;
 	readonly canDispatch: () => boolean;
-	readonly currentModel?: () => string | undefined;
 	readonly registerActiveRun: (runId: string, startedAt: string, approvalRequestId?: string) => void;
 	readonly admit: () => Promise<boolean>;
 	readonly markApprovalPending: () => Promise<boolean>;
@@ -60,23 +58,6 @@ export async function runOncePerMinute(ctx: RunOnceContext, metrics: RunOnceMetr
 		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: "dropped" });
 		await appendScheduleLogBestEffort(config, schedule.taskId, `DROPPED ${identityLog} reason=${reason}`, metrics);
 		return { queued: false, outcome: "no-send", handoff: "not-started", reason };
-	}
-
-	// Model drift guard (fail closed): a schedule pinned to model A must never
-	// silently run on a different model. Skip + alert; never mark the run failed.
-	const drift = modelDriftReason(schedule.modelSnapshot, ctx.currentModel?.());
-	if (drift) {
-		metrics.skippedRuns++;
-		metrics.lastTaskId = schedule.taskId;
-		await recordRunOutcome({ config, taskId: schedule.taskId, runId: "none", outcome: "skipped-drift", summary: drift });
-		await appendScheduleLogBestEffort(config, schedule.taskId, `SKIPPED ${identityLog} reason=${drift}`, metrics);
-		try {
-			pi.sendUserMessage(renderDriftAlert(schedule.taskId, drift), { deliverAs: "followUp" });
-		} catch (error) {
-			// Alert is best-effort: a failed alert must not turn the skip into a failure.
-			metrics.lastError = `drift_alert_failed: ${(error as Error).message}`;
-		}
-		return { queued: false, outcome: "no-send", handoff: "not-started", reason: drift };
 	}
 
 	const quota = await shouldRunForSchedule({ config, schedule, now });

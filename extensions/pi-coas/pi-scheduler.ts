@@ -17,7 +17,6 @@ import type { RunOnceMetrics } from "./scheduler-run-once.js";
 import { createRunExecutor } from "./scheduler-dispatch.js";
 import { isoUtc } from "./store-paths.js";
 import { listSchedules } from "./schedules.js";
-import { subscribeModelSelect } from "./scheduler-model-tracking.js";
 import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
 import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
 import { createScheduleSlotState } from "./scheduler-slot-state.js";
@@ -57,13 +56,7 @@ export class PiScheduler {
 	}
 	private startedAt: string | undefined;
 
-	/** Session model identity (`provider/id`) for the schedule drift guard. */
-	private currentModel: string | undefined;
-
 	constructor(private readonly pi: ExtensionAPI) {
-		subscribeModelSelect(pi, (model) => {
-			this.currentModel = model;
-		});
 		this.runQueue = new SchedulerRunQueue(createScheduleSlotState(() => this.config));
 	}
 
@@ -257,7 +250,6 @@ export class PiScheduler {
 			pi: this.pi,
 			metrics: this.metrics,
 			workAccepting: () => this.work.accepting,
-			currentModel: () => this.currentModel,
 			track: (work) => this.work.track(work),
 			config: () => this.config,
 			registerActiveRun: (taskId) => (runId, startedAt, approvalRequestId) => {

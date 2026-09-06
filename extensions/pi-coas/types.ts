@@ -66,8 +66,6 @@ export interface ScheduleEntry {
 	runBudget?: number;
 	/** Optional lookback window for diminishing-returns detection; defaults to 3. */
 	lookback?: number;
-	/** Model identity (`provider/id`) snapshotted at creation; guards against silent default-model drift. */
-	modelSnapshot?: string;
 }
 
 export interface ScheduleAddInput {
@@ -87,8 +85,6 @@ export interface ScheduleAddInput {
 	runBudget?: number;
 	/** Optional lookback window for diminishing-returns detection; defaults to 3. */
 	lookback?: number;
-	/** Model identity (`provider/id`) snapshotted at creation; guards against silent default-model drift. */
-	modelSnapshot?: string;
 }
 
 export interface SchedulerSnapshot {

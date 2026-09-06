@@ -67,6 +67,10 @@ The run-state file contains no history array; each successful capture overwrites
 
 Continuation schedules remain subject to the ADR-0008 delivery guard: they are only injected when workspace/target-agent scoping matches.
 
+## Session model independence
+
+Schedules target a Pi session/workspace (or an explicitly authorized `TARGET_AGENT`), not a model. Creation does not snapshot `ctx.model`, the scheduler does not subscribe to `model_select`, and changing or restoring the active session model never skips or rewrites a due run. Legacy `MODEL_SNAPSHOT` entries in existing `.env` files are accepted and ignored; new and rewritten schedules do not emit them. Model-routing governance remains advisory and separate from schedule admission.
+
 ## Configuration
 
 Resolution order:
@@ -155,6 +159,7 @@ The tool returns purely advisory metadata; it never alters the active session mo
 
 - No model-callable tool can install cron or modify host scheduler state.
 - The pi-scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
+- Schedule admission is model-agnostic; active model changes do not skip, recreate, or mutate schedules.
 - CoAS schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
 - Workspace reads/writes are confined to `${COAS_HOME}/workspace` unless the target already has `.pi/coas/workspace.env` metadata.
 - Workspace context reads default to bounded summaries; full/section reads have hard size guards.

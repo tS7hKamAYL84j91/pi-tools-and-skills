@@ -117,6 +117,25 @@ describe("PiScheduler should-run quota gate", () => {
 		}
 	});
 
+	it("ignores legacy model-drift skips when evaluating current delivery", async () => {
+		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
+		const coasHome = join(tmpdir(), `pi-coas-sr-legacy-drift-${process.pid}-${Date.now()}`);
+		const pi = makePi();
+		const scheduler = new PiScheduler(pi as never);
+		try {
+			await writeSchedule(coasHome, "daily", "admin-assistant", { lookback: 3 });
+			await seedHistory(coasHome, "daily", "skipped-drift", 3);
+			await scheduler.reconcile({ coasHome });
+			await scheduler.tick(new Date("2026-01-05T09:00:00"));
+			await scheduler.flush();
+			expect(pi.sent).toHaveLength(1);
+			expect(scheduler.snapshot()).toMatchObject({ queued: 1, skippedRuns: 0 });
+		} finally {
+			await scheduler.stop();
+			await rm(coasHome, { recursive: true, force: true });
+		}
+	});
+
 	it("skips when the last N runs produced the same skipped outcome", async () => {
 		process.env[COAS_WORKSPACE_ID_ENV] = "admin-assistant";
 		const coasHome = join(tmpdir(), `pi-coas-sr-dim-${process.pid}-${Date.now()}`);
