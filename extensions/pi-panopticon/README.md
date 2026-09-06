@@ -50,6 +50,19 @@ Reconciliation follow-ups are off by default. Enable them globally in `~/.pi/age
 
 A trusted project's `.pi/settings.json` can override the global value. The `/panopticon-reconcile on|off` command persists to the project setting when the project is trusted, or to the global setting otherwise. Health and status reporting remain enabled when notifications are off.
 
+## Spawned-worker output bounds
+
+Recent output retains at most 100 events and 1 MiB of UTF-8 text across stdout,
+stderr, stdin errors, and process diagnostics. Individual stderr chunks are capped
+at 64 KiB with a truncation marker; RPC events larger than the history budget
+leave an omission marker but are delivered intact to RPC listeners.
+
+Stdout is newline-framed UTF-8. Frames up to 8 MiB are decoded only after their
+newline, preserving characters split across chunks. A frame exceeding 8 MiB,
+including an unterminated line, terminates that spawned child with SIGKILL and
+emits a bounded `process_error`; partial RPC frames are never forwarded. This
+limit does not delete persisted child session history.
+
 ## Provisional Surfaces
 
 - Agent stall heuristic thresholds.

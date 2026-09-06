@@ -1,49 +1,75 @@
+# Pi TUI Components
 
-# pi-tui — TUI component library for pi extensions
+Checked against the repository's `@earendil-works/pi-tui` 0.84.4 declarations.
+Read the installed coding-agent `docs/tui.md` and linked examples before building
+custom components. Keep theme, input, and rendering behavior tied to the injected
+TUI context rather than global state.
 
-> Canonical import paths and component signatures for `@mariozechner/pi-tui`.
+## Imports and signatures
 
-## Common operations
+From `@earendil-works/pi-tui`:
 
-- Import layout components:
-  `import { Container, Text, TruncatedText } from "@mariozechner/pi-tui"`
+- Layout: `Container`, `Text`, `TruncatedText`.
+- Selection: `SelectList`, `SelectItem`, `SelectListTheme`.
+- Keyboard: `matchesKey`, `KeyId`; pass raw stdin data to `matchesKey`.
+- Text: `truncateToWidth`, `visibleWidth`, `wrapTextWithAnsi`.
+- Search: `fuzzyFilter`, `fuzzyMatch`.
 
-- Import selection UI:
-  `import { type SelectItem, SelectList } from "@mariozechner/pi-tui"`
+`DynamicBorder` comes from `@earendil-works/pi-coding-agent`, **not** pi-tui.
+Get the theme from the callback; `Theme` and `ThemeColor` types are exported by
+coding-agent.
 
-- Import key handling:
-  `import { matchesKey, type KeyId } from "@mariozechner/pi-tui"`
+- `new Text(content, paddingX, paddingY, backgroundFn?)`: numeric horizontal and
+  vertical padding, not an options object or left/top-only padding.
+- `Container.addChild(component)`: requires `render(width): string[]` and
+  `invalidate(): void`. `handleInput(data)` is optional for noninteractive components.
+- `new SelectList(items, maxVisible, theme)`: theme callbacks are `selectedPrefix`,
+  `selectedText`, `description`, `scrollInfo`, and `noMatch`.
+- `truncateToWidth(text, width, "...", true)`: ANSI-aware truncation with padding.
+  Use `visibleWidth`, not string length, for layout; use `wrapTextWithAnsi` for wrapping.
 
-- Import text utilities:
-  `import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui"`
+## Selection overlay
 
-- Import fuzzy matching:
-  `import { fuzzyFilter, fuzzyMatch } from "@mariozechner/pi-tui"`
+```typescript
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { Container, SelectList, Text } from "@earendil-works/pi-tui";
 
-## Patterns
+export default function (pi: ExtensionAPI): void {
+  pi.registerCommand("example-pick", {
+    description: "Pick an example option",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") return;
+      await ctx.ui.custom<string | null>((tui, theme, _keys, done) => {
+        const container = new Container();
+        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+        container.addChild(new Text("Pick one", 1, 0));
+        const list = new SelectList([{ value: "one", label: "One" }], 1, {
+          selectedPrefix: (s) => theme.fg("accent", s),
+          selectedText: (s) => theme.fg("accent", s),
+          description: (s) => theme.fg("muted", s),
+          scrollInfo: (s) => theme.fg("dim", s),
+          noMatch: (s) => theme.fg("warning", s),
+        });
+        list.onSelect = (item) => done(item.value);
+        list.onCancel = () => done(null);
+        container.addChild(list);
+        return {
+          render: (width) => container.render(width),
+          invalidate: () => container.invalidate(),
+          handleInput: (data) => { list.handleInput(data); tui.requestRender(); },
+        };
+      }, { overlay: true });
+    },
+  });
+}
+```
 
-- Build an overlay component:
-  return `{ render(width): string[], invalidate(): void, handleInput(data): void }` from `ctx.ui.custom()`
+## Rendering and lifecycle rules
 
-- Use `Container` as the root, add `Text` children with `(content, paddingLeft, paddingTop)`:
-  `const c = new Container(); c.addChild(new Text("hello", 1, 0));`
-
-- Match keyboard input:
-  `if (matchesKey(data, "escape")) done(null);`
-
-- SelectList with callbacks:
-  `const sl = new SelectList(items, maxVisible, theme); sl.onSelect = (item) => done(item.value); sl.onCancel = () => done(null);`
-
-- Truncate with ANSI awareness:
-  `truncateToWidth(styledText, availableWidth, "...", true)`
-
-## Gotchas
-
-- `Text` constructor is `(content, paddingLeft, paddingTop)` — NOT `(content, options)`
-- `Container.addChild()` takes a `Component` — the `Component` interface requires `render(width): string[]` and `invalidate(): void`
-- `SelectList` theme parameter uses callback functions: `selectedPrefix`, `selectedText`, `description`, `scrollInfo`, `noMatch`
-- `matchesKey(data, keyId)` takes raw stdin data, not a parsed key object
-- `visibleWidth()` strips ANSI before measuring — use it for layout math, not `string.length`
-- `wrapTextWithAnsi()` wraps respecting ANSI escape sequences — plain `split` will break colors
-- Do NOT import `Container`/`Text`/`DynamicBorder` from `@mariozechner/pi-coding-agent` — only `DynamicBorder` comes from there; `Container`/`Text` come from `@mariozechner/pi-tui`
-- `DynamicBorder` is exported from `@mariozechner/pi-coding-agent`, not `@mariozechner/pi-tui`
+- Never return lines wider than the supplied width; account for ANSI and wide characters.
+- Forward keyboard input to the active child and request rendering after changes.
+- Invalidate cached layout and rebuild pre-styled content when the theme changes.
+- Create a fresh component when reopening an overlay; closed components are disposed.
+- `ctx.hasUI` includes RPC dialogs, but custom terminal components require TUI mode.
+- Preserve keyboard-only operation, confirmations, and non-color status cues.

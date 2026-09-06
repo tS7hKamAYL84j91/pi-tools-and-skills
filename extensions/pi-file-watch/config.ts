@@ -8,7 +8,8 @@ import { homedir } from "node:os";
 import type { FileWatchConfig } from "./types.js";
 
 const DEFAULT_CONFIG_PATH = ".pi/file-watch.json";
-const DEFAULT_MAX_BYTES = 12_000;
+/** Maximum file bytes hashed per update; larger files emit metadata without a hash. */
+export const DEFAULT_MAX_BYTES = 12_000;
 const DEFAULT_DEBOUNCE_MS = 500;
 const DEFAULT_BATCH_WINDOW_MS = 120_000;
 

@@ -9,7 +9,7 @@
  * matching `{"type": "response", "command": "<type>", ...}` event on stdout.
  */
 
-import type { SpawnedAgent } from "./spawn-service.js";
+import { retainSpawnEvent, type SpawnedAgent } from "./spawn-service.js";
 
 /** Write a JSON command to an agent's stdin. Returns false on failure. */
 export function rpcWrite(
@@ -21,13 +21,13 @@ export function rpcWrite(
 		agent.proc.stdin.write(`${JSON.stringify(cmd)}\n`, (err) => {
 			if (err) {
 				agent.done = true;
-				agent.recentEvents.push(`[stdin write error: ${err.message}]`);
+				retainSpawnEvent(agent, `[stdin write error: ${err.message}]`);
 			}
 		});
 		return true;
 	} catch (err) {
 		agent.done = true;
-		agent.recentEvents.push(`[stdin write error: ${err}]`);
+		retainSpawnEvent(agent, `[stdin write error: ${err}]`);
 		return false;
 	}
 }

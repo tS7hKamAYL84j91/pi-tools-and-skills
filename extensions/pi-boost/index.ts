@@ -96,17 +96,21 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 	const lease = createLeaseState();
 
 	return (pi: ExtensionAPI) => {
+		async function restoreBaseline(): Promise<void> {
+			const switched = await pi.setModel(lease.originalModel as never);
+			if (!switched) throw new Error("model switch rejected");
+			lease.originalModel = undefined;
+			lease.revertFailed = false;
+		}
+
 		// Restore the baseline only when the run is fully settled (after retries,
 		// compaction, and queued follow-ups have drained).
 		pi.on("agent_end", async (_event, ctx) => {
 			if (!lease.originalModel) return;
 			await waitForSettled(ctx);
 			if (!lease.originalModel) return;
-			const restore = lease.originalModel;
 			try {
-				const switched = await pi.setModel(restore as never);
-				if (!switched) throw new Error("model switch rejected");
-				lease.originalModel = undefined;
+				await restoreBaseline();
 				await updateStatus(ctx, lease);
 			} catch (error) {
 				lease.revertFailed = true;
@@ -142,10 +146,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					lease.startedAtMs = undefined;
 					if (lease.revertFailed && lease.originalModel) {
 						try {
-							const switched = await pi.setModel(lease.originalModel as never);
-							if (!switched) throw new Error("model switch rejected");
-							lease.originalModel = undefined;
-							lease.revertFailed = false;
+							await restoreBaseline();
 							ctx.ui.notify(
 								"Boost lease reset: yields cleared and baseline restored.",
 								"info",
@@ -254,8 +255,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					// Failed dispatch consumes no yield; restore immediately (ADR-057 §3).
 					lease.yieldsUsed = Math.max(0, lease.yieldsUsed - 1);
 					try {
-						await pi.setModel(lease.originalModel as never);
-						lease.originalModel = undefined;
+						await restoreBaseline();
 					} catch {
 						lease.revertFailed = true;
 					}

@@ -1,46 +1,65 @@
+# Building Pi Extensions
 
-# pi-extension-dev — Building pi extensions
+Register tools, lifecycle hooks, commands, and TUI feedback through the installed
+`@earendil-works/pi-coding-agent` API. See [API contracts](pi-coding-agent-api.md)
+and [TUI components](pi-tui.md); verify against the installed documentation before
+implementing version-sensitive behavior.
 
-> Register tools, hook lifecycle events, and add TUI components to pi.
+## Minimal tool and command
 
-## Common operations
+```typescript
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 
-- Register a tool the LLM can call:
-  `pi.registerTool({ name, label, description, parameters: Type.Object({...}), execute })`
+export default function (pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "example_action",
+    label: "Example Action",
+    description: "Return the requested example action.",
+    promptSnippet: "Return an example action",
+    parameters: Type.Object({ action: StringEnum(["list", "add"] as const) }),
+    async execute(_id, params) {
+      return {
+        content: [{ type: "text", text: params.action }],
+        details: { action: params.action },
+      };
+    },
+  });
 
-- Subscribe to lifecycle events:
-  `pi.on("session_start", async (event, ctx) => { ... })`
+  pi.registerCommand("example-status", {
+    description: "Show example status",
+    handler: async (_args, ctx) => {
+      if (ctx.hasUI) ctx.ui.notify("Example ready", "info");
+    },
+  });
+}
+```
 
-- Inject context into system prompt each turn:
-  `pi.on("before_agent_start", async (event) => { return { systemPrompt: event.systemPrompt + extra } })`
+## Implementation patterns
 
-- Register a slash command:
-  `pi.registerCommand("name", { description, handler: async (args, ctx) => { ... } })`
+- Use TypeScript ESM and `.js` suffixes for local imports in this repository.
+- For tools in this repository's `extensions/<name>/` directories, use
+  `import { ok, type ToolResult } from "../../lib/tool-result.js"` for compact results.
+  That path is repo-local, not an SDK export or a portable third-party dependency.
+- Throw from `execute` to report a tool failure. Use `StringEnum` rather than
+  literal unions for Google-facing enum schemas.
+- Register `pi.on("session_start", ...)` for session setup; dispose watchers,
+  processes, sockets, and timers in an idempotent `session_shutdown` handler.
+- Return a modified `systemPrompt` from `before_agent_start` for deliberate context
+  injection. Do not mistake persisted custom entries for model-visible messages.
+- Use `ctx.ui.setWidget("key", ["line1", "line2"])` for multi-line feedback and
+  `ctx.ui.setStatus("key", "text")` for concise status. Clear stale UI deliberately.
+- Use `withFileMutationQueue` from coding-agent around the complete mutation
+  window, with an absolute validated target path. Keep domain locks and safety gates.
+- Guard turn-only `ctx.signal` before use. Treat reload as terminal for the old handler.
 
-- Set TUI widget and status bar:
-  `ctx.ui.setWidget("key", ["line1", "line2"])`
-  `ctx.ui.setStatus("key", "text")`
+## Loading
 
-## Patterns
+Pi auto-discovers global `~/.pi/agent/extensions/` and trusted project
+`.pi/extensions/`. This repository's `extensions/` are loaded through package
+manifests or explicit settings; do not assume arbitrary `project-extensions/`
+directories are automatically discovered. Other repos may explicitly register them.
 
-- Tool result helper (shared lib):
-  `import { ok, type ToolResult } from "../../lib/tool-result.js"`
-  `return ok("message", { key: "value" })`
-
-- Use StringEnum for Google-compatible enums:
-  `import { StringEnum } from "@mariozechner/pi-ai"`
-  `action: StringEnum(["list", "add"] as const)`
-
-- File-mutating tools must use the mutation queue:
-  `import { withFileMutationQueue } from "@mariozechner/pi-coding-agent"`
-  `return withFileMutationQueue(absolutePath, async () => { ... })`
-
-## Gotchas
-
-- Extension locations: `extensions/` dir (from settings.json), NOT `project-extensions/`
-- `project-extensions/` is loaded by OTHER repos via their `.pi/settings.json`
-- Import paths MUST use `.js` extension even for `.ts` files (ESM)
-- Tool execute must THROW to signal errors — returning `isError` does nothing
-- `Type.Union`/`Type.Literal` broken with Google — use `StringEnum` instead
-- `promptSnippet` opts a tool into "Available tools" prompt — omit and it's invisible there
-- `ctx.signal` is undefined outside active turns — check before using
+A package's `pi.extensions` paths are relative to its package root. Read the
+installed `docs/packages.md` before changing packaging or dependencies. Never
+change live registrations merely to test a code change.

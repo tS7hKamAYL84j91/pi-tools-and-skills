@@ -93,6 +93,29 @@ describe("fleet MCP architecture", () => {
 		await alpha.unregister("test", a.agent_id);
 	});
 
+	it.each([
+		{ text: "hello", limit: 3, expected: "hel", truncated: true },
+		{ text: "abc", limit: 3, expected: "abc", truncated: false },
+		{ text: "éé", limit: 3, expected: "é", truncated: true },
+		{ text: "é", limit: 1, expected: "", truncated: true },
+		{ text: "é", limit: 2, expected: "é", truncated: false },
+		{ text: "😀x", limit: 3, expected: "", truncated: true },
+		{ text: "😀x", limit: 4, expected: "😀", truncated: true },
+		{ text: "😀", limit: 4, expected: "😀", truncated: false },
+	])("bounds inbox UTF-8 text: $text at $limit bytes", async ({ text, limit, expected, truncated }) => {
+		const shared = await workspace();
+		const alpha = await gateway(shared.config("sender"));
+		const betaConfig = shared.config("receiver");
+		const beta = await gateway({ ...betaConfig, limits: { ...betaConfig.limits, maxTextBytes: limit } });
+		await alpha.register("test", "sender");
+		const receiver = await beta.register("test", "receiver");
+		await alpha.send("test", receiver.agent_id, text, "utf8");
+		const [message] = await beta.inbox("test") as Array<{ text: string; truncated: boolean }>;
+		expect(message).toMatchObject({ text: expected, truncated });
+		expect(Buffer.byteLength(message?.text ?? "", "utf8")).toBeLessThanOrEqual(limit);
+		expect(text.startsWith(message?.text ?? "")).toBe(true);
+	});
+
 	it("persists receipts safely across restart, including prototype-like principals", async () => {
 		const shared = await workspace();
 		const alphaConfig = shared.config("__proto__");

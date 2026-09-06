@@ -299,6 +299,30 @@ describe("boost in-session model lease", () => {
 		}
 	});
 
+	it.each(["false", "throw"])("retains recovery state when dispatch fails and restore returns %s", async (failure) => {
+		const { pi, sendUserMessage, setModel, command } = createFakePi();
+		setModel.mockResolvedValueOnce(true);
+		if (failure === "false") setModel.mockResolvedValueOnce(false);
+		else setModel.mockRejectedValueOnce(new Error("restore failed"));
+		sendUserMessage.mockImplementationOnce(() => { throw new Error("send failed"); });
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("run", ctx);
+		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
+		expect(await lastStatus(ctx)).toContain("blocked");
+		expect(await lastStatus(ctx)).toContain("3 left");
+		await command()("run again", ctx);
+		expect(lastNotify(ctx)).toContain("blocked");
+		expect(setModel).toHaveBeenCalledTimes(2);
+
+		await command()("reset", ctx);
+		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
+		expect(await lastStatus(ctx)).toContain("off");
+		await command()("run after reset", ctx);
+		expect(await lastStatus(ctx)).toContain("active");
+	});
+
 	it("refunds the yield and restores immediately when dispatch throws", async () => {
 		const { pi, sendUserMessage, setModel, command } = createFakePi();
 		sendUserMessage.mockImplementation(() => {

@@ -36,4 +36,18 @@ Create `.pi/file-watch.json`:
 
 `batchWindowMs` defaults to `120000` (two minutes). During that window, repeated changes to the same file are coalesced into one final-state change with `change_count`.
 
+`followSymlinks: false` rejects symlinks in the file path, including parent
+directories. `allowExternalPaths: false` checks the resolved target against the
+workspace even when symlink following is enabled. Cached paths are revalidated
+before hashing; a changed target is not read until rediscovery. Use
+`file_watch_reload` after replacing a parent-directory link.
+
+`maxBytes` bounds hashing (default `12000`, configurable from `512` to `128000`).
+Larger files still emit size and modification time, but omit `hash`; file content
+is never injected. Reads are capped at the limit plus one growth-detection byte,
+using a no-follow regular-file descriptor. Files that change during hashing,
+become unreadable, or disappear omit the hash. Hashing stays synchronous but
+bounded; there is no background read to survive reload. Reload/shutdown cancels
+pending debounce and batch timers.
+
 Emitted `firewatch_batch` details include `window_start`, `window_end`, and `changes`. Each change may include `path`, `event`, `hash`, `byte_size`, `mtime`, `target`, and `change_count`.

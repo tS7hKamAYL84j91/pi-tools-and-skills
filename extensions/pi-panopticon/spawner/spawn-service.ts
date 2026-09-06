@@ -87,7 +87,20 @@ export interface SpawnedAgent {
 }
 
 const MAX_RECENT_EVENTS = 100;
+const MAX_RECENT_BYTES = 1024 * 1024;
+const MAX_STDERR_CHUNK_BYTES = 64 * 1024;
+const MAX_RPC_FRAME_BYTES = 8 * 1024 * 1024;
 const GRACEFUL_WAIT_MS = 2_000;
+
+/** Bound diagnostic history without truncating frames delivered to RPC listeners. */
+export function retainSpawnEvent(agent: SpawnedAgent, event: string): void {
+	const retained = Buffer.byteLength(event) > MAX_RECENT_BYTES ? "[output omitted: event exceeds 1 MiB history limit]" : event;
+	agent.recentEvents.push(retained);
+	let bytes = agent.recentEvents.reduce((total, line) => total + Buffer.byteLength(line), 0);
+	while (agent.recentEvents.length > MAX_RECENT_EVENTS || bytes > MAX_RECENT_BYTES) {
+		bytes -= Buffer.byteLength(agent.recentEvents.shift() ?? "");
+	}
+}
 
 // ── Graceful shutdown ─────────────────────────────────────────────
 
@@ -148,22 +161,37 @@ export function spawnChild(opts: SpawnOpts): SpawnedAgent {
 		done: !proc.pid,
 	};
 
-	let buf = "";
+	let buf: Buffer = Buffer.alloc(0);
 	proc.stdout?.on("data", (chunk: Buffer) => {
-		buf += chunk.toString();
-		const lines = buf.split("\n");
-		buf = lines.pop() ?? "";
-		for (const line of lines) {
+		if (agent.done) return;
+		let offset = 0;
+		while (offset < chunk.length) {
+			const newline = chunk.indexOf(10, offset);
+			const end = newline < 0 ? chunk.length : newline;
+			if (buf.length + end - offset > MAX_RPC_FRAME_BYTES) {
+				buf = Buffer.alloc(0);
+				agent.done = true;
+				const message = "Child RPC frame exceeds 8 MiB limit; child terminated";
+				retainSpawnEvent(agent, `[process error: ${message}]`);
+				try { proc.kill("SIGKILL"); } catch { /* already exited */ }
+				agent.emitter.emit("line", JSON.stringify({ type: "process_error", message }));
+				return;
+			}
+			buf = Buffer.concat([buf, chunk.subarray(offset, end)]);
+			if (newline < 0) return;
+			// Decode only complete frames so split UTF-8 characters remain intact.
+			const line = buf.toString("utf8");
+			buf = Buffer.alloc(0);
+			offset = newline + 1;
 			if (!line.trim()) continue;
-			agent.recentEvents.push(line);
-			if (agent.recentEvents.length > MAX_RECENT_EVENTS)
-				agent.recentEvents.shift();
+			retainSpawnEvent(agent, line);
 			agent.emitter.emit("line", line);
 		}
 	});
 
 	proc.stderr?.on("data", (chunk: Buffer) => {
-		agent.recentEvents.push(`[stderr] ${chunk.toString().trim()}`);
+		const text = chunk.subarray(0, MAX_STDERR_CHUNK_BYTES).toString().trim();
+		retainSpawnEvent(agent, `[stderr] ${text}${chunk.length > MAX_STDERR_CHUNK_BYTES ? " [truncated]" : ""}`);
 	});
 
 	const cleanTemp = () => {
@@ -177,14 +205,16 @@ export function spawnChild(opts: SpawnOpts): SpawnedAgent {
 
 	proc.on("close", (code: number | null) => {
 		agent.done = true;
-		agent.recentEvents.push(`[process exited with code ${code}]`);
+		buf = Buffer.alloc(0);
+		retainSpawnEvent(agent, `[process exited with code ${code}]`);
 		agent.emitter.emit("line", JSON.stringify({ type: "process_exit", code }));
 		cleanTemp();
 	});
 
 	proc.on("error", (err: Error) => {
 		agent.done = true;
-		agent.recentEvents.push(`[process error: ${err.message}]`);
+		buf = Buffer.alloc(0);
+		retainSpawnEvent(agent, `[process error: ${err.message}]`);
 		agent.emitter.emit(
 			"line",
 			JSON.stringify({ type: "process_error", message: err.message }),

@@ -5,6 +5,40 @@ or manage Kanban from this project's agents; Gravitas owns the optional
 human-facing overview. Board updates, planning documents, and status logs are
 not prerequisites for doing the work. Do not duplicate execution records here.
 
+## Code-health follow-ups
+
+Requested by Jim after the repository-wide review. Keep fixes bounded and preserve
+public contracts, persistence compatibility, permissions, and live configuration.
+
+### High priority
+
+- [x] **Enforce File Watch path restrictions** (`extensions/pi-file-watch/watcher.ts`). Validate resolved targets independently of watch behavior; prevent an internal symlink from bypassing `allowExternalPaths: false` when `followSymlinks: false`. Add regression tests for file and parent-directory symlinks, both flags, and target changes. Rejected targets must not be read or hashed.
+- [x] **Preserve Boost recovery state after failed dispatch** (`extensions/pi-boost/index.ts`). Treat `setModel()` returning `false` during baseline restoration as a failure, retain the original model, and block further boosts until restoration succeeds. Test both false returns and thrown errors, status reporting, and `/boost reset` recovery.
+
+### Medium priority
+
+- [x] **Bound subagent output retention** (`extensions/pi-panopticon/spawner/spawn-service.ts`). Apply the recent-event cap to stderr as well as stdout; bound retained bytes and unfinished stdout lines. Preserve RPC framing for valid messages and define explicit handling for oversized frames. Test stderr floods and large unterminated lines with mocked children.
+- [x] **Truncate Fleet inbox text on UTF-8 boundaries** (`fleet-mcp/gateway.ts`). Ensure returned text is a valid prefix of the input and never exceeds `maxTextBytes`. Preserve the response shape and truncation flag. Test ASCII, multibyte characters, emoji, and exact-boundary inputs; `éé` truncated to three bytes must return `é`, not `é�`.
+- [x] **Remove unbounded synchronous File Watch hashing** (`extensions/pi-file-watch/watcher.ts`, `config.ts`). Choose and document streaming asynchronous hashing or an explicit size limit with hash omission. Resolve the unused `maxBytes` setting deliberately; preserve metadata-only notifications and cancellation/reload behavior. Test large files, unreadable/deleted targets, and pending work during reload.
+
+### Documentation
+
+- [x] **Refresh bundled Pi development references** (`skills/pi-extension-dev/references/`). Verify examples against the installed SDK and current documentation; replace obsolete `@mariozechner/*` imports with supported APIs. Do not assume a namespace-only replacement is sufficient. Preserve skill names, activation descriptions, and safety instructions.
+
+### Validation
+
+- [x] Add focused regression tests for each fix, using disposable files and mocked models/processes; do not touch live configuration or private state.
+- [x] Run `npm run check`, `npm test`, `npm run build:fleet-mcp`, and `git diff --check`. Run architecture tests for boundary changes and knip for changed exports/deletions. Report pre-existing warnings separately from regressions.
+- [x] Complete targeted diagnostics where the broad review scan timed out; do not interpret partial scan results as a clean audit.
+
+Implemented with bounded metadata reads in `file-metadata.ts`, shared Boost
+restoration, bounded spawned-worker output, and UTF-8-safe Fleet truncation.
+Validation: 100 focused tests and all 1,311 tests passed; repository checks
+(including knip), architecture tests, Fleet build, and diff checks passed.
+Both documented TypeScript examples typechecked against SDK 0.84.4. Targeted LSP
+checks passed, including the previously inconclusive Python setup script.
+The 12 existing lint warnings remain; live configuration and deployments are unchanged.
+
 ## F.I.R.E. simplification — Goal, Teams, Kanban
 
 Requested by Jim and implemented. This checklist records completed scope, not an

@@ -1,40 +1,11 @@
-/** File watcher helpers for pi-file-watch. */
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, statSync, watch } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+/** Watch lifecycle, batching and metadata-only host notifications. */
+import { watch } from "node:fs";
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { resolveConfiguredPath } from "./config.js";
+import { buildFirewatchUpdate, describeWatchedFiles, type FirewatchUpdate } from "./file-metadata.js";
 import type { FileWatchConfig, WatchedFileDescription, WatcherRuntimeState } from "./types.js";
 
-function isExternal(root: string, target: string): boolean {
-	const rel = relative(root, target);
-	return rel !== "" && (rel.startsWith("..") || isAbsolute(rel));
-}
-
-export function describeWatchedFiles(cwd: string, config: FileWatchConfig): WatchedFileDescription[] {
-	const root = realpathSync(cwd);
-	return config.watch.map((configuredPath) => {
-		const absolutePath = resolveConfiguredPath(cwd, configuredPath);
-		const externalByText = isExternal(root, absolutePath);
-		try {
-			if (!existsSync(absolutePath)) {
-				return { configuredPath, absolutePath, exists: false, external: externalByText, symlink: false, status: "missing" };
-			}
-			const symlink = lstatSync(absolutePath).isSymbolicLink();
-			const realPath = config.followSymlinks ? realpathSync(absolutePath) : absolutePath;
-			const external = isExternal(root, realPath);
-			if (!statSync(realPath).isFile()) {
-				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "not a regular file" };
-			}
-			if (external && !config.allowExternalPaths) {
-				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "external path not allowed by config" };
-			}
-			return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "watching" };
-		} catch (error) {
-			return { configuredPath, absolutePath, exists: false, external: externalByText, symlink: false, status: "error", error: error instanceof Error ? error.message : String(error) };
-		}
-	});
-}
+export { buildFirewatchUpdate, describeWatchedFiles } from "./file-metadata.js";
 
 export function createRuntimeState(): WatcherRuntimeState {
 	return { watchers: [], timers: new Map(), batchTimer: undefined, batchWindowStart: undefined, batchChanges: new Map(), files: [], config: undefined, lastEventAt: undefined, eventCount: 0 };
@@ -49,68 +20,10 @@ export function formatWatchList(files: readonly WatchedFileDescription[]): strin
 	return files.map((file) => `- ${file.status}: ${file.configuredPath}${file.external ? " (external)" : ""}${file.symlink ? " (symlink)" : ""}${file.error ? ` — ${file.error}` : ""}`).join("\n");
 }
 
-interface FirewatchUpdate {
-	path: string;
-	event: string;
-	hash?: string;
-	byte_size?: number;
-	mtime?: string;
-	target?: string;
-	change_count?: number;
-}
-
 interface FirewatchBatch {
 	window_start: string;
 	window_end: string;
 	changes: FirewatchUpdate[];
-}
-
-function mapWatchEvent(eventType: string): string {
-	if (eventType === "change") {
-		return "modified";
-	}
-	return eventType;
-}
-
-function symlinkTarget(file: WatchedFileDescription): string | undefined {
-	if (!file.symlink) {
-		return undefined;
-	}
-	try {
-		return resolve(dirname(file.absolutePath), readlinkSync(file.absolutePath));
-	} catch {
-		return undefined;
-	}
-}
-
-function fileHash(path: string): string {
-	return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
-export function buildFirewatchUpdate(file: WatchedFileDescription, eventType: string): FirewatchUpdate {
-	const update: FirewatchUpdate = {
-		path: file.configuredPath,
-		event: mapWatchEvent(eventType),
-	};
-	const target = symlinkTarget(file);
-	if (target) {
-		update.target = target;
-	}
-	if (!file.realPath) {
-		return update;
-	}
-	try {
-		const stats = statSync(file.realPath);
-		if (!stats.isFile()) {
-			return update;
-		}
-		update.hash = fileHash(file.realPath);
-		update.byte_size = stats.size;
-		update.mtime = stats.mtime.toISOString();
-	} catch {
-		// Deleted or unreadable files still report path/event/target only.
-	}
-	return update;
 }
 
 export function formatChangeMessage(update: FirewatchUpdate): string {
@@ -161,7 +74,7 @@ function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
 	if (!state.config || state.batchChanges.size === 0) return;
 	const windowStart = state.batchWindowStart ?? Date.now();
 	const changes = [...state.batchChanges.values()].map((entry) => ({
-		...buildFirewatchUpdate(entry.file, entry.eventType),
+		...buildFirewatchUpdate(entry.file, entry.eventType, state.config?.maxBytes),
 		change_count: entry.changeCount,
 	}));
 	const batch: FirewatchBatch = {
