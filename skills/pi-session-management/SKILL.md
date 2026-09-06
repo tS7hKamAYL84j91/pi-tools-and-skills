@@ -5,11 +5,9 @@ description: Build session-aware pi behavior. Use when handling session lifecycl
 
 # Pi Session Management
 
-Use this skill when an extension or workflow depends on pi session lifecycle behavior.
-
 ## When to use
 
-Use this skill for:
+Build session-aware extensions or workflows, including:
 - persisting extension state across sessions
 - restoring state on startup, reload, resume, or fork
 - triggering or shaping compaction

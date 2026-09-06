@@ -29,11 +29,7 @@ Understand what the user wants:
 
 ### 2. Create Directory
 
-```
-skill-name/
-└── SKILL.md
-```
-
+Create the directory and required `SKILL.md` shown in [Skill Structure](#skill-structure).
 The directory name must match the `name` field in frontmatter.
 
 ### 3. Write Frontmatter
@@ -69,9 +65,9 @@ How to use with examples.
 
 ### 5. Add Supporting Files
 
-- `scripts/` — executable helpers
-- `references/` — detailed documentation
-- `assets/` — templates and static files
+Use the optional directories in [Skill Structure](#skill-structure) for executable
+helpers, detailed documentation, and templates/static files. Link to them from
+SKILL.md using paths relative to the skill directory.
 
 ## Converting Existing Scripts
 

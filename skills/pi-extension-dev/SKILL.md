@@ -5,11 +5,9 @@ description: Build or modify pi extensions. Use when creating tools, commands, l
 
 # Pi Extension Development
 
-Use this skill when implementing or changing a pi extension.
-
 ## When to use
 
-Use this skill for:
+Implement or change pi extensions, including:
 - adding a new pi tool
 - registering commands
 - handling lifecycle events

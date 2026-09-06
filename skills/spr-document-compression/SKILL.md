@@ -19,8 +19,7 @@ Reference: <https://github.com/daveshap/SparsePrimingRepresentations>
   blocks into a token-efficient priming representation for storage/retrieval.
 - Decompress: rebuild a document from a stored SPR when the full text is needed.
 
-Do not use SPR for: faithful verbatim quotes, exact numbers/contracts, or anything
-where lossy reconstruction is unsafe. SPR is lossy by design.
+SPR is lossy by design; see [Guardrails](#guardrails) before using it.
 
 ## Workflow
 
@@ -30,7 +29,7 @@ where lossy reconstruction is unsafe. SPR is lossy by design.
    possible. The future audience is an LLM.
 2. **Store** — keep the SPR (optionally with a one-line title and source ref)
    wherever compact context is needed: KG node metadata, memory entries,
-  prompt prefaces.
+   prompt prefaces.
 3. **Decompress** — feed the SPR to an LLM with the decompressor prompt; it
    unpacks and infers the missing detail back into prose.
 
@@ -65,8 +64,8 @@ blast radius, fix, and follow-ups — no narration.
 
 ## Guardrails
 
-- SPR is lossy; never use it where exact recall is required (contracts, figures,
-  secrets, code).
+- Never use SPR for faithful verbatim quotes, exact recall (contracts, figures,
+  secrets, code), or anything where lossy reconstruction is unsafe.
 - Do not inject secrets, credentials, or private data into an SPR.
 - Prefer complete sentences; avoid dangling keywords that lose associations.
 - Keep the generator/decompressor prompts intact (they encode the methodology).

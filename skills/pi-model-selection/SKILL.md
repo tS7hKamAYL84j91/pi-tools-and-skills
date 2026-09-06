@@ -3,10 +3,7 @@ name: pi-model-selection
 description: Verify pi-visible models first and route requests efficiently; do not assume provider aliases are interchangeable.
 ---
 
-
-# pi-model-selection — Choosing the right pi model/provider route
-
-> Verify pi-visible models first; do not assume provider aliases are interchangeable.
+# Pi Model and Provider Selection
 
 ## Common operations
 
@@ -50,7 +47,7 @@ Rules:
 - Verify all chosen models are visible with `pi --list-models` before writing team config.
 - Avoid outdated "chairman" terminology; pi-teams uses `member` and `synthesis` roles.
 
-Configure team models with `team_models` or `team_run` with `models` override:
+Configure team models with `team_models` or a `team_run` `models` override.
 
 ## Gotchas
 
