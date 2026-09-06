@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TeamStateManager } from "../../extensions/pi-teams/state.js";
 import { registerTeamRunTool, summarizeTeamRuns } from "../../extensions/pi-teams/team-runtime.js";
 import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
@@ -191,6 +191,69 @@ describe("team tools", () => {
 		expect(stopResult.details.runs).toEqual([
 			expect.objectContaining({ status: "stopping", stopReason: "bounded test stop" }),
 		]);
+	});
+
+	it.each([
+		{
+			scenario: "running",
+			summary: "summary total=1 running=1 pending=0 stopping=0 completed=0 failed=0 stopped=0 artifacts=0",
+			statusLine: "navigator consult running phases=1 nodes=1 (running=1 stalled=1 done=0) details=0 current=consult/node-1",
+		},
+		{
+			scenario: "failed",
+			summary: "summary total=1 running=0 pending=0 stopping=0 completed=0 failed=1 stopped=0 artifacts=0",
+			statusLine: "navigator consult failed phases=1 nodes=1 (running=0 stalled=0 done=1) details=1 current=consult/node-1 error=test failure",
+		},
+		{
+			scenario: "no-nodes",
+			summary: "summary total=1 running=0 pending=1 stopping=0 completed=0 failed=0 stopped=0 artifacts=0",
+			statusLine: "navigator consult pending phases=0 nodes=0 (running=0 stalled=0 done=0) details=0 current=-",
+		},
+	])("preserves team and runtime status output for $scenario runs", async ({ scenario, summary, statusLine }) => {
+		const clock = vi.spyOn(Date, "now").mockReturnValue(100_000);
+		try {
+			const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+			const stateManager = new TeamStateManager({ appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
+			const runId = stateManager.startRun({ teamId: "navigator", protocol: "consult", prompt: "test" });
+			if (scenario !== "no-nodes") {
+				stateManager.recordPhaseStarted(runId, "consult");
+				stateManager.recordNodeStarted(runId, { phaseId: "consult", nodeId: "node-1", role: "navigator", model: "test-model" });
+			}
+			if (scenario === "failed") {
+				stateManager.recordNodeCompleted(runId, { phaseId: "consult", nodeId: "node-1", role: "navigator", model: "test-model", ok: false, durationMs: 10, output: "", error: "test failure" });
+				stateManager.recordRunFailed(runId, "test failure");
+			}
+			stateManager.rehydrateFromSession({ getEntries: () => entries });
+			clock.mockReturnValue(200_000);
+			const { api, tools } = createFakeApi();
+			registerTeamRunTool(api, { stateManager });
+			const peek = tools.get("team_runs");
+			const status = tools.get("runtime_status");
+			if (!peek || !status) throw new Error("status tools missing");
+
+			const peekResult = await peek.execute("test", {});
+			const listResult = await status.execute("test", {});
+			const detailResult = await status.execute("test", { id: runId });
+			const line = `${runId} ${statusLine}`;
+			expect(peekResult.content[0]?.text).toBe(`${summary}\n${line}`);
+			expect(listResult.content[0]?.text).toBe(`${summary}\nteam_run ${line}`);
+			expect(detailResult.content[0]?.text).toBe(`team_run ${line}`);
+			expect(listResult.details.summary).toEqual(peekResult.details.summary);
+			expect(peekResult.details.runs).toEqual(stateManager.list());
+			expect(listResult.details.entities).toEqual(stateManager.list().map((run) => ({ kind: "team_run", ...run })));
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it("preserves distinct empty status messages", async () => {
+		const { api, tools } = createFakeApi();
+		registerTeamRunTool(api, { stateManager: new TeamStateManager() });
+		const peek = tools.get("team_runs");
+		const status = tools.get("runtime_status");
+		if (!peek || !status) throw new Error("status tools missing");
+		expect((await peek.execute("test", {})).content[0]?.text).toBe("No team runs in current session state.");
+		expect((await status.execute("test", {})).content[0]?.text).toBe("No runtime team_run entities in current session state.");
 	});
 
 	it("team_stop omits runId to stop the deterministic newest active run", async () => {

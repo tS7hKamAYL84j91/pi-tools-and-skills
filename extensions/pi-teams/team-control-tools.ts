@@ -72,16 +72,15 @@ export function summarizeTeamRuns(runs: TeamRunSnapshot[]): TeamRunSummary {
 	return summary;
 }
 
-function formatTeamRunSummary(runs: TeamRunSnapshot[]): string {
-	const summary = summarizeTeamRuns(runs);
+function formatTeamRunSummary(summary: TeamRunSummary): string {
 	return `summary total=${summary.total} running=${summary.running} pending=${summary.pending} stopping=${summary.stopping} completed=${summary.completed} failed=${summary.failed} stopped=${summary.stopped} artifacts=${summary.artifacts}`;
 }
 
-function formatTeamRunRuntimeLine(run: TeamRunSnapshot): string {
+function formatTeamRunLine(run: TeamRunSnapshot): string {
 	const counts = classifyNodes(run.nodes);
 	const current = currentNode(run);
 	const currentText = current ? `${run.phases[run.phases.length - 1] ?? "-"}/${current.nodeId}` : "-";
-	return `team_run ${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
+	return `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
 }
 
 export function requestTeamRunStop(stateManager: TeamStateManager, runtime: RuntimeControlPlane, runId: string | undefined, reason: string) {
@@ -149,7 +148,7 @@ export function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamSta
 						runningWorkers: node.runningWorkers,
 						stalled: computeNodeStall(node).stalled,
 					}));
-					return ok(formatTeamRunRuntimeLine(run), {
+					return ok(`team_run ${formatTeamRunLine(run)}`, {
 						entities: (entity ? [entity] : [Object.assign({ kind: "team_run" as const }, run)]),
 						nodes: nodeDetailsList,
 						phases: run.phases.length,
@@ -159,9 +158,9 @@ export function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamSta
 				}
 				return ok(`team_run ${params.id} ${entity?.status ?? "unknown"}`, { entities: (entity ? [entity] : [Object.assign({ kind: "team_run" as const }, run)]) });
 			}
-			const lines = runs.map(formatTeamRunRuntimeLine);
+			const lines = runs.map((run) => `team_run ${formatTeamRunLine(run)}`);
 			const summary = summarizeTeamRuns(runs);
-			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No runtime team_run entities in current session state.", { entities: (entities.length > 0 ? entities : runs.map((run) => Object.assign({ kind: "team_run" as const }, run))), summary });
+			return ok(lines.length ? [formatTeamRunSummary(summary), ...lines].join("\n") : "No runtime team_run entities in current session state.", { entities: (entities.length > 0 ? entities : runs.map((run) => Object.assign({ kind: "team_run" as const }, run))), summary });
 		},
 	});
 	pi.registerTool({
@@ -183,13 +182,9 @@ export function registerTeamControlTools(pi: ExtensionAPI, stateManager: TeamSta
 		parameters: Type.Object({}),
 		async execute() {
 			const runs = stateManager.list();
-			const lines = runs.map((run) => {
-				const counts = classifyNodes(run.nodes);
-				const current = currentNode(run);
-				const currentText = current ? `${run.phases[run.phases.length - 1] ?? "-"}/${current.nodeId}` : "-";
-				return `${run.id} ${run.team} ${run.protocol} ${run.status} phases=${run.phases.length} nodes=${run.nodes.length} (running=${counts.running} stalled=${counts.stalled} done=${counts.done}) details=${run.details.length} current=${currentText}${run.error ? ` error=${run.error}` : ""}`;
-			});
-			return ok(lines.length ? [formatTeamRunSummary(runs), ...lines].join("\n") : "No team runs in current session state.", { runs, summary: summarizeTeamRuns(runs) });
+			const lines = runs.map(formatTeamRunLine);
+			const summary = summarizeTeamRuns(runs);
+			return ok(lines.length ? [formatTeamRunSummary(summary), ...lines].join("\n") : "No team runs in current session state.", { runs, summary });
 		},
 	});
 	pi.registerTool({
