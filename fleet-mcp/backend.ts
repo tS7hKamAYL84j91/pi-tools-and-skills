@@ -38,7 +38,7 @@ export class DirectMaildirBackend implements FleetBackend {
 	}
 
 	async register(displayName: string): Promise<AgentRecord> {
-		return registerExternalAgent(this.registrarConfig, { name: displayName }, await visibleNativePeers(this.config.nativeAgentId));
+		return registerExternalAgent(this.registrarConfig, { name: displayName }, await visibleNativePeers(this.config.nativeAgentId, this.config.nativeSession));
 	}
 
 	unregister(agentId: string): Promise<void> {
@@ -46,7 +46,7 @@ export class DirectMaildirBackend implements FleetBackend {
 	}
 
 	async agents(): Promise<AgentRecord[]> {
-		return [...await listExternalAgents(this.registrarConfig), ...await visibleNativePeers(this.config.nativeAgentId)];
+		return [...await listExternalAgents(this.registrarConfig), ...await visibleNativePeers(this.config.nativeAgentId, this.config.nativeSession)];
 	}
 
 	async send(

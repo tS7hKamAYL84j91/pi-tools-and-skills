@@ -7,6 +7,14 @@ export interface FleetLimits {
 	maxAckIds: number;
 }
 
+/** Operator-approved root session; PID pinning permits reload, not process replacement. */
+export interface NativeSessionBinding {
+	pid: number;
+	sessionFile: string;
+	cwd: string;
+	visibility: "global";
+}
+
 export interface FleetConfig {
 	transport: "stdio" | "http" | "both";
 	workspaceAlias: string;
@@ -20,6 +28,7 @@ export interface FleetConfig {
 	httpPrincipals?: HttpPrincipal[];
 	/** Real native reference identity; absent means no native access. */
 	nativeAgentId?: string;
+	nativeSession?: NativeSessionBinding;
 	principal: string;
 	limits: FleetLimits;
 }
@@ -36,6 +45,7 @@ const CONFIG_KEYS = new Set([
 	"bearerToken",
 	"httpPrincipals",
 	"nativeAgentId",
+	"nativeSession",
 	"principal",
 	"limits",
 ]);
@@ -72,6 +82,20 @@ function absolutePath(value: unknown, name: string): string {
 	return resolve(path);
 }
 
+function parseNativeSession(value: unknown): NativeSessionBinding | undefined {
+	if (value === undefined) return undefined;
+	const raw = objectRecord(value, "nativeSession");
+	if (Object.keys(raw).some((key) => !["pid", "sessionFile", "cwd", "visibility"].includes(key)) || raw.visibility !== "global") {
+		throw new Error("Invalid nativeSession");
+	}
+	return {
+		pid: positiveInteger(raw.pid, 0, "nativeSession.pid"),
+		sessionFile: absolutePath(raw.sessionFile, "nativeSession.sessionFile"),
+		cwd: absolutePath(raw.cwd, "nativeSession.cwd"),
+		visibility: "global",
+	};
+}
+
 export function parseFleetConfig(input: unknown): FleetConfig {
 	const raw = objectRecord(input, "fleet configuration");
 	for (const key of Object.keys(raw)) {
@@ -100,6 +124,8 @@ export function parseFleetConfig(input: unknown): FleetConfig {
 
 	const nativeAgentId = raw.nativeAgentId === undefined ? undefined : requiredString(raw.nativeAgentId, "nativeAgentId");
 	if (nativeAgentId && (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(nativeAgentId) || nativeAgentId.startsWith("ext-"))) throw new Error("Invalid nativeAgentId");
+	const nativeSession = parseNativeSession(raw.nativeSession);
+	if (nativeAgentId && nativeSession) throw new Error("Ambiguous native visibility configuration");
 	const limits = raw.limits === undefined ? {} : objectRecord(raw.limits, "limits");
 	for (const key of Object.keys(limits)) {
 		if (!LIMIT_KEYS.has(key)) throw new Error(`Unknown limit: ${key}`);
@@ -117,6 +143,7 @@ export function parseFleetConfig(input: unknown): FleetConfig {
 		bearerToken: typeof bearerToken === "string" ? bearerToken : undefined,
 		...(httpPrincipals ? { httpPrincipals } : {}),
 		...(nativeAgentId ? { nativeAgentId } : {}),
+		...(nativeSession ? { nativeSession } : {}),
 		principal: raw.principal === undefined ? "local-stdio" : requiredString(raw.principal, "principal"),
 		limits: {
 			pageSize: positiveInteger(limits.pageSize, 20, "pageSize", 100),

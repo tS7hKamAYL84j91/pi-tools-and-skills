@@ -5,6 +5,7 @@ import { join } from "node:path";
 import * as z from "zod/v4";
 import { REGISTRY_DIR, STALE_MS, isPidAlive, type AgentRecord } from "../lib/agent-registry.js";
 import { assertPrivateFileForRead, auditPrivateDirectory } from "../lib/private-local-mode.js";
+import type { NativeSessionBinding } from "./config.js";
 import { canSee } from "../extensions/pi-panopticon/registry/visibility.js";
 
 const idSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
@@ -13,6 +14,7 @@ const nativeRecord = z.object({
 	pid: z.number().int().positive(), cwd: z.string(), model: z.string(),
 	startedAt: z.number().finite(), heartbeat: z.number().finite(),
 	status: z.enum(["running", "waiting", "done", "blocked", "stalled", "terminated", "unknown"]),
+	sessionFile: z.string().optional(),
 	parentId: idSchema.optional(), visibility: z.enum(["global", "scoped"]).optional(),
 });
 
@@ -37,8 +39,9 @@ async function readNativeRecord(file: string): Promise<AgentRecord | undefined> 
 }
 
 /** Missing grant means no native access; invalid/stale grants fail closed. */
-export async function visibleNativePeers(referenceId: string | undefined): Promise<AgentRecord[]> {
-	if (!referenceId) return [];
+export async function visibleNativePeers(referenceId: string | undefined, session?: NativeSessionBinding): Promise<AgentRecord[]> {
+	if (referenceId && session) throw new Error("Ambiguous native visibility configuration");
+	if (!referenceId && !session) return [];
 	if (!auditPrivateDirectory(REGISTRY_DIR).ok) throw new Error("Native registry unavailable");
 	const files = (await readdir(REGISTRY_DIR)).filter((file) => /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(file));
 	const records: AgentRecord[] = [];
@@ -46,7 +49,15 @@ export async function visibleNativePeers(referenceId: string | undefined): Promi
 		const record = await readNativeRecord(file);
 		if (record) records.push(record);
 	}
-	const reference = records.find((record) => record.id === referenceId);
+	// Match identity before checking authority/freshness: duplicates fail closed,
+	// including stale records left during reload. Never choose by display name.
+	const candidates = records.filter((record) => session
+		? record.pid === session.pid && record.sessionFile === session.sessionFile && record.cwd === session.cwd
+		: record.id === referenceId);
+	const reference = candidates.length === 1 ? candidates[0] : undefined;
+	if (session && (reference?.visibility !== session.visibility || reference.parentId !== undefined)) {
+		throw new Error("Native visibility reference unavailable");
+	}
 	if (!reference || Date.now() - reference.heartbeat > STALE_MS || reference.status === "terminated" || reference.status === "done") throw new Error("Native visibility reference unavailable");
 	return records.filter((record) => canSee(reference, record));
 }

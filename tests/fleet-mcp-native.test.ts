@@ -34,7 +34,7 @@ beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "fleet-native-"));
 	paths.registry = join(root, "agents");
 	await mkdir(paths.registry, { mode: 0o700 });
-	native = makeAgentRecord({ id: "native-root", name: "internal-root", pid: process.pid, kind: "pi", visibility: "global", status: "waiting" });
+	native = makeAgentRecord({ id: "native-root", name: "internal-root", pid: process.pid, sessionFile: join(root, "session.jsonl"), kind: "pi", visibility: "global", status: "waiting" });
 	await saveNative(native);
 	createMaildirTransport().init(native.id);
 });
@@ -49,9 +49,74 @@ function config(nativeAgentId?: string) {
 	return parseFleetConfig({ workspaceAlias: "test", workspaceRoot: join(root, "workspace"), mailboxRoot: join(root, "mail"), stateDir: join(root, "state"), principal: "external-test", ...(nativeAgentId ? { nativeAgentId } : {}) });
 }
 
+function sessionBinding() {
+	return { pid: native.pid, sessionFile: native.sessionFile!, cwd: native.cwd, visibility: "global" as const };
+}
+
 describe("Fleet native discovery and delivery", () => {
+	it("recovers across reference disappearance and reload without changing recipient authority", async () => {
+		const peer = { ...native, id: "scoped-peer", sessionFile: join(root, "peer.jsonl"), visibility: "scoped" as const, parentId: "parent" };
+		await saveNative(peer);
+		const settings = parseFleetConfig({ ...config(), nativeSession: sessionBinding() });
+		const gateway = new FleetGateway(settings);
+		await gateway.init();
+		const before = await gateway.agents("test");
+		await rm(join(paths.registry, `${native.id}.json`));
+		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+		const reloaded = { ...native, id: "reloaded-root" };
+		await saveNative(reloaded);
+		const after = await gateway.agents("test");
+		expect(before).toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: native.id }), expect.objectContaining({ agent_id: peer.id })]));
+		expect(after).toHaveLength(before.length);
+		expect(after).toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: reloaded.id }), expect.objectContaining({ agent_id: peer.id })]));
+		await saveNative(native);
+		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+		await rm(join(paths.registry, `${native.id}.json`));
+		await expect(gateway.agents("test")).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: reloaded.id }), expect.objectContaining({ agent_id: peer.id })]));
+	});
+
+	it("reports HTTP 503 during a missing reference and returns to 200 after reload", async () => {
+		const settings = { ...config(), nativeSession: sessionBinding(), transport: "http" as const, bearerToken: randomBytes(24).toString("hex"), listenPort: 0 };
+		const gateway = new FleetGateway(settings);
+		await gateway.init();
+		const server = await startHttp(settings, gateway);
+		const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/readyz`;
+		try {
+			expect((await fetch(url)).status).toBe(200);
+			await rm(join(paths.registry, `${native.id}.json`));
+			expect((await fetch(url)).status).toBe(503);
+			await saveNative({ ...native, id: "after-reload" });
+			expect((await fetch(url)).status).toBe(200);
+		} finally {
+			await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+		}
+	});
+
+	it.each([
+		{ sessionFile: "/wrong/session.jsonl" }, { cwd: "/wrong/workspace" }, { pid: 2147483647 },
+		{ visibility: "scoped" as const }, { visibility: undefined }, { parentId: "parent" },
+		{ heartbeat: Date.now() - 60_000 }, { status: "done" as const }, { status: "terminated" as const },
+	])("rejects mismatched or unavailable session references: %j", async (change) => {
+		const binding = sessionBinding();
+		await saveNative({ ...native, ...change });
+		await expect(visibleNativePeers(undefined, binding)).rejects.toThrow("reference unavailable");
+	});
+
+	it("does not transfer authority to a same-name session", async () => {
+		const binding = sessionBinding();
+		await rm(join(paths.registry, `${native.id}.json`));
+		await saveNative({ ...native, id: "name-collision", sessionFile: join(root, "different.jsonl") });
+		await expect(visibleNativePeers(undefined, binding)).rejects.toThrow("reference unavailable");
+	});
+
+	it("validates operator bindings and rejects ambiguous or scoped configuration", () => {
+		expect(() => parseFleetConfig({ ...config(native.id), nativeSession: sessionBinding() })).toThrow("Ambiguous");
+		for (const change of [{ pid: undefined }, { pid: 0 }, { sessionFile: "relative" }, { cwd: "relative" }, { visibility: "scoped" }, { name: native.name }]) {
+			expect(() => parseFleetConfig({ ...config(), nativeSession: { ...sessionBinding(), ...change } })).toThrow();
+		}
+	});
 	it.each(["sdk", ...(process.env.PI_FLEET_MCP_MCPORTER_SMOKE === "1" ? ["mcporter"] : [])])("closes a %s HTTP → native tools → inbox/ack loop", async (clientKind) => {
-		const settings = { ...config(native.id), transport: "http" as const, bearerToken: randomBytes(24).toString("hex"), listenPort: 0 };
+		const settings = { ...config(), nativeSession: sessionBinding(), transport: "http" as const, bearerToken: randomBytes(24).toString("hex"), listenPort: 0 };
 		vi.stubEnv("PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT", settings.workspaceRoot);
 		vi.stubEnv("PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT", settings.mailboxRoot);
 		const gateway = new FleetGateway(settings);

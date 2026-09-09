@@ -29,7 +29,8 @@ The build emits uniform ESM into ignored `dist/`; the runtime entrypoint is `dis
 | `bearerToken` | legacy HTTP | At least 16 characters; provision through the deployment secret boundary |
 | `principal` | no | Fixed stdio/legacy HTTP identity (`local-stdio` by default) |
 | `httpPrincipals` | mapped HTTP | Nonempty array of `{principal, bearerToken}`; up to 100 unique principals and credentials; mutually exclusive with `bearerToken` |
-| `nativeAgentId` | no | Real, live native reference ID granting its existing Panopticon visibility; absent means external-only |
+| `nativeAgentId` | no | Real, live native reference ID granting its existing Panopticon visibility; mutually exclusive with `nativeSession` |
+| `nativeSession` | no | Operator-approved `{pid, sessionFile, cwd, visibility: "global"}` binding; absolute paths, positive PID, global root only. Neither binding means external-only |
 | `limits.pageSize` | no | Default 20, maximum 100 |
 | `limits.maxTextBytes` | no | Default 32768 UTF-8 bytes |
 | `limits.maxAckIds` | no | Default and maximum 100 |
@@ -46,7 +47,21 @@ State schema version 2 stores registrations, generation-scoped send receipts and
 
 ## Native interoperability
 
-Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Panopticon today. Missing/stale references fail closed; native session restart requires operator rebinding. The file-backed Panopticon registry is the only native backend.
+Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Panopticon today. Missing/stale references fail closed. The file-backed Panopticon registry is the only native backend.
+
+For reload-safe access, an operator can replace `nativeAgentId` with `nativeSession`
+using the verified reference's exact PID, absolute session file, absolute working
+directory, and explicit `visibility: "global"`. Every query requires exactly one
+matching live-process registry record, a fresh heartbeat, and global visibility
+with no parent. The native ID and display name are not identity anchors. A
+same-process `/reload` can replace the registry ID without changing this grant;
+a missing reference temporarily reports unavailable and recovers when it returns.
+Duplicate matches (even stale ones), changed scope, and identity mismatches fail
+closed. Scoped references must retain ID binding because their family permissions
+are ID-dependent. Process replacement/reboot still requires operator rebinding;
+this does not grant automatic authority to a new process or a same-name agent.
+Registry records remain trusted same-user local metadata, not cryptographically
+authenticated identities.
 
 Native recipients must already have a Maildir inbox. Configure opted-in native Pi sessions with `PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT` matching Fleet's host `workspaceRoot` and `PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT` matching `mailboxRoot`. Panopticon refreshes that validated source before peer tools resolve names, so registration/removal is visible without restarting sessions. Defaults retain the native session's workspace and standard persistent mailbox root. These settings require operator approval; Fleet never changes them.
 
