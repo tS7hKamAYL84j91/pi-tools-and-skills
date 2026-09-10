@@ -5,6 +5,61 @@ or manage Kanban from this project's agents; Gravitas owns the optional
 human-facing overview. Board updates, planning documents, and status logs are
 not prerequisites for doing the work. Do not duplicate execution records here.
 
+## Kanban overlay UX improvements
+
+Requested by Jim after the overlay UX review (2026-09-09). Priorities below follow
+that review. Keep the board's guards (ownership, WIP, completion gates) intact and
+reuse the tool-layer transactions rather than duplicating board logic in the overlay.
+
+### P1 — unblock the overlay's main jobs
+
+- [x] **Resolve the hardcoded overlay identity** (`extensions/pi-kanban/overlay.ts`, `OVERLAY_AGENT = "lead"`). Every overlay mutation is logged as `lead` regardless of who acts. Decide and implement an accurate operator identity (explicit setting or derived label) before adding claim/complete keys, since ownership guards and audit attribution depend on it.
+  Implemented: overlay mutations are recorded under `KANBAN_OVERLAY_AGENT` (default `operator`); ownership guards use the same identity, and the tool layer keeps its own explicit agents.
+- [x] **Add claim/complete keys** (`c` claim next eligible todo task, `x` complete the selected owned in-progress task). Route through the same claim/complete transactions and gates the tools use; never bypass WIP, owner, or configured check evidence. Denied actions must explain why in the status line.
+  Implemented: `c`/`x` route through `claimTask`/`completeTask` (shared with the tools); WIP, owner, verification, and gate denials show explanatory status lines; evidence/gate-required completion is denied from the overlay with a pointer to `kanban_complete`.
+- [x] **Add create and block keys** (`n` new task via the editor, `b` block with a reason prompt, `B` or `u` unblock). Keep confirmations only where the tools require them.
+  Implemented: `n` inline title prompt (backlog, medium, next free id), `b` inline reason prompt, `u` unblock. Delete keeps its explicit `y` confirmation.
+- [x] **Fix the empty-board dead end** (`overlay-render.ts`). Offer `n` directly instead of telling the human to ask an agent for `kanban_create`.
+  Implemented: "No tasks yet — press n to create one (or use kanban_create)."
+
+### P2 — feedback and affordance
+
+- [x] **Confirm successful actions** (`overlay.ts`). Moves, deletes, claims, and completions should show a transient status line (e.g. `Moved T-12 → todo`); today only failures produce output.
+  Implemented: every action flashes a transient status; any next board key clears it.
+- [x] **Surface dead live-refresh** (`overlay.ts`, `startWatcher`). When `board.log` cannot be watched, show a stale/live indicator in the header instead of failing silently.
+  Implemented: header shows `· live` / `· not live` from the watcher state (`overlay-watcher.ts`).
+- [x] **Align delete confirmation keys** (`overlay.ts`, `lib/tui-confirmation.ts`). The dialog shows `[y] confirm · [esc/n] cancel` but the controller also accepts Enter; either render the Enter affordance or remove it so the destructive default does not share the key that opens detail views.
+  Implemented: Enter no longer confirms deletion; only explicit `y` proceeds. Covered by controller regression test.
+- [x] **Make the low-priority badge visible** (`overlay-render.ts`, `priorityBadge`). Blank is indistinguishable from unset; use a dim marker.
+  Implemented: dim `+ ` badge for `low`.
+- [x] **Guard move-picker no-ops** (`overlay.ts`). Picking the task's current column should not fire a transaction; consider arrow-key support alongside `1`/`2`.
+  Implemented: current-column choice is a guarded no-op; `↑/↓` + enter select alongside `1`/`2`.
+
+### P3 — polish (optional)
+
+- [x] Cycle board theme in-session (`t` key: default/focus/mono) instead of requiring `KANBAN_BOARD_THEME` before startup.
+- [x] Mention `q` in the detail-view hint; wrap or drop the header hint line on narrow terminals instead of truncating title+hints together.
+  Implemented: detail hint lists esc/←/q; header split into title row (with live indicator) plus two dedicated hint rows that degrade independently.
+- [ ] Mouse click-to-select column/row — deliberately skipped: pi-tui mouse support would grow the controller for little gain; reopen if it becomes valuable.
+
+### Validation
+
+- [x] Extend `tests/kanban/pi-kanban-overlay-controller.test.ts` (and render/selection tests where applicable): new keys, denied-action messages, identity attribution, watcher-off indicator, confirmation key handling.
+  15 controller tests now cover claim/complete (guards + ownership + verification), create, block/unblock, delete keys, move no-op, identity env, live indicator, theme cycling, and transient status; render/snapshot tests cover the standard confirmation wording.
+- [x] Reuse disposable board fixtures; never touch live `KANBAN_DIR` boards or Gravitas's deployment.
+- [x] Run `npm run check`, `npm test`, `git diff --check`. Preserve tool-layer behavior, permissions, and persistence compatibility; report pre-existing warnings separately.
+
+Implemented as a concern split the architecture tests prescribe: `overlay.ts` (controller, 229 lines) +
+`overlay-input-state.ts` (interaction state) + `overlay-input.ts` (submode keys) +
+`overlay-board-keys.ts` (navigation/action keys) + `overlay-actions.ts` (action wrappers with
+status messages) + `overlay-watcher.ts` (live refresh) + `overlay-dialogs.ts` (modal renderers).
+Claim/complete/block/unblock/create transactions were extracted so tools and overlay share one
+guard implementation (`claim-tools.ts` keeps claim conflict handling per policy;
+`board-actions.ts` hosts the rest). Tool result text, event formats, and board.log compatibility
+are unchanged; existing tool tests pass unmodified. All 167 kanban + architecture tests pass
+including line budgets, hotspot reduction, cohesion (LCOM96b < 0.8), parameter limits, and
+cycle rules. Pre-existing repo lint warnings (13) are unchanged and unrelated.
+
 ## Code-health follow-ups
 
 Requested by Jim after the repository-wide review. Keep fixes bounded and preserve

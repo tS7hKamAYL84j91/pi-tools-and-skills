@@ -1,5 +1,8 @@
 /**
  * Cross-process transaction boundary for the authoritative Kanban event log.
+ *
+ * Only this module appends to board.log. Shared mutation semantics live in
+ * board-actions.ts (and claim-tools.ts for claim conflict handling).
  */
 
 import { EventLog, textEventLogCodec } from "../../lib/event-log.js";

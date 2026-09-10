@@ -1,57 +1,57 @@
 /**
- * Kanban TUI Overlay — controller + state machine.
+ * Kanban TUI Overlay — controller.
  *
- * Owns the FSWatcher subscription, the modal state machine
- * (board / detail / confirm-delete / move-picker), keyboard dispatch,
- * and routes mutations through the shared board.ts helpers so the log
- * format and column-rule validation stay in one place.
- *
- * All rendering lives in overlay-render.ts as pure functions — this
- * file is the controller, that file is the view.
+ * Owns the board data, live refresh (overlay-watcher.ts), theme, and
+ * rendering dispatch. Interaction state and key handling live in
+ * overlay-input-state.ts / overlay-input.ts / overlay-board-keys.ts;
+ * mutations run through overlay-actions and the shared board
+ * transactions; rendering lives in overlay-render.ts and
+ * overlay-dialogs.ts.
  */
 
-import { type FSWatcher, watch } from "node:fs";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { matchesKey } from "@earendil-works/pi-tui";
 import {
 	type BoardState,
-	boardLogPath,
 	parseBoard,
 	type TaskState,
 } from "./board.js";
-import { deleteTask, moveTask } from "./board-transactions.js";
+import { type OverlayActions, overlayAgentId } from "./overlay-actions.js";
+import {
+	renderBlockPrompt,
+	renderConfirmDelete,
+	renderMovePicker,
+	renderNewTaskPrompt,
+} from "./overlay-dialogs.js";
+import {
+	handleOverlayInput,
+	restoreOverlaySelection,
+} from "./overlay-input.js";
+import {
+	activeColumn,
+	createOverlayInputState,
+	type OverlayInputDeps,
+	type OverlayInputState,
+} from "./overlay-input-state.js";
 import {
 	buildOverlayViewModel,
 	DONE_LIMIT,
 	tasksInColumn,
 } from "./overlay-model.js";
+import { type Column, renderBoard, renderDetail } from "./overlay-render.js";
 import {
-	COLUMNS,
-	type Column,
-	renderBoard,
-	renderConfirmDelete,
-	renderDetail,
-	renderMovePicker,
-} from "./overlay-render.js";
-import { applyKanbanTheme, kanbanThemeHelp, kanbanThemeName } from "./theme.js";
-import {
-	clampScrollOffset,
-	restoreSelectedRow,
-	selectedTaskId,
-} from "./overlay-selection.js";
-
-const DEBOUNCE_MS = 150;
-
-/** Hardcoded agent label written to board.log when the overlay mutates state. */
-const OVERLAY_AGENT = "lead";
-
-type Mode = "board" | "detail" | "confirm-delete" | "move-picker" | "search";
+	applyKanbanTheme,
+	type KanbanThemeName,
+	kanbanThemeHelp,
+	kanbanThemeName,
+	nextKanbanTheme,
+} from "./theme.js";
+import { clampScrollOffset } from "./overlay-selection.js";
+import { BoardLogWatcher } from "./overlay-watcher.js";
 
 export class KanbanOverlay implements Component {
 	private board: BoardState;
-	private activeColIdx = 2; // in-progress by default
-	private activeRow = 0;
+	private input: OverlayInputState;
 	private scroll: Record<Column, number> = {
 		backlog: 0,
 		todo: 0,
@@ -59,332 +59,134 @@ export class KanbanOverlay implements Component {
 		blocked: 0,
 		done: 0,
 	};
-	private mode: Mode = "board";
-	private statusMessage = "";
-	private filterQuery = "";
-	private filterSelectionId: string | undefined;
-	private pendingDeleteTask: TaskState | null = null;
-	private pendingMoveTask: TaskState | null = null;
-	private watcher: FSWatcher | null = null;
-	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private readonly baseTheme: Theme;
+	private themeName: KanbanThemeName;
+	private theme: Theme;
+	private readonly deps: OverlayInputDeps;
+	private readonly actions: OverlayActions;
+	private readonly boardWatcher: BoardLogWatcher;
 
 	constructor(
 		private tui: TUI,
-		private theme: Theme,
+		baseTheme: Theme,
 		initialBoard: BoardState,
 		private done: (result: null) => void,
+		options: { agent?: string; cwd?: string } = {},
 	) {
 		this.board = initialBoard;
-		this.theme = applyKanbanTheme(theme);
-		this.startWatcher();
-	}
-
-	// ── Lifecycle ───────────────────────────────────────────────
-
-	private startWatcher(): void {
-		try {
-			this.watcher = watch(boardLogPath(), () => {
-				// Capture identity at event time, before debounce or another input can move the row.
-				const selectedId =
-					this.mode === "search"
-						? (this.filterSelectionId ?? this.selectedTask()?.id)
-						: this.selectedTask()?.id;
-				if (this.debounceTimer) clearTimeout(this.debounceTimer);
-				this.debounceTimer = setTimeout(() => {
-					parseBoard()
-						.then((b) => {
-							// A direct rewrite can briefly expose an empty log between truncate and write.
-							// Keep the last complete board until a populated parse arrives.
-							if (b.tasks.size === 0 && this.board.tasks.size > 0) return;
-							this.board = b;
-							if (this.mode === "search") this.restoreFilterSelection();
-							else this.restoreSelection(selectedId);
-							this.tui.requestRender();
-						})
-						.catch(() => {
-							/* non-fatal */
-						});
-				}, DEBOUNCE_MS);
-			});
-			this.watcher.unref();
-		} catch {
-			/* board.log may not exist yet — no live refresh */
-		}
+		this.input = createOverlayInputState();
+		this.baseTheme = baseTheme;
+		this.themeName = kanbanThemeName();
+		this.theme = applyKanbanTheme(baseTheme, this.themeName);
+		this.actions = {
+			agent: options.agent ?? overlayAgentId(),
+			cwd: options.cwd ?? process.cwd(),
+			flash: (message) => this.flash(message),
+		};
+		this.deps = {
+			ui: this.actions,
+			tasksIn: (col) => this.tasksIn(col),
+			selectedTask: () => this.selectedTask(),
+			requestRender: () => this.tui.requestRender(),
+			close: () => this.done(null),
+			cycleTheme: () => this.cycleTheme(),
+		};
+		this.boardWatcher = new BoardLogWatcher({
+			captureSelection: () =>
+				this.input.mode === "search"
+					? (this.input.filterSelectionId ?? this.selectedTask()?.id)
+					: this.selectedTask()?.id,
+			onBoard: (board, selectedId) => {
+				this.board = board;
+				restoreOverlaySelection(this.input, this.deps, selectedId);
+				this.tui.requestRender();
+			},
+			onWatchError: () => this.tui.requestRender(),
+		});
 	}
 
 	dispose(): void {
-		if (this.debounceTimer) clearTimeout(this.debounceTimer);
-		if (this.watcher) {
-			this.watcher.close();
-			this.watcher = null;
-		}
-		this.pendingDeleteTask = null;
-		this.pendingMoveTask = null;
+		this.boardWatcher.dispose();
 	}
 
 	// ── Data helpers ────────────────────────────────────────────
 
-	private activeColumn(): Column {
-		return COLUMNS[this.activeColIdx] ?? "in-progress";
-	}
-
 	private tasksIn(col: Column): TaskState[] {
-		const out = this.filteredTasksIn(col);
+		const out = tasksInColumn(this.board, col, this.input.filterQuery, false);
 		if (col === "done") return out.slice(-DONE_LIMIT).reverse();
 		return out;
 	}
 
-	private filteredTasksIn(col: Column): TaskState[] {
-		return tasksInColumn(this.board, col, this.filterQuery, false);
-	}
-
 	private selectedTask(): TaskState | undefined {
-		return this.tasksIn(this.activeColumn())[this.activeRow];
-	}
-
-	private restoreSelection(selectedId: string | undefined): void {
-		const tasks = this.tasksIn(this.activeColumn());
-		if (tasks.length === 0) {
-			const nextColumnIndex = COLUMNS.findIndex(
-				(column) => this.tasksIn(column).length > 0,
-			);
-			if (nextColumnIndex >= 0) this.activeColIdx = nextColumnIndex;
-			this.activeRow = 0;
-			return;
-		}
-		this.activeRow = restoreSelectedRow(tasks, selectedId, this.activeRow);
+		return this.tasksIn(activeColumn(this.input))[this.input.activeRow];
 	}
 
 	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
-		const col = this.activeColumn();
-		const tasks = colTasks[this.activeColIdx] ?? [];
+		const col = activeColumn(this.input);
+		const tasks = colTasks[this.input.activeColIdx] ?? [];
 		this.scroll[col] = clampScrollOffset(
 			tasks.length,
-			this.activeRow,
+			this.input.activeRow,
 			visibleRows,
 			this.scroll[col],
 		);
 	}
 
-	// ── Input handling ──────────────────────────────────────────
+	flash(message: string): void {
+		this.input.statusMessage = message;
+		this.tui.requestRender();
+	}
+
+	private cycleTheme(): void {
+		this.themeName = nextKanbanTheme(this.themeName);
+		this.theme = applyKanbanTheme(this.baseTheme, this.themeName);
+		this.flash(`Theme: ${this.themeName} (${kanbanThemeHelp()})`);
+	}
+
+	// ── Input ───────────────────────────────────────────────────
 
 	handleInput(data: string): void {
-		switch (this.mode) {
-			case "detail":
-				this.handleDetailInput(data);
-				return;
-			case "confirm-delete":
-				this.handleConfirmDeleteInput(data);
-				return;
-			case "move-picker":
-				this.handleMovePickerInput(data);
-				return;
-			case "search":
-				this.handleSearchInput(data);
-				return;
-			default:
-				this.handleBoardInput(data);
-				return;
-		}
+		handleOverlayInput(this.input, this.deps, data);
 	}
 
-	private handleDetailInput(data: string): void {
-		if (
-			matchesKey(data, "escape") ||
-			matchesKey(data, "q") ||
-			matchesKey(data, "left")
-		) {
-			this.mode = "board";
-			this.statusMessage = "";
-		}
-	}
-
-	private handleConfirmDeleteInput(data: string): void {
-		if (
-			matchesKey(data, "escape") ||
-			matchesKey(data, "q") ||
-			matchesKey(data, "n")
-		) {
-			this.mode = "board";
-			this.pendingDeleteTask = null;
-			this.statusMessage = "";
-			return;
-		}
-		if (
-			matchesKey(data, "y") ||
-			matchesKey(data, "enter") ||
-			matchesKey(data, "return")
-		) {
-			void this.executeDelete();
-		}
-	}
-
-	private handleMovePickerInput(data: string): void {
-		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
-			this.mode = "board";
-			this.pendingMoveTask = null;
-			this.statusMessage = "";
-			return;
-		}
-		if (matchesKey(data, "1")) void this.executeMove("backlog");
-		else if (matchesKey(data, "2")) void this.executeMove("todo");
-	}
-
-	private handleSearchInput(data: string): void {
-		if (matchesKey(data, "escape")) {
-			this.filterQuery = "";
-			this.mode = "board";
-			this.statusMessage = "";
-			this.restoreFilterSelection();
-			this.filterSelectionId = undefined;
-			return;
-		}
-		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-			this.mode = "board";
-			this.statusMessage = "";
-			this.restoreFilterSelection();
-			this.filterSelectionId = undefined;
-			return;
-		}
-		if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
-			this.filterQuery = this.filterQuery.slice(0, -1);
-			this.restoreFilterSelection();
-			return;
-		}
-		if (data.length === 1 && data >= " ") {
-			this.filterQuery += data;
-			this.restoreFilterSelection();
-		}
-	}
-
-	private restoreFilterSelection(): void {
-		this.activeRow = restoreSelectedRow(
-			this.tasksIn(this.activeColumn()),
-			this.filterSelectionId,
-			this.activeRow,
-		);
-	}
-
-	private handleBoardInput(data: string): void {
-		if (matchesKey(data, "escape") || matchesKey(data, "q")) {
-			this.done(null);
-			return;
-		}
-
-		if (matchesKey(data, "/")) {
-			this.filterSelectionId = selectedTaskId(
-				this.tasksIn(this.activeColumn()),
-				this.activeRow,
-			);
-			this.mode = "search";
-			this.statusMessage = "";
-			return;
-		}
-
-		if (matchesKey(data, "d")) {
-			const task = this.selectedTask();
-			if (!task) return;
-			if (task.col === "in-progress") {
-				this.statusMessage = "Delete unavailable: complete the task first";
-				return;
-			}
-			this.pendingDeleteTask = task;
-			this.mode = "confirm-delete";
-			return;
-		}
-
-		if (matchesKey(data, "m")) {
-			const task = this.selectedTask();
-			if (!task) return;
-			if (task.col !== "backlog" && task.col !== "todo") {
-				this.statusMessage = `Move unavailable: ${task.col} tasks cannot be moved`;
-				return;
-			}
-			this.pendingMoveTask = task;
-			this.mode = "move-picker";
-			return;
-		}
-
-		if (matchesKey(data, "left") || matchesKey(data, "shift+tab")) {
-			this.activeColIdx =
-				(this.activeColIdx + COLUMNS.length - 1) % COLUMNS.length;
-			this.activeRow = 0;
-			return;
-		}
-
-		if (matchesKey(data, "right") || matchesKey(data, "tab")) {
-			this.activeColIdx = (this.activeColIdx + 1) % COLUMNS.length;
-			this.activeRow = 0;
-			return;
-		}
-
-		if (matchesKey(data, "up")) {
-			if (this.activeRow > 0) this.activeRow--;
-			return;
-		}
-
-		if (matchesKey(data, "down")) {
-			const tasks = this.tasksIn(this.activeColumn());
-			if (this.activeRow < tasks.length - 1) this.activeRow++;
-			return;
-		}
-
-		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-			if (this.selectedTask()) this.mode = "detail";
-		}
-	}
-
-	// ── Mutations (delegated to board.ts helpers) ────────────────
-
-	private async executeDelete(): Promise<void> {
-		const task = this.pendingDeleteTask;
-		this.pendingDeleteTask = null;
-		this.mode = "board";
-		if (!task) return;
-
-		try {
-			await deleteTask(task.id, OVERLAY_AGENT);
-			this.statusMessage = "";
-		} catch (err) {
-			this.statusMessage = err instanceof Error ? err.message : String(err);
-		}
-		this.tui.requestRender();
-	}
-
-	private async executeMove(to: "backlog" | "todo"): Promise<void> {
-		const task = this.pendingMoveTask;
-		this.pendingMoveTask = null;
-		this.mode = "board";
-		if (!task) return;
-
-		try {
-			await moveTask(task.id, OVERLAY_AGENT, to);
-			this.statusMessage = "";
-		} catch (err) {
-			this.statusMessage = err instanceof Error ? err.message : String(err);
-		}
-		this.tui.requestRender();
-	}
-
-	// ── Rendering (delegated to overlay-render.ts) ──────────────
+	// ── Rendering (delegated to overlay-render/dialogs) ─────────
 
 	render(width: number): string[] {
-		switch (this.mode) {
+		switch (this.input.mode) {
 			case "detail":
 				return renderDetail(this.selectedTask(), width, this.theme);
 			case "confirm-delete":
-				return renderConfirmDelete(this.pendingDeleteTask, width, this.theme);
+				return renderConfirmDelete(
+					this.input.pendingDeleteTask,
+					width,
+					this.theme,
+				);
 			case "move-picker":
-				return renderMovePicker(this.pendingMoveTask, width, this.theme);
+				return renderMovePicker(
+					this.input.pendingMoveTask,
+					width,
+					this.theme,
+					this.input.movePickerIndex,
+				);
+			case "new-task":
+				return renderNewTaskPrompt(this.input.newTaskTitle, width, this.theme);
+			case "block-reason":
+				return renderBlockPrompt(
+					this.input.pendingBlockTask,
+					this.input.blockReason,
+					width,
+					this.theme,
+				);
 			default: {
 				const view = buildOverlayViewModel({
 					board: this.board,
-					activeCol: this.activeColumn(),
-					activeRow: this.activeRow,
+					activeCol: activeColumn(this.input),
+					activeRow: this.input.activeRow,
 					scroll: this.scroll,
-					statusMessage: this.statusMessage,
-					filterQuery: this.filterQuery,
-					isFiltering: this.mode === "search",
+					statusMessage: this.input.statusMessage,
+					filterQuery: this.input.filterQuery,
+					isFiltering: this.input.mode === "search",
+					liveRefresh: this.boardWatcher.live,
 				});
 				// Keep controller scrolling in sync with the rows supplied to the view.
 				const maxRows = Math.max(
@@ -416,11 +218,12 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 	}
 
 	ctx.ui.notify(
-		`Kanban board theme: ${kanbanThemeName()} (${kanbanThemeHelp()})`,
+		`Kanban board theme: ${kanbanThemeName()} (${kanbanThemeHelp()}) · actions recorded as "${overlayAgentId()}"`,
 		"info",
 	);
 	await ctx.ui.custom<null>(
-		(tui, theme, _kb, done) => new KanbanOverlay(tui, theme, board, done),
+		(tui, theme, _kb, done) =>
+			new KanbanOverlay(tui, theme, board, done, { cwd: ctx.cwd }),
 		{
 			overlay: true,
 			overlayOptions: {

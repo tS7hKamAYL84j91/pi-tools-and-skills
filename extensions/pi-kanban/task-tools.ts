@@ -12,8 +12,11 @@ import {
 	rewriteTaskFile,
 	sanitiseAgent,
 	validateTaskId,
-	writeTaskFile,
 } from "./board.js";
+import {
+	blockTask,
+	createTask,
+} from "./board-actions.js";
 import { withBoardTransaction } from "./board-transactions.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
 import { registerKanbanComplete } from "./complete-tool.js";
@@ -57,28 +60,13 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 			const { task_id, agent, title, priority } = params;
 			const tags = params.tags ?? "";
 			const description = params.description ?? "";
-			validateTaskId(task_id);
-			await withBoardTransaction((board) => {
-				if (board.tasks.has(task_id)) {
-					throw new Error(`Task ID ${task_id} already exists`);
-				}
-				const descPart = description
-					? ` description="${escapeLogValue(description)}"`
-					: "";
-				return {
-					events: [
-						`${nowZ()} CREATE ${task_id} ${sanitiseAgent(agent)} title="${escapeLogValue(title)}" priority="${priority}" tags="${escapeLogValue(tags)}"${descPart}`,
-					],
-					result: undefined,
-				};
-			});
-			// Write task markdown file
-			await writeTaskFile(task_id, {
+			await createTask({
+				taskId: task_id,
+				agent,
 				title,
-				description,
 				priority,
 				tags,
-				agent,
+				description,
 			});
 			return ok(`Created ${task_id}: ${title} (priority=${priority})`, {
 				task_id,
@@ -109,26 +97,7 @@ function registerKanbanBlock(pi: ExtensionAPI): void {
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, reason } = params;
-			await withBoardTransaction((board) => {
-				const task = board.tasks.get(task_id);
-				if (!task) {
-					throw new Error(`Task ${task_id} not found`);
-				}
-				if (task.col !== "in-progress") {
-					throw new Error(
-						`Task ${task_id} is not in-progress (col=${task.col})`,
-					);
-				}
-				const timestamp = nowZ();
-				const safeAgent = sanitiseAgent(agent);
-				return {
-					events: [
-						`${timestamp} BLOCK ${task_id} ${safeAgent} reason="${escapeLogValue(reason)}"`,
-						`${timestamp} MOVE ${task_id} ${safeAgent} from=in-progress to=blocked`,
-					],
-					result: undefined,
-				};
-			});
+			await blockTask(task_id, agent, reason);
 			return ok(`Blocked ${task_id}: ${reason}`, { task_id, agent, reason });
 		},
 	});

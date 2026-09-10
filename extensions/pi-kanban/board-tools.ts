@@ -6,7 +6,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
-import { nowZ, parseBoard, sanitiseAgent, snapshotPath } from "./board.js";
+import { nowZ, parseBoard, snapshotPath } from "./board.js";
+import { unblockTask } from "./board-actions.js";
 import {
 	deleteTask,
 	moveTask,
@@ -72,26 +73,7 @@ async function executeUnblock(
 	reason?: string,
 ): Promise<ToolResult> {
 	const resolvedReason = reason ?? "";
-	await withBoardTransaction((board) => {
-		const task = board.tasks.get(task_id);
-		if (!task) {
-			throw new Error(`Task ${task_id} not found`);
-		}
-		if (task.col !== "blocked") {
-			throw new Error(
-				`Task ${task_id} is in '${task.col}' column, not 'blocked'. Cannot unblock.`,
-			);
-		}
-		const timestamp = nowZ();
-		const safeAgent = sanitiseAgent(agent);
-		return {
-			events: [
-				`${timestamp} UNBLOCK ${task_id} ${safeAgent} resolution="${resolvedReason}"`,
-				`${timestamp} MOVE ${task_id} ${safeAgent} from=blocked to=todo`,
-			],
-			result: undefined,
-		};
-	});
+	await unblockTask(task_id, agent, resolvedReason);
 	return ok(`Unblocked ${task_id}, moved to todo`, {
 		task_id,
 		agent,

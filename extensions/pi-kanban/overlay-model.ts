@@ -25,6 +25,8 @@ export interface OverlayViewModel {
 	filterQuery?: string;
 	isFiltering?: boolean;
 	hiddenDoneCount?: number;
+	/** Whether the board refreshes live from board.log; shown in the header. */
+	liveRefresh?: boolean;
 }
 
 function taskMatchesFilter(task: TaskState, query: string): boolean {
@@ -62,6 +64,7 @@ interface OverlayViewModelInput {
 	statusMessage: string;
 	filterQuery: string;
 	isFiltering: boolean;
+	liveRefresh: boolean;
 }
 
 /** Builds the renderer input without reading the terminal or filesystem. */
@@ -81,6 +84,7 @@ export function buildOverlayViewModel(
 		statusMessage: input.statusMessage,
 		filterQuery: input.filterQuery,
 		isFiltering: input.isFiltering,
+		liveRefresh: input.liveRefresh,
 		hiddenDoneCount: Math.max(0, allDone.length - visibleDone),
 	};
 }

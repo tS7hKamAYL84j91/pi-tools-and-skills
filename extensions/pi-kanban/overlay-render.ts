@@ -8,7 +8,6 @@
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { renderDestructiveConfirmationOverlay } from "../../lib/tui-confirmation.js";
 import type { TaskState } from "./board.js";
 import { WIP_LIMIT } from "./board.js";
 
@@ -67,6 +66,8 @@ function priorityBadge(priority: string, theme: Theme): string {
 			return theme.fg("warning", "! ");
 		case "medium":
 			return theme.fg("accent", "· ");
+		case "low":
+			return theme.fg("dim", "+ ");
 		default:
 			return theme.fg("dim", "  ");
 	}
@@ -102,19 +103,19 @@ function wrap(text: string, width: number): string[] {
 	return out.length > 0 ? out : [""];
 }
 
-function frameTop(innerW: number, theme: Theme): string {
+export function frameTop(innerW: number, theme: Theme): string {
 	return theme.fg("border", `  ╭${"─".repeat(innerW + 2)}╮`);
 }
 
-function frameMiddle(innerW: number, theme: Theme): string {
+export function frameMiddle(innerW: number, theme: Theme): string {
 	return theme.fg("border", `  ├${"─".repeat(innerW + 2)}┤`);
 }
 
-function frameBottom(innerW: number, theme: Theme): string {
+export function frameBottom(innerW: number, theme: Theme): string {
 	return theme.fg("border", `  ╰${"─".repeat(innerW + 2)}╯`);
 }
 
-function modalLine(content: string, innerW: number, theme: Theme): string {
+export function modalLine(content: string, innerW: number, theme: Theme): string {
 	return (
 		theme.fg("border", "  │ ") +
 		padVisible(content, innerW) +
@@ -122,7 +123,7 @@ function modalLine(content: string, innerW: number, theme: Theme): string {
 	);
 }
 
-function modalTruncatedLine(
+export function modalTruncatedLine(
 	content: string,
 	innerW: number,
 	theme: Theme,
@@ -134,7 +135,7 @@ function modalTruncatedLine(
 	);
 }
 
-function noSelectionLines(innerW: number, theme: Theme): string[] {
+export function noSelectionLines(innerW: number, theme: Theme): string[] {
 	return [
 		modalLine(
 			theme.fg("muted", " No task selected — press esc to return."),
@@ -145,11 +146,11 @@ function noSelectionLines(innerW: number, theme: Theme): string[] {
 	];
 }
 
-function modalInnerWidth(width: number): number {
+export function modalInnerWidth(width: number): number {
 	return Math.max(20, width - FRAME_WIDTH);
 }
 
-function taskDisplayTitle(task: TaskState): string {
+export function taskDisplayTitle(task: TaskState): string {
 	return stripDangerousEscapes(task.title || task.id);
 }
 
@@ -212,16 +213,32 @@ export function renderBoard(
 	// Check for empty board
 	const totalTasks = view.colTasks.reduce((sum, col) => sum + col.length, 0);
 
-	// Top border + header
+	// Top border + header: title on its own row so narrow terminals keep both.
 	const title = theme.bold(theme.fg("accent", " Kanban Board"));
 	const sortIndicator = theme.fg("dim", " [priority ↓]");
-	const hints = theme.fg(
-		"dim",
-		"← → column   ↑ ↓ row   / filter   enter detail   d delete   m move   esc/q close",
-	);
+	const liveText = view.liveRefresh === false ? theme.fg("warning", " · not live") : theme.fg("dim", " · live");
 	lines.push(frameTop(totalInner, theme));
-	const headerRow = padVisible(`${title}${sortIndicator}   ${hints}`, totalInner);
-	lines.push(modalTruncatedLine(headerRow, totalInner, theme));
+	lines.push(modalTruncatedLine(`${title}${sortIndicator}${liveText}`, totalInner, theme));
+	lines.push(
+		modalTruncatedLine(
+			theme.fg(
+				"dim",
+				" ← → column · ↑ ↓ row · / filter · enter detail · esc/q close",
+			),
+			totalInner,
+			theme,
+		),
+	);
+	lines.push(
+		modalTruncatedLine(
+			theme.fg(
+				"dim",
+				" c claim · x complete · n new · b block · u unblock · m move · d delete · t theme",
+			),
+			totalInner,
+			theme,
+		),
+	);
 	if (view.filterQuery || view.isFiltering) {
 		const marker = view.isFiltering ? "Filter:" : "Filtered:";
 		const query = view.filterQuery || "";
@@ -257,7 +274,7 @@ export function renderBoard(
 	if (totalTasks === 0) {
 		const emptyText = view.filterQuery
 			? ` No matching tasks for "${view.filterQuery}".`
-			: " No tasks yet. Use kanban_create to add a task.";
+			: " No tasks yet — press n to create one (or use kanban_create).";
 		const emptyMsg = theme.fg("muted", emptyText);
 		lines.push(modalTruncatedLine(emptyMsg, totalInner, theme));
 	} else {
@@ -353,74 +370,7 @@ export function renderDetail(
 	}
 
 	lines.push(frameMiddle(innerW, theme));
-	lines.push(modalLine(theme.fg("dim", " esc/← back to board"), innerW, theme));
+	lines.push(modalLine(theme.fg("dim", " esc/←/q back to board"), innerW, theme));
 	lines.push(frameBottom(innerW, theme));
-	return lines;
-}
-
-// ── Confirm-delete view ─────────────────────────────────────────
-
-export function renderConfirmDelete(
-	task: TaskState | null,
-	width: number,
-	theme: Theme,
-): string[] {
-	if (!task) {
-		const innerW = modalInnerWidth(width);
-		return [frameTop(innerW, theme), ...noSelectionLines(innerW, theme)];
-	}
-
-	return renderDestructiveConfirmationOverlay(
-		{
-			title: "Delete Task?",
-			subject: `${task.id} ${taskDisplayTitle(task)}`,
-			details: ["Appends a DELETE event; history remains in the board log."],
-			severity: "warning",
-		},
-		width,
-		theme,
-	);
-}
-
-// ── Move-picker view ────────────────────────────────────────────
-
-export function renderMovePicker(
-	task: TaskState | null,
-	width: number,
-	theme: Theme,
-): string[] {
-	const lines: string[] = [];
-	const innerW = modalInnerWidth(width);
-
-	lines.push(frameTop(innerW, theme));
-
-	if (!task) {
-		lines.push(...noSelectionLines(innerW, theme));
-		return lines;
-	}
-
-	const title = theme.bold(theme.fg("accent", " Move Task"));
-	lines.push(modalLine(title, innerW, theme));
-	lines.push(frameMiddle(innerW, theme));
-
-	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)} (currently: ${task.col})`;
-	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
-	lines.push(modalLine("", innerW, theme));
-
-	const backlogOption =
-		task.col === "backlog"
-			? theme.fg("dim", "[1] backlog (current)")
-			: theme.fg("text", "[1] backlog");
-	const todoOption =
-		task.col === "todo"
-			? theme.fg("dim", "[2] todo (current)")
-			: theme.fg("text", "[2] todo");
-	const options = `  ${backlogOption}   ${todoOption}`;
-	lines.push(modalLine(options, innerW, theme));
-
-	const prompt = theme.fg("warning", "  Press 1 or 2 to move, esc to cancel");
-	lines.push(modalLine(prompt, innerW, theme));
-	lines.push(frameBottom(innerW, theme));
-
 	return lines;
 }

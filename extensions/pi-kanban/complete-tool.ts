@@ -5,16 +5,8 @@ import { runGateCommand } from "../../lib/gate-command.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
-import {
-	escapeLogValue,
-	getTask,
-	nowZ,
-	sanitiseAgent,
-	type TaskState,
-	type TaskVerificationCheck,
-} from "./board.js";
-import { withBoardTransaction } from "./board-transactions.js";
-import { formatChecks } from "./board-event-handlers.js";
+import { getTask, type TaskVerificationCheck } from "./board.js";
+import { completeTask, validateTaskComplete } from "./board-actions.js";
 import { CHECK_ITEM_SCHEMA, TASK_ID_SCHEMA } from "./schemas.js";
 
 function normalizeChecks(raw: unknown): TaskVerificationCheck[] {
@@ -27,50 +19,6 @@ function normalizeChecks(raw: unknown): TaskVerificationCheck[] {
 			exitCode: typeof c.exit_code === "number" ? c.exit_code : typeof c.exitCode === "number" ? c.exitCode : -1,
 		}))
 		.filter((c) => c.command || c.result);
-}
-
-function hasPassingChecks(checks: TaskVerificationCheck[]): boolean {
-	return checks.length > 0 && checks.every((c) => c.exitCode === 0);
-}
-
-function verificationRequired(task: TaskState, explicitChecks?: TaskVerificationCheck[]): boolean {
-	return task.verificationRequired || process.env.KANBAN_REQUIRE_CHECK_EVIDENCE === "1" || Boolean(explicitChecks?.length);
-}
-
-function validateTaskComplete(
-	task: TaskState,
-	taskId: string,
-	agent: string,
-	checks: TaskVerificationCheck[],
-): void {
-	if (task.col !== "in-progress") {
-		throw new Error(`Task ${taskId} is not in-progress (col=${task.col})`);
-	}
-	if (task.claimAgent !== sanitiseAgent(agent)) {
-		throw new Error(
-			`Agent ${agent} is not the claimed owner of ${taskId} (claimed by ${task.claimAgent || "nobody"})`,
-		);
-	}
-	if (verificationRequired(task, checks) && !hasPassingChecks(checks)) {
-		throw new Error(
-			`Task ${taskId} requires verification evidence with all exit_code=0 before completion`,
-		);
-	}
-}
-
-interface LogLineInputs {
-	readonly timestamp: string;
-	readonly taskId: string;
-	readonly agent: string;
-	readonly duration: string;
-	readonly needsVerification: boolean;
-	readonly checks: TaskVerificationCheck[];
-}
-
-function completeLogLine(inputs: LogLineInputs): string {
-	const verificationPayload = inputs.needsVerification ? " verification_required=true" : "";
-	const checkPayload = inputs.checks.length > 0 ? ` checks="${escapeLogValue(formatChecks(inputs.checks))}"` : "";
-	return `${inputs.timestamp} COMPLETE ${inputs.taskId} ${sanitiseAgent(inputs.agent)} duration=${inputs.duration}${verificationPayload}${checkPayload}`;
 }
 
 export function registerKanbanComplete(pi: ExtensionAPI): void {
@@ -120,30 +68,7 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 					);
 				}
 			}
-			await withBoardTransaction((board) => {
-				const task = board.tasks.get(task_id);
-				if (!task) {
-					throw new Error(`Task ${task_id} not found`);
-				}
-				validateTaskComplete(task, task_id, agent, checks);
-				const needsVerification = verificationRequired(task, checks);
-				const timestamp = nowZ();
-				const safeAgent = sanitiseAgent(agent);
-				return {
-					events: [
-						completeLogLine({
-							timestamp,
-							taskId: task_id,
-							agent,
-							duration,
-							needsVerification,
-							checks,
-						}),
-						`${timestamp} MOVE ${task_id} ${safeAgent} from=in-progress to=done`,
-					],
-					result: undefined,
-				};
-			});
+			await completeTask(task_id, agent, { duration, checks });
 			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, {
 				task_id,
 				agent,

@@ -7,6 +7,7 @@ const THEME_ENV = "KANBAN_BOARD_THEME";
 const THEMES = ["default", "focus", "mono"] as const;
 
 type KanbanThemeName = (typeof THEMES)[number];
+export type { KanbanThemeName };
 
 const THEME_COLOR_MAP: Record<KanbanThemeName, Partial<Record<ThemeColor, ThemeColor>>> = {
 	default: {},
@@ -38,6 +39,12 @@ export function kanbanThemeName(): KanbanThemeName {
 
 export function kanbanThemeHelp(): string {
 	return `${THEME_ENV}=default|focus|mono`;
+}
+
+/** Next theme in display order, for in-overlay cycling. */
+export function nextKanbanTheme(name: KanbanThemeName): KanbanThemeName {
+	const index = THEMES.indexOf(name);
+	return THEMES[(index + 1) % THEMES.length] as KanbanThemeName;
 }
 
 export function applyKanbanTheme(theme: Theme, name: KanbanThemeName = kanbanThemeName()): Theme {

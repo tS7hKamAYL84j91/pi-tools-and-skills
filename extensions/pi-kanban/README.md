@@ -97,8 +97,22 @@ and the last seven days of completed-task notes. Older details remain in backups
 ## TUI and notifications
 
 - `/kanban` or Ctrl+Shift+K: open the live board overlay.
+- Overlay keys: `← →` column, `↑ ↓` row, `/` filter, `enter` detail, `c` claim
+  (selected todo task, else next eligible), `x` complete an owned in-progress
+  task, `n` new task (backlog, medium priority), `b` block with reason, `u`
+  unblock, `m` move, `d` delete, `t` cycle theme, `esc/q` close.
+- Overlay actions run the same transactions and guards as the tools: WIP
+  limits, claim ownership, and check-evidence/gate requirements are enforced.
+  Completion that requires verification evidence or a configured gate is
+  denied from the overlay with a pointer to `kanban_complete`.
+- Overlay mutations are recorded under the `KANBAN_OVERLAY_AGENT` identity
+  (default `operator`); set it to attribute human board actions accurately.
+- Deletion confirms only on explicit `y` (no Enter); moving to the task's
+  current column is a guarded no-op. The header shows a live/not-live refresh
+  indicator.
 - `/kanban-watch on|off`: configure board-change follow-ups.
-- `KANBAN_BOARD_THEME`: `default`, `focus`, or `mono`; this changes display only.
+- `KANBAN_BOARD_THEME`: `default`, `focus`, or `mono`; also cycleable in-session
+  with `t`. This changes display only.
 
 The widget updates on file changes without invoking an LLM. Automatic follow-up
 messages are off by default. The `kanban.watchNotifications` setting is read from

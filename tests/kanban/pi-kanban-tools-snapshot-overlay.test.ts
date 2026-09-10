@@ -323,6 +323,7 @@ describe("overlay guard logic", () => {
 			} as unknown as Theme,
 			await parseBoard(),
 			() => undefined,
+			{ agent: "lead" },
 		);
 		overlay.handleInput("\x1b[C");
 		overlay.handleInput("d");

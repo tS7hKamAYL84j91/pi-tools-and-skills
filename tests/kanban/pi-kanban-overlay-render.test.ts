@@ -6,7 +6,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import type { TaskState } from "../../extensions/pi-kanban/board.js";
-import { renderConfirmDelete } from "../../extensions/pi-kanban/overlay-render.js";
+import { renderConfirmDelete } from "../../extensions/pi-kanban/overlay-dialogs.js";
 
 const fakeTheme = {
 	fg: (_name: string, text: string) => text,

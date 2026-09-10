@@ -8,10 +8,12 @@ import {
 import {
 	COLUMNS,
 	renderBoard,
-	renderConfirmDelete,
 	renderDetail,
-	renderMovePicker,
 } from "../../extensions/pi-kanban/overlay-render.js";
+import {
+	renderConfirmDelete,
+	renderMovePicker,
+} from "../../extensions/pi-kanban/overlay-dialogs.js";
 import {
 	bucketSnapshotTasks,
 	visibleDoneTasks,
@@ -219,6 +221,7 @@ describe("kanban snapshot/overlay rendering", () => {
 			statusMessage: "",
 			filterQuery: "visible",
 			isFiltering: false,
+			liveRefresh: true,
 		});
 		expect(view.colTasks[COLUMNS.indexOf("todo")]).toEqual([task]);
 	});
