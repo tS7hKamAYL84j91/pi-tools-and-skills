@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "@sinclair/typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { loadFileWatchConfig } from "./config.js";
+import { openFileWatchSettings } from "./settings-overlay.js";
 import { createRuntimeState, formatWatchList, renderStatus, startFileWatch, stopFileWatch } from "./watcher.js";
 
 export default function fileWatchExtension(pi: ExtensionAPI): void {
@@ -56,10 +57,18 @@ export default function fileWatchExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("file-watch", {
-		description: "Reload file watch state and refresh the status line. Use file_watch_list for details.",
+		description: "Open the file-watch settings overlay (edit watched files and options); reloads first. Non-interactive sessions refresh the status line.",
 		handler: async (_args, ctx) => {
 			await reload(ctx);
-			if (ctx.hasUI && state.config) ctx.ui.setStatus("file-watch", renderStatus(state.config, state.files, state));
+			if (!state.config) return;
+			if (ctx.mode === "tui") {
+				await openFileWatchSettings(pi, ctx, state);
+				return;
+			}
+			if (ctx.hasUI) {
+				ctx.ui.setStatus("file-watch", renderStatus(state.config, state.files, state));
+				ctx.ui.notify(formatWatchList(state.files) || "No files watched. Use /file-watch in an interactive session to add some.", "info");
+			}
 		},
 	});
 }

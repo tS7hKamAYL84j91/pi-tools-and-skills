@@ -8,16 +8,38 @@ Small configurable watcher for explicitly listed files.
 - Debounces file-system events, then batches notifications to reduce autosave noise.
 - Emits metadata-only hidden `firewatch_batch` messages; it does not open overlays or inject file contents.
 - Allows symlink or external workspace targets by config.
-- Provides `/file-watch`, `file_watch_list`, and `file_watch_reload`.
+- Provides `/file-watch` (settings overlay in interactive sessions), `file_watch_list`, and `file_watch_reload`.
+
+## Interactive settings
+
+In an interactive session `/file-watch` opens a settings overlay built on Pi's
+`SettingsList`:
+
+- **Watched files** — enter opens the list editor: `↑/↓` select, `d` delete,
+  `a` add a path with native text input (cursor editing, bracketed paste),
+  `esc` back. Duplicate paths and lists beyond 32 entries are rejected.
+- **Trigger agent turn / Allow external paths / Follow symlinks** — on/off
+  toggles.
+- **Hash byte limit / Debounce / Batch window** — value cycles (1k…64k,
+  250ms…5s, off/30s/2m/5m/10m).
+
+Every change is persisted immediately to `.pi/file-watch.json` (unknown keys
+preserved, atomic write) and the watchers reload on the spot; the status line
+refreshes with the new state. Rapid edits are serialized so concurrent saves
+cannot clobber each other. Non-interactive sessions keep the previous
+behavior: `/file-watch` reloads and refreshes the status line.
 
 ## What this does NOT do
 
 - No recursive discovery or scans.
-- No file writes or state files.
+- No file writes or state files outside the settings overlay's documented config save.
 - No automatic path creation.
 - No shell execution.
 - No file-body injection; agents should use read tools when content is needed.
-- No overlay/editor UX; `/file-watch` only refreshes the status line, and details stay in `file_watch_list`.
+- No file writes except the explicit `/file-watch` overlay edits described above;
+  the watchers themselves never write files or state.
+- No overlay in non-interactive sessions; `/file-watch` there only reloads and
+  refreshes the status line, and details stay in `file_watch_list`.
 
 ## Configuration
 
