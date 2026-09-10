@@ -101,15 +101,31 @@ and the last seven days of completed-task notes. Older details remain in backups
   (selected todo task, else next eligible), `x` complete an owned in-progress
   task, `n` new task (backlog, medium priority), `b` block with reason, `u`
   unblock, `m` move, `d` delete, `t` cycle theme, `esc/q` close.
-- Overlay actions run the same transactions and guards as the tools: WIP
-  limits, claim ownership, and check-evidence/gate requirements are enforced.
-  Completion that requires verification evidence or a configured gate is
-  denied from the overlay with a pointer to `kanban_complete`.
+- Overlay actions run the same transactions and orchestration as the tools: WIP
+  limits, claim ownership, and check-evidence requirements are enforced by the
+  shared board actions. Completion shares one path (`orchestrateTaskCompletion`):
+  a configured `KANBAN_GATE_COMMAND` **runs** from the overlay and its failure
+  denies completion; verification-evidence-required completion is denied from
+  the overlay (it cannot supply checks) with the shared validation message.
+- Overlay claims never reassign: a stale selection that another actor claimed
+  in the meantime is denied inside the locked transaction (`claimOnly`), so
+  the overlay cannot steal work. One board mutation runs at a time — repeated
+  keys while an operation is pending are rejected as busy — and closing the
+  overlay aborts an in-flight gate without committing (events already appended
+  to board.log are retained).
 - Overlay mutations are recorded under the `KANBAN_OVERLAY_AGENT` identity
-  (default `operator`); set it to attribute human board actions accurately.
+  (default `operator`). This is an audit label for attribution, not an
+  authenticated identity; set it to attribute human board actions accurately.
+- Creation allocates the next free id under the board lock. A task-file write
+  failure is reported as a partial success (the board log is authoritative);
+  do not retry creation.
 - Deletion confirms only on explicit `y` (no Enter); moving to the task's
-  current column is a guarded no-op. The header shows a live/not-live refresh
-  indicator.
+  current column is a guarded no-op. The header's live indicator is truthful:
+  it shows `not live` while the log is unwatchable or unreadable and recovers
+  when parsing succeeds again; local actions still refresh the view.
+- Inline prompts embed Pi's native text input (cursor editing, word
+  operations, undo, bracketed paste). The board renders a bounded row window
+  with per-column scrolling; long detail content scrolls with `↑ ↓`.
 - `/kanban-watch on|off`: configure board-change follow-ups.
 - `KANBAN_BOARD_THEME`: `default`, `focus`, or `mono`; also cycleable in-session
   with `t`. This changes display only.

@@ -16,6 +16,7 @@ import {
 	activeColumn,
 	type OverlayInputDeps,
 	type OverlayInputState,
+	openPrompt,
 } from "./overlay-input-state.js";
 
 export function handleBoardKey(
@@ -41,8 +42,7 @@ export function handleBoardKey(
 	}
 
 	if (matchesKey(data, "n")) {
-		state.mode = "new-task";
-		state.newTaskTitle = "";
+		openPrompt(state, "new-task");
 		return;
 	}
 
@@ -52,13 +52,18 @@ export function handleBoardKey(
 	}
 
 	if (matchesKey(data, "c")) {
-		void claimFromOverlay(deps.ui, deps.selectedTask());
+		deps.runOperation("claim", () =>
+			claimFromOverlay(deps.ui, deps.selectedTask()),
+		);
 		return;
 	}
 
 	if (matchesKey(data, "x")) {
 		const task = deps.selectedTask();
-		if (task) void completeFromOverlay(deps.ui, task);
+		if (!task) return;
+		deps.runOperation("complete", (signal) =>
+			completeFromOverlay(deps.ui, task, signal),
+		);
 		return;
 	}
 
@@ -66,14 +71,14 @@ export function handleBoardKey(
 		const task = deps.selectedTask();
 		if (!task) return;
 		state.pendingBlockTask = task;
-		state.blockReason = "";
-		state.mode = "block-reason";
+		openPrompt(state, "block-reason");
 		return;
 	}
 
 	if (matchesKey(data, "u")) {
 		const task = deps.selectedTask();
-		if (task) void unblockFromOverlay(deps.ui, task);
+		if (!task) return;
+		deps.runOperation("unblock", () => unblockFromOverlay(deps.ui, task));
 		return;
 	}
 
@@ -129,6 +134,9 @@ export function handleBoardKey(
 	}
 
 	if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-		if (deps.selectedTask()) state.mode = "detail";
+		if (deps.selectedTask()) {
+			state.mode = "detail";
+			state.detailScroll = 0;
+		}
 	}
 }

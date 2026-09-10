@@ -1,157 +1,14 @@
 /**
  * Kanban claim and assignment tool registrations.
- *
- * Also hosts the shared claim transaction (withBoardTransaction) so claim
- * conflict handling — UNCLAIM+CLAIM reassignment without compensating
- * appends — stays beside the tool surface that depends on it.
+ * The claim transaction and conflict policy live in board-actions.ts.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
-import {
-	nowZ,
-	PRIORITY_ORDER,
-	sanitiseAgent,
-	validateTaskId,
-	WIP_LIMIT,
-} from "./board.js";
-import { withBoardTransaction } from "./board-transactions.js";
+import { WIP_LIMIT } from "./board.js";
+import { claimTask, type ClaimOutcome } from "./board-actions.js";
 import { TASK_ID_SCHEMA } from "./schemas.js";
-
-type ClaimOutcome =
-	| {
-			status: "claimed";
-			taskId: string;
-			title: string;
-			priority: string;
-			tags: string;
-			expires: string;
-	  }
-	| {
-			status: "reassigned";
-			taskId: string;
-			oldAgent: string;
-			newAgent: string;
-			expires: string;
-	  }
-	| { status: "task-not-found"; taskId: string }
-	| { status: "wrong-column"; taskId: string; col: string }
-	| { status: "wip-limit"; taskId: string; wip: number }
-	| { status: "no-task" };
-
-/** Claim a specific or auto-picked todo task, or reassign an in-progress task. */
-export async function claimTask(
-	agent: string,
-	targetTaskId?: string,
-	model?: string,
-): Promise<ClaimOutcome> {
-	return withBoardTransaction((board) => {
-		const modelSuffix = model ? ` model=${model}` : "";
-		let taskId = targetTaskId;
-		let reassigningFrom = "";
-
-		if (taskId) {
-			validateTaskId(taskId);
-			const task = board.tasks.get(taskId);
-			if (!task || task.deleted) {
-				return {
-					events: [],
-					result: { status: "task-not-found", taskId } as ClaimOutcome,
-				};
-			}
-			if (task.col === "in-progress") {
-				reassigningFrom = task.claimAgent || "unknown";
-			} else if (task.col !== "todo") {
-				return {
-					events: [],
-					result: {
-						status: "wrong-column",
-						taskId,
-						col: task.col,
-					} as ClaimOutcome,
-				};
-			}
-		} else {
-			let bestId = "";
-			let bestPriority = 99;
-			for (const candidateId of board.order) {
-				const candidate = board.tasks.get(candidateId);
-				if (!candidate || candidate.col !== "todo" || candidate.claimed) {
-					continue;
-				}
-				const priority = PRIORITY_ORDER[candidate.priority] ?? 99;
-				if (
-					priority < bestPriority ||
-					(priority === bestPriority &&
-						parseInt(candidateId.slice(2), 10) < parseInt(bestId.slice(2), 10))
-				) {
-					bestPriority = priority;
-					bestId = candidateId;
-				}
-			}
-			if (!bestId) {
-				return {
-					events: [],
-					result: { status: "no-task" } as ClaimOutcome,
-				};
-			}
-			taskId = bestId;
-		}
-
-		if (!reassigningFrom) {
-			const wip = [...board.tasks.values()].filter(
-				(task) => task.col === "in-progress",
-			).length;
-			if (wip >= WIP_LIMIT) {
-				return {
-					events: [],
-					result: {
-						status: "wip-limit",
-						taskId: taskId as string,
-						wip,
-					} as ClaimOutcome,
-				};
-			}
-		}
-
-		const timestamp = nowZ();
-		const expires = new Date(Date.now() + 7_200_000).toISOString();
-		const safeAgent = sanitiseAgent(agent);
-		if (reassigningFrom) {
-			return {
-				events: [
-					`${timestamp} UNCLAIM ${taskId} ${sanitiseAgent(reassigningFrom)}`,
-					`${timestamp} CLAIM ${taskId} ${safeAgent} expires=${expires}${modelSuffix}`,
-				],
-				result: {
-					status: "reassigned",
-					taskId: taskId as string,
-					oldAgent: reassigningFrom,
-					newAgent: agent,
-					expires,
-				} as ClaimOutcome,
-			};
-		}
-
-		const task = board.tasks.get(taskId);
-		const fromColumn = task?.col ?? "todo";
-		return {
-			events: [
-				`${timestamp} CLAIM ${taskId} ${safeAgent} expires=${expires}${modelSuffix}`,
-				`${timestamp} MOVE ${taskId} ${safeAgent} from=${fromColumn} to=in-progress`,
-			],
-			result: {
-				status: "claimed",
-				taskId: taskId as string,
-				title: task?.title ?? "",
-				priority: task?.priority ?? "medium",
-				tags: task?.tags ?? "",
-				expires,
-			} as ClaimOutcome,
-		};
-	});
-}
 
 /** Map a shared claim outcome to the historical tool result text and details. */
 function claimOutcomeToResult(
@@ -174,6 +31,20 @@ function claimOutcomeToResult(
 					task_id: outcome.taskId,
 					result: "WRONG_COLUMN",
 					col: outcome.col,
+					claimed: false,
+				},
+			);
+		case "in-progress-owner":
+			// Tools may reassign; claimOnly is an overlay policy, so this
+			// outcome never reaches the tool surface. Treated as a reassignment
+			// precondition failure defensively.
+			return ok(
+				`WRONG_COLUMN: ${outcome.taskId} is in 'in-progress' (owner ${outcome.owner})`,
+				{
+					agent,
+					task_id: outcome.taskId,
+					result: "WRONG_COLUMN",
+					col: "in-progress",
 					claimed: false,
 				},
 			);
@@ -215,10 +86,6 @@ function claimOutcomeToResult(
 					claimed: true,
 				},
 			);
-		default: {
-			const exhaustive: never = outcome;
-			throw new Error(`Unexpected claim outcome: ${String(exhaustive)}`);
-		}
 	}
 }
 

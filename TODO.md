@@ -5,6 +5,108 @@ or manage Kanban from this project's agents; Gravitas owns the optional
 human-facing overview. Board updates, planning documents, and status logs are
 not prerequisites for doing the work. Do not duplicate execution records here.
 
+## Kanban — refactoring required after implementation review
+
+Review of `00f293e`: the existing passing tests are a baseline, not a correctness
+sign-off. The smaller `overlay.ts` masked substantial overall growth (seven new
+modules). Fix behavioral gaps before adding features; keep live boards untouched.
+
+Completed 2026-09-10 on top of `00f293e`; the checklist records the delivered
+state. Live boards and deployments were never touched; all fixtures are
+ephemeral.
+
+### P1 — correctness and lifecycle
+
+- [x] **Prevent stale-view claim reassignment** (`overlay-actions.ts`, `board-actions.ts`).
+  Implemented: `claimTask` gained a `claimOnly` policy option enforced inside
+  the locked transaction; the overlay always sets it, tools keep reassignment.
+  A stale selection that another actor claimed yields an `in-progress-owner`
+  outcome with the owner's name — no UNCLAIM/CLAIM is appended. Regression:
+  controller test seeds a competing claim after the view renders and asserts
+  the overlay is denied and steals nothing.
+- [x] **Single-source completion orchestration** (`board-actions.ts`,
+  `complete-tool.ts`, `overlay-actions.ts`). Implemented:
+  `orchestrateTaskCompletion` (fresh preflight validation → trusted gate with
+  caller-supplied signal → cancellation checkpoint → locked revalidating commit)
+  is the only completion path; both entry points call it and keep their own
+  presentation. Tool result text and messages are unchanged (complete-gate tool
+  tests pass unmodified). Regressions: overlay gate pass/fail, owner and
+  verification denials through the shared messages, abort-mid-gate commits
+  nothing, gate failure/ownership changes while running.
+- [x] **Own pending actions and shutdown** (`overlay.ts`, input modules).
+  Implemented: `runOperation` serializes one board mutation per overlay —
+  repeated keys flash `Busy — … already running` and start nothing — and hands
+  each operation an `AbortSignal`; `dispose()` aborts a pending gate and
+  suppresses further flashes/renders. Events already committed to board.log
+  are retained. Regressions: double-`x` during a slow gate commits exactly one
+  COMPLETE; disposal during a running gate commits nothing.
+- [x] **Make live/stale reporting truthful** (`overlay-watcher.ts`).
+  Implemented: `live` is true only while the stream is healthy AND the last
+  parse succeeded. Parse failures mark the view stale (recovering on the next
+  successful parse); an empty parse is re-read once before acceptance, so
+  compaction's truncate-then-write is never mistaken for an empty board; a
+  deleted/replaced log detaches the inode watch, so every outage schedules one
+  bounded restart that re-attaches and catches up on missed changes;
+  successful local actions refresh the view even while the watch is dead.
+  Regressions (`pi-kanban-overlay-watcher.test.ts`): start failure → restart
+  recovery, disappearance → stale → recovery, mid-rewrite empty never accepted,
+  atomic replacement followed, dispose cancels pending parses; controller test
+  shows the `· not live` header.
+
+### P2 — simpler design and usable interactions
+
+- [x] **Simplify by responsibility, not metric thresholds**. Implemented: the
+  duplicated completion prechecks and gate code were removed (single
+  orchestration); the create retry-on-error-text loop is gone (id allocation
+  under the lock); `applyPromptInput`'s hand-rolled buffer editor was replaced
+  by Pi's `Input`; claim/complete/block/unblock/create moved to
+  `board-actions.ts` next to the other domain operations, leaving tool files as
+  registration + result mapping. The architecture assertion requiring
+  `withBoardTransaction` in claim-tools.ts was updated to point at the real
+  boundary (board-actions.ts); safety gates, concurrency semantics, and the
+  no-compensating-append policy tests are unchanged. `claim-tools.ts` went from
+  253 to ~150 lines; `overlay-actions.ts` from 255 to ~200; no wrapper was kept
+  without a consumer. A budgeted line exception was added for the consolidated
+  `board-actions.ts` (460) with remediation guidance and a 90-day target.
+- [x] **Allocate new IDs under the board lock** (`board-actions.ts`).
+  Implemented: `createTaskWithNextId` computes the id inside the transaction;
+  explicit-id `createTask` keeps its uniqueness check inside the lock. The
+  false "atomically" comment is replaced by an honest durability note: log
+  event under lock, task file after; a file-write failure returns
+  `fileWarning` and both surfaces report partial success ("do not retry
+  creation"), instead of throwing and inviting a duplicate-id retry.
+  Regressions: sequential + concurrent `Promise.all` creators get distinct
+  ids; duplicate explicit ids still reject; overlay partial-success path with
+  an unwritable tasks directory.
+- [x] **Use native text input and viewport-aware rendering**. Implemented:
+  prompts embed pi-tui `Input` (cursor/word/undo editing, bracketed paste) with
+  `Focusable` propagation for IME cursor positioning; dialog hints wrap within
+  the frame instead of truncating; the board renders a bounded window
+  (VIEWPORT_ROWS=10) with per-column scroll keeping the selection visible;
+  detail content scrolls (`↑ ↓`) through a bounded window with a position
+  indicator. The all-rows blessing test was replaced by viewport/scroll tests.
+  Regressions: bracketed paste + unicode title creation, viewport window +
+  scroll-into-view, detail scroll/clamp, narrow-width hint wrapping.
+
+### Evidence and documentation
+
+- [x] New regression cases added before marking complete: 7 watcher lifecycle
+  tests, 3 board-action allocation tests, and 8 new controller tests (stale
+  claim, busy serialization, abort-mid-gate, overlay gate pass/fail,
+  partial-success creation, paste/unicode prompt, detail scroll, not-live
+  indicator), with real key sequences (`\x1b[B`/`\x1b[A`/paste sequences) and
+  `vi.waitFor` instead of sleeps where practical; gate tests use real
+  `sleep`/`exit` commands.
+- [x] README/API comments corrected to match tested behavior: configured gates
+  run from the overlay; `KANBAN_OVERLAY_AGENT` is an audit label, not an
+  authenticated identity; completion orchestration is single-sourced; the
+  log/task-file durability boundary is documented; busy/cancel and truthful
+  live/stale behavior are documented.
+- [x] Focused kanban + architecture suites pass (185 tests); full `npm run
+  check`, `npm test`, `git diff --check` run at completion. Tool responses,
+  event compatibility, ownership/WIP/evidence guards, and existing history
+  preserved. Optional mouse support remains out of scope (see below).
+
 ## Kanban overlay UX improvements
 
 Requested by Jim after the overlay UX review (2026-09-09). Priorities below follow
@@ -16,7 +118,7 @@ reuse the tool-layer transactions rather than duplicating board logic in the ove
 - [x] **Resolve the hardcoded overlay identity** (`extensions/pi-kanban/overlay.ts`, `OVERLAY_AGENT = "lead"`). Every overlay mutation is logged as `lead` regardless of who acts. Decide and implement an accurate operator identity (explicit setting or derived label) before adding claim/complete keys, since ownership guards and audit attribution depend on it.
   Implemented: overlay mutations are recorded under `KANBAN_OVERLAY_AGENT` (default `operator`); ownership guards use the same identity, and the tool layer keeps its own explicit agents.
 - [x] **Add claim/complete keys** (`c` claim next eligible todo task, `x` complete the selected owned in-progress task). Route through the same claim/complete transactions and gates the tools use; never bypass WIP, owner, or configured check evidence. Denied actions must explain why in the status line.
-  Implemented: `c`/`x` route through `claimTask`/`completeTask` (shared with the tools); WIP, owner, verification, and gate denials show explanatory status lines; evidence/gate-required completion is denied from the overlay with a pointer to `kanban_complete`.
+  Implemented: `c`/`x` route through `claimTask`/`completeTask` (shared with the tools); WIP, owner, verification, and gate denials show explanatory status lines; evidence-required completion is denied with a pointer to `kanban_complete`; configured gates run from the overlay. Gate orchestration is still duplicated and needs the refactor above.
 - [x] **Add create and block keys** (`n` new task via the editor, `b` block with a reason prompt, `B` or `u` unblock). Keep confirmations only where the tools require them.
   Implemented: `n` inline title prompt (backlog, medium, next free id), `b` inline reason prompt, `u` unblock. Delete keeps its explicit `y` confirmation.
 - [x] **Fix the empty-board dead end** (`overlay-render.ts`). Offer `n` directly instead of telling the human to ask an agent for `kanban_create`.
@@ -54,9 +156,10 @@ Implemented as a concern split the architecture tests prescribe: `overlay.ts` (c
 `overlay-board-keys.ts` (navigation/action keys) + `overlay-actions.ts` (action wrappers with
 status messages) + `overlay-watcher.ts` (live refresh) + `overlay-dialogs.ts` (modal renderers).
 Claim/complete/block/unblock/create transactions were extracted so tools and overlay share one
-guard implementation (`claim-tools.ts` keeps claim conflict handling per policy;
-`board-actions.ts` hosts the rest). Tool result text, event formats, and board.log compatibility
-are unchanged; existing tool tests pass unmodified. All 167 kanban + architecture tests pass
+transaction implementation (`claim-tools.ts` keeps claim conflict handling;
+`board-actions.ts` hosts the rest). This does not single-source gate orchestration.
+Existing tool tests passed; moved-renderer imports and explicit overlay identity fixtures
+were adapted. The original validation run passed all 167 kanban + architecture tests
 including line budgets, hotspot reduction, cohesion (LCOM96b < 0.8), parameter limits, and
 cycle rules. Pre-existing repo lint warnings (13) are unchanged and unrelated.
 

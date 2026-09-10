@@ -4,6 +4,7 @@
  * and the controller (overlay.ts) without import cycles.
  */
 
+import { Input } from "@earendil-works/pi-tui";
 import type { TaskState } from "./board.js";
 import type { Column } from "./overlay-model.js";
 import { COLUMNS } from "./overlay-model.js";
@@ -29,9 +30,11 @@ export interface OverlayInputState {
 	pendingDeleteTask: TaskState | null;
 	pendingMoveTask: TaskState | null;
 	movePickerIndex: number;
-	newTaskTitle: string;
 	pendingBlockTask: TaskState | null;
-	blockReason: string;
+	/** Native text input for the active inline prompt; null outside prompt modes. */
+	promptInput: Input | null;
+	/** Scroll offset for the detail view's long content (description/notes). */
+	detailScroll: number;
 }
 
 export function createOverlayInputState(): OverlayInputState {
@@ -45,13 +48,17 @@ export function createOverlayInputState(): OverlayInputState {
 		pendingDeleteTask: null,
 		pendingMoveTask: null,
 		movePickerIndex: 0,
-		newTaskTitle: "",
 		pendingBlockTask: null,
-		blockReason: "",
+		promptInput: null,
+		detailScroll: 0,
 	};
 }
 
-/** What the input layer needs from the controller. */
+/**
+ * What the input layer needs from the controller. runOperation serializes
+ * board mutations: repeated keys while one operation is pending are
+ * rejected, and dispose aborts the running operation's signal.
+ */
 export interface OverlayInputDeps {
 	ui: OverlayActions;
 	tasksIn(col: Column): TaskState[];
@@ -59,9 +66,21 @@ export interface OverlayInputDeps {
 	requestRender(): void;
 	close(): void;
 	cycleTheme(): void;
+	runOperation(label: string, operation: (signal: AbortSignal) => Promise<void>): void;
 }
 
 /** Active board column for the current selection index. */
 export function activeColumn(state: OverlayInputState): Column {
 	return COLUMNS[state.activeColIdx] ?? "in-progress";
+}
+
+/** Enter an inline prompt mode with a native, focused Input. */
+export function openPrompt(
+	state: OverlayInputState,
+	mode: "new-task" | "block-reason",
+): void {
+	state.promptInput = new Input();
+	state.promptInput.focused = true;
+	state.mode = mode;
+	state.statusMessage = "";
 }

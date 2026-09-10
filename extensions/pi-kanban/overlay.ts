@@ -10,13 +10,13 @@
  */
 
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { Component, Focusable, TUI } from "@earendil-works/pi-tui";
 import {
 	type BoardState,
 	parseBoard,
 	type TaskState,
 } from "./board.js";
-import { type OverlayActions, overlayAgentId } from "./overlay-actions.js";
+import { overlayAgentId } from "./overlay-actions.js";
 import {
 	renderBlockPrompt,
 	renderConfirmDelete,
@@ -38,7 +38,12 @@ import {
 	DONE_LIMIT,
 	tasksInColumn,
 } from "./overlay-model.js";
-import { type Column, renderBoard, renderDetail } from "./overlay-render.js";
+import {
+	type Column,
+	renderBoard,
+	renderDetail,
+	VIEWPORT_ROWS,
+} from "./overlay-render.js";
 import {
 	applyKanbanTheme,
 	type KanbanThemeName,
@@ -49,7 +54,7 @@ import {
 import { clampScrollOffset } from "./overlay-selection.js";
 import { BoardLogWatcher } from "./overlay-watcher.js";
 
-export class KanbanOverlay implements Component {
+export class KanbanOverlay implements Component, Focusable {
 	private board: BoardState;
 	private input: OverlayInputState;
 	private scroll: Record<Column, number> = {
@@ -63,8 +68,11 @@ export class KanbanOverlay implements Component {
 	private themeName: KanbanThemeName;
 	private theme: Theme;
 	private readonly deps: OverlayInputDeps;
-	private readonly actions: OverlayActions;
 	private readonly boardWatcher: BoardLogWatcher;
+	/** One board mutation at a time; repeated keys are rejected while pending. */
+	private operation: AbortController | null = null;
+	private disposed = false;
+	private focusedFlag = false;
 
 	constructor(
 		private tui: TUI,
@@ -78,18 +86,18 @@ export class KanbanOverlay implements Component {
 		this.baseTheme = baseTheme;
 		this.themeName = kanbanThemeName();
 		this.theme = applyKanbanTheme(baseTheme, this.themeName);
-		this.actions = {
-			agent: options.agent ?? overlayAgentId(),
-			cwd: options.cwd ?? process.cwd(),
-			flash: (message) => this.flash(message),
-		};
 		this.deps = {
-			ui: this.actions,
+			ui: {
+				agent: options.agent ?? overlayAgentId(),
+				cwd: options.cwd ?? process.cwd(),
+				flash: (message) => this.flash(message),
+			},
 			tasksIn: (col) => this.tasksIn(col),
 			selectedTask: () => this.selectedTask(),
-			requestRender: () => this.tui.requestRender(),
+			requestRender: () => this.requestRender(),
 			close: () => this.done(null),
 			cycleTheme: () => this.cycleTheme(),
+			runOperation: (label, operation) => this.runOperation(label, operation),
 		};
 		this.boardWatcher = new BoardLogWatcher({
 			captureSelection: () =>
@@ -99,14 +107,30 @@ export class KanbanOverlay implements Component {
 			onBoard: (board, selectedId) => {
 				this.board = board;
 				restoreOverlaySelection(this.input, this.deps, selectedId);
-				this.tui.requestRender();
+				this.requestRender();
 			},
-			onWatchError: () => this.tui.requestRender(),
+			onUnavailable: () => this.requestRender(),
 		});
 	}
 
 	dispose(): void {
+		this.disposed = true;
+		// Abort a pending operation (e.g. mid-gate); events already committed
+		// to the log are retained.
+		this.operation?.abort();
+		this.operation = null;
 		this.boardWatcher.dispose();
+	}
+
+	// ── Focusable: propagate focus to the active inline prompt ──
+
+	get focused(): boolean {
+		return this.focusedFlag;
+	}
+
+	set focused(value: boolean) {
+		this.focusedFlag = value;
+		if (this.input.promptInput) this.input.promptInput.focused = value;
 	}
 
 	// ── Data helpers ────────────────────────────────────────────
@@ -121,9 +145,13 @@ export class KanbanOverlay implements Component {
 		return this.tasksIn(activeColumn(this.input))[this.input.activeRow];
 	}
 
-	private clampScroll(colTasks: TaskState[][], visibleRows: number): void {
+	private clampScroll(colTasks: TaskState[][]): void {
 		const col = activeColumn(this.input);
 		const tasks = colTasks[this.input.activeColIdx] ?? [];
+		const visibleRows = Math.min(
+			VIEWPORT_ROWS,
+			Math.max(1, ...colTasks.map((column) => column.length)),
+		);
 		this.scroll[col] = clampScrollOffset(
 			tasks.length,
 			this.input.activeRow,
@@ -133,14 +161,53 @@ export class KanbanOverlay implements Component {
 	}
 
 	flash(message: string): void {
+		if (this.disposed) return;
 		this.input.statusMessage = message;
-		this.tui.requestRender();
+		this.requestRender();
+	}
+
+	private requestRender(): void {
+		if (!this.disposed) this.tui.requestRender();
 	}
 
 	private cycleTheme(): void {
 		this.themeName = nextKanbanTheme(this.themeName);
 		this.theme = applyKanbanTheme(this.baseTheme, this.themeName);
 		this.flash(`Theme: ${this.themeName} (${kanbanThemeHelp()})`);
+	}
+
+	// ── Operation serialization and cancellation ─────────────────
+
+	private runOperation(
+		label: string,
+		operation: (signal: AbortSignal) => Promise<void>,
+	): void {
+		if (this.disposed) return;
+		if (this.operation) {
+			this.flash(`Busy — ${label} already running`);
+			return;
+		}
+		const controller = new AbortController();
+		this.operation = controller;
+		void Promise.resolve(operation(controller.signal))
+			.catch(() => {
+				// Actions flash their own denials; aborted operations are silent.
+			})
+			.finally(() => {
+				if (this.operation === controller) this.operation = null;
+				// A successful local action should refresh the view even if the
+				// watch stream is dead; the live watcher covers the other case.
+				if (this.disposed || this.boardWatcher.live) return;
+				parseBoard()
+					.then((board) => {
+						if (board.tasks.size === 0) return;
+						this.board = board;
+						this.requestRender();
+					})
+					.catch(() => {
+							/* board.log vanished; watcher already reports not live */
+						});
+			});
 	}
 
 	// ── Input ───────────────────────────────────────────────────
@@ -154,7 +221,12 @@ export class KanbanOverlay implements Component {
 	render(width: number): string[] {
 		switch (this.input.mode) {
 			case "detail":
-				return renderDetail(this.selectedTask(), width, this.theme);
+				return renderDetail(
+					this.selectedTask(),
+					width,
+					this.theme,
+					this.input.detailScroll,
+				);
 			case "confirm-delete":
 				return renderConfirmDelete(
 					this.input.pendingDeleteTask,
@@ -169,11 +241,11 @@ export class KanbanOverlay implements Component {
 					this.input.movePickerIndex,
 				);
 			case "new-task":
-				return renderNewTaskPrompt(this.input.newTaskTitle, width, this.theme);
+				return renderNewTaskPrompt(this.input.promptInput, width, this.theme);
 			case "block-reason":
 				return renderBlockPrompt(
 					this.input.pendingBlockTask,
-					this.input.blockReason,
+					this.input.promptInput,
 					width,
 					this.theme,
 				);
@@ -189,11 +261,7 @@ export class KanbanOverlay implements Component {
 					liveRefresh: this.boardWatcher.live,
 				});
 				// Keep controller scrolling in sync with the rows supplied to the view.
-				const maxRows = Math.max(
-					8,
-					...view.colTasks.map((tasks) => tasks.length),
-				);
-				this.clampScroll(view.colTasks, maxRows);
+				this.clampScroll(view.colTasks);
 				return renderBoard(view, width, this.theme);
 			}
 		}

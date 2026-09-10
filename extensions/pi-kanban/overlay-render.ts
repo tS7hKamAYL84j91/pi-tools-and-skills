@@ -55,6 +55,11 @@ const MIN_NARROW_COL_WIDTH = 10;
 const MAX_COL_WIDTH = 40;
 const FRAME_WIDTH = 6;
 
+/** Board body rows rendered per column; longer columns scroll (selection stays visible). */
+export const VIEWPORT_ROWS = 10;
+/** Content-line window for the detail view; longer content scrolls with ↑/↓. */
+const DETAIL_MAX_LINES = 16;
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 /** Two-character priority badge; fixed width so rows align. */
@@ -81,7 +86,7 @@ function padVisible(styled: string, target: number): string {
 }
 
 /** Hard-wrap a string at word boundaries to at most `width` visible cols. */
-function wrap(text: string, width: number): string[] {
+export function wrap(text: string, width: number): string[] {
 	if (width <= 0) return [text];
 	const words = text.split(/\s+/);
 	const out: string[] = [];
@@ -219,27 +224,17 @@ export function renderBoard(
 	const liveText = view.liveRefresh === false ? theme.fg("warning", " · not live") : theme.fg("dim", " · live");
 	lines.push(frameTop(totalInner, theme));
 	lines.push(modalTruncatedLine(`${title}${sortIndicator}${liveText}`, totalInner, theme));
-	lines.push(
-		modalTruncatedLine(
-			theme.fg(
-				"dim",
-				" ← → column · ↑ ↓ row · / filter · enter detail · esc/q close",
-			),
-			totalInner,
-			theme,
-		),
-	);
-	lines.push(
-		modalTruncatedLine(
-			theme.fg(
-				"dim",
-				" c claim · x complete · n new · b block · u unblock · m move · d delete · t theme",
-			),
-			totalInner,
-			theme,
-		),
-	);
-	if (view.filterQuery || view.isFiltering) {
+	// Hint rows wrap instead of truncating so narrow terminals never hide actions.
+	for (const hint of [
+		" ← → column · ↑ ↓ row · / filter · enter detail · esc/q close",
+		" c claim · x complete · n new · b block · u unblock · m move · d delete · t theme",
+	]) {
+		for (const chunk of wrap(hint, totalInner - 2)) {
+			lines.push(
+				modalTruncatedLine(theme.fg("dim", chunk), totalInner, theme),
+			);
+		}
+	}	if (view.filterQuery || view.isFiltering) {
 		const marker = view.isFiltering ? "Filter:" : "Filtered:";
 		const query = view.filterQuery || "";
 		const filterHint = query || "(type task id, title, or agent)";
@@ -278,8 +273,12 @@ export function renderBoard(
 		const emptyMsg = theme.fg("muted", emptyText);
 		lines.push(modalTruncatedLine(emptyMsg, totalInner, theme));
 	} else {
-		// Body rows
-		const maxRows = Math.max(8, ...view.colTasks.map((t) => t.length));
+		// Body rows: a bounded window per column; longer columns scroll
+		// (clampScroll keeps the selected row inside the window).
+		const maxRows = Math.min(
+			VIEWPORT_ROWS,
+			Math.max(1, ...view.colTasks.map((t) => t.length)),
+		);
 		for (let row = 0; row < maxRows; row++) {
 			const rowParts: string[] = [];
 			for (let i = 0; i < COLUMNS.length; i++) {
@@ -318,6 +317,7 @@ export function renderDetail(
 	task: TaskState | undefined,
 	width: number,
 	theme: Theme,
+	detailScroll = 0,
 ): string[] {
 	const lines: string[] = [];
 	const innerW = modalInnerWidth(width);
@@ -350,23 +350,38 @@ export function renderDetail(
 		lines.push(modalTruncatedLine(row, innerW, theme));
 	}
 
+	// Long content (description + notes) renders through a bounded window
+	// that scrolls with ↑/↓; out-of-range offsets are clamped to content.
+	const content: string[] = [];
 	if (task.description) {
-		lines.push(modalLine("", innerW, theme));
-		lines.push(modalLine(` ${theme.fg("dim", "Description")}`, innerW, theme));
+		content.push(modalLine("", innerW, theme));
+		content.push(modalLine(` ${theme.fg("dim", "Description")}`, innerW, theme));
 		for (const chunk of wrap(task.description, innerW - 2)) {
-			lines.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
+			content.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 		}
 	}
 
 	if (task.notes.length > 0) {
-		lines.push(modalLine("", innerW, theme));
+		content.push(modalLine("", innerW, theme));
 		const noteHeader = ` ${theme.fg("dim", `Notes (${task.notes.length})`)}`;
-		lines.push(modalLine(noteHeader, innerW, theme));
+		content.push(modalLine(noteHeader, innerW, theme));
 		for (const note of task.notes.slice(-5)) {
 			for (const chunk of wrap(`- ${note}`, innerW - 4)) {
-				lines.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
+				content.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 			}
 		}
+	}
+	const maxScroll = Math.max(0, content.length - DETAIL_MAX_LINES);
+	const scrollOffset = Math.min(Math.max(0, detailScroll), maxScroll);
+	lines.push(...content.slice(scrollOffset, scrollOffset + DETAIL_MAX_LINES));
+	if (content.length > DETAIL_MAX_LINES) {
+		lines.push(
+			modalLine(
+				theme.fg("dim", ` ↑/↓ scroll (${scrollOffset}/${maxScroll})`),
+				innerW,
+				theme,
+			),
+		);
 	}
 
 	lines.push(frameMiddle(innerW, theme));

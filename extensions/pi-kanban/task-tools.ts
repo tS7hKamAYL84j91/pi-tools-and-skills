@@ -60,7 +60,7 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 			const { task_id, agent, title, priority } = params;
 			const tags = params.tags ?? "";
 			const description = params.description ?? "";
-			await createTask({
+			const { fileWarning } = await createTask({
 				taskId: task_id,
 				agent,
 				title,
@@ -68,12 +68,18 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 				tags,
 				description,
 			});
-			return ok(`Created ${task_id}: ${title} (priority=${priority})`, {
+			// A task-file write failure is a partial success: the task exists in
+			// the authoritative board.log. Do not retry creation with a new id.
+			const note = fileWarning
+				? `\nNote: the task file could not be written (${fileWarning}); the board log has the task. Do not retry creation.`
+				: "";
+			return ok(`Created ${task_id}: ${title} (priority=${priority})${note}`, {
 				task_id,
 				title,
 				priority,
 				tags,
 				description,
+				...(fileWarning ? { fileWarning } : {}),
 			});
 		},
 	});

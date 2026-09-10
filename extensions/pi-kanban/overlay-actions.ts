@@ -5,28 +5,24 @@
  * enforced by the shared transaction layer, never duplicated here.
  */
 
-import { runGateCommand } from "../../lib/gate-command.js";
-import { matchesKey } from "@earendil-works/pi-tui";
 import {
-	parseBoard,
 	sanitiseAgent,
 	type TaskState,
 	WIP_LIMIT,
 } from "./board.js";
 import {
 	blockTask,
-	completeTask,
-	createTask,
-	nextTaskId,
-	taskRequiresVerification,
+	claimTask,
+	createTaskWithNextId,
+	orchestrateTaskCompletion,
 	unblockTask,
 } from "./board-actions.js";
 import { deleteTask, moveTask } from "./board-transactions.js";
-import { claimTask } from "./claim-tools.js";
 
 /**
  * Operator identity recorded in board.log for overlay mutations. Set
  * KANBAN_OVERLAY_AGENT to attribute actions to a specific human/operator.
+ * The label is not an authenticated identity; it attributes actions only.
  */
 const OVERLAY_AGENT_ENV = "KANBAN_OVERLAY_AGENT";
 const DEFAULT_OVERLAY_AGENT = "operator";
@@ -50,21 +46,21 @@ function errorMessage(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 
-/** Claim the selected todo task, or the next eligible todo task. */
+/**
+ * Claim the selected todo task, or the next eligible todo task. claimOnly
+ * refuses to reassign: a stale selection that another actor claimed in the
+ * meantime is denied inside the locked transaction, never stolen.
+ */
 export async function claimFromOverlay(
 	ui: OverlayActions,
 	selected: TaskState | undefined,
 ): Promise<void> {
 	try {
-		if (selected?.col === "in-progress") {
-			ui.flash(
-				`Claim unavailable: in-progress (owner ${selected.claimAgent || "nobody"}) — use kanban_claim to reassign`,
-			);
-			return;
-		}
 		const outcome = await claimTask(
 			ui.agent,
 			selected?.col === "todo" ? selected.id : undefined,
+			undefined,
+			{ claimOnly: true },
 		);
 		switch (outcome.status) {
 			case "claimed":
@@ -81,6 +77,11 @@ export async function claimFromOverlay(
 			case "wrong-column":
 				ui.flash(`Claim unavailable: task is in ${outcome.col}`);
 				break;
+			case "in-progress-owner":
+				ui.flash(
+					`Claim unavailable: in-progress (owner ${outcome.owner}) — use kanban_claim to reassign`,
+				);
+				break;
 			case "wip-limit":
 				ui.flash(`Claim denied: WIP limit reached (${outcome.wip}/${WIP_LIMIT})`);
 				break;
@@ -93,72 +94,46 @@ export async function claimFromOverlay(
 	}
 }
 
-/** Complete an owned in-progress task; verification and gates deny from here. */
+/**
+ * Complete an owned in-progress task through the same orchestration the
+ * tool uses: fresh validation, trusted gate, then the locked commit.
+ * Verification-evidence and gate requirements deny from here.
+ */
 export async function completeFromOverlay(
 	ui: OverlayActions,
 	task: TaskState,
+	signal?: AbortSignal,
 ): Promise<void> {
-	if (task.col !== "in-progress") {
-		ui.flash(`Complete unavailable: task is in ${task.col}`);
-		return;
-	}
-	if (task.claimAgent !== ui.agent) {
-		ui.flash(`Complete denied: claimed by ${task.claimAgent || "nobody"}`);
-		return;
-	}
-	if (taskRequiresVerification(task)) {
-		ui.flash(
-			"Complete denied: verification evidence required (use kanban_complete with checks)",
-		);
-		return;
-	}
-	const gateCommand = process.env.KANBAN_GATE_COMMAND;
-	if (gateCommand !== undefined) {
-		try {
-			const gate = await runGateCommand(gateCommand, ui.cwd, undefined);
-			if (!gate.passed) {
-				ui.flash(`Complete denied: gate failed (exit ${gate.exitCode})`);
-				return;
-			}
-		} catch (err) {
-			ui.flash(`Complete denied: gate error (${errorMessage(err)})`);
-			return;
-		}
-	}
 	try {
-		await completeTask(task.id, ui.agent, { duration: "unknown" });
+		await orchestrateTaskCompletion(task.id, ui.agent, {
+			duration: "unknown",
+			cwd: ui.cwd,
+			signal,
+		});
 		ui.flash(`Completed ${task.id}`);
 	} catch (err) {
 		ui.flash(`Complete denied: ${errorMessage(err)}`);
 	}
 }
 
-/** Create a task in backlog with the next free id (bounded id-collision retry). */
+/** Create a task in backlog with the next id allocated under the board lock. */
 export async function createFromOverlay(
 	ui: OverlayActions,
 	title: string,
 ): Promise<void> {
-	for (let attempt = 0; attempt < 3; attempt++) {
-		try {
-			const board = await parseBoard();
-			const taskId = nextTaskId(board);
-			await createTask({
-				taskId,
-				agent: ui.agent,
-				title,
-				priority: "medium",
-			});
-			ui.flash(`Created ${taskId}: ${title} (backlog)`);
-			return;
-		} catch (err) {
-			if (
-				attempt === 2 ||
-				!String(errorMessage(err)).includes("already exists")
-			) {
-				ui.flash(`Create failed: ${errorMessage(err)}`);
-				return;
-			}
-		}
+	try {
+		const result = await createTaskWithNextId({
+			agent: ui.agent,
+			title,
+			priority: "medium",
+		});
+		ui.flash(
+			result.fileWarning
+				? `Created ${result.taskId}: ${title} (backlog; task file write failed: ${result.fileWarning})`
+				: `Created ${result.taskId}: ${title} (backlog)`,
+		);
+	} catch (err) {
+		ui.flash(`Create failed: ${errorMessage(err)}`);
 	}
 }
 
@@ -226,30 +201,4 @@ export async function moveFromOverlay(
 	} catch (err) {
 		ui.flash(`Move failed: ${errorMessage(err)}`);
 	}
-}
-
-// ── Inline prompt input (shared by new-task and block-reason modes) ──
-
-type PromptInputResult =
-	| { type: "submit"; value: string }
-	| { type: "cancel" }
-	| { type: "edit"; buffer: string }
-	| { type: "ignore" };
-
-/** Interpret one keypress for an inline text prompt buffer. */
-export function applyPromptInput(
-	buffer: string,
-	data: string,
-): PromptInputResult {
-	if (matchesKey(data, "escape")) return { type: "cancel" };
-	if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-		return { type: "submit", value: buffer };
-	}
-	if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
-		return { type: "edit", buffer: buffer.slice(0, -1) };
-	}
-	if (data.length === 1 && data >= " ") {
-		return { type: "edit", buffer: buffer + data };
-	}
-	return { type: "ignore" };
 }

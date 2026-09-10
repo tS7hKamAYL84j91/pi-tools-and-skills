@@ -1,14 +1,14 @@
 /**
  * Kanban overlay input layer: modal state machine and submode key handling.
  * Board navigation keys live in overlay-board-keys.ts; shared state types
- * live in overlay-input-state.ts.
+ * live in overlay-input-state.ts. Inline prompts embed pi-tui's Input for
+ * native cursor editing, word ops, undo, and bracketed paste.
  */
 
 import { matchesKey } from "@earendil-works/pi-tui";
 import { handleBoardKey } from "./overlay-board-keys.js";
 import { COLUMNS } from "./overlay-model.js";
 import {
-	applyPromptInput,
 	blockFromOverlay,
 	createFromOverlay,
 	deleteFromOverlay,
@@ -40,20 +40,15 @@ export function handleOverlayInput(
 			handleSearchInput(state, deps, data);
 			return;
 		case "new-task":
-			handleNewTaskInput(state, deps, data);
+			handlePromptInput(state, deps, data, submitNewTask);
 			return;
 		case "block-reason":
-			handleBlockReasonInput(state, deps, data);
+			handlePromptInput(state, deps, data, submitBlockReason);
 			return;
 		default:
 			handleBoardKey(state, deps, data);
 			return;
 	}
-}
-
-function flash(state: OverlayInputState, deps: OverlayInputDeps, message: string): void {
-	state.statusMessage = message;
-	deps.requestRender();
 }
 
 function handleDetailInput(state: OverlayInputState, data: string): void {
@@ -64,6 +59,18 @@ function handleDetailInput(state: OverlayInputState, data: string): void {
 	) {
 		state.mode = "board";
 		state.statusMessage = "";
+		state.detailScroll = 0;
+		return;
+	}
+	if (matchesKey(data, "up")) {
+		state.detailScroll = Math.max(0, state.detailScroll - 1);
+		return;
+	}
+	if (matchesKey(data, "down")) {
+		state.detailScroll = Math.min(
+			Number.MAX_SAFE_INTEGER,
+			state.detailScroll + 1,
+		);
 	}
 }
 
@@ -85,7 +92,12 @@ function handleConfirmDeleteInput(
 		return;
 	}
 	if (matchesKey(data, "y")) {
-		void executePendingDelete(state, deps);
+		const task = state.pendingDeleteTask;
+		state.pendingDeleteTask = null;
+		state.mode = "board";
+		if (task) {
+			deps.runOperation("delete", () => deleteFromOverlay(deps.ui, task));
+		}
 	}
 }
 
@@ -100,8 +112,8 @@ function handleMovePickerInput(
 		state.statusMessage = "";
 		return;
 	}
-	if (matchesKey(data, "1")) void executePendingMove(state, deps, "backlog");
-	else if (matchesKey(data, "2")) void executePendingMove(state, deps, "todo");
+	if (matchesKey(data, "1")) void executeMove(state, deps, "backlog");
+	else if (matchesKey(data, "2")) void executeMove(state, deps, "todo");
 	else if (matchesKey(data, "up")) {
 		state.movePickerIndex = 0;
 		deps.requestRender();
@@ -109,12 +121,25 @@ function handleMovePickerInput(
 		state.movePickerIndex = 1;
 		deps.requestRender();
 	} else if (matchesKey(data, "enter") || matchesKey(data, "return")) {
-		void executePendingMove(
+		void executeMove(
 			state,
 			deps,
 			state.movePickerIndex === 0 ? "backlog" : "todo",
 		);
 	}
+}
+
+function executeMove(
+	state: OverlayInputState,
+	deps: OverlayInputDeps,
+	to: "backlog" | "todo",
+): Promise<void> {
+	const task = state.pendingMoveTask;
+	state.pendingMoveTask = null;
+	state.mode = "board";
+	return Promise.resolve(
+		task ? deps.runOperation("move", () => moveFromOverlay(deps.ui, task, to)) : undefined,
+	);
 }
 
 function handleSearchInput(
@@ -148,48 +173,63 @@ function handleSearchInput(
 	}
 }
 
-function handleNewTaskInput(
+function handlePromptInput(
 	state: OverlayInputState,
 	deps: OverlayInputDeps,
 	data: string,
+	submit: (state: OverlayInputState, deps: OverlayInputDeps, value: string) => void,
 ): void {
-	const result = applyPromptInput(state.newTaskTitle, data);
-	if (result.type === "submit") {
-		const title = result.value.trim();
+	const input = state.promptInput;
+	if (!input) {
 		state.mode = "board";
-		state.newTaskTitle = "";
-		if (title) void createFromOverlay(deps.ui, title);
-	} else if (result.type === "cancel") {
+		return;
+	}
+	if (matchesKey(data, "escape")) {
 		state.mode = "board";
-		state.newTaskTitle = "";
+		state.promptInput = null;
 		state.statusMessage = "";
-	} else if (result.type === "edit") {
-		state.newTaskTitle = result.buffer;
-		deps.requestRender();
+		return;
+	}
+	if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+		const value = input.getValue();
+		state.mode = "board";
+		state.promptInput = null;
+		submit(state, deps, value);
+		return;
+	}
+	// All other keys — including multi-character paste chunks — go to the
+	// native Input for cursor editing, word operations, undo, and paste.
+	input.handleInput(data);
+	deps.requestRender();
+}
+
+function submitNewTask(
+	state: OverlayInputState,
+	deps: OverlayInputDeps,
+	value: string,
+): void {
+	const title = value.trim();
+	if (title) {
+		deps.runOperation("create", () => createFromOverlay(deps.ui, title));
+	} else {
+		state.statusMessage = "";
 	}
 }
 
-function handleBlockReasonInput(
+function submitBlockReason(
 	state: OverlayInputState,
 	deps: OverlayInputDeps,
-	data: string,
+	value: string,
 ): void {
-	const result = applyPromptInput(state.blockReason, data);
-	if (result.type === "submit") {
-		const reason = result.value.trim();
-		const task = state.pendingBlockTask;
-		state.mode = "board";
-		state.pendingBlockTask = null;
-		state.blockReason = "";
-		if (task && reason) void blockFromOverlay(deps.ui, task, reason);
-		else if (task) flash(state, deps, "Block cancelled: reason required");
-	} else if (result.type === "cancel") {
-		state.mode = "board";
-		state.pendingBlockTask = null;
-		state.blockReason = "";
-		state.statusMessage = "";
-	} else if (result.type === "edit") {
-		state.blockReason = result.buffer;
+	const reason = value.trim();
+	const task = state.pendingBlockTask;
+	state.pendingBlockTask = null;
+	if (task && reason) {
+		deps.runOperation("block", () =>
+			blockFromOverlay(deps.ui, task, reason),
+		);
+	} else if (task) {
+		state.statusMessage = "Block cancelled: reason required";
 		deps.requestRender();
 	}
 }
@@ -221,25 +261,4 @@ function restoreFilterSelection(
 		state.filterSelectionId,
 		state.activeRow,
 	);
-}
-
-async function executePendingDelete(
-	state: OverlayInputState,
-	deps: OverlayInputDeps,
-): Promise<void> {
-	const task = state.pendingDeleteTask;
-	state.pendingDeleteTask = null;
-	state.mode = "board";
-	if (task) await deleteFromOverlay(deps.ui, task);
-}
-
-async function executePendingMove(
-	state: OverlayInputState,
-	deps: OverlayInputDeps,
-	to: "backlog" | "todo",
-): Promise<void> {
-	const task = state.pendingMoveTask;
-	state.pendingMoveTask = null;
-	state.mode = "board";
-	if (task) await moveFromOverlay(deps.ui, task, to);
 }

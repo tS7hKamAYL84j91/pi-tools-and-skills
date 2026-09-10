@@ -1,12 +1,11 @@
 /**
  * Kanban complete tool registration.
  */
-import { runGateCommand } from "../../lib/gate-command.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
-import { getTask, type TaskVerificationCheck } from "./board.js";
-import { completeTask, validateTaskComplete } from "./board-actions.js";
+import type { TaskVerificationCheck } from "./board.js";
+import { orchestrateTaskCompletion } from "./board-actions.js";
 import { CHECK_ITEM_SCHEMA, TASK_ID_SCHEMA } from "./schemas.js";
 
 function normalizeChecks(raw: unknown): TaskVerificationCheck[] {
@@ -57,18 +56,12 @@ export function registerKanbanComplete(pi: ExtensionAPI): void {
 			const { task_id, agent } = params;
 			const duration = params.duration ?? "unknown";
 			const checks = normalizeChecks(params.checks);
-			const initialTask = await getTask(task_id);
-			validateTaskComplete(initialTask, task_id, agent, checks);
-			const gateCommand = process.env.KANBAN_GATE_COMMAND;
-			if (gateCommand !== undefined) {
-				const gate = await runGateCommand(gateCommand, ctx.cwd, signal);
-				if (!gate.passed) {
-					throw new Error(
-						`kanban_complete gate failed for ${task_id} (exitCode=${gate.exitCode}): ${gate.stderrSummary || gate.stdoutSummary}`,
-					);
-				}
-			}
-			await completeTask(task_id, agent, { duration, checks });
+			await orchestrateTaskCompletion(task_id, agent, {
+				duration,
+				checks,
+				cwd: ctx?.cwd ?? process.cwd(),
+				signal,
+			});
 			return ok(`Completed ${task_id} (agent=${agent}, duration=${duration})`, {
 				task_id,
 				agent,

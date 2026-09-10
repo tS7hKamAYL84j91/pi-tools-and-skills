@@ -30,9 +30,9 @@ describe("Kanban board transaction boundary", () => {
 	});
 
 	it("claim conflict handling has no compensating append", () => {
-		const claims = source(`${KANBAN_ROOT}/claim-tools.ts`);
-		expect(claims).not.toContain("CLAIM_CONFLICT");
-		expect(claims).not.toContain("await logAppend");
-		expect(claims).toContain("withBoardTransaction");
+		const actions = source(`${KANBAN_ROOT}/board-actions.ts`);
+		expect(actions).not.toContain("CLAIM_CONFLICT");
+		expect(actions).not.toContain("await logAppend");
+		expect(actions).toContain("withBoardTransaction");
 	});
 });

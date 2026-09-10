@@ -1,3 +1,5 @@
+import { chmodSync, existsSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
@@ -35,10 +37,20 @@ describe("kanban overlay controller input contract", () => {
 			controller.handleInput("\x1b"); expect(selectedId(controller)).toBe("T-011");
 		} finally { controller.dispose(); }
 	});
-	it("honors the existing all-rows viewport contract", async () => {
-		harness.writeBoardLog(Array.from({ length: 12 }, (_, index) => { const id = `T-${String(index + 20).padStart(3, "0")}`; return `2026-01-01T00:00:00Z CREATE ${id} lead title="Task ${id}" priority="medium" tags=""\n2026-01-01T00:00:01Z MOVE ${id} lead from=backlog to=in-progress`; }).join("\n"));
-			const controller = await openController();
-		try { const output = controller.render(200).join("\n"); for (let index = 20; index < 32; index++) expect(output).toContain(`T-${String(index).padStart(3, "0")}`); } finally { controller.dispose(); }
+	it("bounds the board viewport and scrolls the selection into view", async () => {
+		harness.writeBoardLog(Array.from({ length: 20 }, (_, index) => { const id = `T-${String(index + 20).padStart(3, "0")}`; return `2026-01-01T00:00:00Z CREATE ${id} lead title="Task ${id}" priority="medium" tags=""\n2026-01-01T00:00:01Z MOVE ${id} lead from=backlog to=in-progress`; }).join("\n"));
+		const controller = await openController();
+		try {
+			// The body window is bounded; off-screen cards are not rendered.
+			let output = controller.render(200).join("\n");
+			expect(output).toContain("T-020");
+			expect(output).not.toContain("T-039");
+			// Navigate down 19 rows: scrolling keeps the selection visible.
+			for (let index = 0; index < 19; index++) controller.handleInput("\x1b[B");
+			output = controller.render(200).join("\n");
+			expect(output).toContain("> T-039");
+			expect(output).not.toContain("  T-020");
+		} finally { controller.dispose(); }
 	});
 });
 
@@ -109,7 +121,7 @@ describe("kanban overlay board actions", () => {
 		const controller = await openController();
 		try {
 			controller.handleInput("x");
-			await flash(controller, "Complete denied: claimed by worker-1");
+			await flash(controller, "Complete denied: Agent operator is not the claimed owner of T-020 (claimed by worker-1)");
 			expect(log()).not.toContain("COMPLETE T-020");
 		} finally { controller.dispose(); }
 	});
@@ -122,7 +134,7 @@ describe("kanban overlay board actions", () => {
 			const controller = await openController();
 			try {
 				controller.handleInput("x");
-				await flash(controller, "Complete denied: verification evidence required (use kanban_complete with checks)");
+				await flash(controller, "Complete denied: Task T-020 requires verification evidence with all exit_code=0 before completion");
 				expect(log()).not.toContain("COMPLETE T-020");
 			} finally { controller.dispose(); }
 		} finally {
@@ -273,6 +285,148 @@ describe("kanban overlay board actions", () => {
 			await flash(controller, "Already in backlog");
 			controller.handleInput("up");
 			expect(controller.render(200).join("\n")).not.toContain("Already in backlog");
+		} finally { controller.dispose(); }
+	});
+
+	it("refuses to reassign a task another actor claimed after the selection was cached", async () => {
+		const base = [createLine("T-010", "Anchor"), "2026-01-01T00:00:01Z MOVE T-010 lead from=backlog to=todo"];
+		seed(base);
+		const controller = await openController();
+		try {
+			controller.handleInput(LEFT); // todo column, T-010 selected (cached view)
+			// A competing actor claims the task after the overlay rendered its view.
+			harness.writeBoardLog([...base, "2026-01-01T00:00:02Z CLAIM T-010 worker-1 expires=2026-01-02T00:00:00.000Z", "2026-01-01T00:00:02Z MOVE T-010 worker-1 from=todo to=in-progress"].join("\n") + "\n");
+			controller.handleInput("c"); // stale view still says todo; the lock decides
+			await flash(controller, "Claim unavailable: in-progress (owner worker-1) — use kanban_claim to reassign");
+			expect(log()).not.toContain("UNCLAIM T-010");
+			expect(log()).not.toContain("CLAIM T-010 operator");
+		} finally { controller.dispose(); }
+	});
+
+	it("serializes operations: repeated keys while a gate runs are rejected as busy", async () => {
+		const previousGate = process.env.KANBAN_GATE_COMMAND;
+		process.env.KANBAN_GATE_COMMAND = "sleep 1";
+		try {
+			seed([createLine("T-020", "Owned"), "2026-01-01T00:00:01Z CLAIM T-020 operator expires=2026-01-02T00:00:00.000Z"]);
+			const controller = await openController();
+			try {
+				controller.handleInput("x"); // starts the gate operation
+				controller.handleInput("x"); // must be rejected while pending
+				expect(controller.render(200).join("\n")).toContain("Busy — complete already running");
+				await vi.waitFor(() => expect(log()).toContain("COMPLETE T-020 operator"), { timeout: 4_000 });
+				expect(log().split("COMPLETE T-020").length - 1).toBe(1);
+			} finally { controller.dispose(); }
+		} finally {
+			if (previousGate === undefined) delete process.env.KANBAN_GATE_COMMAND;
+			else process.env.KANBAN_GATE_COMMAND = previousGate;
+		}
+	});
+
+	it("aborts an in-flight gate on dispose without committing the completion", async () => {
+		const previousGate = process.env.KANBAN_GATE_COMMAND;
+		process.env.KANBAN_GATE_COMMAND = "sleep 1";
+		try {
+			seed([createLine("T-020", "Owned"), "2026-01-01T00:00:01Z CLAIM T-020 operator expires=2026-01-02T00:00:00.000Z"]);
+			const controller = await openController();
+			controller.handleInput("x");
+			controller.dispose(); // abort signal fires while the gate runs
+			await new Promise((resolve) => setTimeout(resolve, 1_500));
+			expect(log()).not.toContain("COMPLETE T-020");
+		} finally {
+			if (previousGate === undefined) delete process.env.KANBAN_GATE_COMMAND;
+			else process.env.KANBAN_GATE_COMMAND = previousGate;
+		}
+	});
+
+	it("runs the configured gate from the overlay and denies on gate failure", async () => {
+		const previousGate = process.env.KANBAN_GATE_COMMAND;
+		try {
+			seed([
+				createLine("T-030", "Gate pass"),
+				"2026-01-01T00:00:01Z CLAIM T-030 operator expires=2026-01-02T00:00:00.000Z",
+			]);
+			process.env.KANBAN_GATE_COMMAND = "exit 0";
+			const passing = await openController();
+			try {
+				passing.handleInput("x");
+				await flash(passing, "Completed T-030");
+			} finally { passing.dispose(); }
+
+			seed([
+				createLine("T-031", "Gate fail"),
+				"2026-01-01T00:00:01Z CLAIM T-031 operator expires=2026-01-02T00:00:00.000Z",
+			]);
+			process.env.KANBAN_GATE_COMMAND = "exit 1";
+			const failing = await openController();
+			try {
+				failing.handleInput("x");
+				await flash(failing, "Complete denied: kanban_complete gate failed for T-031 (exitCode=1)");
+				expect(log()).not.toContain("COMPLETE T-031");
+			} finally { failing.dispose(); }
+		} finally {
+			if (previousGate === undefined) delete process.env.KANBAN_GATE_COMMAND;
+			else process.env.KANBAN_GATE_COMMAND = previousGate;
+		}
+	});
+
+	it("reports a task-file write failure as partial success without losing the log event", async () => {
+		seed([createLine("T-001", "Existing")]);
+		const tasksDir = join(harness.tmpDir, "tasks");
+		chmodSync(tasksDir, 0o500);
+		const controller = await openController();
+		try {
+			controller.handleInput("n");
+			for (const character of "Partial create") controller.handleInput(character);
+			controller.handleInput(ENTER);
+			await vi.waitFor(() => expect(log()).toContain('CREATE T-002 operator title="Partial create"'));
+			await flash(controller, "Created T-002: Partial create (backlog; task file write failed");
+			expect(existsSync(join(tasksDir, "T-002.md"))).toBe(false);
+		} finally {
+			chmodSync(tasksDir, 0o700);
+			controller.dispose();
+		}
+	});
+
+	it("accepts bracketed paste and unicode in the inline title prompt", async () => {
+		seed([createLine("T-001", "Existing")]);
+		const controller = await openController();
+		try {
+			controller.handleInput("n");
+			controller.handleInput("\x1b[200~Café refactor ✅\x1b[201~");
+			controller.handleInput(ENTER);
+			await vi.waitFor(() => expect(log()).toContain('CREATE T-002 operator title="Café refactor ✅"'));
+			await flash(controller, "Created T-002: Café refactor ✅ (backlog)");
+		} finally { controller.dispose(); }
+	});
+
+	it("scrolls long detail content with up/down and clamps at the ends", async () => {
+		const description = Array.from({ length: 150 }, (_, index) => `word-${String(index).padStart(3, "0")}`).join(" ");
+		seed([`${createLine("T-040", "Long")} description="${description}"`, "2026-01-01T00:00:01Z MOVE T-040 lead from=backlog to=in-progress"]);
+		const controller = await openController();
+		try {
+			controller.handleInput(ENTER); // enter detail view (in-progress column default)
+			const detail = controller.render(80).join("\n");
+			expect(detail).toContain("↑/↓ scroll (0/");
+			controller.handleInput("\x1b[B");
+			controller.handleInput("\x1b[B");
+			expect(controller.render(80).join("\n")).toContain("↑/↓ scroll (2/");
+			controller.handleInput("\x1b[A");
+			expect(controller.render(80).join("\n")).toContain("↑/↓ scroll (1/");
+			controller.handleInput("\x1b"); // back to board
+			expect(controller.render(80).join("\n")).toContain("Kanban Board");
+		} finally { controller.dispose(); }
+	});
+
+	it("reports not live when the board log disappears mid-session", async () => {
+		seed([createLine("T-001", "Existing")]);
+		const controller = await openController();
+		try {
+			expect(controller.render(200).join("\n")).toContain("· live");
+			unlinkSync(join(harness.tmpDir, "board.log"));
+			await vi.waitFor(() =>
+				expect(controller.render(200).join("\n")).toContain("· not live"),
+				{ timeout: 4_000 },
+			);
 		} finally { controller.dispose(); }
 	});
 });

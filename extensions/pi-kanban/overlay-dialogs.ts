@@ -1,9 +1,11 @@
 /**
  * Kanban overlay modal dialogs: delete confirmation, move picker, and the
- * inline input prompts (new task / block reason). Pure rendering, no state.
+ * inline input prompts (new task / block reason). Prompts embed pi-tui's
+ * Input component for native cursor editing and paste. Pure rendering, no state.
  */
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Component, Input } from "@earendil-works/pi-tui";
 import { renderDestructiveConfirmationOverlay } from "../../lib/tui-confirmation.js";
 import type { TaskState } from "./board.js";
 import {
@@ -15,6 +17,7 @@ import {
 	modalTruncatedLine,
 	noSelectionLines,
 	taskDisplayTitle,
+	wrap,
 } from "./overlay-render.js";
 
 // ── Confirm-delete dialog ──────────────────────────────────────
@@ -89,16 +92,24 @@ export function renderMovePicker(
 
 // ── Inline input prompts ───────────────────────────────────────
 
-interface InputPromptView {
-	header: string;
-	body: string;
-	buffer: string;
-	label: string;
-	hint: string;
+function renderComponentLines(
+	component: Component,
+	innerW: number,
+	theme: Theme,
+): string[] {
+	const rendered = component.render(innerW);
+	return rendered.map((line) =>
+		modalTruncatedLine(line, innerW, theme),
+	);
 }
 
 function renderInputPrompt(
-	view: InputPromptView,
+	view: {
+		header: string;
+		body: string;
+		input: Input | null;
+		hint: string;
+	},
 	width: number,
 	theme: Theme,
 ): string[] {
@@ -107,22 +118,25 @@ function renderInputPrompt(
 	lines.push(frameTop(innerW, theme));
 	lines.push(modalLine(theme.bold(theme.fg("accent", view.header)), innerW, theme));
 	lines.push(frameMiddle(innerW, theme));
-	lines.push(modalTruncatedLine(theme.fg("text", view.body), innerW, theme));
+	for (const chunk of wrap(view.body, innerW - 2)) {
+		lines.push(modalTruncatedLine(theme.fg("text", chunk), innerW, theme));
+	}
 	lines.push(modalLine("", innerW, theme));
-	lines.push(
-		modalTruncatedLine(
-			`${theme.fg("dim", ` ${view.label}`)} ${theme.fg("text", view.buffer || "")}`,
-			innerW,
-			theme,
-		),
-	);
-	lines.push(modalLine(theme.fg("warning", `  ${view.hint}`), innerW, theme));
+	if (view.input) {
+		lines.push(...renderComponentLines(view.input, innerW, theme));
+	} else {
+		lines.push(modalLine(theme.fg("muted", " (input unavailable)"), innerW, theme));
+	}
+	// Hints wrap instead of truncating so narrow terminals keep the wording.
+	for (const chunk of wrap(view.hint, innerW - 2)) {
+		lines.push(modalLine(theme.fg("warning", chunk), innerW, theme));
+	}
 	lines.push(frameBottom(innerW, theme));
 	return lines;
 }
 
 export function renderNewTaskPrompt(
-	buffer: string,
+	input: Input | null,
 	width: number,
 	theme: Theme,
 ): string[] {
@@ -130,8 +144,7 @@ export function renderNewTaskPrompt(
 		{
 			header: " New Task",
 			body: "Created in backlog with medium priority; edit later with kanban_edit.",
-			buffer,
-			label: "title:",
+			input,
 			hint: "type title · enter create · esc to go back",
 		},
 		width,
@@ -141,7 +154,7 @@ export function renderNewTaskPrompt(
 
 export function renderBlockPrompt(
 	task: TaskState | null,
-	buffer: string,
+	input: Input | null,
 	width: number,
 	theme: Theme,
 ): string[] {
@@ -153,8 +166,7 @@ export function renderBlockPrompt(
 		{
 			header: " Block Task",
 			body: ` ${task.id} ${taskDisplayTitle(task)}`,
-			buffer,
-			label: "reason:",
+			input,
 			hint: "type reason · enter block · esc to go back",
 		},
 		width,

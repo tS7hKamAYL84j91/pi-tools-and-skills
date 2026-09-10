@@ -60,6 +60,13 @@ const LINE_BUDGET_EXCEPTIONS: LineBudgetException[] = [
 		targetDate: "2026-09-22",
 	},
 	{
+		path: "extensions/pi-kanban/board-actions.ts",
+		maxLines: 460,
+		reason: "Single shared transaction layer for claim, completion, block/unblock and create; split by operation family when adding more mutations.",
+		createdAt: "2026-09-10",
+		targetDate: "2026-12-09",
+	},
+	{
 		path: "extensions/pi-kanban/board.ts",
 		maxLines: 470,
 		reason: "Kanban event parser hotspot; extract typed event handlers when syntax grows.",
