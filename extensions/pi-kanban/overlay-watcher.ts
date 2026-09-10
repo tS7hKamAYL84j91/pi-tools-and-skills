@@ -10,12 +10,25 @@
  * (compaction) is never mistaken for an emptied board.
  */
 
-import { type FSWatcher, watch } from "node:fs";
+import { watch } from "node:fs";
 import { type BoardState, boardLogPath, parseBoard } from "./board.js";
 
 const DEBOUNCE_MS = 150;
 const EMPTY_RECHECK_MS = 100;
 const RESTART_DELAY_MS = 1_000;
+
+/** Minimal handle the watcher needs from a directory watch. */
+export interface BoardWatchHandle {
+	close(): void;
+	unref?(): void;
+	on?(event: "error", listener: (error: Error) => void): void;
+}
+
+/** Factory that starts watching a directory, mirroring `fs.watch`'s callback form. */
+export type BoardWatchFactory = (
+	path: string,
+	callback: (event: string, filename: string | Buffer | null) => void,
+) => BoardWatchHandle;
 
 interface BoardLogWatcherCallbacks {
 	/** Selection identity captured when the file event fires. */
@@ -27,15 +40,17 @@ interface BoardLogWatcherCallbacks {
 }
 
 export class BoardLogWatcher {
-	private watcher: FSWatcher | null = null;
+	private watcher: BoardWatchHandle | null = null;
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private restartTimer: ReturnType<typeof setTimeout> | null = null;
 	private liveFlag = false;
 	private restartScheduled = false;
 	private readonly callbacks: BoardLogWatcherCallbacks;
+	private readonly watchFactory: BoardWatchFactory;
 
-	constructor(callbacks: BoardLogWatcherCallbacks) {
+	constructor(callbacks: BoardLogWatcherCallbacks, watchFactory: BoardWatchFactory = watch) {
 		this.callbacks = callbacks;
+		this.watchFactory = watchFactory;
 		this.start();
 	}
 
@@ -70,12 +85,12 @@ export class BoardLogWatcher {
 
 	private start(): void {
 		try {
-			this.watcher = watch(boardLogPath(), () => {
+			this.watcher = this.watchFactory(boardLogPath(), () => {
 				const selectedId = this.callbacks.captureSelection();
 				this.scheduleParse(selectedId);
 			});
-			this.watcher.unref();
-			this.watcher.on("error", () => {
+			this.watcher.unref?.();
+			this.watcher.on?.("error", () => {
 				this.markUnavailable();
 			});
 			this.liveFlag = true;

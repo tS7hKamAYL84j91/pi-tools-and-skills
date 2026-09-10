@@ -52,7 +52,7 @@ import {
 	nextKanbanTheme,
 } from "./theme.js";
 import { clampScrollOffset } from "./overlay-selection.js";
-import { BoardLogWatcher } from "./overlay-watcher.js";
+import { BoardLogWatcher, type BoardWatchFactory } from "./overlay-watcher.js";
 
 export class KanbanOverlay implements Component, Focusable {
 	private board: BoardState;
@@ -79,7 +79,7 @@ export class KanbanOverlay implements Component, Focusable {
 		baseTheme: Theme,
 		initialBoard: BoardState,
 		private done: (result: null) => void,
-		options: { agent?: string; cwd?: string } = {},
+		options: { agent?: string; cwd?: string; watchFactory?: BoardWatchFactory } = {},
 	) {
 		this.board = initialBoard;
 		this.input = createOverlayInputState();
@@ -99,18 +99,21 @@ export class KanbanOverlay implements Component, Focusable {
 			cycleTheme: () => this.cycleTheme(),
 			runOperation: (label, operation) => this.runOperation(label, operation),
 		};
-		this.boardWatcher = new BoardLogWatcher({
-			captureSelection: () =>
-				this.input.mode === "search"
-					? (this.input.filterSelectionId ?? this.selectedTask()?.id)
-					: this.selectedTask()?.id,
-			onBoard: (board, selectedId) => {
-				this.board = board;
-				restoreOverlaySelection(this.input, this.deps, selectedId);
-				this.requestRender();
+		this.boardWatcher = new BoardLogWatcher(
+			{
+				captureSelection: () =>
+					this.input.mode === "search"
+						? (this.input.filterSelectionId ?? this.selectedTask()?.id)
+						: this.selectedTask()?.id,
+				onBoard: (board, selectedId) => {
+						this.board = board;
+						restoreOverlaySelection(this.input, this.deps, selectedId);
+						this.requestRender();
+					},
+				onUnavailable: () => this.requestRender(),
 			},
-			onUnavailable: () => this.requestRender(),
-		});
+			options.watchFactory,
+		);
 	}
 
 	dispose(): void {
@@ -273,7 +276,10 @@ export class KanbanOverlay implements Component, Focusable {
 
 // ── Entry point ─────────────────────────────────────────────────
 
-export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
+export async function openKanbanOverlay(
+	ctx: ExtensionContext,
+	options: { watchFactory?: BoardWatchFactory } = {},
+): Promise<void> {
 	let board: BoardState;
 	try {
 		board = await parseBoard();
@@ -291,7 +297,7 @@ export async function openKanbanOverlay(ctx: ExtensionContext): Promise<void> {
 	);
 	await ctx.ui.custom<null>(
 		(tui, theme, _kb, done) =>
-			new KanbanOverlay(tui, theme, board, done, { cwd: ctx.cwd }),
+			new KanbanOverlay(tui, theme, board, done, { cwd: ctx.cwd, ...options }),
 		{
 			overlay: true,
 			overlayOptions: {

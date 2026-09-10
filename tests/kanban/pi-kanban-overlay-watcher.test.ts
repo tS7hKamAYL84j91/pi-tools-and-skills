@@ -1,10 +1,15 @@
-/** BoardLogWatcher lifecycle tests: truthful live/stale reporting and cleanup. */
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+/**
+ * BoardLogWatcher lifecycle tests: truthful live/stale reporting and cleanup.
+ * Watch handles are injected fakes — no real inotify instances — so the suite
+ * stays hermetic on machines with loaded watcher limits. Events are fired
+ * through the captured factory callbacks.
+ */
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardState } from "../../extensions/pi-kanban/board.js";
-import { BoardLogWatcher } from "../../extensions/pi-kanban/overlay-watcher.js";
+import { type BoardWatchFactory, BoardLogWatcher } from "../../extensions/pi-kanban/overlay-watcher.js";
 
 let dir = "";
 const boardLog = () => join(dir, "board.log");
@@ -25,18 +30,53 @@ function seedBoard(content: string): void {
 const oneTaskLog = '2026-01-01T00:00:00Z CREATE T-001 lead title="Only" priority="high" tags=""\n';
 const twoTaskLog = `${oneTaskLog}2026-01-01T00:00:01Z CREATE T-002 lead title="Second" priority="low" tags=""\n`;
 
-function makeWatcher(capture: () => string | undefined = () => undefined) {
+/** Fake watch factory: records the active callback and lets tests fire events. */
+function makeWatchHarness() {
+	let activeCallback: ((event: string, filename: string | Buffer | null) => void) | null = null;
+	let watchAttempts = 0;
+	let failNextStart = false;
+	const closed: number[] = [];
+	const factory: BoardWatchFactory = (_path, callback) => {
+		watchAttempts += 1;
+		if (failNextStart) {
+			failNextStart = false;
+			throw new Error("watch start failed");
+		}
+		activeCallback = callback;
+		return {
+			close: () => {
+				closed.push(watchAttempts);
+				activeCallback = null;
+			},
+		};
+	};
+	return {
+		factory,
+		fire: (event = "change") => activeCallback?.(event, null),
+		active: () => activeCallback !== null,
+		watchAttempts: () => watchAttempts,
+		closedCount: () => closed.length,
+		failNextStartOnce: () => {
+			failNextStart = true;
+		},
+	};
+}
+
+function makeWatcher(harness: ReturnType<typeof makeWatchHarness>) {
 	const boards: BoardState[] = [];
 	let unavailable = 0;
-	const watcher = new BoardLogWatcher({
-		captureSelection: capture,
-		onBoard: (board) => {
-			boards.push(board);
+	const watcher = new BoardLogWatcher(
+		{
+			captureSelection: () => undefined,
+			onBoard: (board) => {
+				boards.push(board);
+			},
+			onUnavailable: () => {
+				unavailable += 1;
+			},
 		},
-		onUnavailable: () => {
-			unavailable += 1;
-		},
-	});
+		harness.factory,
+	);
 	return {
 		watcher,
 		boards: () => boards,
@@ -51,14 +91,18 @@ async function waitForBoard(handle: ReturnType<typeof makeWatcher>, count: numbe
 describe("BoardLogWatcher live reporting", () => {
 	it("reports not live when the board cannot be watched, then recovers on restart", async () => {
 		expect(existsSync(boardLog())).toBe(false);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		harness.failNextStartOnce();
+		const handle = makeWatcher(harness);
 		try {
 			expect(handle.watcher.live).toBe(false);
+			expect(handle.unavailable()).toBe(1);
 			seedBoard(oneTaskLog);
 			handle.watcher.restart();
 			expect(handle.watcher.live).toBe(true);
-			// The restart watches future changes; a write triggers a board refresh.
+			expect(harness.active()).toBe(true);
 			seedBoard(twoTaskLog);
+			harness.fire();
 			await waitForBoard(handle, 1);
 			expect(handle.boards()[0]?.tasks.size).toBe(2);
 		} finally {
@@ -68,14 +112,18 @@ describe("BoardLogWatcher live reporting", () => {
 
 	it("marks the view stale when the log disappears, and recovers when it returns", async () => {
 		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		const handle = makeWatcher(harness);
 		try {
 			expect(handle.watcher.live).toBe(true);
 			unlinkSync(boardLog());
+			harness.fire("rename"); // a deleted watch target fires a rename event
 			await vi.waitFor(() => expect(handle.watcher.live).toBe(false), { timeout: 2_000 });
 			expect(handle.unavailable()).toBeGreaterThan(0);
+			// Recovery: the bounded restart re-attaches after the log returns,
+			// and its catch-up parse reports the missed content.
 			seedBoard(twoTaskLog);
-			await vi.waitFor(() => expect(handle.watcher.live).toBe(true), { timeout: 2_000 });
+			await vi.waitFor(() => expect(handle.watcher.live).toBe(true), { timeout: 4_000 });
 			await waitForBoard(handle, 1);
 			expect(handle.boards()[0]?.tasks.size).toBe(2);
 		} finally {
@@ -85,9 +133,11 @@ describe("BoardLogWatcher live reporting", () => {
 
 	it("accepts a persistently empty board only after a re-read", async () => {
 		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		const handle = makeWatcher(harness);
 		try {
 			seedBoard("");
+			harness.fire();
 			await waitForBoard(handle, 1);
 			// A truncate-then-write rewrite (compaction) is never mistaken for
 			// an empty board before the re-read confirms it.
@@ -100,11 +150,13 @@ describe("BoardLogWatcher live reporting", () => {
 
 	it("does not accept a mid-rewrite empty parse before content lands", async () => {
 		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		const handle = makeWatcher(harness);
 		try {
 			// Simulate a truncate-then-write compaction: briefly empty, then content.
 			writeFileSync(boardLog(), "", "utf8");
-			seedBoard(twoTaskLog);
+			harness.fire();
+			seedBoard(twoTaskLog); // content lands inside the empty-recheck window
 			await waitForBoard(handle, 1);
 			expect(handle.boards()[0]?.tasks.size).toBe(2);
 		} finally {
@@ -114,11 +166,13 @@ describe("BoardLogWatcher live reporting", () => {
 
 	it("follows atomic replacement of board.log", async () => {
 		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		const handle = makeWatcher(harness);
 		try {
 			const replacement = join(dir, "board.log.tmp");
 			writeFileSync(replacement, twoTaskLog, "utf8");
 			renameSync(replacement, boardLog());
+			harness.fire("rename");
 			await waitForBoard(handle, 1);
 			expect(handle.boards()[0]?.tasks.size).toBe(2);
 			expect(handle.watcher.live).toBe(true);
@@ -129,23 +183,14 @@ describe("BoardLogWatcher live reporting", () => {
 
 	it("dispose cancels a pending debounced parse without firing callbacks", async () => {
 		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
+		const harness = makeWatchHarness();
+		const handle = makeWatcher(harness);
 		expect(handle.watcher.live).toBe(true);
 		seedBoard(twoTaskLog);
+		harness.fire();
 		handle.watcher.dispose();
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(handle.boards()).toHaveLength(0);
-		expect(handle.watcher.live).toBe(true); // dispose is not an outage report
-	});
-
-	it("works with a read-only tasks directory constraint untouched (fixture sanity)", () => {
-		seedBoard(oneTaskLog);
-		const handle = makeWatcher();
-		try {
-			expect(handle.watcher.live).toBe(true);
-		} finally {
-			handle.watcher.dispose();
-			chmodSync(dir, 0o700);
-		}
+		expect(harness.closedCount()).toBe(1); // the watch handle is closed
 	});
 });

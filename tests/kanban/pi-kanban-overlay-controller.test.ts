@@ -5,19 +5,38 @@ import type { Component, TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { WIP_LIMIT } from "../../extensions/pi-kanban/board.js";
 import { openKanbanOverlay } from "../../extensions/pi-kanban/overlay.js";
+import type { BoardWatchFactory } from "../../extensions/pi-kanban/overlay-watcher.js";
 import { setupTempKanbanDir } from "./kanban-test-helpers.js";
 
 function makeTheme(): Theme {
 	return { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text, bold: (text: string) => text, dim: (text: string) => text, italic: (text: string) => text, underline: (text: string) => text, strikethrough: (text: string) => text, inverse: (text: string) => text, fgColors: {}, bgColors: {}, mode: "light", color: (_name: string, text: string) => text, reset: () => "", strip: (text: string) => text, visibleWidth: (text: string) => text.length, truncateToWidth: (text: string) => text } as unknown as Theme;
 }
 interface Controller extends Component { handleInput(data: string): void; dispose(): void; }
-async function openController(): Promise<Controller> {
+/** Fake watch factory: hermetic controllers, manual event firing. */
+function fakeWatchFactory(): { factory: BoardWatchFactory; fire: (event?: string) => void } {
+	let callback: ((event: string, filename: string | Buffer | null) => void) | null = null;
+	return {
+		factory: (_path, handler) => {
+			callback = handler;
+			return { close: () => { callback = null; } };
+		},
+		fire: (event = "change") => callback?.(event, null),
+	};
+}
+
+async function openController(factory: BoardWatchFactory = fakeWatchFactory().factory): Promise<Controller> {
 	let controller: Controller | undefined;
 	const tui = { requestRender: () => undefined } as unknown as TUI;
 	const context = { ui: { notify: () => undefined, custom: async (factory: (tui: TUI, theme: Theme, keys: unknown, done: (result: null) => void) => Component) => { controller = factory(tui, makeTheme(), {}, () => undefined) as Controller; return null; } } } as unknown as ExtensionContext;
-	await openKanbanOverlay(context);
+	await openKanbanOverlay(context, { watchFactory: factory });
 	if (!controller) throw new Error("overlay controller was not created");
 	return controller;
+}
+
+async function openWatchableController(): Promise<{ controller: Controller; fire: (event?: string) => void }> {
+	const harness = fakeWatchFactory();
+	const controller = await openController(harness.factory);
+	return { controller, fire: harness.fire };
 }
 function selectedId(controller: Controller): string | undefined {
 	return controller.render(200).map((line) => line.match(/> (T-\d+)/)?.[1]).find((id): id is string => id !== undefined);
@@ -419,10 +438,11 @@ describe("kanban overlay board actions", () => {
 
 	it("reports not live when the board log disappears mid-session", async () => {
 		seed([createLine("T-001", "Existing")]);
-		const controller = await openController();
+		const { controller, fire } = await openWatchableController();
 		try {
 			expect(controller.render(200).join("\n")).toContain("· live");
 			unlinkSync(join(harness.tmpDir, "board.log"));
+			fire("rename"); // deletion event; the debounced parse then fails
 			await vi.waitFor(() =>
 				expect(controller.render(200).join("\n")).toContain("· not live"),
 				{ timeout: 4_000 },
