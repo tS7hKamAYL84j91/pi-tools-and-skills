@@ -5,6 +5,19 @@ Switch to a boost model, run a prompt with anti-rut framing, switch back (ADR-05
 ## What this does
 
 - `/boost <prompt>` — switches the session to the boost model, sends your prompt with anti-rut framing, and restores your previous model when the run settles (after retries/follow-ups).
+
+## Modes
+
+The first word selects the mode when it is `plan` or `challenge`; otherwise the
+prompt runs in **challenge** mode (the default):
+
+- `/boost <prompt>` or `/boost challenge <prompt>` — challenge prior assumptions, inspect the underlying problem, then offer two or three alternative approaches and one concrete useful next move.
+- `/boost plan <prompt>` — produce a concise, actionable TODO plan: concrete steps, their dependencies, and the first step. **Planning does not authorize execution** — the frame forbids implementing, editing files, or acting; you review the plan first.
+- `/boost plan` or `/boost challenge` with no prompt — boost the most recent real
+  user problem from the session (boost-injected prompts are skipped; the text is
+  truncated, never the whole history). With no prompt and no recent problem,
+  the boost is denied without consuming a yield.
+- Ambiguity: a free-text prompt that happens to start with `plan` selects plan mode — use `/boost challenge plan …` to challenge a prompt beginning with the word "plan". Starting with `challenge` is harmless: challenge is the default.
 - `/boost` or `/boost settings` — select **Boost model** and press Enter for Pi's actual `/model` selector (search, scoped/all toggle, catalog refresh). Pick a model or press Esc to return to settings; selection changes only `boost.model`, not the active session or Pi's default model. The next rows configure max yields and **Lease time (minutes)**: 5, 10, 15, 30, or 60.
 - `/boost status` — show lease state, yields, configured duration, and model configuration.
 - `/boost reset` — reset the yield count; also retries baseline restoration if a restore failed.

@@ -4,6 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { CHALLENGE_FRAME, PLAN_FRAME, parseBoostMode, recentUserProblem } from "./boost-modes.js";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 import {
 	queueSaveBoostSetting,
@@ -12,33 +13,14 @@ import {
 	resolveMaxYields,
 } from "./boost-settings.js";
 import {
-	POWERLINE_LABELS,
 	STATUS_LABELS,
 	createLeaseState,
 	leaseState,
 	renewExpiredLease,
+	updateStatus,
+	waitForSettled,
 } from "./lease-state.js";
-import type { BoostCandidateModel, BoostLeaseState } from "./lease-state.js";
-
-/** Anti-rut framing prepended to every boost prompt (ADR-052). */
-const ANTI_RUT_FRAME =
-	"Challenge prior assumptions and inspect the underlying problem rather than repeating recent failed approaches.\n\n";
-
-const SETTLE_POLL_MS = 100;
-const SETTLE_TIMEOUT_MS = 30_000;
-
-/**
- * Wait until the agent has fully settled (no streaming, no queued messages).
- * agent_end fires before auto-retry/compaction/follow-ups; the 0.74 extension
- * API exposes no agent_settled event, so poll the idle/pending state instead.
- */
-async function waitForSettled(ctx: ExtensionContext): Promise<void> {
-	const deadline = Date.now() + SETTLE_TIMEOUT_MS;
-	while (Date.now() < deadline) {
-		if (ctx.isIdle() && !ctx.hasPendingMessages()) return;
-		await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
-	}
-}
+import type { BoostCandidateModel } from "./lease-state.js";
 
 function modelId(model: unknown): string {
 	if (
@@ -77,22 +59,6 @@ function autoPickBoostModel(
 	return candidates[0];
 }
 
-/** Powerline shows only lease state and remaining yields — never prompt or model text (ADR-057). */
-async function updateStatus(
-	ctx: ExtensionContext,
-	lease: BoostLeaseState,
-): Promise<void> {
-	if (!ctx.hasUI) return;
-	const maxYields = await resolveMaxYields(ctx.cwd);
-	const remaining = Math.max(0, maxYields - lease.yieldsUsed);
-	const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
-	const state = leaseState(lease, Date.now(), leaseMinutes * 60_000);
-	ctx.ui.setStatus(
-		"boost",
-		`Boost ${POWERLINE_LABELS[state] ?? state} · ${remaining} left`,
-	);
-}
-
 export function createBoostExtension(): (pi: ExtensionAPI) => void {
 	const lease = createLeaseState();
 
@@ -124,7 +90,8 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 		});
 
 		pi.registerCommand("boost", {
-			description: "Switch to a boost model, run prompt, switch back",
+			description:
+				"Boost a prompt with the boost model (default: challenge assumptions; /boost plan for a TODO plan)",
 			handler: async (args, ctx) => {
 				const rest = args.trim();
 				const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
@@ -185,8 +152,20 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				// — Run boost: switch model, send framed prompt, restore on settle —
-				if (lease.revertFailed) {
+			// — Boost modes: challenge (default) or plan; first word selects the mode —
+			const { mode, prompt } = parseBoostMode(rest);
+			const resolvedPrompt = prompt || (await recentUserProblem(ctx)) || "";
+			if (!resolvedPrompt) {
+				ctx.ui.notify(
+					"Boost denied: no prompt given and no recent user problem to work from.",
+					"warning",
+				);
+				await updateStatus(ctx, lease);
+				return;
+			}
+
+			// — Run boost: switch model, send framed prompt, restore on settle —
+			if (lease.revertFailed) {
 					ctx.ui.notify(
 						"Boost blocked: baseline restore failed. Run /boost reset to retry restoration.",
 						"warning",
@@ -241,7 +220,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				lease.yieldsUsed++;
 				await updateStatus(ctx, lease);
 
-				const message = ANTI_RUT_FRAME + rest;
+				const message = (mode === "plan" ? PLAN_FRAME : CHALLENGE_FRAME) + resolvedPrompt;
 				try {
 					const idle = typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
 					if (idle) {

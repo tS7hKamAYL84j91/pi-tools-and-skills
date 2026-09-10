@@ -420,3 +420,124 @@ describe("boost settings", () => {
 		expect(await resolveMaxYields("/tmp/test")).toBe(3);
 	});
 });
+
+describe("boost modes", () => {
+	function userEntry(text: string): { type: string; message: { role: string; content: string } } {
+		return { type: "message", message: { role: "user", content: text } };
+	}
+	function contextWithBranch(entries: unknown[]): Record<string, unknown> {
+		return createFakeContext({ sessionManager: { getBranch: () => entries } });
+	}
+
+	it("runs explicit challenge mode with the same framing as the default", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("challenge fix the leak", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.startsWith(FRAME_PREFIX)).toBe(true);
+		expect(message).toContain("alternative approaches and one concrete useful next move");
+		expect(message.endsWith("fix the leak")).toBe(true);
+	});
+
+	it("runs plan mode with a TODO frame that forbids execution", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("plan fix the leak", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.startsWith("Produce a concise, actionable TODO plan")).toBe(true);
+		expect(message).toContain("This is planning only");
+		expect(message).toContain("do not start implementing");
+		expect(message.endsWith("fix the leak")).toBe(true);
+		expect(message.startsWith(FRAME_PREFIX)).toBe(false);
+	});
+
+	it("treats a leading 'plan' in free text as plan mode (documented ambiguity)", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("plan to migrate the parser", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.startsWith("Produce a concise")).toBe(true);
+		expect(message.endsWith("to migrate the parser")).toBe(true);
+	});
+
+	it("lets explicit challenge mode escape the plan ambiguity", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("challenge plan everything twice", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.startsWith(FRAME_PREFIX)).toBe(true);
+		expect(message.endsWith("plan everything twice")).toBe(true);
+	});
+
+	it.each(["plan", "challenge"])("omitted prompt in %s mode boosts the most recent real problem", async (mode) => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = contextWithBranch([
+			userEntry("the parser breaks on nested quotes"),
+			userEntry("Challenge prior assumptions and inspect the underlying problem rather than repeating recent failed approaches.\n\nolder boost prompt"),
+		]);
+
+		await command()(mode, ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.endsWith("the parser breaks on nested quotes")).toBe(true);
+		if (mode === "plan") expect(message.startsWith("Produce a concise")).toBe(true);
+		else expect(message.startsWith(FRAME_PREFIX)).toBe(true);
+	});
+
+	it("skips boost-injected prompts when finding current-problem context", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		// Latest entries are boost-injected; the real problem is earlier in the branch.
+		const ctx = contextWithBranch([
+			userEntry("the flaky test only fails under load"),
+			userEntry("Produce a concise, actionable TODO plan for the request below: list the concrete steps, their dependencies, and the first step to take. This is planning only — do not start implementing, modify files, or treat it as authorization to execute; the user will review the plan first.\n\nolder plan prompt"),
+		]);
+
+		await command()("challenge", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message.endsWith("the flaky test only fails under load")).toBe(true);
+	});
+
+	it("reads array-form user message content", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = contextWithBranch([
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: "array-form problem" }] } },
+		]);
+
+		await command()("plan", ctx);
+		expect(String(sendUserMessage.mock.calls[0]?.[0]).endsWith("array-form problem")).toBe(true);
+	});
+
+	it("denies an omitted prompt with no recent problem without consuming a yield", async () => {
+		const { pi, setModel, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext(); // no sessionManager, no branch
+
+		await command()("plan", ctx);
+		expect(lastNotify(ctx)).toContain("no prompt given and no recent user problem");
+		expect(setModel).not.toHaveBeenCalled();
+		expect(await lastStatus(ctx)).toContain("3 left");
+	});
+
+	it("keeps exact subcommands ahead of mode parsing", async () => {
+		const { pi, setModel, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = contextWithBranch([userEntry("plan is just my word")]);
+
+		await command()("clear", ctx);
+		expect(lastNotify(ctx)).toContain("cleared");
+		expect(setModel).not.toHaveBeenCalled();
+
+		await command()("status", ctx);
+		expect(lastNotify(ctx)).toContain("Boost:");
+	});
+});
