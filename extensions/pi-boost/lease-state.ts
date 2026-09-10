@@ -42,8 +42,10 @@ function leaseExpired(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE
 	);
 }
 
+export type LeaseStatus = "blocked" | "active" | "expired" | "off";
+
 /** An in-flight turn stays active regardless of lease age; restoration has priority. */
-export function leaseState(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE_TTL_MS): string {
+export function leaseState(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE_TTL_MS): LeaseStatus {
 	if (lease.revertFailed) return "blocked";
 	if (lease.originalModel) return "active";
 	if (leaseExpired(lease, nowMs, ttlMs)) return "expired";
@@ -59,20 +61,20 @@ export function renewExpiredLease(lease: BoostLeaseState, nowMs: number, ttlMs: 
 }
 
 /** Powerline labels (ADR-057 UX contract: state + remaining yields only). */
-const POWERLINE_LABELS: Record<string, string> = {
+const POWERLINE_LABELS = {
 	blocked: "blocked · restore failed",
 	expired: "expired",
 	active: "active",
 	off: "off",
-};
+} satisfies Record<LeaseStatus, string>;
 
 /** /boost status labels. */
-export const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS = {
 	blocked: "blocked (restore failed)",
 	expired: "expired (next /boost renews)",
 	active: "active",
 	off: "off",
-};
+} satisfies Record<LeaseStatus, string>;
 
 // ── Lease presentation and settle ────────────────────────────────
 
@@ -104,6 +106,6 @@ export async function updateStatus(
 	const state = leaseState(lease, Date.now(), leaseMinutes * 60_000);
 	ctx.ui.setStatus(
 		"boost",
-		`Boost ${POWERLINE_LABELS[state] ?? state} · ${remaining} left`,
+		`Boost ${POWERLINE_LABELS[state]} · ${remaining} left`,
 	);
 }

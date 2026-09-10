@@ -4,7 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { CHALLENGE_FRAME, PLAN_FRAME, parseBoostMode, recentUserProblem } from "./boost-modes.js";
+import { formatBoostMessage, parseBoostMode, recentUserProblem } from "./boost-modes.js";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 import {
 	queueSaveBoostSetting,
@@ -50,13 +50,12 @@ function autoPickBoostModel(
 	ctx: ExtensionContext,
 ): BoostCandidateModel | undefined {
 	const current = ctx.model ? modelId(ctx.model) : "";
-	const candidates = ctx.modelRegistry
+	return ctx.modelRegistry
 		.getAvailable()
 		.filter((m) => m.input.includes("text"))
-		.filter(
-			(m) => `${m.provider}/${m.id}` !== current,
-		) as Array<BoostCandidateModel>;
-	return candidates[0];
+		.find((m) => `${m.provider}/${m.id}` !== current) as
+		| BoostCandidateModel
+		| undefined;
 }
 
 export function createBoostExtension(): (pi: ExtensionAPI) => void {
@@ -101,7 +100,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					const configured = (await resolveBoostModel(ctx.cwd)) ?? "auto";
 					const current = modelId(ctx.model);
 					const state =
-						STATUS_LABELS[leaseState(lease, Date.now(), leaseMinutes * 60_000)] ?? "unknown";
+						STATUS_LABELS[leaseState(lease, Date.now(), leaseMinutes * 60_000)];
 					ctx.ui.notify(
 						`Boost: ${state} · yields ${lease.yieldsUsed}/${maxYields} used · lease=${leaseMinutes}m · configured=${configured} · current=${current}`,
 						"info",
@@ -152,20 +151,20 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-			// — Boost modes: challenge (default) or plan; first word selects the mode —
-			const { mode, prompt } = parseBoostMode(rest);
-			const resolvedPrompt = prompt || (await recentUserProblem(ctx)) || "";
-			if (!resolvedPrompt) {
-				ctx.ui.notify(
-					"Boost denied: no prompt given and no recent user problem to work from.",
-					"warning",
-				);
-				await updateStatus(ctx, lease);
-				return;
-			}
+				// — Boost modes: challenge (default) or plan; first word selects the mode —
+				const { mode, prompt } = parseBoostMode(rest);
+				const resolvedPrompt = prompt || (await recentUserProblem(ctx)) || "";
+				if (!resolvedPrompt) {
+					ctx.ui.notify(
+						"Boost denied: no prompt given and no recent user problem to work from.",
+						"warning",
+					);
+					await updateStatus(ctx, lease);
+					return;
+				}
 
-			// — Run boost: switch model, send framed prompt, restore on settle —
-			if (lease.revertFailed) {
+				// — Run boost: switch model, send framed prompt, restore on settle —
+				if (lease.revertFailed) {
 					ctx.ui.notify(
 						"Boost blocked: baseline restore failed. Run /boost reset to retry restoration.",
 						"warning",
@@ -220,7 +219,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				lease.yieldsUsed++;
 				await updateStatus(ctx, lease);
 
-				const message = (mode === "plan" ? PLAN_FRAME : CHALLENGE_FRAME) + resolvedPrompt;
+				const message = formatBoostMessage(mode, resolvedPrompt);
 				try {
 					const idle = typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
 					if (idle) {

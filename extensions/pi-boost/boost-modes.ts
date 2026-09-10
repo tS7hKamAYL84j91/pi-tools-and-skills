@@ -23,28 +23,63 @@ export const PLAN_FRAME =
 	"Produce a concise, actionable TODO plan for the request below: list the concrete steps, their dependencies, and the first step to take. This is planning only — do not start implementing, modify files, or treat it as authorization to execute; the user will review the plan first.\n\n";
 
 const BOOST_MODES = ["plan", "challenge"] as const;
-type BoostMode = (typeof BOOST_MODES)[number];
+export type BoostMode = (typeof BOOST_MODES)[number];
+
+/** Wrap a prompt in the framing for the given boost mode. */
+export function formatBoostMessage(mode: BoostMode, prompt: string): string {
+	return (mode === "plan" ? PLAN_FRAME : CHALLENGE_FRAME) + prompt;
+}
 
 /** First word selects the mode (challenge is the default); the rest is the prompt. */
 export function parseBoostMode(rest: string): { mode: BoostMode; prompt: string } {
-	const first = rest.split(/\s+/)[0] ?? "";
+	const trimmed = rest.trim();
+	const first = trimmed.split(/\s+/)[0] ?? "";
 	if (first === "plan" || first === "challenge") {
-		return { mode: first, prompt: rest.slice(first.length).trim() };
+		return { mode: first, prompt: trimmed.slice(first.length).trim() };
 	}
-	return { mode: "challenge", prompt: rest };
+	return { mode: "challenge", prompt: trimmed };
 }
 
 function userMessageText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
-	return content
-		.map((part) =>
-			typeof part === "object" && part !== null && "text" in part && typeof (part as { text: unknown }).text === "string"
-				? (part as { text: string }).text
-				: "",
-		)
-		.join(" ")
-		.trim();
+	const parts: string[] = [];
+	for (const part of content) {
+		if (
+			typeof part === "object" &&
+			part !== null &&
+			"text" in part &&
+			typeof part.text === "string"
+		) {
+			parts.push(part.text);
+		}
+	}
+	return parts.join(" ").trim();
+}
+
+/** Maximum length for bounded recent-problem context. */
+const MAX_RECENT_PROBLEM_CHARS = 1500;
+
+/** Boost-injected prompts carry anti-rut (legacy + challenge) or plan framing. */
+function isBoostFramed(text: string): boolean {
+	return text.startsWith(ANTI_RUT_FRAME) || text.startsWith(PLAN_FRAME);
+}
+
+/**
+ * Extract the most recent real user problem from branch entries.
+ * Boost-injected prompts are skipped and text is bounded to 1500 characters.
+ */
+export function findRecentUserProblem(entries: readonly unknown[]): string | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index] as
+			| { type?: string; message?: { role?: string; content?: unknown } }
+			| undefined;
+		if (entry?.type !== "message" || !entry.message || entry.message.role !== "user") continue;
+		const text = userMessageText(entry.message.content).trim();
+		if (!text || isBoostFramed(text)) continue;
+		return text.slice(0, MAX_RECENT_PROBLEM_CHARS);
+	}
+	return undefined;
 }
 
 /**
@@ -54,18 +89,9 @@ function userMessageText(content: unknown): string {
 export async function recentUserProblem(ctx: ExtensionContext): Promise<string | undefined> {
 	try {
 		const branch = ctx.sessionManager?.getBranch?.() ?? [];
-		for (let index = branch.length - 1; index >= 0; index--) {
-			const entry = branch[index] as
-				| { type?: string; message?: { role?: string; content?: unknown } }
-				| undefined;
-			if (entry?.type !== "message" || !entry.message || entry.message.role !== "user") continue;
-			const text = userMessageText(entry.message.content).trim();
-			if (!text) continue;
-			if (text.startsWith(ANTI_RUT_FRAME) || text.startsWith(PLAN_FRAME)) continue;
-			return text.slice(0, 1500);
-		}
+		return findRecentUserProblem(branch);
 	} catch {
 		/* malformed entries are skipped; omitted-prompt boosts need real context */
+		return undefined;
 	}
-	return undefined;
 }
