@@ -6,17 +6,17 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { openBoostSettingsOverlay } from "./boost-settings-overlay.js";
 import {
-	BOOST_LEASE_TTL_MS,
 	queueSaveBoostSetting,
 	resolveBoostModel,
+	resolveLeaseMinutes,
 	resolveMaxYields,
 } from "./boost-settings.js";
 import {
 	POWERLINE_LABELS,
 	STATUS_LABELS,
 	createLeaseState,
-	leaseExpired,
 	leaseState,
+	renewExpiredLease,
 } from "./lease-state.js";
 import type { BoostCandidateModel, BoostLeaseState } from "./lease-state.js";
 
@@ -85,7 +85,8 @@ async function updateStatus(
 	if (!ctx.hasUI) return;
 	const maxYields = await resolveMaxYields(ctx.cwd);
 	const remaining = Math.max(0, maxYields - lease.yieldsUsed);
-	const state = leaseState(lease, Date.now());
+	const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
+	const state = leaseState(lease, Date.now(), leaseMinutes * 60_000);
 	ctx.ui.setStatus(
 		"boost",
 		`Boost ${POWERLINE_LABELS[state] ?? state} · ${remaining} left`,
@@ -126,15 +127,16 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 			description: "Switch to a boost model, run prompt, switch back",
 			handler: async (args, ctx) => {
 				const rest = args.trim();
+				const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
 
 				if (rest === "status") {
 					const maxYields = await resolveMaxYields(ctx.cwd);
 					const configured = (await resolveBoostModel(ctx.cwd)) ?? "auto";
 					const current = modelId(ctx.model);
 					const state =
-						STATUS_LABELS[leaseState(lease, Date.now())] ?? "unknown";
+						STATUS_LABELS[leaseState(lease, Date.now(), leaseMinutes * 60_000)] ?? "unknown";
 					ctx.ui.notify(
-						`Boost: ${state} · yields ${lease.yieldsUsed}/${maxYields} used · configured=${configured} · current=${current}`,
+						`Boost: ${state} · yields ${lease.yieldsUsed}/${maxYields} used · lease=${leaseMinutes}m · configured=${configured} · current=${current}`,
 						"info",
 					);
 					await updateStatus(ctx, lease);
@@ -164,8 +166,13 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
+				if (renewExpiredLease(lease, Date.now(), leaseMinutes * 60_000)) {
+					await updateStatus(ctx, lease);
+				}
+
 				if (rest === "settings" || rest === "") {
 					await openBoostSettingsOverlay(ctx);
+					await updateStatus(ctx, lease);
 					return;
 				}
 
@@ -196,15 +203,6 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				const maxYields = await resolveMaxYields(ctx.cwd);
-				if (leaseExpired(lease, Date.now())) {
-					const ttlMinutes = Math.round(BOOST_LEASE_TTL_MS / 60_000);
-					ctx.ui.notify(
-						`Boost denied: lease expired after ${ttlMinutes} minutes (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
-						"warning",
-					);
-					await updateStatus(ctx, lease);
-					return;
-				}
 				if (lease.yieldsUsed >= maxYields) {
 					ctx.ui.notify(
 						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,

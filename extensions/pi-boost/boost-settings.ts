@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 
 /** Boost model ids look like provider/id (ADR-056: registry shapes, no provider literals). */
-const BOOST_MODEL_ID_PATTERN = /^[\w.-]+\/[\w.:-]+$/;
+const BOOST_MODEL_ID_PATTERN = /^[\w.-]+\/\S+$/;
 
 /** ADR-045 §1 hard maximum: at most 3 human yields per lease. */
 const HARD_MAX_YIELDS = 3;
 
 /**
- * Lease TTL: a lease expires this long after its first yield and denies
- * further dispatch until /boost reset starts a new lease (T-854: 2h → 10m).
+ * Lease TTL: an idle expired lease renews on the next human /boost request.
+ * This is not a model-switch timer: an in-flight boost restores on settle.
  */
 export const BOOST_LEASE_TTL_MS = 600_000;
 
@@ -59,6 +59,15 @@ export async function resolveMaxYields(_cwd: string): Promise<number> {
 	return Math.max(1, Math.min(HARD_MAX_YIELDS, maxYields));
 }
 
+/** Lease length in minutes; invalid settings retain the 10-minute default. */
+export async function resolveLeaseMinutes(_cwd: string): Promise<number> {
+	const settings = await readSettings();
+	const minutes = boostBlock(settings).leaseMinutes;
+	return typeof minutes === "number" && Number.isInteger(minutes) && minutes >= 1 && minutes <= 60
+		? minutes
+		: BOOST_LEASE_TTL_MS / 60_000;
+}
+
 function boostBlock(
 	settings: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -68,7 +77,7 @@ function boostBlock(
 }
 
 async function saveBoostSetting(
-	key: "model" | "maxYields",
+	key: "model" | "maxYields" | "leaseMinutes",
 	value: string | number,
 ): Promise<void> {
 	let settings: Record<string, unknown> = {};
@@ -98,7 +107,7 @@ async function saveBoostSetting(
 let writeChain: Promise<void> = Promise.resolve();
 
 export function queueSaveBoostSetting(
-	key: "model" | "maxYields",
+	key: "model" | "maxYields" | "leaseMinutes",
 	value: string | number,
 ): Promise<void> {
 	const run = writeChain
