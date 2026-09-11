@@ -1,7 +1,7 @@
 /**
  * Boost prompt modes: frame construction, mode parsing, and bounded
- * current-problem context. Planning mode never authorizes execution; the
- * frames carry that contract. Challenge mode is the default.
+ * current-problem context. Plain mode is the default (verbatim prompt injection).
+ * Plan and challenge modes are opt-in via first word.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -16,28 +16,33 @@ export const CHALLENGE_FRAME =
 	"Then offer two or three alternative approaches and one concrete useful next move.\n\n";
 
 /**
- * Plan mode: a concise TODO plan only. Planning never authorizes execution;
- * the user reviews the plan before anything runs.
+ * Plan mode: a concise TODO plan only, written to TODO.md. Planning never
+ * authorizes execution; the user reviews the plan before anything runs.
  */
 export const PLAN_FRAME =
-	"Produce a concise, actionable TODO plan for the request below: list the concrete steps, their dependencies, and the first step to take. This is planning only — do not start implementing, modify files, or treat it as authorization to execute; the user will review the plan first.\n\n";
+	"Produce a concise, actionable TODO plan for the request below and write it to TODO.md: list the concrete steps, their dependencies, and the first step to take. This is planning only — write the plan to TODO.md, but do not start implementing, modify other files, or treat it as authorization to execute; the user will review the plan first.\n\n";
 
-const BOOST_MODES = ["plan", "challenge"] as const;
+const BOOST_MODES = ["plain", "plan", "challenge"] as const;
 export type BoostMode = (typeof BOOST_MODES)[number];
 
-/** Wrap a prompt in the framing for the given boost mode. */
+/** Wrap a prompt in the framing for the given boost mode (plain passes through verbatim). */
 export function formatBoostMessage(mode: BoostMode, prompt: string): string {
-	return (mode === "plan" ? PLAN_FRAME : CHALLENGE_FRAME) + prompt;
+	if (mode === "plan") return PLAN_FRAME + prompt;
+	if (mode === "challenge") return CHALLENGE_FRAME + prompt;
+	return prompt;
 }
 
-/** First word selects the mode (challenge is the default); the rest is the prompt. */
+/**
+ * First word selects an opt-in mode ('plan' or 'challenge');
+ * otherwise defaults to plain mode (verbatim prompt injection).
+ */
 export function parseBoostMode(rest: string): { mode: BoostMode; prompt: string } {
 	const trimmed = rest.trim();
 	const first = trimmed.split(/\s+/)[0] ?? "";
 	if (first === "plan" || first === "challenge") {
 		return { mode: first, prompt: trimmed.slice(first.length).trim() };
 	}
-	return { mode: "challenge", prompt: trimmed };
+	return { mode: "plain", prompt: trimmed };
 }
 
 function userMessageText(content: unknown): string {
@@ -62,7 +67,11 @@ const MAX_RECENT_PROBLEM_CHARS = 1500;
 
 /** Boost-injected prompts carry anti-rut (legacy + challenge) or plan framing. */
 function isBoostFramed(text: string): boolean {
-	return text.startsWith(ANTI_RUT_FRAME) || text.startsWith(PLAN_FRAME);
+	return (
+		text.startsWith(ANTI_RUT_FRAME) ||
+		text.startsWith(PLAN_FRAME) ||
+		text.startsWith("Produce a concise, actionable TODO plan for the request below")
+	);
 }
 
 /**

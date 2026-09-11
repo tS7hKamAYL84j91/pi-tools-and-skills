@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
-import { registerExternalAgentCommands } from "../../extensions/pi-panopticon/ui/external-agent-command.js";
+import {
+	dispatchExternalAgentCommand,
+	registerExternalAgentCommands,
+} from "../../extensions/pi-panopticon/ui/external-agent-command.js";
 import {
 	asExtensionApi,
 	makeAgentRecord,
@@ -95,5 +98,17 @@ describe("external agent commands", () => {
 			EXTERNAL.id,
 		);
 		expect(registry.setExternalPeers).toHaveBeenCalledWith([]);
+	});
+
+	it("dispatches subcommands via dispatchExternalAgentCommand", async () => {
+		const registry = makeRegistry(undefined, [EXTERNAL]);
+		registrarMocks.list.mockResolvedValue([EXTERNAL]);
+		const ctx = commandContext();
+
+		await dispatchExternalAgentCommand("list", ctx as never, registry);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("External agents:"),
+			"info",
+		);
 	});
 });

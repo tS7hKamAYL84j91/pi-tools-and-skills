@@ -57,8 +57,17 @@ describe("CoAS slash commands", () => {
 		home = await makeCoasHome();
 		const fixture = makeCommandFixture(home);
 		expect([...fixture.commands.keys()]).toEqual([
-			"coas-status", "coas-doctor", "coas-workspaces", "coas-schedules", "pi-scheduler",
+			"coas", "coas-status", "coas-doctor", "coas-workspaces", "coas-schedules", "pi-scheduler",
 		]);
+	});
+
+	it("dispatches subcommands via /coas", async () => {
+		home = await makeCoasHome();
+		vi.stubEnv("COAS_HOME", home);
+		const fixture = makeCommandFixture(home);
+		await fixture.commands.get("coas")?.handler("workspaces --text", fixture.ctx);
+		expect(fixture.notify).toHaveBeenCalledWith("CoAS workspaces", "info");
+		expect(fixture.custom).toHaveBeenCalled();
 	});
 
 	it("parses --text for workspaces and renders the result headlessly", async () => {

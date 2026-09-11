@@ -5,9 +5,9 @@ import { queueSaveBoostSetting, resolveBoostModel, resolveLeaseMinutes, resolveM
 import { createBoostModelPicker } from "./model-picker.js";
 
 export async function openBoostSettingsOverlay(ctx: ExtensionContext): Promise<void> {
-	const configuredModel = await resolveBoostModel(ctx.cwd);
-	const maxYields = await resolveMaxYields(ctx.cwd);
-	const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
+	const configuredModel = await resolveBoostModel();
+	const maxYields = await resolveMaxYields();
+	const leaseMinutes = await resolveLeaseMinutes();
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify(`Boost settings: model=${configuredModel ?? "auto"} maxYields=${maxYields} lease=${leaseMinutes}m`, "info");
 		return;

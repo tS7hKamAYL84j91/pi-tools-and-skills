@@ -40,9 +40,7 @@ function findModel(
 ): BoostCandidateModel | undefined {
 	return ctx.modelRegistry
 		.getAvailable()
-		.find((m) => `${m.provider}/${m.id}` === targetId) as
-		| BoostCandidateModel
-		| undefined;
+		.find((m) => modelId(m) === targetId) as BoostCandidateModel | undefined;
 }
 
 /** Auto-pick a text-capable boost model from the registry (first that differs from current). */
@@ -53,9 +51,7 @@ function autoPickBoostModel(
 	return ctx.modelRegistry
 		.getAvailable()
 		.filter((m) => m.input.includes("text"))
-		.find((m) => `${m.provider}/${m.id}` !== current) as
-		| BoostCandidateModel
-		| undefined;
+		.find((m) => modelId(m) !== current) as BoostCandidateModel | undefined;
 }
 
 export function createBoostExtension(): (pi: ExtensionAPI) => void {
@@ -90,14 +86,14 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 		pi.registerCommand("boost", {
 			description:
-				"Boost a prompt with the boost model (default: challenge assumptions; /boost plan for a TODO plan)",
+				"Boost a prompt with the boost model (default: verbatim prompt; /boost plan for a TODO plan; /boost challenge for anti-rut framing)",
 			handler: async (args, ctx) => {
 				const rest = args.trim();
-				const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
+				const leaseMinutes = await resolveLeaseMinutes();
 
 				if (rest === "status") {
-					const maxYields = await resolveMaxYields(ctx.cwd);
-					const configured = (await resolveBoostModel(ctx.cwd)) ?? "auto";
+					const maxYields = await resolveMaxYields();
+					const configured = (await resolveBoostModel()) ?? "auto";
 					const current = modelId(ctx.model);
 					const state =
 						STATUS_LABELS[leaseState(lease, Date.now(), leaseMinutes * 60_000)];
@@ -180,7 +176,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				const maxYields = await resolveMaxYields(ctx.cwd);
+				const maxYields = await resolveMaxYields();
 				if (lease.yieldsUsed >= maxYields) {
 					ctx.ui.notify(
 						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
@@ -189,7 +185,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				const configuredId = await resolveBoostModel(ctx.cwd);
+				const configuredId = await resolveBoostModel();
 				const boostModel = configuredId
 					? findModel(ctx, configuredId)
 					: autoPickBoostModel(ctx);

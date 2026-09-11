@@ -100,9 +100,9 @@ export async function updateStatus(
 	lease: BoostLeaseState,
 ): Promise<void> {
 	if (!ctx.hasUI) return;
-	const maxYields = await resolveMaxYields(ctx.cwd);
+	const maxYields = await resolveMaxYields();
 	const remaining = Math.max(0, maxYields - lease.yieldsUsed);
-	const leaseMinutes = await resolveLeaseMinutes(ctx.cwd);
+	const leaseMinutes = await resolveLeaseMinutes();
 	const state = leaseState(lease, Date.now(), leaseMinutes * 60_000);
 	ctx.ui.setStatus(
 		"boost",

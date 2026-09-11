@@ -1,12 +1,10 @@
 /** Persisted settings for Panopticon reconciliation follow-up notifications. */
 
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withAdvisoryLock } from "../../../lib/file-lock.js";
-import { writeFileAtomic } from "../../../lib/file-persistence.js";
 import {
 	PI_SETTINGS_PATH,
 	readPiSettingsKey,
+	savePiSettingsBlock,
 } from "../../../lib/pi-settings.js";
 
 interface ReconcilerSettings {
@@ -48,33 +46,11 @@ export async function saveReconcilerSetting(
 ): Promise<void> {
 	const path =
 		scope === "global" ? customGlobalPath : join(cwd, ".pi", "settings.json");
-	await withAdvisoryLock(path, async () => {
-		let existing: Record<string, unknown> = {};
-		try {
-			if (existsSync(path)) {
-				const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-				if (parsed && typeof parsed === "object") {
-					existing = parsed as Record<string, unknown>;
-				}
-			}
-		} catch {
-			// Preserve the safe fallback for malformed settings files.
-		}
-		const current =
-			existing.panopticon && typeof existing.panopticon === "object"
-				? (existing.panopticon as Record<string, unknown>)
-				: {};
-		await writeFileAtomic(
-			path,
-			`${JSON.stringify(
-				{
-					...existing,
-					panopticon: { ...current, reconciliationNotifications: enabled },
-				},
-				null,
-				2,
-			)}\n`,
-			{ mode: 0o600 },
-		);
-	});
+	await savePiSettingsBlock(
+		"panopticon",
+		(block) => {
+			block.reconciliationNotifications = enabled;
+		},
+		path,
+	);
 }

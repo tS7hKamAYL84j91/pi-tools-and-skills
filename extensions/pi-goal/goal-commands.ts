@@ -219,13 +219,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 	});
 
 	pi.registerCommand("goal-clear", {
-		description: "Clear the active project-local pi goal",
-		handler: async (_args, ctx) => {
-			cancelContinuationPending(runtime);
-			runtime.stopRequested = false;
-			await clearBoundGoal(ctx, scopeFor(ctx), runtime);
-			await refreshUi(ctx, runtime, null);
-			ctx.ui.notify("Goal cleared: removed .pi/goal/ state, TODO, summary, and local run transcripts for this workspace.", "info");
-		},
+		description: "Clear the active project-local pi goal (alias for /goal clear)",
+		handler: async (_args, ctx) => handleClear(ctx, ""),
 	});
 }

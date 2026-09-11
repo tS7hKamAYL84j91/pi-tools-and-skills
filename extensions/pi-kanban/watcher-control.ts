@@ -2,11 +2,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { registerToggleCommand, type ToggleControl } from "../../lib/toggle-command.js";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 
-interface WatcherControl {
-	setEnabled: (enabled: boolean) => Promise<void>;
-	getStatus: () => string;
+interface WatcherControl extends ToggleControl {
 	isEnabled: () => boolean;
 }
 
@@ -15,32 +14,16 @@ export function registerWatcherControls(
 	pi: ExtensionAPI,
 	control: WatcherControl,
 ): void {
-	pi.registerCommand("kanban-watch", {
-		description: "Enable or disable automatic kanban board follow-ups",
-		handler: async (args, commandCtx) => {
-			const action = args.trim().toLowerCase();
-			if (action === "on" || action === "off") {
-				try {
-					await control.setEnabled(action === "on");
-				} catch {
-					commandCtx.ui.notify(
-						"Unable to persist kanban watcher settings.",
-						"error",
-					);
-					return;
-				}
-				commandCtx.ui.notify(
-					`Kanban watcher follow-ups: ${control.getStatus()}`,
-					"info",
-				);
-				return;
-			}
-			commandCtx.ui.notify(
-				`Kanban watcher follow-ups are ${control.getStatus()}. Usage: /kanban-watch on|off`,
-				"info",
-			);
+	registerToggleCommand(
+		pi,
+		{
+			name: "kanban-watch",
+			description: "Enable or disable automatic kanban board follow-ups",
+			label: "Kanban watcher follow-ups",
+			settingsLabel: "kanban watcher",
 		},
-	});
+		control,
+	);
 
 	pi.registerTool({
 		name: "kanban_watch",

@@ -8,14 +8,20 @@ import type { AgentOverlayDeps } from "../ui/agent-overlay-types.js";
 import { sortRecords, STATUS_SYMBOL } from "../registry/record-utils.js";
 import { filterAgentList } from "../registry/visibility.js";
 import { STATUS_LABEL } from "../ui/ui-format.js";
+import { dispatchExternalAgentCommand } from "./external-agent-command.js";
 
 export function registerAgentsCommand(
 	pi: ExtensionAPI,
 	deps: AgentOverlayDeps,
 ): void {
 	pi.registerCommand("agents", {
-		description: "Show compact status bar for all agents, then open detail overlay",
-		handler: async (_args, ctx) => {
+		description: "Show compact status bar for all agents, open detail overlay, or manage external agents (/agents external ...)",
+		handler: async (args, ctx) => {
+			const trimmed = (args ?? "").trim();
+			if (trimmed.startsWith("external")) {
+				await dispatchExternalAgentCommand(trimmed.slice("external".length), ctx, deps.registry);
+				return;
+			}
 			const self = deps.registry.getRecord();
 			const records = filterAgentList(self, deps.registry.readAllPeers(), deps.listMode.get(self));
 			if (records.length === 0) {

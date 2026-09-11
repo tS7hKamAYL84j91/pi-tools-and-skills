@@ -33,41 +33,6 @@ async function readSettings(): Promise<Record<string, unknown>> {
 	}
 }
 
-/** Get the configured boost model ID, or undefined for auto-pick. */
-export async function resolveBoostModel(
-	_cwd: string,
-): Promise<string | undefined> {
-	const settings = await readSettings();
-	const boost = settings.boost;
-	if (typeof boost !== "object" || boost === null) return undefined;
-	const model = (boost as Record<string, unknown>).model;
-	if (typeof model !== "string" || !BOOST_MODEL_ID_PATTERN.test(model)) {
-		return undefined;
-	}
-	return model;
-}
-
-/** Get the max yields before reset is required (hard cap 3, ADR-057). */
-export async function resolveMaxYields(_cwd: string): Promise<number> {
-	const settings = await readSettings();
-	const boost = settings.boost;
-	if (typeof boost !== "object" || boost === null) return 3;
-	const maxYields = (boost as Record<string, unknown>).maxYields;
-	if (typeof maxYields !== "number" || !Number.isInteger(maxYields)) {
-		return 3;
-	}
-	return Math.max(1, Math.min(HARD_MAX_YIELDS, maxYields));
-}
-
-/** Lease length in minutes; invalid settings retain the 10-minute default. */
-export async function resolveLeaseMinutes(_cwd: string): Promise<number> {
-	const settings = await readSettings();
-	const minutes = boostBlock(settings).leaseMinutes;
-	return typeof minutes === "number" && Number.isInteger(minutes) && minutes >= 1 && minutes <= 60
-		? minutes
-		: BOOST_LEASE_TTL_MS / 60_000;
-}
-
 function boostBlock(
 	settings: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -76,19 +41,35 @@ function boostBlock(
 		: {};
 }
 
+/** Get the configured boost model ID, or undefined for auto-pick. */
+export async function resolveBoostModel(): Promise<string | undefined> {
+	const model = boostBlock(await readSettings()).model;
+	return typeof model === "string" && BOOST_MODEL_ID_PATTERN.test(model)
+		? model
+		: undefined;
+}
+
+/** Get the max yields before reset is required (hard cap 3, ADR-057). */
+export async function resolveMaxYields(): Promise<number> {
+	const maxYields = boostBlock(await readSettings()).maxYields;
+	return typeof maxYields === "number" && Number.isInteger(maxYields)
+		? Math.max(1, Math.min(HARD_MAX_YIELDS, maxYields))
+		: 3;
+}
+
+/** Lease length in minutes; invalid settings retain the 10-minute default. */
+export async function resolveLeaseMinutes(): Promise<number> {
+	const minutes = boostBlock(await readSettings()).leaseMinutes;
+	return typeof minutes === "number" && Number.isInteger(minutes) && minutes >= 1 && minutes <= 60
+		? minutes
+		: BOOST_LEASE_TTL_MS / 60_000;
+}
+
 async function saveBoostSetting(
 	key: "model" | "maxYields" | "leaseMinutes",
 	value: string | number,
 ): Promise<void> {
-	let settings: Record<string, unknown> = {};
-	try {
-		settings = JSON.parse(await readFile(piSettingsPath(), "utf8")) as Record<
-			string,
-			unknown
-		>;
-	} catch {
-		// Fresh settings file.
-	}
+	const settings = await readSettings();
 	const boost = boostBlock(settings);
 	boost[key] = value;
 	settings.boost = boost;

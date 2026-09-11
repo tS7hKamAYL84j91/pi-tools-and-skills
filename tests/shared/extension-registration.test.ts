@@ -246,6 +246,7 @@ describe("extension registration smoke tests", () => {
 			"coas_workspace_update",
 		]);
 		expectRegistered(registrations.commands, [
+			"coas",
 			"coas-doctor",
 			"pi-scheduler",
 			"coas-schedules",

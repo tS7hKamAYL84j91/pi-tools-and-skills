@@ -5,6 +5,63 @@ or manage Kanban from this project's agents; Gravitas owns the optional
 human-facing overview. Board updates, planning documents, and status logs are
 not prerequisites for doing the work. Do not duplicate execution records here.
 
+## Boost plan mode — actually write TODO.md
+
+Requested by Jim (2026-09-10). Root cause: the `/boost plan` prompt (PLAN_FRAME in
+`extensions/pi-boost/boost-modes.ts`) said "planning only — do not start
+implementing, modify files, or treat it as authorization to execute", so the model
+refused to modify files and only replied in chat. The prompt was the problem.
+Fixed: PLAN_FRAME now explicitly directs the model to write the plan to `TODO.md`
+while forbidding implementing code or modifying other files.
+
+- [x] **Prompt fix in PLAN_FRAME** (`extensions/pi-boost/boost-modes.ts`).
+  Implemented: updated PLAN_FRAME to explicitly instruct writing the plan to
+  `TODO.md`, while retaining the execution guard (write `TODO.md`, but do not
+  start implementing or modify other files).
+- [x] **Preserve legacy frame skipping in context extraction** (`boost-modes.ts`).
+  Implemented: `isBoostFramed` checks the shared plan prefix so both new and
+  legacy plan-framed messages in session history are skipped when finding the
+  most recent user problem.
+- [x] **Regression tests** (`tests/boost/pi-boost-modes.test.ts`).
+  Implemented: verified PLAN_FRAME framing with `write it to TODO.md` clause and
+  added test asserting legacy plan-frame prompts in branch history are skipped.
+- [x] **Update documentation** (`extensions/pi-boost/README.md`).
+  Implemented: documented that `/boost plan` authorizes writing `TODO.md` while
+  forbidding modifying other files or executing code.
+- [x] **Default boost mode = verbatim prompt injection (T-915)**.
+  Implemented: plain prompt injection is default (no framing, no mode word
+  consumed); plan and challenge remain opt-in via first word.
+- [x] **Validation**: 79 boost unit tests pass; `npm run check`, `npm test`,
+  `git diff --check` clean.
+
+## Extension UX coherence
+
+Conventions established in ADR-061: one command per concern, uniform
+subcommand grammar, consistent status channels, shared settings I/O.
+
+- [x] **Audit all nine extensions' commands, overlays, settings I/O, and status channels**.
+  Implemented: documented inconsistencies and established target patterns in
+  `docs/adr/061-extension-command-surface-conventions.md`.
+- [x] **Conventions ADR** (`docs/adr/061-extension-command-surface-conventions.md`).
+  Implemented: one primary stem per concern, standard subcommands, non-breaking
+  aliases, standardized toggle helper, and shared advisory-locked settings persistence.
+- [x] **Shared toggle command helper** (`lib/toggle-command.ts`).
+  Implemented: `registerToggleCommand` provides uniform `on|off` handling, status
+  reporting, and error notification. Reused in `extensions/pi-kanban/watcher-control.ts`
+  and `extensions/pi-panopticon/registry/reconciler-control.ts`. Unit tested in
+  `tests/shared/toggle-command.test.ts`.
+- [x] **Shared settings persistence block** (`lib/pi-settings.ts`).
+  Implemented: `savePiSettingsBlock` provides advisory-locked, atomic read-modify-write
+  block persistence with safe mode 0o600. Reused in `extensions/pi-kanban/watcher-settings.ts`
+  and `extensions/pi-panopticon/registry/reconciler-settings.ts`. Unit tested in
+  `tests/shared/pi-settings.test.ts`.
+- [x] **Single-stem command consolidation with backward-compatible aliases**:
+  - `/goal clear` handler reused by `/goal-clear` alias (`extensions/pi-goal/goal-commands.ts`).
+  - `/agents external [list|register|remove]` wired to `/agents` with `/agent-external-*` aliases preserved (`extensions/pi-panopticon/ui/agents-command.ts`, `external-agent-command.ts`).
+  - `/coas [status|doctor|workspaces|schedules|scheduler]` root command with `/coas-*` and `/pi-scheduler` aliases preserved (`extensions/pi-coas/commands.ts`).
+- [x] **Validation**: all unit test suites, namespace checks, typecheck, lint,
+  knip, type-coverage, and full test suite pass.
+
 ## Kanban — refactoring required after implementation review
 
 Review of `00f293e`: the existing passing tests are a baseline, not a correctness

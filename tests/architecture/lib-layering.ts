@@ -47,6 +47,7 @@ const SHARED_LIB_FILES = new Set([
 	"session-spool-runner.ts",
 	"session-spool.ts",
 	"task-brief.ts",
+	"toggle-command.ts",
 	"tool-result.ts",
 	"tui-confirmation.ts",
 	"tui-overflow.ts",

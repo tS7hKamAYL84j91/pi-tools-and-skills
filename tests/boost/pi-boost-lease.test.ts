@@ -99,7 +99,7 @@ async function lastStatus(ctx: unknown): Promise<string> {
 }
 
 describe("boost in-session model lease", () => {
-	it("switches to the first different text model and sends the framed prompt", async () => {
+	it("switches to the first different text model and sends the verbatim prompt by default", async () => {
 		const { pi, setModel, sendUserMessage, command } = createFakePi();
 		createBoostExtension()(pi);
 		const ctx = createFakeContext();
@@ -108,8 +108,7 @@ describe("boost in-session model lease", () => {
 
 		expect(setModel).toHaveBeenCalledWith(BOOST_MODEL);
 		const message = String(sendUserMessage.mock.calls[0]?.[0]);
-		expect(message.startsWith(FRAME_PREFIX)).toBe(true);
-		expect(message.endsWith("debug this error")).toBe(true);
+		expect(message).toBe("debug this error");
 		expect(await lastStatus(ctx)).toContain("active");
 		expect(await lastStatus(ctx)).toContain("2 left");
 	});
@@ -417,7 +416,7 @@ describe("boost in-session model lease", () => {
 
 describe("boost settings", () => {
 	it("clamps maxYields to the hard cap of 3", async () => {
-		expect(await resolveMaxYields("/tmp/test")).toBe(3);
+		expect(await resolveMaxYields()).toBe(3);
 	});
 });
 
@@ -429,7 +428,17 @@ describe("boost modes", () => {
 		return createFakeContext({ sessionManager: { getBranch: () => entries } });
 	}
 
-	it("runs explicit challenge mode with the same framing as the default", async () => {
+	it("runs plain mode (default) with verbatim prompt injection", async () => {
+		const { pi, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("fix the leak", ctx);
+		const message = String(sendUserMessage.mock.calls[0]?.[0]);
+		expect(message).toBe("fix the leak");
+	});
+
+	it("runs explicit challenge mode with anti-rut framing", async () => {
 		const { pi, sendUserMessage, command } = createFakePi();
 		createBoostExtension()(pi);
 		const ctx = createFakeContext();

@@ -49,11 +49,11 @@ function type(component: Component, text: string) {
 describe("Boost lease duration settings", () => {
 	it.each([undefined, null, 0, -1, 61, 1.5, "30", true])("defaults invalid duration %j to 10 minutes", async (leaseMinutes) => {
 		await writeFile(settingsPath, JSON.stringify({ boost: { leaseMinutes } }));
-		expect(await resolveLeaseMinutes(home)).toBe(10);
+		expect(await resolveLeaseMinutes()).toBe(10);
 	});
 	it.each([1, 5, 10, 15, 30, 60])("loads a valid %i-minute duration", async (leaseMinutes) => {
 		await writeFile(settingsPath, JSON.stringify({ boost: { leaseMinutes } }));
-		expect(await resolveLeaseMinutes(home)).toBe(leaseMinutes);
+		expect(await resolveLeaseMinutes()).toBe(leaseMinutes);
 	});
 });
 
@@ -147,8 +147,8 @@ describe("Boost native model selector", () => {
 			return undefined;
 		}) as ExtensionContext["ui"]["custom"];
 		await openBoostSettingsOverlay(ctx);
-		expect(await resolveBoostModel(home)).toBe("fixture/org/boost:latest");
-		expect(await resolveLeaseMinutes(home)).toBe(15);
+		expect(await resolveBoostModel()).toBe("fixture/org/boost:latest");
+		expect(await resolveLeaseMinutes()).toBe(15);
 		expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({ defaultModel: "unchanged", boost: { model: "fixture/org/boost:latest", maxYields: 3, leaseMinutes: 15 } });
 		expect(ctx.model).toBe(baseline);
 	});

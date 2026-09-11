@@ -32,9 +32,9 @@ describe("parseBoostMode", () => {
 		});
 	});
 
-	it("defaults to challenge mode when first word is not a mode", () => {
+	it("defaults to plain mode (verbatim prompt) when first word is not an opt-in mode", () => {
 		expect(parseBoostMode("investigate memory leak")).toEqual({
-			mode: "challenge",
+			mode: "plain",
 			prompt: "investigate memory leak",
 		});
 	});
@@ -54,19 +54,19 @@ describe("parseBoostMode", () => {
 			prompt: "fix the bug",
 		});
 		expect(parseBoostMode("   fix the bug   ")).toEqual({
-			mode: "challenge",
+			mode: "plain",
 			prompt: "fix the bug",
 		});
-		expect(parseBoostMode("")).toEqual({ mode: "challenge", prompt: "" });
+		expect(parseBoostMode("")).toEqual({ mode: "plain", prompt: "" });
 	});
 
 	it("does not trigger mode on words that merely start with plan or challenge", () => {
 		expect(parseBoostMode("planner tool")).toEqual({
-			mode: "challenge",
+			mode: "plain",
 			prompt: "planner tool",
 		});
 		expect(parseBoostMode("challenging problem")).toEqual({
-			mode: "challenge",
+			mode: "plain",
 			prompt: "challenging problem",
 		});
 	});
@@ -74,10 +74,14 @@ describe("parseBoostMode", () => {
 
 describe("formatBoostMessage", () => {
 	it("formats all valid BoostMode values", () => {
-		const modes: BoostMode[] = ["plan", "challenge"];
+		const modes: BoostMode[] = ["plain", "plan", "challenge"];
 		for (const mode of modes) {
 			expect(formatBoostMessage(mode, "step")).toContain("step");
 		}
+	});
+
+	it("formats plain mode verbatim without framing", () => {
+		expect(formatBoostMessage("plain", "my question")).toBe("my question");
 	});
 
 	it("formats challenge mode with CHALLENGE_FRAME", () => {
@@ -90,6 +94,7 @@ describe("formatBoostMessage", () => {
 		const result = formatBoostMessage("plan", "my request");
 		expect(result).toBe(`${PLAN_FRAME}my request`);
 		expect(result).toContain("TODO plan");
+		expect(result).toContain("write it to TODO.md");
 		expect(result).toContain("This is planning only");
 	});
 });
@@ -156,6 +161,16 @@ describe("findRecentUserProblem", () => {
 		const entries = [
 			{ type: "message", message: { role: "user", content: "real problem" } },
 			{ type: "message", message: { role: "user", content: `${legacyFrame}old boost prompt` } },
+		];
+		expect(findRecentUserProblem(entries)).toBe("real problem");
+	});
+
+	it("skips legacy plan frame without write-to-TODO clause", () => {
+		const legacyPlanFrame =
+			"Produce a concise, actionable TODO plan for the request below: list the concrete steps, their dependencies, and the first step to take. This is planning only — do not start implementing, modify files, or treat it as authorization to execute; the user will review the plan first.\n\n";
+		const entries = [
+			{ type: "message", message: { role: "user", content: "real problem" } },
+			{ type: "message", message: { role: "user", content: `${legacyPlanFrame}old plan prompt` } },
 		];
 		expect(findRecentUserProblem(entries)).toBe("real problem");
 	});

@@ -149,55 +149,86 @@ async function showScheduleBrowser(ctx: ExtensionCommandContext, scheduler: PiSc
 	await showText(ctx, `CoAS schedule dry-run: ${action.taskId}`, commandSummary("coas-schedule run", result), result.code === 0 ? "info" : "warning");
 }
 
+function doctorLevel(code: number): "info" | "warning" | "error" {
+	if (code === 0) return "info";
+	if (code === 1) return "warning";
+	return "error";
+}
+
 export function registerCoasCommands(pi: ExtensionAPI, scheduler: PiScheduler): void {
+	async function handleCoasCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
+		const trimmed = args.trim();
+		const [subcommand, ...rest] = trimmed.split(/\s+/);
+		const restArgs = rest.join(" ").trim();
+		switch (subcommand) {
+			case "status":
+			case "": {
+				const result = await coasStatus(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
+				await showText(ctx, "CoAS status", commandSummary("coas-status", result));
+				return;
+			}
+			case "doctor": {
+				const result = await coasDoctor(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
+				await showText(ctx, `CoAS doctor exit=${result.code}`, commandSummary("coas-doctor", result), doctorLevel(result.code));
+				return;
+			}
+			case "workspaces": {
+				if (restArgs === "--text") {
+					const workspaces = await listWorkspaces(resolveCoasConfig(ctx.cwd));
+					await showText(ctx, "CoAS workspaces", formatWorkspaceList(workspaces));
+					return;
+				}
+				await showWorkspaceBrowser(ctx);
+				return;
+			}
+			case "schedules": {
+				const config = resolveCoasConfig(ctx.cwd);
+				if (restArgs === "--text") {
+					const schedules = await listSchedules(config);
+					const rendered = await renderInternalSchedulePlan(config);
+					await showText(ctx, "CoAS schedules", `${formatScheduleList(schedules)}\n\n${renderSchedulerSnapshot(scheduler.snapshot())}\n\n${commandSummary("coas-schedule internal-plan", rendered)}`);
+					return;
+				}
+				await showScheduleBrowser(ctx, scheduler);
+				return;
+			}
+			case "scheduler": {
+				await scheduler.reconcile(resolveCoasConfig(ctx.cwd));
+				await showText(ctx, "Pi scheduler", renderSchedulerSnapshot(scheduler.snapshot()));
+				return;
+			}
+			default:
+				ctx.ui.notify("Usage: /coas [status|doctor|workspaces|schedules|scheduler]", "warning");
+		}
+	}
+
+	pi.registerCommand("coas", {
+		description: "Browse or inspect CoAS operational state. Usage: /coas [status|doctor|workspaces|schedules|scheduler]",
+		handler: handleCoasCommand,
+	});
+
 	pi.registerCommand("coas-status", {
-		description: "Show fast CoAS operational status",
-		handler: async (_args, ctx) => {
-			const result = await coasStatus(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
-			await showText(ctx, "CoAS status", commandSummary("coas-status", result));
-		},
+		description: "Show fast CoAS operational status (alias for /coas status)",
+		handler: async (_args, ctx) => handleCoasCommand("status", ctx),
 	});
 
 	pi.registerCommand("coas-doctor", {
-		description: "Run CoAS diagnostics",
-		handler: async (_args, ctx) => {
-			const result = await coasDoctor(resolveCoasConfig(ctx.cwd), scheduler.snapshot());
-			const level = result.code === 0 ? "info" : result.code === 1 ? "warning" : "error";
-			await showText(ctx, `CoAS doctor exit=${result.code}`, commandSummary("coas-doctor", result), level);
-		},
+		description: "Run CoAS diagnostics (alias for /coas doctor)",
+		handler: async (_args, ctx) => handleCoasCommand("doctor", ctx),
 	});
 
 	pi.registerCommand("coas-workspaces", {
-		description: "Browse CoAS workspaces",
-		handler: async (args, ctx) => {
-			if (args.trim() === "--text") {
-				const workspaces = await listWorkspaces(resolveCoasConfig(ctx.cwd));
-				await showText(ctx, "CoAS workspaces", formatWorkspaceList(workspaces));
-				return;
-			}
-			await showWorkspaceBrowser(ctx);
-		},
+		description: "Browse CoAS workspaces (alias for /coas workspaces)",
+		handler: async (args, ctx) => handleCoasCommand(`workspaces ${args}`.trim(), ctx),
 	});
 
 	pi.registerCommand("coas-schedules", {
-		description: "Browse CoAS schedules and internal scheduler state",
-		handler: async (args, ctx) => {
-			const config = resolveCoasConfig(ctx.cwd);
-			if (args.trim() === "--text") {
-				const schedules = await listSchedules(config);
-				const rendered = await renderInternalSchedulePlan(config);
-				await showText(ctx, "CoAS schedules", `${formatScheduleList(schedules)}\n\n${renderSchedulerSnapshot(scheduler.snapshot())}\n\n${commandSummary("coas-schedule internal-plan", rendered)}`);
-				return;
-			}
-			await showScheduleBrowser(ctx, scheduler);
-		},
+		description: "Browse CoAS schedules and internal scheduler state (alias for /coas schedules)",
+		handler: async (args, ctx) => handleCoasCommand(`schedules ${args}`.trim(), ctx),
 	});
 
 	pi.registerCommand("pi-scheduler", {
-		description: "Show and reconcile the pi-hosted scheduler",
-		handler: async (_args, ctx) => {
-			await scheduler.reconcile(resolveCoasConfig(ctx.cwd));
-			await showText(ctx, "Pi scheduler", renderSchedulerSnapshot(scheduler.snapshot()));
-		},
+		description: "Show and reconcile the pi-hosted scheduler (alias for /coas scheduler)",
+		handler: async (_args, ctx) => handleCoasCommand("scheduler", ctx),
 	});
 }
