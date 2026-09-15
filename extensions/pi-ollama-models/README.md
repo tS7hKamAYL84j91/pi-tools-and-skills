@@ -2,7 +2,7 @@
 
 User-installable extension that refreshes pi's Ollama model registry from the local `ollama` CLI on `session_start` (which also runs after extension reloads).
 
-It mirrors the useful part of CoAS Quartermaster/setup behavior: discover `ollama list`, inspect each model with `ollama show`, and write the `ollama` provider entry in `~/.pi/agent/models.json` while preserving other providers.
+It mirrors the useful part of Automations Quartermaster/setup behavior: discover `ollama list`, inspect each model with `ollama show`, and write the `ollama` provider entry in `~/.pi/agent/models.json` while preserving other providers.
 
 ## Behavior
 
@@ -49,4 +49,4 @@ The extension executes Ollama only through an approved absolute path. Set `PI_OL
 
 ## Notes
 
-The sync happens at pi session start/reload, but the model picker may need one more reload if pi reads `models.json` before extensions run. This extension keeps the registry file current without changing CoAS scripts or storing credentials, and keeps routine success feedback in the status slot to avoid startup notification noise.
+The sync happens at pi session start/reload, but the model picker may need one more reload if pi reads `models.json` before extensions run. This extension keeps the registry file current without changing Automations scripts or storing credentials, and keeps routine success feedback in the status slot to avoid startup notification noise.

@@ -26,7 +26,7 @@ import {
 	listAgentApprovals,
 	rejectAgentApproval,
 	type PendingApproval,
-} from "../../pi-coas/lib/coas-approval-inbox.js";
+} from "../../pi-automations/lib/automations-approval-inbox.js";
 
 interface RenderAgentDetailOverlayArgs {
 	record: AgentRecord;
@@ -137,6 +137,21 @@ async function confirmAndStopAgent(
 
 export type AgentDetailAction = "back" | "close" | "message" | "compose" | "stop" | "kill";
 
+const DIRECT_ACTION_KEYS: Record<string, AgentDetailAction> = {
+	c: "message",
+	m: "compose",
+	s: "stop",
+	k: "kill",
+};
+
+const DECISION_KEYS = { a: "approve", r: "reject", d: "defer" } as const;
+
+const DECISION_APIS = {
+	approve: approveAgentApproval,
+	reject: rejectAgentApproval,
+	defer: deferAgentApproval,
+} as const;
+
 export async function showAgentDetail(
 	ctx: ExtensionContext,
 	agentName: string,
@@ -152,7 +167,7 @@ export async function showAgentDetail(
 
 	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
-	const config = deps.getCoasConfig?.(ctx);
+	const config = deps.getAutomationsConfig?.(ctx);
 	const approvals = config ? await listAgentApprovals(config, rec, deps.selfId) : [];
 	const pendingApprovals: PendingApproval[] = [...approvals];
 	let selectedApprovalIndex = 0;
@@ -164,18 +179,12 @@ export async function showAgentDetail(
 			const approval = pendingApprovals[selectedApprovalIndex];
 			if (!approval) return;
 			try {
-				if (decision === "approve") {
-					await approveAgentApproval(config, approval.requestId);
-					if (deps.resumeApprovedRun) {
-						const resumed = await deps.resumeApprovedRun(config, approval.requestId);
-						if (!resumed) {
-							ctx.ui.notify(`Approval recorded but scheduled run could not be resumed: ${approval.requestId}`, "warning");
-						}
+				await DECISION_APIS[decision](config, approval.requestId);
+				if (decision === "approve" && deps.resumeApprovedRun) {
+					const resumed = await deps.resumeApprovedRun(config, approval.requestId);
+					if (!resumed) {
+						ctx.ui.notify(`Approval recorded but scheduled run could not be resumed: ${approval.requestId}`, "warning");
 					}
-				} else if (decision === "reject") {
-					await rejectAgentApproval(config, approval.requestId);
-				} else {
-					await deferAgentApproval(config, approval.requestId);
 				}
 				pendingApprovals.splice(selectedApprovalIndex, 1);
 				selectedApprovalIndex = Math.max(0, Math.min(selectedApprovalIndex, pendingApprovals.length - 1));
@@ -197,22 +206,15 @@ export async function showAgentDetail(
 			}),
 			invalidate: () => undefined,
 			handleInput: (data: string) => {
+				const key = data.length === 1 ? data.toLowerCase() : data;
+				const directAction = !isSelf ? DIRECT_ACTION_KEYS[key] : undefined;
 				if (isAgentDetailBackInput(data)) {
 					action = "back";
 					done();
 				} else if (matchesKey(data, "escape")) {
 					done();
-				} else if (!isSelf && (data === "c" || data === "C")) {
-					action = "message";
-					done();
-				} else if (!isSelf && (data === "m" || data === "M")) {
-					action = "compose";
-					done();
-				} else if (!isSelf && (data === "s" || data === "S")) {
-					action = "stop";
-					done();
-				} else if (!isSelf && (data === "k" || data === "K")) {
-					action = "kill";
+				} else if (directAction) {
+					action = directAction;
 					done();
 				} else if (pendingApprovals.length > 0) {
 					if (matchesKey(data, "up")) {
@@ -221,14 +223,12 @@ export async function showAgentDetail(
 					} else if (matchesKey(data, "down")) {
 						selectedApprovalIndex = Math.min(pendingApprovals.length - 1, selectedApprovalIndex + 1);
 						tui.requestRender();
-					} else if ((data === "a" || data === "A") && isPrincipal()) {
-						void applyDecision("approve");
-					} else if ((data === "r" || data === "R") && isPrincipal()) {
-						void applyDecision("reject");
-					} else if ((data === "d" || data === "D") && isPrincipal()) {
-						void applyDecision("defer");
-					} else if (data === "a" || data === "A" || data === "r" || data === "R" || data === "d" || data === "D") {
-						ctx.ui.notify("Approval decisions require principal authority", "warning");
+					} else if (key in DECISION_KEYS) {
+						if (!isPrincipal()) {
+							ctx.ui.notify("Approval decisions require principal authority", "warning");
+						} else {
+							void applyDecision(DECISION_KEYS[key as keyof typeof DECISION_KEYS]);
+						}
 					}
 				}
 			},

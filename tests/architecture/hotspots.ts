@@ -168,7 +168,7 @@ const MODULES: ModuleDefinition[] = [
 	{ name: "kanban", pathPrefix: "extensions/pi-kanban/" },
 	{ name: "goal", pathPrefix: "extensions/pi-goal/" },
 	{ name: "matrix", pathPrefix: "extensions/pi-matrix/" },
-	{ name: "coas", pathPrefix: "extensions/pi-coas/" },
+	{ name: "automations", pathPrefix: "extensions/pi-automations/" },
 	{ name: "lib", pathPrefix: "lib/" },
 ];
 
@@ -202,16 +202,23 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 		targetDate: "2026-09-22",
 	},
 	{
-		modules: ["coas", "lib"],
+		modules: ["automations", "lib"],
 		maxCommits90d: 5,
 		reason: "T-795/T-888 intentionally share the confined filesystem and persistence boundary; decoupling is not safe while scheduler slot admission depends on those primitives. Decoupling plan target 2026-09-22: retain one narrow lib-owned boundary and prevent extension-to-extension runtime coupling.",
 		createdAt: "2026-09-05",
 		targetDate: "2026-09-22",
 	},
 	{
-		modules: ["coas", "kanban"],
+		modules: ["lib", "panopticon-ui"],
+		maxCommits90d: 6,
+		reason: "Panopticon UI consumes the automations runtime's shared config types and approval-inbox helpers. Decoupling plan target 2026-09-22: narrow panopticon-ui to a stable contract (view-model plus explicit resume API) so lib config changes stop touching UI (T-924).",
+		createdAt: "2026-09-15",
+		targetDate: "2026-09-22",
+	},
+	{
+		modules: ["automations", "kanban"],
 		maxCommits90d: 8,
-		reason: "Recent T-801/T-802/T-821 work touched scheduler/continuation, kanban completion gate, and shared gate_command helper across lifecycle/orchestration extensions. Decoupling plan target 2026-09-22: keep shared surface limited to lib/gate-command.ts; no direct coas<->kanban runtime calls.",
+		reason: "Recent T-801/T-802/T-821 work touched scheduler/continuation, kanban completion gate, and shared gate_command helper across lifecycle/orchestration extensions. Decoupling plan target 2026-09-22: keep shared surface limited to lib/gate-command.ts; no direct automations<->kanban runtime calls.",
 		createdAt: "2026-06-24",
 		targetDate: "2026-09-22",
 	},
@@ -223,7 +230,7 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 		targetDate: "2026-09-22",
 	},
 	{
-		modules: ["coas", "matrix"],
+		modules: ["automations", "matrix"],
 		maxCommits90d: 5,
 		reason: "One-time package metadata alignment (engines.node) across orchestration and communication extensions. Decoupling plan target 2026-09-22: no shared runtime surface; manifests remain independent.",
 		createdAt: "2026-07-11",
@@ -237,9 +244,9 @@ const COUPLING_BUDGETS: CouplingBudget[] = [
 		targetDate: "2026-09-22",
 	},
 	{
-		modules: ["coas", "goal"],
+		modules: ["automations", "goal"],
 		maxCommits90d: 7,
-		reason: "T-797/T-801/T-821 lifecycle/continuation/gate work touched goal, coas, and shared lib helpers. Decoupling plan target 2026-09-22: shared surface limited to lib/; no direct coas<->goal runtime calls.",
+		reason: "T-797/T-801/T-821 lifecycle/continuation/gate work touched goal, automations, and shared lib helpers. Decoupling plan target 2026-09-22: shared surface limited to lib/; no direct automations<->goal runtime calls.",
 		createdAt: "2026-07-11",
 		targetDate: "2026-09-22",
 	},

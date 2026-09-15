@@ -38,7 +38,7 @@ Persist `lastProgressAt`, a liveness epoch, and one-shot warning/nudge dispositi
 
 Start one unref'd in-process watchdog only after `session_start`, and clear it on `session_shutdown`. Operator environment may configure soft/hard thresholds within safe documented caps; callers cannot choose cadence through tools or goal text.
 
-At the soft threshold, emit one status warning. If no agent turn or queued continuation is active, queue at most one continuation nudge for the current epoch. Never inject into an active turn. At the hard threshold, pause with a bounded actionable error. Restart reconstructs deadlines from persisted timestamps. No CoAS schedule, external poller, or automatic completion is introduced.
+At the soft threshold, emit one status warning. If no agent turn or queued continuation is active, queue at most one continuation nudge for the current epoch. Never inject into an active turn. At the hard threshold, pause with a bounded actionable error. Restart reconstructs deadlines from persisted timestamps. No Automations schedule, external poller, or automatic completion is introduced.
 
 ```mermaid
 stateDiagram-v2
@@ -93,6 +93,6 @@ The parser accepts existing v1/v2 state and deterministically supplies manual mo
 
 - No automatic final completion.
 - No approval, verification, audit, or gate bypass.
-- No persistent CoAS schedule or external daemon.
+- No persistent Automations schedule or external daemon.
 - No fixed two-minute cadence.
 - No Teams, Boost, TTL, or T-850 work.

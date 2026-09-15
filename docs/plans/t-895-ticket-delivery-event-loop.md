@@ -4,7 +4,7 @@ Kanban T-895 owns plan/status/evidence. This document specifies the configuratio
 
 ## Decision and scope
 
-Current Principal decision: keep the five-minute CoAS progress schedule as the live GM driver; finish this event-loop exercise as an unactivated, tested prototype. Do not install or activate it unless it demonstrates added value and receives separate approval. The profile models one manually selected ticket per bounded run (T-886 was the original pilot candidate); future Kaggle evaluation is deferred and outside this repo's delivery scope. Fix any actual runtime defects discovered using failing regressions and bounded Luna implementation/review, without unrelated refactors or new dependencies. No event-loop timers, automatic backlog selection, model changes, restarts, or live ticket execution in this exercise.
+Current Principal decision: keep the five-minute Automations progress schedule as the live GM driver; finish this event-loop exercise as an unactivated, tested prototype. Do not install or activate it unless it demonstrates added value and receives separate approval. The profile models one manually selected ticket per bounded run (T-886 was the original pilot candidate); future Kaggle evaluation is deferred and outside this repo's delivery scope. Fix any actual runtime defects discovered using failing regressions and bounded Luna implementation/review, without unrelated refactors or new dependencies. No event-loop timers, automatic backlog selection, model changes, restarts, or live ticket execution in this exercise.
 
 The current GM handles commands using its existing authorized tools and delegates substantive implementation. The extension neither imports Kanban/Panopticon nor discovers/spawns workers. Kanban remains authoritative; session events record the GM's observations and do not themselves verify a commit, test, review, or ticket completion.
 
@@ -39,7 +39,7 @@ Verification must cover acceptance criteria, focused tests, npm run check, npm t
 - Suggested limits: one pending command, eight automated turns, chain depth twelve; validate against actual runtime schema. No auto-next-ticket loop.
 - Focused tests under `tests/` loading the tracked config through production validation, projections and automator. Cover success chain, failure/wait/block terminal paths, duplicate seed/idempotence, cross-run correlation and no initial work/timer. No real board/provider/git mutations.
 - Operator runbook with exact explicit start, status, pause, resume/retry behavior, enablement/reload, waiting-worker recovery and rollback. Do not promise restart exactly-once domain execution.
-- Value/limitations assessment versus the simpler CoAS schedule. Leave `.pi/event-loop.json` absent and project/global extension enablement unchanged; keep installation instructions only as explicitly gated future steps.
+- Value/limitations assessment versus the simpler Automations schedule. Leave `.pi/event-loop.json` absent and project/global extension enablement unchanged; keep installation instructions only as explicitly gated future steps.
 
 ## Validation and review
 

@@ -22,7 +22,7 @@ USER_INSTALLABLE_PACKAGES = {
 }
 
 PROJECT_ONLY_PACKAGES = {
-    "pi-coas",
+    "pi-automations",
     "pi-file-watch",
     "pi-kanban",
 }
@@ -34,7 +34,7 @@ OWNED_EXTENSION_DIRS = [
     "pi-file-watch",
     "pi-kanban",
     "pi-matrix",
-    "pi-coas",
+    "pi-automations",
     "pi-goal",
     "pi-ollama-models",
 ]
@@ -52,16 +52,24 @@ def load_settings(settings_path: str) -> dict[str, Any]:
     if not os.path.exists(settings_path):
         return {}
     # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
-    with open(settings_path, "r") as handle:
-        loaded = json.load(handle)
+    try:
+        with open(settings_path, "r") as handle:
+            loaded = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"Error: cannot read settings {settings_path}: {error}", file=sys.stderr)
+        raise SystemExit(1)
     return loaded if isinstance(loaded, dict) else {}
 
 
 def save_settings(settings_path: str, settings: dict[str, Any]) -> None:
     # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
-    with open(settings_path, "w") as handle:
-        json.dump(settings, handle, indent=2)
-        handle.write("\n")
+    try:
+        with open(settings_path, "w") as handle:
+            json.dump(settings, handle, indent=2)
+            handle.write("\n")
+    except OSError as error:
+        print(f"Error: cannot write settings {settings_path}: {error}", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def set_or_delete_list(settings: dict[str, Any], key: str, values: list[Any]) -> None:

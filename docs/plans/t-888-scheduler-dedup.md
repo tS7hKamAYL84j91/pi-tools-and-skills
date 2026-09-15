@@ -1,11 +1,11 @@
 # T-888 scheduler slot admission plan
 
 Status: **IMPLEMENTATION IN PROGRESS — bounded ADR-060 slices authorized**
-Governing design: [ADR-060](../adr/060-coas-scheduler-slot-admission.md). Safety gate: [T-888 ADR-060 safety recheck](file:///tmp/t888-adr060-safety-recheck.md) — PASS for bounded implementation resumption (not merge approval).
+Governing design: [ADR-060](../adr/060-automations-scheduler-slot-admission.md). Safety gate: [T-888 ADR-060 safety recheck](file:///tmp/t888-adr060-safety-recheck.md) — PASS for bounded implementation resumption (not merge approval).
 
 ## Problem and boundary
 
-`CoasInternalScheduler.start()` performs catch-up on every boot while `lastRun` and `activeRuns` are process-local. The canonical occurrence is `(taskId, UTC minuteKey(occurrence))`.
+`AutomationsInternalScheduler.start()` performs catch-up on every boot while `lastRun` and `activeRuns` are process-local. The canonical occurrence is `(taskId, UTC minuteKey(occurrence))`.
 
 Use the existing shared `ConfinedStore` and its T-795 narrow defense-in-depth checks. Do not claim TOCTOU elimination, add a second confinement layer, or perform a broad race-resistant filesystem redesign.
 

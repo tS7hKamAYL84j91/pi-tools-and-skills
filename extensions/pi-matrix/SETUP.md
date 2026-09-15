@@ -47,7 +47,7 @@ If `ingress` is omitted, the defaults above are applied.
 
 Start pi using whatever workspace/runtime wrapper provides the configured token environment variable. This package intentionally does not prescribe that mechanism.
 
-## Sending images and PDFs to CoAS/pi
+## Sending images and PDFs to Automations/pi
 
 1. Send the image, PDF, audio/video, or file in the Matrix room from a trusted MXID.
 2. Wait for pi to report `N new messages`.

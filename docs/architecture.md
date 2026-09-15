@@ -25,7 +25,7 @@ flowchart LR
   Backend --> Maildir[Persistent Maildir]
 ```
 
-The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and authenticates either a fixed principal or an operator-provisioned credential map. Native access uses an explicitly configured live Panopticon reference and the file-backed registry. CoAS owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision.
+The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and authenticates either a fixed principal or an operator-provisioned credential map. Native access uses an explicitly configured live Panopticon reference and the file-backed registry. Automations owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision.
 
 ## F.I.R.E. Review
 
@@ -49,7 +49,7 @@ Restrained, Elegant).
 The main risk is **custom framework growth**:
 
 - **File Concurrency:** Multiple writers require strict lock discipline.
-- `pi-coas`: Must keep its internal scheduler minimal — schedule files plus one
+- `pi-automations`: Must keep its internal scheduler minimal — schedule files plus one
   pi-hosted timer loop, no external crontab reconciliation.
 - `pi-matrix`: Justified for human interaction, but too heavy for local
   agent-to-agent comms. Keep local peer routing on IPC-backed channels such as
@@ -67,7 +67,7 @@ The main risk is **custom framework growth**:
    store. ✅ ADR 014 suppresses idle reconciliation noise.
 4. **Keep naming tools canonical:** `set_name` and `get_name` are the only
    naming tools; deprecated alias wrappers are removed.
-5. **Limit `pi-coas`:** Run schedules only inside pi with a small timer loop.
+5. **Limit `pi-automations`:** Run schedules only inside pi with a small timer loop.
 6. **Enforce Boundaries:** Prevent extensions from coupling. Add explicit
    "What this does NOT do" to every README.
 
@@ -86,7 +86,7 @@ flowchart TD
   subgraph SharedLib[Shared lib layer]
     Core[Pure contracts and render helpers]
     Runtime[Runtime/session/persistence helpers]
-    Governance[CoAS governance classification and routing]
+    Governance[Automations governance classification and routing]
     Transports[Transport adapters]
     Core --> Runtime
     Core --> Transports
@@ -103,7 +103,7 @@ flowchart TD
   subgraph ProjectExt[Project-local extensions]
     Kanban[pi-kanban]
     FileWatch[pi-file-watch]
-    COAS[pi-coas]
+    AUTOMATIONS[pi-automations]
   end
 
   Pi --> Goal
@@ -122,11 +122,11 @@ flowchart TD
   LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
   Pi --> Kanban
   Pi --> FileWatch
-  Pi --> COAS
-  COAS --> CoasScheduler[pi-coas scheduler]
-  CoasScheduler --> CoasRunState[pi-coas/lib run-state helper]
-  CoasRunState --> ConfinedStore[ADR-038 confined filesystem store]
-  ConfinedStore --> CoasRoots[validated CoAS, schedule, and workspace roots]
+  Pi --> AUTOMATIONS
+  AUTOMATIONS --> AutomationsScheduler[pi-automations scheduler]
+  AutomationsScheduler --> AutomationsRunState[pi-automations/lib run-state helper]
+  AutomationsRunState --> ConfinedStore[ADR-038 confined filesystem store]
+  ConfinedStore --> AutomationsRoots[validated Automations, schedule, and workspace roots]
 
   Goal --> SharedLib
   Matrix --> SharedLib
@@ -135,11 +135,11 @@ flowchart TD
   Teams --> SharedLib
   Kanban --> SharedLib
   FileWatch --> SharedLib
-  COAS --> SharedLib
+  AUTOMATIONS --> SharedLib
 
   Kanban -. agent assignment/status .-> Panopticon
   Goal -. spawned-worker orchestration .-> Panopticon
-  COAS -. task scheduling .-> Kanban
+  AUTOMATIONS -. task scheduling .-> Kanban
 ```
 
 ### Standalone Teams extension boundary (ADR-048)
@@ -224,7 +224,7 @@ flowchart LR
 | `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
 | `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
 | `pi-file-watch` | project-local | Watches explicitly configured files and wakes the active session with bounded redacted updates | Runtime watchers only; reads `.pi/file-watch.json` and configured files |
-| `pi-coas` | project-local | Cooperative agent scheduling over kanban tasks | COAS schedule/runtime files in the owning workspace |
+| `pi-automations` | project-local | Cooperative agent scheduling over kanban tasks | AUTOMATIONS schedule/runtime files in the owning workspace |
 
 ### pi-goal session-lineage isolation (ADR-051)
 
@@ -303,7 +303,7 @@ flowchart LR
 - `pi-ollama-models` executes only an operator-configured absolute `PI_OLLAMA_COMMAND` whose basename is `ollama`, or a fixed standard absolute candidate (`/usr/local/bin/ollama`, `/usr/bin/ollama`). Deprecated public `modelsPath` and `ollamaCommand` fields are accepted but ignored. It never executes caller commands, resolves through PATH, `which`, cwd, or project files, and writes no credentials; other model providers in `models.json` remain outside its ownership.
 - Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
 - Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
-- Team result claim-checks are `pi-teams`-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or CoAS state.
+- Team result claim-checks are `pi-teams`-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or Automations state.
 
 ### Completion gate trust boundary
 
@@ -344,13 +344,13 @@ flowchart TD
   Setup --> Settings[~/.pi/agent/settings.json]
   Setup --> RootPackage[pi-tools-and-skills package\nfiltered global extensions]
   Setup --> UserPackage[Individual user packages\npi-goal/pi-matrix/pi-panopticon]
-  Setup -. rejects .-> ProjectOnly[Project-only packages\npi-kanban/pi-coas]
+  Setup -. rejects .-> ProjectOnly[Project-only packages\npi-kanban/pi-automations]
   ProjectOnly --> Workspace[Workspace .pi/settings.json]
 ```
 
 - `make setup` registers the repo package with the global operator extension allowlist.
 - `make setup-package PACKAGE=<name>` registers only user-installable extension packages.
-- `pi-kanban` and `pi-coas` remain project-only and must be enabled by the workspace that owns their state.
+- `pi-kanban` and `pi-automations` remain project-only and must be enabled by the workspace that owns their state.
 
 ---
 
@@ -380,7 +380,7 @@ flowchart TD
   `tool-result.ts`, `tui-confirmation.ts`, and `tui-overflow.ts`.
 - Shared IO/runtime primitives in `lib/` are imported by multiple callers and
   own generic filesystem, process, settings, session, and registry behavior.
-  CoAS-owned modules live in `extensions/pi-coas/lib/`; Panopticon spawn
+  Automations-owned modules live in `extensions/pi-automations/lib/`; Panopticon spawn
   modules live in `extensions/pi-panopticon/spawner/`; CLI adapters live in
   `scripts/`. The fitness suite rejects undocumented or single-caller files.
 - Pure runtime mappers that do not touch IO may live beside runtime helpers when
@@ -467,7 +467,7 @@ TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI ru
 ```mermaid
 flowchart TD
   User[Human / orchestrator] --> Pi[pi agent session]
-  CoAS[pi-coas scheduler\nrecurring operational policy owner] -->|scheduled prompt may call kanban_* tools| Pi
+  Automations[pi-automations scheduler\nrecurring operational policy owner] -->|scheduled prompt may call kanban_* tools| Pi
   Pi --> Tools[Kanban tool adapters\n11 model-visible tools]
   Pi --> Watcher[board.log watcher\nevent-driven only]
   Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
@@ -526,7 +526,7 @@ C4Component
 - `kanban_snapshot` defaults to compact output: counts, card IDs, short
   titles/owners, no descriptions or notes.
 - Full board and single-card details are explicit on-demand views.
-- Recurring schedules, cron-like cadence, morning briefs, state capture, recurring reviews, and CoAS operational policy belong to `pi-coas`, not `pi-kanban`.
+- Recurring schedules, cron-like cadence, morning briefs, state capture, recurring reviews, and Automations operational policy belong to `pi-automations`, not `pi-kanban`.
 - `pi-kanban` watcher follow-ups are event-driven board-change notifications, not a scheduler.
 
 ---
@@ -820,7 +820,7 @@ sequenceDiagram
 
 ---
 
-## CoAS Confined Filesystem Boundary
+## Automations Confined Filesystem Boundary
 
 ```mermaid
 flowchart LR
@@ -828,27 +828,27 @@ flowchart LR
   Consumers --> Store[ConfinedStore\nconfig or authorized-root bound]
   Paths --> Store
   Store --> Guard[Shared confined-store-security.ts\nlexical + resolved containment; no symlink components\nregular-file and post-creation checks]
-  Guard --> Home[(COAS_HOME managed roots)]
-  External[Explicit external workspace] --> Metadata[.pi/coas/workspace.env authorization]
+  Guard --> Home[(AUTOMATIONS_HOME managed roots)]
+  External[Explicit external workspace] --> Metadata[.pi/automations/workspace.env authorization]
   Metadata --> ExternalStore[ConfinedStore bound to validated real root]
   ExternalStore --> Guard
   Guard --> ExternalRoot[(Authorized external workspace root)]
 ```
 
 - `store-paths.ts` performs no IO; it owns lexical path construction, ID validation, and schedule/workspace env formatting.
-- `ConfinedStore` is the sole CoAS-owned filesystem primitive boundary. It validates the complete absolute path chain, binds an authorized root, rejects symlink components and directory entries, and validates a deletion batch before mutation.
+- `ConfinedStore` is the sole Automations-owned filesystem primitive boundary. It validates the complete absolute path chain, binds an authorized root, rejects symlink components and directory entries, and validates a deletion batch before mutation.
 - These checks provide ordinary substitution/non-regular hardening and resolved-path defense in depth, not race-resistant filesystem operations: concurrent check-then-use replacement remains outside the guarantee.
-- `COAS_HOME` bootstrap creates one path component at a time without following symlinks. Managed schedule, log, lock, run-state, approval, and workspace IO uses a config-bound store.
-- External workspaces remain available only when their validated root contains a non-symlinked `.pi/coas/workspace.env`; context IO stays confined to that root.
-- `tests/architecture/coas-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
+- `AUTOMATIONS_HOME` bootstrap creates one path component at a time without following symlinks. Managed schedule, log, lock, run-state, approval, and workspace IO uses a config-bound store.
+- External workspaces remain available only when their validated root contains a non-symlinked `.pi/automations/workspace.env`; context IO stays confined to that root.
+- `tests/architecture/automations-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
 
-## pi-scheduler (CoAS-hosted scheduler)
+## pi-scheduler (Automations-hosted scheduler)
 
 ### Goal
 
-Replace crontab-oriented CoAS scheduling with a pi-hosted internal scheduler.
+Replace crontab-oriented Automations scheduling with a pi-hosted internal scheduler.
 Schedule files remain the desired state; active in-memory timers become runtime
-reality while pi is open. CoAS owns recurring operational policy over other
+reality while pi is open. Automations owns recurring operational policy over other
 extension surfaces, including scheduled prompts that may use `kanban_*` tools for
 WIP pick routines, morning briefs, state capture, and recurring reviews.
 
@@ -865,18 +865,18 @@ WIP pick routines, morning briefs, state capture, and recurring reviews.
 
 ```mermaid
 C4Component
-    title pi-scheduler (CoAS-hosted)
+    title pi-scheduler (Automations-hosted)
     Container(pi, "pi session", "Extension host", "Runs extension lifecycle and message injection")
-    Component(coas, "pi-coas", "Extension", "Owns schedule tools, commands, and lifecycle")
-    Component(files, "Schedule files", ".pi/coas/schedules or COAS_HOME/schedules", "Desired schedule state")
+    Component(automations, "pi-automations", "Extension", "Owns schedule tools, commands, and lifecycle")
+    Component(files, "Schedule files", ".pi/automations/schedules or AUTOMATIONS_HOME/schedules", "Desired schedule state")
     Component(store, "ConfinedStore", "Root-bound filesystem capability", "Rejects path escapes and symlink components")
     Component(scheduler, "Internal scheduler", "Timer loop", "Reconciles enabled schedules and queues due prompts")
     Component(agent, "Pi agent turn", "LLM runtime", "Executes scheduled prompt as normal user message")
     Component(kanban, "pi-kanban tools", "Board surface", "Reusable board state/actions; no recurring schedule ownership")
-    Rel(pi, coas, "loads")
-    Rel(coas, store, "requests config-bound IO")
+    Rel(pi, automations, "loads")
+    Rel(automations, store, "requests config-bound IO")
     Rel(store, files, "reads/writes after confinement checks")
-    Rel(coas, scheduler, "starts/stops/reconciles")
+    Rel(automations, scheduler, "starts/stops/reconciles")
     Rel(scheduler, store, "polls desired state through")
     Rel(scheduler, agent, "sendUserMessage independent of active model")
     Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
@@ -910,9 +910,9 @@ The slot transaction uses the shared `ConfinedStore`; it does not claim TOCTOU e
 
 ### Acceptance criteria
 
-- `pi-coas` starts/stops an internal scheduler on session lifecycle.
+- `pi-automations` starts/stops an internal scheduler on session lifecycle.
 - Schedule add/remove reconciles in-memory timers.
-- `/coas-schedules`, `coas_status`, `coas_doctor`, and the compact TUI status field report internal scheduler
+- `/automations-schedules`, `automations_status`, `automations_doctor`, and the compact TUI status field report internal scheduler
   state instead of crontab state.
 - Scheduler telemetry is ephemeral and queue-level only: aggregate `queued`/`failed` counters and
   `lastQueuedAt`/`lastFailedAt`/`lastTaskId` surfaced through existing status channels, reset on stop.
@@ -920,29 +920,29 @@ The slot transaction uses the shared `ConfinedStore`; it does not claim TOCTOU e
 - Cron install/uninstall commands replaced by internal scheduler commands/status.
 - Tests cover due-time matching, schedule prompt rendering, scheduler telemetry accounting, and delivery across active-model changes.
 - Schedule creation emits no model identity; model selection/restoration cannot skip or mutate a due run.
-- CoAS remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
+- Automations remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
 
 ---
 
-## CoAS Workspace Context
+## Automations Workspace Context
 
 ### Goal
 
-Keep `pi-coas` context project-local and gradual-disclosure safe. Active `CONTEXT.md` files are small SPR-style durable memory, not transcript archives.
+Keep `pi-automations` context project-local and gradual-disclosure safe. Active `CONTEXT.md` files are small SPR-style durable memory, not transcript archives.
 
 ### Architecture
 
 ```mermaid
 flowchart TD
-  CWD[pi session cwd] --> HOME{COAS_HOME/settings?}
-  HOME -- explicit --> ROOT[configured CoAS home]
-  HOME -- absent --> LOCAL{nearest .pi/coas workspace root?}
-  LOCAL -- yes --> PROJ[project-local .pi/coas/workspace]
-  LOCAL -- legacy --> PROJLEG[project-local .pi/coas/workspaces]
-  LOCAL -- no --> GLOBAL[user-global .pi/coas]
-  READ[coas_workspace_read] --> SUMMARY[default summary: path size headings bounded preview]
+  CWD[pi session cwd] --> HOME{AUTOMATIONS_HOME/settings?}
+  HOME -- explicit --> ROOT[configured Automations home]
+  HOME -- absent --> LOCAL{nearest .pi/automations workspace root?}
+  LOCAL -- yes --> PROJ[project-local .pi/automations/workspace]
+  LOCAL -- legacy --> PROJLEG[project-local .pi/automations/workspaces]
+  LOCAL -- no --> GLOBAL[user-global .pi/automations]
+  READ[automations_workspace_read] --> SUMMARY[default summary: path size headings bounded preview]
   READ -->|mode=section/full| GUARD[hard size guard]
-  UPDATE[coas_workspace_update] --> APPEND[append stable non-secret fact]
+  UPDATE[automations_workspace_update] --> APPEND[append stable non-secret fact]
   APPEND --> THRESH{active CONTEXT.md over threshold?}
   THRESH -- yes --> ARCHIVE[copy previous file to archive/] --> SPR[rewrite compact active SPR memory]
   THRESH -- no --> KEEP[keep active file]
@@ -950,13 +950,13 @@ flowchart TD
 
 ### Acceptance criteria
 
-- Project-local `.pi/coas/workspace/<id>` is the standard workspace root when present; existing plural `workspaces/` roots remain readable for migration compatibility.
-- `coas_workspace_read` never returns full context by default; full and section modes are explicit and size guarded.
-- `coas_workspace_update` archives before compacting oversized active context and preserves private permissions.
+- Project-local `.pi/automations/workspace/<id>` is the standard workspace root when present; existing plural `workspaces/` roots remain readable for migration compatibility.
+- `automations_workspace_read` never returns full context by default; full and section modes are explicit and size guarded.
+- `automations_workspace_update` archives before compacting oversized active context and preserves private permissions.
 
 ---
 
-## CoAS scheduled approval and scheduler split
+## Automations scheduled approval and scheduler split
 
 ```mermaid
 flowchart LR
@@ -971,7 +971,7 @@ flowchart LR
   Remove[removeSchedule] --> Cleanup[Schedule, run-state, approval cleanup]
 ```
 
-`pi-coas` keeps scheduler orchestration separate from run-once delivery,
+`pi-automations` keeps scheduler orchestration separate from run-once delivery,
 approval transitions, recovery, and run-state persistence. A parked approval is
 resumed with its original request and run identity; it is not re-triggered as a
 new cron delivery. Approval artifacts are bounded private claim-checks with
@@ -996,6 +996,6 @@ flowchart LR
 
 Panopticon owns the file-backed native registry and Maildir messaging. External
 registrations use the validated workspace manifest. Fleet reads native records
-without reaping them and applies the existing visibility policy. CoAS schedules
+without reaping them and applies the existing visibility policy. Automations schedules
 run through the Pi-hosted scheduler while Pi is open; there is no independent
 background scheduler or alternate registry backend.

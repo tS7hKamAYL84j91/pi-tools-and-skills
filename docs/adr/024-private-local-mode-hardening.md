@@ -17,7 +17,7 @@ Pi-owned Panopticon IPC paths use metadata-only hardening:
 - symlinked registry, Maildir, and IPC files are rejected before read/write use;
 - checks use `lstat`/mode metadata only and do not inspect private session or record contents beyond existing registry/message JSON reads needed by Panopticon itself.
 
-`coas-archive` private-record mode enforcement is not implemented in this repository slice. The archive record format, ownership, migration behavior, and enforcement points belong to Quartermaster/coas. Pi-tools should only consume coas outputs through documented interfaces; a follow-up should add equivalent metadata-only mode checks in the coas owner repo.
+`automations-archive` private-record mode enforcement is not implemented in this repository slice. The archive record format, ownership, migration behavior, and enforcement points belong to Quartermaster/automations. Pi-tools should only consume automations outputs through documented interfaces; a follow-up should add equivalent metadata-only mode checks in the automations owner repo.
 
 ## Consequences
 

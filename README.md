@@ -50,7 +50,7 @@ After setup, run pi normally in any workspace:
 pi
 ```
 
-Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via that workspace's `.pi/settings.json`; they are intentionally rejected by global individual package setup.
+Add project-only extensions such as `pi-kanban` or `pi-automations` per workspace via that workspace's `.pi/settings.json`; they are intentionally rejected by global individual package setup.
 
 ---
 
@@ -69,11 +69,11 @@ Add project-only extensions such as `pi-kanban` or `pi-coas` per workspace via t
 | **pi-kanban**         | Project      | Optional task board — read-only views, TUI (`/kanban`), explicit export and compaction           |
 | **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
 | **pi-ollama-models**  | User         | Auto-sync local Ollama models into pi's models.json on session start/reload                              |
-| **pi-coas**           | Project      | CoAS status, diagnostics, workspace, and pi-scheduler control surface                                  |
+| **pi-automations**           | Project      | Automations status, diagnostics, workspace, and pi-scheduler control surface                                  |
 
 ### Skills
 
-Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Broader operator and methodology skills that are not specific to this repo live in [CoAS](https://github.com/tS7hKamAYL84j91/coas).
+Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Broader operator and methodology skills that are not specific to this repo live in [Automations](https://github.com/tS7hKamAYL84j91/automations).
 
 | Skill                      | Bundle        | Purpose                                                                           |
 | -------------------------- | ------------- | --------------------------------------------------------------------------------- |
@@ -120,7 +120,7 @@ extensions/           Extensions:
   pi-matrix/           Project — phone ↔ agent bridge via Matrix
   pi-file-watch/        Project — explicit non-recursive file watch
   pi-ollama-models/     User — auto-sync local Ollama models into models.json
-  pi-coas/              Project — CoAS status, diagnostics, workspaces, pi-scheduler
+  pi-automations/              Project — Automations status, diagnostics, workspaces, pi-scheduler
 lib/                  Shared: agent-api, maildir transport, tool-result helpers
 skills/               Shared agent skills and compact reference guidance
 prompts/              Prompt templates (refactor, commit-and-push)
@@ -128,7 +128,7 @@ scripts/              Setup and utility scripts
 tests/                Tests (vitest + archunit fitness functions)
 ```
 
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix`, user extension `pi-ollama-models`, and standalone `pi-teams` can be installed individually with `make setup-package PACKAGE=<name>`. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-coas`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
+Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix`, user extension `pi-ollama-models`, and standalone `pi-teams` can be installed individually with `make setup-package PACKAGE=<name>`. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-automations`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
 
 ## Development
 

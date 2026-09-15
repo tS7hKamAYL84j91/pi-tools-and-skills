@@ -4,7 +4,7 @@ Status: active
 
 ## Verdict: REVISE
 
-The implementation is not ready for integration. The main issue is evidence/claim integrity: the corrected tests do not demonstrate the ticket's historic CoAS symlink-escape gap against the current source baseline.
+The implementation is not ready for integration. The main issue is evidence/claim integrity: the corrected tests do not demonstrate the ticket's historic Automations symlink-escape gap against the current source baseline.
 
 ## Findings
 
@@ -12,7 +12,7 @@ The implementation is not ready for integration. The main issue is evidence/clai
 
 I ran the changed security test file against a disposable `git archive origin/main` copy, copying only the current test file and using the existing installed dependencies:
 
-- `tests/coas/pi-coas-store-security.test.ts`: **9 passed, 1 failed, exit 1**.
+- `tests/automations/pi-automations-store-security.test.ts`: **9 passed, 1 failed, exit 1**.
 - The sole failure was the new non-regular read-target assertion: baseline returned raw `EISDIR`, not the expected regular-file rejection.
 - All symlink cases, including intermediate/final links, external metadata-chain link, and the newly-created-descendant link case, passed on `origin/main`.
 
@@ -41,11 +41,11 @@ The council/owner decision should also state whether the target is ordinary pre-
 
 ## Code review observations
 
-- `lib/confined-store-security.ts` is a genuine shared primitive with production callers from both `lib/confined-store.ts` and `extensions/pi-coas/store.ts`; the `tests/architecture/lib-layering.ts` registration is not an exemption. The two-callers requirement is met.
-- Existing exported `ConfinedStore` and CoAS helper method signatures appear preserved. Managed roots remain bound through the CoAS store, and authorized external workspace roots use their own validated root; the archive-compaction test passes on the corrected worktree. These are compatibility observations, not evidence of historic symlink-gap closure.
-- All observed consumers of `ConfinedStore` route file operations through the guarded methods, including approval inbox, schedules, scheduler logs/run state, workspaces, status, and workspace-context archive writes. No direct consumer bypass was found in the reviewed CoAS paths.
+- `lib/confined-store-security.ts` is a genuine shared primitive with production callers from both `lib/confined-store.ts` and `extensions/pi-automations/store.ts`; the `tests/architecture/lib-layering.ts` registration is not an exemption. The two-callers requirement is met.
+- Existing exported `ConfinedStore` and Automations helper method signatures appear preserved. Managed roots remain bound through the Automations store, and authorized external workspace roots use their own validated root; the archive-compaction test passes on the corrected worktree. These are compatibility observations, not evidence of historic symlink-gap closure.
+- All observed consumers of `ConfinedStore` route file operations through the guarded methods, including approval inbox, schedules, scheduler logs/run state, workspaces, status, and workspace-context archive writes. No direct consumer bypass was found in the reviewed Automations paths.
 - Non-regular read targets are now rejected explicitly. Directory enumeration rejects symlink entries. Recursive directory creation is revalidated after creation. These are valid hardening changes, but they do not by themselves establish the ticket's historic symlink-gap closure.
-- Overlap with T-888 is limited but should be integrated carefully: T-888 is expected to touch scheduler run-state persistence and may use the same CoAS `ConfinedStore` paths. Keep the shared primitive in `lib/` as the single boundary, avoid parallel copies of confinement logic, and reconcile scheduler-run-state changes with this patch before merge.
+- Overlap with T-888 is limited but should be integrated carefully: T-888 is expected to touch scheduler run-state persistence and may use the same Automations `ConfinedStore` paths. Keep the shared primitive in `lib/` as the single boundary, avoid parallel copies of confinement logic, and reconcile scheduler-run-state changes with this patch before merge.
 
 ## Validation evidence
 

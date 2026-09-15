@@ -25,7 +25,7 @@ T-795 may integrate its shared hardening independently before T-888. The T-888 A
 
 Previously executed evidence remains distinct:
 
-- Focused CoAS/security/property/layering run: **162 passed**.
+- Focused Automations/security/property/layering run: **162 passed**.
 - `npm run check`: **PASS**; type coverage **99.23%**.
 - `npm test`: previously **1,553/1,554 passed**, with the then-inactive council report causing the sole docs-hygiene failure; not rerun in this step.
 - Disposable `origin/main` comparison, reviewed rather than rerun here: **9 passed, 1 failed**, only the new non-regular directory expectation failed; symlink cases passed.

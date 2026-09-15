@@ -110,7 +110,7 @@ jobs:
         package:
           - .
           - extensions/pi-boost
-          - extensions/pi-coas
+          - extensions/pi-automations
           - extensions/pi-file-watch
           - extensions/pi-goal
           - extensions/pi-kanban

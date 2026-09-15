@@ -1,0 +1,162 @@
+/** Confined filesystem capabilities for the TypeScript Automations runtime. */
+
+import { lstat, stat, statfs } from "node:fs/promises";
+import type { Dirent, Stats, StatsFs } from "node:fs";
+import { join, resolve } from "node:path";
+import { ConfinedStore as GenericConfinedStore } from "../../lib/confined-store.js";
+import { pathInside } from "../../lib/path-inside.js";
+import {
+	assertAbsolutePath,
+	assertNoSymlinkPath,
+	assertRootNotSymlink,
+} from "../../lib/confined-store-security.js";
+
+async function assertAutomationsRootNotSymlink(path: string): Promise<void> {
+	try {
+		await assertRootNotSymlink(path);
+	} catch (error) {
+		const message = (error as Error).message;
+		if (message.includes("Refusing symlinked root")) {
+			throw new Error(message.replace("Refusing symlinked root", "Refusing symlinked Automations root"));
+		}
+		throw error;
+	}
+}
+import { lockRoot, scheduleLogRoot, scheduleRoot, workspaceRoot } from "./store-paths.js";
+import type { AutomationsConfig } from "./types.js";
+
+/** Automations-root-bound filesystem capability. */
+export class ConfinedStore extends GenericConfinedStore {
+	private constructor(root: string) {
+		super(root);
+	}
+
+	static async forAutomationsHome(config: AutomationsConfig): Promise<ConfinedStore> {
+		await assertAutomationsRootNotSymlink(config.automationsHome);
+		const root = resolve(config.automationsHome);
+		const store = await GenericConfinedStore.openRoot(root);
+		if (!store) throw Object.assign(new Error(`Automations root does not exist: ${config.automationsHome}`), { code: "ENOENT" });
+		return new ConfinedStore(store.getRoot());
+	}
+
+	static async openAutomationsHome(config: AutomationsConfig): Promise<ConfinedStore | undefined> {
+		await assertAutomationsRootNotSymlink(config.automationsHome);
+		const root = resolve(config.automationsHome);
+		const store = await GenericConfinedStore.openRoot(root);
+		return store ? new ConfinedStore(store.getRoot()) : undefined;
+	}
+
+	static async createAutomationsHome(config: AutomationsConfig): Promise<ConfinedStore> {
+		await assertAutomationsRootNotSymlink(config.automationsHome);
+		const root = resolve(config.automationsHome);
+		const store = await GenericConfinedStore.createRoot(root);
+		return new ConfinedStore(store.getRoot());
+	}
+
+	static async forScheduleRoot(config: AutomationsConfig): Promise<ConfinedStore> {
+		return ConfinedStore.forManagedRoot(config, scheduleRoot(config));
+	}
+
+	static async forWorkspaceRoot(config: AutomationsConfig): Promise<ConfinedStore> {
+		return ConfinedStore.forManagedRoot(config, workspaceRoot(config));
+	}
+
+	static async forScheduleLogRoot(config: AutomationsConfig): Promise<ConfinedStore> {
+		return ConfinedStore.forManagedRoot(config, scheduleLogRoot(config));
+	}
+
+	static async forLockRoot(config: AutomationsConfig): Promise<ConfinedStore> {
+		return ConfinedStore.forManagedRoot(config, lockRoot(config));
+	}
+
+	static async openExternalWorkspace(root: string): Promise<ConfinedStore | undefined> {
+		try {
+			const metadataPath = join(root, ".pi", "automations", "workspace.env");
+			const store = await GenericConfinedStore.openAuthorizedRoot(root, metadataPath);
+			return store ? new ConfinedStore(store.getRoot()) : undefined;
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked path component")) {
+				throw new Error(message.replace("Refusing symlinked path component", "Refusing symlinked Automations path component"));
+			}
+			throw error;
+		}
+	}
+
+	static async forExternalWorkspace(root: string): Promise<ConfinedStore> {
+		const store = await ConfinedStore.openExternalWorkspace(root);
+		if (!store) throw new Error(`External workspace is not authorized: ${root}`);
+		return store;
+	}
+
+	private static async forManagedRoot(config: AutomationsConfig, root: string): Promise<ConfinedStore> {
+		const homeStore = await ConfinedStore.forAutomationsHome(config);
+		await homeStore.guard(root);
+		const info = await lstat(root);
+		if (!info.isDirectory()) throw new Error(`Automations root is not a directory: ${root}`);
+		return new ConfinedStore(resolve(root));
+	}
+
+	async countDirectories(path: string): Promise<number> {
+		if (!await this.fileExists(path)) return 0;
+		return (await this.readDirectory(path)).filter((entry) => entry.isDirectory()).length;
+	}
+
+	async newestFile(path: string, suffix: string): Promise<string | undefined> {
+		if (!await this.fileExists(path)) return undefined;
+		let newest: { path: string; mtimeMs: number } | undefined;
+		for (const entry of await this.readDirectory(path)) {
+			if (!entry.isFile() || !entry.name.endsWith(suffix)) continue;
+			const fullPath = join(path, entry.name);
+			const info = await this.fileStat(fullPath);
+			if (!newest || info.mtimeMs > newest.mtimeMs) newest = { path: fullPath, mtimeMs: info.mtimeMs };
+		}
+		return newest?.path;
+	}
+
+	async fileSystemStat(path: string): Promise<StatsFs> {
+		await this.guard(path);
+		return statfs(path);
+	}
+
+	async fileStat(path: string): Promise<Stats> {
+		await this.guard(path);
+		return stat(path);
+	}
+
+	async readDirectory(path: string): Promise<Dirent[]> {
+		try {
+			return await super.readDirectory(path);
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked directory entry")) {
+				throw new Error(message.replace("Refusing symlinked directory entry", "Refusing symlinked Automations directory entry"));
+			}
+			throw error;
+		}
+	}
+
+	async guard(path: string): Promise<void> {
+		assertAbsolutePath("Automations target", path);
+		if (!pathInside(this.getRoot(), path)) throw new Error(`Path escapes ${this.getRoot()}: ${path}`);
+		try {
+			await assertNoSymlinkPath(path);
+			await this.assertResolvedPathInside(path);
+		} catch (error) {
+			const message = (error as Error).message;
+			if (message.includes("Refusing symlinked path component")) {
+				throw new Error(message.replace("Refusing symlinked path component", "Refusing symlinked Automations path component"));
+			}
+			throw error;
+		}
+	}
+}
+
+/** Bootstrap all managed runtime roots through a Automations-home-bound capability. */
+export async function ensureRuntimeDirs(config: AutomationsConfig): Promise<ConfinedStore> {
+	const store = await ConfinedStore.createAutomationsHome(config);
+	for (const path of [workspaceRoot(config), scheduleRoot(config), scheduleLogRoot(config), lockRoot(config)]) {
+		await store.ensurePrivateDir(path);
+	}
+	return store;
+}

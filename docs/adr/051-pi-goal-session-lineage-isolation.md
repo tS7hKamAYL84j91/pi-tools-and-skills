@@ -74,7 +74,7 @@ Legacy migration must preserve goal evidence and run history. Unknown files rema
 - Goal instance paths validate IDs and remain confined under `.pi/goal/instances` without following symlink components.
 - File mutation and migration use existing locks/atomic persistence helpers.
 - Final completion remains root/session-lineage owned; no automatic completion is introduced.
-- No CoAS schedule, external daemon, Teams, Boost, or T-850 behavior changes.
+- No Automations schedule, external daemon, Teams, Boost, or T-850 behavior changes.
 
 ## Required evidence
 

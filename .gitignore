@@ -12,5 +12,5 @@ coverage/
 
 # Local Claude runtime locks
 .claude/*.lock
-# Ignore only the repository-root CoAS checkout; nested pi-coas consumers remain visible to Knip.
-/coas/
+# Ignore only the repository-root Automations checkout; nested pi-automations consumers remain visible to Knip.
+/automations/

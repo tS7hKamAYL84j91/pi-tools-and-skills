@@ -23,7 +23,7 @@ Create `extensions/pi-panopticon/registry/external-registrar.ts`:
 - `listExternalAgents(config)` — return currently registered external agents.
 - `unregisterExternalAgent(config, id)` — remove an external agent from the manifest.
 
-The manifest is a single JSON array, private (`0o600`), versioned (`version: 1`). Configuration uses `workspaceRoot` (or falls back to `COAS_HOME`) so the file is written into the workspace/project runtime directory rather than the global `~/.pi/agents/` registry.
+The manifest is a single JSON array, private (`0o600`), versioned (`version: 1`). Configuration uses `workspaceRoot` (or falls back to `AUTOMATIONS_HOME`) so the file is written into the workspace/project runtime directory rather than the global `~/.pi/agents/` registry.
 
 ### 3. External mailbox path
 - External agents carry a durable `mailboxPath` field (absolute path, typically under a host `/persist` directory).

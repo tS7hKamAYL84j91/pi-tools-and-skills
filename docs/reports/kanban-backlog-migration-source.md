@@ -13,7 +13,7 @@ Board migration was **confirmed by Gravitas on T-890** via agent message. Kanban
 | Goal semantics, crashes, refinement | T-886; preserve current ownership |
 | Goal/Kanban/Agents/Teams UX, read-only inspection, overlay navigation, recovery, validation | T-891 |
 | Onboarding, first-use walkthroughs, usability | T-892 |
-| CoAS docs, notification policy, human/tool parity, settings migration, deferred Matrix boundary | T-893 |
+| Automations docs, notification policy, human/tool parity, settings migration, deferred Matrix boundary | T-893 |
 | Durable ticket-plan authority and backlog reconciliation | T-890 |
 | Old goal prototype T-300 | Removed as duplicate of completed T-383 |
 | Approval overlay T-816 | Removed as duplicate of T-822; T-840 prerequisite remains unresolved |
@@ -40,8 +40,8 @@ Gravitas confirmed the source fully mapped on T-890. T-891/T-892/T-893 require s
 
 - [x] **Adopt-or-accept decision on boundary decoding:** accept the existing typeof/narrowing style for now; the P2 security-sensitive dynamic-regex and escaping sites were hardened without introducing a new global lint gate. Revisit incrementally if the style becomes a correctness risk.
 - [x] **Triage the 13 lens-blocking rule hits:** named JSON/domain types, explicit error handling, and the required SAFETY comment were added across the listed files (`f5eabdc`).
-- [x] **DRY extraction candidates:** the highest-value scheduler run-state duplication was extracted into `extensions/pi-coas/lib/coas-run-state.ts` (`f5eabdc`); remaining low-risk pairs stay documented for later review.
-- [x] **Complexity watch list recorded:** `lib/agent-registry.ts`, `pi-teams/team-registry.ts`, `pi-boost/boost-descriptor.ts`, `pi-teams/team-node-runner.ts`, `lib/session-log.ts`, and `pi-coas/scheduler-run-state.ts` are tracked for split-before-growth; current architecture fitness is green.
+- [x] **DRY extraction candidates:** the highest-value scheduler run-state duplication was extracted into `extensions/pi-automations/lib/automations-run-state.ts` (`f5eabdc`); remaining low-risk pairs stay documented for later review.
+- [x] **Complexity watch list recorded:** `lib/agent-registry.ts`, `pi-teams/team-registry.ts`, `pi-boost/boost-descriptor.ts`, `pi-teams/team-node-runner.ts`, `lib/session-log.ts`, and `pi-automations/scheduler-run-state.ts` are tracked for split-before-growth; current architecture fitness is green.
 - [x] **Security hardening:** dynamic section/member matching now uses literal scans (no user-derived RegExp), prompt XML escaping is single-pass, and the listed P2 security sites are covered by the passing gate (`f5eabdc`).
 
 ## P3 — Recorded false positives (no action; re-verify only if tooling changes)
@@ -86,7 +86,7 @@ Source: source/documentation review of onboarding, Goals, Kanban, Agents, and Te
 
 ## Next review — user-facing extension cleanup
 
-- [ ] **Clarify pi-coas scheduler documentation (no behavior change).** Document that `pi-coas` owns cron-like scheduled prompt delivery and that enabled schedules run while Pi is open; retain the current scheduler implementation and reconciliation behavior.
+- [ ] **Clarify pi-automations scheduler documentation (no behavior change).** Document that `pi-automations` owns cron-like scheduled prompt delivery and that enabled schedules run while Pi is open; retain the current scheduler implementation and reconciliation behavior.
 - [ ] **Make Panopticon reconciliation notifications opt-in.** Default to silent sessions; persist the setting in global/project `.pi/settings.json`; retain explicit health/status inspection and event handling.
 - [ ] **Align agent and human tool behavior.** Agent-facing tools must perform the same operation and use the same defaults as their corresponding user commands (especially `/swarm` and `swarm_run`); dry-run must remain an explicit, clearly named mode.
 - [x] **Consolidate duplicate user commands.** `/teams` owns team management/direct runs and `/team` owns session routing; `/agents` opens the overlay and `/agents-mode` selects its filter. Removed redundant `/agent-list-mode` alias; documentation and help now state the split.

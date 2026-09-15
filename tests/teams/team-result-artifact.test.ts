@@ -23,16 +23,16 @@ afterEach(() => {
 });
 
 describe("team result artifact ownership", () => {
-	it("honors the configured user team root without using cwd or COAS_HOME", () => {
+	it("honors the configured user team root without using cwd or AUTOMATIONS_HOME", () => {
 		const cwd = tempDir("team-result-cwd-");
 		const configuredRoot = join(tempDir("team-result-user-"), "team-root");
 		const settingsPath = join(tempDir("team-result-settings-"), "settings.json");
 		writeFileSync(settingsPath, JSON.stringify({ teams: { roots: [configuredRoot] } }));
-		process.env.COAS_HOME = tempDir("team-result-coas-");
+		process.env.AUTOMATIONS_HOME = tempDir("team-result-automations-");
 		try {
 			expect(resolveTeamResultRoot(cwd, settingsPath)).toBe(join(configuredRoot, "results"));
 		} finally {
-			delete process.env.COAS_HOME;
+			delete process.env.AUTOMATIONS_HOME;
 		}
 	});
 

@@ -1,0 +1,169 @@
+# Pi Automations Extension
+
+TypeScript-native pi control surface for Automations workspace, schedule, status, and
+health state under project-local `.pi/automations` when present, otherwise `${AUTOMATIONS_HOME:-${AGENT_HOME:-$HOME}/.pi/automations}`.
+
+This extension does **not** depend on a sibling `~/git/automations` checkout and does
+not shell out to Automations scripts. Schedules are run by an in-process pi-hosted
+scheduler while pi is open; no user crontab is read or modified.
+
+`pi-automations` owns recurring operational scheduling and policy, including WIP pick
+routines, morning briefs, state capture, and recurring reviews. Those schedules
+may instruct use of `kanban_*` tools, but cron/cadence/policy ownership stays in
+Automations rather than `pi-kanban`.
+
+## Stable Tools/Commands
+
+### Tools
+
+| Tool | Purpose |
+|---|---|
+| `automations_status` | Summarize the local Automations data root |
+| `automations_doctor` | Run TypeScript runtime diagnostics |
+| `automations_workspace_list` | List `${AUTOMATIONS_HOME}/workspace` (or legacy `workspaces`) |
+| `automations_workspace_read` | Read workspace `CONTEXT.md` by gradual disclosure; summary by default, guarded `section`/`full` modes |
+| `automations_workspace_update` | Append stable non-secret facts to `CONTEXT.md`; archives/compacts oversized active context |
+| `automations_workspace_create` | Create a workspace record without Matrix room creation |
+| `automations_schedule_list` | List file-backed schedules; optional `cwd` targets another project's Automations runtime |
+| `automations_schedule_preview` | Read-only preview of enabled schedules; optional `cwd` targets another project's runtime |
+| `automations_schedule_add` | Add a file-backed schedule and reconcile the pi-scheduler when targeting the current runtime; optional `cwd` adds to another project |
+| `automations_schedule_run` | Dry-run a schedule; optional `cwd` targets another project's runtime |
+| `automations_schedule_remove` | Remove a schedule file pair and reconcile the pi-scheduler when targeting the current runtime; optional `cwd` removes from another project |
+| `automations_governance_resolve` | Classify input against privacy keywords and advise on LLM model routing. Advisory only. |
+
+### Commands
+
+- `/automations-status`
+- `/automations-doctor`
+- `/automations-workspaces`
+- `/automations-schedules`
+- `/pi-scheduler` — show and reconcile the in-process scheduler
+
+## Provisional Surfaces
+
+- Workspace fact extraction and summarization hooks.
+- Schedule recurring rules syntax expansion.
+
+## Cross-Extension Dependencies
+
+- Schedules may invoke `kanban_*` tools (provided by `pi-kanban`).
+- Uses `pi-panopticon` for injecting schedule prompts.
+
+## TUI Status
+
+When Automations context exists, the status bar shows a compact operational field:
+
+```text
+automations: <workspace|on> <✓|idle|⚠> [sch enabled/active] [q<queued>] [f<failed>]
+```
+
+This is intentionally operational state only: workspace/scheduler health, enabled schedules, active runs, and ephemeral queue-level telemetry. The `q` and `f` suffixes appear only when non-zero. Counters reset when the scheduler stops (session close / pi exit).
+
+## Schedule continuation (opt-in)
+
+A schedule created with `continuation=true` (serialized as `CONTINUATION=1` in its `.env` file) persists a single bounded, non-secret summary of its most recent completed run under `${AUTOMATIONS_HOME}/schedule-runs/{taskId}.json`. On the next trigger, the scheduler claim-checks that the file exists, the run is complete, and the summary is not stale (≤7 days) before injecting a compacted prior-run block at the top of the scheduled prompt.
+
+The run-state file contains no history array; each successful capture overwrites the prior state so the injected continuation block stays constant-size. The summary and next-action fields are capped, and interrupted runs are not injected as prior context. Run state is removed when the schedule is removed or continuation is disabled.
+
+Continuation schedules remain subject to the ADR-0008 delivery guard: they are only injected when workspace/target-agent scoping matches.
+
+## Session model independence
+
+Schedules target a Pi session/workspace (or an explicitly authorized `TARGET_AGENT`), not a model. Creation does not snapshot `ctx.model`, the scheduler does not subscribe to `model_select`, and changing or restoring the active session model never skips or rewrites a due run. Legacy `MODEL_SNAPSHOT` entries in existing `.env` files are accepted and ignored; new and rewritten schedules do not emit them. Model-routing governance remains advisory and separate from schedule admission.
+
+## Configuration
+
+Resolution order:
+
+1. Explicit `AUTOMATIONS_HOME`.
+2. Project `.pi/settings.json` `automations.automationsHome`.
+3. Nearest project-local `.pi/automations` containing `workspace/`.
+4. User/global settings `automations.automationsHome`.
+5. `${AGENT_HOME:-$HOME}/.pi/automations`.
+
+The workspace registry directory is `workspace/`.
+
+Optional `.pi/settings.json` override:
+
+```json
+{
+  "automations": {
+    "automationsHome": "~/.pi/automations"
+  }
+}
+```
+
+`AUTOMATIONS_HOME` wins over all discovery. Project-local discovery wins over user/global settings so EO repo-local Automations state is preferred by default.
+
+## Governance Policy
+
+Workload governance maps input classified as secret-adjacent/credential/pii/workspace-private to local-only advisory models, and routes public input by intent. It is driven by the `automationsProfile` top-level setting:
+
+```json
+{
+  "automationsProfile": {
+    "localOnlyTriggers": ["secret-adjacent", "credential", "private-key", "password", "pii", "workspace-private"],
+    "modelRoutingPolicy": {
+      "localPrivateFallback": "ollama/gemma4:26b",
+      "localTriageOnly": "ollama/lfm2.5:latest",
+      "gmReviewedSimpleCode": "ollama/gemma4:26b",
+      "navigator": "ollama/gemma4:31b",
+      "advisoryFallbackChain": ["ollama/gemma4:31b", "ollama/qwen3.6:latest"]
+    },
+    "escalationThresholds": {
+      "noToolActivitySeconds": 120,
+      "repeatedProviderFailures": 2,
+      "repeatedCompactions": 2,
+      "validationFailures": 2,
+      "authorityWaitMinutes": 1440
+    },
+    "requiresLocalOnlyForPrivateInput": true
+  }
+}
+```
+
+The `automations_governance_resolve` tool classifies input against `localOnlyTriggers` and resolves an advisory model based on the intent-to-policy mapping:
+
+| Intent | Public input source | Private input fallback |
+|---|---|---|
+| `triage` | `modelRoutingPolicy.localTriageOnly` | `advisoryFallbackChain[0]`, then `localPrivateFallback`, then escalate |
+| `code` | `modelRoutingPolicy.gmReviewedSimpleCode` | same |
+| `navigator` | `modelRoutingPolicy.navigator` | same |
+| `review` | `modelRoutingPolicy.navigator` | same |
+| `unknown` | none | `advisoryFallbackChain[0]`, then `localPrivateFallback`, then escalate |
+
+The tool returns purely advisory metadata; it never alters the active session model. Escalation records are appended to the active Automations workspace `CONTEXT.md`, or to `${AUTOMATIONS_HOME}/governance/escalation.log` if no workspace is active, and never contain the input text.
+
+## Workspace Context Policy
+
+`CONTEXT.md` is active durable memory, not a transcript dump. Keep it small and SPR-style: stable, non-secret facts that are useful across turns/sessions.
+
+`automations_workspace_read` is gradual-disclosure safe:
+
+- Default mode is `summary`: returns path, byte size, sampled headings, and a bounded preview only.
+- `mode=section` requires `section` heading text and is guarded for oversized files.
+- `mode=full` is explicit and rejected for files above the hard full-read limit.
+
+`automations_workspace_update` appends a stable fact, then compacts when active `CONTEXT.md` exceeds the threshold. Compaction copies the previous file into `archive/CONTEXT.<timestamp>.md` with private permissions and rewrites the active file to a small SPR memory plus archive index.
+
+## What this does NOT do
+
+- Does not install cron or modify host scheduler state.
+- Does not run schedules while pi is closed.
+- Does not own kanban board mechanics; scheduled prompts may use `kanban_*` tools but cadence/policy stays in Automations.
+- Does not create Matrix rooms or mutate external services.
+- The pi-scheduler tracks ephemeral queue-level telemetry (queued/failed counts and last task timestamps) only while pi is open. It does not correlate agent-turn completion, store long-term metrics, or expose a telemetry tool.
+- Does not store secrets in workspace context.
+
+## Safety
+
+- No model-callable tool can install cron or modify host scheduler state.
+- The pi-scheduler only runs while pi is open and injects due schedule prompts as pi user messages.
+- Schedule admission is model-agnostic; active model changes do not skip, recreate, or mutate schedules.
+- Automations schedules may use `kanban_*` tools for board work, but `pi-kanban` remains a schedule-free board surface.
+- Workspace reads/writes are confined to `${AUTOMATIONS_HOME}/workspace` unless the target already has `.pi/automations/workspace.env` metadata.
+- Workspace context reads default to bounded summaries; full/section reads have hard size guards.
+- Workspace context updates use pi's file mutation queue, reject symlinked `CONTEXT.md` files, and archive before compacting oversized active context.
+- Schedule files preserve the existing `.env` + `.prompt` storage format but are written from TypeScript with private permissions.
+- Tool output is truncated before entering model context.
+- The pi-scheduler implements an ADR-0008 delivery guard: it checks the active conversation's workspace identity and spawned-agent scope before injecting a scheduled prompt. Workspace schedules are dropped (and logged) when the active session is a task-scoped spawned agent or belongs to a different workspace, unless the schedule has an explicit `TARGET_AGENT` that matches the active agent. Dropped cycles increment `droppedScheduleRuns` in the scheduler snapshot and TUI status slot.

@@ -8,7 +8,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
-import coasExtension from "../../extensions/pi-coas/index.js";
+import automationsExtension from "../../extensions/pi-automations/index.js";
 import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import kanbanExtension from "../../extensions/pi-kanban/index.js";
@@ -222,36 +222,36 @@ describe("extension registration smoke tests", () => {
 		]);
 	});
 
-	it("pi-coas registers its tools, commands, and lifecycle hooks", () => {
+	it("pi-automations registers its tools, commands, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
 
-		coasExtension(api);
+		automationsExtension(api);
 
 		expectRegistered(registrations.tools, [
-			"coas_approval_approve",
-			"coas_approval_defer",
-			"coas_approval_inbox_list",
-			"coas_approval_reject",
-			"coas_doctor",
-			"coas_governance_resolve",
-			"coas_schedule_add",
-			"coas_schedule_list",
-			"coas_schedule_preview",
-			"coas_schedule_remove",
-			"coas_schedule_run",
-			"coas_status",
-			"coas_workspace_create",
-			"coas_workspace_list",
-			"coas_workspace_read",
-			"coas_workspace_update",
+			"automations_approval_approve",
+			"automations_approval_defer",
+			"automations_approval_inbox_list",
+			"automations_approval_reject",
+			"automations_doctor",
+			"automations_governance_resolve",
+			"automations_schedule_add",
+			"automations_schedule_list",
+			"automations_schedule_preview",
+			"automations_schedule_remove",
+			"automations_schedule_run",
+			"automations_status",
+			"automations_workspace_create",
+			"automations_workspace_list",
+			"automations_workspace_read",
+			"automations_workspace_update",
 		]);
 		expectRegistered(registrations.commands, [
-			"coas",
-			"coas-doctor",
+			"automations",
+			"automations-doctor",
 			"pi-scheduler",
-			"coas-schedules",
-			"coas-status",
-			"coas-workspaces",
+			"automations-schedules",
+			"automations-status",
+			"automations-workspaces",
 		]);
 		expectRegistered(registrations.events, [
 			"agent_end",

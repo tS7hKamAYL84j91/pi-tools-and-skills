@@ -18,7 +18,7 @@ Do not load or manage Kanban from project agents. Gravitas owns the optional
 human-facing oversight view. Do not duplicate project state or transcripts.
 
 Retained extensions include Panopticon, Teams, Goal, Ollama Models, Boost,
-Matrix, File Watch, CoAS scheduling, and Gravitas's Kanban view. Retire only
+Matrix, File Watch, Automations scheduling, and Gravitas's Kanban view. Retire only
 when retained behavior is verified. Do not change live configuration as part of
 a code change without approval.
 
@@ -30,10 +30,10 @@ or residency without Jim's approval, or acquire Matrix/human-relay privileges.
 Checks: `npm run check`, `npm test`, and `git diff --check` when practical.
 
 <!-- coas-common-agents:start -->
-## CoAS Common Agent Guidance
+## Automations Common Agent Guidance
 
 - **Desert Mode:** Be direct, sparse, and practical. Lead with the answer/action; avoid persona noise, decorative prose, and long preambles.
 - **KISS:** Prefer the smallest useful change. Do not add broad frameworks, schedulers, services, or abstractions unless explicitly requested.
-- **Repo boundaries:** Preserve repo-specific instructions outside this fenced block. CoAS setup owns only this common fenced section.
+- **Repo boundaries:** Preserve repo-specific instructions outside this fenced block. Automations setup owns only this common fenced section.
 - **Safety:** Never print or commit secrets/tokens/raw sensitive logs. Use bounded scans before commits when touching automation or archived/session data.
 <!-- coas-common-agents:end -->

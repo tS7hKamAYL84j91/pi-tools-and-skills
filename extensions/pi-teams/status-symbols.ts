@@ -3,9 +3,9 @@
  *
  * Reuses symbols from across pi extensions for consistency:
  * - `>` selection (team-overlay.ts team browser)
- * - `✓` success (pi-coas, pi-panopticon)
- * - `✗` failure (pi-coas, pi-panopticon)
- * - `⚠` warning (pi-coas)
+ * - `✓` success (pi-automations, pi-panopticon)
+ * - `✗` failure (pi-automations, pi-panopticon)
+ * - `⚠` warning (pi-automations)
  * - `⏸` paused/interrupted (kanban/watcher.ts line 191)
  * - `●` running (pi-panopticon/spawner.ts line 414)
  * - `⊘` skipped/dependency-failed

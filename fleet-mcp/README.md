@@ -96,4 +96,4 @@ The opt-in check invokes actual `mcporter@0.13.10` over HTTP against disposable 
 
 ## Explicit limits
 
-No deployment logic, Tailscale configuration, credential provisioning, cursor pagination, or cross-process state locking. Maildir publication and gateway receipt persistence are not one transaction: a crash between them can duplicate a retried send/broadcast. Registration and acknowledgement have analogous cross-store crash windows. No exactly-once guarantee is made. CoAS owns mounts, secret injection, private ingress, supervision, and approved live smoke tests.
+No deployment logic, Tailscale configuration, credential provisioning, cursor pagination, or cross-process state locking. Maildir publication and gateway receipt persistence are not one transaction: a crash between them can duplicate a retried send/broadcast. Registration and acknowledgement have analogous cross-store crash windows. No exactly-once guarantee is made. Automations owns mounts, secret injection, private ingress, supervision, and approved live smoke tests.

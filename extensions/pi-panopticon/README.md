@@ -86,7 +86,7 @@ Design note: `docs/adr/022-panopticon-memory-snapshot.md` defines the proposed a
 
 ## What this does NOT do
 
-- Does not replace project task boards or CoAS scheduling.
+- Does not replace project task boards or Automations scheduling.
 - Does not use Matrix for local agent-to-agent transport; local peers use the registered agent transport.
 - Does not persist long-term metrics or analytics beyond operational registry/session state.
 - Does not stop the current agent from the `/agents` overlay.

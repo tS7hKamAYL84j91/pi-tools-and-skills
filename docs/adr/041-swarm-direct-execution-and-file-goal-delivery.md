@@ -10,7 +10,7 @@ ADR-040 made `/swarm` and `swarm_*` compatibility aliases for the canonical `hie
 
 The Principal has directed that dry-run be removed permanently. `/swarm <goal>` must start the canonical Teams swarm without an `--execute` split or a confirmation prompt.
 
-The Principal also reports that `--execute` fails when a goal contains file references or attached files. This is potentially related to the prior Team child-process delivery defect resolved in `8bc3e7d`: prompts passed as process arguments could be truncated, misinterpreted, or lost, whereas stdin delivery with detached/non-TTY child support and `COAS_PI_LOCKFILE_CONTINUE=1` preserved stateless child execution. The root cause for `/swarm` has not yet been established; implementation must trace the actual `swarm` → Teams → node-runner path before applying a fix.
+The Principal also reports that `--execute` fails when a goal contains file references or attached files. This is potentially related to the prior Team child-process delivery defect resolved in `8bc3e7d`: prompts passed as process arguments could be truncated, misinterpreted, or lost, whereas stdin delivery with detached/non-TTY child support and `AUTOMATIONS_PI_LOCKFILE_CONTINUE=1` preserved stateless child execution. The root cause for `/swarm` has not yet been established; implementation must trace the actual `swarm` → Teams → node-runner path before applying a fix.
 
 `/swarm status` and sibling query-command information disclosure are explicitly out of scope and require a separate audit.
 
@@ -25,7 +25,7 @@ After Principal approval:
    - No confirmation prompt is added.
 2. Diagnose and correct file-bearing goal delivery on the canonical execution path.
    - Prompts, including file references/attached-file context, must reach root and child Team calls without argv transport, shell interpolation, or TTY dependence.
-   - Reuse the proven stdin delivery pattern only if the trace confirms the same boundary; retain detached/non-TTY stdin handling and `COAS_PI_LOCKFILE_CONTINUE=1` where the stateless child runner requires it.
+   - Reuse the proven stdin delivery pattern only if the trace confirms the same boundary; retain detached/non-TTY stdin handling and `AUTOMATIONS_PI_LOCKFILE_CONTINUE=1` where the stateless child runner requires it.
    - Do not introduce a separate `/swarm` process runner or a second lifecycle.
 3. Add an end-to-end test that invokes `/swarm <goal-with-file-reference>` and proves the canonical Team handler receives the complete goal and file reference.
 4. Update ADR-040, Teams/swarm documentation, command/tool schemas, and tests to state direct execution rather than dry-run-first behavior.

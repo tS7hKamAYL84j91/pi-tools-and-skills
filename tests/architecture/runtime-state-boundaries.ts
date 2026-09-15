@@ -19,9 +19,9 @@ interface DirectWriteException {
 
 const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 	{
-		owner: "pi-coas",
-		label: "CoAS state",
-		patterns: [/\bCOAS_HOME\b/, /\bcoasHome\b/, /["'`]\.coas["'`]/],
+		owner: "pi-automations",
+		label: "Automations state",
+		patterns: [/\bAUTOMATIONS_HOME\b/, /\bautomationsHome\b/, /["'`]\.automations["'`]/],
 	},
 	{ owner: "pi-goal", label: "Goal state", patterns: [/\.pi(?:\/|\\\\)goal\b/] },
 	{

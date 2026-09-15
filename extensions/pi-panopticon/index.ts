@@ -4,9 +4,9 @@ import type {
 	ExtensionAPI,
 	ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import { resumeAgentApproval } from "../pi-coas/lib/coas-approval-inbox.js";
-import { resolveCoasConfig } from "../../lib/coas-config.js";
-import type { CoasConfig } from "../../lib/coas-types.js";
+import { resumeAgentApproval } from "../pi-automations/lib/automations-approval-inbox.js";
+import { resolveAutomationsConfig } from "../../lib/automations-config.js";
+import type { AutomationsConfig } from "../../lib/automations-types.js";
 import {
 	registerChannel,
 	unregisterChannel,
@@ -60,7 +60,7 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	const stopAgent: AgentStopper = async (peer, force) =>
 		stopPeerAgent(peer, selfId, force ?? false);
 	const resumeApprovedRun = async (
-		config: CoasConfig,
+		config: AutomationsConfig,
 		requestId: string,
 	): Promise<boolean> => resumeAgentApproval(pi, config, requestId);
 	const messaging = createMessaging({
@@ -77,7 +77,7 @@ function setupPanopticon(pi: ExtensionAPI): void {
 		listMode,
 		sendAgentMessage,
 		stopAgent,
-		getCoasConfig: (ctx) => resolveCoasConfig(ctx.cwd),
+		getAutomationsConfig: (ctx) => resolveAutomationsConfig(ctx.cwd),
 		resumeApprovedRun,
 	});
 

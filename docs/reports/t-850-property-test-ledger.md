@@ -12,7 +12,7 @@ Fixed default fast-check configuration: seed `8412026`, 100 cases per property (
 | Kanban column projection preserves ordered matching tasks; done view is bounded/reversed | 100 | `tests/kanban/pi-kanban-property.test.ts` | PASS | None | N/A | Added focused property |
 | Boost descriptor fingerprint is deterministic and changes when descriptor identity changes | 100 | `tests/boost/pi-boost-descriptor.property.test.ts` | PASS | None | N/A | Added focused property |
 | Boost command parser preserves bounded options/prompts and combined-input contract | 100 | `tests/boost/pi-boost-property.test.ts` | PASS | None | N/A | Existing properties retained |
-| CoAS safe path/id contracts reject generated traversal/unsafe identifiers | 100 | `tests/coas/pi-coas-paths.property.test.ts` | PASS | None | N/A | Existing properties retained |
+| Automations safe path/id contracts reject generated traversal/unsafe identifiers | 100 | `tests/automations/pi-automations-paths.property.test.ts` | PASS | None | N/A | Existing properties retained |
 | Team model-binding helper prefers explicit models and otherwise uses fallback | 100 | `tests/teams/pi-teams-property.test.ts` | PASS | None | N/A | Added focused property |
 | Panopticon identity inference is deterministic for serializable input events | 100 | `tests/panopticon/pi-panopticon-property.test.ts` | PASS | None | N/A | Added focused property |
 

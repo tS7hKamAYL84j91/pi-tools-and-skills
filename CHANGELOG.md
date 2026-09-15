@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- CoAS daemon, systemd unit, Panopticon daemon client, published daemon protocol, and their tests/build configuration. Panopticon now uses only its file-backed registry and Maildir; CoAS keeps the Pi-hosted scheduler. No daemon mode, flag, or compatibility layer remains.
+- Automations daemon, systemd unit, Panopticon daemon client, published daemon protocol, and their tests/build configuration. Panopticon now uses only its file-backed registry and Maildir; Automations keeps the Pi-hosted scheduler. No daemon mode, flag, or compatibility layer remains.
 
 ### Added
 
@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Renamed the `pi-coas` extension to `pi-automations` (hard cutover, no backward compatibility): tools `coas_*` → `automations_*`, commands `/coas` → `/automations(-status|-doctor|-workspaces|-schedules)`, env `COAS_*` → `AUTOMATIONS_*`, settings `coasProfile` → `automationsProfile`, state home `.pi/coas` → `.pi/automations` (default `<cwd>/.pi/automations`; `AGENT_HOME` fallback removed). Explicit-cwd targeting now requires an existing runtime under the target (ADR-062).
 - Goal now keeps original file sources and writes only `goal.json` plus one active `GOAL.md` summary. Generated TODO/SPEC/PLAN/STATUS scaffolding and plan/approve no-op commands are removed; source documents, existing history and execution safety controls remain intact.
 - Teams now has one session-backed run/status/stop authority via `team_run`, `team_runs`, `team_stop` and `/teams run|async|status|stop`. Removed `/team` interception modes, redundant runtime tools and typo/implicit aliases. Async commands share the tool delivery path; terminal-run stops are rejected without changing history. Model bindings and profile defaults are unchanged.
 - Kanban views are read-only. `kanban_export` explicitly writes Markdown and its snapshot event; `kanban_compact` is the only compaction trigger. Viewing, export and completion no longer perform automatic housekeeping, and explicit compaction retains unique backups.
-- CoAS schedules are now session/workspace scoped and model-agnostic: schedule creation no longer snapshots the active model, the scheduler no longer subscribes to `model_select`, and model changes never skip due runs. Legacy `MODEL_SNAPSHOT` fields and `skipped-drift` history remain readable but are inert.
+- Automations schedules are now session/workspace scoped and model-agnostic: schedule creation no longer snapshots the active model, the scheduler no longer subscribes to `model_select`, and model changes never skip due runs. Legacy `MODEL_SNAPSHOT` fields and `skipped-drift` history remain readable but are inert.
 - Refactored `fleet-mcp` into explicit config, versioned state-store, gateway-policy, direct-Maildir backend, MCP transport, and runtime-lifecycle layers. The package now has a working uniform-ESM build/run path, fixed-principal tool schemas (no caller-selected `client_key`), serialized state mutations, durable acknowledgement/unregister tombstones, strict HTTP handling, accurate readiness, graceful shutdown, and documented deployment boundaries.
 - `/goal <text>` and `/goal file <path>` now execute immediately and continue until evidence-based completion. Planning, milestone verification, approval tools and plan/approve no-op commands are removed. Plain run/resume uses an unbounded persisted sentinel, while `--turns N` remains available for an explicit 1–20 turn bound. Ownership, stop/pause, session replacement, liveness containment, and the trusted completion gate remain enforced.
 - pi-boost no longer ships hard-coded provider/model defaults: unconfigured boost settings plan from the host model registry's text-capable models (`ctx.modelRegistry.getAvailable()`), with a warned auto fallback and fail-closed behavior when no usable model exists; stale explicit selections are never silently substituted. `/boost` settings gains a registry-backed multi-select model list (capped at 4, empty = auto). Single mode remains one model with no judge; fusion stays explicit (ADR-056).

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { addSchedule } from "../../extensions/pi-coas/schedules.js";
-import { parkApproval, readApprovalArtifact } from "../../extensions/pi-coas/approval-inbox.js";
+import { addSchedule } from "../../extensions/pi-automations/schedules.js";
+import { parkApproval, readApprovalArtifact } from "../../extensions/pi-automations/approval-inbox.js";
 import { renderAgentDetailOverlay, showAgentDetail } from "../../extensions/pi-panopticon/ui/agent-overlay.js";
 import { makeRegistry } from "./helpers.js";
 import type { Theme } from "@earendil-works/pi-coding-agent";
@@ -36,7 +36,7 @@ function otherRecord(): AgentRecord {
 	return { ...workerRecord(), id: "other-id", name: "other" };
 }
 
-function makeDeps(overrides: { coasHome?: string; resumeApprovedRun?: ReturnType<typeof vi.fn> } = {}) {
+function makeDeps(overrides: { automationsHome?: string; resumeApprovedRun?: ReturnType<typeof vi.fn> } = {}) {
 	const self: AgentRecord = { ...workerRecord(), id: "self-id", name: "self" };
 	const registry = makeRegistry(self, [workerRecord()]);
 	return {
@@ -45,7 +45,7 @@ function makeDeps(overrides: { coasHome?: string; resumeApprovedRun?: ReturnType
 		listMode: { get: () => "all" as const, set: () => undefined },
 		sendAgentMessage: vi.fn(async () => ({ accepted: true })),
 		stopAgent: vi.fn(async () => ({ accepted: true })),
-		getCoasConfig: overrides.coasHome ? () => ({ coasHome: overrides.coasHome as string }) : () => undefined,
+		getAutomationsConfig: overrides.automationsHome ? () => ({ automationsHome: overrides.automationsHome as string }) : () => undefined,
 		resumeApprovedRun: overrides.resumeApprovedRun ?? vi.fn(async () => true),
 	};
 }
@@ -132,7 +132,7 @@ afterEach(async () => {
 	for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-async function makeCoasHome(): Promise<string> {
+async function makeAutomationsHome(): Promise<string> {
 	const home = join(tmpdir(), `pi-panopticon-approval-${process.pid}-${Date.now()}-${homes.length}`);
 	homes.push(home);
 	await mkdir(join(home, "workspace"), { recursive: true });
@@ -141,11 +141,11 @@ async function makeCoasHome(): Promise<string> {
 
 async function makeScheduleAndArtifact(home: string, targetAgent = "worker") {
 	const schedule = await addSchedule(
-		{ coasHome: home },
+		{ automationsHome: home },
 		{ room: "general", name: "Gated", cron: "0 9 * * 1", prompt: "Run gated work.", targetAgent },
 	);
 	const requestId = `${schedule.taskId}-run-1`;
-	await parkApproval({ config: { coasHome: home }, taskId: schedule.taskId, runId: "run-1", prompt: "Run gated work.", requestId });
+	await parkApproval({ config: { automationsHome: home }, taskId: schedule.taskId, runId: "run-1", prompt: "Run gated work.", requestId });
 	return { schedule, requestId };
 }
 
@@ -190,9 +190,9 @@ describe("approval-inbox overlay", () => {
 	});
 
 	it("shows approvals only for the selected agent", async () => {
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		await makeScheduleAndArtifact(home, "worker");
-		const deps = makeDeps({ coasHome: home });
+		const deps = makeDeps({ automationsHome: home });
 		const { harness, promise } = await openAgentDetail(deps);
 		const lines = harness.component.render(80);
 		expect(lines.join("\n")).toContain("Pending Approvals");
@@ -202,11 +202,11 @@ describe("approval-inbox overlay", () => {
 	});
 
 	it("omits approvals for a non-target agent", async () => {
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		await makeScheduleAndArtifact(home, "worker");
 		const self: AgentRecord = { ...workerRecord(), id: "self-id", name: "self" };
 		const deps = {
-			...makeDeps({ coasHome: home }),
+			...makeDeps({ automationsHome: home }),
 			registry: makeRegistry(self, [otherRecord()]),
 		};
 		const { harness, promise } = await openAgentDetail(deps, "other");
@@ -217,32 +217,32 @@ describe("approval-inbox overlay", () => {
 	});
 
 	it("requires principal authority to approve", async () => {
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		const { requestId } = await makeScheduleAndArtifact(home, "worker");
-		const deps = makeDeps({ coasHome: home });
+		const deps = makeDeps({ automationsHome: home });
 		const { ctx, harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("a");
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Approval decisions require principal authority", "warning");
 		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
-		expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("awaiting-approval");
+		expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("awaiting-approval");
 		harness.component.handleInput("\x1b");
 		await promise;
 	});
 
 	it("approves a pending run and invokes the resume path", async () => {
 		process.env.PI_PRINCIPAL = "1";
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		const { requestId } = await makeScheduleAndArtifact(home, "worker");
 		const resumeApprovedRun = vi.fn(async () => true);
-		const deps = makeDeps({ coasHome: home, resumeApprovedRun });
+		const deps = makeDeps({ automationsHome: home, resumeApprovedRun });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("a");
 		await vi.waitFor(async () => {
-			expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("approved");
+			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("approved");
 			expect(resumeApprovedRun).toHaveBeenCalledOnce();
 		});
-		expect(resumeApprovedRun).toHaveBeenCalledWith({ coasHome: home }, requestId);
+		expect(resumeApprovedRun).toHaveBeenCalledWith({ automationsHome: home }, requestId);
 		const afterLines = harness.component.render(80);
 		expect(afterLines.join("\n")).not.toContain("Pending Approvals");
 		harness.component.handleInput("\x1b");
@@ -251,13 +251,13 @@ describe("approval-inbox overlay", () => {
 
 	it("rejects a pending run and records the terminal status", async () => {
 		process.env.PI_PRINCIPAL = "1";
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		const { requestId } = await makeScheduleAndArtifact(home, "worker");
-		const deps = makeDeps({ coasHome: home });
+		const deps = makeDeps({ automationsHome: home });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("r");
 		await vi.waitFor(async () => {
-			expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("rejected");
+			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("rejected");
 		});
 		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
 		harness.component.handleInput("\x1b");
@@ -266,13 +266,13 @@ describe("approval-inbox overlay", () => {
 
 	it("defers a pending run and records the terminal status", async () => {
 		process.env.PI_PRINCIPAL = "1";
-		const home = await makeCoasHome();
+		const home = await makeAutomationsHome();
 		const { requestId } = await makeScheduleAndArtifact(home, "worker");
-		const deps = makeDeps({ coasHome: home });
+		const deps = makeDeps({ automationsHome: home });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("d");
 		await vi.waitFor(async () => {
-			expect((await readApprovalArtifact({ coasHome: home }, requestId))?.status).toBe("deferred");
+			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("deferred");
 		});
 		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
 		harness.component.handleInput("\x1b");

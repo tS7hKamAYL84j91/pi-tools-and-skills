@@ -39,7 +39,7 @@ function createFakePi(): string {
 		"    stdinLength: stdin.length,",
 		"    stdinMarker: stdin.slice(0, 16) + '|' + stdin.slice(-16),",
 		"    eof: true,",
-		"    lockfileContinue: process.env.COAS_PI_LOCKFILE_CONTINUE,",
+		"    lockfileContinue: process.env.AUTOMATIONS_PI_LOCKFILE_CONTINUE,",
 		"    stdinIsTty: process.stdin.isTTY === true,",
 		"  }));",
 		"});",

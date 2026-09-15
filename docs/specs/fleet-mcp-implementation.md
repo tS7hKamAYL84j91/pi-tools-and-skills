@@ -1,13 +1,13 @@
 # Specification 1 — Fleet MCP implementation
 
 Owner: pi-tools-and-skills agent. Status: proposed implementation contract, 2026-09-05.
-Companion: coas-fleet-mcp-deployment-spec.md.
+Companion: automations-fleet-mcp-deployment-spec.md.
 
 ## Outcome and ownership
 
 Build a standalone MCP server through which an authorized client can register a durable external-agent identity, discover permitted fleet agents, send a message, and collect and acknowledge replies. The first user journey is: connect, find Gravitas, send a brief, receive a durable transport receipt, later retrieve its reply, and send a follow-up. Use isolated agents for tests.
 
-This owner implements the MCP protocol, fleet adapter, identity and authorization checks, durable messaging semantics, tests, and runnable application release. CoAS owns installation, supervision, runtime configuration, credentials, Tailscale, client connectivity, upgrades, and operational validation. No host-specific networking, systemd installation, or production deployment belongs in this implementation task.
+This owner implements the MCP protocol, fleet adapter, identity and authorization checks, durable messaging semantics, tests, and runnable application release. Automations owns installation, supervision, runtime configuration, credentials, Tailscale, client connectivity, upgrades, and operational validation. No host-specific networking, systemd installation, or production deployment belongs in this implementation task.
 
 ## Repository integration
 
@@ -17,13 +17,13 @@ Read current AGENTS.md and its referenced state document; use the existing Kanba
 
 Reuse the external registrar in extensions/pi-panopticon/registry/external-registrar.ts and Maildir transport in lib/transports/maildir.ts where the selected runtime supports them. Existing external IDs, manifests, locks, path confinement, atomic writes, and mailbox retention are constraints to preserve. Current registration collision handling needs an explicit idempotent ownership layer. Existing display-name/from labels are not authenticated principals.
 
-Choose one supported fleet backend per configured workspace. Obtain CoAS's runtime inventory before choosing the production backend. If daemon mode is active, use an authenticated supported daemon API for required operations; the inspected registry socket alone does not establish a general messaging API. Add a reviewed supported interface if necessary. Do not combine daemon discovery with direct Maildir writes that bypass daemon policy, queue signing, generation checks, or deduplication. Backend loss must not silently switch authority.
+Choose one supported fleet backend per configured workspace. Obtain Automations's runtime inventory before choosing the production backend. If daemon mode is active, use an authenticated supported daemon API for required operations; the inspected registry socket alone does not establish a general messaging API. Add a reviewed supported interface if necessary. Do not combine daemon discovery with direct Maildir writes that bypass daemon policy, queue signing, generation checks, or deduplication. Backend loss must not silently switch authority.
 
 Expose a narrow FleetGateway abstraction for registry, registration, send, inbox, acknowledgement, and health. Keep MCP independent of the Pi extension lifecycle. Ensure new external registrations become visible to already-running Pi sessions through a supported refresh mechanism.
 
 ## Protocol and tool contract
 
-Use the official TypeScript MCP SDK with a pinned supported version. Support stdio for local clients and Streamable HTTP at /mcp for remote deployment. Default HTTP binding is 127.0.0.1; CoAS provides private Tailscale HTTPS and SSH access from the user's current machine. SSH bridges/forwarders connect to the single running HTTP service; they must not launch competing writers against its state. Negotiate supported MCP versions; publish input/output JSON schemas and accurate tool annotations. Send protocol data only to stdout in stdio mode; logs go to stderr.
+Use the official TypeScript MCP SDK with a pinned supported version. Support stdio for local clients and Streamable HTTP at /mcp for remote deployment. Default HTTP binding is 127.0.0.1; Automations provides private Tailscale HTTPS and SSH access from the user's current machine. SSH bridges/forwarders connect to the single running HTTP service; they must not launch competing writers against its state. Negotiate supported MCP versions; publish input/output JSON schemas and accurate tool annotations. Send protocol data only to stdout in stdio mode; logs go to stderr.
 
 Every tool takes a configured workspace alias, never an arbitrary filesystem path. Caller identity comes from authentication, never from tool arguments. Unknown properties and oversized requests are rejected. Return structuredContent and a compatible text representation.
 
@@ -51,7 +51,7 @@ One configured chatgpt-fleet identity can serve a user's conversations. Conversa
 
 Enforce workspace membership, registry visibility rules, tool scopes, and external identity ownership on each request. Revalidate send permission against current recipient identity/generation; stale or ambiguous targets fail explicitly. A tailnet connection or MCP session identifier alone is not application authorization.
 
-Implement HTTP bearer-token validation with configured issuer, audience/resource, expiry, and scopes plus required MCP authorization metadata. CoAS provisions the authorization provider, clients, resource URLs, and secrets. Do not build an authorization server as part of v1. Reject untrusted identity headers. A trusted proxy authentication mode, if needed, requires an explicitly documented local trust boundary and protection against header spoofing or bypass. For stdio, use an explicit fixed local principal and allowed scopes.
+Implement HTTP bearer-token validation with configured issuer, audience/resource, expiry, and scopes plus required MCP authorization metadata. Automations provisions the authorization provider, clients, resource URLs, and secrets. Do not build an authorization server as part of v1. Reject untrusted identity headers. A trusted proxy authentication mode, if needed, requires an explicitly documented local trust boundary and protection against header spoofing or bypass. For stdio, use an explicit fixed local principal and allowed scopes.
 
 ## Durability and semantics
 
@@ -63,23 +63,23 @@ Implement HTTP bearer-token validation with configured issuer, audience/resource
 6. Registration is not proof of liveness. Report stale/unknown state honestly; do not imply that sending wakes stopped agents. Completion states must come from explicit attributed agent replies, never inferred from an accepted receipt.
 7. Preserve unread messages on restart, unregister, upgrade, and retention maintenance. Prevent symlink/path traversal and never interpret message text as server instructions.
 
-## Application handoff contract with CoAS
+## Application handoff contract with Automations
 
-Deliver a runnable standalone entrypoint, locked dependencies, build command, supported runtime/OS/architecture matrix, license/dependency inventory, and release version/source revision. CoAS builds or consumes a pinned artifact; it must not patch message semantics to deploy it.
+Deliver a runnable standalone entrypoint, locked dependencies, build command, supported runtime/OS/architecture matrix, license/dependency inventory, and release version/source revision. Automations builds or consumes a pinned artifact; it must not patch message semantics to deploy it.
 
-Publish a versioned config schema and validated example containing: transport, listen address/port, /mcp path, allowed external origins/resource URLs, authentication provider settings, principal/client/workspace mappings, backend selection and socket or mailbox paths, persistent state directory, limits, and retention. Paths and secret references are provisioned by CoAS. Defaults must not grant fleet-wide access.
+Publish a versioned config schema and validated example containing: transport, listen address/port, /mcp path, allowed external origins/resource URLs, authentication provider settings, principal/client/workspace mappings, backend selection and socket or mailbox paths, persistent state directory, limits, and retention. Paths and secret references are provisioned by Automations. Defaults must not grant fleet-wide access.
 
 Provide configuration validation without mutations, version reporting, and documented state-schema versions/migration commands. Refuse incompatible state without changing it. Separate immutable application files from persistent identity mappings, dedupe journal, acknowledgement state, and fleet-owned mailboxes. Document every writable path and migration's rollback compatibility.
 
-Expose loopback operational endpoints /healthz (process alive) and /readyz (valid config, writable state, selected backend usable), with minimal details and correct failure codes. CoAS should keep these private. fleet_status may report degraded state when authenticated MCP reads remain possible. On SIGTERM, stop accepting new work, finish or recover durable writes, and close within a configurable grace period.
+Expose loopback operational endpoints /healthz (process alive) and /readyz (valid config, writable state, selected backend usable), with minimal details and correct failure codes. Automations should keep these private. fleet_status may report degraded state when authenticated MCP reads remain possible. On SIGTERM, stop accepting new work, finish or recover durable writes, and close within a configurable grace period.
 
-Structured logs include request ID, operation, safe identity IDs, backend, result, and duration; exclude tokens and message bodies by default. Include startup/readiness failure reasons suitable for deployment diagnosis. Coordinate proxy origin handling, authorization discovery URLs, streaming headers/timeouts, and private HTTPS/SSH-forwarded resource audiences with CoAS; do not assume proxy Host headers are trustworthy.
+Structured logs include request ID, operation, safe identity IDs, backend, result, and duration; exclude tokens and message bodies by default. Include startup/readiness failure reasons suitable for deployment diagnosis. Coordinate proxy origin handling, authorization discovery URLs, streaming headers/timeouts, and private HTTPS/SSH-forwarded resource audiences with Automations; do not assume proxy Host headers are trustworthy.
 
 ## Acceptance and delivery
 
 Pass repository-required npm run check and npm test plus focused contract tests for both transports. Demonstrate the complete register → discover → send → reply → read → ack sequence with an isolated agent. Test reconnect/restart persistence, crash-window send recovery, duplicate/conflicting requests, concurrent inbox reads/acks, hidden workspace/recipient access, spoofed identities, stale recipient IDs, registration refresh, backend outage, and mailbox retention after unregister.
 
-Deliver code, tests, architecture updates, config/schema reference, tool examples with expected outputs, migration/recovery notes, and the runnable release contract. CoAS accepts this handoff when it can start the server and run the smoke test using documented configuration without editing implementation files.
+Deliver code, tests, architecture updates, config/schema reference, tool examples with expected outputs, migration/recovery notes, and the runnable release contract. Automations accepts this handoff when it can start the server and run the smoke test using documented configuration without editing implementation files.
 
 Excluded from v1: arbitrary shell/SSH tools, spawn/kill, scheduling, autonomous inbox polling, fleet broadcasts, Teams orchestration, and automatic waking of closed ChatGPT conversations.
 

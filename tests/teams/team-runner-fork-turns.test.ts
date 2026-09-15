@@ -40,7 +40,7 @@ function createFakePi(): string {
 			"    stdinLength: stdin.length,",
 			"    stdin,",
 			"    eof: true,",
-			"    lockfileContinue: process.env.COAS_PI_LOCKFILE_CONTINUE,",
+			"    lockfileContinue: process.env.AUTOMATIONS_PI_LOCKFILE_CONTINUE,",
 			"  }));",
 			"});",
 		].join("\n"),

@@ -140,7 +140,7 @@ interface SpawnResultLike {
  *
  * Team member/synthesis nodes are one-shot `--print --no-session` calls that
  * must produce output. A child that exits successfully with empty stdout is a
- * silent failure (e.g. a CoAS lockfile wrapper aborting a non-interactive
+ * silent failure (e.g. a Automations lockfile wrapper aborting a non-interactive
  * duplicate launch with a stderr warning and exit 0). Surface it as a loud
  * error instead of returning an empty "done" result.
  */
@@ -241,9 +241,9 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		env: {
 			// Team member/synthesis nodes are stateless `--print --no-session`
 			// one-shots. They do not register a panopticon agent or take a
-			// workspace lock, so the CoAS lockfile wrapper's duplicate-launch
+			// workspace lock, so the Automations lockfile wrapper's duplicate-launch
 			// guard must not abort them.
-			COAS_PI_LOCKFILE_CONTINUE: "1",
+			AUTOMATIONS_PI_LOCKFILE_CONTINUE: "1",
 			...(hasParameters
 				? { [PROVIDER_PARAMETERS_ENV]: JSON.stringify(parameters) }
 				: {}),

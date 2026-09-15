@@ -1,0 +1,263 @@
+/**
+ * Pi-hosted Automations schedule runner.
+ *
+ * Schedule files describe desired state; this module keeps the in-memory timer
+ * state aligned while pi is running and injects due schedule prompts as user
+ * messages. It never reads or writes user crontab.
+ */
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { findScheduledRunMarker, runStateFromAgentEnd } from "./scheduler-prompt.js";
+import { finalizeApproval } from "./scheduler-approval.js";
+import { resumeApprovedRunTracked, type ResumeContext } from "./scheduler-resume.js";
+import { countAwaitingApprovals } from "./approval-inbox.js";
+import { markActiveRunsInterrupted, recoverInterruptedRuns } from "./scheduler-recovery.js";
+import { countContinuationReady, saveRunState } from "./scheduler-run-state.js";
+import { countContinuationSchedules, cronExpressionError } from "./scheduler-evaluation.js";
+import type { RunOnceMetrics } from "./scheduler-run-once.js";
+import { createRunExecutor } from "./scheduler-dispatch.js";
+import { isoUtc } from "./store-paths.js";
+import { listSchedules } from "./schedules.js";
+import { minuteKey, scheduleMatchesDate } from "./scheduler-util.js";
+import { SchedulerRunQueue, type RunExecutor } from "./scheduler-run-queue.js";
+import { createScheduleSlotState } from "./scheduler-slot-state.js";
+import { SchedulerWorkTracker } from "./scheduler-work-tracker.js";
+import type { AutomationsConfig, ScheduleEntry, SchedulerSnapshot } from "./types.js";
+
+export { renderScheduledPrompt } from "./scheduler-prompt.js";
+export { scheduleMatchesDate } from "./scheduler-util.js";
+const TICK_MS = 60_000;
+
+interface ActiveScheduledRun {
+	readonly taskId: string;
+	readonly runId: string;
+	readonly startedAt: string;
+	readonly approvalRequestId?: string;
+}
+
+export class PiScheduler {
+	private config: AutomationsConfig | undefined;
+	private interval: NodeJS.Timeout | undefined;
+	private readonly activeScheduledRuns = new Map<string, ActiveScheduledRun>();
+	private readonly runQueue: SchedulerRunQueue;
+	private metrics: RunOnceMetrics = {
+		droppedScheduleRuns: 0,
+		failedCount: 0,
+		queuedCount: 0,
+		skippedRuns: 0,
+	};
+	private enabledCount = 0;
+	private continuationCount = 0;
+	private continuationReady = 0;
+	private awaitingApprovalCount = 0;
+	private readonly work = new SchedulerWorkTracker();
+
+	get automationsHome(): string | undefined {
+		return this.config?.automationsHome;
+	}
+	private startedAt: string | undefined;
+
+	constructor(private readonly pi: ExtensionAPI) {
+		this.runQueue = new SchedulerRunQueue(createScheduleSlotState(() => this.config));
+	}
+
+	async start(config: AutomationsConfig): Promise<void> {
+		if (!this.work.start()) return;
+		this.config = config;
+		this.startedAt = this.startedAt ?? isoUtc();
+		this.work.track(recoverInterruptedRuns(config)).catch((error: unknown) => {
+			this.metrics.lastError = (error as Error).message;
+		});
+		try {
+			await this.reconcile(config);
+		} catch (error) {
+			this.metrics.lastError = (error as Error).message;
+		}
+		try {
+			await this.work.track(this.catchup(new Date()));
+		} catch (error) {
+			this.metrics.lastError = (error as Error).message;
+		}
+		this.interval ??= setInterval(() => {
+			this.tick(new Date()).catch((error: unknown) => {
+				this.metrics.lastError = (error as Error).message;
+			});
+		}, TICK_MS);
+	}
+
+	stop(): Promise<void> {
+		if (this.interval) clearInterval(this.interval);
+		this.interval = undefined;
+		return this.work.stop(() => this.resetAfterStop());
+	}
+
+	reconcile(config = this.config): Promise<void> {
+		if (!this.work.accepting || !config) return Promise.resolve();
+		this.config = config;
+		return this.work.track(this.reconcileTracked(config));
+	}
+
+	snapshot(): SchedulerSnapshot {
+		return {
+			running: Boolean(this.interval && this.config),
+			enabledSchedules: this.enabledCount,
+			activeRuns: this.runQueue.activeRunsCount,
+			spawnedRuns: this.runQueue.spawnedRuns,
+			startedAt: this.startedAt,
+			lastError: this.metrics.lastError,
+			queued: this.metrics.queuedCount,
+			failed: this.metrics.failedCount,
+			droppedScheduleRuns: this.metrics.droppedScheduleRuns,
+			skippedRuns: this.metrics.skippedRuns,
+			lastQueuedAt: this.metrics.lastQueuedAt,
+			lastFailedAt: this.metrics.lastFailedAt,
+			lastTaskId: this.metrics.lastTaskId,
+			continuationSchedules: this.continuationCount,
+			continuationReady: this.continuationReady,
+			awaitingApprovalCount: this.awaitingApprovalCount,
+		};
+	}
+
+	tick(now: Date): Promise<void> {
+		if (!this.work.accepting || !this.config) return Promise.resolve();
+		return this.work.track(this.tickTracked(now));
+	}
+
+	async flush(): Promise<void> {
+		return this.runQueue.flush();
+	}
+
+	resumeApprovedRun(config: AutomationsConfig, requestId: string): Promise<boolean> {
+		if (!this.work.accepting) return Promise.resolve(false);
+		return this.work.track(resumeApprovedRunTracked(this.resumeContext, config, requestId));
+	}
+
+	private get resumeContext(): ResumeContext {
+		return {
+			pi: this.pi,
+			config: this.config,
+			workAccepting: () => this.work.accepting,
+			metrics: this.metrics,
+			activeScheduledRuns: this.activeScheduledRuns,
+			decrementAwaitingApproval: () => {
+				this.awaitingApprovalCount = Math.max(0, this.awaitingApprovalCount - 1);
+			},
+			slotState: createScheduleSlotState(() => this.config),
+		};
+	}
+
+	async handleAgentEnd(messages: readonly unknown[]): Promise<void> {
+		if (this.activeScheduledRuns.size === 0 || !this.config) return;
+		const marker = findScheduledRunMarker(messages);
+		if (!marker) return;
+		const active = this.activeScheduledRuns.get(marker.runId);
+		if (!active || active.taskId !== marker.taskId) return;
+
+		const state = runStateFromAgentEnd(active.taskId, active.runId, active.startedAt, messages);
+		try {
+			await saveRunState(this.config, active.taskId, state);
+			await finalizeApproval(this.config, active.approvalRequestId, state.status);
+		} catch (error) {
+			this.metrics.lastError = (error as Error).message;
+		}
+		this.activeScheduledRuns.delete(active.runId);
+	}
+
+	private async resetAfterStop(): Promise<void> {
+		let interruptionError: unknown;
+		if (this.config) {
+			try {
+				await this.markActiveRunsInterrupted("session_shutdown");
+			} catch (error) {
+				this.metrics.lastError = (error as Error).message;
+				interruptionError = error;
+			}
+		}
+		this.config = undefined;
+		this.runQueue.clear();
+		this.activeScheduledRuns.clear();
+		this.metrics = { droppedScheduleRuns: 0, failedCount: 0, queuedCount: 0, skippedRuns: 0 };
+		this.resetCounts();
+		this.startedAt = undefined;
+		if (interruptionError !== undefined) throw interruptionError;
+	}
+
+	private async reconcileTracked(config: AutomationsConfig): Promise<void> {
+		try {
+			const schedules = await listSchedules(config);
+			await this.updateCounts(schedules, config);
+			this.metrics.lastError = undefined;
+		} catch (error) {
+			this.resetCounts();
+			this.metrics.lastError = (error as Error).message;
+		}
+	}
+
+	private async tickTracked(now: Date): Promise<void> {
+		if (!this.config) return;
+		const schedules = await this.loadEnabledSchedules();
+		if (schedules === undefined) return;
+		await this.updateCounts(schedules, this.config);
+		for (const schedule of schedules) {
+			const error = cronExpressionError(schedule.cronExpr);
+			if (error) {
+				this.metrics.lastError = `invalid schedule ${schedule.taskId}: ${error}`;
+				continue;
+			}
+			if (scheduleMatchesDate(schedule.cronExpr, now)) {
+				void this.runQueue.spawn(schedule, minuteKey(now), now, this.runExecutor);
+			}
+		}
+	}
+
+	private async loadEnabledSchedules(): Promise<ScheduleEntry[] | undefined> {
+		if (!this.config) return undefined;
+		try {
+			return (await listSchedules(this.config)).filter((schedule) => schedule.enabled);
+		} catch (error) {
+			this.resetCounts();
+			this.metrics.lastError = (error as Error).message;
+			return undefined;
+		}
+	}
+
+	private async updateCounts(schedules: ScheduleEntry[], config: AutomationsConfig): Promise<void> {
+		this.enabledCount = schedules.length;
+		this.continuationCount = countContinuationSchedules(schedules);
+		this.continuationReady = await countContinuationReady(config, schedules);
+		this.awaitingApprovalCount = await countAwaitingApprovals(config);
+	}
+
+	private resetCounts(): void {
+		this.enabledCount = 0;
+		this.continuationCount = 0;
+		this.continuationReady = 0;
+		this.awaitingApprovalCount = 0;
+	}
+
+	private async markActiveRunsInterrupted(reason: string): Promise<void> {
+		if (!this.config) return;
+		await markActiveRunsInterrupted(this.config, this.activeScheduledRuns.values(), reason);
+		this.activeScheduledRuns.clear();
+	}
+
+	private async catchup(now: Date): Promise<void> {
+		if (!this.config) return;
+		await this.runQueue.catchup(now, () => this.loadEnabledSchedules(), this.runExecutor, cronExpressionError);
+	}
+
+	private get runExecutor(): RunExecutor {
+		return createRunExecutor({
+			pi: this.pi,
+			metrics: this.metrics,
+			workAccepting: () => this.work.accepting,
+			track: (work) => this.work.track(work),
+			config: () => this.config,
+			registerActiveRun: (taskId) => (runId, startedAt, approvalRequestId) => {
+				this.activeScheduledRuns.set(runId, { taskId, runId, startedAt, approvalRequestId });
+			},
+			incrementAwaitingApproval: () => {
+				this.awaitingApprovalCount++;
+			},
+		});
+	}
+}

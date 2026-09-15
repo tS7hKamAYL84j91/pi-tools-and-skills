@@ -23,13 +23,13 @@ Implemented against corrected ADR-060 after [safety recheck PASS](file:///tmp/t8
 
 Before this bounded correction, the approval-resume regressions failed as expected:
 
-- `npx vitest run tests/coas/pi-coas-approval-inbox.test.ts`: 2 failed — success stopped at `admitted` and an ambiguous throw stopped at `admitted` instead of `uncertain`.
+- `npx vitest run tests/automations/pi-automations-approval-inbox.test.ts`: 2 failed — success stopped at `admitted` and an ambiguous throw stopped at `admitted` instead of `uncertain`.
 
 The correction preserves the approval claim token, performs the same-token `approval_pending → admitted → host_called` transitions before invoking the host, and records either `host_call_returned` or `uncertain`. A duplicate resume cannot pass the slot CAS and no uncertain outcome is replayed.
 
 The focused suite now passes:
 
-- `npx vitest run tests/coas/pi-coas-scheduler-slot-admission.test.ts tests/coas/pi-coas-scheduler-spawn-catchup.test.ts tests/coas/pi-coas-scheduler-approval.test.ts tests/coas/pi-coas-approval-inbox.test.ts tests/coas/pi-coas-scheduler-should-run.test.ts`: 29 passed.
+- `npx vitest run tests/automations/pi-automations-scheduler-slot-admission.test.ts tests/automations/pi-automations-scheduler-spawn-catchup.test.ts tests/automations/pi-automations-scheduler-approval.test.ts tests/automations/pi-automations-approval-inbox.test.ts tests/automations/pi-automations-scheduler-should-run.test.ts`: 29 passed.
 
 ## Validation
 

@@ -10,16 +10,16 @@ The integrated candidate is acceptable for the stated narrow T-795 scope: non-re
 
 ## Executed evidence
 
-- `npx vitest run tests/coas/pi-coas-store-security.test.ts tests/architecture.test.ts tests/architecture/lib-layering.ts`: **2 files, 78 tests passed, exit 0** (the architecture helper module is exercised through `tests/architecture.test.ts`).
-- Security coverage includes non-regular reads, symlink components, newly-created descendants, external authorized workspace/archive preservation, deletion prevalidation, and symlink directory entries (`tests/coas/pi-coas-store-security.test.ts:29-122`).
+- `npx vitest run tests/automations/pi-automations-store-security.test.ts tests/architecture.test.ts tests/architecture/lib-layering.ts`: **2 files, 78 tests passed, exit 0** (the architecture helper module is exercised through `tests/architecture.test.ts`).
+- Security coverage includes non-regular reads, symlink components, newly-created descendants, external authorized workspace/archive preservation, deletion prevalidation, and symlink directory entries (`tests/automations/pi-automations-store-security.test.ts:29-122`).
 - Historical evidence remains distinct: the prior disposable baseline comparison showed symlink cases already GREEN and only the new non-regular directory-read case RED; this review did not relabel that as historical symlink-gap closure.
 - No source/test edits, live schedules, commits, or provider/config actions were performed.
 
 ## Source/API audit
 
 - `lib/confined-store-security.ts` supplies native absolute-path, component, resolved-root, root, and recursive-creation validation (`:1-68`).
-- Both production consumers use the shared helper: `lib/confined-store.ts` imports and routes through it (`:7-15,31-65,96-143`), and `extensions/pi-coas/store.ts` imports/uses it (`:7-14,90-129`). The architecture registration is therefore a genuine two-consumer shared primitive, not a fitness-test exemption.
-- `ConfinedStore` public factories and operation signatures remain compatible; CoAS-specific external-workspace authorization and archive compaction are covered by `pi-coas-store-security.test.ts:42-56`.
+- Both production consumers use the shared helper: `lib/confined-store.ts` imports and routes through it (`:7-15,31-65,96-143`), and `extensions/pi-automations/store.ts` imports/uses it (`:7-14,90-129`). The architecture registration is therefore a genuine two-consumer shared primitive, not a fitness-test exemption.
+- `ConfinedStore` public factories and operation signatures remain compatible; Automations-specific external-workspace authorization and archive compaction are covered by `pi-automations-store-security.test.ts:42-56`.
 - Non-regular read/write/append substitutions are explicitly rejected, recursive directory creation is revalidated, and resolved-path checks add defense in depth. Validation remains check-then-use; hostile concurrent replacement/TOCTOU is not claimed solved.
 
 ## Documentation/integration audit

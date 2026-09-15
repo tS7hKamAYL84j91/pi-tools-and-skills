@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted as an evaluation-only decision — council plan review PASS (team-mtniw009-f5d24fda), followed by Principal direction to retain the simpler five-minute CoAS progress schedule as the live driver. Preserve/test the profile and fix reproduced defects, but do not install or activate it without demonstrated added value and separate approval. T-886 was the initial pilot candidate, not an executed run. Future Kaggle evaluation is deferred and separately owned.
+Accepted as an evaluation-only decision — council plan review PASS (team-mtniw009-f5d24fda), followed by Principal direction to retain the simpler five-minute Automations progress schedule as the live driver. Preserve/test the profile and fix reproduced defects, but do not install or activate it without demonstrated added value and separate approval. T-886 was the initial pilot candidate, not an executed run. Future Kaggle evaluation is deferred and separately owned.
 
 ## Context
 
@@ -10,7 +10,7 @@ Kanban ticket bodies own scope, plans, ownership and evidence (T-890). The Princ
 
 ## Decision
 
-Retain the tracked `examples/event-loop/ticket-delivery.json` as an unactivated exercise, with an explicit operator-only `ticket.selected` seed if a later pilot is approved. Do not install `.pi/event-loop.json` or change the project extension filter now. The proposed profile never auto-selects the next ticket or seeds on install. Five stages: plan, delegate implementation, verify/review, commit/push, evidence-gated Kanban completion. Live CoAS follow-ups remain the simpler mechanism for GM child-agent assessment, canonical ticket checklist updates, tests/docs/review checks and evidence-gated closure; the Principal separately authorized progression through T-886 → T-795 → T-888 after closure.
+Retain the tracked `examples/event-loop/ticket-delivery.json` as an unactivated exercise, with an explicit operator-only `ticket.selected` seed if a later pilot is approved. Do not install `.pi/event-loop.json` or change the project extension filter now. The proposed profile never auto-selects the next ticket or seeds on install. Five stages: plan, delegate implementation, verify/review, commit/push, evidence-gated Kanban completion. Live Automations follow-ups remain the simpler mechanism for GM child-agent assessment, canonical ticket checklist updates, tests/docs/review checks and evidence-gated closure; the Principal separately authorized progression through T-886 → T-795 → T-888 after closure.
 
 ```mermaid
 C4Component
@@ -51,7 +51,7 @@ Hypothesis: a manually seeded ticket reaches the next required stage without rep
 
 For this exercise: independent Luna artifact review, `npm run check`, `npm test`, and secret-safe scoped diff review. Verify no live configuration or extension-filter change. Before any future approved installation, enable only the project package filter and preserve unrelated settings. Actual live operation requires operator `/reload`, history/status inspection and explicit seed; existing session history may replay commands, so absence of a new seed alone does not prove an idle runtime.
 
-Current value assessment: the profile adds explicit stage contracts, correlated outcomes and replayable observations; it also adds manual re-seeding after waiting/failure and does not enforce truth of tests, approvals or completion evidence. These costs do not yet justify replacing the simple CoAS follow-up schedule for ticket chasing. Retain the exercise for future evidence gathering, not as a second live driver.
+Current value assessment: the profile adds explicit stage contracts, correlated outcomes and replayable observations; it also adds manual re-seeding after waiting/failure and does not enforce truth of tests, approvals or completion evidence. These costs do not yet justify replacing the simple Automations follow-up schedule for ticket chasing. Retain the exercise for future evidence gathering, not as a second live driver.
 
 ## Rollback
 

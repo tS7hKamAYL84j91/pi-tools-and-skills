@@ -114,17 +114,17 @@ describe("team-run verifiable completion", () => {
 		resultRoot = join(makeTempDir("pi-teams-results-"), "user-teams", "results");
 		cwd = makeTempDir("pi-teams-workspace-");
 		process.env.PI_TEAMS_TEST_RESULT_ROOT = resultRoot;
-		process.env.COAS_HOME = makeTempDir("pi-teams-coas-");
+		process.env.AUTOMATIONS_HOME = makeTempDir("pi-teams-automations-");
 	});
 
 	afterEach(() => {
 		delete process.env.PI_TEAMS_TEST_RESULT_ROOT;
-		delete process.env.COAS_HOME;
+		delete process.env.AUTOMATIONS_HOME;
 		for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 		currentHandler = createFakeTeamHandler("FAKE_TEAM_RESULT");
 	});
 
-	it("writes outside cwd and COAS_HOME before marking the run completed", async () => {
+	it("writes outside cwd and AUTOMATIONS_HOME before marking the run completed", async () => {
 		const stateManager = new TeamStateManager();
 		const result = await runTeam({ params: params("do the thing"), ctx: createFakeCtx(cwd), stateManager });
 		const runId = result.details.runId;
@@ -133,7 +133,7 @@ describe("team-run verifiable completion", () => {
 		expect(run?.status).toBe("completed");
 		expect(run?.resultArtifactPath).toBe(teamRunResultArtifactPath(runId, resultRoot));
 		expect(run?.resultArtifactPath).not.toContain(cwd);
-		expect(run?.resultArtifactPath).not.toContain(process.env.COAS_HOME);
+		expect(run?.resultArtifactPath).not.toContain(process.env.AUTOMATIONS_HOME);
 		const artifact = await readTeamRunResultArtifact(runId, resultRoot);
 		expect(artifact).toMatchObject({ result: "FAKE_TEAM_RESULT", status: "completed" });
 	});

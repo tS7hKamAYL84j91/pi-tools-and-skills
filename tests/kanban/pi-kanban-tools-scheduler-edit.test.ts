@@ -22,18 +22,18 @@ describe("scheduler-safe kanban surface", () => {
 		expect(snapshot.content[0]?.text).toContain("Compact Summary");
 		expect(snapshot.content[0]?.text).toContain("T-043");
 
-		const claim = await callTool(harness.tools, "kanban_claim", { agent: "coas-scheduler" });
+		const claim = await callTool(harness.tools, "kanban_claim", { agent: "automations-scheduler" });
 		expect(claim.details).toMatchObject({ result: "CLAIMED", claimed: true, task_id: "T-043" });
 
 		const note = await callTool(harness.tools, "kanban_edit", {
 			task_id: "T-043",
-			agent: "coas-scheduler",
+			agent: "automations-scheduler",
 			note: "scheduled pickup started",
 		});
 		expect(note.details.changed).toEqual({ note: "scheduled pickup started" });
 
 		const repeatPick = await callTool(harness.tools, "kanban_claim", {
-			agent: "coas-scheduler",
+			agent: "automations-scheduler",
 		});
 		expect(repeatPick.details).toMatchObject({ result: "NO_TASK_AVAILABLE", claimed: false });
 	});

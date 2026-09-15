@@ -58,7 +58,7 @@ subcommand grammar, consistent status channels, shared settings I/O.
 - [x] **Single-stem command consolidation with backward-compatible aliases**:
   - `/goal clear` handler reused by `/goal-clear` alias (`extensions/pi-goal/goal-commands.ts`).
   - `/agents external [list|register|remove]` wired to `/agents` with `/agent-external-*` aliases preserved (`extensions/pi-panopticon/ui/agents-command.ts`, `external-agent-command.ts`).
-  - `/coas [status|doctor|workspaces|schedules|scheduler]` root command with `/coas-*` and `/pi-scheduler` aliases preserved (`extensions/pi-coas/commands.ts`).
+  - `/automations [status|doctor|workspaces|schedules|scheduler]` root command with `/automations-*` and `/pi-scheduler` aliases preserved (`extensions/pi-automations/commands.ts`).
 - [x] **Validation**: all unit test suites, namespace checks, typecheck, lint,
   knip, type-coverage, and full test suite pass.
 

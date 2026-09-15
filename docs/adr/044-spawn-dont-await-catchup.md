@@ -6,7 +6,7 @@ Accepted — 2026-08-13
 
 ## Context
 
-`extensions/pi-coas/scheduler.ts` currently runs every due schedule synchronously
+`extensions/pi-automations/scheduler.ts` currently runs every due schedule synchronously
 inside `tickTracked()`:
 
 ```typescript
@@ -35,11 +35,11 @@ This creates two operational problems:
 
 OpenWorker's scheduler solves both by spawning each run as an independent task and
 by running a one-time catchup pass before the regular tick loop. We want the same
-properties for CoAS schedules without introducing real-timer flakiness in tests.
+properties for Automations schedules without introducing real-timer flakiness in tests.
 
 ## Decision
 
-### 1. `CoasInternalScheduler` owns a task queue
+### 1. `AutomationsInternalScheduler` owns a task queue
 
 Add a private array of pending promises:
 
@@ -124,7 +124,7 @@ suppressed.
 
 ### 6. Test determinism
 
-The skipped test file `tests/coas/pi-coas-scheduler-spawn-catchup.test.ts` is
+The skipped test file `tests/automations/pi-automations-scheduler-spawn-catchup.test.ts` is
 unskipped and rewritten to:
 
 - Use `flush()` after `tick()` and `start()`.
@@ -153,8 +153,8 @@ unskipped and rewritten to:
 
 ## Related
 
-- `extensions/pi-coas/scheduler.ts`
-- `extensions/pi-coas/scheduler-run-once.ts`
-- `extensions/pi-coas/types.ts`
-- `tests/coas/pi-coas-scheduler-spawn-catchup.test.ts`
-- ADR 042: CoAS scheduled approval resume
+- `extensions/pi-automations/scheduler.ts`
+- `extensions/pi-automations/scheduler-run-once.ts`
+- `extensions/pi-automations/types.ts`
+- `tests/automations/pi-automations-scheduler-spawn-catchup.test.ts`
+- ADR 042: Automations scheduled approval resume

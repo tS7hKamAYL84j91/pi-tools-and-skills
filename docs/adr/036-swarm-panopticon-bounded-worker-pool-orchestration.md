@@ -12,7 +12,7 @@ Three recent Executive Office briefings converged on a single operational need:
 - Adam Jacob's token-spend post (2026-07-22) argues orchestration should be deterministic code that minimizes the need for an LLM in the hot path.
 - LoopGain (2026-07-22) is not directly applicable (our loops are gate-based), but it reinforces convergence-detection and best-so-far rollback principles we already encode via material-successor policy.
 
-We already have the wiring: `spawn_agent`, `rpc_send`, `agent_status`, `agent_peek`, `kill_agent`, `team_run`, and `kanban_*`. What we lack is a deterministic, bounded, repo-local orchestration primitive a GM can invoke for a large decomposable task. The Principal directed that this primitive live as a **pi-teams package feature**, not a CoAS skill.
+We already have the wiring: `spawn_agent`, `rpc_send`, `agent_status`, `agent_peek`, `kill_agent`, `team_run`, and `kanban_*`. What we lack is a deterministic, bounded, repo-local orchestration primitive a GM can invoke for a large decomposable task. The Principal directed that this primitive live as a **pi-teams package feature**, not a Automations skill.
 
 ## Decision
 
@@ -94,8 +94,8 @@ Each swarm card carries a `swarm:<swarmId>` tag. Worker briefs are stored in `pi
 | `kill_agent` | Replace non-responsive workers and teardown. |
 | `team_run` (navigator, llm-council, FIRE) | Stacked review gates. |
 | `kanban_*` tools | Task tree state, WIP claim budget, DONE/BLOCKED tracking. |
-| `coas_governance_resolve` / `maybeGovernanceRoute` (ADR-035) | Resolve cheap local models for worker prompts. `/swarm` is the first concrete caller of `maybeGovernanceRoute`. |
-| CoAS ADR-0008 delivery guard (T-791) | Ensure OODA schedules don't hijack task-scoped swarm workers. |
+| `automations_governance_resolve` / `maybeGovernanceRoute` (ADR-035) | Resolve cheap local models for worker prompts. `/swarm` is the first concrete caller of `maybeGovernanceRoute`. |
+| Automations ADR-0008 delivery guard (T-791) | Ensure OODA schedules don't hijack task-scoped swarm workers. |
 | `pi-agent-orchestration` skill | Brief template, DONE/BLOCKED format, stall-nudge rules. |
 
 ### Non-decisions (out of v1)
@@ -114,7 +114,7 @@ Each swarm card carries a `swarm:<swarmId>` tag. Worker briefs are stored in `pi
 - GMs can invoke deterministic, bounded, auditable worker-pool orchestration for large tasks.
 - Cheap local workers are selected via ADR-035 model-routing, realizing the ~8x economics.
 - Stacked review gates and artifact evidence prevent blind retry and material-successor violations.
-- CoAS ADR-0008 (T-791) prevents workspace schedules from hijacking swarm workers.
+- Automations ADR-0008 (T-791) prevents workspace schedules from hijacking swarm workers.
 - The per-swarm claim budget avoids raising the global kanban WIP limit for non-swarm users.
 
 ## Lifecycle implementation clarification — 2026-07-28
@@ -131,8 +131,8 @@ Council review confirmed that automatic completion/teardown implements this ADR;
 
 ## Dependencies
 
-- **ADR-035** (workload-governance/model-routing consumer in pi-coas) must be implemented first, because `/swarm` is its first concrete `maybeGovernanceRoute` caller.
-- **CoAS ADR-0008 / T-791** (schedule delivery targeting guard) must be implemented before `/swarm` ships, to keep swarm workers task-scoped and schedule-safe.
+- **ADR-035** (workload-governance/model-routing consumer in pi-automations) must be implemented first, because `/swarm` is its first concrete `maybeGovernanceRoute` caller.
+- **Automations ADR-0008 / T-791** (schedule delivery targeting guard) must be implemented before `/swarm` ships, to keep swarm workers task-scoped and schedule-safe.
 
 ## Related
 

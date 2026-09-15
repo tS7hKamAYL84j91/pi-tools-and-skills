@@ -1,4 +1,4 @@
-# ADR 035: Workload Governance / Model Routing Consumer in pi-coas
+# ADR 035: Workload Governance / Model Routing Consumer in pi-automations
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted (council-reviewed, APPROVE-WITH-CHANGES resolved)
 
 ## Context
 
-`.pi/settings.json` declares a `coasProfile` block with workload-governance fields:
+`.pi/settings.json` declares a `automationsProfile` block with workload-governance fields:
 
 - `modelRoutingPolicy` — preferred models by use case (`localPrivateFallback`, `localTriageOnly`, `gmReviewedSimpleCode`, `navigator`, `teamDefaults`, `fallbackRules`).
 - `localOnlyTriggers` — tags that mark input as secret-adjacent, credential-bearing, PII, workspace-private, etc.
@@ -14,7 +14,7 @@ Accepted (council-reviewed, APPROVE-WITH-CHANGES resolved)
 - `escalationThresholds` — operational counters (provider failures, validation failures, etc.).
 - `requiresLocalOnlyForPrivateInput: true` — policy flag.
 
-The manifest comment states: "a runtime consumer in pi-coas must apply these values." Today `extensions/pi-coas` reads `coas.coasHome` only and consumes none of the governance/policy fields. Schedules, spawned workers, and GM orchestration therefore have no deterministic, code-level way to route private input to a local-only advisory model or to escalate when no local model is available.
+The manifest comment states: "a runtime consumer in pi-automations must apply these values." Today `extensions/pi-automations` reads `automations.automationsHome` only and consumes none of the governance/policy fields. Schedules, spawned workers, and GM orchestration therefore have no deterministic, code-level way to route private input to a local-only advisory model or to escalate when no local model is available.
 
 This ADR proposes the smallest runtime consumer that makes the declared policy actionable without overriding the user's root model or changing residency/schedule cadence.
 
@@ -22,7 +22,7 @@ This ADR proposes the smallest runtime consumer that makes the declared policy a
 
 ### Scope
 
-1. Add a governance configuration loader in `extensions/pi-coas/governance.ts` that reads `coasProfile.modelRoutingPolicy`, `localOnlyTriggers`, `advisoryFallbackChain`, `escalationThresholds`, and `requiresLocalOnlyForPrivateInput` using project-first `.pi/settings.json` discovery (matching `resolveCoasConfig`), falling back to global `~/.pi/agent/settings.json`, via the existing `lib/pi-settings.ts` helper. Config is read on each call (no cache) for v1.
+1. Add a governance configuration loader in `extensions/pi-automations/governance.ts` that reads `automationsProfile.modelRoutingPolicy`, `localOnlyTriggers`, `advisoryFallbackChain`, `escalationThresholds`, and `requiresLocalOnlyForPrivateInput` using project-first `.pi/settings.json` discovery (matching `resolveAutomationsConfig`), falling back to global `~/.pi/agent/settings.json`, via the existing `lib/pi-settings.ts` helper. Config is read on each call (no cache) for v1.
 2. Add a pure classifier `classifyInput(text, triggers)` that returns:
    - `classification`: `"private" | "public"`
    - `matchedTriggers`: string[]
@@ -36,15 +36,15 @@ This ADR proposes the smallest runtime consumer that makes the declared policy a
    - For `classification: "public"`, resolve by `intent` using the table below; source is `"policyIntent"`.
    - For `classification: "private"`, use the first entry of `advisoryFallbackChain` (source `"advisoryFallbackChain"`); if the chain is empty, fall back to `modelRoutingPolicy.localPrivateFallback` (source `"localPrivateFallback"`); if that is also absent, set `escalate: true` and `source: "none"`.
    - The `advisoryFallbackChain` is assumed by configuration convention to contain only local model identifiers. v1 does not validate liveness or provider; operator maintains this invariant. A future ADR may add a registry/identifier check.
-4. Expose the consumer as a single new model-callable observability/debug tool: `coas_governance_resolve` (advisory only).
+4. Expose the consumer as a single new model-callable observability/debug tool: `automations_governance_resolve` (advisory only).
    - Parameters: `input` (string), `intent?` (enum: `triage | code | navigator | review | unknown`).
    - Returns: classification, resolvedModel, source, escalate flag, reason, fallbackChain.
    - Does **not** mutate the active session model. It is an inspection surface; the primary actuation path for schedules/agents is the internal `maybeGovernanceRoute(input, intent)` helper.
 5. Add an internal utility `maybeGovernanceRoute(input, intent)` that schedule/spawn callers can consult before `spawn_agent` or model-sensitive work. In v1 it is a pure library with no automatic hook; concrete callers will be wired by a follow-up ADR after ADR-0008 schedule-delivery targeting is in place.
 6. Escalation behavior when no local model is available:
    - Return `escalate: true` with `resolvedModel: undefined`.
-   - Append a durable, non-secret alert to the active CoAS workspace CONTEXT.md via `coas_workspace_update` semantics.
-   - If no workspace is active, write to a minimal governance log at `${COAS_HOME}/governance/escalation.log` with private permissions (mode `0o600`), directory `0o700`. The log entry contains no input text, only classification, source, intent, and escalation reason.
+   - Append a durable, non-secret alert to the active Automations workspace CONTEXT.md via `automations_workspace_update` semantics.
+   - If no workspace is active, write to a minimal governance log at `${AUTOMATIONS_HOME}/governance/escalation.log` with private permissions (mode `0o600`), directory `0o700`. The log entry contains no input text, only classification, source, intent, and escalation reason.
    - Never fall back to a cloud model for private input when `requiresLocalOnlyForPrivateInput` is true.
 7. Thresholds: v1 uses escalation thresholds read-only. Repeated provider/validation failures are surfaced in resolution metadata so future threshold-triggered escalation can reuse the same schema (forward-compatibility note). Full threshold-triggered escalation is deferred until ADR-032 telemetry integration is complete.
 
@@ -101,7 +101,7 @@ interface ModelResolution {
 }
 ```
 
-Tool: `coas_governance_resolve` (advisory / observability only)
+Tool: `automations_governance_resolve` (advisory / observability only)
 
 ```json
 {
@@ -114,20 +114,20 @@ Result includes `classification`, `resolvedModel`, `source`, `escalate`, `reason
 
 ### Files changed
 
-- New: `extensions/pi-coas/governance.ts` (loader, classifier, resolver)
-- New: `extensions/pi-coas/governance-tools.ts` (tool registration + escalation side effects)
-- Modify: `extensions/pi-coas/types.ts` (add `ModelRoutingPolicy`, `GovernanceConfig`, `InputClassification`, `ModelResolution` shapes)
-- Modify: `extensions/pi-coas/tools.ts` (call `registerGovernanceTools`)
-- Modify: `extensions/pi-coas/README.md` (document the tool and policy)
-- New tests: `tests/coas/pi-coas-governance.test.ts`
+- New: `extensions/pi-automations/governance.ts` (loader, classifier, resolver)
+- New: `extensions/pi-automations/governance-tools.ts` (tool registration + escalation side effects)
+- Modify: `extensions/pi-automations/types.ts` (add `ModelRoutingPolicy`, `GovernanceConfig`, `InputClassification`, `ModelResolution` shapes)
+- Modify: `extensions/pi-automations/tools.ts` (call `registerGovernanceTools`)
+- Modify: `extensions/pi-automations/README.md` (document the tool and policy)
+- New tests: `tests/automations/pi-automations-governance.test.ts`
 
 ### Required test coverage
 
 - Classification: public input, private input, multiple triggers, empty input, case sensitivity, trigger substring boundaries.
 - Resolution: each public intent source, empty `advisoryFallbackChain` → `localPrivateFallback`, absent `localPrivateFallback` → escalate, `requiresLocalOnlyForPrivateInput` enforcement (no cloud fallback for private input).
-- Config loading: missing/malformed `coasProfile`, project `.pi/settings.json` vs global `~/.pi/agent/settings.json`, nested `modelRoutingPolicy` fields.
+- Config loading: missing/malformed `automationsProfile`, project `.pi/settings.json` vs global `~/.pi/agent/settings.json`, nested `modelRoutingPolicy` fields.
 - Escalation safety: no input text in workspace or log records, no-workspace fallback to governance log.
-- Tool shape: `coas_governance_resolve` returns advisory metadata only; no model mutation.
+- Tool shape: `automations_governance_resolve` returns advisory metadata only; no model mutation.
 
 ### Security / privacy
 
@@ -145,8 +145,8 @@ Result includes `classification`, `resolvedModel`, `source`, `escalate`, `reason
 
 ## Related
 
-- `.pi/settings.json` `coasProfile` section
-- ADR-032: CoAS ephemeral scheduler telemetry
+- `.pi/settings.json` `automationsProfile` section
+- ADR-032: Automations ephemeral scheduler telemetry
 - ADR-034: Team speed profiles
 - ADR-0008: Schedule delivery targeting guard (concrete caller for `maybeGovernanceRoute` will land after this)
 - T-793 (cheap-worker routing)

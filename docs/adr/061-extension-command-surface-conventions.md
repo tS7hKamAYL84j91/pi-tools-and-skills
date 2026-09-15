@@ -6,9 +6,9 @@ Accepted — 2026-09-10.
 
 ## Context
 
-Nine extensions evolved independently within the repository (`pi-boost`, `pi-coas`, `pi-file-watch`, `pi-goal`, `pi-kanban`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, `pi-teams`), resulting in divergent user-facing patterns:
+Nine extensions evolved independently within the repository (`pi-boost`, `pi-automations`, `pi-file-watch`, `pi-goal`, `pi-kanban`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, `pi-teams`), resulting in divergent user-facing patterns:
 
-1. **Command topology divergence**: some extensions used root commands with subcommands (`/teams`, `/boost`, `/goal`), while others registered multiple top-level hyphenated commands (`/coas-status`, `/coas-doctor`, `/coas-workspaces`, `/coas-schedules`, `/pi-scheduler`, `/agent-external-*`) or duplicated logic across sibling commands (`/goal-clear` duplicating `/goal clear`).
+1. **Command topology divergence**: some extensions used root commands with subcommands (`/teams`, `/boost`, `/goal`), while others registered multiple top-level hyphenated commands (`/automations-status`, `/automations-doctor`, `/automations-workspaces`, `/automations-schedules`, `/pi-scheduler`, `/agent-external-*`) or duplicated logic across sibling commands (`/goal-clear` duplicating `/goal clear`).
 2. **Duplicated toggle controls**: `/kanban-watch on|off` and `/panopticon-reconcile on|off` independently re-implemented the exact same handler flow, validation, and notification logic.
 3. **Settings persistence fragmentation**: extensions hand-rolled disparate file reads, JSON parsing, advisory locks, and atomic file writes for `~/.pi/agent/settings.json` blocks instead of sharing a common safe abstraction.
 
@@ -16,10 +16,10 @@ Nine extensions evolved independently within the repository (`pi-boost`, `pi-coa
 
 ### 1. One Primary Command Stem Per Concern
 
-Each extension exposes one primary command stem named after its domain (`/boost`, `/goal`, `/teams`, `/kanban`, `/agents`, `/coas`, `/file-watch`, `/matrix`).
+Each extension exposes one primary command stem named after its domain (`/boost`, `/goal`, `/teams`, `/kanban`, `/agents`, `/automations`, `/file-watch`, `/matrix`).
 
-- Subcommands handle specific actions (e.g. `/goal clear`, `/agents external [list|register|remove]`, `/coas [status|doctor|workspaces|schedules|scheduler]`).
-- Pre-existing command names (such as `/goal-clear`, `/agent-external-*`, `/coas-*`) are retained as non-breaking aliases to preserve operator muscle memory and script compatibility.
+- Subcommands handle specific actions (e.g. `/goal clear`, `/agents external [list|register|remove]`, `/automations [status|doctor|workspaces|schedules|scheduler]`).
+- Pre-existing command names (such as `/goal-clear`, `/agent-external-*`, `/automations-*`) are retained as non-breaking aliases to preserve operator muscle memory and script compatibility.
 - Bare root command invocation defaults to the primary interactive action (opening an overlay when present) or concise usage guidance.
 
 ### 2. Standardized Boolean Toggle Registration

@@ -130,7 +130,7 @@ Unredacted snapshots are not approved. Any proposal for unredacted local-only sn
 - registry JSON for current liveness/routing/name/status metadata;
 - maildir/transport state for actual pending messages;
 - session files for the raw local session record;
-- task boards or CoAS state for project work ownership;
+- task boards or Automations state for project work ownership;
 - pi-teams run events for team diagnostic state.
 
 Readers must not use `MEMORY.md` to route messages, decide process liveness, authorize actions, resume team runs, or mutate task boards. If the snapshot disagrees with registry/health state, registry/health wins and the snapshot should be treated as stale.
