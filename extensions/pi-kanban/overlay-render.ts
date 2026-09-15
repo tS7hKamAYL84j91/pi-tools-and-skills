@@ -140,7 +140,7 @@ export function modalTruncatedLine(
 	);
 }
 
-export function noSelectionLines(innerW: number, theme: Theme): string[] {
+function noSelectionLines(innerW: number, theme: Theme): string[] {
 	return [
 		modalLine(
 			theme.fg("muted", " No task selected — press esc to return."),
@@ -153,6 +153,30 @@ export function noSelectionLines(innerW: number, theme: Theme): string[] {
 
 export function modalInnerWidth(width: number): number {
 	return Math.max(20, width - FRAME_WIDTH);
+}
+
+type ModalFrame =
+	| { lines: string[]; innerW: number; task: TaskState }
+	| { lines: string[]; innerW: number; task: null };
+
+/**
+ * Shared modal prelude: allocate the line buffer, push the frame top, and emit
+ * the no-selection placeholder when no task is selected. The discriminated
+ * `task` field lets callers narrow before rendering the body.
+ */
+export function beginModalFrame(
+	task: TaskState | null | undefined,
+	width: number,
+	theme: Theme,
+): ModalFrame {
+	const lines: string[] = [];
+	const innerW = modalInnerWidth(width);
+	lines.push(frameTop(innerW, theme));
+	if (!task) {
+		lines.push(...noSelectionLines(innerW, theme));
+		return { lines, innerW, task: null };
+	}
+	return { lines, innerW, task };
 }
 
 export function taskDisplayTitle(task: TaskState): string {
@@ -319,31 +343,24 @@ export function renderDetail(
 	theme: Theme,
 	detailScroll = 0,
 ): string[] {
-	const lines: string[] = [];
-	const innerW = modalInnerWidth(width);
+	const { lines, innerW, task: selected } = beginModalFrame(task, width, theme);
+	if (selected === null) return lines;
 
-	lines.push(frameTop(innerW, theme));
-
-	if (!task) {
-		lines.push(...noSelectionLines(innerW, theme));
-		return lines;
-	}
-
-	const headerInner = `${theme.bold(theme.fg("accent", task.id))} ${priorityBadge(task.priority, theme)} ${theme.bold(taskDisplayTitle(task))}`;
+	const headerInner = `${theme.bold(theme.fg("accent", selected.id))} ${priorityBadge(selected.priority, theme)} ${theme.bold(taskDisplayTitle(selected))}`;
 	lines.push(modalTruncatedLine(headerInner, innerW, theme));
 	lines.push(frameMiddle(innerW, theme));
 
 	const meta: [string, string][] = [
-		["Column", task.col],
-		["Priority", task.priority],
-		["Agent", task.claimAgent || task.agent || "unassigned"],
-		["Tags", task.tags || "(none)"],
-		["Created", task.createdAt || "-"],
+		["Column", selected.col],
+		["Priority", selected.priority],
+		["Agent", selected.claimAgent || selected.agent || "unassigned"],
+		["Tags", selected.tags || "(none)"],
+		["Created", selected.createdAt || "-"],
 	];
-	if (task.expires) meta.push(["Expires", task.expires]);
-	if (task.completedAt) meta.push(["Completed", task.completedAt]);
-	if (task.duration) meta.push(["Duration", task.duration]);
-	if (task.reason) meta.push(["Block reason", task.reason]);
+	if (selected.expires) meta.push(["Expires", selected.expires]);
+	if (selected.completedAt) meta.push(["Completed", selected.completedAt]);
+	if (selected.duration) meta.push(["Duration", selected.duration]);
+	if (selected.reason) meta.push(["Block reason", selected.reason]);
 
 	for (const [key, value] of meta) {
 		const row = ` ${theme.fg("dim", key.padEnd(13))} ${theme.fg("text", value)}`;
@@ -353,19 +370,19 @@ export function renderDetail(
 	// Long content (description + notes) renders through a bounded window
 	// that scrolls with ↑/↓; out-of-range offsets are clamped to content.
 	const content: string[] = [];
-	if (task.description) {
+	if (selected.description) {
 		content.push(modalLine("", innerW, theme));
 		content.push(modalLine(` ${theme.fg("dim", "Description")}`, innerW, theme));
-		for (const chunk of wrap(task.description, innerW - 2)) {
+		for (const chunk of wrap(selected.description, innerW - 2)) {
 			content.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 		}
 	}
 
-	if (task.notes.length > 0) {
+	if (selected.notes.length > 0) {
 		content.push(modalLine("", innerW, theme));
-		const noteHeader = ` ${theme.fg("dim", `Notes (${task.notes.length})`)}`;
+		const noteHeader = ` ${theme.fg("dim", `Notes (${selected.notes.length})`)}`;
 		content.push(modalLine(noteHeader, innerW, theme));
-		for (const note of task.notes.slice(-5)) {
+		for (const note of selected.notes.slice(-5)) {
 			for (const chunk of wrap(`- ${note}`, innerW - 4)) {
 				content.push(modalLine(`  ${theme.fg("text", chunk)}`, innerW, theme));
 			}

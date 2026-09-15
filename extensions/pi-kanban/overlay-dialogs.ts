@@ -9,13 +9,13 @@ import type { Component, Input } from "@earendil-works/pi-tui";
 import { renderDestructiveConfirmationOverlay } from "../../lib/tui-confirmation.js";
 import type { TaskState } from "./board.js";
 import {
+	beginModalFrame,
 	frameBottom,
 	frameMiddle,
 	frameTop,
 	modalInnerWidth,
 	modalLine,
 	modalTruncatedLine,
-	noSelectionLines,
 	taskDisplayTitle,
 	wrap,
 } from "./overlay-render.js";
@@ -27,15 +27,13 @@ export function renderConfirmDelete(
 	width: number,
 	theme: Theme,
 ): string[] {
-	if (!task) {
-		const innerW = modalInnerWidth(width);
-		return [frameTop(innerW, theme), ...noSelectionLines(innerW, theme)];
-	}
+	const frame = beginModalFrame(task, width, theme);
+	if (frame.task === null) return frame.lines;
 
 	return renderDestructiveConfirmationOverlay(
 		{
 			title: "Delete Task?",
-			subject: `${task.id} ${taskDisplayTitle(task)}`,
+			subject: `${frame.task.id} ${taskDisplayTitle(frame.task)}`,
 			details: ["Appends a DELETE event; history remains in the board log."],
 			severity: "warning",
 		},
@@ -52,27 +50,20 @@ export function renderMovePicker(
 	theme: Theme,
 	selectedIdx = 0,
 ): string[] {
-	const lines: string[] = [];
-	const innerW = modalInnerWidth(width);
-
-	lines.push(frameTop(innerW, theme));
-
-	if (!task) {
-		lines.push(...noSelectionLines(innerW, theme));
-		return lines;
-	}
+	const { lines, innerW, task: selected } = beginModalFrame(task, width, theme);
+	if (selected === null) return lines;
 
 	const title = theme.bold(theme.fg("accent", " Move Task"));
 	lines.push(modalLine(title, innerW, theme));
 	lines.push(frameMiddle(innerW, theme));
 
-	const taskInfo = ` ${task.id} ${taskDisplayTitle(task)} (currently: ${task.col})`;
+	const taskInfo = ` ${selected.id} ${taskDisplayTitle(selected)} (currently: ${selected.col})`;
 	lines.push(modalTruncatedLine(theme.fg("text", taskInfo), innerW, theme));
 	lines.push(modalLine("", innerW, theme));
 
 	const targets: ("backlog" | "todo")[] = ["backlog", "todo"];
 	for (const [index, target] of targets.entries()) {
-		const current = task.col === target ? " (current)" : "";
+		const current = selected.col === target ? " (current)" : "";
 		const text = `[${index + 1}] ${target}${current}`;
 		const isSelected = index === selectedIdx;
 		const cursor = isSelected ? theme.fg("accent", "> ") : "  ";
@@ -158,14 +149,12 @@ export function renderBlockPrompt(
 	width: number,
 	theme: Theme,
 ): string[] {
-	if (!task) {
-		const innerW = modalInnerWidth(width);
-		return [frameTop(innerW, theme), ...noSelectionLines(innerW, theme)];
-	}
+	const frame = beginModalFrame(task, width, theme);
+	if (frame.task === null) return frame.lines;
 	return renderInputPrompt(
 		{
 			header: " Block Task",
-			body: ` ${task.id} ${taskDisplayTitle(task)}`,
+			body: ` ${frame.task.id} ${taskDisplayTitle(frame.task)}`,
 			input,
 			hint: "type reason · enter block · esc to go back",
 		},
