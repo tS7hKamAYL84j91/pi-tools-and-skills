@@ -14,3 +14,6 @@ coverage/
 .claude/*.lock
 # Ignore only the repository-root Automations checkout; nested pi-automations consumers remain visible to Knip.
 /automations/
+# Fleet runtime messages
+fleet-overview/directives/inbox/
+fleet-overview/directives/replies/

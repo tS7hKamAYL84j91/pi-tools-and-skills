@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EO Fleet</title>
+<style>
+:root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --dim:#8b949e;
+  --good:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; padding-bottom:60px; }
+header { position:sticky; top:0; background:var(--bg); z-index:5; border-bottom:1px solid var(--border); padding:10px 14px 6px; }
+h1 { font-size:17px; margin:0 0 6px; display:flex; justify-content:space-between; align-items:baseline;}
+h1 small { color:var(--dim); font-size:11px; font-weight:400; }
+nav { display:flex; gap:4px; overflow-x:auto; }
+nav button { background:none; border:1px solid transparent; border-radius:8px; color:var(--dim); padding:6px 12px; font-size:13px; cursor:pointer; white-space:nowrap; }
+nav button.on { color:var(--fg); background:var(--panel); border-color:var(--border); }
+main { padding:12px 14px; max-width:760px; margin:0 auto; }
+section { display:none; }
+section.on { display:block; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
+.agent { display:flex; gap:10px; align-items:flex-start; }
+.dot { width:10px; height:10px; border-radius:50%; margin-top:6px; flex:none; }
+.dot.working { background:var(--good); box-shadow:0 0 6px var(--good); }
+.dot.idle, .dot.idle-long { background:var(--warn); }
+.dot.down, .dot.stood-down, .dot.dormant, .dot.unknown { background:var(--dim); }
+.a-name { font-weight:600; }
+.a-meta { color:var(--dim); font-size:12px; margin-top:2px; }
+.a-role { color:var(--dim); font-size:12px; margin-top:4px; }
+.tag { display:inline-block; font-size:11px; color:var(--accent); border:1px solid var(--border); border-radius:6px; padding:1px 6px; margin-left:6px; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+th { color:var(--dim); font-weight:500; font-size:12px; }
+.ev { border-left:3px solid var(--border); padding:6px 10px; margin-bottom:8px; }
+.ev .t { color:var(--accent); font-size:12px; }
+.ev .s { font-size:13px; margin-top:1px; }
+.ev .d { color:var(--dim); font-size:12px; margin-top:1px; }
+.brief-line { padding:7px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.brief-line:last-child { border-bottom:none; }
+pre.md { white-space:pre-wrap; font:12px/1.5 ui-monospace, monospace; color:var(--fg); }
+select { background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:13px; }
+.legend { font-size:11px; color:var(--dim); margin-top:4px; }
+.bar-label { font-size:11px; fill:var(--dim); }
+.board-strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+.bcol { min-width:200px; flex:1 0 220px; }
+.bcol-h { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; padding:4px 2px; border-bottom:1px solid var(--border); margin-bottom:6px; }
+.bcard { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 8px; margin-bottom:6px; font-size:13px; }
+.bcard .dot { display:inline-block; margin-right:2px; }
+.dir-text { width:100%; min-height:88px; background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:10px; font:14px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; resize:vertical; }
+.btn { background:var(--accent); color:#0d1117; border:none; border-radius:6px; padding:6px 14px; font-weight:600; font-size:13px; cursor:pointer; }
+.btn:hover { opacity:0.9; }
+.btn:disabled { opacity:0.5; cursor:default; }
+.dir-item { padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.dir-item:last-child { border-bottom:none; }
+footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border-top:1px solid var(--border); color:var(--dim); font-size:11px; padding:5px 14px; display:flex; justify-content:space-between; }
+.err { color:var(--bad); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EO Fleet <small id="updated"></small></h1>
+  <nav id="nav">
+    <button data-tab="fleet" class="on">Fleet</button>
+    <button data-tab="usage">Usage</button>
+    <button data-tab="events">Events</button>
+    <button data-tab="brief">Brief</button>
+    <button data-tab="board">Board</button>
+    <button data-tab="sched">Schedules</button>
+    <button data-tab="comms">Directives</button>
+  </nav>
+</header>
+<main>
+  <section id="fleet" class="on"><div id="fleet-list"></div></section>
+  <section id="usage">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Token usage per agent</strong>
+        <select id="win">
+          <option value="7">last 7 days</option>
+          <option value="30" selected>last 30 days</option>
+          <option value="90">last 90 days</option>
+        </select>
+      </div>
+      <div class="legend">bars = total tokens per day (UTC); input+output+reasoning; cache reads not drawn</div>
+      <div id="usage-charts"></div>
+    </div>
+  </section>
+  <section id="events"><div id="events-list"></div></section>
+  <section id="brief"><div class="card" id="brief-card"></div></section>
+  <section id="board"><div class="card" style="padding:8px"><div id="board-proj" class="board-strip"></div></div></section>
+  <section id="sched"><div class="card"><div id="sched-list"></div></div></section>
+  <section id="comms">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>Directives to Gravitas</strong>
+        <span class="a-meta">delivery only · no auto-execution</span>
+      </div>
+      <textarea id="dir-text" class="dir-text" placeholder="Type a note for Gravitas / fleet..."></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <button id="dir-send" class="btn">Send to Inbox</button>
+        <span id="dir-status" class="a-meta"></span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Replies from Gravitas</strong>
+      <div id="replies-list" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
+      <strong>Sent Inbox</strong>
+      <div id="sent-list" style="margin-top:6px"></div>
+    </div>
+  </section>
+</main>
+<footer><span>v1 TypeScript · tailnet only</span><span id="refresh"></span></footer>
+<script>
+let DATA = {};
+const $ = s => document.querySelector(s);
+// mount prefix: the app may be served at the tailnet path /fleet (proxy strips it
+// server-side); fetches must stay inside the mount. Local root mount stays '/'.
+const MOUNT = /\/fleet\/?$/.test(location.pathname) ? '/fleet/' : '/';
+const api = p => MOUNT + p;
+
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#nav button').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('main section').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  $('#' + b.dataset.tab).classList.add('on');
+});
+
+async function load() {
+  try {
+    const [fleet, usage, events, brief, board, sched, directives] = await Promise.all([
+      fetch(api('api/fleet')).then(r => r.json()),
+      fetch(api('api/usage')).then(r => r.json()),
+      fetch(api('api/events')).then(r => r.json()),
+      fetch(api('api/brief')).then(r => r.json()),
+      fetch(api('api/board')).then(r => r.json()),
+      fetch(api('api/schedules')).then(r => r.json()),
+      fetch(api('api/directives')).then(r => r.json()),
+    ]);
+    DATA = {fleet, usage, events, brief, board, sched, directives};
+    $('#updated').textContent = 'updated ' + (fleet.updatedAt || '').slice(11,16) + 'Z';
+    render();
+    $('#refresh').textContent = 'auto-refresh 30s';
+  } catch (e) {
+    $('#refresh').innerHTML = '<span class="err">refresh failed</span>';
+  }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+function render() { renderFleet(); renderUsage(); renderEvents(); renderBrief(); renderBoard(); renderSched(); renderDirectives(); }
+
+function renderFleet() {
+  const el = $('#fleet-list'); el.innerHTML = '';
+  (DATA.fleet.agents || []).forEach(a => {
+    const d = document.createElement('div'); d.className = 'card';
+    d.innerHTML = `<div class="agent"><span class="dot ${a.status}"></span>
+      <div><span class="a-name">${esc(a.display)}</span>
+      <span class="tag">${esc(a.status)}</span>
+      <div class="a-meta">${a.model ? esc(a.model) + " · " : ""}${esc(a.detail)}${a.lastActivity ? ' · last activity ' + esc(a.lastActivity.slice(11,16)) + 'Z' : ''}</div>
+      <div class="a-role">${esc(a.role)}</div></div></div>`;
+    el.appendChild(d);
+  });
+}
+
+function fmt(n) { return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'k' : ''+n; }
+
+function renderUsage() {
+  const el = $('#usage-charts'); el.innerHTML = '';
+  const win = parseInt($('#win').value || '30', 10);
+  const today = new Date();
+  const cutoff = new Date(today.getTime() - win * 864e5).toISOString().slice(0,10);
+  const agents = DATA.usage.agents || {};
+  Object.keys(agents).sort().forEach(k => {
+    const days = agents[k].days || {};
+    const entries = Object.entries(days).filter(([d]) => d >= cutoff).sort();
+    if (!entries.length) return;
+    const card = document.createElement('div'); card.className = 'card';
+    const W = 640, rowH = 26, padL = 86, padB = 18;
+    const H = rowH * Math.max(1, Math.ceil(entries.length / 26));
+    // compact: aggregate to buckets if >26 days
+    const maxTotal = Math.max(...entries.map(e => e[1].total || 0), 1);
+    let x = padL;
+    let svg = `<svg viewBox="0 0 ${W} ${H + padB}" width="100%">`;
+    svg += `<text class="bar-label" x="0" y="${rowH/2+3}">${esc(k)}</text>`;
+    entries.forEach(([d, v]) => {
+      const h = Math.max(1, (v.total / maxTotal) * (H - 4));
+      svg += `<rect x="${x}" y="${H - h}" width="14" height="${h}" rx="2" fill="#58a6ff" opacity="0.85"><title>${d}: ${fmt(v.total)} tokens (${v.msgs} msgs, $${(v.cost||0).toFixed(3)})</title></rect>`;
+      x += 18;
+      if (x > W - 10) x = W - 10;
+    });
+    svg += '</svg>';
+    const tot = entries.reduce((s,[,v]) => s + (v.total||0), 0);
+    const cost = entries.reduce((s,[,v]) => s + (v.cost||0), 0);
+    card.innerHTML = `<div style="display:flex;justify-content:space-between"><strong>${esc(k)}</strong>
+      <span class="a-meta">${win}d: ${fmt(tot)} tokens${cost > 0 ? ' · $'+cost.toFixed(2) : ''}</span></div>${svg}`;
+    el.appendChild(card);
+  });
+  if (!el.children.length) el.innerHTML = '<div class="card">No usage in window.</div>';
+}
+
+const AGENT_NAMES = {gravitas: 'Gravitas', coas: 'Q', 'pi-tools-and-skills': 'pi-tools', 'casmi-gm': 'casmi-gm', 'titanic-gm': 'titanic-gm', other: 'other'};
+const AGENT_ORDER = ['casmi-gm', 'gravitas', 'coas', 'pi-tools-and-skills', 'titanic-gm', 'other'];
+
+function renderEvents() {
+  const el = $('#events-list');
+  const evs = DATA.events.events || [];
+  const groups = {};
+  evs.forEach(e => { (groups[e.agent] = groups[e.agent] || []).push(e); });
+  const keys = Object.keys(groups).sort((a, b) => {
+    const la = groups[a][0].ts || '', lb = groups[b][0].ts || '';
+    return (AGENT_ORDER.indexOf(a) - AGENT_ORDER.indexOf(b)) || (lb < la ? -1 : 1);
+  });
+  el.innerHTML = keys.map(k => {
+    const items = groups[k].slice(0, 5).map(e =>
+      `<div class="ev"><span class="t">${esc(e.ts.slice(5,16).replace('T',' '))}</span> ${esc(e.type)}${e.detail ? ' · <span class="d">' + esc(e.detail.slice(0,60)) + '</span>' : ''}${e.summary ? ' · ' + esc(e.summary.slice(0,60)) : ''}</div>`).join('');
+    return `<div class="card"><strong>${esc(AGENT_NAMES[k] || k)}</strong> <span class="tag">${groups[k].length}</span>${items}</div>`;
+  }).join('') || '<div class="card">No events.</div>';
+}
+
+function renderBrief() {
+  const b = DATA.brief || {};
+  const aw = b.awaiting || [];
+  const awHtml = aw.length ? `<div style="color:var(--bad);font-weight:600;padding-bottom:6px">⏳ Waiting on Jim (${aw.length})</div>` +
+    aw.map(i => `<div class="brief-line"><strong>${esc(i.label)}</strong><div class="a-meta">${esc(i.detail)}</div></div>`).join('') : '';
+  $('#brief-card').innerHTML = `<div class="a-meta">generated ${esc(b.generatedAt || '')}</div>` + awHtml +
+    (b.lines || []).map(l => `<div class="brief-line">${esc(l)}</div>`).join('');
+}
+
+const PRIO_COLORS = {critical: '#f85149', high: '#d29922', medium: '#58a6ff', low: '#8b949e'};
+const COLS = ['backlog', 'todo', 'in-progress', 'blocked', 'done'];
+const COL_LABEL = {'in-progress': 'In Progress'};
+
+function renderBoard() {
+  const proj = (DATA.board.projection) || {columns: {}};
+  const cols = proj.columns || {};
+  let html = '';
+  COLS.forEach(col => {
+    const cards = cols[col] || [];
+    const label = COL_LABEL[col] || col;
+    const count = col === 'done' ? (proj.doneTotal || cards.length) : cards.length;
+    const shown = cards.map(c => {
+      const pc = PRIO_COLORS[c.priority] || '#8b949e';
+      const agent = c.agent ? ' <span class="a-meta">' + esc(c.agent) + '</span>' : '';
+      const blocked = col === 'blocked' && c.blockedReason ? '<div class="a-meta">' + esc(c.blockedReason.slice(0, 70)) + '</div>' : '';
+      return `<div class="bcard"><span class="dot" style="background:${pc};width:8px;height:8px"></span> <b>${esc(c.id)}</b>${agent}<div style="font-size:12px;margin-top:2px">${esc(c.title.slice(0, 72))}</div>${blocked}</div>`;
+    }).join('');
+    html += `<div class="bcol"><div class="bcol-h">${esc(label)} <span class="tag">${count}</span></div>${shown}${cards.length ? '' : '<div class="a-meta">empty</div>'}</div>`;
+  });
+  $('#board-proj').innerHTML = html;
+}
+
+function renderSched() {
+  const s = (DATA.sched.schedules || []);
+  $('#sched-list').innerHTML = '<table><tr><th>repo</th><th>task</th><th>cron</th><th>enabled</th></tr>' +
+    s.map(x => `<tr><td>${esc(x.repo)}</td><td>${esc(x.task)}</td><td>${esc(x.CRON_EXPR||'')}</td>
+      <td>${x.ENABLED === '1' ? '✅' : '⬜'}</td></tr>`).join('') + '</table>';
+}
+
+function renderDirectives() {
+  const d = DATA.directives || {};
+  const inbox = d.inbox || [];
+  const replies = d.replies || [];
+
+  $('#sent-list').innerHTML = inbox.length ? inbox.map(i =>
+    `<div class="dir-item"><span class="t">${esc((i.ts||'').slice(5,16).replace('T',' '))}</span> <span style="margin-left:6px">${esc(i.text)}</span></div>`
+  ).join('') : '<div class="a-meta">No directives sent yet.</div>';
+
+  $('#replies-list').innerHTML = replies.length ? replies.map(r =>
+    `<div class="dir-item"><span class="t">${esc((r.ts||'').slice(5,16).replace('T',' '))}</span> <span class="tag">Gravitas</span><div style="margin-top:4px">${esc(r.text)}</div></div>`
+  ).join('') : '<div class="a-meta">No replies yet.</div>';
+}
+
+$('#dir-send').onclick = async () => {
+  const text = $('#dir-text').value;
+  if (!text.trim()) return;
+  const btn = $('#dir-send');
+  const stat = $('#dir-status');
+  btn.disabled = true;
+  stat.textContent = 'Sending...';
+  try {
+    const res = await fetch(api('api/directives'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'failed');
+    $('#dir-text').value = '';
+    stat.textContent = 'Delivered ✓';
+    await load();
+  } catch (err) {
+    stat.innerHTML = '<span class="err">delivery failed: ' + esc(err.message) + '</span>';
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$('#win').onchange = renderUsage;
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>
