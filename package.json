@@ -9,7 +9,7 @@
 		"check:namespace": "node scripts/check-namespace.mjs",
 		"check:template-safety": "node scripts/check-template-safety.mjs",
 		"build:fleet-mcp": "tsc -p fleet-mcp/tsconfig.build.json",
-		"build:fleet-overview": "tsc --noEmit false --outDir dist",
+		"build:fleet-overview": "tsc -p fleet-overview/tsconfig.build.json && cp -r fleet-overview/static dist/fleet-overview/static",
 		"start:fleet-mcp": "node dist/fleet-mcp/index.js",
 		"start:fleet-overview": "node dist/fleet-overview/server.js",
 		"typecheck": "tsc --noEmit",

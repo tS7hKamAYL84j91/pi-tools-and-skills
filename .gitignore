@@ -17,3 +17,4 @@ coverage/
 # Fleet runtime messages
 fleet-overview/directives/inbox/
 fleet-overview/directives/replies/
+fleet-overview/control/audit.jsonl

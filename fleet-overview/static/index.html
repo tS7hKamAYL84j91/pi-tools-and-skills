@@ -52,6 +52,8 @@ select { background:var(--panel); color:var(--fg); border:1px solid var(--border
 .btn:disabled { opacity:0.5; cursor:default; }
 .dir-item { padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
 .dir-item:last-child { border-bottom:none; }
+.ctl-pre { white-space:pre-wrap; font:11px/1.45 ui-monospace, monospace; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px; max-height:220px; overflow:auto; margin-top:8px; }
+.btn.warn { background:var(--warn); }
 footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border-top:1px solid var(--border); color:var(--dim); font-size:11px; padding:5px 14px; display:flex; justify-content:space-between; }
 .err { color:var(--bad); font-size:13px; }
 </style>
@@ -67,6 +69,7 @@ footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border
     <button data-tab="board">Board</button>
     <button data-tab="sched">Schedules</button>
     <button data-tab="comms">Directives</button>
+    <button data-tab="control">Control</button>
   </nav>
 </header>
 <main>
@@ -110,6 +113,17 @@ footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border
       <div id="sent-list" style="margin-top:6px"></div>
     </div>
   </section>
+  <section id="control">
+    <div class="card">
+      <strong>Fleet control</strong>
+      <div class="a-meta" style="margin-top:2px">gated: dry-run preview → confirm → executed + audited — the same make commands Q runs. Nothing runs until you confirm.</div>
+    </div>
+    <div id="control-list"></div>
+    <div class="card">
+      <strong>Control log</strong>
+      <div id="control-log" style="margin-top:6px"></div>
+    </div>
+  </section>
 </main>
 <footer><span>v1 TypeScript · tailnet only</span><span id="refresh"></span></footer>
 <script>
@@ -129,7 +143,7 @@ document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
 
 async function load() {
   try {
-    const [fleet, usage, events, brief, board, sched, directives] = await Promise.all([
+    const [fleet, usage, events, brief, board, sched, directives, control] = await Promise.all([
       fetch(api('api/fleet')).then(r => r.json()),
       fetch(api('api/usage')).then(r => r.json()),
       fetch(api('api/events')).then(r => r.json()),
@@ -137,8 +151,9 @@ async function load() {
       fetch(api('api/board')).then(r => r.json()),
       fetch(api('api/schedules')).then(r => r.json()),
       fetch(api('api/directives')).then(r => r.json()),
+      fetch(api('api/control')).then(r => r.json()),
     ]);
-    DATA = {fleet, usage, events, brief, board, sched, directives};
+    DATA = {fleet, usage, events, brief, board, sched, directives, control};
     $('#updated').textContent = 'updated ' + (fleet.updatedAt || '').slice(11,16) + 'Z';
     render();
     $('#refresh').textContent = 'auto-refresh 30s';
@@ -149,7 +164,7 @@ async function load() {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 
-function render() { renderFleet(); renderUsage(); renderEvents(); renderBrief(); renderBoard(); renderSched(); renderDirectives(); }
+function render() { renderFleet(); renderUsage(); renderEvents(); renderBrief(); renderBoard(); renderSched(); renderDirectives(); renderControl(); }
 
 function renderFleet() {
   const el = $('#fleet-list'); el.innerHTML = '';
@@ -270,6 +285,139 @@ function renderDirectives() {
   $('#replies-list').innerHTML = replies.length ? replies.map(r =>
     `<div class="dir-item"><span class="t">${esc((r.ts||'').slice(5,16).replace('T',' '))}</span> <span class="tag">Gravitas</span><div style="margin-top:4px">${esc(r.text)}</div></div>`
   ).join('') : '<div class="a-meta">No replies yet.</div>';
+}
+
+const CTL_NAMES = {standdown: 'Stand down', standup: 'Stand up'};
+
+function renderControl() {
+  const list = $('#control-list');
+  // don't clobber an active preview/confirm/result flow on the 30s auto-refresh
+  const flows = Array.from(list.querySelectorAll('[id^="ctl-flow-"]'));
+  if (flows.some(n => n.childNodes.length)) {
+    renderControlLog();
+    return;
+  }
+  const d = DATA.control || {};
+  list.textContent = '';
+  const specs = d.specs || [];
+  specs.forEach(s => {
+    const card = document.createElement('div'); card.className = 'card';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
+    const name = document.createElement('strong'); name.textContent = s.display;
+    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = s.state;
+    row.append(name, tag);
+    card.append(row);
+    const meta = document.createElement('div'); meta.className = 'a-meta';
+    meta.textContent = 'manifest: ' + s.manifest;
+    card.append(meta);
+    if (s.note) {
+      const note = document.createElement('div'); note.className = 'a-role'; note.textContent = s.note;
+      card.append(note);
+    }
+    const btn = document.createElement('button'); btn.className = 'btn';
+    btn.textContent = CTL_NAMES[s.action] || s.action;
+    btn.onclick = () => ctlPreview(btn, s);
+    card.append(btn);
+    const flow = document.createElement('div');
+    flow.id = 'ctl-flow-' + s.key; flow.style.marginTop = '8px';
+    card.append(flow);
+    list.append(card);
+  });
+  if (!specs.length) {
+    const c = document.createElement('div'); c.className = 'card'; c.textContent = 'No controllable agents.';
+    list.append(c);
+  }
+  renderControlLog();
+}
+
+function renderControlLog() {
+  const d = DATA.control || {};
+  const logEl = $('#control-log');
+  logEl.textContent = '';
+  const log = d.log || [];
+  if (!log.length) {
+    const m = document.createElement('div'); m.className = 'a-meta'; m.textContent = 'No control actions yet.';
+    logEl.append(m);
+  } else log.forEach(e => {
+    const item = document.createElement('div'); item.className = 'dir-item';
+    const t = document.createElement('span'); t.className = 't';
+    t.textContent = (e.ts || '').slice(5,16).replace('T',' ');
+    const what = document.createElement('span');
+    what.textContent = ' ' + (e.action === 'standup' ? 'stood up ' : 'stood down ') + (e.key || '') +
+      (e.exitCode === 0 ? ' ✓' : ' ✗ exit ' + e.exitCode);
+    item.append(t, what);
+    logEl.append(item);
+  });
+}
+
+async function ctlPreview(btn, s) {
+  const flow = $('#ctl-flow-' + s.key);
+  flow.textContent = '';
+  btn.disabled = true;
+  const stat = document.createElement('div'); stat.className = 'a-meta'; stat.textContent = 'Running dry-run preview…';
+  flow.append(stat);
+  try {
+    const res = await fetch(api('api/control/preview'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: s.action, key: s.key})
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || data.output || ('preview failed (exit ' + data.exitCode + ')'));
+    flow.textContent = '';
+    const label = document.createElement('div'); label.className = 'a-meta';
+    label.textContent = 'Preview (' + data.command + ') — nothing has run yet:';
+    const pre = document.createElement('pre'); pre.className = 'ctl-pre'; pre.textContent = data.output;
+    const warn = document.createElement('div'); warn.className = 'a-meta';
+    warn.textContent = 'Confirm runs it for real (APPLY=1) and writes the control log.' + (s.note ? ' ' + s.note : '');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+    const ok = document.createElement('button'); ok.className = 'btn warn';
+    ok.textContent = 'Confirm ' + (CTL_NAMES[s.action] || s.action).toLowerCase();
+    const no = document.createElement('button'); no.className = 'btn';
+    no.style.background = 'var(--border)'; no.style.color = 'var(--fg)';
+    no.textContent = 'Cancel';
+    row.append(ok, no);
+    flow.append(label, pre, warn, row);
+    ok.onclick = () => ctlExecute(s, data.requestId);
+    no.onclick = () => { flow.textContent = ''; };
+  } catch (err) {
+    flow.textContent = '';
+    const e = document.createElement('span'); e.className = 'err';
+    e.textContent = 'preview failed: ' + (err && err.message ? err.message : 'error');
+    flow.append(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function ctlExecute(s, requestId) {
+  const flow = $('#ctl-flow-' + s.key);
+  flow.textContent = '';
+  const stat = document.createElement('div'); stat.className = 'a-meta'; stat.textContent = 'Executing…';
+  flow.append(stat);
+  try {
+    const res = await fetch(api('api/control/execute'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({requestId, action: s.action, key: s.key})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'execute failed');
+    await load();  // refresh specs + audit log, then show the result in the fresh node
+    const fresh = $('#ctl-flow-' + s.key);
+    fresh.textContent = '';
+    const line = document.createElement('div'); line.className = 'a-meta';
+    line.textContent = data.ok ? 'Done ✓ (exit 0) · audited' : 'Command reported failure (exit ' + data.exitCode + ') · audited';
+    const pre = document.createElement('pre'); pre.className = 'ctl-pre'; pre.textContent = data.output;
+    fresh.append(line, pre);
+  } catch (err) {
+    flow.textContent = '';
+    const e = document.createElement('span'); e.className = 'err';
+    e.textContent = 'execute failed: ' + (err && err.message ? err.message : 'error');
+    flow.append(e);
+  }
 }
 
 $('#dir-send').onclick = async () => {
