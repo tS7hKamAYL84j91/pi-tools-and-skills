@@ -97,7 +97,7 @@ export class WatchListEditor implements Component, Focusable {
 			lines.push(`${cursor}${path}`.slice(0, Math.max(1, width)));
 		}
 		const addCursor = this.selectedIndex === addIndex ? "› " : "  ";
-		lines.push(`${addCursor}+ add file…`.slice(0, Math.max(1, width)));
+		lines.push(`${addCursor}+ add path…`.slice(0, Math.max(1, width)));
 		if (this.addInput) {
 			for (const line of this.addInput.render(Math.max(1, width - 4))) {
 				lines.push(`  ${line}`);

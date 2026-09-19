@@ -1,11 +1,4 @@
-/**
- * Kanban TUI Overlay — pure rendering functions.
- *
- * No state, no I/O, no class. Each exported function takes the data it
- * needs and returns the lines to push to the terminal. The KanbanOverlay
- * class in overlay.ts owns the controller state and calls into here.
- */
-
+/** Kanban TUI Overlay — pure rendering functions. */
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { TaskState } from "./board.js";
@@ -13,11 +6,7 @@ import { WIP_LIMIT } from "./board.js";
 
 // ── Sanitisation ────────────────────────────────────────────────
 
-// Strip non-SGR escape sequences (OSC, DCS, CSI device queries, etc.)
-// from untrusted strings. Uses RegExp constructor because regex literals
-// with \x1b trigger Biome's noControlCharactersInRegex, but these control
-// characters are exactly what we need to match.
-// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional — matching terminal escape sequences
+// biome-ignore lint/complexity/useRegexLiterals: control chars are intentional
 const RE_OSC = new RegExp("\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)", "g");
 // biome-ignore lint/complexity/useRegexLiterals: control chars are intentional
 const RE_DCS = new RegExp("\\x1bP[^\\x1b]*\\x1b\\\\", "g");
@@ -61,6 +50,12 @@ export const VIEWPORT_ROWS = 10;
 const DETAIL_MAX_LINES = 16;
 
 // ── Helpers ─────────────────────────────────────────────────────
+
+function columnScrollIndicator(tasks: TaskState[], offset: number): string {
+	if (tasks.length <= VIEWPORT_ROWS) return "";
+	const maxRows = Math.min(VIEWPORT_ROWS, tasks.length);
+	return `${offset > 0 ? "▴" : ""}${offset + maxRows < tasks.length ? "▾" : ""}`;
+}
 
 /** Two-character priority badge; fixed width so rows align. */
 function priorityBadge(priority: string, theme: Theme): string {
@@ -271,13 +266,16 @@ export function renderBoard(
 	const headerParts: string[] = [];
 	for (let i = 0; i < COLUMNS.length; i++) {
 		const col = COLUMNS[i] ?? "backlog";
-		const count = (view.colTasks[i] ?? []).length;
+		const tasks = view.colTasks[i] ?? [];
+		const count = tasks.length;
+		const offset = view.scroll[col];
+		const scrollInd = columnScrollIndicator(tasks, offset);
 		const hidden = col === "done" ? (view.hiddenDoneCount ?? 0) : 0;
 		const wip =
 			col === "in-progress"
 				? `${count}/${WIP_LIMIT}`
 				: `${count}${hidden > 0 ? `+${hidden}` : ""}`;
-		const label = `${COLUMN_LABELS[col]} ${wip}`;
+		const label = `${COLUMN_LABELS[col]} ${wip}${scrollInd ? ` ${scrollInd}` : ""}`;
 		const styled =
 			col === view.activeCol
 				? theme.bold(theme.fg("accent", label))

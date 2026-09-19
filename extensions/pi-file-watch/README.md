@@ -4,7 +4,10 @@ Small configurable watcher for explicitly listed files.
 
 ## What it does
 
-- Watches only configured file paths with `node:fs.watch` and `recursive: false`.
+- Watches explicitly configured file paths with `node:fs.watch` and `recursive: false`.
+- Watched directories are watched non-recursively: created, changed, or deleted
+  children are reported as per-file entries in the same `firewatch_batch`;
+  children are discovered from events only and never listed or scanned.
 - Debounces file-system events, then batches notifications to reduce autosave noise.
 - Emits metadata-only hidden `firewatch_batch` messages; it does not open overlays or inject file contents.
 - Allows symlink or external workspace targets by config.
@@ -16,8 +19,9 @@ In an interactive session `/file-watch` opens a settings overlay built on Pi's
 `SettingsList`:
 
 - **Watched files** — enter opens the list editor: `↑/↓` select, `d` delete,
-  `a` add a path with native text input (cursor editing, bracketed paste),
-  `esc` back. Duplicate paths and lists beyond 32 entries are rejected.
+  `a` add a path (file or directory) with native text input (cursor editing,
+  bracketed paste), `esc` back. Duplicate paths and lists beyond 32 entries
+  are rejected.
 - **Trigger agent turn / Allow external paths / Follow symlinks** — on/off
   toggles.
 - **Hash byte limit / Debounce / Batch window** — value cycles (1k…64k,
@@ -57,6 +61,13 @@ Create `.pi/file-watch.json`:
 ```
 
 `batchWindowMs` defaults to `120000` (two minutes). During that window, repeated changes to the same file are coalesced into one final-state change with `change_count`.
+
+Directory entries watch the directory itself. Child events follow the same
+debounce/batch pipeline and safety rules: regular children get hash, size, and
+mtime; symlinked children, nested directories, and deleted files emit
+path/event metadata only; names like `..` or paths with separators are
+ignored. The watch is on the directory inode — if the directory itself is
+replaced, the watcher goes stale until `file_watch_reload`.
 
 `followSymlinks: false` rejects symlinks in the file path, including parent
 directories. `allowExternalPaths: false` checks the resolved target against the

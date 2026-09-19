@@ -1,25 +1,34 @@
-import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	realpathSync,
+	symlinkSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	loadFileWatchConfig,
 	parseFileWatchConfig,
 } from "../extensions/pi-file-watch/config.js";
-import type { WatchedFileDescription } from "../extensions/pi-file-watch/types.js";
+import type {
+	WatchedFileDescription,
+	WatcherRuntimeState,
+} from "../extensions/pi-file-watch/types.js";
 import {
 	buildFirewatchUpdate,
 	createRuntimeState,
 	describeWatchedFiles,
 	formatChangeMessage,
 	formatWatchList,
-	renderStatus,
 	queueBatchUpdate,
+	renderStatus,
 	startFileWatch,
 	stopFileWatch,
 } from "../extensions/pi-file-watch/watcher.js";
@@ -415,6 +424,182 @@ describe("file watch config", () => {
 		} finally {
 			stopFileWatch(state);
 			await rm(otherExternal, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("directory watch", () => {
+	interface DirHarness {
+		dirReal: string;
+		fire(event: string, filename: string | Buffer | null): void;
+		messages: Array<{
+			details: { changes?: Array<Record<string, unknown>> };
+			content?: string;
+		}>;
+		state: WatcherRuntimeState;
+	}
+
+	function startDirWatch(batchWindowMs = 20): DirHarness {
+		const dir = join(workspace, "directives");
+		mkdirSync(dir);
+		const messages: Array<{
+			details: { changes?: Array<Record<string, unknown>> };
+			content?: string;
+		}> = [];
+		const pi = {
+			sendMessage(message: (typeof messages)[number]) {
+				messages.push(message);
+			},
+		} as ExtensionAPI;
+		const callbacks = new Map<
+			string,
+			(event: string, filename: string | Buffer | null) => void
+		>();
+		const state = createRuntimeState();
+		state.watchFactory = (path, callback) => {
+			callbacks.set(path, callback);
+			return { close: () => callbacks.delete(path) };
+		};
+		startFileWatch(
+			pi,
+			{ cwd: workspace } as ExtensionContext,
+			parseFileWatchConfig({
+				watch: ["directives"],
+				debounceMs: 20,
+				batchWindowMs,
+			}),
+			state,
+		);
+		const dirReal = realpathSync(dir);
+		return {
+			dirReal,
+			fire(event, filename) {
+				callbacks.get(dirReal)?.(event, filename);
+			},
+			messages,
+			state,
+		};
+	}
+
+	it("accepts directory entries and reports them as watched directories", () => {
+		mkdirSync(join(workspace, "inbox"));
+		const [file] = describeWatchedFiles(
+			workspace,
+			parseFileWatchConfig({ watch: ["inbox"] }),
+		);
+		expect(file?.status).toBe("watching");
+		expect(file?.isDirectory).toBe(true);
+	});
+
+	it("rejects external directories by config", async () => {
+		const rejected = describeWatchedFiles(
+			workspace,
+			parseFileWatchConfig({
+				watch: [await realpath(external)],
+				allowExternalPaths: false,
+			}),
+		);
+		expect(rejected[0]?.status).toBe("error");
+		expect(rejected[0]?.error).toContain("external path not allowed");
+	});
+
+	it("fires a per-file batch entry for a file created in a watched directory", async () => {
+		const harness = startDirWatch();
+		try {
+			expect(harness.state.files[0]?.isDirectory).toBe(true);
+			writeFileSync(join(workspace, "directives", "d-1.json"), '{"note":1}');
+			harness.fire("rename", Buffer.from("d-1.json"));
+			await waitFor(() => harness.messages.length > 0);
+			const change = harness.messages[0]?.details.changes?.[0];
+			expect(change).toMatchObject({
+				path: join("directives", "d-1.json"),
+				event: "rename",
+				byte_size: 10,
+				change_count: 1,
+			});
+			expect(change?.hash).toMatch(/^[a-f0-9]{64}$/);
+			expect(harness.messages[0]?.content).not.toContain('{"note":1}');
+		} finally {
+			stopFileWatch(harness.state);
+		}
+	});
+
+	it("coalesces repeated child events per file and keeps per-file batch entries", () => {
+		vi.useFakeTimers();
+		const harness = startDirWatch(100);
+		try {
+			writeFileSync(join(workspace, "directives", "a.json"), "one");
+			harness.fire("rename", "a.json");
+			vi.advanceTimersByTime(50); // first debounce expiry → queued update
+			writeFileSync(join(workspace, "directives", "a.json"), "two");
+			harness.fire("change", "a.json");
+			harness.fire("rename", "b.json");
+			vi.advanceTimersByTime(50); // second debounce expiry → same file count=2, new file entry
+			vi.advanceTimersByTime(100); // batch flush
+			expect(harness.messages).toHaveLength(1);
+			const changes = harness.messages[0]?.details.changes ?? [];
+			expect(changes).toHaveLength(2);
+			expect(changes[0]).toMatchObject({
+				path: join("directives", "a.json"),
+				event: "modified",
+				byte_size: 3,
+				change_count: 2,
+			});
+			expect(changes[1]).toMatchObject({
+				path: join("directives", "b.json"),
+				event: "rename",
+				change_count: 1,
+			});
+		} finally {
+			vi.useRealTimers();
+			stopFileWatch(harness.state);
+		}
+	});
+
+	it("skips unidentifiable and unsafe child names", async () => {
+		const harness = startDirWatch();
+		try {
+			harness.fire("rename", null);
+			harness.fire("rename", ".");
+			harness.fire("rename", "..");
+			harness.fire("rename", "../escape");
+			harness.fire("rename", "sub/child");
+			await new Promise((resolve) => setTimeout(resolve, 60));
+			expect(harness.messages).toHaveLength(0);
+			expect(harness.state.timers.size).toBe(0);
+			expect(harness.state.batchChanges.size).toBe(0);
+		} finally {
+			stopFileWatch(harness.state);
+		}
+	});
+
+	it("emits metadata-only entries for symlinked and directory children", async () => {
+		const harness = startDirWatch();
+		try {
+			mkdirSync(join(workspace, "directives", "nested"));
+			symlinkSync(
+				join(external, "journal.md"),
+				join(workspace, "directives", "link.json"),
+			);
+			harness.fire("rename", "nested");
+			harness.fire("rename", "link.json");
+			await waitFor(() => harness.messages.length > 0);
+			const changes = harness.messages[0]?.details.changes ?? [];
+			expect(changes).toHaveLength(2);
+			for (const change of changes) {
+				expect(change?.byte_size).toBeUndefined();
+				expect(change?.hash).toBeUndefined();
+			}
+			expect(changes[0]).toMatchObject({
+				path: join("directives", "nested"),
+				event: "rename",
+			});
+			expect(changes[1]).toMatchObject({
+				path: join("directives", "link.json"),
+				event: "rename",
+			});
+		} finally {
+			stopFileWatch(harness.state);
 		}
 	});
 });

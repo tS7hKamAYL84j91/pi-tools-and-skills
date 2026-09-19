@@ -1,7 +1,7 @@
 /** Confined target discovery and bounded metadata reads; no timers or host calls. */
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DEFAULT_MAX_BYTES, resolveConfiguredPath } from "./config.js";
 import type { FileWatchConfig, WatchedFileDescription } from "./types.js";
 
@@ -46,17 +46,39 @@ export function describeWatchedFiles(cwd: string, config: FileWatchConfig): Watc
 			if (symlink && !config.followSymlinks) {
 				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "symlink path not allowed by config" };
 			}
-			if (!statSync(realPath).isFile()) {
-				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "not a regular file" };
+			const stats = statSync(realPath);
+			const isDirectory = stats.isDirectory();
+			if (!stats.isFile() && !isDirectory) {
+				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "not a regular file or directory" };
 			}
 			if (external && !config.allowExternalPaths) {
 				return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "error", error: "external path not allowed by config" };
 			}
-			return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "watching" };
+			return { configuredPath, absolutePath, realPath, exists: true, external, symlink, status: "watching", isDirectory };
 		} catch (error) {
 			return { configuredPath, absolutePath, exists: false, external: externalByText, symlink: false, status: "error", error: error instanceof Error ? error.message : String(error) };
 		}
 	});
+}
+
+/**
+ * Description for one event inside a watched directory (non-recursive).
+ * Only single-component names are accepted; children are discovered from
+ * events and never listed. A child description is conservative: symlinked
+ * children degrade to path/event metadata because `unchangedTarget` refuses
+ * symlink components, and `buildFirewatchUpdate` tolerates deleted children.
+ */
+export function describeDirectoryChild(parent: WatchedFileDescription, filename: string): WatchedFileDescription | undefined {
+	if (!parent.realPath || !filename || filename === "." || filename === ".." || filename.includes("/") || filename.includes("\\")) return undefined;
+	return {
+		configuredPath: join(parent.configuredPath, filename),
+		absolutePath: join(parent.absolutePath, filename),
+		realPath: join(parent.realPath, filename),
+		exists: true,
+		external: parent.external,
+		symlink: false,
+		status: "watching",
+	};
 }
 
 function symlinkTarget(file: WatchedFileDescription): string | undefined {

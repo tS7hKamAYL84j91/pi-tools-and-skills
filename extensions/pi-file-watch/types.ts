@@ -28,6 +28,8 @@ export interface WatchedFileDescription {
 	readonly error?: string;
 	readonly external: boolean;
 	readonly symlink: boolean;
+	/** Present on accepted entries that are directories (watched non-recursively). */
+	readonly isDirectory?: boolean;
 }
 
 export interface WatcherRuntimeState {

@@ -146,7 +146,7 @@ describe("file-watch settings overlay", () => {
 			const component = overlay()?.component;
 			if (!component) throw new Error("overlay component missing");
 			component.handleInput("\r"); // open the watched-files submenu
-			expect(component.render(120).join("\n")).toContain("+ add file…");
+			expect(component.render(120).join("\n")).toContain("+ add path…");
 			component.handleInput("a"); // add prompt with native input
 			expect(component.render(120).join("\n")).toContain("type path");
 			component.handleInput("\x1b[200~notes/todo.md\x1b[201~"); // bracketed paste

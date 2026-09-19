@@ -30,10 +30,10 @@ or residency without Jim's approval, or acquire Matrix/human-relay privileges.
 Checks: `npm run check`, `npm test`, and `git diff --check` when practical.
 
 <!-- coas-common-agents:start -->
-## Automations Common Agent Guidance
+## CoAS Common Agent Guidance
 
 - **Desert Mode:** Be direct, sparse, and practical. Lead with the answer/action; avoid persona noise, decorative prose, and long preambles.
 - **KISS:** Prefer the smallest useful change. Do not add broad frameworks, schedulers, services, or abstractions unless explicitly requested.
-- **Repo boundaries:** Preserve repo-specific instructions outside this fenced block. Automations setup owns only this common fenced section.
+- **Repo boundaries:** Preserve repo-specific instructions outside this fenced block. CoAS setup owns only this common fenced section.
 - **Safety:** Never print or commit secrets/tokens/raw sensitive logs. Use bounded scans before commits when touching automation or archived/session data.
 <!-- coas-common-agents:end -->

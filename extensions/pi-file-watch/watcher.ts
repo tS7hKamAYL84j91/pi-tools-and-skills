@@ -2,7 +2,7 @@
 import { watch } from "node:fs";
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { buildFirewatchUpdate, describeWatchedFiles, type FirewatchUpdate } from "./file-metadata.js";
+import { buildFirewatchUpdate, describeDirectoryChild, describeWatchedFiles, type FirewatchUpdate } from "./file-metadata.js";
 import type { FileWatchConfig, WatchedFileDescription, WatcherRuntimeState } from "./types.js";
 
 export { buildFirewatchUpdate, describeWatchedFiles } from "./file-metadata.js";
@@ -17,7 +17,7 @@ export function renderStatus(config: FileWatchConfig, files: readonly WatchedFil
 
 export function formatWatchList(files: readonly WatchedFileDescription[]): string {
 	if (files.length === 0) return "No file watch files configured.";
-	return files.map((file) => `- ${file.status}: ${file.configuredPath}${file.external ? " (external)" : ""}${file.symlink ? " (symlink)" : ""}${file.error ? ` — ${file.error}` : ""}`).join("\n");
+	return files.map((file) => `- ${file.status}: ${file.configuredPath}${file.isDirectory ? " (dir)" : ""}${file.external ? " (external)" : ""}${file.symlink ? " (symlink)" : ""}${file.error ? ` — ${file.error}` : ""}`).join("\n");
 }
 
 interface FirewatchBatch {
@@ -141,6 +141,16 @@ export function startFileWatch(pi: ExtensionAPI, ctx: ExtensionContext, config: 
 	state.files = describeWatchedFiles(ctx.cwd, config);
 	for (const file of state.files) {
 		if (file.status !== "watching" || !file.realPath) continue;
+		if (file.isDirectory) {
+			// Non-recursive directory watch: child events are mapped to per-file
+			// entries through the same debounce/batch pipeline. No listing or scan.
+			state.watchers.push((state.watchFactory ?? watch)(file.realPath, (event, filename) => {
+				if (!filename) return;
+				const child = describeDirectoryChild(file, filename.toString());
+				if (child) scheduleFileUpdate(pi, state, child, event);
+			}));
+			continue;
+		}
 		const targetName = file.realPath.split(/[\\/]/).pop();
 		if (targetName) {
 			state.watchers.push((state.watchFactory ?? watch)(dirname(file.realPath), (event, filename) => {

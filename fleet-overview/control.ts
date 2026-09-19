@@ -22,11 +22,9 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { appendLogLine } from "../lib/file-persistence.js";
-
-const ROOT = dirname(fileURLToPath(import.meta.url));
+import { FLEET_HOME } from "./config.js";
 
 export const PREVIEW_TTL_SECONDS = 600;
 export const RUN_TIMEOUT_SECONDS = 120;
@@ -250,7 +248,7 @@ export interface Control {
 /** Build a control instance. server.ts uses the defaults; tests inject fakes. */
 export function createControl(options: ControlOptions = {}): Control {
 	const coasDir = options.coasDir ?? COAS_DIR;
-	const controlDir = options.controlDir ?? join(ROOT, "control");
+	const controlDir = options.controlDir ?? join(FLEET_HOME, "control");
 	const auditPath = join(controlDir, "audit.jsonl");
 	const runner: MakeRunner =
 		options.runner ?? ((args) => runMake(args, coasDir));
