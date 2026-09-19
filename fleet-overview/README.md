@@ -27,3 +27,13 @@ append-only audit into `control/audit.jsonl`. Single-use preview token
 line. Q/Gravitas: file-watch `control/audit.jsonl` for control events.
 
 Deployment topology remains Q-owned.
+
+## Data surfaces (parity with the Python host)
+
+All tabs now serve real data, read-only: fleet (agent-registry liveness),
+usage (incremental session-log ETL with a size/mtime-keyed cache),
+events (campaign ledger tails + kanban board activity), brief (auto-digest
++ Gravitas's `awaiting.json`), board (board.log replayed into a projection),
+schedules. Runtime dirs resolve to the source tree (or
+`FLEET_OVERVIEW_HOME`), so a rebuild never loses inbox, audit, or cache.
+`FLEET_AWAITING_PATH` relocates awaiting.json at the deployment switch.

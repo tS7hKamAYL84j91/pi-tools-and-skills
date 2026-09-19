@@ -18,3 +18,4 @@ coverage/
 fleet-overview/directives/inbox/
 fleet-overview/directives/replies/
 fleet-overview/control/audit.jsonl
+fleet-overview/cache/

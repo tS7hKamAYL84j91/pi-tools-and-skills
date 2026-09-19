@@ -5,24 +5,27 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
 	type AgentRecord,
 	isPidAlive,
 	REGISTRY_DIR,
 } from "../lib/agent-registry.js";
 import { writeFileAtomic } from "../lib/file-persistence.js";
+import { boardProjection } from "./board.js";
+import { FLEET_HOME } from "./config.js";
 import {
 	AuditWriteError,
 	type Control,
 	ControlError,
 	createControl,
 } from "./control.js";
+import { allEvents, brief, ledgerEvents, schedules } from "./events.js";
+import { collectUsage } from "./usage.js";
 
-const ROOT = dirname(fileURLToPath(import.meta.url));
-const STATIC = join(ROOT, "static");
-const DIRECTIVES = join(ROOT, "directives");
+const STATIC = join(FLEET_HOME, "static");
+const DIRECTIVES = join(FLEET_HOME, "directives");
 const INBOX = join(DIRECTIVES, "inbox");
 const REPLIES = join(DIRECTIVES, "replies");
 const MAX_TEXT = 4000;
@@ -112,14 +115,24 @@ async function directives(): Promise<{
 }> {
 	return { inbox: await readItems(INBOX), replies: await readItems(REPLIES) };
 }
-async function fleet(): Promise<{ updatedAt: string; agents: unknown[] }> {
+interface FleetAgent {
+	readonly key: string;
+	readonly display: string;
+	readonly model: string;
+	readonly status: string;
+	readonly detail: string;
+	readonly role: string;
+	readonly lastActivity: string;
+}
+
+async function fleet(): Promise<{ updatedAt: string; agents: FleetAgent[] }> {
 	let names: string[] = [];
 	try {
 		names = (await readdir(REGISTRY_DIR)).filter((n) => n.endsWith(".json"));
 	} catch {
 		/* no registry */
 	}
-	const agents: unknown[] = [];
+	const agents: FleetAgent[] = [];
 	for (const name of names) {
 		try {
 			const record = JSON.parse(
@@ -151,6 +164,53 @@ export function createApp(
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
 	const control = deps.control ?? createControl();
 
+	// TTL memo per data surface (seconds) — mirror of the Python host.
+	const TTL: Readonly<Record<string, number>> = {
+		fleet: 20,
+		usage: 300,
+		events: 60,
+		board: 60,
+		sched: 300,
+		brief: 60,
+	};
+	const memo = new Map<string, { at: number; value: unknown }>();
+	async function cached(
+		key: string,
+		fn: () => Promise<unknown>,
+	): Promise<unknown> {
+		const hit = memo.get(key);
+		const ttl = (TTL[key] ?? 60) * 1000;
+		if (hit && Date.now() - hit.at < ttl) return hit.value;
+		const value = await fn();
+		memo.set(key, { at: Date.now(), value });
+		return value;
+	}
+
+	async function buildUsage(): Promise<unknown> {
+		const agg = await collectUsage();
+		const agents: Record<string, unknown> = {};
+		for (const [key, a] of Object.entries(agg)) {
+			const days: Record<string, unknown> = {};
+			for (const day of Object.keys(a.days).sort()) {
+				days[day] = a.days[day];
+			}
+			agents[key] = {
+				days,
+				lastTs: a.lastTs,
+				firstTs: a.firstTs,
+				sessions: a.sessions,
+			};
+		}
+		return { updatedAt: now(), agents };
+	}
+
+	async function buildBrief(): Promise<unknown> {
+		const fleetSnapshot = await fleet();
+		const usage = await collectUsage();
+		const ledger = await ledgerEvents({});
+		return await brief(fleetSnapshot, usage, ledger);
+	}
+
 	async function handle(
 		req: IncomingMessage,
 		res: ServerResponse,
@@ -165,7 +225,33 @@ export function createApp(
 			return;
 		}
 		if (path === "/api/health") return json(res, { ok: true });
-		if (path === "/api/fleet") return json(res, await fleet());
+		if (path === "/api/fleet") return json(res, await cached("fleet", fleet));
+		if (path === "/api/usage")
+			return json(res, await cached("usage", buildUsage));
+		if (path === "/api/events")
+			return json(
+				res,
+				await cached("events", async () => ({
+					updatedAt: now(),
+					events: await allEvents({}),
+				})),
+			);
+		if (path === "/api/board")
+			return json(
+				res,
+				await cached("board", async () => ({
+					projection: await boardProjection(),
+				})),
+			);
+		if (path === "/api/schedules")
+			return json(
+				res,
+				await cached("sched", async () => ({
+					schedules: await schedules({}),
+				})),
+			);
+		if (path === "/api/brief")
+			return json(res, await cached("brief", buildBrief));
 		if (path === "/api/directives" && req.method === "GET")
 			return json(res, await directives());
 		if (path === "/api/directives" && req.method === "POST") {
@@ -242,14 +328,7 @@ export function createApp(
 			}
 		}
 		if (path.startsWith("/api/"))
-			return json(res, {
-				updatedAt: now(),
-				events: [],
-				agents: {},
-				schedules: [],
-				lines: [],
-				projection: { columns: {} },
-			});
+			return json(res, { ok: false, error: "not found" }, 404);
 		res.writeHead(404);
 		res.end("not found");
 	}
