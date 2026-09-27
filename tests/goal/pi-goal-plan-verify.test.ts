@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
 import { removePlan } from "../../extensions/pi-goal/goal-plan.js";
 import { parseCommand } from "../../extensions/pi-goal/goal-helpers.js";
@@ -47,6 +47,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -115,7 +116,8 @@ describe("pi-goal direct execution migration", () => {
 		});
 	});
 
-	it("goal_complete accepts concrete evidence directly and clears legacy plan state", async () => {
+	it("goal_complete verifies evidence and clears legacy plan state", async () => {
+		vi.stubEnv("PI_GOAL_GATE_COMMAND", "exit 0");
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);

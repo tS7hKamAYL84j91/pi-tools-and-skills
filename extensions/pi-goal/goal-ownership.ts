@@ -51,7 +51,7 @@ export async function consumeReplacement(
 	if (current === null || current.owner?.token !== owner.token || current.owner.generation !== owner.generation || !current.runActive || current.replacement?.attempt !== attempt || current.replacement.generation !== owner.generation || current.replacement.revision !== current.revision || attempt !== current.turnsUsed + 1) {
 		return { status: "conflict", expected, actual: current };
 	}
-	return transactGoal(cwd, scope, expected, (state) => state === null ? null : ({ ...state, replacement: undefined, admission: { attempt, generation: owner.generation } }));
+	return transactGoal(cwd, scope, expected, (state) => state === null ? null : ({ ...state, replacement: undefined, turnsUsed: attempt, admission: { attempt, generation: owner.generation } }));
 }
 
 export async function admitGoal(
@@ -66,7 +66,7 @@ export async function admitGoal(
 		return { status: "conflict", expected: { goalId: current.goalId, revision: current.revision, owner }, actual: current };
 	}
 	const expected: GoalExpected = { goalId: current.goalId, revision: current.revision, owner };
-	return transactGoal(cwd, scope, expected, (state) => state === null ? null : ({ ...state, admission: { attempt, generation: owner.generation } }));
+	return transactGoal(cwd, scope, expected, (state) => state === null ? null : ({ ...state, turnsUsed: attempt, admission: { attempt, generation: owner.generation } }));
 }
 
 /** Invalidates a run generation; stale callbacks cannot subsequently admit work. */

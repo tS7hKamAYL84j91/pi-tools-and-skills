@@ -1,8 +1,7 @@
 /** Goal persistence, confined instances, legacy migration, and projections. */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { assertNoSymlinkComponents, assertSafeGoalRoot, ensureRuntimeIgnored, normalizeProjectPath, removeKnownRunArtifacts, assertSafeEntry } from "./goal-files.js";
+import { readFile, rm } from "node:fs/promises";
+import { assertNoSymlinkComponents, assertSafeGoalRoot, ensureRuntimeIgnored, normalizeProjectPath, assertSafeEntry } from "./goal-files.js";
 import { randomUUID } from "node:crypto";
 import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { migrateLegacyGoal } from "./goal-migration.js";
@@ -19,10 +18,8 @@ import {
 	type GoalMutationResult,
 	type GoalState,
 } from "./goal-types.js";
-import {
-	renderGoalMarkdown,
-	renderIterationMarkdown,
-} from "./goal-render.js";
+import { writeGoalIterationFiles } from "./goal-iteration.js";
+import { projectGoalMutation, regenerateDerivedFiles } from "./goal-projection.js";
 
 
 /** Loads only the goal bound to this session scope. */
@@ -85,21 +82,15 @@ export async function transactGoalAt(
 		if (!Number.isSafeInteger((current?.revision ?? 0) + 1)) { throw new Error("Goal revision exhausted; operator repair required"); }
 		// Every terminal/operator stop revokes authority in the SAME revision commit.
 		const revoked = reduced !== null && (!reduced.runActive || reduced.status !== "active");
-		const next = reduced === null ? null : { ...reduced, ...(revoked ? { owner: undefined, admission: undefined, replacement: undefined } : {}), revision: (current?.revision ?? 0) + 1 };
+		const next = reduced === null ? null : { ...reduced, ...(revoked ? { owner: undefined, admission: undefined, replacement: undefined,
+			turnsUsed: Math.max(reduced.turnsUsed, current?.admission?.attempt ?? 0) } : {}), revision: (current?.revision ?? 0) + 1 };
 		if (next === null) {
 			await rm(paths.statePath, { force: true });
 		} else {
 			await writeFileAtomic(paths.statePath, `${JSON.stringify(next, null, 2)}\n`);
 		}
 		try {
-			if (next === null) {
-				const projectionPaths = [paths.summaryPath, paths.todoPath, paths.specPath, paths.planPath, paths.statusPath];
-				for (const path of projectionPaths) await assertSafeEntry(path, "projection");
-				await Promise.all(projectionPaths.map((path) => rm(path, { force: true })));
-				await removeKnownRunArtifacts(paths.runsPath);
-			} else {
-				await regenerateDerivedFiles(cwd, next, goalId);
-			}
+			await projectGoalMutation(cwd, goalId, current, next);
 			return { status: "applied", previousRevision: current?.revision ?? "absent", state: next, projection: "complete" };
 		} catch (error: unknown) {
 			return { status: "applied", previousRevision: current?.revision ?? "absent", state: next, projection: "failed", projectionError: formatGoalDiagnostic(error) };
@@ -182,13 +173,6 @@ async function readAuthoritativeGoal(statePath: string): Promise<GoalState | nul
 	return parseGoalState(parsed);
 }
 
-async function regenerateDerivedFiles(cwd: string, state: GoalState, goalId?: string): Promise<void> {
-	const paths = goalPaths(cwd, goalId);
-	await mkdir(paths.dir, { recursive: true });
-	await assertSafeEntry(paths.summaryPath, "projection");
-	await writeFileAtomic(paths.summaryPath, renderGoalMarkdown(state));
-}
-
 export async function writeGoalIteration(
 	cwd: string,
 	state: GoalState,
@@ -196,15 +180,7 @@ export async function writeGoalIteration(
 	options: { readonly messages: readonly unknown[]; readonly scope?: GoalSessionScope },
 ): Promise<void> {
 	const goalId = options.scope?.sessionManager ? requireScopedGoalId(options.scope, state.goalId) : undefined;
-	const runId = assertGoalId(state.runId ?? "manual");
-	const now = new Date();
-	const dir = join(goalPaths(cwd, goalId).dir, "runs", String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0"));
-	await assertSafeGoalRoot(cwd, goalId);
-	await assertNoSymlinkComponents(cwd, dir);
-	await mkdir(dir, { recursive: true });
-	const prefix = `${runId}-iter-${String(iteration).padStart(3, "0")}`;
-	await writeFileAtomic(join(dir, `${prefix}.jsonl`), `${options.messages.map((message) => JSON.stringify(message)).join("\n")}\n`);
-	await writeFileAtomic(join(dir, `${prefix}.md`), renderIterationMarkdown(state, iteration));
+	await writeGoalIterationFiles(cwd, { goalId, state, iteration, messages: options.messages });
 }
 
 export async function createFileGoal(cwd: string, inputPath: string, scope?: GoalSessionScope): Promise<GoalState> {

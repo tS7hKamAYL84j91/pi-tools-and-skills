@@ -5,6 +5,7 @@
  * caller can surface an actionable error without leaking full unbounded output.
  */
 import { spawnRuntimeChildProcess } from "./runtime-child-process.js";
+import { redactSecrets } from "./secret-redaction.js";
 
 const MAX_OUTPUT_CHARS = 2_000;
 
@@ -14,6 +15,8 @@ export interface GateResult {
 	readonly exitCode: number;
 	readonly stdoutSummary: string;
 	readonly stderrSummary: string;
+	/** Only exit 1 is an ordinary validation rejection; other failures contain execution. */
+	readonly failureKind?: "validation" | "execution" | "cancelled";
 }
 
 function boundedSummary(text: string): string {
@@ -31,6 +34,7 @@ export async function runGateCommand(command: string, cwd: string, signal?: Abor
 			exitCode: -1,
 			stdoutSummary: "",
 			stderrSummary: "gate_command must be a non-empty string",
+			failureKind: "execution",
 		};
 	}
 	const result = await spawnRuntimeChildProcess({
@@ -40,11 +44,15 @@ export async function runGateCommand(command: string, cwd: string, signal?: Abor
 		cwd,
 		signal,
 	});
+	let failureKind: GateResult["failureKind"];
+	if (signal?.aborted) failureKind = "cancelled";
+	else if (!result.ok || result.exitCode !== 0) failureKind = result.exitCode === 1 ? "validation" : "execution";
 	return {
-		passed: result.ok && result.exitCode === 0,
+		passed: result.ok && result.exitCode === 0 && !signal?.aborted,
+		failureKind,
 		command,
 		exitCode: result.exitCode ?? -1,
-		stdoutSummary: boundedSummary(result.stdout),
-		stderrSummary: boundedSummary(result.stderr),
+		stdoutSummary: boundedSummary(redactSecrets(result.stdout)),
+		stderrSummary: boundedSummary(redactSecrets(result.stderr)),
 	};
 }

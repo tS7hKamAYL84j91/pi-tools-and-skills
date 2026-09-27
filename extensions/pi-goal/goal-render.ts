@@ -11,11 +11,14 @@ export function renderGoalSummary(state: GoalState): string {
 	const source = state.sourcePath ? `\n${state.schemaVersion >= 3 ? "Source (untrusted)" : "Source"}: ${state.sourcePath}` : "";
 	const mode = state.runMode ? `\nRun mode: ${state.runMode}` : "";
 	const execution = state.executionState ? `\nExecution: ${state.executionState}` : "";
-	const run = state.runActive ? `\nRun: ${state.turnBudget > 0 ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}/∞`}` : "";
+	const run = state.runId ? `\nAdmitted invocations: ${state.turnBudget > 0 ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}/∞`}` : "";
+	const check = state.completionCheck;
+	const verification = check ? `\nCompletion check: ${check.status} (${check.attempt}/${check.maxAttempts}) — ${check.summary}` : state.status === "complete" ? "\nCompletion: legacy/unverified record" : "\nCompletion requires an operator-configured verifier.";
+	const blocker = state.blocker ? `\nBlocked: ${state.blocker.reason}\nResume when: ${state.blocker.resumeWhen}` : "";
 	const evidence = state.completionEvidence ? `\nEvidence: ${state.completionEvidence}` : "";
 	const error = state.lastError ? `\nLast error: ${state.lastError}` : "";
 	const objectiveLabel = state.schemaVersion >= 3 ? "Objective (untrusted)" : "Objective";
-	return `Goal ${state.goalId}\nStatus: ${state.status}${mode}${execution}${source}${run}\n${objectiveLabel}: ${state.objective}${evidence}${error}`;
+	return `Goal ${state.goalId}\nStatus: ${state.status}${mode}${execution}${source}${run}\n${objectiveLabel}: ${state.objective}${verification}${blocker}${evidence}${error}`;
 }
 
 export function renderGoalMarkdown(state: GoalState): string {

@@ -31,7 +31,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
    hasQueuedContinuation: () => ctx.hasPendingMessages() || runtime.resolve !== null || runtime.pendingMarker !== null,
    notify: (message, level) => ctx.ui.notify(message, level),
    sendNudge: state => {
-		const marker = continuationMarker(state.goalId, state.turnsUsed + 1);
+		const marker = continuationMarker(state.goalId, state.admission?.attempt ?? state.turnsUsed + 1);
 		runtime.pendingMarker = marker;
 		pi.sendUserMessage(`${continuationPrompt(state)}\n\n${continuationMarkerComment(marker)}`);
 	},

@@ -94,7 +94,7 @@ export async function runGoalLoop(pi: ExtensionAPI, runtime: GoalRuntime, ctx: E
    runtime.resolve = null; runtime.pendingMarker = null;
    const latest = await loadGoal(cwd, scope);
    if (!sameOwner(latest, driver) || !latest.runActive || runtime.stopRequested) { return; }
-   const next = markProgress(updateGoal(latest, { turnsUsed: latest.turnsUsed + 1, admission: undefined, changedFiles: collectChangedFiles(messages, latest.changedFiles) }), `Completed turn ${attempt}.`);
+   const next = markProgress(updateGoal(latest, { turnsUsed: Math.max(latest.turnsUsed, attempt), admission: undefined, changedFiles: collectChangedFiles(messages, latest.changedFiles) }), `Completed turn ${attempt}.`);
    const result = await transactGoal(cwd, scope, { goalId: driver.goalId, revision: latest.revision, owner: driver }, () => next);
    if (result.status !== "applied" || !result.state) { return; }
    if (result.projection !== "complete") { throw new Error(result.projectionError ?? "Goal projection failed"); }

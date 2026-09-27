@@ -47,6 +47,7 @@ describe("renderGoalOverlayLines", () => {
 			"Status: active",
 			"Source: brief.md",
 			"Objective: Ship the deterministic overlay",
+			"Completion requires an operator-configured verifier.",
 			"Evidence: Evidence recorded",
 		]);
 	});
@@ -56,6 +57,7 @@ describe("renderGoalOverlayLines", () => {
 			"Goal goal-1",
 			"Status: active",
 			"Objective: ",
+			"Completion requires an operator-configured verifier.",
 		]);
 	});
 
@@ -66,6 +68,6 @@ describe("renderGoalOverlayLines", () => {
 		expect(lines).toHaveLength(24);
 		expect(lines.slice(0, 2)).toEqual(["Goal goal-1", "Status: active"]);
 		expect(lines[22]).toBe("detail-21");
-		expect(lines[23]).toBe("… 9 more lines in .pi/goal/instances/<goalId>/GOAL.md");
+		expect(lines[23]).toBe("… 10 more lines in .pi/goal/instances/<goalId>/GOAL.md");
 	});
 });

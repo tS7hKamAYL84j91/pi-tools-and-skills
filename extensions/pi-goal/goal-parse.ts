@@ -42,6 +42,8 @@ export function parseGoalState(value: unknown): GoalState {
 		turnsUsed: readNumber(value.turnsUsed, "turnsUsed"),
 		lastError: readOptionalString(value.lastError),
 		completionEvidence: readOptionalString(value.completionEvidence),
+		completionCheck: readCompletionCheck(value.completionCheck),
+		blocker: readBlocker(value.blocker),
 		planRequired: value.planRequired === true,
 		planApproved: value.planApproved === true,
 		currentMilestoneIndex: readOptionalNumber(value.currentMilestoneIndex) ?? 0,
@@ -52,12 +54,34 @@ export function parseGoalState(value: unknown): GoalState {
 		livenessEpoch: readOptionalNumber(value.livenessEpoch) ?? 0,
 		livenessWarningIssued: value.livenessWarningIssued === true,
 		livenessNudgeIssued: value.livenessNudgeIssued === true,
+		livenessHardWarningIssued: value.livenessHardWarningIssued === true,
 		steeringContext: readOptionalString(value.steeringContext),
 		lifecycle: readLifecycle(value.lifecycle),
 		changedFiles: readStringArray(value.changedFiles, 20),
 	};
 	if (base.owner && (base.ownerGeneration ?? base.owner.generation) < base.owner.generation) { throw new Error("Invalid goal state: regressed owner generation"); }
 	return base;
+}
+
+function readCompletionCheck(value: unknown): GoalState["completionCheck"] {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) throw new Error("Invalid goal state: completionCheck");
+	const attempt = readNumber(value.attempt, "completionCheck.attempt");
+	const maxAttempts = readNumber(value.maxAttempts, "completionCheck.maxAttempts");
+	if (attempt < 1 || maxAttempts < 1 || maxAttempts > 3 || attempt > maxAttempts) throw new Error("Invalid goal state: completion check budget");
+	if (value.status !== "checking" && value.status !== "passed" && value.status !== "rejected" && value.status !== "error") throw new Error("Invalid goal state: completion check status");
+	const verifierHash = readString(value.verifierHash, "completionCheck.verifierHash");
+	if (!/^[a-f0-9]{64}$/.test(verifierHash)) throw new Error("Invalid goal state: verifier hash");
+	if (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode))) throw new Error("Invalid goal state: completion exit code");
+	return { runId: readString(value.runId, "completionCheck.runId"), verifierHash, attempt, maxAttempts,
+		status: value.status, timestamp: readString(value.timestamp, "completionCheck.timestamp"),
+		exitCode: value.exitCode as number | undefined, summary: readOptionalString(value.summary)?.slice(0, 400) ?? "" };
+}
+
+function readBlocker(value: unknown): GoalState["blocker"] {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) throw new Error("Invalid goal state: blocker");
+	return { reason: readString(value.reason, "blocker.reason").slice(0, 400), resumeWhen: readString(value.resumeWhen, "blocker.resumeWhen").slice(0, 400) };
 }
 
 function readAdmission(value: unknown): GoalState["admission"] {

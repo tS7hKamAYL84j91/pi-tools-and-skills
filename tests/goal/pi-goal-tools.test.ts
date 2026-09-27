@@ -70,6 +70,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -80,7 +81,7 @@ describe("pi-goal extension", () => {
 		goalExtension(pi as unknown as ExtensionAPI);
 
 		expect(pi.commands.has("goal")).toBe(true);
-		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete"]);
+		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete", "goal_block"]);
 	});
 
 	it("/goal with no args shows command help", async () => {
@@ -241,6 +242,7 @@ describe("pi-goal extension", () => {
 	});
 
 	it("goal_complete clears the footer status and widget on completion", async () => {
+		vi.stubEnv("PI_GOAL_GATE_COMMAND", "exit 0");
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
@@ -359,7 +361,7 @@ describe("pi-goal extension", () => {
 		await runGoalCommand(pi, "resume", ctx);
 		const persisted = await loadGoal(tempDir);
 		expect(persisted?.status).toBe("paused");
-		expect(persisted?.turnsUsed).toBe(2);
+		expect(persisted?.turnsUsed).toBe(3); // Two prior admissions plus the resumed, aborted attempt.
 		expect(persisted?.turnBudget).toBe(0);
 		expect(persisted?.runId).not.toBe(started.runId);
 		expect(sends).toBeGreaterThan(0);
@@ -400,7 +402,11 @@ describe("pi-goal extension", () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
-		const state = updateGoal(startRun(await createTextGoal(tempDir, "original objective"), 5), { turnsUsed: 2 });
+		const started = startRun(await createTextGoal(tempDir, "original objective"), 5);
+		const state = updateGoal(started, { turnsUsed: 2,
+			completionCheck: { runId: started.runId ?? "run", verifierHash: "a".repeat(64), attempt: 1, maxAttempts: 3, status: "rejected", timestamp: new Date().toISOString(), summary: "old result" },
+			blocker: { reason: "old blocker", resumeWhen: "old condition" },
+		});
 		await saveGoal(tempDir, state);
 
 		await runGoalCommand(pi, "edit revised objective text", ctx);
@@ -413,6 +419,8 @@ describe("pi-goal extension", () => {
 		expect(persisted.objective).toBe("revised objective text");
 		expect(persisted.turnsUsed).toBe(2);
 		expect(persisted.turnBudget).toBe(5);
+		expect((persisted as { completionCheck?: unknown }).completionCheck).toBeUndefined();
+		expect((persisted as { blocker?: unknown }).blocker).toBeUndefined();
 		expect(ctx.ui.notifications).toContainEqual({ message: "Goal updated. Use /goal run to continue direct execution.", level: "info" });
 		expect(ctx.ui.widgets.at(-1)?.value).toEqual(["goal: running 2/5 · /goal status for details"]);
 	});

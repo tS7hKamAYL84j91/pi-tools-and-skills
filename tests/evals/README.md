@@ -14,4 +14,7 @@ This directory contains deterministic evaluation fixtures for tools, skills, tea
 2. Keep assertions completely deterministic.
 3. Update a fixture only for an approved contract-baseline change.
 
+The Goal benchmark's offline wrapper also runs Python fixture and fake-RPC tests.
+For opt-in local ARM64 direct-vs-Goal trials, see [the runner guide](../../docs/goal-benchmark.md).
+
 Live provider timing is deliberately separate. See `tests/evals/team-speed-profile-evaluation.md` and the explicitly opt-in `npm run benchmark:teams:live` command. Live results are not CI evidence and must not contain prompts, outputs, credentials, or private session data.

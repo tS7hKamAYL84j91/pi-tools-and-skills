@@ -16,15 +16,18 @@ Plain goal creation and resume use `turnBudget: 0` as the persisted unbounded se
 ## Tools
 
 - `goal_get` — read the active project-local goal state.
-- `goal_complete` — complete the goal with concrete audit/validation evidence.
+- `goal_complete` — request completion with evidence; only the operator-configured trusted verifier may mark it complete.
+- `goal_block` — pause a genuinely blocked goal with a concrete reason and checkable resume condition.
 
 The root agent owns `goal_complete`. Spawned workers report DONE/BLOCKED to the root and cannot complete the goal themselves.
 
 ## Completion gate
 
-An operator may set `PI_GOAL_GATE_COMMAND` before starting Pi. When configured, `goal_complete` executes that trusted command in the workspace and blocks completion on failure. The deprecated model-supplied `gate_command` parameter is ignored.
+`PI_GOAL_GATE_COMMAND` is required before `goal_complete` can complete a goal. The command is operator-owned, runs in the workspace, and its bounded, secret-redacted result is persisted as a completion check. Agent evidence is retained but never substitutes for the check. The deprecated model-supplied `gate_command` parameter is ignored.
 
-Liveness thresholds remain operator-only: `PI_GOAL_LIVENESS_SOFT_MS` and `PI_GOAL_LIVENESS_HARD_MS`, clamped to 1 second–24 hours (defaults: 5 and 15 minutes). Runtime failure, hard liveness timeout, explicit pause, or explicit stop still fail closed; automatic execution does not remove safety containment.
+A normal verifier exit `1` is a validation rejection. By default it pauses the run. Operators may set `PI_GOAL_REPAIR_ATTEMPTS` to `1` or `2` to permit that many in-scope repair-and-recheck attempts; the default is `0`. The durable budget survives session replacement. Cancellation, timeouts, policy changes, command-not-found/permission errors, other exit codes, and exhausted attempts pause safely and require explicit review/resume. `PI_GOAL_GATE_TIMEOUT_MS` bounds each check (default 15 minutes; range 1 second–24 hours).
+
+Liveness thresholds remain operator-only: `PI_GOAL_LIVENESS_SOFT_MS` and `PI_GOAL_LIVENESS_HARD_MS`, clamped to 1 second–24 hours (defaults: 5 and 15 minutes). After the soft threshold, the watchdog may inject one continuation only while the host is demonstrably idle with nothing queued. It never nudges or stops a live turn. At the hard threshold, a still-idle run produces one diagnostic requesting manual inspection; elapsed wall time alone never marks productive work failed. Explicit stop/pause, uncertain delivery, runtime/persistence failure, and ownership loss retain their containment behavior.
 
 ## Ownership and recovery
 
@@ -50,6 +53,7 @@ Legacy v1/v2 and planned v3 states remain readable. Starting/resuming them remov
 
 - Does not require or generate a plan.
 - Does not request approval before implementation.
-- Does not infer completion; the root agent must provide concrete evidence through `goal_complete`.
+- Does not infer completion or trust completion prose; the root agent requests completion and the operator verifier decides it.
+- Does not treat a blocker as success; `goal_block` pauses until explicit resume.
 - Does not bypass explicit stop/pause, ownership, persistence, session-lineage, liveness, or trusted completion-gate safety boundaries.
 - Does not replace Kanban or other project work tracking.

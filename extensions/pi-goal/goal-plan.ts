@@ -56,6 +56,7 @@ export function markProgress(state: GoalState, summary: string): GoalState {
 		livenessEpoch: (state.livenessEpoch ?? 0) + 1,
 		livenessWarningIssued: false,
 		livenessNudgeIssued: false,
+		livenessHardWarningIssued: false,
 	}), "progress", summary);
 }
 
@@ -81,6 +82,8 @@ export function startRun(state: GoalState, turnBudget: number, runMode: GoalRunM
 		turnsUsed: 0,
 		lastError: undefined,
 		lastVerification: undefined,
+		completionCheck: undefined,
+		blocker: undefined,
 		milestoneRevision: (state.milestoneRevision ?? 0) + 1,
 		steeringContext: undefined,
 	});

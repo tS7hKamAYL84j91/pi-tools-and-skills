@@ -46,6 +46,13 @@ interface GoalWatchdogHost {
 	readonly refresh?: (state: GoalState) => Promise<void>;
 }
 
+async function containNudgeFailure(host: GoalWatchdogHost, state: GoalState, error: unknown): Promise<void> {
+ const failed = stopGoal(state, "failed", `Goal liveness nudge failed: ${formatGoalDiagnostic(error)}`);
+ const persisted = await commitWatchdogGoal(host, failed);
+ host.notify(persisted.lastError ?? "Goal liveness nudge failed.", "error");
+ await host.refresh?.(persisted);
+}
+
 export function readGoalWatchdogConfig(env: NodeJS.ProcessEnv = process.env): GoalWatchdogConfig {
 	const soft = boundedTimeout(env.PI_GOAL_LIVENESS_SOFT_MS, DEFAULT_SOFT_TIMEOUT_MS);
 	const hard = boundedTimeout(env.PI_GOAL_LIVENESS_HARD_MS, DEFAULT_HARD_TIMEOUT_MS);
@@ -97,41 +104,38 @@ export function startGoalWatchdog(host: GoalWatchdogHost, config = readGoalWatch
 		const progressAt = Date.parse(state.lastProgressAt ?? state.updatedAt);
 		if (!Number.isFinite(progressAt)) return;
 		const elapsed = Math.max(0, now() - progressAt);
-		if (elapsed >= config.hardTimeoutMs) {
-			const failed = stopGoal(state, "failed", "Goal liveness hard timeout reached; run paused. Resume explicitly after checking the current turn and repository state.");
-			const persisted = await commitWatchdogGoal(host, failed);
-			host.notify(persisted.lastError ?? "Goal liveness hard timeout reached.", "error");
-			await host.refresh?.(persisted);
-			return;
-		}
 		if (elapsed < config.softTimeoutMs) return;
 
 		let current = state;
 		if (!state.livenessWarningIssued) {
-			current = withLifecycle(updateGoal(state, { livenessWarningIssued: true }), "progress", "Liveness soft threshold reached; recovery is bounded.");
+			current = withLifecycle(updateGoal(state, { livenessWarningIssued: true }), "progress", "Liveness soft threshold reached; active work will not be interrupted.");
 			current = await commitWatchdogGoal(host, current);
-			host.notify("Goal run has made no recorded progress; watching for an idle recovery opportunity.", "warning");
+			host.notify("Goal run has no recorded run-level progress; active work will not be interrupted.", "warning");
 			await host.refresh?.(current);
 		}
-		if (current.livenessNudgeIssued || host.isTurnActive() || host.hasQueuedContinuation()) return;
+		// Elapsed wall time is not proof of a stall. Never nudge or stop a live turn
+		// or an already queued continuation.
+		if (host.isTurnActive() || host.hasQueuedContinuation() || stopped) return;
 
-		if (stopped) { return; }
-		const nudged = updateGoal(current, { livenessNudgeIssued: true });
-		const persisted = await commitWatchdogGoal(host, nudged);
-		try {
+		if (!current.livenessNudgeIssued) {
+			const nudged = updateGoal(current, { livenessNudgeIssued: true });
+			const persisted = await commitWatchdogGoal(host, nudged);
 			const owner = host.getOwner?.();
-			if (stopped || !owner || host.isTurnActive() || host.hasQueuedContinuation()) { return; }
+			if (stopped || !owner || host.isTurnActive() || host.hasQueuedContinuation()) return;
 			const admitted = await admitGoal(host.cwd, host.scope, owner, persisted.turnsUsed + 1);
 			if (admitted.status !== "applied" || admitted.state === null || stopped || host.isTurnActive() || host.hasQueuedContinuation()) return;
-			host.sendNudge(admitted.state);
+			if (admitted.projection !== "complete") { await containNudgeFailure(host, admitted.state, admitted.projectionError ?? "Goal nudge projection failed"); return; }
+			try { host.sendNudge(admitted.state); }
+			catch (error) { await containNudgeFailure(host, admitted.state, error); return; }
 			host.notify("Goal liveness recovery nudged the idle current run once.", "info");
-	} catch (error) {
-		const message = formatGoalDiagnostic(error);
-		const failed = stopGoal(persisted, "failed", `Goal liveness nudge failed: ${message}`);
-		const persistedFailure = await commitWatchdogGoal(host, failed);
-		host.notify(persistedFailure.lastError ?? "Goal liveness nudge failed.", "error");
-		await host.refresh?.(persistedFailure);
-	}
+			return;
+		}
+
+		if (elapsed >= config.hardTimeoutMs && !current.livenessHardWarningIssued) {
+			const warned = await commitWatchdogGoal(host, updateGoal(current, { livenessHardWarningIssued: true }));
+			host.notify("Goal remains idle after its one liveness nudge; inspect it manually. The watchdog did not stop the run.", "error");
+			await host.refresh?.(warned);
+		}
 	};
 
 	scheduleNext();

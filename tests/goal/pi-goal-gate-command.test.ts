@@ -96,7 +96,7 @@ describe("goal_complete operator-configured gate", () => {
 			}, cwd),
 		).rejects.toThrow(/gate failed/);
 		const state = await loadGoal(cwd);
-		expect(state?.status).toBe("active");
+		expect(state?.status).toBe("paused");
 		expect(state?.completionEvidence).toBeUndefined();
 	});
 
@@ -111,16 +111,16 @@ describe("goal_complete operator-configured gate", () => {
 		expect(state?.completionEvidence).toBeUndefined();
 	});
 
-	it("completes without a configured gate", async () => {
+	it("blocks completion without a configured verifier", async () => {
 		const { cwd } = await makeWorkspace();
-		const result = await runtime.callTool("goal_complete", { evidence: "No gate" }, cwd);
-		expect(result).toBeDefined();
+		await expect(runtime.callTool("goal_complete", { evidence: "No gate" }, cwd)).rejects.toThrow(/verifier/);
 		const state = await loadGoal(cwd);
-		expect(state?.status).toBe("complete");
-		expect(state?.completionEvidence).toBe("No gate");
+		expect(state?.status).toBe("paused");
+		expect(state?.completionEvidence).toBeUndefined();
 	});
 
 	it("ignores a model-supplied gate_command extra field", async () => {
+		process.env.PI_GOAL_GATE_COMMAND = "exit 0";
 		const { cwd } = await makeWorkspace();
 		const marker = join(cwd, "model-command-ran");
 		await runtime.callTool("goal_complete", {

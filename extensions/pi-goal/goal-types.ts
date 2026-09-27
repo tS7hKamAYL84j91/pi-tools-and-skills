@@ -42,6 +42,22 @@ export interface VerificationRecord {
 	readonly milestoneRevision?: number;
 }
 
+export interface GoalCompletionCheck {
+	readonly runId: string;
+	readonly verifierHash: string;
+	readonly attempt: number;
+	readonly maxAttempts: number;
+	readonly status: "checking" | "passed" | "rejected" | "error";
+	readonly timestamp: string;
+	readonly exitCode?: number;
+	readonly summary: string;
+}
+
+export interface GoalBlocker {
+	readonly reason: string;
+	readonly resumeWhen: string;
+}
+
 export interface GoalExpectedCurrent {
 	readonly goalId: string;
 	readonly revision: number;
@@ -105,6 +121,8 @@ export interface GoalState {
 	readonly turnsUsed: number;
 	readonly lastError?: string;
 	readonly completionEvidence?: string;
+	readonly completionCheck?: GoalCompletionCheck;
+	readonly blocker?: GoalBlocker;
 	readonly planRequired?: boolean;
 	readonly planApproved?: boolean;
 	readonly currentMilestoneIndex: number;
@@ -115,6 +133,7 @@ export interface GoalState {
 	readonly livenessEpoch?: number;
 	readonly livenessWarningIssued?: boolean;
 	readonly livenessNudgeIssued?: boolean;
+	readonly livenessHardWarningIssued?: boolean;
 	readonly steeringContext?: string;
 	readonly lifecycle?: readonly GoalLifecycleEvent[];
 	readonly changedFiles?: readonly string[];

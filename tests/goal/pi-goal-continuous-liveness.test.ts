@@ -8,6 +8,7 @@ import {
 	updateGoal,
 } from "../../extensions/pi-goal/state.js";
 import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
+import * as goalPersistence from "../../extensions/pi-goal/goal-persist.js";
 import { claimGoal } from "../../extensions/pi-goal/goal-ownership.js";
 import {
 	readGoalWatchdogConfig,
@@ -123,6 +124,48 @@ describe("pi-goal continuous liveness recovery", () => {
 		expect(nudges).toBe(0);
 	});
 
+	it("reports a persistence failure without stopping the owned run", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "goal-watchdog-persist-"));
+		directories.push(cwd);
+		const started = startRun(await createTextGoal(cwd, "persistence"), 2, "continuous");
+		await saveGoal(cwd, updateGoal(started, { lastProgressAt: new Date(0).toISOString() }));
+		await claimGoal(cwd, undefined, "watchdog-owner");
+		vi.spyOn(goalPersistence, "transactGoal").mockRejectedValueOnce(new Error("state write unavailable"));
+		const scheduled: Array<() => void> = [];
+		let warnings = 0;
+		const stop = startGoalWatchdog({
+			cwd, now: () => 2_000, schedule: callback => { scheduled.push(callback); return {}; }, cancel: () => undefined,
+			isTurnActive: () => false, hasQueuedContinuation: () => false,
+			notify: (_message, level) => { if (level === "warning") warnings += 1; },
+			getOwner: () => ({ token: "watchdog-owner", generation: 1 }), sendNudge: () => undefined,
+		}, { softTimeoutMs: 1_000, hardTimeoutMs: 5_000 });
+		scheduled.shift()?.();
+		await vi.waitFor(() => expect(warnings).toBe(1));
+		expect((await loadGoal(cwd))?.runActive).toBe(true);
+		stop();
+	});
+
+	it("contains an uncertain nudge delivery", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "goal-watchdog-nudge-failure-"));
+		directories.push(cwd);
+		const started = startRun(await createTextGoal(cwd, "nudge failure"), 2, "continuous");
+		await saveGoal(cwd, updateGoal(started, { lastProgressAt: new Date(0).toISOString() }));
+		await claimGoal(cwd, undefined, "watchdog-owner");
+		const scheduled: Array<() => void> = [];
+		let errors = 0;
+		const stop = startGoalWatchdog({
+			cwd, now: () => 2_000, schedule: callback => { scheduled.push(callback); return {}; }, cancel: () => undefined,
+			isTurnActive: () => false, hasQueuedContinuation: () => false,
+			notify: (_message, level) => { if (level === "error") errors += 1; },
+			getOwner: () => ({ token: "watchdog-owner", generation: 1 }), sendNudge: () => { throw new Error("delivery unknown"); },
+		}, { softTimeoutMs: 1_000, hardTimeoutMs: 5_000 });
+		scheduled.shift()?.();
+		await vi.waitFor(async () => expect((await loadGoal(cwd))?.runActive).toBe(false));
+		expect((await loadGoal(cwd))?.executionState).toBe("failed");
+		expect(errors).toBe(1);
+		stop();
+	});
+
 	it("caps operator liveness thresholds", () => {
 		expect(
 			readGoalWatchdogConfig({
@@ -135,53 +178,51 @@ describe("pi-goal continuous liveness recovery", () => {
 		});
 	});
 
-	it("pauses at the hard threshold and clears its timer", async () => {
-		vi.useFakeTimers();
+	it("never interrupts an active turn beyond the hard threshold", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "goal-watchdog-active-hard-"));
+		directories.push(cwd);
+		const started = startRun(await createTextGoal(cwd, "long active work"), 2, "continuous");
+		await saveGoal(cwd, updateGoal(started, { lastProgressAt: new Date(0).toISOString() }));
+		await claimGoal(cwd, undefined, "watchdog-owner");
+		const scheduled: Array<() => void> = [];
+		let nudges = 0;
+		const stop = startGoalWatchdog({
+			cwd, now: () => 20_000, schedule: callback => { scheduled.push(callback); return {}; }, cancel: () => undefined,
+			isTurnActive: () => true, hasQueuedContinuation: () => false,
+			notify: () => undefined, getOwner: () => ({ token: "watchdog-owner", generation: 1 }), sendNudge: () => { nudges += 1; },
+		}, { softTimeoutMs: 1_000, hardTimeoutMs: 2_000 });
+		scheduled.shift()?.();
+		await vi.waitFor(async () => expect((await loadGoal(cwd))?.livenessWarningIssued).toBe(true));
+		expect((await loadGoal(cwd))?.runActive).toBe(true);
+		expect((await loadGoal(cwd))?.livenessNudgeIssued).toBe(false);
+		expect(nudges).toBe(0);
+		stop();
+	});
+
+	it("nudges an idle run once and reports a persistent idle without stopping", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "goal-watchdog-hard-"));
 		directories.push(cwd);
-		const started = startRun(
-			await createTextGoal(cwd, "hard stop"),
-			2,
-			"continuous",
-		);
-		await saveGoal(
-			cwd,
-			updateGoal(started, { lastProgressAt: new Date(0).toISOString() }),
-		);
+		const started = startRun(await createTextGoal(cwd, "idle recovery"), 2, "continuous");
+		await saveGoal(cwd, updateGoal(started, { lastProgressAt: new Date(0).toISOString() }));
 		await claimGoal(cwd, undefined, "watchdog-owner");
-		expect((await loadGoal(cwd))?.lastProgressAt).toBe(
-			new Date(0).toISOString(),
-		);
 		let errors = 0;
+		let nudges = 0;
 		const scheduled: Array<() => void> = [];
-		const stop = startGoalWatchdog(
-			{
-				cwd,
-				now: () => 2_000,
-				schedule: (callback) => {
-					scheduled.push(callback);
-					return {};
-				},
-				cancel: () => undefined,
-				isTurnActive: () => false,
-				hasQueuedContinuation: () => false,
-				notify: (_message, level) => {
-					if (level === "error") errors += 1;
-				},
-				getOwner: () => ({ token: "watchdog-owner", generation: 1 }),
-				sendNudge: () => undefined,
-			},
-			{ softTimeoutMs: 1_000, hardTimeoutMs: 2_000 },
-		);
+		const stop = startGoalWatchdog({
+			cwd, now: () => 2_000, schedule: callback => { scheduled.push(callback); return {}; }, cancel: () => undefined,
+			isTurnActive: () => false, hasQueuedContinuation: () => false,
+			notify: (_message, level) => { if (level === "error") errors += 1; },
+			getOwner: () => ({ token: "watchdog-owner", generation: 1 }), sendNudge: () => { nudges += 1; },
+		}, { softTimeoutMs: 1_000, hardTimeoutMs: 2_000 });
 		scheduled.shift()?.();
-		await vi.waitFor(async () =>
-			expect((await loadGoal(cwd))?.runActive).toBe(false),
-		);
-		const state = await loadGoal(cwd);
-		expect(state?.runActive).toBe(false);
-		expect(state?.executionState).toBe("failed");
+		await vi.waitFor(() => expect(nudges).toBe(1));
+		scheduled.shift()?.();
+		await vi.waitFor(async () => expect((await loadGoal(cwd))?.livenessHardWarningIssued).toBe(true));
+		expect((await loadGoal(cwd))?.runActive).toBe(true);
+		expect(errors).toBe(1);
+		scheduled.shift()?.();
+		await vi.waitFor(() => expect(scheduled.length).toBeGreaterThan(0));
 		expect(errors).toBe(1);
 		stop();
-		expect(scheduled).toHaveLength(1);
 	});
 });

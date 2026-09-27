@@ -91,7 +91,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			return;
 		}
 		cancelContinuationPending(runtime);
-		const next = removePlan(updateGoal(state, { objective: trimmed }));
+		const next = removePlan(updateGoal(state, { objective: trimmed, completionCheck: undefined, blocker: undefined }));
 		const persisted = await commitGoal(ctx, scopeFor(ctx), { goalId: state.goalId, revision: state.revision }, next);
 		await refreshUi(ctx, runtime, persisted);
 		ctx.ui.notify("Goal updated. Use /goal run to continue direct execution.", "info");
