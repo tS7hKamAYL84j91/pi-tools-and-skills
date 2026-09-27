@@ -57,7 +57,12 @@ type-coverage: ## Check TypeScript type coverage
 secret-scan: ## Scan git history and working tree for secrets with gitleaks
 	@command -v "$(GITLEAKS)" >/dev/null 2>&1 || { echo "Error: gitleaks not found. Install it with: brew install gitleaks"; exit 127; }
 	$(GITLEAKS) detect --source "$(ROOT_DIR)" --redact --no-banner --verbose
-	$(GITLEAKS) dir "$(ROOT_DIR)" --redact --no-banner --verbose
+	@cd "$(ROOT_DIR)" && if $(GITLEAKS) dir --help >/dev/null 2>&1; then \
+		$(GITLEAKS) dir "$(ROOT_DIR)" --redact --no-banner --verbose; \
+	else \
+		echo "gitleaks dir not supported; falling back to no-git working-tree scan"; \
+		$(GITLEAKS) detect --source . --no-git --redact --no-banner --verbose; \
+	fi
 
 ##@ Tests
 test: ## Run tests
