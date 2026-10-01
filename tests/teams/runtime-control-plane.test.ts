@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
+import { RuntimeControlPlane } from "../../extensions/pi-teams/runtime-control-plane.js";
 
 describe("RuntimeControlPlane", () => {
 	it("registers, links, inspects, and emits runtime entities", () => {

@@ -1,4 +1,4 @@
-"""Frozen public ARM64 exercise inputs and independent local verification."""
+"""Benchmark-only frozen ARM64 inputs and independent local verification."""
 import hashlib
 import json
 import os

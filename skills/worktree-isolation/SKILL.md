@@ -1,6 +1,13 @@
 ---
 name: worktree-isolation
-description: Isolate repo-mutating sub-agents in a dedicated git worktree with its own branch so concurrent agents never edit the same checkout. Use when spawning agents whose task will modify files, when coordinating multiple in-flight edits, or when recovering stale worktrees after failed or abandoned runs. Exists because of the T-923 collision: two agents edited the same pi-kanban overlay files concurrently and left a transient duplicate-declaration breakage.
+description: >-
+  Isolate repo-mutating sub-agents in a dedicated git worktree with its own
+  branch so concurrent agents never edit the same checkout. Use when spawning
+  agents whose task will modify files, when coordinating multiple in-flight
+  edits, or when recovering stale worktrees after failed or abandoned runs.
+  Exists because of the T-923 collision: two agents edited the same pi-kanban
+  overlay files concurrently and left a transient duplicate-declaration
+  breakage.
 ---
 
 # Worktree Isolation

@@ -1,9 +1,9 @@
-/** Shared-lib fitness functions: `lib/` is reserved for multi-caller primitives. */
+/** Shared infrastructure has real production consumers, not test-only ones. */
 
 import { readFileSync } from "node:fs";
-import { basename, relative } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listTsFiles } from "./helpers.js";
+import { listTsFiles, localImportSpecifiers } from "./helpers.js";
 
 const CORE_LIB_FILES = new Set([
 	"agent-names.ts",
@@ -16,64 +16,45 @@ const CORE_LIB_FILES = new Set([
 	"tui-overflow.ts",
 ]);
 
-/** Every entry is a deliberately shared primitive and has multiple callers. */
-const SHARED_LIB_FILES = new Set([
-	"agent-api.ts",
-	"agent-names.ts",
-	"agent-registry.ts",
-	"automations-config.ts",
-	"automations-governance.ts",
-	"automations-types.ts",
-	"completion-signal.ts",
-	"confined-store.ts",
-	"confined-store-security.ts",
-	"declarative-discovery.ts",
-	"file-lock.ts",
-	"file-persistence.ts",
-	"event-log.ts",
-	"gate-command.ts",
-	"message-transport.ts",
-	"path-inside.ts",
-	"pi-settings.ts",
-	"private-local-mode.ts",
-	"runtime-agent-messaging.ts",
-	"runtime-child-process.ts",
-	"runtime-control-plane.ts",
-	"secret-redaction.ts",
-	"session-hook-installer.ts",
-	"session-journal.ts",
-	"session-log.ts",
-	"session-source-discovery.ts",
-	"session-spool-runner.ts",
-	"session-spool.ts",
-	"task-brief.ts",
-	"toggle-command.ts",
-	"tool-result.ts",
-	"tui-confirmation.ts",
-	"tui-overflow.ts",
-	"external-mailbox.ts",
-	"maildir.ts",
+/** Generic infrastructure kept central for the reasons in lib/README.md. */
+const SINGLE_CONSUMER_PRIMITIVES = new Set([
+	"declarative-discovery.ts", "event-log.ts", "session-journal.ts",
+	"session-spool.ts", "tui-overflow.ts",
 ]);
 
 const NODE_IO_IMPORT = /from\s+["']node:(?:fs|fs\/promises|child_process|os)["']/;
-function callersOf(fileName: string): Set<string> {
+const productionFiles = ["extensions", "lib", "scripts", "fleet-mcp", "fleet-overview"]
+	.flatMap(listTsFiles)
+	.filter((file) => !/\.(test|spec)\.ts$/.test(file));
+
+function callersOf(target: string): Set<string> {
 	const callers = new Set<string>();
-	for (const file of [...listTsFiles("extensions"), ...listTsFiles("lib"), ...listTsFiles("tests"), ...listTsFiles("scripts")]) {
+	for (const file of productionFiles) {
 		const content = readFileSync(file, "utf8");
-		if (content.includes(fileName.replace(/\.ts$/, ".js"))) callers.add(relative(process.cwd(), file));
+		if (localImportSpecifiers(content).some((specifier) =>
+			resolve(dirname(file), specifier.replace(/\.js$/, ".ts")) === resolve(target),
+		)) callers.add(relative(process.cwd(), file));
 	}
 	return callers;
 }
 
 describe("lib layering", () => {
-	it("every lib TypeScript module is a documented shared primitive with multiple callers", () => {
+	it("every lib module has documented ownership and production consumers", () => {
+		const inventory = readFileSync("lib/README.md", "utf8");
 		const violations = listTsFiles("lib").flatMap((file) => {
 			const fileName = basename(file);
-			if (!SHARED_LIB_FILES.has(fileName)) return [`${relative(process.cwd(), file)} is undocumented`];
-			const callers = callersOf(fileName);
-			return callers.size >= 2 ? [] : [`${relative(process.cwd(), file)} has ${callers.size} caller(s)`];
+			if (!inventory.includes(`\`${fileName}\``)) return [`${file} is undocumented`];
+			const callers = callersOf(file);
+			const minimum = SINGLE_CONSUMER_PRIMITIVES.has(fileName) ? 1 : 2;
+			return callers.size >= minimum ? [] : [`${file} has ${callers.size} production caller(s)`];
 		});
 		expect(violations).toEqual([]);
+	});
+
+	it("does not count test references or unrelated basename matches as consumers", () => {
+		expect(productionFiles.some((file) => file.startsWith("tests/") || file.endsWith(".test.ts"))).toBe(false);
+		expect([...callersOf("lib/event-log.ts")]).toEqual(["extensions/pi-kanban/board-transactions.ts"]);
+		expect(callersOf("not-a-library/event-log.ts").size).toBe(0);
 	});
 
 	it("core lib contracts and render helpers do not import Node IO modules", () => {

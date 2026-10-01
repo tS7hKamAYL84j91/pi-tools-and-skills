@@ -1,4 +1,4 @@
-"""Small, predeclared C judge controls; never copied into an agent worktree.
+"""Benchmark-only C judge controls; never copied into an agent worktree.
 
 These implement the public contracts, not track reference solutions. Native
 preflight must prove the control passes and each fault fails the official suite.

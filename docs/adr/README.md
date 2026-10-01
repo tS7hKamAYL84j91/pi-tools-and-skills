@@ -67,6 +67,7 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 059 | Per-goal driver ownership and send admission | [059-goal-driver-ownership.md](059-goal-driver-ownership.md) |
 | 061 | Extension Command Surface and UX Conventions | [061-extension-command-surface-conventions.md](061-extension-command-surface-conventions.md) |
 | 062 | Rename pi-coas Extension to pi-automations | [062-pi-automations-rename.md](062-pi-automations-rename.md) |
+| 063 | Purpose-based repository boundaries | [063-purpose-based-repository-boundaries.md](063-purpose-based-repository-boundaries.md) |
 
 ## ADR Registry Notes
 
@@ -76,4 +77,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - ADR **060** is reserved by the isolated T-888 scheduler admission work; **061** (command surface conventions) and **062** (pi-automations rename) are used; the next unreserved sequential slot is **063**.
+  - ADR **060** is reserved by the isolated T-888 scheduler admission work; **061**–**063** are used; the next unreserved sequential slot is **064**.

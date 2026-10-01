@@ -1,5 +1,7 @@
 # Local direct-vs-Goal exercise benchmark
 
+Part of the [benchmark area](README.md); commands below run from the repo root.
+
 Runs paired Pi agents against the public Exercism ARM64 Assembly exercises.
 No Exercism account is needed. The runner never invokes Exercism, submits a
 solution, pushes Git commits, or changes live model/schedule configuration.
@@ -66,8 +68,10 @@ builds have a 30-second timeout. Live provider calls require **`--execute`**.
   trusted or used. Goal is loaded explicitly and its command/model availability
   is checked before sending either task.
 - Direct receives a normal task prompt. Goal receives `/goal file TASK.md`.
-  Goal's default ungated completion is being tested; an inherited
-  `PI_GOAL_GATE_COMMAND` is rejected rather than silently changed.
+  The default experiment supplies no completion verifier: current Goal must
+  pause rather than record unverified completion. Use
+  `--bundle --verified-completion` for the paired acceptance-feedback condition. An
+  inherited `PI_GOAL_GATE_COMMAND` is rejected rather than silently changed.
 - No coaching, automatic cross-arm retries or work sharing. Source repo stays
   untouched. This is trusted-agent isolation, **not an OS/network sandbox**:
   agents are instructed not to read outside their worktree or use the network.

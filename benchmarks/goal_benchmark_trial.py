@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import time
 
-from scripts.goal_benchmark_fixtures import parse_unity, terminate_group
+from benchmarks.goal_benchmark_fixtures import parse_unity, terminate_group
 
 
 class TrialEvidence:

@@ -1,13 +1,14 @@
 """One-prompt, ten-problem continuation pilot with withheld official tests."""
 import hashlib
 import json
+from pathlib import Path
 import random
 import re
 import shlex
 import subprocess
 
-from scripts.goal_benchmark_fixtures import freeze_exercise, regular_bytes, save_json, verify_solution
-from scripts.goal_benchmark_trial import run_trial
+from benchmarks.goal_benchmark_fixtures import freeze_exercise, regular_bytes, save_json, verify_solution
+from benchmarks.goal_benchmark_trial import run_trial
 
 # Interface semantics reviewed against the selected track revision, not test cases.
 ABI_NOTES = {
@@ -145,7 +146,7 @@ def prepare_bundle(track, output, selection, repeats, verified=False, verifier_s
 
 def run_bundle(args, output, report, selection, goal_extension):
     manifest = prepare_bundle(args.track_repo.resolve(), output, selection, args.repeats, args.verified_completion,
-                              goal_extension.parents[2] / "scripts/goal-benchmark-verify.py" if args.verified_completion else None)
+                              Path(__file__).with_name("goal-benchmark-verify.py") if args.verified_completion else None)
     if not args.execute:
         return
     for repetition in range(1, args.repeats + 1):

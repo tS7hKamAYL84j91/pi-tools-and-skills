@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isLiveAgentRef, liveAgentName, runLiveAgentNode } from "../../extensions/pi-teams/live-agent.js";
 import type { InboundMessage, MessageTransport, DeliveryResult } from "../../lib/message-transport.js";
 import type { AgentInfo } from "../../lib/agent-api.js";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
+import { RuntimeControlPlane } from "../../extensions/pi-teams/runtime-control-plane.js";
 
 class FakeTransport implements MessageTransport {
 	readonly sent: string[] = [];

@@ -1,4 +1,4 @@
-/** Type declarations for the live benchmark helper module. */
+/** Type declarations for the evaluation-only live benchmark helpers. */
 
 export type TeamKind = "navigator";
 

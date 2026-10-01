@@ -1,5 +1,7 @@
 # Team speed profile evaluation
 
+Part of the [benchmark area](README.md); commands below run from the repo root.
+
 Status: deterministic Phase 0 complete.
 Date: 2026-07-12
 

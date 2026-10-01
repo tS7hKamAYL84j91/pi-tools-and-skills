@@ -14,13 +14,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
-from scripts.goal_benchmark_fixtures import (
+from benchmarks.goal_benchmark_fixtures import (
     bounded_command, exercise_inputs, freeze_exercise, parse_unity, save_json, verify_solution,
 )
-from scripts import goal_benchmark_trial
-from scripts.goal_benchmark_authored import prepare_authored_fixture, validate_controls, grade_authored_tests
-from scripts.goal_benchmark_oracles import oracle_spec
-bundle = importlib.import_module("scripts.goal_benchmark_bundle")
+from benchmarks import goal_benchmark_trial
+from benchmarks.goal_benchmark_authored import prepare_authored_fixture, validate_controls, grade_authored_tests
+from benchmarks.goal_benchmark_oracles import oracle_spec
+bundle = importlib.import_module("benchmarks.goal_benchmark_bundle")
 
 
 def git(directory, *args):
@@ -121,7 +121,7 @@ def main():
               "trackDirty": bool(git(track, "status", "--porcelain")),
               "harnessCommit": git(ROOT, "rev-parse", "HEAD"),
               "harnessDirty": bool(git(ROOT, "status", "--porcelain")),
-              "runnerHashes": {name: hashlib.sha256((ROOT / "scripts" / name).read_bytes()).hexdigest()
+              "runnerHashes": {name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
                                for name in ["goal-benchmark.py", "goal_benchmark_fixtures.py", "goal_benchmark_trial.py",
                                             "goal_benchmark_authored.py", "goal_benchmark_oracles.py", "goal_benchmark_bundle.py", "goal-benchmark-verify.py"]},
               "pythonVersion": platform.python_version(), "selection": selection,

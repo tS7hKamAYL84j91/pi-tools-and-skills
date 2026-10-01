@@ -7,8 +7,8 @@ import {
 	ackRuntimeAgentMessage,
 	receiveRuntimeAgentMessages,
 	sendRuntimeAgentMessage,
-} from "../../lib/runtime-agent-messaging.js";
-import type { RuntimeControlPlane, RuntimeEntityRef } from "../../lib/runtime-control-plane.js";
+} from "./runtime-agent-messaging.js";
+import type { RuntimeControlPlane, RuntimeEntityRef } from "./runtime-control-plane.js";
 import { getMaildirTransport } from "../../lib/transports/maildir.js";
 import type { TeamAgentBinding } from "./team-types.js";
 import type { ModelRun } from "./types.js";

@@ -15,7 +15,7 @@ import "./architecture/tui-render-paths.js";
 import "./architecture/tool-api-contracts.js";
 import "./architecture/lib-layering.js";
 import "./architecture/clean-code.js";
-import "./architecture/hotspots.js";
+import "./architecture/entrypoint-boundaries.js";
 import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";
 import "./architecture/adr047-shared-discovery.js";

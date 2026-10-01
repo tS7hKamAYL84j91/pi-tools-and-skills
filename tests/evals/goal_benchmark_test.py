@@ -9,14 +9,15 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from scripts.goal_benchmark_fixtures import freeze_exercise, parse_unity, verify_inputs, verify_solution
-from scripts.goal_benchmark_trial import TrialEvidence, rpc_args, run_trial
-from scripts.goal_benchmark_authored import prepare_authored_fixture, semantic_rejection, grade_authored_tests
-from scripts.goal_benchmark_oracles import oracle_spec
-bundle = importlib.import_module("scripts.goal_benchmark_bundle")
+from benchmarks.goal_benchmark_fixtures import freeze_exercise, parse_unity, verify_inputs, verify_solution
+from benchmarks.goal_benchmark_trial import TrialEvidence, rpc_args, run_trial
+from benchmarks.goal_benchmark_authored import prepare_authored_fixture, semantic_rejection, grade_authored_tests
+from benchmarks.goal_benchmark_oracles import oracle_spec
+bundle = importlib.import_module("benchmarks.goal_benchmark_bundle")
 
 
 class FixtureTests(unittest.TestCase):
@@ -74,7 +75,7 @@ class FixtureTests(unittest.TestCase):
         (workspace / "leap_test.c").write_text("fake passing test")
         (workspace / "leap.s").write_text("candidate implementation")
         result = {"text": "1 Tests 0 Failures 0 Ignored", "exitCode": 0, "timedOut": False}
-        with patch("scripts.goal_benchmark_fixtures.bounded_command", return_value=result), patch("scripts.goal_benchmark_fixtures.subprocess.check_output", return_value=b""):
+        with patch("benchmarks.goal_benchmark_fixtures.bounded_command", return_value=result), patch("benchmarks.goal_benchmark_fixtures.subprocess.check_output", return_value=b""):
             judged = verify_solution(seed, workspace, self.root / "judge", manifest)
         self.assertEqual((self.root / "judge/leap_test.c").read_bytes(), (seed / "leap_test.c").read_bytes())
         self.assertEqual((self.root / "judge/leap.s").read_text(), "candidate implementation")
@@ -137,17 +138,44 @@ class FixtureTests(unittest.TestCase):
         (a / "leap.s").write_text("changed a")
         (b / "leap.s").write_text("changed b")
         command = {"text": "1 Tests 0 Failures 0 Ignored", "exitCode": 0, "timedOut": False}
-        with patch("scripts.goal_benchmark_fixtures.bounded_command", return_value=command):
+        with patch("benchmarks.goal_benchmark_fixtures.bounded_command", return_value=command):
             result = verify_solution(a, a, self.root / "judge", manifest)
         self.assertEqual(result["unexpectedPaths"], [])
 
     def test_dry_run_never_launches_pi_or_creates_output(self):
         out = self.root / "not-created"
-        result = subprocess.run([sys.executable, str(ROOT / "scripts/goal-benchmark.py"),
+        result = subprocess.run([sys.executable, str(ROOT / "benchmarks/goal-benchmark.py"),
                                  "--track-repo", str(self.root / "track"), "--exercises", "leap",
                                  "--output", str(out)], capture_output=True, text=True, check=True)
         self.assertIn("dry-run", result.stdout)
         self.assertFalse(out.exists())
+
+    def test_prepare_only_finds_moved_runner_hashes_without_model_calls(self):
+        out = self.root / "prepared"
+        # The CLI records the source revision even for preparation-only runs.
+        track = self.root / "track"
+        subprocess.run(["git", "-C", str(track), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(track), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(track), "-c", "user.name=Test",
+                        "-c", "user.email=test@localhost", "-c", "commit.gpgSign=false",
+                        "commit", "-qm", "fixture"], check=True)
+        subprocess.run([sys.executable, "-B", str(ROOT / "benchmarks/goal-benchmark.py"),
+                        "--prepare-only", "--track-repo", str(track),
+                        "--exercises", "leap", "--output", str(out)],
+                       cwd=self.root, capture_output=True, text=True, check=True)
+        report = json.loads((out / "report.json").read_text())
+        self.assertEqual(len(report["runnerHashes"]), 7)
+        self.assertTrue(all(len(digest) == 64 for digest in report["runnerHashes"].values()))
+        self.assertEqual(report["runs"], [])
+
+    def test_verified_bundle_resolves_verifier_next_to_moved_runner(self):
+        args = SimpleNamespace(track_repo=self.root, repeats=1, verified_completion=True, execute=False)
+        with patch.object(bundle, "prepare_bundle", return_value={}) as prepare:
+            bundle.run_bundle(args, self.root, {}, [], ROOT / "extensions/pi-goal/index.ts")
+        self.assertEqual(prepare.call_args.args[-1], ROOT / "benchmarks/goal-benchmark-verify.py")
+        result = subprocess.run([sys.executable, "-B", str(prepare.call_args.args[-1]), "--help"],
+                                cwd=self.root, capture_output=True, text=True, check=True)
+        self.assertIn("--workspace", result.stdout)
 
 
 class RpcTests(unittest.TestCase):
@@ -256,8 +284,8 @@ class TestQualityTests(unittest.TestCase):
             root = Path(directory)
             (root / "solution.s").write_text("ret\n")
             manifest = {"solutions": ["solution.s"], "controlHashes": {"reference": "unused", "fault": "unused"}}
-            with patch("scripts.goal_benchmark_authored.control_source", return_value={"control.c": b"code"}), patch(
-                "scripts.goal_benchmark_authored.judge_case", side_effect=[{"passed": True}, {"passed": False}]
+            with patch("benchmarks.goal_benchmark_authored.control_source", return_value={"control.c": b"code"}), patch(
+                "benchmarks.goal_benchmark_authored.judge_case", side_effect=[{"passed": True}, {"passed": False}]
             ) as judge:
                 result = grade_authored_tests(root, root, root / "grade", manifest)
             self.assertFalse(result["valid"])

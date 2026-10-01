@@ -1,10 +1,10 @@
-/** Panopticon runtime messaging adapter for agent-linked orchestration. */
+/** Teams-owned messaging adapter for live-agent role execution. */
 
-import type { AgentRecord } from "./agent-registry.js";
-import type { DeliveryResult, InboundMessage, MessageTransport } from "./message-transport.js";
+import type { AgentRecord } from "../../lib/agent-registry.js";
+import type { DeliveryResult, InboundMessage, MessageTransport } from "../../lib/message-transport.js";
 import type { RuntimeControlPlane, RuntimeEntityRef } from "./runtime-control-plane.js";
 
-export interface RuntimeAgentMessageRequest {
+interface RuntimeAgentMessageRequest {
 	readonly agent: AgentRecord;
 	readonly from: string;
 	readonly message: string;

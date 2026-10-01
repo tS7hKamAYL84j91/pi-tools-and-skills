@@ -5,8 +5,8 @@ import {
 	ackRuntimeAgentMessage,
 	receiveRuntimeAgentMessages,
 	sendRuntimeAgentMessage,
-} from "../../lib/runtime-agent-messaging.js";
-import { RuntimeControlPlane } from "../../lib/runtime-control-plane.js";
+} from "../../extensions/pi-teams/runtime-agent-messaging.js";
+import { RuntimeControlPlane } from "../../extensions/pi-teams/runtime-control-plane.js";
 
 class FakeTransport implements MessageTransport {
 	readonly sent: string[] = [];

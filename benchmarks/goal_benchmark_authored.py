@@ -2,8 +2,8 @@
 import hashlib
 import importlib
 
-from scripts.goal_benchmark_fixtures import bounded_command, freeze_exercise, parse_unity, regular_bytes
-oracles = importlib.import_module("scripts.goal_benchmark_oracles")
+from benchmarks.goal_benchmark_fixtures import bounded_command, freeze_exercise, parse_unity, regular_bytes
+oracles = importlib.import_module("benchmarks.goal_benchmark_oracles")
 
 
 def digest(content):

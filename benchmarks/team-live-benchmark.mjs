@@ -14,7 +14,7 @@ import {
 	summarize,
 } from "./team-live-benchmark-helpers.mjs";
 
-const MAX_CAPTURE_BYTES = 1_000_000;
+const MAX_CAPTURE_BYTES = 1_000_000; // Bound live harness capture.
 
 function fail(message) {
 	console.error(message);

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the live team benchmark.
+ * Evaluation-only pure helpers for the live team benchmark.
  *
  * Exported separately from the CLI runner so deterministic tests can import
  * them without triggering the opt-in guard or `process.exit()` in main().

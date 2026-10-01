@@ -13,7 +13,7 @@
 		"start:fleet-mcp": "node dist/fleet-mcp/index.js",
 		"start:fleet-overview": "node dist/fleet-overview/server.js",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint fleet-mcp/ extensions/ lib/ tests/ scripts/",
+		"lint": "biome lint fleet-mcp/ extensions/ lib/ tests/ scripts/ benchmarks/",
 		"type-coverage": "type-coverage --strict --at-least 95",
 		"security:semgrep": "node scripts/semgrep-scan.mjs",
 		"check": "npm run check:namespace && npm run check:template-safety && npm run typecheck && npm run lint && npm run knip && npm run type-coverage",
@@ -21,8 +21,8 @@
 		"test:coverage": "vitest run --coverage --testTimeout=15000",
 		"test:watch": "vitest",
 		"test:evals": "vitest run tests/evals",
-		"benchmark:teams:live": "node scripts/team-live-benchmark.mjs",
-		"benchmark:goal": "python3 -B scripts/goal-benchmark.py",
+		"benchmark:teams:live": "node benchmarks/team-live-benchmark.mjs",
+		"benchmark:goal": "python3 -B benchmarks/goal-benchmark.py",
 		"knip": "knip"
 	},
 	"repository": {
@@ -62,12 +62,14 @@
 	"homepage": "https://github.com/tS7hKamAYL84j91/pi-tools-and-skills#readme",
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "^0.84.4",
-		"@earendil-works/pi-tui": "^0.84.4"
+		"@earendil-works/pi-tui": "^0.84.4",
+		"@sinclair/typebox": "*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
 		"@earendil-works/pi-coding-agent": "^0.84.4",
 		"@earendil-works/pi-tui": "^0.84.4",
+		"@sinclair/typebox": "^0.34.49",
 		"@types/node": "^25.5.2",
 		"@vitest/coverage-v8": "4.1.2",
 		"archunit": "^2.1.66",
@@ -79,7 +81,6 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.30.0",
-		"@sinclair/typebox": "^0.34.49",
 		"matrix-js-sdk": "^41.9.0",
 		"zod": "^4.5.4"
 	},

@@ -16,7 +16,7 @@ import {
 	resultIsValid,
 	summarize,
 	summarizeSchema,
-} from "../../scripts/team-live-benchmark-helpers.mjs";
+} from "../../benchmarks/team-live-benchmark-helpers.mjs";
 
 function node(role: string, model: string, ok: boolean, error?: string) {
 	return {

@@ -1,14 +1,14 @@
-/** Narrow Panopticon runtime entity control-plane adapter. */
+/** Teams-owned optional entity instrumentation for live-agent execution. */
 
 export type RuntimeEntityKind = "agent" | "team_run" | "child_process";
-export type RuntimeEntityStatus = "pending" | "running" | "stopping" | "stopped" | "completed" | "failed";
+type RuntimeEntityStatus = "pending" | "running" | "stopping" | "stopped" | "completed" | "failed";
 
 export interface RuntimeEntityRef {
 	readonly id: string;
 	readonly kind: RuntimeEntityKind;
 }
 
-export interface RuntimeEvent {
+interface RuntimeEvent {
 	readonly type: string;
 	readonly entity: RuntimeEntityRef;
 	readonly timestamp: number;
@@ -16,7 +16,7 @@ export interface RuntimeEvent {
 	readonly message?: string;
 }
 
-export interface RuntimeEntitySnapshot extends RuntimeEntityRef {
+interface RuntimeEntitySnapshot extends RuntimeEntityRef {
 	readonly label: string;
 	readonly status: RuntimeEntityStatus;
 	readonly parent?: RuntimeEntityRef;
@@ -34,7 +34,7 @@ interface RuntimeEntityRecord {
 	stop?: (reason: string) => void;
 }
 
-export interface RegisterRuntimeEntityRequest extends RuntimeEntityRef {
+interface RegisterRuntimeEntityRequest extends RuntimeEntityRef {
 	readonly label: string;
 	readonly status?: RuntimeEntityStatus;
 	readonly parent?: RuntimeEntityRef;
@@ -44,8 +44,8 @@ export interface RegisterRuntimeEntityRequest extends RuntimeEntityRef {
 /**
  * Session-local runtime adapter for entity inspection, stop, events, and lineage.
  *
- * This keeps protocol-specific state in extensions while giving Panopticon-owned
- * code a common substrate shape for agents, team runs, and child processes.
+ * This is optional live-agent instrumentation, not another team lifecycle
+ * authority. TeamStateManager continues to own persisted run state.
  */
 export class RuntimeControlPlane {
 	private readonly entities = new Map<string, RuntimeEntityRecord>();

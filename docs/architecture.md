@@ -1,1001 +1,109 @@
-# Architecture Reference
+# Architecture boundaries
 
-Short reference docs for `pi-tools-and-skills` architecture decisions and extension designs.
+This document owns cross-cutting boundaries, not command catalogs or historical
+implementation reports. Package READMEs own usage; [ADRs](adr/README.md) record
+decisions. Superseded diagrams and completed reviews remain in Git history.
 
----
+## Responsibility and state ownership
 
-## Work scope and optional overview
-
-Jim's requests and current repository evidence guide execution. Project agents
-work directly; they do not load or manage Kanban. Gravitas owns the optional
-human-facing overview. Board claims, status relays and planning documents are not
-implementation prerequisites. See AGENTS.md for permissions and safety boundaries.
-
-## Fleet MCP standalone boundary
-
-`fleet-mcp/` is a standalone application boundary, not a Pi extension. MCP transport handling depends on `FleetGateway`; the gateway owns authorization and durable protocol semantics; `DirectMaildirBackend` alone adapts the existing Panopticon registrar and Maildir transport. `FleetStateStore` owns versioned private state and serializes mutations. This keeps MCP/session concerns out of Panopticon and prevents transport handlers from selecting filesystem paths or sender identities.
-
-```mermaid
-flowchart LR
-  Client[Authenticated MCP client] --> Transport[stdio or loopback HTTP]
-  Transport --> Gateway[FleetGateway\nfixed principal policy]
-  Gateway --> State[FleetStateStore\nversioned atomic state]
-  Gateway --> Backend[DirectMaildirBackend]
-  Backend --> Registry[Panopticon external registrar]
-  Backend --> Maildir[Persistent Maildir]
-```
-
-The application is built with `npm run build:fleet-mcp` and run from `dist/fleet-mcp/index.js`. HTTP is loopback-only and authenticates either a fixed principal or an operator-provisioned credential map. Native access uses an explicitly configured live Panopticon reference and the file-backed registry. Automations owns container deployment, mounts, secret injection, Tailscale/private ingress, and supervision.
-
-## F.I.R.E. Review
-
-**Date:** 2026-05-09
-
-Reviewing the codebase against Dan Ward's F.I.R.E. principles (Fast, Inexpensive,
-Restrained, Elegant).
-
-### Strengths
-
-- **Fast & Inexpensive:** Local file-backed state (JSON/Markdown) means zero
-  infrastructure.
-- **Restrained & Elegant:** Extension boundaries are tight. Kanban uses a simple
-  append-only log.
-- **Restrained Teams extension:** Team execution uses direct protocol handlers inside independently installable `pi-teams`; the generic DAG executor and lowering layers are removed from the baseline.
-- **Sparse Panopticon alerts:** Reconciliation follow-ups only interrupt for
-  actionable states, reducing idle token cost (ADR 014).
-
-### Risk Areas
-
-The main risk is **custom framework growth**:
-
-- **File Concurrency:** Multiple writers require strict lock discipline.
-- `pi-automations`: Must keep its internal scheduler minimal — schedule files plus one
-  pi-hosted timer loop, no external crontab reconciliation.
-- `pi-matrix`: Justified for human interaction, but too heavy for local
-  agent-to-agent comms. Keep local peer routing on IPC-backed channels such as
-  `agent_send`, spawned-agent RPC, and shared agent APIs used by `pi-teams` live-agent bindings.
-
-### Recommendations
-
-1. **Keep Teams direct:** Prefer direct coordination functions over a
-   complex engine unless dynamic topologies are strictly required. ✅ Baseline —
-   DAG removed.
-2. **Keep Kanban dumb:** Stick to the event-sourced log and deterministic state
-   reconstruction. **No SQLite.**
-3. **Keep `pi-panopticon` boring:** Track agent existence, heartbeats, and
-   recent operational summaries from existing state only. No long-term metrics
-   store. ✅ ADR 014 suppresses idle reconciliation noise.
-4. **Keep naming tools canonical:** `set_name` and `get_name` are the only
-   naming tools; deprecated alias wrappers are removed.
-5. **Limit `pi-automations`:** Run schedules only inside pi with a small timer loop.
-6. **Enforce Boundaries:** Prevent extensions from coupling. Add explicit
-   "What this does NOT do" to every README.
-
----
-
-## Current Architecture Map
-
-`pi-tools-and-skills` is a local-first extension workspace for the pi coding agent. This map records current extension ownership, shared library boundaries, state ownership, trust boundaries, active risks, and validation anchors.
-
-```mermaid
-flowchart TD
-  Pi[pi coding agent runtime] --> Settings[pi settings and package registry]
-  Settings --> GlobalExt[User/global extensions]
-  Settings --> ProjectExt[Project-local extensions]
-
-  subgraph SharedLib[Shared lib layer]
-    Core[Pure contracts and render helpers]
-    Runtime[Runtime/session/persistence helpers]
-    Governance[Automations governance classification and routing]
-    Transports[Transport adapters]
-    Core --> Runtime
-    Core --> Transports
-  end
-
-  subgraph GlobalExt[User/global extensions]
-    Goal[pi-goal]
-    Matrix[pi-matrix]
-    OllamaModels[pi-ollama-models]
-    Panopticon[pi-panopticon]
-    Teams[pi-teams]
-  end
-
-  subgraph ProjectExt[Project-local extensions]
-    Kanban[pi-kanban]
-    FileWatch[pi-file-watch]
-    AUTOMATIONS[pi-automations]
-  end
-
-  Pi --> Goal
-  Pi --> Matrix
-  Pi --> OllamaModels
-  Pi --> Panopticon
-  Pi --> Teams
-  Teams --> RuntimePlane
-  Teams --> TeamResults[Private team result root\nuser team root/results]
-  TeamResults --> AsyncDelivery[Claim-check async delivery]
-  Teams --> TeamChild[one-shot pi --print child]
-  TeamChild -->|prompt via stdin; stdout/stderr captured separately| RuntimePlane
-  Teams --> TeamProfiles[Shared fast / balanced / thorough profiles]
-  TeamProfiles --> Navigator[Navigator bounded consult]
-  ProfileFixtures[Deterministic profile fixtures and rubric] -. validates contracts .-> TeamProfiles
-  LiveHarness[Explicit opt-in live timing harness] -. records redacted durations .-> TeamProfiles
-  Pi --> Kanban
-  Pi --> FileWatch
-  Pi --> AUTOMATIONS
-  AUTOMATIONS --> AutomationsScheduler[pi-automations scheduler]
-  AutomationsScheduler --> AutomationsRunState[pi-automations/lib run-state helper]
-  AutomationsRunState --> ConfinedStore[ADR-038 confined filesystem store]
-  ConfinedStore --> AutomationsRoots[validated Automations, schedule, and workspace roots]
-
-  Goal --> SharedLib
-  Matrix --> SharedLib
-  OllamaModels --> SharedLib
-  Panopticon --> SharedLib
-  Teams --> SharedLib
-  Kanban --> SharedLib
-  FileWatch --> SharedLib
-  AUTOMATIONS --> SharedLib
-
-  Kanban -. agent assignment/status .-> Panopticon
-  Goal -. spawned-worker orchestration .-> Panopticon
-  AUTOMATIONS -. task scheduling .-> Kanban
-```
-
-### Standalone Teams extension boundary (ADR-048)
-
-`pi-teams` is independently installable and owns consult, debate, and research team registration, protocol execution, run state, result claim-checks, bundled configuration, and the consultation skill. `pi-panopticon` remains an independent agent registry, messaging, health, UI, and spawner extension; it does not register or import Teams.
-
-```mermaid
-C4Component
-    title Standalone pi-teams public ownership boundary
-    Container(pi, "pi session", "Extension host", "Loads independently installed extensions")
-    Component(registry, "pi package registry", "Package settings", "Selects pi-teams as an installable package")
-    Component(teams, "pi-teams", "Extension", "Registers retained team and runtime surfaces")
-    Component(protocols, "Direct protocol handlers", "Teams runtime", "Runs navigator, council, and research")
-    Component(state, "Team session state", "Session custom entries", "Persists bounded run events and rehydrates run state")
-    Component(results, "Team result root", "Private claim-check files", "Stores completed async results under the configured team root")
-    Component(shared, "Shared runtime libraries", "lib/", "Provides agent APIs, child-process, transport, persistence, and runtime helpers")
-    Component(panopticon, "pi-panopticon", "Independent extension", "Owns agent registry, messaging, health, UI, and spawning")
-    Rel(pi, registry, "loads package settings")
-    Rel(registry, teams, "loads when selected")
-    Rel(teams, protocols, "registers and invokes")
-    Rel(protocols, state, "appends run events")
-    Rel(protocols, results, "writes result artifacts")
-    Rel(teams, shared, "uses shared capabilities")
-    Rel(pi, panopticon, "may load separately")
-```
-
-### Cognitive Boost lease/yield boundary (ADR-050, ADR-052)
-
-Fusion is decommissioned from `pi-teams` and owned by `pi-boost` as a prompt-scoped cognitive lease. Principal sessions may invoke it directly. Agent sessions are default-denied and may self-initiate only through an operator-authored namespaced `boost.agentSelfBoost` capability in standard Pi settings. Global settings are overridden by project settings only when the Pi host marks the project trusted; callers cannot select or expand authority, models, budgets, or timeouts. Per ADR-052 the cognitive lease defaults to a single-model rut-breaker lease (no judge synthesis); the ADR-050 panel+judge protocol applies under explicit `boost.mode: "fusion"` or an explicit per-call `panelSize` opt-in.
-
-```mermaid
-flowchart LR
-  Global[~/.pi/agent/settings.json\nboost namespace] --> Resolve[Validated effective Boost policy]
-  Project[trusted .pi/settings.json\nboost override] --> Resolve
-  Principal[Principal session] --> Gate[Trusted capability gate]
-  Agent[Pre-granted agent session] --> Gate
-  Resolve --> Gate
-  Gate --> Mode{Boost mode
-  single default?}
-  Mode -->|single default| Single[One lease model
-ephemeral anti-rut frame
-no judge]
-  Mode -->|fusion| Lease[Cognitive lease\nfixed panel/model/timeout caps]
-  Lease --> Panel[Bounded concurrent panel]
-  Panel --> Judge[Strict JSON judge synthesis]
-  Judge --> Yield[Single answer yield]
-  Single --> Yield
-  Yield --> Audit[Private redacted audit\nno prompt/model identity]
-  Yield --> Release[Immediate release]
-  CallerText[Tool args / objective text] -. cannot grant or expand .-> Gate
-  Teams[pi-teams] -. no private dependency .-> Lease
-```
-
-The `/boost` SettingsList shows inherited/default/global/project provenance and persists only to the selected standard settings scope. Environmental Boost retains its injected runtime, WAL, reversion, and TTL semantics; Cognitive Boost creates no sticky model state and fails closed on authorization, bounds, audit, or execution failure.
-
-### Declarative discovery boundary (ADR-047)
-
-```mermaid
-flowchart LR
-  Teams[pi-teams] --> Discovery[lib/declarative-discovery]
-  Boost[pi-boost] --> Discovery
-  Discovery --> TeamFiles[Layered Team Markdown]
-  Discovery --> BoostFile[Fixed boost.md]
-  BoostFile --> Validate[Boost-only schema + fingerprint]
-  Validate --> Reviewed[Reviewed model binding]
-  Reviewed --> Lease[Lease runtime]
-  Live[Injected live control] --> Lease
-  Teams -. no dependency .-> Boost
-```
-
-`lib/declarative-discovery.ts` performs lexical root/path discovery only. Teams retain their parsers and registry; Boost selects one highest-layer fixed descriptor before validation, then requires a matching reviewed model and separate live-control gate.
-
-### Extension roles
-
-| Extension | Scope | Primary role | State owner |
-| --- | --- | --- | --- |
-| `pi-goal` | user/global | Active goal tracking and completion audit workflow | Goal files under the active workspace, including `.pi/goal/` |
-| `pi-panopticon` | user/global | Agent registry, heartbeat/status inspection, peer messaging, spawned-agent orchestration, and lifecycle controls | Panopticon registry/session state |
-| `pi-teams` | user/global | Standalone declarative consult, debate, and research protocols, profiles, and run controls | Team session events plus private result artifacts under the configured team root |
-| `pi-boost` | user/global | Bounded environmental leases plus cognitive panel/judge lease-yield; Principal or trusted pre-granted agent capability | Environmental WAL/reversion state plus private redacted audits; cognitive leases retain no panel state |
-| `pi-matrix` | user/global | Human-facing Matrix transport integration | Matrix configuration/session state |
-| `pi-ollama-models` | user/global | Discovers local Ollama models and updates pi model registry config | `~/.pi/agent/models.json` `ollama` provider entry only |
-| `pi-kanban` | project-local | Event-sourced project task board | Kanban event log in the owning workspace |
-| `pi-file-watch` | project-local | Watches explicitly configured files and wakes the active session with bounded redacted updates | Runtime watchers only; reads `.pi/file-watch.json` and configured files |
-| `pi-automations` | project-local | Cooperative agent scheduling over kanban tasks | AUTOMATIONS schedule/runtime files in the owning workspace |
-
-### pi-goal session-lineage isolation (ADR-051)
-
-```mermaid
-flowchart LR
-  SessionA[pi session A] --> BindingA[private pi-goal binding]
-  SessionB[pi session B] --> BindingB[private pi-goal binding]
-  BindingA --> InstanceA[.pi/goal/instances/goal-A]
-  BindingB --> InstanceB[.pi/goal/instances/goal-B]
-  InstanceA --> RunsA[runs and projections]
-  InstanceB --> RunsB[runs and projections]
-  SessionA -. cannot discover or mutate .-> InstanceB
-  SessionB -. cannot discover or mutate .-> InstanceA
-```
-
-Each production pi-goal read/write resolves the latest `pi-goal:binding` custom entry on the active session branch. Legacy flat state is migrated once under a lock, with only known projection/run files moved and symlink/traversal inputs rejected.
-
-### pi-goal driver ownership (ADR-059, T-886)
-
-```mermaid
-C4Component
-    title pi-goal direct continuous driver and session replacement
-    Container_Boundary(goal, "pi-goal") {
-        Component(commands, "Commands/tools", "TypeScript", "Immediate execution, explicit controls, evidence-based completion")
-        Component(driver, "Goal run loop", "TypeScript", "Only execution driver; local goal/token/session identity")
-        Component(events, "Lifecycle/watchdog", "TypeScript", "Settles matching waiter; observes only locally owned runs")
-        Component(store, "Goal transactions", "TypeScript", "Confined short lock, revision and owner CAS, authority before projections")
-        Component(files, "Goal files", "TypeScript", "Confinement, known-artifact cleanup, derived paths")
-    }
-    Container(host, "Pi host", "SDK", "Idle wait; shutdown/setup/new extension/withSession")
-    Rel(commands, store, "Create/edit/revoke/complete")
-    Rel(commands, driver, "Automatic create plus explicit run/resume")
-    Rel(driver, store, "Claim, reserve, admit, account, release")
-    Rel(driver, host, "Send outside lock, only fresh context")
-    Rel(events, driver, "Identity-matched waiter settlement")
-    Rel(events, store, "Owner-only bounded watchdog CAS")
-    Rel(store, files, "Confined authority and projection paths")
-```
-
-`agent_end` never starts an independent continuation driver. A persisted token alone does not authorize a local watchdog. Replacement reserves authority before switching, binds the new session in setup, validates its workspace/session/binding, and consumes the reservation with admission before sending. Old shutdown removes only old resources during a reserved handoff. Stop/edit/clear/completion/timeout revoke ownership in the authority transaction before local settlement. Legacy snapshot-write APIs are removed; ordinary test fixtures use the transaction seam.
-
-Plain text and file goals start immediately with an unbounded turn sentinel and continue until the root agent calls `goal_complete`. Planning, milestone verification, and approval are not runtime gates; legacy planned states are flattened on run/resume. Explicit `--turns N`, pause/stop, ownership, liveness containment, and the trusted completion gate remain available.
-
-One local driver is permitted per Pi process; its waiter carries the immutable goal/token/generation identity across extension reload during handoff. Same-goal cross-process claims are excluded without holding locks over host calls. No age/PID/TTL takeover exists: explicitly stop/pause, inspect uncertain old host work, then run/resume. Already-admitted calls cannot be retracted; void SDK sends are not delivery acknowledgments. Detected symlink substitutions fail closed, but Node check/use operations do not promise kernel-level protection against hostile directory replacement.
-
-### State ownership summary
-
-| State class | Owner | Expected write pattern |
+| Owner | Authority | Boundary |
 | --- | --- | --- |
-| Append-only task/event logs | Owning extension (`pi-kanban`, similar event sources) | `appendLogLine()` or an owning append API |
-| Full-file JSON/Markdown state | Owning extension or shared runtime helper | `writeFileAtomic()` / `updateJsonFile()` where practical |
-| Watched files | Owning user/workspace; `pi-file-watch` reads only | Explicit configured file paths, no recursive discovery or writes |
-| Session spool/log state | Shared session runtime helpers | Session-spool/session-log APIs |
-| Agent registry and spawn state | Panopticon/shared spawn services | Registry/spawn APIs |
-| Team run state | `pi-teams` | Session events plus private artifacts under the configured user team root's `results/` directory; profile selection is session-local/input-only |
-| Local model registry | `pi-ollama-models` for the `ollama` provider entry | Atomic full-file rewrite of pi `models.json`, preserving other providers |
+| [Panopticon](../extensions/pi-panopticon/README.md) | Agent registry, health, spawner lifecycle and Maildir transport | Messaging is coordination, not authorization |
+| [Teams](../extensions/pi-teams/README.md) | `TeamStateManager`, session run events and private result artifacts | Direct bounded protocols; no parallel lifecycle registry |
+| [Goal](../extensions/pi-goal/README.md) | Session-bound `goal.json`, driver token/generation/revision | `GOAL.md` is a projection; source files and native sessions remain intact |
+| [Automations](../extensions/pi-automations/README.md) | Schedule files, slot admission, approval and workspace context | Runs inside Pi; no independent background scheduler |
+| [Kanban](../extensions/pi-kanban/README.md) | Append-only `board.log` | Task Markdown and snapshots are derived; viewing is read-only |
+| [Boost](../extensions/pi-boost/README.md) | In-session lease and model restoration | Failed restoration blocks further dispatch; no fusion engine |
+| [Matrix](../extensions/pi-matrix/README.md) | Human-facing transport and attachment cache | Trusted-sender filtering and bounded media handling; input remains untrusted |
+| [File Watch](../extensions/pi-file-watch/README.md) | Explicit watcher configuration and runtime subscriptions | Validated path/symlink policy; no implicit workspace sweep |
+| [Ollama Models](../extensions/pi-ollama-models/README.md) | Only the Ollama entry in Pi's model registry | Operator-selected executable; caller command/path overrides are inert |
+| [Fleet MCP](../fleet-mcp/README.md) | MCP receipts and external-client state | Gateway authorization; backend adapts existing registrar/transport |
+| [Fleet overview](../fleet-overview/README.md) | Derived browser views and gated control requests | Observes existing registry and policy, not a replacement authority |
 
-### Trust boundaries
+Project agents work directly with Jim. Kanban remains Gravitas's optional human
+overview, not an execution prerequisite. Deployment, secrets, residency and
+operational scheduling defaults are operator-owned.
 
-```mermaid
-flowchart LR
-  UserText[Untrusted user/objective text] --> Tools[pi tools and commands]
-  Repo[Workspace files] --> Tools
-  Tools --> FS[Local filesystem]
-  Tools --> IPC[Local IPC / spawned agents]
-  Tools --> Network[Optional external transports]
-  Network --> Matrix[Matrix]
-  IPC --> Agents[Peer/spawned agents]
-```
-
-- Treat user objectives, task text, Matrix messages, and agent messages as untrusted input.
-- Tool implementations must validate paths and avoid interpreting untrusted text as shell/code.
-- Workspace files are the durable authority for local-first state, but extension-private files remain private to their owning extension.
-- `pi-file-watch` may observe symlinked or external files only when each configured path explicitly opts into that trust boundary; it does not recursively scan or write watched paths.
-- Matrix and other network transports are optional outer-boundary integrations; local agent coordination should prefer IPC-backed mechanisms.
-- `pi-ollama-models` executes only an operator-configured absolute `PI_OLLAMA_COMMAND` whose basename is `ollama`, or a fixed standard absolute candidate (`/usr/local/bin/ollama`, `/usr/bin/ollama`). Deprecated public `modelsPath` and `ollamaCommand` fields are accepted but ignored. It never executes caller commands, resolves through PATH, `which`, cwd, or project files, and writes no credentials; other model providers in `models.json` remain outside its ownership.
-- Spawned agents and peer messages are coordination channels, not authority to bypass repository validation or completion audits.
-- Panopticon local IPC under `~/.pi/agents` is private-local state: registry/Maildir directories are `0700`, registry/message files are `0600`, and symlinked IPC paths fail closed.
-- Team result claim-checks are `pi-teams`-owned under the configured user team root (`~/.pi/agent/teams/results` by default). Sync writers and async readers share that resolved root; directories are `0700`, files are `0600`, run IDs are basename-confined, and symlinked roots fail closed. They never use repository-relative `team-results` or Automations state.
-
-### Completion gate trust boundary
-
-```mermaid
-flowchart LR
-  Model[Model / tool caller] --> GoalTool[goal_complete\nevidence only]
-  Model --> KanbanTool[kanban_complete\ntask data + check evidence]
-  Operator[Trusted operator environment] --> GoalConfig[PI_GOAL_GATE_COMMAND]
-  Operator --> KanbanConfig[KANBAN_GATE_COMMAND]
-  GoalConfig --> GoalTool
-  KanbanConfig --> KanbanTool
-  GoalTool --> Runner[Bounded shared gate runner]
-  KanbanTool --> Runner
-  Runner --> Shell[Workspace-local child process]
-```
-
-- Goal completion and Kanban completion schemas retain their previous gate fields as deprecated, ignored compatibility inputs. Caller values never reach the gate runner and cannot select or override a command.
-- Goal and Kanban execute a completion gate only when their trusted operator environment variable is configured. These environment variables are operator configuration, not model/tool input. Gate failure blocks completion and reports bounded diagnostics; no configured gate preserves existing completion behavior.
-- Structured milestone/task check evidence remains model-visible data and is not treated as proof that the extension executed the reported command.
-
-### Current risks and validation anchors
-
-1. **Concurrency discipline:** Continue moving state writes through `lib/file-persistence.ts` helpers or documented domain-specific transactions.
-2. **README contract clarity:** Keep each extension README explicit about stable tools/commands, provisional surfaces, and cross-extension dependencies.
-3. **Kanban disclosure boundary:** `kanban_snapshot` reads the requested view without writes: compact by default, full-board/task detail on request. Only `kanban_export` persists Markdown; only `kanban_compact` rewrites history.
-4. **Progress UX:** Keep long-running Teams/`pi-goal` work visible with phase, elapsed time, last action, cancellation affordance, and artifact paths.
-5. **Transport diagnostics:** Keep `globalThis`/transport registry behavior documented with diagnostics and fallback behavior.
-
-`tests/architecture.test.ts` enforces practical dependency layering, extension runtime-state boundaries, UX/tool policy checks, hotspot budgets, docs hygiene, and persistence-discipline exceptions.
-
----
-
-## Package Setup Boundary
+## Dependencies and public boundaries
 
 ```mermaid
 flowchart TD
-  Make[Make setup targets] --> Setup[scripts/setup-pi]
-  Setup --> Settings[~/.pi/agent/settings.json]
-  Setup --> RootPackage[pi-tools-and-skills package\nfiltered global extensions]
-  Setup --> UserPackage[Individual user packages\npi-goal/pi-matrix/pi-panopticon]
-  Setup -. rejects .-> ProjectOnly[Project-only packages\npi-kanban/pi-automations]
-  ProjectOnly --> Workspace[Workspace .pi/settings.json]
+  Pi[Pi host] --> Extensions[Feature extensions]
+  Applications[Fleet applications] --> Public[Documented public adapters]
+  Public --> Infrastructure[Shared contracts and infrastructure]
+  Extensions --> Infrastructure
+  Infrastructure --> Host[Filesystem / process / transport]
+  Tests[Offline tests] -. verify .-> Extensions
+  Benchmarks[Opt-in benchmark runners] -. exercise public surfaces .-> Pi
 ```
 
-- `make setup` registers the repo package with the global operator extension allowlist.
-- `make setup-package PACKAGE=<name>` registers only user-installable extension packages.
-- `pi-kanban` and `pi-automations` remain project-only and must be enabled by the workspace that owns their state.
-
----
-
-## Shared Library Layering
-
-```mermaid
-flowchart TD
-  Core[Core contracts and pure helpers\nagent names, manifests, redaction, tool results, TUI render helpers]
-  Runtime[Runtime/session helpers\nsession source, spool, hooks, agent API]
-  Transport[Transport adapters\nmaildir, spawn service]
-  Extensions[Extensions]
-  Core --> Runtime
-  Core --> Extensions
-  Runtime --> Extensions
-  Transport --> Extensions
-  Runtime -. no imports .-> Extensions
-  Core -. no Node IO .-> FS[node:fs/os/child_process]
-  Tests[tests/architecture.test.ts\nlib layering suite] --> Core
-```
-
-### Context policy
-
-- Core `lib/` files expose contracts and pure formatting/render helpers; they
-  must not import Node filesystem, OS, or process-spawning APIs.
-  Current core files: `agent-names.ts`, `completion-signal.ts`,
-  `message-transport.ts`, `secret-redaction.ts`, `task-brief.ts`,
-  `tool-result.ts`, `tui-confirmation.ts`, and `tui-overflow.ts`.
-- Shared IO/runtime primitives in `lib/` are imported by multiple callers and
-  own generic filesystem, process, settings, session, and registry behavior.
-  Automations-owned modules live in `extensions/pi-automations/lib/`; Panopticon spawn
-  modules live in `extensions/pi-panopticon/spawner/`; CLI adapters live in
-  `scripts/`. The fitness suite rejects undocumented or single-caller files.
-- Pure runtime mappers that do not touch IO may live beside runtime helpers when
-  their data shape is runtime-specific; currently `session-journal.ts` is in
-  this bucket.
-- Transport adapters live under `lib/transports/`; they may perform
-  protocol-specific IO but must depend only on lower-level contracts/services,
-  not extension runtime modules.
-- Runtime/session and transport `lib/` files may perform IO, but must stay below
-  extensions and must not import extension runtime code.
-- Dependency direction is one-way: extensions may import shared `lib/` primitives;
-  `lib/` must not import `extensions/`. Extension-owned public libraries under
-  `extensions/*/lib/` may be consumed by another extension when that contract
-  is explicitly part of the extension boundary. Core contracts should stay below IO/runtime helpers; any
-  exception must be documented rather than hidden.
-- Temporal-coupling measurements treat cross-module file relocations as boundary
-  migrations, not co-evolution; the migrated source and destination owners are
-  excluded for that commit.
-- `tests/architecture.test.ts` enforces the currently practical parts of this
-  layering policy: all `lib/` TypeScript modules are documented shared
-  primitives with multiple callers, core files do not import Node IO modules,
-  and `lib/` modules do not import extension runtime code.
-
----
-
-## Runtime State Boundary
-
-```mermaid
-flowchart TD
-  ExtensionA[Extension A] --> PublicApi[Owning extension public API\ntools, commands, session events, shared services]
-  PublicApi --> ExtensionB[Extension B]
-  ExtensionA -. forbidden .-> PrivateState[Other extension private state files]
-  Tests[tests/architecture.test.ts] --> PrivateState
-```
-
-### Context policy
-
-- Static import isolation remains mandatory but is not the whole runtime boundary.
-- Extension-owned state files are private; other extensions must not read, write,
-  parse, or infer behavior from them.
-- Cross-extension cooperation must stay at the owning extension's public runtime
-  API: tools, commands, documented session events, or documented shared library
-  services.
-- Architecture fitness tests enforce that extension runtime code does not
-  reference another extension's private state markers.
-
----
-
-## Persistence Discipline
-
-```mermaid
-flowchart TD
-  StateOwner[State-owning extension/lib code] --> Helpers[lib/file-persistence.ts]
-  Helpers --> Atomic[writeFileAtomic\ntemp file + rename]
-  Helpers --> Append[appendLogLine\nopen append + newline]
-  Helpers --> Json[updateJsonFile\nread/update/atomic rewrite]
-  StateOwner -. documented exception .-> Exception[Protocol/lifecycle-specific IO]
-  Tests[architecture runtime-state-boundaries suite] --> StateOwner
-```
-
-### Context policy
-
-- Common full-file state writes should use `writeFileAtomic()` so readers see a
-  complete old or new file, not a partial rewrite.
-- Append-only event logs should use `appendLogLine()` for one-line appends with
-  consistent directory creation and file mode behavior.
-- JSON read/update/write cycles should use `updateJsonFile()` unless the caller
-  needs a stronger domain-specific transaction.
-- Atomic rename does not serialize competing read/modify/write cycles. Where
-  concurrent writers can update the same derived state, use an owning append log,
-  an advisory lock, or document why last-writer-wins is acceptable.
-- Direct `writeFile`/`appendFile` use in state-writing code must either move
-  through the shared helper or appear as an explicit architecture-test exception
-  with rationale.
-
----
-
-## UX and Tool Policy
-
-TUI consistency, command/tool namespace, confirmation, overflow, and raw-ANSI rules are enforced through shared helpers such as `lib/tui-confirmation.ts`, `lib/tui-overflow.ts`, and `lib/tool-result.ts`, with `tests/architecture.test.ts` enforcing the stable policy.
-
-## Kanban Extension
-
-```mermaid
-flowchart TD
-  User[Human / orchestrator] --> Pi[pi agent session]
-  Automations[pi-automations scheduler\nrecurring operational policy owner] -->|scheduled prompt may call kanban_* tools| Pi
-  Pi --> Tools[Kanban tool adapters\n11 model-visible tools]
-  Pi --> Watcher[board.log watcher\nevent-driven only]
-  Pi --> Overlay[/kanban TUI overlay\nkeyboard navigation + / filter]
-  Overlay --> Selection[Shared selection/scroll helper\ntask-ID anchor and bounded offsets]
-  Overlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
-  Theme[KANBAN_BOARD_THEME\ndefault/focus/mono] --> Overlay
-
-  Tools --> Tx[board-transactions.ts\nread/validate/event batch]
-  Overlay --> Tx
-  Tx --> Lock[board.log.lock\none advisory lock]
-  Lock --> Board[board.ts event-sourced board model]
-  Lock --> Log[(pi-kanban/board.log\nauthority)]
-  Compaction[compaction.ts\nbackup + atomic replacement] --> Lock
-  Watcher --> Board
-  Board --> Priority[Deterministic display priority ordering\nactive columns only; stable board-order ties]
-  Priority --> Overlay
-  Priority --> Snapshot
-  Board --> Tasks[(pi-kanban/tasks/T-NNN.md\nderived)]
-
-  Tools --> Snapshot[snapshot.ts renderers]
-  Snapshot --> Compact[Compact summary\nIDs + short status only]
-  Snapshot --> TaskDetail[Single-card detail\nrequested by task_id]
-  Snapshot --> Full[Full board detail\nrequested by detail=full]
-  Snapshot --> SnapshotFile[(pi-kanban/snapshot.md\nfull board)]
-
-  Watcher --> Injection[followUp message\ncompact guidance only]
-  Injection --> Pi
-  Pi -->|default kanban_snapshot| Compact
-  Pi -->|explicit task_id| TaskDetail
-  Pi -->|explicit detail=full or /kanban| Full
-```
-
-```mermaid
-C4Component
-    title Confirmed Kanban deletion transaction
-    Component(overlay, "Kanban TUI overlay", "Controller", "Requires explicit y/Enter confirmation")
-    Component(tx, "Shared deleteTask transaction", "board-transactions.ts", "Rejects only in-progress tasks; validates and appends atomically")
-    Component(log, "Authoritative board.log", "Event log", "Retains DELETE audit event")
-    Component(replay, "Board replay", "board.ts", "Reconstructs deleted state and excludes deleted tasks")
-    Rel(overlay, tx, "confirms blocked deletion")
-    Rel(tx, log, "appends DELETE under board.log.lock")
-    Rel(log, replay, "replays DELETE")
-```
-
-### Context policy
-
-- LLM-visible surface unified around `kanban_claim` (pick/claim/reassign) and
-  `kanban_edit` (metadata/notes).
-- Ordinary appends, read-validation-event transactions, and compaction use the
-  same `board.log.lock` advisory lock. Multi-event transitions append one ordered
-  batch; compaction holds the lock while reading, backing up, and replacing the
-  authoritative log.
-- Task Markdown and snapshots are derived state; `board.log` remains authority.
-- Watcher injects guidance only; does not inject board contents.
-- `/kanban` uses pi's active TUI theme with a restrained `KANBAN_BOARD_THEME` semantic remap (`default`, `focus`, `mono`).
-- `kanban_snapshot` defaults to compact output: counts, card IDs, short
-  titles/owners, no descriptions or notes.
-- Full board and single-card details are explicit on-demand views.
-- Recurring schedules, cron-like cadence, morning briefs, state capture, recurring reviews, and Automations operational policy belong to `pi-automations`, not `pi-kanban`.
-- `pi-kanban` watcher follow-ups are event-driven board-change notifications, not a scheduler.
-
----
-
-## Pi Teams Run Progress Boundary
-
-```mermaid
-flowchart LR
-  Handler[Direct protocol handler] --> Events[Persisted team run events]
-  Events --> State[TeamStateManager applies event]
-  State --> Subscribers[Transient per-run subscribers]
-  Subscribers --> Widget[Compact team:runId widget\nall concurrent nodes]
-  Stop[team_stop or /teams stop] --> Select[Newest active selector\nstartedAt then id]
-  Select --> State
-  Status[team_runs or /teams status] --> State
-  State -. no subscription events .-> Events
-```
-
-- Run events remain the only persisted team progress state; subscriptions are isolated, in-memory, and removed when each run settles.
-- Widgets use per-run keys so concurrent teams do not overwrite each other, and refresh only after state events rather than on a polling interval.
-- No-ID cancellation considers only `pending` and `running` records and deterministically chooses greatest `startedAt`, then lexicographically greatest id. Terminal runs reject stop without new events.
-- `TeamStateManager` is the only team lifecycle authority. The duplicate runtime registry, `runtime_status`/`runtime_stop` aliases and `/team` interception modes are removed. Explicit run/async commands share the tool execution and async delivery paths; model/profile defaults are unchanged.
-
-## Pi Teams Browser Render Boundary
-
-```mermaid
-flowchart LR
-  Open[Open browser / explicit reload] --> Registry[Team registry filesystem read]
-  Registry --> Specs[Sorted TeamSpec snapshot]
-  Specs --> Cache[Precomputed detail-line cache]
-  Cache --> State[Focusable browser state]
-  Input[Keyboard / IME input] --> State
-  State --> Render[Pure width-bounded render closure]
-  Render --> Components[Native pi TUI components]
-  State --> RunAction[One-shot Run action]
-  RunAction --> ProfilePicker[Native SelectList\nfast / balanced / thorough]
-  ProfilePicker --> Prompt[Prompt editor]
-  Prompt --> TeamRun[runTeam input\nteam + profile + prompt]
-  Fitness[Architecture fitness test] -. forbids registry and sync filesystem calls .-> Render
-```
-
-- Registry snapshots and registry-derived detail lines are loaded before the browser render closure runs.
-- Browser render closures consume only in-memory state; explicit delete/reload actions refresh both the team snapshot and detail cache.
-- The focusable browser propagates focus only while its search input is visible, preserving IME cursor placement.
-- The Run action closes the browser before opening a native profile selector and prompt editor; its profile is one-shot input passed directly to `runTeam`, not session-mode state.
-- `tests/architecture/tui-render-paths.ts` guards team overlay render closures against synchronous registry/filesystem reads.
-
-## Pi Teams Profile Evaluation Boundary
-
-```mermaid
-flowchart LR
-  Fixtures[Versioned deterministic fixtures] --> Rubric[Routing / bounds / validity / behavior rubric]
-  Rubric --> CI[Normal test:evals and npm test]
-  OptIn[PI_TEAM_LIVE_BENCHMARK=1] --> Harness[Live benchmark harness]
-  Providers[Configured live providers] --> Harness
-  Harness --> Metrics[Redacted JSON\nend-to-end + per-node durations]
-  Metrics --> Review[Median/P95 gate review]
-  Review -. gate not passed .-> Balanced[Balanced remains default]
-  CI -. no network calls .-> NoClaim[Contract evidence only\nno live benchmark claim]
-```
-
-- Deterministic speed-profile fixtures are CI-safe and contain only synthetic public inputs/results.
-- The live harness is outside normal CI, requires explicit opt-in, deletes raw session data, and does not retain prompts, outputs, or credentials.
-- Live records are local review artifacts rather than runtime telemetry; this introduces no service, scheduler, or durable runtime-state owner.
-- Baseline fields and promotion gates are defined in [`tests/evals/team-speed-profile-evaluation.md`](../tests/evals/team-speed-profile-evaluation.md). Balanced remains the default until reviewed Navigator live comparisons pass.
-
-## Standalone Host-Injected Boost Runtime Boundary
-
-ADR-046/047 assign Boost to `pi-boost`, not Panopticon or a Team. Normal extension loading supplies no bridge and registers a fail-closed `/boost` denial. A capable host must explicitly call `createBoostExtension` through the reviewed host constructor with the complete bridge, immutable live-control reference, descriptor resolver, and shutdown choice; there is no global, API cast, provider discovery, Team manifest, or configuration fallback.
-
-The default identity boundary requires `PI_PRINCIPAL=1` and rejects sessions carrying the shared parent-agent marker. ADR-047 gives Boost a fixed `boost.md` descriptor discovered through `lib/declarative-discovery.ts`; neither Panopticon nor a descriptor publisher has a write surface inside `pi-boost`. Boost owns validation and runtime policy.
-
-```mermaid
-flowchart LR
-  Principal[Authenticated Principal] --> Command[pi-boost /boost]
-  Default[Normal extension load] -. no host capability .-> Deny[Fail-closed denial]
-  Attestation[Contract path + SHA] --> Host[Reviewed host constructor]
-  Host --> Command
-  Command --> Descriptor[Boost descriptor resolver]
-  Descriptor --> Discovery[lib declarative discovery]
-  Command --> LiveControl[Injected live-control gate]
-  Command --> Governance[Per-dispatch governance]
-  Command --> Store[WAL-backed global lease]
-  Store --> TTL[Two-hour expiry / max three yields]
-  Command --> Provider[Cancellable provider seam]
-  Provider --> Restore[Baseline restore]
-  Descriptor -->|fingerprint/layer invalidation| Revoke[Abort → bounded terminal ack → restore → idempotent isolation disposal]
-  LiveControl -->|revision / revoke / expiry| Revoke
-  TTL -->|lease expiry| Revoke
-  Revoke --> Audit[Redacted audit + durable release]
-```
-
-The descriptor permits only its fixed schema: enablement and Principal issuer IDs, enabled state, bounded yields, expiry, revision, and the reviewed `principalBoostLease` model identity. The reviewed resolver must exactly match its provider/id/family; baseline remains `principalBoostBaseline`/`glm-5.2`. The separate injected live-control adapter exposes only `resolve` and `subscribe`, and can only narrow or revoke. Every reservation and dispatch authenticates the Principal and revalidates descriptor, fingerprint, reviewed mapping, live control, and governance.
-
-The production assembly accepts descriptor discovery, injected live control, reviewed model resolver, append-if-sequence WAL, governance classifier, cancellable provider seam, baseline restore, idempotent isolation disposal, and redacted audit. Assembly is cold: it performs no provider call, descriptor write, default-model mutation, schedule change, or background activation.
-
-The store persists `expiresAt = reservation time + 7,200,000 ms`, enforces one global lease and at most three human yields, and rejects stale generations. At the next status, dispatch, or reservation boundary, an expired lease restores baseline, appends redacted audit, and durably releases the slot before replacement. Revision revocation follows `Revoking → abort → terminal acknowledgement → restore → audit → release`.
-
-Restore, isolation disposal, audit, acknowledgement, or cleanup failure writes a durable per-subject `RevertFailed` marker and blocks dispatch for that subject. Principal reset requires fresh descriptor/live-control validation and baseline restoration. Shutdown chooses awaited restoration or a durable recovery block, and no activation survives restart.
-
-## Panopticon Controls
-
-```mermaid
-flowchart TD
-  Caller[Model / RPC caller] --> GetName[get_name tool]
-  Caller --> SetName[set_name tool]
-  SetName --> Session[Pi session display name]
-  SetName --> Registry[Panopticon registry record]
-  Registry --> Display[Agent lists and peer routing]
-  Display --> AgentsOverlay[/agents overlay\nstatus, fuzzy filter, detail/list navigation, messaging, stop/kill]
-  AgentsOverlay --> Confirm[Shared destructive confirmation\ny confirm / esc/n cancel]
-  Confirm --> Signals[Process signals\nSIGTERM / SIGKILL]
-  AgentsOverlay --> Maildir[Agent transport\nMaildir channel]
-  Maildir --> Peers[Peer / spawned agents]
-  Signals --> Peers
-  GetName --> Details[Session, registry, and spawn-name metadata]
-
-  Registry --> Reconciler[Reconciliation loop]
-  State[Operational workspace state] --> Reconciler
-  Reconciler --> Classifier[Actionable vs informational findings]
-  Classifier -->|pending / blocked / confirmed stale / silent termination| FollowUp[followUp message]
-  Classifier -->|idle healthy peers| Suppress[Suppress idle noise]
-```
-
-### External-agent mailbox flow
-
-```mermaid
-flowchart LR
-  Startup[Panopticon session_start] --> Workspace[ctx.cwd/external-agents.json]
-  Command[External-agent register/remove command] --> Lock[Manifest advisory lock]
-  Lock --> Workspace
-  Workspace --> ExternalPeers[In-memory external peers]
-  ExternalPeers --> Unified[Registry.readAllPeers]
-  PiRegistry[Volatile pi registry] --> Unified
-  Unified --> Send[agent_send / broadcast / peek / status]
-  Command --> Mailbox[Confined persistent Maildir\n~/.pi/persist/external-agents]
-  Send --> Mailbox
-  Mailbox --> Process[External process]
-  Process --> PiInbox[Pi Maildir inbox]
-  PiInbox --> Read[message_read]
-```
-
-- Startup loads the workspace manifest before pi name selection; register and remove commands refresh the same in-memory external-peer snapshot immediately.
-- Manifest updates use an advisory lock, while mailbox paths are absolute, root-confined, and created without following symlinks.
-- Removing an external registration does not remove its persistent Maildir contents.
-
-### Context policy
-
-- `set_name` and `get_name` are the only model-visible naming tools.
-- Deprecated `set_alias` and `get_alias` wrappers have been removed after their
-  deprecation window.
-- Registry routing remains based on stable peer IDs; display names are UI labels.
-- `/agents` can send direct human-authored messages through the same agent transport as `agent_send`; replies still arrive through normal unread-message handling.
-- `/agents` list view supports `/`-activated fuzzy filtering for long visible agent lists without changing registry routing or unread-first sorting.
-- `/agents` detail view uses `backspace`/left-arrow to return to the agent list while `esc` closes the overlay.
-- `/agents` detail view can stop visible peer agents with SIGTERM or force-kill with SIGKILL after confirmation; it refuses to target the current agent.
-- Reconciliation follow-ups are sparse and action-oriented; stale worker alerts
-  require a fresh confirmation read, and idle stale-activity checks are
-  suppressed when peers are healthy and have no pending messages (ADR 014).
-
----
-
-## Matrix Outbound Rich Text
-
-```mermaid
-flowchart TD
-  Agent[Agent plain Markdown reply] --> Formatter[pi-matrix Markdown formatter]
-  Formatter --> Html[Matrix-safe HTML fragment]
-  Formatter --> Plain[Plain-text fallback]
-  Html --> Content[m.text content\nformat=org.matrix.custom.html]
-  Plain --> Content
-  Content --> SDK[matrix-js-sdk sendMessage]
-  SDK --> Client[Matrix client rendering]
-```
-
-### Context policy
-
-- Outbound formatting is intentionally local and dependency-free.
-- Raw HTML is escaped except simple `<u>...</u>` underline tags needed by Matrix rich text.
-- Plain-text fallback strips Markdown markers and uses readable Unicode symbols for bullets, quotes, and horizontal rules.
-
----
-
-## Matrix Attachment Ingestion
-
-```mermaid
-flowchart TD
-  Human[Human Matrix client] --> HS[Homeserver media repository]
-  HS --> SDK[matrix-js-sdk sync loop]
-  SDK --> Matrix[pi-matrix MatrixBridgeClient]
-  Matrix --> Diagnostics[Safe status / recovery diagnostics]
-  Matrix --> Filter[trusted sender + msgtype filter]
-  Filter --> Text[m.text / m.notice / m.emote]
-  Filter --> Media[m.image / m.file / m.audio / m.video]
-  Media --> Gates[MIME allowlist + maxAttachmentBytes]
-  Gates --> Download[Matrix media API stream]
-  Gates --> Deferred[encrypted blob deferred]
-  Download --> Cache[(attachmentCachePath)]
-  Text --> Transport[MatrixTransport]
-  Cache --> Transport
-  Transport --> Panopticon[pi-panopticon message_read]
-  Panopticon --> Agent[Agent reads local paths explicitly]
-```
-
-### Context policy
-
-- Matrix attachments are external input and are not executed or parsed automatically.
-- `message_read` includes filename, MIME, size, local path, MXC URL, room, and event metadata.
-- Workers use built-in `read` on local image/PDF/file paths only when the task requires it.
-- Encrypted media blobs are deferred because the SDK decrypt helper does not expose a bounded download path; a visible attachment error is surfaced.
-- Matrix diagnostics redact token-like values, expose a recovery action in every mode, and release the client/channel when startup fails or the session reloads.
-
----
-
-## Research Tool Boundary
-
-```mermaid
-flowchart TD
-  DeepResearch[pi-teams deep-research\nExplorer / Verifier / Synthesis] --> PromptTools[Implicit prompt tool names]
-  PromptTools --> Registered[pi-research-tools in pi-extension-poc\nregistered dry-run tools]
-  PromptTools --> Manifest[pi-extension-poc lib/research-tool-fixtures.ts\nmetadata fixtures]
-  Registered --> Json[Typed params + JSON output\nempty dry-run envelopes]
-  Manifest -. declares only .-> Artifacts[sources/manifest.json\nsourceId + provenance metadata]
-
-  Registered -. no runtime .-> NoNetwork[No live network/API calls]
-  Registered -. no runtime .-> NoCreds[No credentials]
-  Registered -. no runtime .-> NoWrites[No artifact writes]
-```
-
-### Context policy
-
-- Research-tool metadata in `/home/jim/git/pi-extension-poc` remains the source for compatibility checks and future provider design.
-- `pi-research-tools` exposes a narrow registered-tool slice with typed parameters and JSON dry-run output only; this repo no longer owns its implementation.
-- Deep-research workflow policy stays in `extensions/pi-teams` prompts and protocol handlers.
-- Source IDs, provenance fields, artifact paths, and result semantics are declared before any provider/runtime promotion.
-- Runtime providers, credential handling, extension loading changes, durable artifact persistence, and deletion of old research behavior require separate approval/ADR.
-
----
-
-## Goal Workflow Extension
-
-```mermaid
-flowchart TD
-  User[Human / root agent] --> Command[/goal command]
-  Agent[Active agent turn] --> Tools[goal_get / goal_complete]
-  Command --> State[(.pi/goal/instances/goalId/goal.json)]
-  State --> Summary[(GOAL.md: one active summary)]
-  Command --> Source[Original source file: not copied or rewritten]
-  Command --> Runner[Owned run loop with stop and liveness containment]
-  Runner --> Fresh[Fresh pi session per turn]
-  Fresh --> Agent
-  Agent --> Tools
-  Tools --> State
-  Tools --> Summary
-  Agent --> Transcript[(.pi/goal/runs/YYYY/MM/DD/*)]
-  State --> Context[before_agent_start goal context]
-  Context --> Agent
-  State --> UI[status/widget progress]
-```
-
-### Context policy
-
-- `.pi/goal/` is project-local runtime state and is automatically added to `.git/info/exclude` when possible.
-- `pi-goal` owns `.pi/goal/`; other extensions, including `pi-panopticon`, must not read, parse, write, or infer behavior from those files.
-- Cross-extension goal orchestration must use public runtime surfaces: `/goal`, `goal_get`, `goal_complete`, agent messages/tools, or extension host APIs.
-- `/goal` executes immediately until completion; an explicit `--turns N` adds a turn bound. Stop/pause, ownership, session lineage, liveness containment and trusted completion gates remain enforced.
-- New goals generate no TODO/SPEC/PLAN/STATUS scaffolding. Existing source documents and historical artifacts survive loading and resume; explicit clear remains confined to known generated state.
-- `goal_complete` is root-owned and requires concrete evidence after re-reading source requirements and checking validation state.
-- Goal text and source files are treated as untrusted input; current repository/filesystem state remains authoritative.
-
-### Continuous execution and liveness (ADR-049)
-
-```mermaid
-sequenceDiagram
-    participant Operator
-    participant Goal as pi-goal authority
-    participant Pi as pi session
-    participant Watchdog as unref watchdog
-    Operator->>Goal: /goal objective
-    Goal->>Goal: claim driver token + generation + revision
-    Goal->>Pi: execute authorized objective
-    Pi->>Goal: root goal_complete with concrete evidence
-    Goal->>Goal: validate trusted gate and revoke driver
-    Goal->>Pi: continue only while goal remains active
-    Watchdog->>Goal: inspect persisted lastProgressAt
-    Watchdog->>Pi: one idle nudge per liveness epoch
-    Watchdog->>Goal: hard timeout pauses run
-```
-
-`goal.json` is authoritative for execution, revision-checked driver ownership and bounded lifecycle/liveness dispositions. `GOAL.md` is a derived summary, not an execution log or approval checklist. The root records completion evidence; old plan state is cleared before direct execution. The watchdog uses operator-configured thresholds, does not nudge active work, and is disposed on shutdown. Source documents and recorded session/run history remain intact.
-
----
-
-## Automations Confined Filesystem Boundary
-
-```mermaid
-flowchart LR
-  Consumers[Schedule / status / workspace / approval consumers] --> Paths[store-paths.ts\npure validated paths, IDs, env format]
-  Consumers --> Store[ConfinedStore\nconfig or authorized-root bound]
-  Paths --> Store
-  Store --> Guard[Shared confined-store-security.ts\nlexical + resolved containment; no symlink components\nregular-file and post-creation checks]
-  Guard --> Home[(AUTOMATIONS_HOME managed roots)]
-  External[Explicit external workspace] --> Metadata[.pi/automations/workspace.env authorization]
-  Metadata --> ExternalStore[ConfinedStore bound to validated real root]
-  ExternalStore --> Guard
-  Guard --> ExternalRoot[(Authorized external workspace root)]
-```
-
-- `store-paths.ts` performs no IO; it owns lexical path construction, ID validation, and schedule/workspace env formatting.
-- `ConfinedStore` is the sole Automations-owned filesystem primitive boundary. It validates the complete absolute path chain, binds an authorized root, rejects symlink components and directory entries, and validates a deletion batch before mutation.
-- These checks provide ordinary substitution/non-regular hardening and resolved-path defense in depth, not race-resistant filesystem operations: concurrent check-then-use replacement remains outside the guarantee.
-- `AUTOMATIONS_HOME` bootstrap creates one path component at a time without following symlinks. Managed schedule, log, lock, run-state, approval, and workspace IO uses a config-bound store.
-- External workspaces remain available only when their validated root contains a non-symlinked `.pi/automations/workspace.env`; context IO stays confined to that root.
-- `tests/architecture/automations-confined-io.ts` prevents production consumers from restoring direct state IO or unbound legacy helper exports. Consumer-level regressions exercise schedule, status, workspace, approval, run-state, and log routes.
-
-## pi-scheduler (Automations-hosted scheduler)
-
-### Goal
-
-Replace crontab-oriented Automations scheduling with a pi-hosted internal scheduler.
-Schedule files remain the desired state; active in-memory timers become runtime
-reality while pi is open. Automations owns recurring operational policy over other
-extension surfaces, including scheduled prompts that may use `kanban_*` tools for
-WIP pick routines, morning briefs, state capture, and recurring reviews.
-
-### Constraints
-
-- Preserve existing schedule file compatibility and model-callable parameters; legacy `MODEL_SNAPSHOT` fields are ignored.
-- Scope schedules to the session/workspace or explicit target agent, never the active LLM model.
-- Do not execute schedules outside pi.
-- Do not modify user crontab.
-- Keep schedule execution explicit: inject a user message into pi when due.
-- Keep implementation small and testable.
-
-### Architecture
-
-```mermaid
-C4Component
-    title pi-scheduler (Automations-hosted)
-    Container(pi, "pi session", "Extension host", "Runs extension lifecycle and message injection")
-    Component(automations, "pi-automations", "Extension", "Owns schedule tools, commands, and lifecycle")
-    Component(files, "Schedule files", ".pi/automations/schedules or AUTOMATIONS_HOME/schedules", "Desired schedule state")
-    Component(store, "ConfinedStore", "Root-bound filesystem capability", "Rejects path escapes and symlink components")
-    Component(scheduler, "Internal scheduler", "Timer loop", "Reconciles enabled schedules and queues due prompts")
-    Component(agent, "Pi agent turn", "LLM runtime", "Executes scheduled prompt as normal user message")
-    Component(kanban, "pi-kanban tools", "Board surface", "Reusable board state/actions; no recurring schedule ownership")
-    Rel(pi, automations, "loads")
-    Rel(automations, store, "requests config-bound IO")
-    Rel(store, files, "reads/writes after confinement checks")
-    Rel(automations, scheduler, "starts/stops/reconciles")
-    Rel(scheduler, store, "polls desired state through")
-    Rel(scheduler, agent, "sendUserMessage independent of active model")
-    Rel(agent, kanban, "may call kanban_* tools from scheduled prompt")
-```
-
-### ADR-060 bounded scheduler-slot admission
-
-```mermaid
-flowchart LR
-  Scheduler[Scheduler tick / startup catch-up] --> Reserve[Exclusive slot token reservation]
-  Reserve --> Tx[Per-slot lock-held CAS
-  reread + validate token/status + atomic replace]
-  Tx --> Approval{Approval required?}
-  Approval -->|yes| Pending[approval_pending
-  same slot token artifact]
-  Pending --> Resume[Authorized same-token resume]
-  Approval -->|no| Admit[admitted]
-  Resume --> Admit
-  Admit --> Host[Host sendUserMessage boundary]
-  Host --> Returned[host_call_returned
-  not provider acknowledgement]
-  Host --> Uncertain[uncertain
-  blocked, no automatic retry]
-  Tx --> NoSend[rejected / deferred / dispatch pause
-  explicit no-send outcome]
-  Tx --> PreFail[failed_pre_handoff
-  only retryable outcome]
-```
-
-The slot transaction uses the shared `ConfinedStore`; it does not claim TOCTOU elimination. Reserved, approval-pending, admitted, host-called, returned, and uncertain records block automatic duplicate admission.
-
-### Acceptance criteria
-
-- `pi-automations` starts/stops an internal scheduler on session lifecycle.
-- Schedule add/remove reconciles in-memory timers.
-- `/automations-schedules`, `automations_status`, `automations_doctor`, and the compact TUI status field report internal scheduler
-  state instead of crontab state.
-- Scheduler telemetry is ephemeral and queue-level only: aggregate `queued`/`failed` counters and
-  `lastQueuedAt`/`lastFailedAt`/`lastTaskId` surfaced through existing status channels, reset on stop.
-  No public telemetry tool, durable metrics store, event bus, or cross-extension import is introduced.
-- Cron install/uninstall commands replaced by internal scheduler commands/status.
-- Tests cover due-time matching, schedule prompt rendering, scheduler telemetry accounting, and delivery across active-model changes.
-- Schedule creation emits no model identity; model selection/restoration cannot skip or mutate a due run.
-- Automations remains the owner for recurring operational policy; `pi-kanban` remains schedule-free.
-
----
-
-## Automations Workspace Context
-
-### Goal
-
-Keep `pi-automations` context project-local and gradual-disclosure safe. Active `CONTEXT.md` files are small SPR-style durable memory, not transcript archives.
-
-### Architecture
-
-```mermaid
-flowchart TD
-  CWD[pi session cwd] --> HOME{AUTOMATIONS_HOME/settings?}
-  HOME -- explicit --> ROOT[configured Automations home]
-  HOME -- absent --> LOCAL{nearest .pi/automations workspace root?}
-  LOCAL -- yes --> PROJ[project-local .pi/automations/workspace]
-  LOCAL -- legacy --> PROJLEG[project-local .pi/automations/workspaces]
-  LOCAL -- no --> GLOBAL[user-global .pi/automations]
-  READ[automations_workspace_read] --> SUMMARY[default summary: path size headings bounded preview]
-  READ -->|mode=section/full| GUARD[hard size guard]
-  UPDATE[automations_workspace_update] --> APPEND[append stable non-secret fact]
-  APPEND --> THRESH{active CONTEXT.md over threshold?}
-  THRESH -- yes --> ARCHIVE[copy previous file to archive/] --> SPR[rewrite compact active SPR memory]
-  THRESH -- no --> KEEP[keep active file]
-```
-
-### Acceptance criteria
-
-- Project-local `.pi/automations/workspace/<id>` is the standard workspace root when present; existing plural `workspaces/` roots remain readable for migration compatibility.
-- `automations_workspace_read` never returns full context by default; full and section modes are explicit and size guarded.
-- `automations_workspace_update` archives before compacting oversized active context and preserves private permissions.
-
----
-
-## Automations scheduled approval and scheduler split
-
-```mermaid
-flowchart LR
-  Tick[Scheduler tick] --> Guard[Delivery guard]
-  Guard --> Gate[Approval claim-check]
-  Gate -->|awaiting| Parked[(One requestId + run-state snapshot)]
-  Gate -->|approved| Run[Run-once delivery]
-  Parked -->|Principal approval| Resume[Direct resume callback]
-  Resume --> Run
-  Run --> End[agent_end]
-  End --> Terminal[completed / interrupted]
-  Remove[removeSchedule] --> Cleanup[Schedule, run-state, approval cleanup]
-```
-
-`pi-automations` keeps scheduler orchestration separate from run-once delivery,
-approval transitions, recovery, and run-state persistence. A parked approval is
-resumed with its original request and run identity; it is not re-triggered as a
-new cron delivery. Approval artifacts are bounded private claim-checks with
-sanitized content and terminal retention cleanup. The architecture fitness suite
-therefore checks module budgets without exemptions while continuation state stays
-one bounded snapshot per task.
-
-## Standalone boost boundary
-
-`pi-boost` owns the mutable Principal lease and runtime lifecycle. `pi-panopticon` observes agent and team runtime state only and has no boost registration or authority dependency.
-
-```mermaid
-flowchart LR
-  Principal --> Boost[pi-boost]
-  Boost --> Authority[Lease authority]
-  Boost --> Audit[Persistence and audit]
-  Boost --> Runtime[External config + provider adapter]
-  Panopticon[pi-panopticon] --> Runtime[Agent/team runtime observation]
-```
-
-## Registry and scheduling
-
-Panopticon owns the file-backed native registry and Maildir messaging. External
-registrations use the validated workspace manifest. Fleet reads native records
-without reaping them and applies the existing visibility policy. Automations schedules
-run through the Pi-hosted scheduler while Pi is open; there is no independent
-background scheduler or alternate registry backend.
+- `lib/` provides shared contracts and infrastructure, not extension orchestration.
+  [Its consumer inventory](../lib/README.md) explains retained single-consumer
+  primitives. Tests do not count as production consumers.
+- Extension-private helpers stay beside their owner. Teams live-agent
+  instrumentation lives in Teams; it is not a Panopticon control plane.
+- Shared libraries never import extension runtime or tests. Extensions do not
+  import another extension's internals; explicitly public `extensions/*/lib/`
+  contracts are the permitted cross-extension seam.
+- No shipping code imports benchmark implementations. Offline tests may import
+  pure benchmark helpers; live provider calls require explicit opt-in.
+- Cross-extension state access uses documented APIs, tools or session events,
+  not parsing another extension's private state files.
+
+## Persistence and confinement
+
+Atomic replacement (`lib/file-persistence.ts`) protects readers from partial
+files; it does **not** serialize concurrent read/modify/write. Use an advisory
+lock or the owning transaction where writers compete. Event appends and Kanban
+compaction share the board lock. Preserve history, backups, ownership checks,
+and partial-success reporting.
+
+`ConfinedStore` validates authorized roots, path components and regular-file
+requirements; it rejects symlinks and validates deletion batches before mutation.
+External Automations workspaces require explicit authorized-root metadata.
+These are check/use defenses, not kernel-level race-free filesystem guarantees.
+Private registry/Maildir/result state retains its permission and confinement
+checks. Team result artifacts use the configured team root, never an arbitrary
+repository-relative output path.
+
+## Execution and completion
+
+- **Goal:** one locally owned driver; admission and replacement are revision/
+  token checked. No implicit TTL/PID takeover. Stop, edits and cancellation
+  invalidate stale verification. Completion requires the operator's
+  `PI_GOAL_GATE_COMMAND`; prose and an absent verifier cannot complete a goal.
+  Repair is opt-in and bounded. A genuine blocker pauses rather than completes.
+  Liveness elapsed time alone does not stop productive work.
+- **Kanban:** completion uses its locked, revalidating domain operation and the
+  operator-configured gate when present. Caller-supplied gate commands remain
+  ignored. Ordinary views never export or compact; those are explicit actions.
+- **Automations:** slot admission and approval share durable identity. Reserved,
+  admitted and uncertain deliveries block automatic duplicates. A void host
+  send is not proof of provider delivery; explicit approval remains required.
+- **Teams:** one run/status/stop authority; terminal stops do not rewrite history.
+  Results and cancellation retain their bounded, private claim-check semantics.
+- **Boost:** restore on settlement rather than interrupting live work. Settings
+  and model/profile defaults are not altered by repository refactors.
+
+See Goal's [source intent](../extensions/pi-goal/src/md/README.md), ADRs
+[051](adr/051-pi-goal-session-lineage-isolation.md),
+[059](adr/059-goal-driver-ownership.md) and
+[060](adr/060-automations-scheduler-slot-admission.md) for the detailed contracts.
+
+## Validation by purpose
+
+| Check | Protects |
+| --- | --- |
+| `npm run check` | Namespace/template safety, types, lint, unused code and type coverage |
+| `tests/architecture/api-contracts.ts` | Dependency direction, extension isolation and cycles |
+| `tests/architecture/lib-layering.ts` | Production consumers, pure core and inward dependencies |
+| State, confinement, Goal, Kanban and tool-contract suites | Permissions, authority, transactions, truthful outcomes |
+| `tests/architecture/tui-render-paths.ts` and UX policy suites | Render purity, confirmation and bounded UI output |
+| `tests/evals/` | Offline fixture, fake-RPC and evaluation-contract regressions |
+| [`benchmarks/`](../benchmarks/README.md) | Explicit live experiments; not CI proof or operational completion |
+
+Line count, approximate complexity, parameter count, cohesion and historical
+co-change are inspection aids—not pass/fail architecture contracts. Removing
+those quotas does not remove dependency, persistence, permission or verification
+gates. New checks should fail on a concrete forbidden behavior, not require
+artificial file splits or an unrelated reduction whenever a hotspot changes.

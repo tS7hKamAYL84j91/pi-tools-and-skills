@@ -2,154 +2,75 @@
 
 ![pi-panopticon](docs/images/pi-panopticon.png)
 
-Reusable extensions, skills, prompts, and shared libraries for [pi](https://github.com/earendil-works/pi), a local-first coding agent.
+Local-first extensions, skills, prompts, and shared libraries for
+[Pi](https://github.com/earendil-works/pi).
 
-This repository provides reusable operator tooling for a personal Chief of Staff setup: extension packages, agent skills, prompt templates, and shared TypeScript utilities.
+## Install
 
-## Getting started
+Requires Pi and Node.js 22+. Local development also needs Python 3.10+ for the
+offline Goal benchmark tests; security scanning uses gitleaks and Semgrep.
 
-### Prerequisites
-
-- [pi](https://github.com/earendil-works/pi) installed and working
-- Node.js 22+
-- Python 3 (only required for `npm run security:semgrep` in CI security scans, not needed for normal use)
-
-### 1. Install
-
-For local development:
-
-```bash
+```sh
 git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
 cd pi-tools-and-skills
-npm install
+npm ci
 ```
 
-For pi package installation:
+Install as a Pi package with `pi install /absolute/path/to/pi-tools-and-skills`
+or `pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`.
+`make setup` registers this checkout globally with Panopticon and Goal enabled.
+`make setup-package PACKAGE=<name>` registers one user-installable package.
+Project-only extensions remain opt-in through the owning workspace's Pi settings.
+Setup changes package registration, not runtime/project settings.
+Run `make help` for setup, removal, checks, and utility commands.
 
-```bash
-pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
-# or from a local checkout:
-pi install /absolute/path/to/pi-tools-and-skills
+## Packages and usage
+
+Each package README owns its commands, settings, supported installation scope,
+and operating limits. This index deliberately does not repeat those contracts.
+
+| Package | Responsibility |
+| --- | --- |
+| [Panopticon](extensions/pi-panopticon/README.md) | Agent registry, transport, spawning and health |
+| [Goal](extensions/pi-goal/README.md) | Owned goal execution and trusted verified completion |
+| [Teams](extensions/pi-teams/README.md) | Bounded consult, debate and research |
+| [Boost](extensions/pi-boost/README.md) | Prompt-scoped model switching and restoration |
+| [Automations](extensions/pi-automations/README.md) | Pi-hosted scheduling and workspace context |
+| [Kanban](extensions/pi-kanban/README.md) | Optional human task overview |
+| [Matrix](extensions/pi-matrix/README.md) | Human-facing Matrix transport |
+| [File Watch](extensions/pi-file-watch/README.md) | Explicit, bounded file notifications |
+| [Ollama Models](extensions/pi-ollama-models/README.md) | Local Ollama model discovery |
+| [Fleet MCP](fleet-mcp/README.md) | Standalone MCP adapter |
+| [Fleet overview](fleet-overview/README.md) | Standalone browser overview and gated controls |
+
+## Where things belong
+
+- `extensions/` — independently owned Pi features and their usage docs.
+- [`lib/`](lib/README.md) — shared contracts and infrastructure; consumer inventory.
+- `fleet-mcp/`, `fleet-overview/` — standalone applications, not more registries.
+- `skills/`, `prompts/` — reusable agent guidance; extension-specific skills stay
+  with their extension.
+- `scripts/` — installation, maintenance and build/check commands.
+- [`benchmarks/`](benchmarks/README.md) — evaluation runners, not shipping runtime.
+- `tests/` — offline checks, including benchmark fixture/fake-provider coverage.
+- [`docs/`](docs/README.md) — cross-repo architecture boundaries and decision history.
+- [`TODO.md`](TODO.md) — current work only; completed work remains in Git history.
+
+## Development and security
+
+```sh
+npm run check          # namespace, template safety, types, lint, knip, coverage
+npm test               # offline unit, contract, architecture and evaluation tests
+make secret-scan      # history and working-tree secret checks
 ```
 
-The package manifest exposes `extensions/`, `skills/`, and `prompts/` to pi. `make setup` registers this checkout as a local pi package with a global extension filter for `pi-panopticon` and `pi-goal`. `make setup-package PACKAGE=<name>` registers one user-installable extension package globally (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, or `pi-teams`). It does not alter runtime/project settings. `pi-research-tools` is now canonical in `/home/jim/git/pi-extension-poc`.
+Use focused tests while editing; use full checks before finishing. Architecture
+checks protect dependencies, state ownership and safety contracts—not file-size
+or co-change quotas. See [AGENTS.md](AGENTS.md) for contribution boundaries and
+[architecture](docs/architecture.md) for state/trust ownership.
 
-### 2. Set up
+The design assumes a trusted host. Messages, repository text and model output
+are untrusted input, never permission to bypass a safety gate. Credentials and
+live deployment configuration remain outside this repository.
 
-```bash
-make help                            # show targets
-make setup                           # register extensions, skills, prompts
-make setup-package PACKAGE=pi-teams  # register standalone Teams globally
-```
-
-### 3. Run pi
-
-After setup, run pi normally in any workspace:
-
-```bash
-pi
-```
-
-Add project-only extensions such as `pi-kanban` or `pi-automations` per workspace via that workspace's `.pi/settings.json`; they are intentionally rejected by global individual package setup.
-
----
-
-## What's included
-
-### Extensions
-
-`make setup` globally enables reusable operator extensions. Project/runtime extensions stay opt-in per workspace.
-
-| Extension             | Type         | What it does                                                                                            |
-| --------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
-| **pi-panopticon**     | Global       | Multi-agent messaging (`agent_send`), spawning (`spawn_agent`), health monitoring, and lifecycle management |
-| **pi-goal**           | Global       | Direct `/goal` execution with one summary, stop/resume, recovery, and completion audit tools    |
-| **pi-teams**          | User         | Explicit consult, debate, and research via `team_run`, `team_runs`, and `team_stop` |
-| **pi-matrix**         | User/Project | Phone ↔ agent bridge via Matrix — notification + inbox pattern, `message_read` / `message_send` tools   |
-| **pi-kanban**         | Project      | Optional task board — read-only views, TUI (`/kanban`), explicit export and compaction           |
-| **pi-file-watch**     | Project      | Explicit file watcher that wakes the active session with bounded redacted updates                       |
-| **pi-ollama-models**  | User         | Auto-sync local Ollama models into pi's models.json on session start/reload                              |
-| **pi-automations**           | Project      | Automations status, diagnostics, workspace, and pi-scheduler control surface                                  |
-
-### Skills
-
-Reusable skills for pi-platform tooling and compact reference guidance. Extension-specific skills are bundled with their extension package so independent `pi install ./extensions/<name>` installs include the matching guidance. Broader operator and methodology skills that are not specific to this repo live in [Automations](https://github.com/tS7hKamAYL84j91/automations).
-
-| Skill                      | Bundle        | Purpose                                                                           |
-| -------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| **node-esm-gotchas**       | shared        | Avoid common Node.js ESM and TypeScript module-resolution mistakes                |
-| **pi-agent-orchestration** | pi-panopticon | Spawn, brief, monitor, message, and shut down pi worker agents                    |
-| **pi-extension-dev**       | shared        | Build or modify pi extensions, tools, commands, hooks, and TUI widgets            |
-| **pi-model-selection**     | shared        | Verify pi-visible models and route work to the right provider/model               |
-| **pi-session-management**  | shared        | Implement session-aware behavior, persistence, compaction, and reload-safe flows  |
-| **pi-team-consultation**   | pi-teams | Optional focused review or exceptional multi-model consultation        |
-| **skill-creator**          | shared        | Meta-skill for creating and improving skills                                      |
-
----
-
-## Commands
-
-Everything goes through `make`:
-
-| Command                                                             | What                                                                                            |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `make` / `make help`                                                | Show available targets                                                                          |
-| `make setup`                                                        | Install this checkout as a local pi package                                                     |
-| `make setup-package PACKAGE=<name>`                                 | Install one user package (`pi-goal`, `pi-matrix`, `pi-ollama-models`, `pi-panopticon`, `pi-teams`) |
-| `make setup-clean`                                                  | Remove this checkout's pi package registration                                                  |
-| `make setup-package-clean PACKAGE=<name>`                           | Remove one user package registration                                                            |
-| `make doctor`                                                       | Run checks, tests, and gitleaks secret scans                                                    |
-| `make check`                                                        | Typecheck + Biome lint + knip + type-coverage (≥95%)                                            |
-| `make typecheck` / `make lint` / `make knip` / `make type-coverage` | Run one quality gate                                                                            |
-| `make secret-scan`                                                  | Scan git history and working tree with gitleaks                                                 |
-| `make test`                                                         | Run tests                                                                                       |
-| `make test-watch`                                                   | Run tests in watch mode                                                                         |
-| `make clean-mailboxes`                                              | Clean stale agent mailboxes                                                                     |
-| `make clean-mailboxes DRY_RUN=1`                                    | Preview stale mailbox cleanup                                                                   |
-
----
-
-## Structure
-
-```text
-extensions/           Extensions:
-  pi-panopticon/        Global — multi-agent messaging, spawning, health
-  pi-teams/              User — standalone declarative consult, debate, and research teams
-  pi-goal/              Global — bounded /goal workflow and completion audit
-  pi-kanban/           Project — event-sourced task board + TUI overlay
-  pi-matrix/           Project — phone ↔ agent bridge via Matrix
-  pi-file-watch/        Project — explicit non-recursive file watch
-  pi-ollama-models/     User — auto-sync local Ollama models into models.json
-  pi-automations/              Project — Automations status, diagnostics, workspaces, pi-scheduler
-lib/                  Shared: agent-api, maildir transport, tool-result helpers
-skills/               Shared agent skills and compact reference guidance
-prompts/              Prompt templates (refactor, commit-and-push)
-scripts/              Setup and utility scripts
-tests/                Tests (vitest + archunit fitness functions)
-```
-
-Global extensions (`pi-panopticon`, `pi-goal`) are installed by `make setup` through this repo's local pi package entry. User/project extension `pi-matrix`, user extension `pi-ollama-models`, and standalone `pi-teams` can be installed individually with `make setup-package PACKAGE=<name>`. Project extensions (`pi-kanban`, `pi-file-watch`, `pi-automations`) are added per workspace in `.pi/settings.json`. Research tools live in `/home/jim/git/pi-extension-poc/extensions/pi-research-tools/`.
-
-## Development
-
-```bash
-make help         # list all targets
-make doctor       # check + test + gitleaks secret scans
-make check        # typecheck → biome lint → knip → type-coverage (≥95%)
-make lint         # run one quality gate
-make test         # run tests
-make test-watch   # run tests in watch mode
-make secret-scan  # scan git history and working tree with gitleaks
-make setup        # register pi package
-make setup-clean  # remove pi package registration
-```
-
-Quality gates: strict TypeScript, Biome lint, zero unused exports (knip), 95%+ type coverage, architecture fitness functions (dependency direction, file size limits, isolation). See [AGENTS.md](AGENTS.md) for coding standards.
-
-## Security
-
-The design assumes a **trusted host**. External input (Matrix messages, agent-to-agent messages) is treated as untrusted and wrapped in structured tags before entering the LLM context. User-facing fields (task titles, agent names, tool names) are validated or sanitised at system boundaries. Matrix deployment assumptions belong in the workspace or infrastructure repo, not here.
-
-## License
-
-[MIT](LICENSE)
+[MIT license](LICENSE)
