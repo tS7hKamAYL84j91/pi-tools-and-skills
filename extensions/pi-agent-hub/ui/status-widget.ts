@@ -1,5 +1,5 @@
 /**
- * Agent panopticon status widget refresh logic.
+ * Agent agent hub status widget refresh logic.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

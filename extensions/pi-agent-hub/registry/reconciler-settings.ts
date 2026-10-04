@@ -1,4 +1,4 @@
-/** Persisted settings for Panopticon reconciliation follow-up notifications. */
+/** Persisted settings for Agent Hub reconciliation follow-up notifications. */
 
 import { join } from "node:path";
 import {

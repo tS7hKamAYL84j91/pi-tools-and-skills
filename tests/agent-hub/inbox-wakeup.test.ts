@@ -54,7 +54,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe("Panopticon inbox wakeups", () => {
+describe("Agent Hub inbox wakeups", () => {
 	it("debounces bursts and wakes an idle agent without reading message bodies", () => {
 		const { core, api, transport } = fixture();
 		core.startWatcher();

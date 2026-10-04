@@ -1,4 +1,4 @@
-/** Utilities for stopping peer agent processes from the Panopticon UI. */
+/** Utilities for stopping peer agent processes from the Agent Hub UI. */
 
 import type { AgentRecord } from "../types.js";
 

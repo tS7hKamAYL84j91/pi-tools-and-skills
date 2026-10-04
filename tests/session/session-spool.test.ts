@@ -14,7 +14,7 @@ describe("session log spooling", () => {
 		expect(result).toEqual({ spooled: false, agentId: "claude-1", eventsWritten: 0, omitted: 0 });
 	});
 
-	it("writes Panopticon-compatible registry and session JSONL fixtures", async () => {
+	it("writes Agent Hub-compatible registry and session JSONL fixtures", async () => {
 		const registryDir = mkdtempSync(join(tmpdir(), "session-spool-"));
 
 		const result = await spoolSessionEntries({

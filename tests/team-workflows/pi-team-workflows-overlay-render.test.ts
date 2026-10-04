@@ -1,5 +1,5 @@
 /**
- * Narrow-width render coverage for pi-teams overlays.
+ * Narrow-width render coverage for pi-team-workflows overlays.
  */
 
 import { CURSOR_MARKER, Input, visibleWidth } from "@earendil-works/pi-tui";
@@ -41,7 +41,7 @@ function expectWidthBounded(lines: string[], width: number): void {
 	}
 }
 
-describe("pi-teams overlay renderers", () => {
+describe("pi-team-workflows overlay renderers", () => {
 	const teams = [
 		team("consult"),
 		team("llm-council", { protocol: "debate" }),

@@ -1,5 +1,5 @@
 /**
- * Exact slash-command regression coverage for related Panopticon commands.
+ * Exact slash-command regression coverage for related Agent Hub commands.
  */
 
 import type {
@@ -129,7 +129,7 @@ async function executeSlashCommand(
 	return true;
 }
 
-describe("pi-panopticon slash command resolution", () => {
+describe("pi-agent-hub slash command resolution", () => {
 	function setup(): {
 		commands: Map<string, CommandDefinition>;
 		ui: CapturedUi;
@@ -152,7 +152,7 @@ describe("pi-panopticon slash command resolution", () => {
 		return { commands, ui, ctx: createContext(ui) };
 	}
 
-	it("resolves /agents exact-enter to the Agent Panopticon overlay", async () => {
+	it("resolves /agents exact-enter to the Agent Hub overlay", async () => {
 		const { commands, ui, ctx } = setup();
 
 		await expect(executeSlashCommand("/agents", commands, ctx)).resolves.toBe(
@@ -161,7 +161,7 @@ describe("pi-panopticon slash command resolution", () => {
 
 		expect(ui.notifications.join("\n")).toContain("self:idle");
 		expect(ui.overlays).toHaveLength(1);
-		expect(ui.overlays[0]).toContain("Agent Panopticon");
+		expect(ui.overlays[0]).toContain("Agent Hub");
 		expect(ui.overlays[0]).not.toContain("Agent List Mode");
 	});
 
@@ -176,6 +176,6 @@ describe("pi-panopticon slash command resolution", () => {
 		expect(ui.notifications).toHaveLength(0);
 		expect(ui.overlays).toHaveLength(1);
 		expect(ui.overlays[0]).toContain("Agent List Mode");
-		expect(ui.overlays[0]).not.toContain("Agent Panopticon");
+		expect(ui.overlays[0]).not.toContain("Agent Hub");
 	});
 });

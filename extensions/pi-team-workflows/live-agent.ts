@@ -182,7 +182,7 @@ export async function runLiveAgentNode(args: RunLiveAgentNodeArgs, deps: LiveAge
 	const startedAt = Date.now();
 	const parentId = args.parentId;
 	if (!parentId) {
-		return failedRun(args, "live-agent nodes require this orchestrator to be registered in Panopticon", startedAt);
+		return failedRun(args, "live-agent nodes require this orchestrator to be registered in Agent Hub", startedAt);
 	}
 	const agent = assertAvailableAgent({ ref: args.binding.subagent, parentId, orchestratorName: args.orchestratorName, deps });
 	deps.runtime?.registerEntity({
@@ -193,7 +193,7 @@ export async function runLiveAgentNode(args: RunLiveAgentNodeArgs, deps: LiveAge
 		...(args.runtimeParent ? { parent: args.runtimeParent } : {}),
 	});
 	const requestId = deps.requestId();
-	const from = args.orchestratorName ?? "pi-teams";
+	const from = args.orchestratorName ?? "pi-team-workflows";
 	const accepted = await sendRuntimeAgentMessage(deps.transport, {
 		agent: {
 			id: agent.id,

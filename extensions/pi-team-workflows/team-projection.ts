@@ -54,7 +54,7 @@ function seedMarker(id: string): string {
 }
 
 function legacySeedMarker(id: string): string {
-	return `<!-- pi-panopticon seed projection of "${id}". This file is the source of truth for this team; edit it freely. Re-project missing seeds with /teams seed. -->`;
+	return `<!-- pi-agent-hub seed projection of "${id}". This file is the source of truth for this team; edit it freely. Re-project missing seeds with /teams seed. -->`;
 }
 
 /**

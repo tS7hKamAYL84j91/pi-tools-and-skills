@@ -1,5 +1,5 @@
 /**
- * Shared test helpers for pi-teams registry/tool tests.
+ * Shared test helpers for pi-team-workflows registry/tool tests.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

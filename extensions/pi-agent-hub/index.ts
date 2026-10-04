@@ -1,4 +1,4 @@
-/** Panopticon extension entrypoint and explicit host-injection factory. */
+/** Agent Hub extension entrypoint and explicit host-injection factory. */
 
 import type {
 	ExtensionAPI,

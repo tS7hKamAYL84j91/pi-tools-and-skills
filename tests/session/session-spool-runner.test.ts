@@ -21,7 +21,7 @@ describe("session spool runner", () => {
 		await expect(runSessionSpoolOnce({ registryDir: dir, sourceFile: source, sourceRoot: dir, agentId: "a", name: "A", cwd: dir })).rejects.toThrow(/manifest/);
 	});
 
-	it("spools redacted bounded output readable by Panopticon session parser", async () => {
+	it("spools redacted bounded output readable by Agent Hub session parser", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "session-runner-"));
 		await manageSessionSpoolHook("install", { registryDir: dir, retentionEvents: 2 });
 		const email = ["local", "example.test"].join("@");

@@ -1,7 +1,7 @@
 /**
  * Session-local agent list mode store.
  *
- * List mode is a query/display preference for passive panopticon surfaces
+ * List mode is a query/display preference for passive agent hub surfaces
  * (/agents, agent_peek, agent_status, widget), separate from registry
  * visibility/access semantics.
  */

@@ -130,7 +130,7 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 			container.addChild(accentBorder(args.theme));
 			container.addChild(
 				new Text(
-					args.theme.fg("accent", args.theme.bold(" Agent Panopticon")) +
+					args.theme.fg("accent", args.theme.bold(" Agent Hub")) +
 						args.theme.fg("dim", ` - ${args.records.length} agent${args.records.length !== 1 ? "s" : ""}`),
 					1,
 					0,

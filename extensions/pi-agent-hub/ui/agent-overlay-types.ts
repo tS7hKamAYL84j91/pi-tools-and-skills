@@ -1,5 +1,5 @@
 /**
- * Shared dependency types for panopticon agent overlays.
+ * Shared dependency types for agent hub agent overlays.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

@@ -1,5 +1,5 @@
 /**
- * Characterisation tests for pi-panopticon pure functions.
+ * Characterisation tests for pi-agent-hub pure functions.
  * These lock in existing behaviour before refactoring.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

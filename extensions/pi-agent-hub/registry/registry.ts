@@ -4,7 +4,7 @@
  * Manages the in-memory AgentRecord for a single pi agent, with heartbeat
  * and disk persistence. Reads/reaps peer records from the shared registry.
  *
- * Pure functions extracted from the original Panopticon module and optimized for the
+ * Pure functions extracted from the original Agent Hub module and optimized for the
  * Registry interface (see types.ts).
  */
 

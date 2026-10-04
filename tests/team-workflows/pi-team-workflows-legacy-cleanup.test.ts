@@ -1,11 +1,11 @@
-/** Regression tests that prevent removed pi-teams legacy runtime from returning. */
+/** Regression tests that prevent removed pi-team-workflows legacy runtime from returning. */
 
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listFiles } from "../architecture/helpers.js";
 
-describe("pi-teams legacy cleanup", () => {
+describe("pi-team-workflows legacy cleanup", () => {
 	it("runtime files should not reintroduce removed legacy protocol symbols", () => {
 		const forbidden = /\b(chairman|TeamRunDefinition|CouncilDefinition|CouncilMember|resolveCouncilSettings|LEGACY_TEAM_RUN_CUSTOM_TYPE|pi-teams:deliberation|TeamTopology|deliberate)\b/;
 		const violations: string[] = [];
@@ -19,7 +19,7 @@ describe("pi-teams legacy cleanup", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("pi-teams runtime should not import the removed graph executor or lowering", () => {
+	it("pi-team-workflows runtime should not import the removed graph executor or lowering", () => {
 		const forbidden = /from\s+["'].+\/(team-graph|team-lowering|protocol-contracts)\.js["']/;
 		const violations: string[] = [];
 		for (const file of listFiles("extensions/pi-team-workflows", [".ts"])) {

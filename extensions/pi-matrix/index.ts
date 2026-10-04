@@ -2,7 +2,7 @@
  * Matrix extension — entry point.
  *
  * Registers a "matrix" messaging channel via the shared channel registry.
- * The panopticon messaging module handles notification (poke-then-read)
+ * The agent hub messaging module handles notification (poke-then-read)
  * and provides the unified message_read / message_send tools.
  *
  * This extension handles:
@@ -105,7 +105,7 @@ export default function (pi: ExtensionAPI): void {
 			emitMatrixMessage(c, msg, "warning"),
 		);
 
-		// Register as a messaging channel — panopticon handles notification.
+		// Register as a messaging channel — Agent Hub handles notification.
 		registerChannel(channelLabel, transport);
 
 		try {

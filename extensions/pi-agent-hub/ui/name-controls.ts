@@ -64,7 +64,7 @@ export function registerNameControls(pi: ExtensionAPI, registry: Registry): void
 	pi.registerTool({
 		name: "set_name",
 		label: "Set Name",
-		description: "Set the session display name and update the Panopticon registry name.",
+		description: "Set the session display name and update the Agent Hub registry name.",
 		promptSnippet: "Set the current session/agent name",
 		parameters: Type.Object({
 			name: Type.String({ description: "Name to use for this session/agent" }),

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { inferWorkspaceIdentity } from "../../extensions/pi-agent-hub/registry/state.js";
 import { assertProperty } from "../lib/fast-check.js";
 
-describe("bounded Panopticon identity properties", () => {
+describe("bounded Agent Hub identity properties", () => {
 	it("maps supported input channels deterministically", () => {
 		assertProperty(fc.property(fc.array(fc.constantFrom("a", "B", "0", "-", "_"), { minLength: 1, maxLength: 24 }).map((parts) => parts.join("")), (identity) => {
 			expect(inferWorkspaceIdentity({ source: "interactive" })).toEqual({

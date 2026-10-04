@@ -1,4 +1,4 @@
-/** Host-native registry fixtures never touch the live Panopticon registry. */
+/** Host-native registry fixtures never touch the live Agent Hub registry. */
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";

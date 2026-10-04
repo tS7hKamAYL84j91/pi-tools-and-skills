@@ -1,5 +1,5 @@
 /**
- * Tests for visible pi-teams default team-root configuration.
+ * Tests for visible pi-team-workflows default team-root configuration.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

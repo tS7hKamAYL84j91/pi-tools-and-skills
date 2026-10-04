@@ -1,5 +1,5 @@
 /**
- * Direct-message overlay for panopticon peer agents.
+ * Direct-message overlay for agent hub peer agents.
  */
 
 import { DynamicBorder, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";

@@ -282,7 +282,7 @@ describe("extension registration smoke tests", () => {
 		]);
 	});
 
-	it("pi-panopticon registers its tools, commands, shortcuts, and lifecycle hooks", () => {
+	it("pi-agent-hub registers its tools, commands, shortcuts, and lifecycle hooks", () => {
 		const { api, registrations } = createFakeApi();
 
 		panopticonExtension(api);

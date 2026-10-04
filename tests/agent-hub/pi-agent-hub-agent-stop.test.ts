@@ -1,4 +1,4 @@
-/** Tests for Panopticon peer process stopping. */
+/** Tests for Agent Hub peer process stopping. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 

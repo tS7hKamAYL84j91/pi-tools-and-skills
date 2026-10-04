@@ -1,5 +1,5 @@
 /**
- * Agent panopticon overlay and detail view.
+ * Agent hub overlay and detail view.
  */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";

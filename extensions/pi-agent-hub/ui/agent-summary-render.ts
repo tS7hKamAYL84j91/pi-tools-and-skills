@@ -1,5 +1,5 @@
 /**
- * Render the panopticon work-summary section for the agent detail view.
+ * Render the agent hub work-summary section for the agent detail view.
  */
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";

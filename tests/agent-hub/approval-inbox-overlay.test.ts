@@ -133,7 +133,7 @@ afterEach(async () => {
 });
 
 async function makeAutomationsHome(): Promise<string> {
-	const home = join(tmpdir(), `pi-panopticon-approval-${process.pid}-${Date.now()}-${homes.length}`);
+	const home = join(tmpdir(), `pi-agent-hub-approval-${process.pid}-${Date.now()}-${homes.length}`);
 	homes.push(home);
 	await mkdir(join(home, "workspace"), { recursive: true });
 	return home;

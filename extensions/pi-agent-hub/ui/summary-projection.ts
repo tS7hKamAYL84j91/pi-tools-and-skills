@@ -1,13 +1,13 @@
 /**
- * Panopticon session/team work-summary projection for the agent detail view.
+ * Agent Hub session/team work-summary projection for the agent detail view.
  *
- * Sources panopticon-owned data only: the registry AgentRecord, session log,
+ * Sources agent hub-owned data only: the registry AgentRecord, session log,
  * and (advisory) MEMORY.md snapshot state. No imports from other extensions.
  */
 import type { AgentRecord } from "../types.js";
 import type { SessionEvent } from "../../../lib/session-log.js";
 
-/** Work summary extracted from panopticon-visible signals. */
+/** Work summary extracted from agent hub-visible signals. */
 export interface WorkSummary {
 	/** Brief task or spawn goal, when present. */
 	briefGoal?: string;
@@ -61,7 +61,7 @@ function dedupe(values: string[]): string[] {
 }
 
 /**
- * Project a concise work summary from panopticon-owned agent signals.
+ * Project a concise work summary from agent hub-owned agent signals.
  * Uses only the registry record and session events; no cross-extension imports.
  */
 export function projectWorkSummary(

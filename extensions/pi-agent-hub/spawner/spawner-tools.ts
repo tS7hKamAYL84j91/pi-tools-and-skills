@@ -45,7 +45,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			"brief.classification: sequential (code, debug), parallelisable (research, scan), high-entropy-search, tool-heavy.",
 			"Sequential tasks: single agent always. Parallelisable: centralised-mas with WIP=3.",
 			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
-			"Or use agent_send once it registers in panopticon (takes 1–2 seconds).",
+			"Or use agent_send once it registers in Agent Hub (takes 1–2 seconds).",
 			"Use agent_peek to monitor its activity log.",
 			"scope: 'task' (default) excludes the agent from workspace schedule delivery; 'workspace' opts in to receive workspace-level schedules per ADR-0008.",
 		],
@@ -162,7 +162,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				(taskPrompt
 					? `  task: ${taskPrompt.slice(0, 100)}${taskPrompt.length > 100 ? "…" : ""}\n`
 					: `  (idle — use rpc_send to give it a task)\n`) +
-				`\nAgent will register in panopticon within seconds.\n` +
+				`\nAgent will register in Agent Hub within seconds.\n` +
 				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
 				{
 					name: params.name,

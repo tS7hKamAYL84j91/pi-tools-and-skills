@@ -1,5 +1,5 @@
 /**
- * Tests for Panopticon messaging capability module.
+ * Tests for Agent Hub messaging capability module.
  *
  * Injects mock MessageTransports for send and broadcast.
  * No real dirs or transports touched.

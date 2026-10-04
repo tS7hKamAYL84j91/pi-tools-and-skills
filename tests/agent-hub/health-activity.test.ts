@@ -1,4 +1,4 @@
-/** Tests for panopticon health activity helpers. */
+/** Tests for agent hub health activity helpers. */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/session-log.js", () => ({

@@ -39,7 +39,7 @@ export function registerAgentsCommand(
 	});
 
 	pi.registerShortcut("ctrl+shift+o", {
-		description: "Open agent panopticon overlay",
+		description: "Open agent hub overlay",
 		handler: async (ctx) => {
 			await openAgentOverlay(ctx, deps);
 		},

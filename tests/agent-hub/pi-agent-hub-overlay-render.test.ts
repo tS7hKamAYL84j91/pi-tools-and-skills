@@ -1,5 +1,5 @@
 /**
- * Narrow-width render coverage for pi-panopticon overlays.
+ * Narrow-width render coverage for pi-agent hub overlays.
  */
 
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -52,7 +52,7 @@ function expectWidthBounded(lines: string[], width: number): void {
 	}
 }
 
-describe("pi-panopticon overlay renderers", () => {
+describe("pi-agent hub overlay renderers", () => {
 	const records = [
 		record("self", { status: "running" }),
 		record("worker-one", { status: "blocked", pendingMessages: 2 }),
@@ -69,7 +69,7 @@ describe("pi-panopticon overlay renderers", () => {
 			});
 
 			const body = lines.join("\n");
-			expect(body).toContain("Agent Panopticon");
+			expect(body).toContain("Agent Hub");
 			expect(body).toContain("> R self (you)");
 			expect(body).toContain("enter detail");
 			expect(body).toContain("/ filter");

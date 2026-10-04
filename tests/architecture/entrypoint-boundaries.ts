@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { listTsFiles } from "./helpers.js";
 
 describe("public entrypoint boundaries", () => {
-	it("panopticon root exposes only its entrypoint and public types", () => {
+	it("agent hub root exposes only its entrypoint and public types", () => {
 		const allowed = new Set([
 			"extensions/pi-agent-hub/index.ts",
 			"extensions/pi-agent-hub/types.ts",

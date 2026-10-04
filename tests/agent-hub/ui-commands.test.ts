@@ -76,7 +76,7 @@ function makeOverlayDeps(): AgentOverlayDeps {
 	};
 }
 
-describe("panopticon UI slash commands", () => {
+describe("agent hub UI slash commands", () => {
 	beforeEach(() => vi.resetAllMocks());
 
 	it("reports usage for missing external-agent arguments", async () => {

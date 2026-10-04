@@ -40,10 +40,10 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 	},
 	{
 		owner: "pi-agent-hub",
-		label: "Panopticon registry",
+		label: "Agent Hub registry",
 		patterns: [/\bREGISTRY_DIR\b/],
 	},
-	{ owner: "pi-team-workflows", label: "Teams run state", patterns: [/pi-teams:run\b/] },
+	{ owner: "pi-team-workflows", label: "Team Workflows run state", patterns: [/pi-teams:run\b/] },
 ];
 
 const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
@@ -119,8 +119,8 @@ describe("runtime state boundary", () => {
 		).toEqual([]);
 	});
 
-	it("pi-teams must not import node:child_process directly", () => {
-		// The pi-teams child process boundary is zero (ADR-054): team processes
+	it("pi-team-workflows must not import node:child_process directly", () => {
+		// The pi-team-workflows child process boundary is zero (ADR-054): team processes
 		// spawn only through the shared lib/runtime-child-process helper, never
 		// through direct node:child_process imports.
 		const childProcessImportPattern = /from\s+["']node:child_process["']/;

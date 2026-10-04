@@ -1,5 +1,5 @@
 /**
- * Cancellation tests for pi-teams subprocess model runner.
+ * Cancellation tests for pi-team-workflows subprocess model runner.
  */
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

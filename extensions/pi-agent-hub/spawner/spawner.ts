@@ -3,7 +3,7 @@
  *
  * Spawns pi agents in --mode rpc, giving us:
  * 1. Bidirectional stdin/stdout JSON protocol (prompt, steer, abort, get_state)
- * 2. Global extensions inherited (panopticon → IPC from any agent)
+ * 2. Global extensions inherited (agent hub → IPC from any agent)
  * 3. Agent stays alive — send multiple tasks without respawning
  * 4. Two communication channels:
  *    - RPC stdin  (from parent, structured commands)

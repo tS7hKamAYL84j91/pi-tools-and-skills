@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-/** Locate the pi CLI without depending on Panopticon's private spawner. */
+/** Locate the pi CLI without depending on Agent Hub's private spawner. */
 export function resolvePiBinary(): string {
 	const candidate = join(dirname(process.execPath), "pi");
 	if (existsSync(candidate)) return candidate;

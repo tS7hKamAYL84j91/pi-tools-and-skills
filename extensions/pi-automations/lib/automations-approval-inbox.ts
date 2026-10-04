@@ -1,4 +1,4 @@
-/** Approval-inbox helpers shared by the panopticon agent detail overlay. */
+/** Approval-inbox helpers shared by the Agent Hub agent detail overlay. */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";

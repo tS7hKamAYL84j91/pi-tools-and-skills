@@ -36,7 +36,7 @@ describe("ADR-047 shared declarative discovery", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("uses the neutral primitive in pi-teams and has no Boost config.json fallback", () => {
+	it("uses the neutral primitive in pi-team-workflows and has no Boost config.json fallback", () => {
 		expect(source("extensions/pi-team-workflows/team-paths.ts")).toContain(
 			"lib/declarative-discovery.js",
 		);

@@ -1,5 +1,5 @@
 /**
- * Panopticon teams module — declarative team specs for team work.
+ * Team Workflows module — declarative team specs for team work.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

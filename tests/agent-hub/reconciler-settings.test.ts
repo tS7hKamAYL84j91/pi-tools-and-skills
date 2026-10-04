@@ -1,4 +1,4 @@
-/** Tests for persisted Panopticon reconciliation settings. */
+/** Tests for persisted Agent Hub reconciliation settings. */
 
 import {
 	mkdirSync,
@@ -15,7 +15,7 @@ import {
 	saveReconcilerSetting,
 } from "../../extensions/pi-agent-hub/registry/reconciler-settings.js";
 
-describe("Panopticon reconciler settings", () => {
+describe("Agent Hub reconciler settings", () => {
 	it("defaults off and preserves unrelated settings", async () => {
 		const root = mkdtempSync(join(tmpdir(), "panopticon-settings-"));
 		try {

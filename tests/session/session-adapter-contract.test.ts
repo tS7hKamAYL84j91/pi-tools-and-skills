@@ -7,7 +7,7 @@ import { readSessionLog } from "../../lib/session-log.js";
 import { spoolSessionEntries } from "../../lib/session-spool.js";
 
 describe("internal session adapter contract", () => {
-	it("preserves redacted summaries across journal and Panopticon-compatible spool output", async () => {
+	it("preserves redacted summaries across journal and Agent Hub-compatible spool output", async () => {
 		const registryDir = mkdtempSync(join(tmpdir(), "session-adapter-contract-"));
 		const email = ["operator", "example.test"].join("@");
 		const entries = [

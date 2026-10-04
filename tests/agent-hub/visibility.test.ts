@@ -1,5 +1,5 @@
 /**
- * Tests for scoped panopticon visibility.
+ * Tests for scoped agent hub visibility.
  */
 
 import { describe, expect, it } from "vitest";

@@ -23,7 +23,7 @@ interface PanopticonRecord {
 	name: string;
 }
 
-/** Locate this orchestrator's panopticon id and name through the agent API. */
+/** Locate this orchestrator's agent hub id and name through the agent API. */
 export async function currentPanopticonRecord(
 	cwd: string,
 ): Promise<PanopticonRecord | undefined> {
@@ -240,7 +240,7 @@ function runPiModel(model: string, args: RunModelArgs): Promise<PiModelResult> {
 		signal: args.signal,
 		env: {
 			// Team member/synthesis nodes are stateless `--print --no-session`
-			// one-shots. They do not register a panopticon agent or take a
+			// one-shots. They do not register an agent hub agent or take a
 			// workspace lock, so the Automations lockfile wrapper's duplicate-launch
 			// guard must not abort them.
 			AUTOMATIONS_PI_LOCKFILE_CONTINUE: "1",
@@ -268,7 +268,7 @@ export function resolveToolSubset(
 	const resolved = toolSubset.filter((tool) => allowed.has(tool));
 	const rejectedCount = toolSubset.length - resolved.length;
 	if (rejectedCount > 0) {
-		console.warn(`[pi-teams] toolSubset rejected ${rejectedCount} tool(s) outside profile whitelist`);
+		console.warn(`[pi-team-workflows] toolSubset rejected ${rejectedCount} tool(s) outside profile whitelist`);
 	}
 	return resolved;
 }

@@ -124,7 +124,7 @@ describeIfPython("setup-pi package wiring", () => {
 		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
 	});
 
-	it("registers standalone pi-teams independently", () => {
+	it("registers standalone pi-team-workflows independently", () => {
 		runSettingsHelper("register-package", "pi-team-workflows");
 
 		const settings = readSettings();
@@ -170,8 +170,8 @@ describeIfPython("setup-pi package wiring", () => {
 			JSON.stringify(
 				{
 					extensions: [
-						join(extensionsDir, "pi-panopticon"),
-						join(extensionsDir, "pi-teams"),
+						join(extensionsDir, "pi-agent-hub"),
+						join(extensionsDir, "pi-team-workflows"),
 						join(extensionsDir, "pi-kanban"),
 						join(extensionsDir, "pi-automations"),
 						"/external/extension",

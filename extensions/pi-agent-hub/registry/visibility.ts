@@ -1,5 +1,5 @@
 /**
- * Visibility helpers for scoped panopticon peer discovery.
+ * Visibility helpers for scoped agent hub peer discovery.
  *
  * Manual/root agents keep legacy global visibility. Spawned children are scoped
  * to their direct parent plus siblings under that parent.
