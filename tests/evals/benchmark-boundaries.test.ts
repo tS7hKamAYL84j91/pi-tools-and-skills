@@ -8,7 +8,7 @@ import { listFiles, localImportSpecifiers } from "../architecture/helpers.js";
 describe("benchmark isolation", () => {
 	it("shipping sources do not import evaluation runners or tests", () => {
 		const violations: string[] = [];
-		for (const root of ["extensions", "lib", "fleet-mcp", "fleet-overview", "scripts"]) {
+		for (const root of ["extensions", "lib", "fleet-mcp", "scripts"]) {
 			for (const file of listFiles(root, [".ts", ".mjs", ".js"])) {
 				if (/\.(test|spec)\.[cm]?[jt]s$/.test(file)) continue;
 				for (const specifier of localImportSpecifiers(readFileSync(file, "utf8"))) {

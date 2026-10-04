@@ -29,7 +29,7 @@ describe("pi-team-workflows public ownership boundary", () => {
 			pi?: { extensions?: string[]; skills?: string[] };
 		};
 		expect(manifest).toMatchObject({
-			name: "pi-team-workflows",
+			name: "@solo-visual/pi-team-workflows",
 			pi: {
 				extensions: ["./index.ts"],
 				skills: ["./skills"],

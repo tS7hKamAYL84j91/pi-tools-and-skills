@@ -1,13 +1,29 @@
 {
-	"name": "pi-matrix",
+	"name": "@solo-visual/pi-matrix",
 	"version": "1.2.0",
+	"description": "Human-facing Matrix messaging transport for Pi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git",
+		"directory": "extensions/pi-matrix"
+	},
 	"keywords": [
 		"pi-package"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"pi": {
 		"extensions": [
 			"./index.ts"
 		]
+	},
+	"dependencies": {
+		"matrix-js-sdk": "^41.9.0"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
 	},
 	"engines": {
 		"node": ">=22.19"

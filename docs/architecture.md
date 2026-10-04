@@ -18,7 +18,6 @@ decisions. Superseded diagrams and completed reviews remain in Git history.
 | [File Watch](../extensions/pi-file-watch/README.md) | Explicit watcher configuration and runtime subscriptions | Validated path/symlink policy; no implicit workspace sweep |
 | [Ollama Models](../extensions/pi-ollama-models/README.md) | Only the Ollama entry in Pi's model registry | Operator-selected executable; caller command/path overrides are inert |
 | [Fleet MCP](../fleet-mcp/README.md) | MCP receipts and external-client state | Gateway authorization; backend adapts existing registrar/transport |
-| [Fleet overview](../fleet-overview/README.md) | Derived browser views and gated control requests | Observes existing registry and policy, not a replacement authority |
 
 Project agents work directly with Jim. Kanban remains Gravitas's optional human
 overview, not an execution prerequisite. Deployment, secrets, residency and

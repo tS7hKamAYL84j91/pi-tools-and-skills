@@ -1,9 +1,19 @@
 {
-	"name": "pi-kanban",
+	"name": "@solo-visual/pi-kanban",
 	"version": "1.2.0",
+	"description": "Optional human task overview for Pi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git",
+		"directory": "extensions/pi-kanban"
+	},
 	"keywords": [
 		"pi-package"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"pi": {
 		"extensions": [
 			"./index.ts"
@@ -11,6 +21,11 @@
 		"skills": [
 			"./skills"
 		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
 	},
 	"engines": {
 		"node": ">=22.19"

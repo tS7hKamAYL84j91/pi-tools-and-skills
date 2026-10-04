@@ -1,6 +1,6 @@
 # pi-tools-and-skills
 
-![pi-agent-hub](docs/images/pi-agent-hub.png)
+![pi-agent-hub](docs/images/pi-agent-hub.jpeg)
 
 Local-first extensions, skills, prompts, and shared libraries for
 [Pi](https://github.com/earendil-works/pi).
@@ -16,10 +16,17 @@ cd pi-tools-and-skills
 npm ci
 ```
 
-Install as a Pi package with `pi install /absolute/path/to/pi-tools-and-skills`
-or `pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`.
+Install from npm — the umbrella, or one extension:
+
+```sh
+pi install npm:@solo-visual/pi-tools-and-skills   # all extensions, skills and prompts
+pi install npm:@solo-visual/pi-goal              # a single extension
+```
+
+Or install from source with `pi install /absolute/path/to/pi-tools-and-skills`,
+`pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`, or
+`make setup-package PACKAGE=<name>`.
 `make setup` registers this checkout globally with Agent Hub and Goal enabled.
-`make setup-package PACKAGE=<name>` registers one user-installable package.
 Project-only extensions remain opt-in through the owning workspace's Pi settings.
 Setup changes package registration, not runtime/project settings.
 Run `make help` for setup, removal, checks, and utility commands.
@@ -41,7 +48,6 @@ and operating limits. This index deliberately does not repeat those contracts.
 | [File Watch](extensions/pi-file-watch/README.md) | Explicit, bounded file notifications |
 | [Ollama Models](extensions/pi-ollama-models/README.md) | Local Ollama model discovery |
 | [Fleet MCP](fleet-mcp/README.md) | Standalone MCP adapter |
-| [Fleet overview](fleet-overview/README.md) | Standalone browser overview and gated controls |
 
 ## Where things belong
 
@@ -52,7 +58,7 @@ defines what the umbrella package ships.
 
 - `extensions/` — independently owned Pi features and their usage docs.
 - [`lib/`](lib/README.md) — shared contracts and infrastructure; consumer inventory.
-- `fleet-mcp/`, `fleet-overview/` — standalone applications, not more registries.
+- `fleet-mcp/` — standalone application, not another registry.
 - `skills/`, `prompts/` — reusable agent guidance; extension-specific skills stay
   with their extension.
 - `scripts/` — installation, maintenance and build/check commands.

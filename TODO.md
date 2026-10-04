@@ -1,92 +1,110 @@
-# Current work: Pi v1 alignment
+# Current work: publish to npm (@solo-visual)
 
-Target: Pi 1.0.1. Repository implementation and validation are finished;
-verified Goal completion remains open. Jim clarified that live Ollama inference
-is outside this repository's scope and is not a completion gate. Retain automatic
-discovery.
-Preserve existing uncommitted work, session history, ownership, explicit-resume
-requirements, approvals, transport validation and secret boundaries.
-No commit, push, deployment, live configuration, model-default, schedule-cadence
-or residency changes are included. Codemode integration is outside this migration.
+Scope: `@solo-visual/pi-tools-and-skills` (umbrella) plus one package per
+extension. Tag-based release via `.github/workflows/release.yml` (npm Trusted
+Publishing, provenance). No tokens are committed; no publish happens without
+these manual steps.
 
-## Dependencies and packaging
+Version: 1.2.0 (root and every extension share one version).
 
-- [x] Update Pi development dependencies and lockfile to 1.0.1.
-- [x] Update root and Teams peer ranges to include the tested v1 host.
-- [x] Replace `@sinclair/typebox` imports and package metadata with host-provided
-  `typebox`; keep host packages out of runtime dependencies.
-- [x] Align Node engine requirements with Pi's minimum of 22.19.
-- [x] Refresh `scripts/builtins.json` against v1 commands and check collisions.
-- [x] Update maintained compatibility and setup documentation where needed.
+## 1. npm account and scope
 
-## Lifecycle correctness
+- [ ] Confirm you own the `@solo-visual` scope on npmjs.com (create the org if needed).
+- [ ] Enable two-factor authentication on the account.
+- [ ] Decide the first-publish method: `npm login` in a terminal, or a short-lived
+      Automation token (delete it after step 3).
 
-- [x] Boost: restore the baseline model on `agent_settled` and remove settle
-  polling; preserve restore-failure handling and lease semantics.
-- [x] Panopticon: RPC waits for final completion use `agent_settled`, not
-  `agent_end`; rejected responses and handled prompts do not wait for a run
-  that never started. Subscribe before sending and preserve cancellation,
-  deadlines and response correlation.
-- [x] Goal: defer final error/pause decisions and session replacement until
-  retries and recovery finish; preserve single-driver ownership, cancellation,
-  explicit operator resume and configured-hook completion gates.
-- [x] Automations: distinguish intermediate `agent_end` events from final
-  scheduled-run completion; preserve approval and outcome-recording semantics.
+## 2. Build and inspect locally
 
-## Prompt integration
+```sh
+npm ci
+npm run check
+npm test
+npm run pack:extensions && npm run pack:umbrella
+ls dist-npm/@solo-visual
+# optional: produce tarballs and inspect contents
+for d in dist-npm/@solo-visual/*/; do (cd "$d" && npm pack --dry-run); done
+```
 
-- [x] Matrix and Automations: use structured `systemPromptOptions` additions
-  instead of whole-prompt replacement, preserving existing instructions and
-  extension composition without duplicating prompt sections.
+- [ ] Confirm each staged package contains its own `index.ts`, `skills/` (where
+      applicable), `vendor/` shared code, `package.json`, `README.md`, `LICENSE`.
+- [ ] Confirm no `node_modules/`, tests, or lockfiles are included.
 
-## Ollama Models
+## 3. First publish (once per package name)
 
-- [x] Retain automatic discovery, metadata generation and the sync tool.
-- [x] Apply the schema-import and Node-metadata updates above.
-- [x] Update notifications and documentation: opening `/model` reloads
-  `models.json`; do not require `/reload` just to refresh the picker.
+Trusted publishing cannot attach to a name that does not exist yet, so publish
+the first version manually.
 
-### Separate hardening, not required for v1 compatibility
+```sh
+cd dist-npm/@solo-visual/<package>
+npm publish --access public
+```
 
-- [x] Protect the complete config read/merge/write against concurrent cooperating
-  writers with the existing advisory lock; retain atomic replacement.
-- [x] Preserve explicit per-model overrides during discovery sync, with a
-  documented merge policy and regression tests. Discovery owns inventory;
-  existing fields win for discovered IDs, with compatibility fields merged.
-- [x] Preserve executable/path restrictions, other providers, endpoint settings
-  and model defaults throughout these changes.
+- [ ] `pi-agent-hub`
+- [ ] `pi-automations`
+- [ ] `pi-boost`
+- [ ] `pi-file-watch`
+- [ ] `pi-goal`
+- [ ] `pi-kanban`
+- [ ] `pi-matrix`
+- [ ] `pi-ollama-models`
+- [ ] `pi-team-workflows`
+- [ ] `pi-tools-and-skills`
+- [ ] Delete any temporary publish token.
 
-## Validation and completion
+## 4. Configure trusted publishers
 
-- [x] Add regressions for retries/recovery, settled-event handling and RPC
-  dispositions, including rejection, handled prompts and cancellation.
-- [x] Test overlays with v1 regular/fullscreen renderers using an offscreen
-  terminal, including narrow widths, theme invalidation, focus restoration and
-  cleanup; retain existing Boost/Teams/Kanban UI regression suites.
-- [x] Validate Ollama discovery/merge/security with offline fixtures and a
-  read-only Pi v1 loader dry-run. Live inference against external Ollama models
-  is excluded from repository completion per Jim's clarification; it was not
-  performed and is not claimed as verified.
-- [x] Run `npm run check` and `npm test` against v1 dependencies.
-- [x] Build both Fleet applications.
-- [x] Resolve package imports for root and all nine extension packages without
-  running lifecycle hooks or providers.
-- [x] Run `git diff --check` and a bounded, redacted secret scan of changed files.
-- [x] Self-review the final diff and update durable docs to reflect the result.
-- [ ] Explicitly resume the paused Goal and execute its
-  configured local completion hook; validation prose is not completion.
+On npmjs.com, for each of the ten packages: **Settings → Trusted Publisher →
+GitHub Actions**.
 
-## Evidence and Goal runtime status
+- [ ] Repository: `tS7hKamAYL84j91/pi-tools-and-skills`
+- [ ] Workflow file: `release.yml`
+- [ ] Environment: `npm-publish`
 
-- `npm run check`: PASS; existing 17 warnings / 31 infos, no errors.
-- `npm test`: PASS; 198 files / 1,517 tests.
-- Fleet MCP and overview builds: PASS.
-- Static import checks: PASS for root and all nine extension packages.
-- Changed/new files gitleaks scan (redacted, no runtime/session files): PASS.
-- `git diff --check`: PASS.
-- Live read-only discovery: PASS through the Pi 1.0.1 extension loader; 11 cloud
-  aliases found, dry-run only. `/api/ps` reported zero loaded models.
-- Goal state is already paused after a host `WebSocket closed 1012` error. Do not
-  bypass the pause or edit authoritative runtime state. Only explicit
-  `/goal resume` and the configured completion hook remain; no external-model
-  approval or live inference is required for repository completion.
+## 5. Protect the release environment
+
+- [ ] In GitHub: **Settings → Environments → `npm-publish`**, add required reviewers.
+- [ ] Confirm `release.yml` permissions are `contents: read` + `id-token: write`.
+
+## 6. Verify consumer installs
+
+In a temporary HOME (never the live environment without approval):
+
+```sh
+HOME=$(mktemp -d) pi install npm:@solo-visual/pi-goal
+HOME=$(mktemp -d) pi install npm:@solo-visual/pi-tools-and-skills
+```
+
+- [ ] Single extension loads and its tools/commands register.
+- [ ] Umbrella loads the extensions plus skills and prompts.
+- [ ] No live configuration, model defaults, schedules or residency changed.
+
+## 7. Cut a release
+
+- [ ] `main` is green (CI: check, tests, Fleet MCP build, publish staging).
+- [ ] `CHANGELOG.md` updated for the version.
+- [ ] Bump `version` in the root and all `extensions/*/package.json` together.
+- [ ] Tag and push:
+
+```sh
+VERSION=$(node -p "require('./package.json').version")
+git tag -a "v$VERSION" -m "Release v$VERSION"
+git push origin "v$VERSION"
+```
+
+- [ ] Watch `release` workflow: verify → publish each package with provenance.
+- [ ] Confirm each package page shows provenance and the new version.
+- [ ] On failure, fix forward with a patch release; never unpublish.
+
+## 8. Repository state
+
+- [ ] Commit and push the packaging change (scoped names, vendor-at-pack,
+      release workflow, docs) and the pending `fleet-overview` removal.
+- [ ] Resume the paused Goal only when ready; its configured completion hook
+      must run.
+
+## Reference
+
+- [`RELEASING.md`](RELEASING.md) — full release process and rationale.
+- [`scripts/pack-packages.mjs`](scripts/pack-packages.mjs) — vendor-at-pack builder.
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) — publish workflow.

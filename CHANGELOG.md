@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- npm distribution under the `@solo-visual` scope: one self-contained package per extension plus the `@solo-visual/pi-tools-and-skills` umbrella, staged by `npm run pack:extensions` / `npm run pack:umbrella` (vendor-at-pack) and published with provenance by the tag-triggered `release` workflow.
 - Local direct-vs-Goal ARM64 benchmark with frozen official-test judging, authored-test mutation checks, and a ten-problem continuation bundle; dry-run by default and never submits to Exercism.
 - `fleet-mcp`: bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` env JSON) exposing `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, and `fleet_status` over the existing Agent Hub external registrar and Maildir transport. Stdio transport by default; optional HTTP transport is loopback-only and requires a configured bearer token (>=16 chars). Config validation enforces absolute roots, bounded page/text/ack limits, and fixed single-principal ownership; idempotent send receipts and registrations persist atomically (0600 state, 0700 dir) with redacted MCP error responses. Deployment/Tailscale/multi-principal identity provisioning is explicitly out of scope.
 

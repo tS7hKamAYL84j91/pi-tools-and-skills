@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only; skip publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 25
+          cache: npm
+      - run: npm ci
+      - name: Tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+      - run: npm run check
+      - run: npm test
+      - run: npm run build:fleet-mcp
+
+  publish:
+    name: publish ${{ matrix.package }}
+    needs: verify
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - pi-agent-hub
+          - pi-automations
+          - pi-boost
+          - pi-file-watch
+          - pi-goal
+          - pi-kanban
+          - pi-matrix
+          - pi-ollama-models
+          - pi-team-workflows
+          - pi-tools-and-skills
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 25
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run pack:extensions && npm run pack:umbrella
+      - name: Publish @solo-visual/${{ matrix.package }}
+        working-directory: dist-npm/@solo-visual/${{ matrix.package }}
+        run: npm publish --provenance --access public

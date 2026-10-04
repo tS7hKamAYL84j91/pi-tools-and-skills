@@ -1,12 +1,30 @@
 {
-	"name": "pi-file-watch",
+	"name": "@solo-visual/pi-file-watch",
 	"version": "1.2.0",
+	"description": "Explicit, bounded file-change notifications for Pi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git",
+		"directory": "extensions/pi-file-watch"
+	},
+	"keywords": [
+		"pi-package"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"type": "module",
 	"main": "index.ts",
 	"pi": {
 		"extensions": [
 			"./index.ts"
 		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
 	},
 	"engines": {
 		"node": ">=22.19"

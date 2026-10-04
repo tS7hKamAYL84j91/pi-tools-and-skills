@@ -23,7 +23,7 @@ const SINGLE_CONSUMER_PRIMITIVES = new Set([
 ]);
 
 const NODE_IO_IMPORT = /from\s+["']node:(?:fs|fs\/promises|child_process|os)["']/;
-const productionFiles = ["extensions", "lib", "scripts", "fleet-mcp", "fleet-overview"]
+const productionFiles = ["extensions", "lib", "scripts", "fleet-mcp"]
 	.flatMap(listTsFiles)
 	.filter((file) => !/\.(test|spec)\.ts$/.test(file));
 

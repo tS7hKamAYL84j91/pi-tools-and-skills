@@ -1,11 +1,29 @@
 {
-	"name": "pi-ollama-models",
+	"name": "@solo-visual/pi-ollama-models",
 	"version": "1.2.0",
+	"description": "Local Ollama model discovery for Pi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git",
+		"directory": "extensions/pi-ollama-models"
+	},
+	"keywords": [
+		"pi-package"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"type": "module",
 	"main": "index.ts",
-	"keywords": ["pi-package"],
 	"pi": {
-		"extensions": ["./index.ts"]
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
 	},
 	"engines": {
 		"node": ">=22.19"
