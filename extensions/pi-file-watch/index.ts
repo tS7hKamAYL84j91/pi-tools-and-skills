@@ -2,7 +2,7 @@
  * pi-file-watch extension entrypoint.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { loadFileWatchConfig } from "./config.js";
 import { openFileWatchSettings } from "./settings-overlay.js";

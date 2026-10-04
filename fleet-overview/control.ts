@@ -303,7 +303,7 @@ export function createControl(options: ControlOptions = {}): Control {
 
 	function gcPreviews(): void {
 		for (const [id, record] of previews) {
-			if (now() - record.issuedAt > PREVIEW_TTL_SECONDS) {
+			if (now() - record.issuedAt > PREVIEW_TTL_SECONDS * 1000) {
 				previews.delete(id);
 			}
 		}
@@ -357,7 +357,7 @@ export function createControl(options: ControlOptions = {}): Control {
 					"unknown or already-used preview — run the preview again",
 				);
 			}
-			if (now() - record.issuedAt > PREVIEW_TTL_SECONDS) {
+			if (now() - record.issuedAt > PREVIEW_TTL_SECONDS * 1000) {
 				previews.delete(requestId);
 				throw new ControlError("preview expired — run the preview again");
 			}

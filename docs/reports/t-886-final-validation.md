@@ -1,6 +1,6 @@
 # T-886 consolidated reliability validation
 
-Status: active
+Status: historical
 Date: 2026-09-05
 
 ## Scope and current disposition

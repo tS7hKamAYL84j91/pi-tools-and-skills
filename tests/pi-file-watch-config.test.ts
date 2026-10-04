@@ -556,6 +556,25 @@ describe("directory watch", () => {
 		}
 	});
 
+	it("bounds unique child bursts and reports omitted events without scanning", () => {
+		vi.useFakeTimers();
+		const harness = startDirWatch(100);
+		try {
+			for (let i = 0; i < 300; i++) harness.fire("rename", `child-${i}`);
+			expect(harness.state.timers.size).toBe(256);
+			expect(harness.state.overflowEvents).toBe(44);
+			vi.advanceTimersByTime(50);
+			expect(harness.state.batchChanges.size).toBe(256);
+			vi.advanceTimersByTime(100);
+			expect(harness.messages).toHaveLength(1);
+			expect(harness.messages[0]?.details).toMatchObject({ overflow_events: 44 });
+			expect(harness.messages[0]?.content).toContain("events omitted");
+			stopFileWatch(harness.state);
+			expect(harness.state.overflowEvents).toBe(0);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally { stopFileWatch(harness.state); vi.useRealTimers(); }
+	});
+
 	it("skips unidentifiable and unsafe child names", async () => {
 		const harness = startDirWatch();
 		try {

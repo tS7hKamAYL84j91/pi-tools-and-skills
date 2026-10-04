@@ -14,7 +14,7 @@ const DONE_SIGNAL: CompletionSignal = {
 	taskId: "T-260",
 	status: "done",
 	summary: "Implemented operational workspace state",
-	artifacts: ["extensions/pi-panopticon/registry/state.ts", "tests/panopticon/state.test.ts"],
+	artifacts: ["extensions/pi-agent-hub/registry/state.ts", "tests/agent-hub/state.test.ts"],
 	duration: "12m",
 	tokenUsage: { input: 5000, output: 3000, total: 8000, cost: 0.12 },
 };

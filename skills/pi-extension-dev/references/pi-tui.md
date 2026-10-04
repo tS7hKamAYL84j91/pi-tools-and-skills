@@ -1,6 +1,6 @@
 # Pi TUI Components
 
-Checked against the repository's `@earendil-works/pi-tui` 0.84.4 declarations.
+Checked against the repository's `@earendil-works/pi-tui` 1.0.1 declarations.
 Read the installed coding-agent `docs/tui.md` and linked examples before building
 custom components. Keep theme, input, and rendering behavior tied to the injected
 TUI context rather than global state.

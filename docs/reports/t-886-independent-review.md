@@ -1,6 +1,6 @@
 # T-886 independent review
 
-Status: active
+Status: historical
 
 Historical pre-ADR verdict; ADR-059 supersedes its proposed automatic recovery. See `t-886-final-validation.md` for current implementation status.
 

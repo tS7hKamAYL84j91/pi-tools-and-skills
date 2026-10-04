@@ -26,25 +26,19 @@ describe("read-only board views", () => {
 		harness.writeBoardLog(largeLog());
 		writeFileSync(join(harness.tmpDir, "snapshot.md"), "Existing exported snapshot");
 		const before = tree(harness.tmpDir);
-		for (const params of [{}, { detail: "full" }, { task_id: "T-001" }, { show_all_done: true }]) {
-			const result = await callTool(harness.tools, "kanban_snapshot", params);
-			expect(result.details.readOnly).toBe(true);
-			expect(result.content[0]?.text).toContain("T-001");
-		}
-		await callTool(harness.tools, "kanban_export_json", {});
+		const result = await callTool(harness.tools, "kanban_export_json", {});
+		expect(result.content[0]?.text).toContain("T-001");
 		expect(tree(harness.tmpDir)).toEqual(before);
 	});
 
-	it("exports a requested Markdown view and one event without compacting", async () => {
-		const before = largeLog();
-		harness.writeBoardLog(before);
-		const result = await callTool(harness.tools, "kanban_export", { task_id: "T-001" });
-		expect(result.details.view).toBe("task");
-		expect(readFileSync(join(harness.tmpDir, "snapshot.md"), "utf8")).toContain("# Kanban Task T-001");
-		expect(harness.readBoardLog().startsWith(before)).toBe(true);
-		expect(harness.readBoardLog()).toContain("SNAPSHOT T-SYS orchestrator seq=601");
-		expect(harness.readBoardLog()).not.toContain("COMPACT");
-		expect(readdirSync(harness.tmpDir)).not.toContain("archive");
+	it("removes snapshot tools but reads historical SNAPSHOT events without mutating them", async () => {
+		expect(harness.tools.has("kanban_snapshot")).toBe(false);
+		expect(harness.tools.has("kanban_export")).toBe(false);
+		const original = largeLog() + '2026-01-01T00:00:02Z SNAPSHOT T-SYS orchestrator seq=601\n';
+		harness.writeBoardLog(original);
+		expect((await parseBoard()).tasks.get("T-001")?.title).toBe("Visible task");
+		await callTool(harness.tools, "kanban_export_json", {});
+		expect(harness.readBoardLog()).toBe(original);
 	});
 
 	it("compacts only on request and preserves distinct backups even at the same timestamp", async () => {

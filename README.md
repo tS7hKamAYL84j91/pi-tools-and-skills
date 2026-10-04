@@ -1,13 +1,13 @@
 # pi-tools-and-skills
 
-![pi-panopticon](docs/images/pi-panopticon.png)
+![pi-agent-hub](docs/images/pi-agent-hub.png)
 
 Local-first extensions, skills, prompts, and shared libraries for
 [Pi](https://github.com/earendil-works/pi).
 
 ## Install
 
-Requires Pi and Node.js 22+. Local development also needs Python 3.10+ for the
+Tested with Pi 1.0.1; requires Node.js 22.19 or newer. Local development also needs Python 3.10+ for the
 offline Goal benchmark tests; security scanning uses gitleaks and Semgrep.
 
 ```sh
@@ -18,7 +18,7 @@ npm ci
 
 Install as a Pi package with `pi install /absolute/path/to/pi-tools-and-skills`
 or `pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`.
-`make setup` registers this checkout globally with Panopticon and Goal enabled.
+`make setup` registers this checkout globally with Agent Hub and Goal enabled.
 `make setup-package PACKAGE=<name>` registers one user-installable package.
 Project-only extensions remain opt-in through the owning workspace's Pi settings.
 Setup changes package registration, not runtime/project settings.
@@ -31,9 +31,9 @@ and operating limits. This index deliberately does not repeat those contracts.
 
 | Package | Responsibility |
 | --- | --- |
-| [Panopticon](extensions/pi-panopticon/README.md) | Agent registry, transport, spawning and health |
-| [Goal](extensions/pi-goal/README.md) | Owned goal execution and trusted verified completion |
-| [Teams](extensions/pi-teams/README.md) | Bounded consult, debate and research |
+| [Agent Hub](extensions/pi-agent-hub/README.md) | Agent registry, transport, spawning and health |
+| [Goal](extensions/pi-goal/README.md) | Owned goal execution and local completion hook |
+| [Team Workflows](extensions/pi-team-workflows/README.md) | Bounded consult, debate and research |
 | [Boost](extensions/pi-boost/README.md) | Prompt-scoped model switching and restoration |
 | [Automations](extensions/pi-automations/README.md) | Pi-hosted scheduling and workspace context |
 | [Kanban](extensions/pi-kanban/README.md) | Optional human task overview |
@@ -44,6 +44,11 @@ and operating limits. This index deliberately does not repeat those contracts.
 | [Fleet overview](fleet-overview/README.md) | Standalone browser overview and gated controls |
 
 ## Where things belong
+
+This is a Pi package repository, not an npm workspace. `extensions/*` are
+loaded by path and installed individually; there is no root `workspaces` field
+and no cross-package build graph. The root `package.json` `files` allowlist
+defines what the umbrella package ships.
 
 - `extensions/` — independently owned Pi features and their usage docs.
 - [`lib/`](lib/README.md) — shared contracts and infrastructure; consumer inventory.

@@ -116,7 +116,7 @@ function immediateResult(startedAt: number, error: string): RuntimeChildProcessR
 	return { stdout: "", stderr: "", durationMs: Date.now() - startedAt, exitCode: null, ok: false, error };
 }
 
-/** Spawn a bounded child process under the Panopticon runtime substrate. */
+/** Spawn a bounded child process under the Agent Hub runtime substrate. */
 export function spawnRuntimeChildProcess(
 	request: RuntimeChildProcessRequest,
 ): Promise<RuntimeChildProcessResult> {

@@ -1,4 +1,4 @@
-# Matrix Extension
+# Pi Matrix Extension
 
 Phone ↔ agent messaging via Matrix.
 
@@ -115,7 +115,7 @@ Skipped attachments include the filename, MIME type, size when known, concise re
 
 ## Cross-Extension Dependencies
 
-- Uses `pi-panopticon` channel registry for message routing.
+- Uses `pi-agent-hub` channel registry for message routing.
 
 ## Security model
 

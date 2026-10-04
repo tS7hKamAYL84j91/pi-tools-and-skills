@@ -1,6 +1,6 @@
 # T-886 caller migration evidence
 
-Status: active
+Status: historical
 
 Historical stage evidence; see `t-886-final-validation.md` for current status.
 

@@ -1,83 +1,36 @@
 ---
 name: pi-kanban
-description: Kanban board interactions to create, claim, update, snapshot, and complete tasks on a shared event-sourced task board.
+description: Authorized Kanban board interactions to view, create, claim, update, complete, and explicitly compact tasks.
 ---
 
 # Pi Kanban
 
-Use this skill only for requested, authorized board work. It is a tool reference,
-not a requirement to track implementation in Kanban. Follow project-specific
-restrictions on who may access the board; do not sweep, claim, or update it as
-startup work or duplicate execution records.
+Use only for requested, authorized board work. Follow project restrictions on
+board access; do not sweep, claim or update as startup work or duplicate agent
+execution records. Gravitas owns this repository's optional human overview.
 
-## Board lifecycle reference
+## Operations
 
-```text
-kanban_create → kanban_move to=todo → kanban_claim → kanban_edit note=... → kanban_complete
-```
+- `/kanban`: live board and task-detail view.
+- `kanban_export_json`: read-only structured board data.
+- `kanban_create task_id={{T-NNN}} agent={{name}} title={{title}} priority={{critical|high|medium|low}}`: create in backlog.
+- `kanban_move task_id={{T-NNN}} agent={{name}} to=todo`: make claimable.
+- `kanban_claim agent={{name}}`: claim highest-priority todo task, lowest ID on ties.
+- `kanban_claim task_id={{T-NNN}} agent={{name}}`: claim a todo task or explicitly reassign in-progress work.
+- `kanban_edit task_id={{T-NNN}} agent={{name}} note={{update}}`: append a note.
+- `kanban_edit task_id={{T-NNN}} agent={{name}} title={{title}} priority={{priority}} tags={{tags}} description={{text}}`: edit backlog/todo metadata.
+- `kanban_block` / `kanban_unblock`: record or resolve a blocker with task ID, agent and reason.
+- `kanban_complete task_id={{T-NNN}} agent={{name}} duration={{45m|2h}}`: complete owned in-progress work with required check evidence.
+- `kanban_compact`: explicitly compact history, retaining an original-log backup.
 
-## Common operations
+Viewing and completion never compact. Markdown snapshots/export are removed;
+do not delete existing artifacts or rewrite historical events. Compaction stays
+an explicit operation, not an inspection side effect.
 
-- Create a task in backlog:
-  `kanban_create task_id={{T-NNN}} agent={{name}} title={{title}} priority={{critical|high|medium|low}}`
+## Safeguards
 
-- Move a backlog task to todo:
-  `kanban_move task_id={{T-NNN}} agent={{name}} to=todo`
-
-- Claim a specific todo task:
-  `kanban_claim task_id={{T-NNN}} agent={{name}}`
-
-- Pick the next claimable task automatically:
-  `kanban_claim agent={{name}}`
-
-- Reassign an in-progress task:
-  `kanban_claim task_id={{T-NNN}} agent={{new-agent}}`
-
-- Add a progress note:
-  `kanban_edit task_id={{T-NNN}} agent={{name}} note={{update}}`
-
-- Edit backlog/todo metadata:
-  `kanban_edit task_id={{T-NNN}} agent={{name}} title={{title}} priority={{priority}} tags={{tags}} description={{text}}`
-
-- Block or unblock work:
-  `kanban_block task_id={{T-NNN}} agent={{name}} reason={{reason}}`
-  `kanban_unblock task_id={{T-NNN}} agent={{name}} reason={{reason}}`
-
-- Complete a task:
-  `kanban_complete task_id={{T-NNN}} agent={{name}} duration={{45m|2h}}`
-
-- View board state with gradual disclosure (read-only, no file writes or compaction):
-  `kanban_snapshot`
-  `kanban_snapshot task_id={{T-NNN}}`
-  `kanban_snapshot detail=full`
-
-- Explicitly export a Markdown snapshot when requested:
-  `kanban_export detail={{compact|full}}`
-  `kanban_export task_id={{T-NNN}}`
-
-- Explicitly compact history, preserving an original-log backup:
-  `kanban_compact`
-
-Viewing, exporting and completion do not trigger compaction. Do not export or
-compact merely because you inspected the board.
-
-## Patterns
-
-- `kanban_claim` is the single assignment operation:
-  - omit `task_id` to pick the highest-priority todo task;
-  - pass a todo `task_id` to claim it;
-  - pass an in-progress `task_id` with a new agent to reassign it.
-- `kanban_edit` is the single update operation for metadata and notes.
-- Use `kanban_snapshot` first; request `task_id` or `detail=full` only when more context is needed.
-- Use `agent_status` for agent health; kanban no longer has a monitor/nudge tool.
-
-## Gotchas
-
-- Task IDs must match `T-NNN` exactly.
-- WIP limit is 3 in-progress tasks.
-- Metadata edits are allowed only for backlog/todo tasks; notes can be added to any existing task.
-- `kanban_complete` only works on in-progress tasks.
-- `kanban_delete` can delete blocked tasks after confirmation; it cannot delete in-progress tasks.
-- Each created task gets `pi-kanban/tasks/T-NNN.md`; notes append there as well as to `board.log`.
-- Preserve owner checks, configured WIP limits, verification evidence, completion
-  gates, and deletion confirmation. Optional board use does not bypass its safeguards.
+Task IDs use `T-NNN`. WIP defaults to three. Metadata edits require backlog/todo;
+notes can be added to existing tasks. In-progress tasks cannot be deleted; blocked
+deletion requires confirmation. Task Markdown supplements authoritative board.log.
+Preserve owner checks, WIP limits, verification evidence, trusted completion gates,
+confirmation, locks and backups. Use `agent_status`, not Kanban, for agent health.

@@ -1,6 +1,6 @@
 # SAFETY Council Seat: T-795 / T-888 Shared Persistence Boundary
 
-Status: active
+Status: historical
 
 Date: 2026-09-05
 

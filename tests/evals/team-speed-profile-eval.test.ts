@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	resolveTeamProfile,
 	type TeamProfile,
-} from "../../extensions/pi-teams/team-profiles.js";
-import { directTeamResultBody } from "../../extensions/pi-teams/team-result.js";
-import { loadTeamRegistry } from "../../extensions/pi-teams/team-registry.js";
+} from "../../extensions/pi-team-workflows/team-profiles.js";
+import { directTeamResultBody } from "../../extensions/pi-team-workflows/team-result.js";
+import { loadTeamRegistry } from "../../extensions/pi-team-workflows/team-registry.js";
 
 const RUBRIC_FIELDS = ["routing", "bounds", "validity", "behavior"] as const;
 

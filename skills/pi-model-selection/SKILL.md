@@ -45,7 +45,7 @@ Rules:
 - The synthesis model must be at least as capable as the strongest member model.
 - Navigator should be a fast model; don't burn expensive tokens on lightweight reviews.
 - Verify all chosen models are visible with `pi --list-models` before writing team config.
-- Avoid outdated "chairman" terminology; pi-teams uses `member` and `synthesis` roles.
+- Avoid outdated "chairman" terminology; pi-team-workflows uses `member` and `synthesis` roles.
 
 Configure team models with `team_models` or a `team_run` `models` override.
 

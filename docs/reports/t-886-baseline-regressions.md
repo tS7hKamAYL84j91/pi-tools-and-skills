@@ -1,6 +1,6 @@
 # T-886 baseline regressions and bounded parser/containment fix
 
-Status: active
+Status: historical
 
 Historical stage evidence only; later implementation supersedes open findings. See `t-886-final-validation.md` for current status.
 

@@ -138,6 +138,12 @@ def prepare_bundle(track, output, selection, repeats, verified=False, verifier_s
         for arm in ["direct", "goal"]:
             name = f"{arm}-{repetition:02}"
             git(seed, "worktree", "add", "-q", "-b", name, str(output / name))
+            if verified:
+                settings_dir = output / name / ".pi" / "goal"
+                settings_dir.mkdir(parents=True, exist_ok=True)
+                save_json(settings_dir / "settings.json", {"schemaVersion": 1, "revision": name,
+                          "command": "./verify-bundle", "timeoutMs": 600000})
+                (settings_dir / "settings.json").chmod(0o600)
     manifest = {"fixtureCommit": git(seed, "rev-parse", "HEAD"), "selection": selection, "verifiedCompletion": verified,
                 "problems": manifests, "rootHashes": root_hashes}
     save_json(output / "bundle.json", manifest)
@@ -155,9 +161,7 @@ def run_bundle(args, output, report, selection, goal_extension):
             name = f"{arm}-{repetition:02}"
             workspace, evidence = output / name, output / f"{name}-evidence"
             print(f"Running ten-problem bundle/{name}", flush=True)
-            process_env = ({"PI_GOAL_GATE_COMMAND": "./verify-bundle", "PI_GOAL_REPAIR_ATTEMPTS": "2",
-                            "PI_GOAL_GATE_TIMEOUT_MS": "600000", "PI_GOAL_BENCHMARK_ARM": arm}
-                           if args.verified_completion else None)
+            process_env = ({"PI_GOAL_BENCHMARK_ARM": arm} if args.verified_completion else None)
             result = run_trial(workspace, evidence, arm, args.model, args.thinking, goal_extension,
                                args.timeout, args.max_calls, process_env)
             problems = []

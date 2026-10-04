@@ -126,6 +126,10 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual((output / "direct-01/verify-bundle").read_bytes(), (output / "goal-01/verify-bundle").read_bytes())
         self.assertIn(f"'{self.root / 'trusted verifier.py'}'", (output / "direct-01/verify-bundle").read_text())
         self.assertTrue(manifest["verifiedCompletion"])
+        hook = json.loads((output / "goal-01/.pi/goal/settings.json").read_text())
+        self.assertEqual(hook["command"], "./verify-bundle")
+        self.assertEqual(hook["timeoutMs"], 600000)
+        self.assertEqual(hook["schemaVersion"], 1)
 
     def test_subdirectory_judging_does_not_flag_sibling_solutions(self):
         seed = self.root / "bundle"

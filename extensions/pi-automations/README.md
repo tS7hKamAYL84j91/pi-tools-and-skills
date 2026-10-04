@@ -47,7 +47,7 @@ Automations rather than `pi-kanban`.
 ## Cross-Extension Dependencies
 
 - Schedules may invoke `kanban_*` tools (provided by `pi-kanban`).
-- Uses `pi-panopticon` for injecting schedule prompts.
+- Uses `pi-agent-hub` for injecting schedule prompts.
 
 ## TUI Status
 
@@ -58,6 +58,13 @@ automations: <workspace|on> <✓|idle|⚠> [sch enabled/active] [q<queued>] [f<f
 ```
 
 This is intentionally operational state only: workspace/scheduler health, enabled schedules, active runs, and ephemeral queue-level telemetry. The `q` and `f` suffixes appear only when non-zero. Counters reset when the scheduler stops (session close / pi exit).
+
+## Scheduled-run settlement
+
+Low-level `agent_end` attempts are retained until Pi emits `agent_settled`.
+Retries and recovery do not record premature completion or interruption. Queued
+scheduled runs retain separate markers and outcomes; shutdown discards pending
+attempt buffers while the scheduler records active-run interruption as before.
 
 ## Schedule continuation (opt-in)
 

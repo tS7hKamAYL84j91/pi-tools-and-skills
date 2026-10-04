@@ -117,7 +117,7 @@ describe("pi-goal direct execution migration", () => {
 	});
 
 	it("goal_complete verifies evidence and clears legacy plan state", async () => {
-		vi.stubEnv("PI_GOAL_GATE_COMMAND", "exit 0");
+		await (await import("../../extensions/pi-goal/goal-hook.js")).saveGoalHook(tempDir, { command: "exit 0" });
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);

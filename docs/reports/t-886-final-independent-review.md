@@ -1,6 +1,6 @@
 # T-886 final comprehensive independent review
 
-Status: active
+Status: historical
 
 Retained verbatim review body from the independent explicit Luna reviewer; scope is reliability, not combined-ticket augmentation.
 

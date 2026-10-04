@@ -102,7 +102,7 @@ async function host(wrongCallback = false, holdFirst = false, unknownCallback = 
     return { cancelled: false };
    },
   } as unknown as ExtensionCommandContext; // Fixture implements the used host capability only.
-  const self: Host = { ctx, commands, invalidate: () => { stale = true; }, emit: async (name, event) => { for (const handler of handlers.get(name) ?? []) { await handler(event, ctx); } } };
+  const self: Host = { ctx, commands, invalidate: () => { stale = true; }, emit: async (name, event) => { for (const handler of handlers.get(name) ?? []) { await handler(event, ctx); } if (name === "agent_end") { for (const handler of handlers.get("agent_settled") ?? []) { await handler({}, ctx); } } } };
   goalExtension(hostApi as unknown as ExtensionAPI);
   return self;
  }

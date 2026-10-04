@@ -1,4 +1,4 @@
-/** Opt-in session export spooling into Panopticon-compatible fixture records. */
+/** Opt-in session export spooling into Agent Hub-compatible fixture records. */
 
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
@@ -65,7 +65,7 @@ function toSessionJsonlEvent(event: JournalEvent): Record<string, unknown> {
 }
 
 /**
- * Write a Panopticon-compatible registry record and redacted session JSONL.
+ * Write a Agent Hub-compatible registry record and redacted session JSONL.
  * This is off-by-default and intended for synthetic/redacted fixtures or an
  * explicitly approved hook boundary; it never reads session files itself.
  */

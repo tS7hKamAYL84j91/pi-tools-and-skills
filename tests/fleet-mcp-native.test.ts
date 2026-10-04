@@ -10,8 +10,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { startHttp } from "../fleet-mcp/server.js";
-import { createMessaging } from "../extensions/pi-panopticon/messaging/messaging.js";
-import { setupExternalPeerSource } from "../extensions/pi-panopticon/registry/external-peer-source.js";
+import { createMessaging } from "../extensions/pi-agent-hub/messaging/messaging.js";
+import { setupExternalPeerSource } from "../extensions/pi-agent-hub/registry/external-peer-source.js";
 import { registerChannel, unregisterChannel } from "../lib/message-transport.js";
 import type { AgentRecord } from "../lib/agent-registry.js";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ import { parseFleetConfig } from "../fleet-mcp/config.js";
 import { FleetGateway } from "../fleet-mcp/gateway.js";
 import { visibleNativePeers } from "../fleet-mcp/native-peers.js";
 import { createMaildirTransport } from "../lib/transports/maildir.js";
-import { makeAgentRecord, makeMockExtensionApi, asExtensionApi, makeRegistry, toolText } from "./panopticon/helpers.js";
+import { makeAgentRecord, makeMockExtensionApi, asExtensionApi, makeRegistry, toolText } from "./agent-hub/helpers.js";
 
 const paths = vi.hoisted(() => ({ registry: "" }));
 vi.mock("../lib/agent-registry.js", async (original) => ({

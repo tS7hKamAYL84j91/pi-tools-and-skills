@@ -2,7 +2,7 @@
  * Kanban Extension — Entry Point
  *
  * Registers the kanban watcher, commands, shortcuts, and tool groups.
- * Board state, snapshot rendering, watcher, and compaction logic live in
+ * Board state, live views, watcher, and compaction logic live in
  * sibling modules; this file preserves activation order only.
  */
 

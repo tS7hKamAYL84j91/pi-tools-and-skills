@@ -1,6 +1,6 @@
 # T-886 transaction-migration plan safety review
 
-Status: active
+Status: historical
 
 Historical stage verdict; see `t-886-final-validation.md` for current status.
 

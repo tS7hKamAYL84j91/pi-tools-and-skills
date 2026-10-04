@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { runManualCompaction } from "./compaction.js";
 

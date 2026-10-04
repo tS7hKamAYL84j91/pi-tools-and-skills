@@ -65,9 +65,11 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 | 057 | Boost is an in-session model lease that automates the manual model flip | [057-boost-in-session-model-lease.md](057-boost-in-session-model-lease.md) |
 | 058 | Single-ticket delivery event profile — evaluation only | [058-single-ticket-delivery-event-profile.md](058-single-ticket-delivery-event-profile.md) |
 | 059 | Per-goal driver ownership and send admission | [059-goal-driver-ownership.md](059-goal-driver-ownership.md) |
+| 060 | Automations scheduler slot admission and uncertain handoff | [060-automations-scheduler-slot-admission.md](060-automations-scheduler-slot-admission.md) |
 | 061 | Extension Command Surface and UX Conventions | [061-extension-command-surface-conventions.md](061-extension-command-surface-conventions.md) |
 | 062 | Rename pi-coas Extension to pi-automations | [062-pi-automations-rename.md](062-pi-automations-rename.md) |
 | 063 | Purpose-based repository boundaries | [063-purpose-based-repository-boundaries.md](063-purpose-based-repository-boundaries.md) |
+| 064 | Rename pi-panopticon to pi-agent-hub and pi-teams to pi-team-workflows | [064-extension-renames.md](064-extension-renames.md) |
 
 ## ADR Registry Notes
 
@@ -77,4 +79,4 @@ This directory contains Architecture Decision Records (ADRs) for `pi-tools-and-s
 - **Unused ADR numbers**:
   - `020` and `028` were never assigned or used.
 - **Next available ADR slot**:
-  - ADR **060** is reserved by the isolated T-888 scheduler admission work; **061**–**063** are used; the next unreserved sequential slot is **064**.
+  - **060**–**064** are used; the next unreserved sequential slot is **065**.

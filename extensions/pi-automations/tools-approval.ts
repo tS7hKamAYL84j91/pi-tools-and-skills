@@ -1,7 +1,7 @@
 /** Model-callable approval inbox tools. */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { approveApproval, deferApproval, isPrincipal, listApprovalArtifacts, rejectApproval } from "./approval-inbox.js";
 import { resolveAutomationsConfigForCwd } from "./config.js";

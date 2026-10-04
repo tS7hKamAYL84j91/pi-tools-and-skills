@@ -1,6 +1,6 @@
 # T-795 integrated candidate review
 
-Status: active
+Status: historical
 
 GM integration checks: `npm run check` PASS (99.23%, clean knip); `npm test -- --maxWorkers=2` PASS (217 files, 1608 tests); primary LSP on three changed source modules clean. Independent review body follows.
 

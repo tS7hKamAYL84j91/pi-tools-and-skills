@@ -111,16 +111,9 @@ describe("kanban_complete verification gate", () => {
 		expect(result.details.checks).toHaveLength(2);
 		expect(harness.readBoardLog()).toContain('checks=');
 
-		const snapshot = await callTool(harness.tools, "kanban_snapshot", { task_id: "T-104" });
-		const text = snapshot.content[0]?.text ?? "";
-		expect(text).toContain("Verification evidence");
-		expect(text).toContain("npm test");
-		expect(text).toContain("all passed");
-		expect(text).toContain("exit_code: 0");
-
 		const json = await callTool(harness.tools, "kanban_export_json", {});
 		const task = (json.details.tasks as Array<{ id: string; checks?: unknown[] }>).find((t) => t.id === "T-104");
 		expect(task).toBeDefined();
-		expect(task?.checks).toHaveLength(2);
+		expect(task?.checks).toEqual([{ command: "npm test", result: "all passed", exit_code: 0 }, { command: "npm run check", result: "clean", exit_code: 0 }]);
 	});
 });

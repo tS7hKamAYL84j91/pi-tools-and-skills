@@ -1,6 +1,6 @@
 # Frozen source record — TODO to Kanban migration
 
-Status: active
+Status: historical
 
 Active provenance reference for the Kanban migration; the copied checklist remains frozen, not a maintained backlog. Preserve this source record.
 

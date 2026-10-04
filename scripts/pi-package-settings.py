@@ -9,16 +9,16 @@ import sys
 from typing import Any
 
 PACKAGE_EXTENSIONS = [
-    "extensions/pi-panopticon/**",
+    "extensions/pi-agent-hub/**",
     "extensions/pi-goal/**",
 ]
 
 USER_INSTALLABLE_PACKAGES = {
     "pi-goal",
     "pi-matrix",
-    "pi-teams",
+    "pi-team-workflows",
     "pi-ollama-models",
-    "pi-panopticon",
+    "pi-agent-hub",
 }
 
 PROJECT_ONLY_PACKAGES = {
@@ -28,7 +28,9 @@ PROJECT_ONLY_PACKAGES = {
 }
 
 OWNED_EXTENSION_DIRS = [
-    "pi-panopticon",
+    "pi-team-workflows",
+    "pi-agent-hub",
+    "pi-panopticon",  # Legacy direct registration; cleanup only.
     "pi-teams",
     "council",
     "pi-file-watch",

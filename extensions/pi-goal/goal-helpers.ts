@@ -18,6 +18,7 @@ const KNOWN_ACTIONS = new Set([
 	"show",
 	"status",
 	"help",
+	"hook",
 	"file",
 	"pause",
 	"resume",
@@ -31,6 +32,7 @@ const KNOWN_ACTIONS = new Set([
 export const GOAL_HELP_COMMANDS = [
 	"/goal help — show this command summary",
 	"/goal status — show the current goal",
+	"/goal hook [command] — edit the local completion hook (TUI editor when omitted)",
 	"/goal <text> — create a text goal and run until completion",
 	"/goal file <path> — create a file-backed goal and run until completion",
 	"/goal run [--turns N] — resume until completion (or set an explicit bounded turn count)",

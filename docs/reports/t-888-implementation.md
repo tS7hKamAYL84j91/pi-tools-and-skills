@@ -1,6 +1,6 @@
 # T-888 implementation report
 
-Status: active
+Status: historical
 
 Implementation and verification are complete; the merge gate remains external.
 

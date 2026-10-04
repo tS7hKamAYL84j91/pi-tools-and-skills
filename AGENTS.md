@@ -17,9 +17,9 @@ someone use or maintain the result, not to satisfy a workflow.
 Do not load or manage Kanban from project agents. Gravitas owns the optional
 human-facing oversight view. Do not duplicate project state or transcripts.
 
-Retained extensions include Panopticon, Teams, Goal, Ollama Models, Boost,
-Matrix, File Watch, Automations scheduling, and Gravitas's Kanban view. Retire only
-when retained behavior is verified. Do not change live configuration as part of
+Retained extensions include Agent Hub, Team Workflows, Goal, Ollama Models,
+Boost, Matrix, File Watch, Automations scheduling, and Gravitas's Kanban view.
+Retire only when retained behavior is verified. Do not change live configuration as part of
 a code change without approval.
 
 Preserve uncommitted work, session history, permissions, transport validation,

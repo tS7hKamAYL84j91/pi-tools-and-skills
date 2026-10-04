@@ -11,8 +11,8 @@ function markdownFiles(root: string): string[] {
 	return listFiles(root, [".md"]).map((file) => relative(process.cwd(), file));
 }
 
-function hasActiveStatus(path: string): boolean {
-	return /^Status:\s*active\s*$/m.test(readFileSync(path, "utf8"));
+function hasExplicitStatus(path: string): boolean {
+	return /^Status:\s*(active|historical)\s*$/m.test(readFileSync(path, "utf8"));
 }
 
 describe("docs hygiene", () => {
@@ -33,11 +33,11 @@ describe("docs hygiene", () => {
 		expect(stalePaths).toEqual([]);
 	});
 
-	it("keeps only explicitly active reports", () => {
-		const inactiveReports = markdownFiles("docs/reports")
+	it("requires every report to declare an explicit status", () => {
+		const unlabelledReports = markdownFiles("docs/reports")
 			.filter((path) => basename(path) !== "README.md")
-			.filter((path) => !hasActiveStatus(path));
+			.filter((path) => !hasExplicitStatus(path));
 
-		expect(inactiveReports).toEqual([]);
+		expect(unlabelledReports).toEqual([]);
 	});
 });

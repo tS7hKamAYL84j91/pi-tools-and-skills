@@ -2,133 +2,61 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGoal } from "../../extensions/pi-goal/goal-persist.js";
-import { writeGoalFixture as saveGoal } from "../fixtures/goal-state.js";
+import { loadGoal, createTextGoal } from "../../extensions/pi-goal/goal-persist.js";
+import { saveGoalHook } from "../../extensions/pi-goal/goal-hook.js";
+import { writeGoalFixture } from "../fixtures/goal-state.js";
 import { registerGoalTools } from "../../extensions/pi-goal/goal-tools.js";
-import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
-const tempDirs: string[] = [];
-const originalGateCommand = process.env.PI_GOAL_GATE_COMMAND;
-
-function makeGoal(): GoalState {
-	return {
-		schemaVersion: 2,
-		revision: 0,
-		goalId: "goal-1",
-		objective: "Test autonomous gate",
-		status: "active",
-		planRequired: false,
-		milestones: [],
-		currentMilestoneIndex: 0,
-		runId: "run-1",
-		runActive: false,
-		turnBudget: 50,
-		turnsUsed: 0,
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
-	};
-}
-
+const dirs: string[] = [];
 function mockPi() {
-	const tools: Array<{ name: string; execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, _onUpdate: unknown, ctx: { cwd: string }) => Promise<unknown> }> = [];
-	return {
-		registerTool(def: { name: string; execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, _onUpdate: unknown, ctx: { cwd: string }) => Promise<unknown> }) {
-			tools.push(def);
-		},
-		async callTool(name: string, params: Record<string, unknown>, cwd: string, signal?: AbortSignal) {
-			const tool = tools.find((t) => t.name === name);
-			if (!tool) throw new Error(`Unknown tool ${name}`);
-			return tool.execute("id", params, signal ?? new AbortController().signal, undefined, { cwd });
-		},
-	};
+ const tools: Array<{ name: string; execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, update: unknown, ctx: { cwd: string }) => Promise<unknown> }> = [];
+ return { registerTool(tool: typeof tools[number]) { tools.push(tool); }, async call(name: string, cwd: string, params: Record<string, unknown>) {
+  const tool = tools.find(t => t.name === name); if (!tool) throw new Error("missing tool");
+  return tool.execute("id", params, new AbortController().signal, undefined, { cwd });
+ } };
 }
-
-async function makeWorkspace(): Promise<{ cwd: string; goal: GoalState }> {
-	const cwd = `${tmpdir()}/pi-goal-gate-${process.pid}-${Date.now()}`;
-	mkdirSync(cwd, { recursive: true });
-	mkdirSync(join(cwd, ".pi", "goal"), { recursive: true });
-	tempDirs.push(cwd);
-	const goal = makeGoal();
-	await saveGoal(cwd, goal);
-	return { cwd, goal };
+let pi: ReturnType<typeof mockPi>;
+async function workspace() {
+ const cwd = join(tmpdir(), `goal-local-gate-${process.pid}-${Date.now()}`);
+ mkdirSync(cwd, { recursive: true }); dirs.push(cwd);
+ await writeGoalFixture(cwd, await createTextGoal(cwd, "Local completion"));
+ return cwd;
 }
-
-describe("goal_complete operator-configured gate", () => {
-	let runtime: ReturnType<typeof mockPi>;
-	let refreshCalls: Array<GoalState | null | undefined>;
-
-	beforeEach(() => {
-		delete process.env.PI_GOAL_GATE_COMMAND;
-		runtime = mockPi();
-		refreshCalls = [];
-		registerGoalTools(runtime as never, { resolve: null, stopRequested: false, pendingMarker: null, cancelledMarkers: new Set() }, async (_ctx, state) => {
-			refreshCalls.push(state);
-		});
-	});
-
-	afterEach(() => {
-		if (originalGateCommand === undefined) {
-			delete process.env.PI_GOAL_GATE_COMMAND;
-		} else {
-			process.env.PI_GOAL_GATE_COMMAND = originalGateCommand;
-		}
-		for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-	});
-
-	it("completes when the configured gate exits 0", async () => {
-		const { cwd } = await makeWorkspace();
-		process.env.PI_GOAL_GATE_COMMAND = "exit 0";
-		const result = await runtime.callTool("goal_complete", {
-			evidence: "All checks passed",
-		}, cwd);
-		expect(result).toBeDefined();
-		const state = await loadGoal(cwd);
-		expect(state?.status).toBe("complete");
-		expect(state?.completionEvidence).toContain("All checks passed");
-	});
-
-	it("blocks completion when the configured gate exits non-zero", async () => {
-		const { cwd } = await makeWorkspace();
-		process.env.PI_GOAL_GATE_COMMAND = "echo 'gate failed' >&2; exit 1";
-		await expect(
-			runtime.callTool("goal_complete", {
-				evidence: "Should not persist",
-			}, cwd),
-		).rejects.toThrow(/gate failed/);
-		const state = await loadGoal(cwd);
-		expect(state?.status).toBe("paused");
-		expect(state?.completionEvidence).toBeUndefined();
-	});
-
-	it("fails and stops an active continuous run when the gate fails", async () => {
-		const { cwd, goal } = await makeWorkspace();
-		await saveGoal(cwd, { ...goal, runActive: true, executionState: "in_progress", runMode: "continuous" });
-		process.env.PI_GOAL_GATE_COMMAND = "exit 1";
-		await expect(runtime.callTool("goal_complete", { evidence: "must not complete" }, cwd)).rejects.toThrow(/gate failed/);
-		const state = await loadGoal(cwd);
-		expect(state?.runActive).toBe(false);
-		expect(state?.executionState).toBe("failed");
-		expect(state?.completionEvidence).toBeUndefined();
-	});
-
-	it("blocks completion without a configured verifier", async () => {
-		const { cwd } = await makeWorkspace();
-		await expect(runtime.callTool("goal_complete", { evidence: "No gate" }, cwd)).rejects.toThrow(/verifier/);
-		const state = await loadGoal(cwd);
-		expect(state?.status).toBe("paused");
-		expect(state?.completionEvidence).toBeUndefined();
-	});
-
-	it("ignores a model-supplied gate_command extra field", async () => {
-		process.env.PI_GOAL_GATE_COMMAND = "exit 0";
-		const { cwd } = await makeWorkspace();
-		const marker = join(cwd, "model-command-ran");
-		await runtime.callTool("goal_complete", {
-			evidence: "Extra fields are inert",
-			gate_command: `touch "${marker}"`,
-		}, cwd);
-
-		expect(existsSync(marker)).toBe(false);
-		expect((await loadGoal(cwd))?.status).toBe("complete");
-	});
+beforeEach(() => {
+ pi = mockPi();
+ registerGoalTools(pi as never, { resolve: null, stopRequested: false, pendingMarker: null, cancelledMarkers: new Set() }, async () => {});
+});
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+describe("goal_complete local hook", () => {
+ it("completes on exit zero and retains evidence", async () => {
+  const cwd = await workspace(); await saveGoalHook(cwd, { command: "exit 0" });
+  await pi.call("goal_complete", cwd, { evidence: "All checks passed" });
+  expect(await loadGoal(cwd)).toMatchObject({ status: "complete", completionEvidence: "All checks passed" });
+ });
+ it("leaves the goal open when the hook fails", async () => {
+  const cwd = await workspace(); await saveGoalHook(cwd, { command: "echo 'gate failed' >&2; exit 1" });
+  await expect(pi.call("goal_complete", cwd, { evidence: "must not persist" })).rejects.toThrow(/gate failed/);
+  expect(await loadGoal(cwd)).toMatchObject({ status: "active", completionCheck: { status: "rejected" } });
+  expect((await loadGoal(cwd))?.completionEvidence).toBeUndefined();
+ });
+ it("declares a missing hook without completing or pausing", async () => {
+  const cwd = await workspace();
+  await expect(pi.call("goal_complete", cwd, { evidence: "No hook" })).rejects.toThrow(/hook missing/i);
+  expect((await loadGoal(cwd))?.status).toBe("active");
+  expect((await loadGoal(cwd))?.completionEvidence).toBeUndefined();
+ });
+ it("ignores the deprecated gate_command argument", async () => {
+  const cwd = await workspace(); await saveGoalHook(cwd, { command: "exit 0" });
+  const marker = join(cwd, "extra-command-ran");
+  await pi.call("goal_complete", cwd, { evidence: "Extra field inert", gate_command: `touch "${marker}"` });
+  expect(existsSync(marker)).toBe(false);
+  expect((await loadGoal(cwd))?.status).toBe("complete");
+ });
+ it("allows an authorized agent to configure locally without running the hook", async () => {
+  const cwd = await workspace(); const marker = join(cwd, "hook-ran");
+  await pi.call("goal_hook", cwd, { command: `touch "${marker}"`, expected_revision: "absent" });
+  expect(existsSync(marker)).toBe(false);
+  await pi.call("goal_complete", cwd, { evidence: "fixture verified" });
+  expect(existsSync(marker)).toBe(true);
+ });
 });

@@ -7,8 +7,10 @@ import type { FileWatchConfig, WatchedFileDescription, WatcherRuntimeState } fro
 
 export { buildFirewatchUpdate, describeWatchedFiles } from "./file-metadata.js";
 
+/** Aggregate cap across debounce timers and retained batch paths. */
+const MAX_PENDING_PATHS = 256;
 export function createRuntimeState(): WatcherRuntimeState {
-	return { watchers: [], timers: new Map(), batchTimer: undefined, batchWindowStart: undefined, batchChanges: new Map(), files: [], config: undefined, lastEventAt: undefined, eventCount: 0 };
+	return { watchers: [], timers: new Map(), batchTimer: undefined, batchWindowStart: undefined, batchChanges: new Map(), files: [], config: undefined, lastEventAt: undefined, eventCount: 0, overflowEvents: 0 };
 }
 
 export function renderStatus(config: FileWatchConfig, files: readonly WatchedFileDescription[], state: WatcherRuntimeState): string {
@@ -24,6 +26,7 @@ interface FirewatchBatch {
 	window_start: string;
 	window_end: string;
 	changes: FirewatchUpdate[];
+	overflow_events?: number;
 }
 
 export function formatChangeMessage(update: FirewatchUpdate): string {
@@ -53,6 +56,7 @@ function formatBatchMessage(batch: FirewatchBatch): string {
 		`window_start: ${batch.window_start}`,
 		`window_end: ${batch.window_end}`,
 		`changes: ${batch.changes.length}`,
+		...(batch.overflow_events ? [`overflow_events: ${batch.overflow_events} (pending path limit; events omitted)`] : []),
 		...batch.changes.map((change) => `- ${change.path} event=${change.event} change_count=${change.change_count ?? 1}`),
 	].join("\n");
 }
@@ -66,12 +70,13 @@ export function stopFileWatch(state: WatcherRuntimeState): void {
 	state.batchTimer = undefined;
 	state.batchWindowStart = undefined;
 	state.batchChanges.clear();
+	state.overflowEvents = 0;
 	for (const watcher of state.watchers) watcher.close();
 	state.watchers = [];
 }
 
 function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
-	if (!state.config || state.batchChanges.size === 0) return;
+	if (!state.config || (state.batchChanges.size === 0 && state.overflowEvents === 0)) return;
 	const windowStart = state.batchWindowStart ?? Date.now();
 	const changes = [...state.batchChanges.values()].map((entry) => ({
 		...buildFirewatchUpdate(entry.file, entry.eventType, state.config?.maxBytes),
@@ -81,7 +86,9 @@ function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
 		window_start: new Date(windowStart).toISOString(),
 		window_end: new Date().toISOString(),
 		changes,
+		...(state.overflowEvents ? { overflow_events: state.overflowEvents } : {}),
 	};
+	state.overflowEvents = 0;
 	state.batchChanges.clear();
 	state.batchTimer = undefined;
 	state.batchWindowStart = undefined;
@@ -90,24 +97,35 @@ function sendBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState): void {
 	pi.sendMessage({ customType: "firewatch_batch", content: formatBatchMessage(batch), display: false, details: batch }, { triggerTurn: state.config.triggerTurn });
 }
 
+function admitPath(pi: ExtensionAPI, state: WatcherRuntimeState, path: string): boolean {
+	if (state.timers.has(path) || state.batchChanges.has(path)) return true;
+	if (new Set([...state.timers.keys(), ...state.batchChanges.keys()]).size < MAX_PENDING_PATHS) return true;
+	state.overflowEvents = Math.min(Number.MAX_SAFE_INTEGER, state.overflowEvents + 1);
+	startBatchTimer(pi, state);
+	return false;
+}
+
+function startBatchTimer(pi: ExtensionAPI, state: WatcherRuntimeState): void {
+	if (!state.config) return;
+	state.batchWindowStart ??= Date.now();
+	state.batchTimer ??= setTimeout(() => sendBatchUpdate(pi, state), state.config.batchWindowMs);
+}
+
 export function queueBatchUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
 	if (!state.config || file.status !== "watching" || !file.realPath) return;
+	if (!admitPath(pi, state, file.realPath)) return;
 	const existing = state.batchChanges.get(file.realPath);
 	state.batchChanges.set(file.realPath, {
 		file,
 		eventType,
 		changeCount: (existing?.changeCount ?? 0) + 1,
 	});
-	if (state.batchWindowStart == null) {
-		state.batchWindowStart = Date.now();
-	}
-	if (!state.batchTimer) {
-		state.batchTimer = setTimeout(() => sendBatchUpdate(pi, state), state.config.batchWindowMs);
-	}
+	startBatchTimer(pi, state);
 }
 
 function scheduleFileUpdate(pi: ExtensionAPI, state: WatcherRuntimeState, file: WatchedFileDescription, eventType: string): void {
 	if (!state.config || file.status !== "watching" || !file.realPath) return;
+	if (!admitPath(pi, state, file.realPath)) return;
 	const existing = state.timers.get(file.realPath);
 	if (existing) clearTimeout(existing);
 	state.timers.set(file.realPath, setTimeout(() => {

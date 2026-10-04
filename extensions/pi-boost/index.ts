@@ -18,7 +18,6 @@ import {
 	leaseState,
 	renewExpiredLease,
 	updateStatus,
-	waitForSettled,
 } from "./lease-state.js";
 import type { BoostCandidateModel } from "./lease-state.js";
 
@@ -67,9 +66,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 		// Restore the baseline only when the run is fully settled (after retries,
 		// compaction, and queued follow-ups have drained).
-		pi.on("agent_end", async (_event, ctx) => {
-			if (!lease.originalModel) return;
-			await waitForSettled(ctx);
+		pi.on("agent_settled", async (_event, ctx) => {
 			if (!lease.originalModel) return;
 			try {
 				await restoreBaseline();

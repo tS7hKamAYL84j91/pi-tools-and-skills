@@ -13,7 +13,7 @@ const ACTIONS = new Set<SessionHookAction>(["status", "install", "uninstall", "d
 
 function usage(): string {
 	return [
-		"Usage: npx tsx scripts/session-hook-installer-cli.ts <status|install|uninstall|dry-run> --registry-dir <absolute-local-dir> [--retention-events N]",
+		"Usage: npx jiti scripts/session-hook-installer-cli.ts <status|install|uninstall|dry-run> --registry-dir <absolute-local-dir> [--retention-events N]",
 		"",
 		"Off-by-default local POC. No global hooks are installed; this delegates to the session hook installer library.",
 	].join("\n");

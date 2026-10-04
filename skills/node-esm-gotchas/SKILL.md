@@ -8,7 +8,7 @@ description: Avoid common ESM import errors in Node.js TypeScript projects, such
 ## Common operations
 
 - Run TypeScript directly (no compile step):
-  `npx tsx {{script.ts}}`
+  `npx jiti {{script.ts}}`
 
 - Check if a package is importable:
   `node -e "import('{{package}}').then(m => console.log(Object.keys(m)))"`
@@ -33,5 +33,7 @@ description: Avoid common ESM import errors in Node.js TypeScript projects, such
 
 ## Running TypeScript
 
-- `tsx` is not globally installed — use `npx tsx` or install it in the project.
-- `Cannot find package 'tsx'` — it's a dev dependency, not available in `node -e` context; use `npx tsx`.
+- Use the project's bundled loader: `npx jiti {{script.ts}}` (Pi ships `jiti`).
+- `node {{script.ts}}` alone fails (`ERR_MODULE_NOT_FOUND`) when imports use `.js`
+  specifiers, because Node's type stripping does not remap `.js` to `.ts`.
+- `Cannot find package 'jiti'` — install dependencies (`npm ci`) first; it is not global.

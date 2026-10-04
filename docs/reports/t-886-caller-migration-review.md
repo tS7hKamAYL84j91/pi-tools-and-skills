@@ -1,6 +1,6 @@
 # T-886 Caller-Migration Independent Re-review
 
-Status: active
+Status: historical
 
 Historical stage verdict; see `t-886-final-validation.md` for current status.
 

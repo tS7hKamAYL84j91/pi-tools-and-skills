@@ -6,7 +6,7 @@ import * as z from "zod/v4";
 import { REGISTRY_DIR, STALE_MS, isPidAlive, type AgentRecord } from "../lib/agent-registry.js";
 import { assertPrivateFileForRead, auditPrivateDirectory } from "../lib/private-local-mode.js";
 import type { NativeSessionBinding } from "./config.js";
-import { canSee } from "../extensions/pi-panopticon/registry/visibility.js";
+import { canSee } from "../extensions/pi-agent-hub/registry/visibility.js";
 
 const idSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const nativeRecord = z.object({

@@ -2,7 +2,7 @@
  * Kanban complete tool registration.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import type { TaskVerificationCheck } from "./board.js";
 import { orchestrateTaskCompletion } from "./board-actions.js";

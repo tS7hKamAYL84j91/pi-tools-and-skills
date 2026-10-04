@@ -6,7 +6,7 @@ import {
 	listExternalAgents,
 	registerExternalAgent,
 	unregisterExternalAgent,
-} from "../extensions/pi-panopticon/registry/external-registrar.js";
+} from "../extensions/pi-agent-hub/registry/external-registrar.js";
 import type { FleetConfig } from "./config.js";
 import { nativeInboxAvailable, visibleNativePeers } from "./native-peers.js";
 
@@ -28,7 +28,7 @@ export interface FleetBackend {
 	pending(owner: AgentRecord): number;
 }
 
-/** Same-host Panopticon registration and direct Maildir messaging. */
+/** Same-host Agent Hub registration and direct Maildir messaging. */
 export class DirectMaildirBackend implements FleetBackend {
 	private readonly transport = createMaildirTransport();
 	private readonly registrarConfig: { workspaceRoot: string; mailboxRoot: string };

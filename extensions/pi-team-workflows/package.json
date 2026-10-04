@@ -1,0 +1,23 @@
+{
+	"name": "pi-team-workflows",
+	"version": "1.2.0",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		],
+		"skills": [
+			"./skills"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "^1.0.1",
+		"@earendil-works/pi-tui": "^1.0.1",
+		"typebox": "*"
+	},
+	"engines": {
+		"node": ">=22.19"
+	}
+}

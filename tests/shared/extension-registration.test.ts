@@ -14,9 +14,9 @@ import goalExtension from "../../extensions/pi-goal/index.js";
 import kanbanExtension from "../../extensions/pi-kanban/index.js";
 import matrixExtension from "../../extensions/pi-matrix/index.js";
 import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
-import panopticonExtension from "../../extensions/pi-panopticon/index.js";
+import panopticonExtension from "../../extensions/pi-agent-hub/index.js";
 import boostExtension from "../../extensions/pi-boost/index.js";
-import teamExtension from "../../extensions/pi-teams/index.js";
+import teamExtension from "../../extensions/pi-team-workflows/index.js";
 
 interface ToolParameters {
 	properties?: Record<string, unknown>;
@@ -120,7 +120,7 @@ describe("extension registration smoke tests", () => {
 		boostExtension(api);
 		expectRegistered(registrations.commands, ["boost"]);
 		expectRegistered(registrations.tools, []);
-		expectRegistered(registrations.events, ["agent_end"]);
+		expectRegistered(registrations.events, ["agent_settled"]);
 	});
 	it("retains deprecated, ignored gate inputs in Goal and Kanban public schemas", () => {
 		const goal = createFakeApi();
@@ -175,10 +175,8 @@ describe("extension registration smoke tests", () => {
 			"kanban_create",
 			"kanban_delete",
 			"kanban_edit",
-			"kanban_export",
 			"kanban_export_json",
 			"kanban_move",
-			"kanban_snapshot",
 			"kanban_unblock",
 			"kanban_watch",
 		]);
@@ -255,6 +253,7 @@ describe("extension registration smoke tests", () => {
 		]);
 		expectRegistered(registrations.events, [
 			"agent_end",
+			"agent_settled",
 			"before_agent_start",
 			"session_shutdown",
 			"session_start",
@@ -269,11 +268,13 @@ describe("extension registration smoke tests", () => {
 		expectRegistered(registrations.tools, [
 			"goal_complete",
 			"goal_get",
+			"goal_hook",
 			"goal_block",
 		]);
 		expectRegistered(registrations.commands, ["goal", "goal-clear"]);
 		expectRegistered(registrations.events, [
 			"agent_end",
+			"agent_settled",
 			"before_agent_start",
 			"input",
 			"session_start",

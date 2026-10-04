@@ -1,6 +1,6 @@
 # T-908 Independent Review
 
-Status: active
+Status: historical
 
 ## Verdict: PASS (conditional on integration reconciliation)
 

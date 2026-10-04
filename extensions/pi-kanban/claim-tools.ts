@@ -4,7 +4,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import { WIP_LIMIT } from "./board.js";
 import { claimTask, type ClaimOutcome } from "./board-actions.js";
@@ -74,7 +74,7 @@ function claimOutcomeToResult(
 			);
 		case "claimed":
 			return ok(
-				`Claimed ${outcome.taskId} ("${outcome.title}") for agent "${agent}".\nRun kanban_snapshot to see full task details.`,
+				`Claimed ${outcome.taskId} ("${outcome.title}") for agent "${agent}".\nOpen /kanban to see full task details.`,
 				{
 					agent,
 					task_id: outcome.taskId,

@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import {
 	appendTaskNote,
@@ -27,7 +27,7 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 		label: "Kanban Create",
 		description:
 			"Create a new task in the kanban backlog. " +
-			"The task starts in the backlog column. Use kanban_snapshot to view the board afterwards.",
+			"The task starts in the backlog column. Open /kanban to view the board afterwards.",
 		promptSnippet: "Create a new kanban task in the backlog",
 		parameters: Type.Object({
 			task_id: Type.String({

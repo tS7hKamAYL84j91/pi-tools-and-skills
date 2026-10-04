@@ -1,4 +1,4 @@
-# pi-file-watch
+# Pi File Watch Extension
 
 Small configurable watcher for explicitly listed files.
 
@@ -84,3 +84,9 @@ bounded; there is no background read to survive reload. Reload/shutdown cancels
 pending debounce and batch timers.
 
 Emitted `firewatch_batch` details include `window_start`, `window_end`, and `changes`. Each change may include `path`, `event`, `hash`, `byte_size`, `mtime`, `target`, and `change_count`.
+
+Pending debounce/batch state retains at most 256 distinct paths in aggregate.
+Further unique-path events are omitted until capacity is available; batches report
+`overflow_events` (omitted event count, not a unique-file count) in details and
+notification text. Existing retained paths still coalesce normally. Reload clears
+pending paths and overflow counts. No directory scan or cadence change is involved.

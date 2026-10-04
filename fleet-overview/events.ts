@@ -1,7 +1,7 @@
 /** Event feed: ledger tails, kanban board activity, schedules, brief content.
  * Mirror of eo_fleet/events.py. All sources are read-only. */
 
-import { open, readdir, readFile } from "node:fs/promises";
+import { open, readdir, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { AWAITING_PATH, KANBAN_DIR, LEDGERS, SCHEDULE_DIRS } from "./config.js";
 
@@ -81,7 +81,7 @@ export function boardAgent(raw: string): string {
 }
 
 async function tailLines(path: string, bytes: number): Promise<string[]> {
-	let handle;
+	let handle: FileHandle;
 	try {
 		handle = await open(path, "r");
 	} catch {
@@ -173,9 +173,10 @@ export async function ledgerEvents(
 /** Merged ledger + board events, each tagged with a fleet agent key. */
 export async function allEvents(
 	options: EventSources = {},
+	ledgerSnapshot?: readonly LedgerEvent[],
 ): Promise<FleetEvent[]> {
 	const events: FleetEvent[] = [];
-	for (const ledgerEvent of await ledgerEvents(options)) {
+	for (const ledgerEvent of ledgerSnapshot ?? await ledgerEvents(options)) {
 		events.push({
 			agent: LEDGER_AGENT[ledgerEvent.source] ?? "other",
 			type: ledgerEvent.type,

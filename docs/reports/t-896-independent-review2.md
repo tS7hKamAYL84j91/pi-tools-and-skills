@@ -1,6 +1,6 @@
 # T-896 Independent Review 2
 
-Status: active
+Status: historical
 
 **Verdict: PASS**
 

@@ -1,11 +1,11 @@
 # T-886 ADR-059 ownership/admission slice
 
-Status: active
+Status: historical
 
 Historical worker-stage evidence, before GM integration. See `t-886-final-validation.md` for current status.
 
 Date: 2026-09-05
-Status: coherent slice frozen for independent review; **not full ADR-059 acceptance**.
+Verdict: coherent slice frozen for review; not full ADR-059 acceptance.
 
 ## Scope
 

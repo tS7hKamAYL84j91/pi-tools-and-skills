@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Text, TuiAltScreen, TuiMainScreen, visibleWidth, type Terminal, type OverlayHandle } from "@earendil-works/pi-tui";
+import { showGoalOverlay } from "../../extensions/pi-goal/goal-overlay.js";
 import { collectChangedFiles } from "../../extensions/pi-goal/goal-helpers.js";
 import { renderGoalOverlayLines, renderGoalSummary, renderGoalMarkdown } from "../../extensions/pi-goal/goal-render.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
@@ -20,6 +23,38 @@ function makeGoal(overrides: Partial<GoalState> = {}): GoalState {
 		...overrides,
 	};
 }
+
+describe("Goal overlays on v1 renderers", () => {
+	it.each(["regular", "fullscreen"] as const)("handles narrow widths, theme invalidation, focus and cleanup in %s mode", async mode => {
+		const terminal: Terminal = { columns: 80, rows: 24, kittyProtocolActive: false, start() {}, stop() {}, async drainInput() {}, write() {}, moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {} };
+		const tui = mode === "regular" ? new TuiMainScreen(terminal) : new TuiAltScreen(terminal);
+		const base = new Text("baseline"); tui.addChild(base); tui.setFocus(base);
+		let color = 31;
+		const theme = { fg: (_token: string, text: string) => `\u001b[${color}m${text}\u001b[0m`, bold: (text: string) => text };
+		const custom = async (factory: Parameters<ExtensionCommandContext["ui"]["custom"]>[0]) => {
+			let handle: OverlayHandle | undefined;
+			let closed = false;
+			const component = await factory(tui, theme as never, {} as never, () => { closed = true; handle?.hide(); });
+			handle = tui.showOverlay(component);
+			expect(handle.isFocused()).toBe(true);
+			for (const width of [20, 40, 80]) expect(component.render(width).every(line => visibleWidth(line) <= width)).toBe(true);
+			expect(component.render(40).join("\n")).toContain("\u001b[31m");
+			color = 34; component.invalidate();
+			expect(component.render(40).join("\n")).toContain("\u001b[34m");
+			expect(component.render(40).join("\n")).not.toContain("\u001b[31m");
+			component.handleInput?.("\u001b");
+			expect(closed).toBe(true); expect(tui.hasOverlay()).toBe(false);
+			expect(tui.getFocusedComponent()).toBe(base);
+		};
+		try { await showGoalOverlay({ mode: "tui", ui: { custom } } as unknown as ExtensionCommandContext, makeGoal()); }
+		finally { tui.stop(); }
+	});
+	it.each(["rpc", "print"] as const)("does not open a terminal overlay in %s mode", async mode => {
+		const notify = vi.fn(), custom = vi.fn();
+		await showGoalOverlay({ mode, ui: { notify, custom } } as unknown as ExtensionCommandContext, makeGoal());
+		expect(custom).not.toHaveBeenCalled(); expect(notify).toHaveBeenCalledOnce();
+	});
+});
 
 describe("renderGoalOverlayLines", () => {
 	it("collects a bounded reported changed-file summary", () => {
@@ -47,7 +82,7 @@ describe("renderGoalOverlayLines", () => {
 			"Status: active",
 			"Source: brief.md",
 			"Objective: Ship the deterministic overlay",
-			"Completion requires an operator-configured verifier.",
+			"Completion executes the local hook in .pi/goal/settings.json.",
 			"Evidence: Evidence recorded",
 		]);
 	});
@@ -57,7 +92,7 @@ describe("renderGoalOverlayLines", () => {
 			"Goal goal-1",
 			"Status: active",
 			"Objective: ",
-			"Completion requires an operator-configured verifier.",
+			"Completion executes the local hook in .pi/goal/settings.json.",
 		]);
 	});
 

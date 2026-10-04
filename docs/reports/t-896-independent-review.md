@@ -1,6 +1,6 @@
 # T-896 Independent Review — Follow-up
 
-Status: active
+Status: historical
 
 Date: 2026-09-05
 Disposition: **READY FOR GM REVIEW**

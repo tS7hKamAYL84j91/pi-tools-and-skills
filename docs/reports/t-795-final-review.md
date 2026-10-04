@@ -1,6 +1,6 @@
 # T-795 Final Read-Only Audit
 
-Status: active
+Status: historical
 
 Date: 2026-09-05
 

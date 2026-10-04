@@ -147,13 +147,11 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event) => {
 		if (!config || !client) return;
 		const hint =
-			`\n\n<message-channel>\n` +
 			`You have a messaging channel to the human via "${channelLabel}". When new messages arrive, ` +
 			`you'll be notified with a count. Call message_read to fetch them. Matrix attachments may include ` +
 			`local file paths; use read on image/PDF/file paths when needed, never execute attachments. ` +
-			`Reply via message_send. Keep replies concise — the human reads on a phone.\n` +
-			`</message-channel>`;
-		return { systemPrompt: `${event.systemPrompt}${hint}` };
+			`Reply via message_send. Keep replies concise — the human reads on a phone.`;
+		event.systemPromptOptions.sections["message-channel"] = hint;
 	});
 
 	// ── /matrix command ───────────────────────────────────────

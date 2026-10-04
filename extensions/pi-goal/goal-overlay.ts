@@ -6,6 +6,7 @@ import { renderGoalSummary, type GoalState } from "./state.js";
 
 /** Show detailed goal state without keeping it in the persistent status widget. */
 export async function showGoalOverlay(ctx: ExtensionCommandContext, state: GoalState): Promise<void> {
+	if (ctx.mode !== "tui") { ctx.ui.notify(renderGoalSummary(state), "info"); return; }
 	await ctx.ui.custom<void>((_tui, theme, _keyboard, done) => {
 		const detail = renderGoalOverlayLines(renderGoalSummary(state), 24);
 		return {

@@ -1,59 +1,105 @@
-# pi-goal Extension
+# Pi Goal Extension
 
-Project-goal execution that starts immediately and continues until the root agent records completion.
+Project-local goal execution: start immediately, continue until completion or an
+explicit stop, and validate completion with a locally configured hook.
 
 ## Commands
 
-- `/goal <text>` — create a goal and immediately run it until completion.
-- `/goal file <path>` — use the original source file directly and immediately run the goal until completion.
-- `/goal status` — show the current goal.
-- `/goal run` or `/goal resume` — resume direct unbounded execution.
-- `/goal run --turns N` — explicitly request a bounded 1–20 turn run.
-- `/goal pause`, `/goal stop`, `/goal steer <text>`, `/goal edit <text>`, `/goal clear` — lifecycle controls.
+- `/goal <text>` / `/goal file <path>` — start a text/file-backed goal immediately.
+- `/goal status` — inspect state; `/goal run` / `/goal resume` — resume.
+- `/goal run --turns N` — bounded 1–20 turns; default is unbounded continuation.
+- `/goal pause` / `/goal stop` — stop independently of hook configuration.
+- `/goal steer <text>` / `/goal edit <text>` — current guidance/objective edits.
+- `/goal hook` — edit completion-hook command/timeout JSON in Pi's native TUI editor.
+  Cancel leaves settings unchanged; a conflicting save is rejected.
+- `/goal hook <command>` — set the command locally, retaining the current timeout.
+- `/goal clear` — remove recognized goal artifacts, preserving hook settings and
+  unknown files. It does not delete the original source or unrelated history.
 
-Plain goal creation and resume use `turnBudget: 0` as the persisted unbounded sentinel. Runs continue across fresh sessions until `goal_complete`, an explicit pause/stop, a genuine runtime failure, or the operator-configured completion gate stops them. There is no plan generation, milestone verification, or approval gate.
+No generated plan, milestone approval or pre-session environment setup is required.
+Explicit stop/pause and bounded turn counts remain authoritative.
 
 ## Tools
 
-- `goal_get` — read the active project-local goal state.
-- `goal_complete` — request completion with evidence; only the operator-configured trusted verifier may mark it complete.
-- `goal_block` — pause a genuinely blocked goal with a concrete reason and checkable resume condition.
+- `goal_get` — state and whether the local hook is configured, missing or invalid.
+- `goal_hook` — inspect settings, or set `command` and optional `timeout_ms`;
+  optional `expected_revision` rejects stale saves (`absent` / `invalid` for those
+  states). Saving never executes the hook. Authorized local agents may amend it.
+- `goal_complete` — audit requirements, provide evidence, then execute the hook.
+- `goal_block` — pause for a genuine missing input/permission/resource, not an
+  ordinary repairable validation failure.
 
-The root agent owns `goal_complete`. Spawned workers report DONE/BLOCKED to the root and cannot complete the goal themselves.
+The root agent owns completion. Workers report DONE/BLOCKED to the root.
+The deprecated `goal_complete.gate_command` input remains inert.
 
-## Completion gate
+## Local completion hook
 
-`PI_GOAL_GATE_COMMAND` is required before `goal_complete` can complete a goal. The command is operator-owned, runs in the workspace, and its bounded, secret-redacted result is persisted as a completion check. Agent evidence is retained but never substitutes for the check. The deprecated model-supplied `gate_command` parameter is ignored.
+Settings live in **`.pi/goal/settings.json`**, beside the workspace's goal state:
 
-A normal verifier exit `1` is a validation rejection. By default it pauses the run. Operators may set `PI_GOAL_REPAIR_ATTEMPTS` to `1` or `2` to permit that many in-scope repair-and-recheck attempts; the default is `0`. The durable budget survives session replacement. Cancellation, timeouts, policy changes, command-not-found/permission errors, other exit codes, and exhausted attempts pause safely and require explicit review/resume. `PI_GOAL_GATE_TIMEOUT_MS` bounds each check (default 15 minutes; range 1 second–24 hours).
+```json
+{
+  "schemaVersion": 1,
+  "revision": "generated-on-save",
+  "command": "npm run check && npm test && git diff --check",
+  "timeoutMs": 900000
+}
+```
 
-Liveness thresholds remain operator-only: `PI_GOAL_LIVENESS_SOFT_MS` and `PI_GOAL_LIVENESS_HARD_MS`, clamped to 1 second–24 hours (defaults: 5 and 15 minutes). After the soft threshold, the watchdog may inject one continuation only while the host is demonstrably idle with nothing queued. It never nudges or stops a live turn. At the hard threshold, a still-idle run produces one diagnostic requesting manual inspection; elapsed wall time alone never marks productive work failed. Explicit stop/pause, uncertain delivery, runtime/persistence failure, and ownership loss retain their containment behavior.
+Use the TUI or `goal_hook` to generate revisions safely. No credentials belong in
+commands. Tool feedback and persisted hook output are bounded and secret-redacted.
+Settings are private, atomically replaced, locked, and reject symlink components.
+They are shared by goals in this workspace, not global or tied to a session's
+startup environment. They persist across reload/resume/clear.
 
-## Ownership and recovery
+`goal_complete` runs the configured shell command in the workspace. Only exit zero
+can complete; evidence prose is never a substitute. A missing/invalid/failed hook
+is declared and leaves the goal open for local configuration or repair. Each
+explicit completion request runs one bounded check; there is no automatic retry
+or run-wide repair budget. Timeout defaults to 15 minutes, range 1 second–24 hours.
 
-Only the explicitly claimed command loop drives turns. Claims use an opaque token, monotonic generation, and revision-checked state. Competing processes cannot acquire an existing claim. `agent_end` settles only its matching waiter and never starts a second driver.
+Changing settings invalidates an in-flight result, even when the command is changed
+back. Another completion request runs the current hook. Stops, edits and ownership
+changes still reject stale authority commits. Completed goals never reopen merely
+because settings change: their receipts remain historical evidence of the exact
+configuration checked, not reusable validation for future goals.
 
-Replacement sessions reserve the next attempt before switching, bind the new session to the goal, validate workspace/session lineage, and atomically consume the reservation. Uncertain delivery, replacement failure, or persistence failure pauses safely rather than replaying work blindly.
+This is **local validation, not independent operator approval**: agents can amend
+it within granted scope, but must never weaken checks to conceal unfinished work.
+`PI_GOAL_GATE_COMMAND`, `PI_GOAL_GATE_TIMEOUT_MS` and `PI_GOAL_REPAIR_ATTEMPTS` no
+longer configure completion. Existing environment settings are not auto-migrated;
+set the desired hook locally and explicitly resume a previously paused goal.
 
-Use `/goal stop` or `/goal pause` to contain uncertain work, inspect it, then `/goal run` to resume. `/goal clear` removes recognized generated state/run files only and preserves unknown content.
+## Ownership, liveness and recovery
+
+Only the claimed local driver dispatches turns. Low-level `agent_end` events
+are collected until `agent_settled`; only then does a final error pause the goal
+or a successful turn permit session replacement. Ownership uses opaque tokens,
+monotonic generations and revision checks, never implicit TTL/PID takeover.
+Replacement sessions preserve workspace, goal binding and native session lineage;
+uncertain delivery/persistence failures pause rather than blindly replaying work.
+
+Liveness defaults and operator-owned `PI_GOAL_LIVENESS_SOFT_MS` /
+`PI_GOAL_LIVENESS_HARD_MS` are unchanged: idle diagnostics never stop productive
+work based only on elapsed time. Use explicit pause/stop and inspection for recovery.
 
 ## Runtime files
 
-State lives under `.pi/goal/instances/<goalId>/`:
+Workspace configuration is `.pi/goal/settings.json`. Session-bound goals live in
+`.pi/goal/instances/<goalId>/`:
 
-- `goal.json` — authoritative schema-v3 state.
-- `GOAL.md` — the single active human-readable summary, including bounded reported activity and changed files.
+- `goal.json` — authoritative state, including the last completion check.
+- `GOAL.md` — derived summary with bounded reported activity/changed files.
 - `runs/YYYY/MM/DD/*.{jsonl,md}` — per-invocation records.
 
-Text goals store the objective in `goal.json`; file goals retain their original source path without copying or rewriting the source. New goals do not generate TODO, SPEC, PLAN, or STATUS scaffolding. Existing documents and run history are left intact on load/resume. `/goal plan` and `/goal approve` are no longer commands; plain non-command text is treated as a new objective.
-
-Legacy v1/v2 and planned v3 states remain readable. Starting/resuming them removes obsolete plan, milestone, approval, and verification state before direct execution.
+Legacy state remains readable. File goals keep the original source path without
+copying it; text goals store their objective. Loading/resuming preserves original
+sources and session/run history. Settings edits do not claim or resume a goal.
 
 ## What this does NOT do
 
-- Does not require or generate a plan.
-- Does not request approval before implementation.
-- Does not infer completion or trust completion prose; the root agent requests completion and the operator verifier decides it.
-- Does not treat a blocker as success; `goal_block` pauses until explicit resume.
-- Does not bypass explicit stop/pause, ownership, persistence, session-lineage, liveness, or trusted completion-gate safety boundaries.
-- Does not replace Kanban or other project work tracking.
+- No global verifier configuration, generated plans or implementation approval gates.
+- No implicit completion, ownership takeover, or resume after explicit stop/pause.
+- No claim that an agent-editable hook is independent operator approval.
+- No bypass of task scope, permissions, session lineage, filesystem confinement,
+  cancellation or output/secret boundaries.
+- No model-default, residency or operational schedule changes.

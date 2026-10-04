@@ -1,6 +1,6 @@
 # T-795 Independent Security Review
 
-Status: active
+Status: historical
 
 ## Verdict: REVISE
 

@@ -13,7 +13,7 @@ export function renderGoalSummary(state: GoalState): string {
 	const execution = state.executionState ? `\nExecution: ${state.executionState}` : "";
 	const run = state.runId ? `\nAdmitted invocations: ${state.turnBudget > 0 ? `${state.turnsUsed}/${state.turnBudget}` : `${state.turnsUsed}/∞`}` : "";
 	const check = state.completionCheck;
-	const verification = check ? `\nCompletion check: ${check.status} (${check.attempt}/${check.maxAttempts}) — ${check.summary}` : state.status === "complete" ? "\nCompletion: legacy/unverified record" : "\nCompletion requires an operator-configured verifier.";
+	const verification = check ? `\nCompletion check: ${check.status} (${check.attempt}/${check.maxAttempts}) — ${check.summary}` : state.status === "complete" ? "\nCompletion: legacy/unverified record" : "\nCompletion executes the local hook in .pi/goal/settings.json.";
 	const blocker = state.blocker ? `\nBlocked: ${state.blocker.reason}\nResume when: ${state.blocker.resumeWhen}` : "";
 	const evidence = state.completionEvidence ? `\nEvidence: ${state.completionEvidence}` : "";
 	const error = state.lastError ? `\nLast error: ${state.lastError}` : "";

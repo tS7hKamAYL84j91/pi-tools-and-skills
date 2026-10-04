@@ -12,7 +12,9 @@ completion, or runtime failure; positive budgets are bounded turn counts.
 2. Reload authoritative state and verify the owner claim.
 3. Admit the turn transactionally.
 4. Dispatch the kickoff or continuation prompt.
-5. Wait for the agent result.
+5. Collect low-level `agent_end` attempts, then wait for `agent_settled` before
+   deciding whether the final result succeeded or requires an explicit pause.
+   Retries/recovery must not pause the goal or start session replacement early.
 6. Record progress, changed files, and the run iteration.
 7. Re-read state before the next turn.
 
@@ -21,10 +23,16 @@ failure pauses the goal. The loop must not blindly replay an uncertain turn.
 
 ## Completion
 
-Completion is a request, not an inference. The trusted verifier runs in the
-workspace with a bounded timeout. Exit zero passes; a normal rejection pauses
-(or repairs only when the operator has explicitly configured repair attempts).
-Other execution errors pause for inspection.
+Completion is a request, not an inference. Each `goal_complete` executes one
+configured workspace-local hook from `.pi/goal/settings.json` with a bounded
+timeout. Only exit zero passes. Missing/invalid/failed checks leave the goal open
+for local configuration or repair, not terminal blocking or implicit success.
+TUI and authorized local agents can amend settings without starting a process;
+no pre-session environment setup is required. Changed configuration invalidates
+in-flight results, including command ABA. Final validation/authority commits
+serialize with settings edits and still reject stale goal revisions/owners.
+Explicit stop/pause remains independent. Historical completed receipts are not
+reused or retroactively rewritten when workspace settings change.
 
 ## Replacement sessions
 

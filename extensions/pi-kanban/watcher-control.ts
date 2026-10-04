@@ -1,7 +1,7 @@
 /** Human and agent controls for automatic kanban watcher follow-ups. */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { registerToggleCommand, type ToggleControl } from "../../lib/toggle-command.js";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 

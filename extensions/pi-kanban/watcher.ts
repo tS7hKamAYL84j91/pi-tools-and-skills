@@ -43,7 +43,7 @@ const AUTO_FOLLOW_UP_ENV = "KANBAN_WATCHER_AUTO_FOLLOW_UP";
 const KANBAN_WATCHER_INJECT_MESSAGE = [
 	"Board updated externally (kanban watcher detected new events).",
 	"Use gradual disclosure: do not dump the full board into context.",
-	'Run kanban_snapshot for a compact board summary; use task_id="T-NNN" for one card or detail="full" only when full board details are explicitly needed.',
+	'Open /kanban to inspect the board, or use kanban_export_json for read-only structured data.',
 	"Agents signal completion themselves via kanban_complete — no filesystem watching.",
 	"Do not ask me any questions. Keep your response brief.",
 ].join(" ");

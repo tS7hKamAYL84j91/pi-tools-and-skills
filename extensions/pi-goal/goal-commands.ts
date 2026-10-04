@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { appendGoalBinding, GOAL_BINDING_CUSTOM_TYPE } from "./goal-binding.js";
 import { formatGoalDiagnostic } from "./goal-diagnostics.js";
 import { showGoalOverlay } from "./goal-overlay.js";
+import { readGoalHook, saveGoalHook, DEFAULT_HOOK_TIMEOUT_MS, GoalHookConfigurationError } from "./goal-hook.js";
 import { removePlan, resumeRun, startRun, stopGoal, updateGoal } from "./goal-plan.js";
 import { createFileGoal, createTextGoal, loadGoal } from "./goal-persist.js";
 import type { GoalRuntime } from "./goal-runtime.js";
@@ -43,6 +44,26 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		}
 		await showGoalOverlay(ctx, state);
 		await refreshUi(ctx, runtime, state);
+	}
+	async function handleHook(ctx: ExtensionCommandContext, rest: string): Promise<void> {
+		let current: Awaited<ReturnType<typeof readGoalHook>>;
+		let expected = "absent";
+		try { current = await readGoalHook(ctx.cwd); expected = current?.revision ?? "absent"; }
+		catch (error) {
+			if (!(error instanceof GoalHookConfigurationError)) throw error;
+			expected = "invalid";
+			ctx.ui.notify("Invalid hook settings; edit to repair locally.", "warning");
+		}
+		let value: unknown;
+		if (rest.trim()) value = { command: rest, timeoutMs: current?.timeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS };
+		else {
+			if (ctx.mode !== "tui") { ctx.ui.notify("Use goal_hook or /goal hook <command> to configure .pi/goal/settings.json locally.", "info"); return; }
+			const edited = await ctx.ui.editor("Goal completion hook (command + timeoutMs; empty command disables)", JSON.stringify({ command: current?.command ?? "", timeoutMs: current?.timeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS }, null, 2));
+			if (edited === undefined) return;
+			value = JSON.parse(edited) as unknown;
+		}
+		const saved = await saveGoalHook(ctx.cwd, value, expected);
+		ctx.ui.notify(saved.command ? "Completion hook saved locally; runs on goal_complete." : "Hook unconfigured; start/stop still available.", "info");
 	}
 	async function handleFile(ctx: ExtensionCommandContext, rest: string): Promise<void> {
 		const file = parseFileGoal(rest);
@@ -191,6 +212,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 		file: handleFile,
 		goal: handleGoal,
 		help: handleHelp,
+		hook: handleHook,
 		pause: handlePause,
 		resume: handleResume,
 		run: handleRun,
@@ -208,7 +230,7 @@ export function registerGoalCommands(pi: ExtensionAPI, runtime: GoalRuntime): vo
 			if (handler) {
 				try { await handler(ctx, parsed.rest); }
 				catch (error) {
-					if (runtime.driver?.cwd === ctx.cwd) { stopLocalRun(runtime); }
+					if (parsed.action !== "hook" && runtime.driver?.cwd === ctx.cwd) { stopLocalRun(runtime); }
 					throw new Error(formatGoalDiagnostic(error), { cause: error });
 				}
 				return;

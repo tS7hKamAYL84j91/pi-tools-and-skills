@@ -6,10 +6,10 @@
  * matters more than agent count. Classification drives model selection
  * and topology routing at the spawn boundary.
  *
- * Consumed by: extensions/pi-panopticon/spawner/spawner.ts
+ * Consumed by: extensions/pi-agent-hub/spawner/spawner.ts
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 
 // ── Schema ──────────────────────────────────────────────────────
 

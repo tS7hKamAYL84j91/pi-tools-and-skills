@@ -9,7 +9,7 @@ export function createBoostModelPicker(
 	current: string,
 	done: (value?: string) => void,
 ): ModelSelectorComponent {
-	// SDK 0.84.4's selector takes ModelRuntime, but extension contexts expose
+	// Pi's selector takes ModelRuntime, but extension contexts expose
 	// ModelRegistry. Adapt only the four public methods used by the selector;
 	// never open another registry/auth store or reach into private runtime fields.
 	const runtime: Pick<PickerRuntime, "getAvailableSnapshot" | "getModel" | "getError" | "refresh"> = {

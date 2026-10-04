@@ -1,4 +1,4 @@
-# Boost
+# Pi Boost Extension
 
 Switch to a boost model, run a prompt, switch back (ADR-057).
 
@@ -31,7 +31,9 @@ when it is `plan` or `challenge`:
 
 - A lease covers up to 3 yields and expires after the configured duration from its first yield (default 10 minutes). The next `/boost` or `/boost <prompt>` automatically renews an idle expired lease; no manual reset needed. `/boost status` is read-only.
 - Duration changes apply to the current lease too, measured from its original start. Settings persist as `boost.leaseMinutes`; integer values 1–60 are accepted, invalid values fall back to 10.
-- The lease is **not a model-switch timer**. Boost restores the baseline when the run settles, never in the middle of a running turn.
+- The lease is **not a model-switch timer**. Boost restores the baseline on Pi's
+  `agent_settled` event, never in the middle of retries or queued follow-ups.
+  No completion polling or settle timeout is needed.
 - Powerline shows only lease state and remaining yields: `Boost off · 3 left`, `Boost active · 2 left`, `Boost expired · 2 left`, `Boost blocked · restore failed`.
 - Max yields is hard-capped at 3 per lease. Exhausting the count before expiry still requires `/boost reset`.
 - If baseline restoration fails, boost blocks further dispatch until `/boost reset` retries the restore.

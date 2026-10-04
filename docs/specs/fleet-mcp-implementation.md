@@ -13,9 +13,9 @@ This owner implements the MCP protocol, fleet adapter, identity and authorizatio
 
 Repository: https://github.com/tS7hKamAYL84j91/pi-tools-and-skills . Findings informing this design were inspected at revision 99c7a1766482013f91c6c8dabeb323c8977f0888; recheck relevant interfaces before coding. Live Spark runtime has not been inspected by this specification's author.
 
-Read current AGENTS.md and its referenced state document; use the existing Kanban workflow and required architecture review. Update relevant ADR/C4 documentation. Preserve ownership boundaries: Panopticon owns registry and messaging; pi-teams owns its public team interface. Do not couple the server to private UI or spawner internals.
+Read current AGENTS.md and its referenced state document; use the existing Kanban workflow and required architecture review. Update relevant ADR/C4 documentation. Preserve ownership boundaries: Agent Hub owns registry and messaging; pi-team-workflows owns its public team interface. Do not couple the server to private UI or spawner internals.
 
-Reuse the external registrar in extensions/pi-panopticon/registry/external-registrar.ts and Maildir transport in lib/transports/maildir.ts where the selected runtime supports them. Existing external IDs, manifests, locks, path confinement, atomic writes, and mailbox retention are constraints to preserve. Current registration collision handling needs an explicit idempotent ownership layer. Existing display-name/from labels are not authenticated principals.
+Reuse the external registrar in extensions/pi-agent-hub/registry/external-registrar.ts and Maildir transport in lib/transports/maildir.ts where the selected runtime supports them. Existing external IDs, manifests, locks, path confinement, atomic writes, and mailbox retention are constraints to preserve. Current registration collision handling needs an explicit idempotent ownership layer. Existing display-name/from labels are not authenticated principals.
 
 Choose one supported fleet backend per configured workspace. Obtain Automations's runtime inventory before choosing the production backend. If daemon mode is active, use an authenticated supported daemon API for required operations; the inspected registry socket alone does not establish a general messaging API. Add a reviewed supported interface if necessary. Do not combine daemon discovery with direct Maildir writes that bypass daemon policy, queue signing, generation checks, or deduplication. Backend loss must not silently switch authority.
 
@@ -81,7 +81,7 @@ Pass repository-required npm run check and npm test plus focused contract tests 
 
 Deliver code, tests, architecture updates, config/schema reference, tool examples with expected outputs, migration/recovery notes, and the runnable release contract. Automations accepts this handoff when it can start the server and run the smoke test using documented configuration without editing implementation files.
 
-Excluded from v1: arbitrary shell/SSH tools, spawn/kill, scheduling, autonomous inbox polling, fleet broadcasts, Teams orchestration, and automatic waking of closed ChatGPT conversations.
+Excluded from v1: arbitrary shell/SSH tools, spawn/kill, scheduling, autonomous inbox polling, fleet broadcasts, Team Workflows orchestration, and automatic waking of closed ChatGPT conversations.
 
 ## References
 

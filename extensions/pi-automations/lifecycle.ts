@@ -7,6 +7,7 @@ import { resolveAutomationsConfig } from "./config.js";
 import { pathInside, workspaceRoot } from "./store-paths.js";
 import { ConfinedStore } from "./store.js";
 import type { PiScheduler } from "./pi-scheduler.js";
+import { findScheduledRunMarker } from "./scheduler-prompt.js";
 import type { SchedulerSnapshot } from "./types.js";
 import { currentWorkspaceLabel } from "./workspaces.js";
 
@@ -47,12 +48,15 @@ async function contextInstruction(ctx: ExtensionContext): Promise<string | undef
 }
 
 export function registerAutomationsLifecycle(pi: ExtensionAPI, scheduler: PiScheduler): void {
+	const pendingRuns = new Map<string, unknown[]>();
+	let currentRun: string | undefined;
 	pi.on("session_start", async (_event, ctx) => {
 		scheduler.start(resolveAutomationsConfig(ctx.cwd));
 		await updateStatus(ctx, scheduler);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		pendingRuns.clear(); currentRun = undefined;
 		await scheduler.stop();
 		ctx.ui.setStatus("automations", undefined);
 	});
@@ -61,10 +65,23 @@ export function registerAutomationsLifecycle(pi: ExtensionAPI, scheduler: PiSche
 		await updateStatus(ctx, scheduler);
 		const instruction = await contextInstruction(ctx);
 		if (!instruction) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${instruction}` };
+		event.systemPromptOptions.sections.automations_workspace = instruction;
+		return undefined;
 	});
 
-	pi.on("agent_end", async (event, _ctx) => {
-		await scheduler.handleAgentEnd(event.messages);
+	pi.on("agent_end", (event) => {
+		for (const message of event.messages) {
+			const marker = findScheduledRunMarker([message]);
+			if (marker) {
+				currentRun = marker.runId;
+				if (!pendingRuns.has(currentRun)) pendingRuns.set(currentRun, []);
+			}
+			if (currentRun) pendingRuns.get(currentRun)?.push(message);
+		}
+	});
+	pi.on("agent_settled", async () => {
+		const runs = [...pendingRuns.values()];
+		pendingRuns.clear(); currentRun = undefined;
+		for (const messages of runs) await scheduler.handleAgentEnd(messages);
 	});
 }

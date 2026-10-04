@@ -7,7 +7,7 @@ import { listTsFiles } from "./helpers.js";
 
 const DISCOVERY_PATH = "lib/declarative-discovery.ts";
 const EXTENSION_IMPORT = /from\s+["'](?:\.\.\/)+extensions\//;
-const PANOPTICON_IMPORT = /from\s+["'][^"']*pi-panopticon\//;
+const PANOPTICON_IMPORT = /from\s+["'][^"']*pi-agent-hub\//;
 const BOOST_IMPORT = /from\s+["'][^"']*pi-boost\//;
 
 function source(path: string): string {
@@ -19,13 +19,13 @@ describe("ADR-047 shared declarative discovery", () => {
 		const discovery = source(DISCOVERY_PATH);
 		expect(discovery).not.toMatch(EXTENSION_IMPORT);
 		expect(discovery).not.toMatch(
-			/pi-panopticon|pi-boost|team(?:Id)?|enablementId|principalIssuerId|provider|model|lease/i,
+			/pi-agent-hub|pi-boost|team(?:Id)?|enablementId|principalIssuerId|provider|model|lease/i,
 		);
 	});
 
-	it("keeps pi-panopticon and pi-boost free of cross-extension imports", () => {
+	it("keeps pi-agent-hub and pi-boost free of cross-extension imports", () => {
 		const violations: string[] = [];
-		for (const file of listTsFiles("extensions/pi-panopticon")) {
+		for (const file of listTsFiles("extensions/pi-agent-hub")) {
 			if (BOOST_IMPORT.test(source(file)))
 				violations.push(relative(process.cwd(), file));
 		}
@@ -37,7 +37,7 @@ describe("ADR-047 shared declarative discovery", () => {
 	});
 
 	it("uses the neutral primitive in pi-teams and has no Boost config.json fallback", () => {
-		expect(source("extensions/pi-teams/team-paths.ts")).toContain(
+		expect(source("extensions/pi-team-workflows/team-paths.ts")).toContain(
 			"lib/declarative-discovery.js",
 		);
 		const configFallbacks = listTsFiles("extensions/pi-boost")

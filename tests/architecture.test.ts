@@ -20,4 +20,4 @@ import "./architecture/docs-hygiene.js";
 import "./architecture/clean-architecture.js";
 import "./architecture/adr047-shared-discovery.js";
 import "./architecture/adr051-goal-session-isolation.js";
-import "./architecture/pi-teams-public-boundary.js";
+import "./architecture/pi-team-workflows-public-boundary.js";

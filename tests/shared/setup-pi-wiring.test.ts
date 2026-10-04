@@ -24,7 +24,7 @@ const SETTINGS_SCRIPT = join(
 	"pi-package-settings.py",
 );
 const GLOBAL_EXTENSION_ALLOWLIST = [
-	"extensions/pi-panopticon/**",
+	"extensions/pi-agent-hub/**",
 	"extensions/pi-goal/**",
 ];
 
@@ -125,11 +125,11 @@ describeIfPython("setup-pi package wiring", () => {
 	});
 
 	it("registers standalone pi-teams independently", () => {
-		runSettingsHelper("register-package", "pi-teams");
+		runSettingsHelper("register-package", "pi-team-workflows");
 
 		const settings = readSettings();
 		expect(settings.extensions).toBeUndefined();
-		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-teams") }]);
+		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-team-workflows") }]);
 	});
 
 	it("rejects pi-research-tools because canonical ownership moved to pi-extension-poc", () => {

@@ -1,25 +1,33 @@
 # Docs
 
-This directory is for active, decision-useful documentation. Completed reports and superseded plans live in git history, not the working tree.
+Active reference and retained history for this repository.
 
 ## Active reference
 
-- [`architecture.md`](architecture.md) — current architecture map, state ownership, trust boundaries, and validation anchors.
-- [`adr/`](adr/) — durable architecture decisions. ADR numbers are historical; use the next sequential number for new accepted decisions.
-- [`reports/`](reports/) — temporary active-only ledgers. Every report must declare `Status: active` and be removed or folded into an ADR when complete.
+- [`architecture.md`](architecture.md) — architecture map, state ownership, trust boundaries and validation anchors.
+- [`adr/`](adr/) — architecture decisions. Use the next sequential number for new accepted decisions.
+- [`specs/`](specs/) — implementation specifications for standalone applications.
+- [`../TODO.md`](../TODO.md) — current work only.
 - [`../benchmarks/`](../benchmarks/README.md) — evaluation runners and experiment guides.
 
-## One home for each kind of documentation
+## Retained history
+
+Evidence records, not a work queue. New entries are active only while their change is open.
+
+- [`reports/`](reports/) — review and validation evidence. Each report declares `Status: active` while its change is open and `Status: historical` once complete.
+- [`plans/`](plans/) — ticket plans, retained after delivery.
+- [`STATE.md`](STATE.md) — archived session state (2026-06-21), not current work.
+- [`images/`](images/) — documentation assets.
+
+## One home per topic
 
 - Root README: installation and navigation.
 - Package README: commands, configuration, usage and limits.
-- Architecture reference: cross-cutting state, dependency and trust boundaries.
-- ADR: why a decision was made; preserve superseded decisions as history.
-- TODO: current work and genuine open decisions, not completed narratives.
+- `architecture.md`: cross-cutting state, dependency and trust boundaries.
+- ADR: why a decision was made.
+- `TODO.md`: current work and open decisions.
 
-## Historical records
-
-Completed reports, superseded plans, and prior deep dives live in git history rather than the working tree. Retrieve them with:
+Recover anything no longer in the tree with:
 
 ```bash
 git log --all --oneline --name-only -- docs

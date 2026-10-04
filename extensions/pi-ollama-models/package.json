@@ -8,6 +8,6 @@
 		"extensions": ["./index.ts"]
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=22.19"
 	}
 }

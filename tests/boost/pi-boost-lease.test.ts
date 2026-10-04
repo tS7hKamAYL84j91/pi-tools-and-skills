@@ -75,8 +75,8 @@ function createFakePi() {
 		setModel,
 		sendUserMessage,
 		settled: () => {
-			const handler = handlers.get("agent_end");
-			if (!handler) throw new Error("agent_end not registered");
+			const handler = handlers.get("agent_settled");
+			if (!handler) throw new Error("agent_settled not registered");
 			return handler;
 		},
 		command: () => {

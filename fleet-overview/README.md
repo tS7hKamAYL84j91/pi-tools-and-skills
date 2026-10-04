@@ -13,6 +13,14 @@ PORT=8901 npm run start:fleet-overview
 
 The app serves `static/index.html` and supports the `/fleet` mount prefix.
 
+## Layout and runtime data
+
+Source modules and runtime data share this directory, so names repeat:
+`control.ts` / `directives.ts` are code; `control/`, `directives/` and `cache/`
+are runtime data kept out of `dist/` so a rebuild never loses state. The
+directories carry a short `README.md` and are otherwise gitignored. Runtime
+paths resolve under the source tree, or `FLEET_OVERVIEW_HOME` when set.
+
 ## Directives (comms box)
 
 `directives/inbox/` receives Jim's notes (delivery only — nothing

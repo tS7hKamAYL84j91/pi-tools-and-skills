@@ -8,11 +8,11 @@ decisions. Superseded diagrams and completed reviews remain in Git history.
 
 | Owner | Authority | Boundary |
 | --- | --- | --- |
-| [Panopticon](../extensions/pi-panopticon/README.md) | Agent registry, health, spawner lifecycle and Maildir transport | Messaging is coordination, not authorization |
-| [Teams](../extensions/pi-teams/README.md) | `TeamStateManager`, session run events and private result artifacts | Direct bounded protocols; no parallel lifecycle registry |
+| [Agent Hub](../extensions/pi-agent-hub/README.md) | Agent registry, health, spawner lifecycle and Maildir transport | Messaging is coordination, not authorization |
+| [Team Workflows](../extensions/pi-team-workflows/README.md) | `TeamStateManager`, session run events and private result artifacts | Direct bounded protocols; no parallel lifecycle registry |
 | [Goal](../extensions/pi-goal/README.md) | Session-bound `goal.json`, driver token/generation/revision | `GOAL.md` is a projection; source files and native sessions remain intact |
 | [Automations](../extensions/pi-automations/README.md) | Schedule files, slot admission, approval and workspace context | Runs inside Pi; no independent background scheduler |
-| [Kanban](../extensions/pi-kanban/README.md) | Append-only `board.log` | Task Markdown and snapshots are derived; viewing is read-only |
+| [Kanban](../extensions/pi-kanban/README.md) | Append-only `board.log` | Task Markdown is derived; live views and JSON export are read-only |
 | [Boost](../extensions/pi-boost/README.md) | In-session lease and model restoration | Failed restoration blocks further dispatch; no fusion engine |
 | [Matrix](../extensions/pi-matrix/README.md) | Human-facing transport and attachment cache | Trusted-sender filtering and bounded media handling; input remains untrusted |
 | [File Watch](../extensions/pi-file-watch/README.md) | Explicit watcher configuration and runtime subscriptions | Validated path/symlink policy; no implicit workspace sweep |
@@ -40,8 +40,8 @@ flowchart TD
 - `lib/` provides shared contracts and infrastructure, not extension orchestration.
   [Its consumer inventory](../lib/README.md) explains retained single-consumer
   primitives. Tests do not count as production consumers.
-- Extension-private helpers stay beside their owner. Teams live-agent
-  instrumentation lives in Teams; it is not a Panopticon control plane.
+- Extension-private helpers stay beside their owner. Team Workflows live-agent
+  instrumentation lives in Team Workflows; it is not an Agent Hub control plane.
 - Shared libraries never import extension runtime or tests. Extensions do not
   import another extension's internals; explicitly public `extensions/*/lib/`
   contracts are the permitted cross-extension seam.
@@ -70,17 +70,19 @@ repository-relative output path.
 
 - **Goal:** one locally owned driver; admission and replacement are revision/
   token checked. No implicit TTL/PID takeover. Stop, edits and cancellation
-  invalidate stale verification. Completion requires the operator's
-  `PI_GOAL_GATE_COMMAND`; prose and an absent verifier cannot complete a goal.
-  Repair is opt-in and bounded. A genuine blocker pauses rather than completes.
+  invalidate stale verification. Completion executes the local hook in
+  `.pi/goal/settings.json`; only exit zero completes. TUI/authorized agents may
+  amend it locally; it is validation, not independent operator approval.
+  Completion-hook execution is bounded; ordinary failures leave the goal open
+  for local repair/configuration. A genuine blocker pauses rather than completes.
   Liveness elapsed time alone does not stop productive work.
 - **Kanban:** completion uses its locked, revalidating domain operation and the
   operator-configured gate when present. Caller-supplied gate commands remain
-  ignored. Ordinary views never export or compact; those are explicit actions.
+  ignored. Ordinary views never compact; compaction is explicit and retains backups. Markdown snapshots/export have been removed.
 - **Automations:** slot admission and approval share durable identity. Reserved,
   admitted and uncertain deliveries block automatic duplicates. A void host
   send is not proof of provider delivery; explicit approval remains required.
-- **Teams:** one run/status/stop authority; terminal stops do not rewrite history.
+- **Team Workflows:** one run/status/stop authority; terminal stops do not rewrite history.
   Results and cancellation retain their bounded, private claim-check semantics.
 - **Boost:** restore on settlement rather than interrupting live work. Settings
   and model/profile defaults are not altered by repository refactors.

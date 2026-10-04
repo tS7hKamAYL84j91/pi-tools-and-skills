@@ -39,11 +39,11 @@ const STATE_OWNERSHIP_RULES: StateOwnershipRule[] = [
 		patterns: [/matrix-sync\b/, /matrix-attachments\b/],
 	},
 	{
-		owner: "pi-panopticon",
+		owner: "pi-agent-hub",
 		label: "Panopticon registry",
 		patterns: [/\bREGISTRY_DIR\b/],
 	},
-	{ owner: "pi-teams", label: "Teams run state", patterns: [/pi-teams:run\b/] },
+	{ owner: "pi-team-workflows", label: "Teams run state", patterns: [/pi-teams:run\b/] },
 ];
 
 const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
@@ -124,7 +124,7 @@ describe("runtime state boundary", () => {
 		// spawn only through the shared lib/runtime-child-process helper, never
 		// through direct node:child_process imports.
 		const childProcessImportPattern = /from\s+["']node:child_process["']/;
-		const violations = listTsFiles("extensions/pi-teams")
+		const violations = listTsFiles("extensions/pi-team-workflows")
 			.map((file) => relative(process.cwd(), file))
 			.filter((file) =>
 				childProcessImportPattern.test(readFileSync(file, "utf8")),
@@ -137,7 +137,7 @@ describe("runtime state boundary", () => {
 describe("render path safety", () => {
 	it("readAllPeers must not be called inside render() closures", async () => {
 		const rule = projectFiles()
-			.inFolder("extensions/pi-panopticon/**")
+			.inFolder("extensions/pi-agent-hub/**")
 			.should()
 			.adhereTo((file) => {
 				const renderPattern =

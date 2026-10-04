@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension from "../../extensions/pi-goal/index.js";
+import { getGoalRuntime } from "../../extensions/pi-goal/goal-runtime.js";
 import { createFileGoal, loadGoal } from "../../extensions/pi-goal/goal-persist.js";
 import { createTextGoal, startRun, updateGoal } from "../../extensions/pi-goal/state.js";
 
@@ -81,7 +82,7 @@ describe("pi-goal extension", () => {
 		goalExtension(pi as unknown as ExtensionAPI);
 
 		expect(pi.commands.has("goal")).toBe(true);
-		expect(toolNames(pi.tools)).toEqual(["goal_get", "goal_complete", "goal_block"]);
+		expect(toolNames(pi.tools)).toEqual(["goal_hook", "goal_get", "goal_complete", "goal_block"]);
 	});
 
 	it("/goal with no args shows command help", async () => {
@@ -242,7 +243,7 @@ describe("pi-goal extension", () => {
 	});
 
 	it("goal_complete clears the footer status and widget on completion", async () => {
-		vi.stubEnv("PI_GOAL_GATE_COMMAND", "exit 0");
+		await (await import("../../extensions/pi-goal/goal-hook.js")).saveGoalHook(tempDir, { command: "exit 0" });
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
@@ -457,7 +458,24 @@ describe("pi-goal extension", () => {
 		expect(unrelated).toBeUndefined();
 	});
 
-	it("auto-pause on agent_end with stopReason error", async () => {
+	it("does not pause during a retry; settles recovered output", async () => {
+		const pi = createFakePi();
+		goalExtension(pi as unknown as ExtensionAPI);
+		const ctx = createFakeContext(tempDir);
+		await saveGoal(tempDir, await createTextGoal(tempDir, "retry test"));
+		pi.sendUserMessage = () => {};
+		const running = runGoalCommand(pi, "run --turns 1", ctx);
+		await waitFor(() => getGoalRuntime().resolve !== null);
+		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "error", content: "retry me" }], false);
+		expect(getGoalRuntime().resolve).not.toBeNull();
+		expect((await loadGoal(tempDir))?.status).toBe("active");
+		await triggerAgentEndEvent(pi, ctx, [{ role: "assistant", stopReason: "stop", content: "recovered" }]);
+		await running;
+		expect(ctx.ui.notifications.some(n => n.message.includes("interruption/agent error"))).toBe(false);
+		expect((await loadGoal(tempDir))?.turnsUsed).toBe(1);
+	});
+
+	it("auto-pause on agent_settled with final stopReason error", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
@@ -480,7 +498,7 @@ describe("pi-goal extension", () => {
 		});
 	});
 
-	it("auto-pause on agent_end with stopReason aborted", async () => {
+	it("auto-pause on agent_settled with final stopReason aborted", async () => {
 		const pi = createFakePi();
 		goalExtension(pi as unknown as ExtensionAPI);
 		const ctx = createFakeContext(tempDir);
@@ -592,10 +610,15 @@ async function triggerInputEvent(pi: FakePi, source: string, text: string): Prom
 	return undefined;
 }
 
-async function triggerAgentEndEvent(pi: FakePi, ctx: FakeContext, messages: unknown[]): Promise<void> {
+async function triggerAgentEndEvent(pi: FakePi, ctx: FakeContext, messages: unknown[], settle = true): Promise<void> {
 	const eventHandlers = pi.handlers.get("agent_end") ?? [];
 	for (const handler of eventHandlers) {
 		await (handler as (event: { messages: unknown[] }, ctx: FakeContext) => Promise<void>)({ messages }, ctx);
+	}
+	if (settle) {
+		for (const handler of pi.handlers.get("agent_settled") ?? []) {
+			await (handler as (event: unknown, ctx: FakeContext) => Promise<void>)({}, ctx);
+		}
 	}
 }
 

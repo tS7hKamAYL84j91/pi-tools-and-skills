@@ -1,6 +1,6 @@
 # T-886 Council Contract Recheck: Per-Goal Driver Ownership
 
-Status: active
+Status: historical
 
 Date: 2026-09-05
 Seat: manual council contract recheck

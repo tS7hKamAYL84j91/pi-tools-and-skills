@@ -151,12 +151,22 @@ describe("gated control", () => {
 		expect(resp.ok).toBe(true);
 	});
 
+	it.each([1000, PREVIEW_TTL_SECONDS * 1000 - 1, PREVIEW_TTL_SECONDS * 1000])("keeps tokens valid after %i milliseconds, including across preview GC", async (elapsed) => {
+		const { run } = fakeRunner();
+		let clock = 1_000_000;
+		const { control } = await makeControl(run, () => clock);
+		const token = requestIdOf(await control.preview("standdown", "gravitas"));
+		clock += elapsed;
+		await control.preview("standup", "titanic-gm");
+		expect((await control.execute(token, "standdown", "gravitas")).ok).toBe(true);
+	});
+
 	it("expired tokens are consumed and refused", async () => {
 		const { run } = fakeRunner();
 		let clock = 1_000_000;
 		const { control } = await makeControl(run, () => clock);
 		const token = requestIdOf(await control.preview("standup", "titanic-gm"));
-		clock += PREVIEW_TTL_SECONDS + 1;
+		clock += PREVIEW_TTL_SECONDS * 1000 + 1;
 		await expect(
 			control.execute(token, "standup", "titanic-gm"),
 		).rejects.toThrow("preview expired — run the preview again");

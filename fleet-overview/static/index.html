@@ -62,14 +62,14 @@ footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border
 <header>
   <h1>EO Fleet <small id="updated"></small></h1>
   <nav id="nav">
-    <button data-tab="fleet" class="on">Fleet</button>
-    <button data-tab="usage">Usage</button>
-    <button data-tab="events">Events</button>
-    <button data-tab="brief">Brief</button>
-    <button data-tab="board">Board</button>
-    <button data-tab="sched">Schedules</button>
-    <button data-tab="comms">Directives</button>
-    <button data-tab="control">Control</button>
+    <button type="button" data-tab="fleet" class="on">Fleet</button>
+    <button type="button" data-tab="usage">Usage</button>
+    <button type="button" data-tab="events">Events</button>
+    <button type="button" data-tab="brief">Brief</button>
+    <button type="button" data-tab="board">Board</button>
+    <button type="button" data-tab="sched">Schedules</button>
+    <button type="button" data-tab="comms">Directives</button>
+    <button type="button" data-tab="control">Control</button>
   </nav>
 </header>
 <main>
@@ -100,7 +100,7 @@ footer { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border
       </div>
       <textarea id="dir-text" class="dir-text" placeholder="Type a note for Gravitas / fleet..."></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-        <button id="dir-send" class="btn">Send to Inbox</button>
+        <button type="button" id="dir-send" class="btn">Send to Inbox</button>
         <span id="dir-status" class="a-meta"></span>
       </div>
     </div>
@@ -134,11 +134,13 @@ const $ = s => document.querySelector(s);
 const MOUNT = /\/fleet\/?$/.test(location.pathname) ? '/fleet/' : '/';
 const api = p => MOUNT + p;
 
-document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#nav button').forEach(x => x.classList.remove('on'));
-  document.querySelectorAll('main section').forEach(x => x.classList.remove('on'));
-  b.classList.add('on');
-  $('#' + b.dataset.tab).classList.add('on');
+document.querySelectorAll('#nav button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('#nav button').forEach(x => { x.classList.remove('on'); });
+    document.querySelectorAll('main section').forEach(x => { x.classList.remove('on'); });
+    b.classList.add('on');
+    $('#' + b.dataset.tab).classList.add('on');
+  };
 });
 
 async function load() {
@@ -222,7 +224,10 @@ function renderEvents() {
   const el = $('#events-list');
   const evs = DATA.events.events || [];
   const groups = {};
-  evs.forEach(e => { (groups[e.agent] = groups[e.agent] || []).push(e); });
+  evs.forEach(e => {
+    groups[e.agent] ??= [];
+    groups[e.agent].push(e);
+  });
   const keys = Object.keys(groups).sort((a, b) => {
     const la = groups[a][0].ts || '', lb = groups[b][0].ts || '';
     return (AGENT_ORDER.indexOf(a) - AGENT_ORDER.indexOf(b)) || (lb < la ? -1 : 1);

@@ -6,9 +6,9 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const TEAM_OVERLAY_FILES = [
-	"extensions/pi-teams/team-overlay.ts",
-	"extensions/pi-teams/team-overlay-render.ts",
-	"extensions/pi-teams/team-picker.ts",
+	"extensions/pi-team-workflows/team-overlay.ts",
+	"extensions/pi-team-workflows/team-overlay-render.ts",
+	"extensions/pi-team-workflows/team-picker.ts",
 ];
 
 const FORBIDDEN_RENDER_CALLS = new Set([

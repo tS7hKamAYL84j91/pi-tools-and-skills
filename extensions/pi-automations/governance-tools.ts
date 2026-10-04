@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { join } from "node:path";
 import { fail, ok, type ToolResult } from "../../lib/tool-result.js";
 import { ConfinedStore } from "./store.js";

@@ -4,7 +4,7 @@ import { callTool, setupKanbanToolHarness } from "./kanban-test-helpers.js";
 const harness = setupKanbanToolHarness();
 
 describe("scheduler-safe kanban surface", () => {
-	it("supports compact read, one-task claim, progress note, and guarded repeat claim", async () => {
+	it("supports structured read, one-task claim, progress note, and guarded repeat claim", async () => {
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-043",
 			agent: "lead",
@@ -17,10 +17,9 @@ describe("scheduler-safe kanban surface", () => {
 			to: "todo",
 		});
 
-		const snapshot = await callTool(harness.tools, "kanban_snapshot", {});
-		expect(snapshot.isError).toBeFalsy();
-		expect(snapshot.content[0]?.text).toContain("Compact Summary");
-		expect(snapshot.content[0]?.text).toContain("T-043");
+		const exported = await callTool(harness.tools, "kanban_export_json", {});
+		expect(exported.isError).toBeFalsy();
+		expect(exported.content[0]?.text).toContain("T-043");
 
 		const claim = await callTool(harness.tools, "kanban_claim", { agent: "automations-scheduler" });
 		expect(claim.details).toMatchObject({ result: "CLAIMED", claimed: true, task_id: "T-043" });
@@ -156,7 +155,7 @@ describe("kanban_edit note + kanban_block", () => {
 
 	it("escapes embedded quotes in notes so the log round-trips through parseBoard", async () => {
 		// The log parser only understands one pair of double quotes per field, so embedded
-		// `"` characters must be replaced. Without escaping, the next snapshot would mis-parse.
+		// `"` characters must be replaced. Without escaping, the next board read would mis-parse.
 		await callTool(harness.tools, "kanban_edit", {
 			task_id: "T-050",
 			agent: "worker-1",
@@ -168,8 +167,8 @@ describe("kanban_edit note + kanban_block", () => {
 		expect(log).toContain("use 'quotes' carefully");
 		expect(log).not.toContain('text="use "quotes"');
 
-		// Snapshot summary must still render the task without the parser losing fields after the bad quote.
-		const snap = await callTool(harness.tools, "kanban_snapshot", {});
+		// Structured export must still retain the task after the embedded quote.
+		const snap = await callTool(harness.tools, "kanban_export_json", {});
 		expect(snap.isError).toBeFalsy();
 		expect(snap.content[0]?.text).toContain("T-050");
 		expect(snap.content[0]?.text).toContain("Notable");

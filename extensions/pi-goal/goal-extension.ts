@@ -16,13 +16,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
  const runtime = getGoalRuntime();
  let stopWatchdog: (() => void) | undefined;
  let stopped = false;
+ let turnMessages: readonly unknown[] = [];
  registerGoalCommands(pi, runtime);
  registerGoalTools(pi, runtime, (ctx, state) => refreshUi(ctx, runtime, state));
  function localSession(ctx: ExtensionContext): boolean {
   return !stopped && runtime.driver !== undefined && runtime.driver.cwd === ctx.cwd && runtime.driver.sessionId === ctx.sessionManager.getSessionId?.();
  }
  pi.on("session_start", async (_event, ctx) => {
-  stopped = false; stopWatchdog?.();
+  stopped = false; turnMessages = []; stopWatchdog?.();
   const scope = goalScopeForContext(ctx, goalId => pi.appendEntry(GOAL_BINDING_CUSTOM_TYPE, { goalId }));
   stopWatchdog = startGoalWatchdog({
    cwd: ctx.cwd, scope,
@@ -40,7 +41,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   await refreshUi(ctx, runtime, undefined, scope);
  });
  pi.on("session_shutdown", async (event, ctx) => {
-  stopWatchdog?.(); stopWatchdog = undefined;
+  stopWatchdog?.(); stopWatchdog = undefined; turnMessages = [];
   const local = localSession(ctx); stopped = true;
   if (!local || (event.reason === "new" && runtime.driver?.handoff)) { return; }
   try {
@@ -59,13 +60,18 @@ export default function goalExtension(pi: ExtensionAPI): void {
   if (!state || (state.status !== "active" && state.status !== "planning")) { return; }
   return { message: { customType: "pi-goal-context", content: goalContextMessage(state), display: false, details: { goalId: state.goalId, runId: state.runId, turnsUsed: state.turnsUsed, turnBudget: state.turnBudget } } };
  });
- pi.on("agent_end", async (event, ctx) => {
-  // agent_end only settles the matching waiter. It NEVER starts a second driver.
+ pi.on("agent_end", (event, ctx) => {
+  // Retain all low-level attempts; recovery can continue without a new user prompt.
+  if (localSession(ctx)) turnMessages = [...turnMessages, ...event.messages];
+ });
+ pi.on("agent_settled", async (_event, ctx) => {
+  const messages = turnMessages; turnMessages = [];
+  // Only the final boundary settles the matching waiter, never a second driver.
   if (!localSession(ctx)) { return; }
   const scope = goalScopeForContext(ctx);
   const state = await loadGoal(ctx.cwd, scope);
   if (!state || !ownsGoal(runtime, state)) { stopLocalRun(runtime); return; }
-  const final = findFinalAssistantMessage(event.messages);
+  const final = findFinalAssistantMessage(messages);
   if (final?.stopReason === "aborted" || final?.stopReason === "error") {
    try {
     const result = await transactGoal(ctx.cwd, scope, { goalId: state.goalId, revision: state.revision, owner: state.owner }, () => updateGoal(stopGoal(state, "interrupted", formatGoalDiagnostic(final.errorMessage ?? "Agent turn interrupted or failed.")), { status: "paused" }));
@@ -78,6 +84,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
   }
   const resolve = runtime.resolve;
   runtime.resolve = null;
-  resolve?.(event.messages);
+  resolve?.(messages);
  });
 }

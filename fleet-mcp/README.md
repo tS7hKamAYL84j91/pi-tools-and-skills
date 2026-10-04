@@ -1,6 +1,6 @@
 # Fleet MCP
 
-Standalone MCP gateway for operator-authenticated external principals in one configured workspace, with opt-in access to native Pi agents. It reuses Panopticon's external-agent registrar and the existing Maildir transport; it does not depend on the Pi extension lifecycle.
+Standalone MCP gateway for operator-authenticated external principals in one configured workspace, with opt-in access to native Pi agents. It reuses Agent Hub's external-agent registrar and the existing Maildir transport; it does not depend on the Pi extension lifecycle.
 
 ## Build and run
 
@@ -20,7 +20,7 @@ The build emits uniform ESM into ignored `dist/`; the runtime entrypoint is `dis
 |---|---:|---|
 | `transport` | no | `stdio` (default), `http`, or `both` |
 | `workspaceAlias` | yes | Alias accepted by every tool; never a filesystem path |
-| `workspaceRoot` | yes | Absolute Panopticon workspace path |
+| `workspaceRoot` | yes | Absolute Agent Hub workspace path |
 | `mailboxRoot` | yes | Absolute persistent external-Maildir root |
 | `stateDir` | yes | Absolute private Fleet MCP state path |
 | `listenHost` | no | `127.0.0.1`; HTTP refuses any other value |
@@ -29,13 +29,13 @@ The build emits uniform ESM into ignored `dist/`; the runtime entrypoint is `dis
 | `bearerToken` | legacy HTTP | At least 16 characters; provision through the deployment secret boundary |
 | `principal` | no | Fixed stdio/legacy HTTP identity (`local-stdio` by default) |
 | `httpPrincipals` | mapped HTTP | Nonempty array of `{principal, bearerToken}`; up to 100 unique principals and credentials; mutually exclusive with `bearerToken` |
-| `nativeAgentId` | no | Real, live native reference ID granting its existing Panopticon visibility; mutually exclusive with `nativeSession` |
+| `nativeAgentId` | no | Real, live native reference ID granting its existing Agent Hub visibility; mutually exclusive with `nativeSession` |
 | `nativeSession` | no | Operator-approved `{pid, sessionFile, cwd, visibility: "global"}` binding; absolute paths, positive PID, global root only. Neither binding means external-only |
 | `limits.pageSize` | no | Default 20, maximum 100 |
 | `limits.maxTextBytes` | no | Default 32768 UTF-8 bytes |
 | `limits.maxAckIds` | no | Default and maximum 100 |
 
-Mount `workspaceRoot` and `mailboxRoot` according to the existing Panopticon layout. `stateDir` must be writable and persistent; Fleet MCP creates it as `0700` and atomically writes `state.json` as `0600`.
+Mount `workspaceRoot` and `mailboxRoot` according to the existing Agent Hub layout. `stateDir` must be writable and persistent; Fleet MCP creates it as `0700` and atomically writes `state.json` as `0600`.
 
 HTTP exposes `POST /mcp`, `GET /healthz`, and `GET /readyz`. `/mcp` requires an exact bearer token comparison. Health and readiness contain no identity, path, or credential details.
 
@@ -47,7 +47,7 @@ State schema version 2 stores registrations, generation-scoped send receipts and
 
 ## Native interoperability
 
-Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Panopticon today. Missing/stale references fail closed. The file-backed Panopticon registry is the only native backend.
+Native access is **host-first**, using the same user/home/PID namespace as Pi. The registry is `~/.pi/agents`; reading it never reaps agents, changes permissions, or repairs records. `nativeAgentId` must resolve to a valid, live, fresh native record. The existing `canSee(reference, target)` predicate filters native discovery, send and broadcast identically. A global/root requester sees scoped targets too, as in Agent Hub today. Missing/stale references fail closed. The file-backed Agent Hub registry is the only native backend.
 
 For reload-safe access, an operator can replace `nativeAgentId` with `nativeSession`
 using the verified reference's exact PID, absolute session file, absolute working
@@ -63,7 +63,7 @@ this does not grant automatic authority to a new process or a same-name agent.
 Registry records remain trusted same-user local metadata, not cryptographically
 authenticated identities.
 
-Native recipients must already have a Maildir inbox. Configure opted-in native Pi sessions with `PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT` matching Fleet's host `workspaceRoot` and `PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT` matching `mailboxRoot`. Panopticon refreshes that validated source before peer tools resolve names, so registration/removal is visible without restarting sessions. Defaults retain the native session's workspace and standard persistent mailbox root. These settings require operator approval; Fleet never changes them.
+Native recipients must already have a Maildir inbox. Configure opted-in native Pi sessions with `PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT` matching Fleet's host `workspaceRoot` and `PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT` matching `mailboxRoot` (legacy `PI_PANOPTICON_*` names are retained). Agent Hub refreshes that validated source before peer tools resolve names, so registration/removal is visible without restarting sessions. Defaults retain the native session's workspace and standard persistent mailbox root. These settings require operator approval; Fleet never changes them.
 
 Messages retain the legacy sender label and may carry additive `senderId` metadata. Fleet exposes the canonical ID when present; unresolvable legacy native labels have `sender_id: null`. Maildir provenance is still not cryptographic authentication (`authentication_confidence: unknown`).
 
@@ -92,7 +92,7 @@ npm run build:fleet-mcp
 PI_FLEET_MCP_MCPORTER_SMOKE=1 npx vitest run tests/fleet-mcp-native.test.ts
 ```
 
-The opt-in check invokes actual `mcporter@0.13.10` over HTTP against disposable registry/Maildir fixtures and native Panopticon tool handlers: registration, discovery, both message directions, inbox/ack, both broadcast directions, and deregistration. It uses a generated credential in the child environment, not argv, and no live registry. It requires `npx`/mcporter availability (or npm access) and is not a production EO/LLM or private-ingress claim.
+The opt-in check invokes actual `mcporter@0.13.10` over HTTP against disposable registry/Maildir fixtures and native Agent Hub tool handlers: registration, discovery, both message directions, inbox/ack, both broadcast directions, and deregistration. It uses a generated credential in the child environment, not argv, and no live registry. It requires `npx`/mcporter availability (or npm access) and is not a production EO/LLM or private-ingress claim.
 
 ## Explicit limits
 

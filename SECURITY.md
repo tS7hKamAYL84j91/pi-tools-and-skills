@@ -12,7 +12,7 @@
 
 Please report security vulnerabilities privately so we can coordinate a fix before public disclosure.
 
-- Email: security@example.invalid (replace with your project security contact)
+- Report through GitHub's private vulnerability reporting for this repository. If it is unavailable, open a minimal issue asking for a private channel without disclosing details.
 - Do not open public issues for undisclosed vulnerabilities.
 - Include a minimal reproduction, affected versions, and suggested severity if possible.
 

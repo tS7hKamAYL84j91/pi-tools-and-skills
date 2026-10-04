@@ -66,14 +66,14 @@ describe("kanban_create", () => {
 			priority: "medium",
 		});
 
-		const detail = await callTool(harness.tools, "kanban_snapshot", { task_id: "T-003" });
-		expect(detail.content[0]?.text).toContain("- Tags: —");
+		const detail = await callTool(harness.tools, "kanban_export_json", {});
+		expect(detail.details.tasks).toEqual([expect.objectContaining({ id: "T-003", tags: [] })]);
 
 		const taskFile = harness.readTaskFile("T-003");
 		expect(taskFile).toContain("tags: []");
 	});
 
-	it("preserves a single feature tag in snapshots and task files", async () => {
+	it("preserves a single feature tag in structured export and task files", async () => {
 		await callTool(harness.tools, "kanban_create", {
 			task_id: "T-004",
 			agent: "lead",
@@ -82,8 +82,8 @@ describe("kanban_create", () => {
 			tags: "feature:research-tools",
 		});
 
-		const detail = await callTool(harness.tools, "kanban_snapshot", { task_id: "T-004" });
-		expect(detail.content[0]?.text).toContain("- Tags: feature:research-tools");
+		const detail = await callTool(harness.tools, "kanban_export_json", {});
+		expect(detail.details.tasks).toEqual([expect.objectContaining({ id: "T-004", tags: ["feature:research-tools"] })]);
 
 		const taskFile = harness.readTaskFile("T-004");
 		expect(taskFile).toContain("tags: [feature:research-tools]");
@@ -98,8 +98,8 @@ describe("kanban_create", () => {
 			tags: "feature:kanban-metadata,epic:operator-followthrough,docs",
 		});
 
-		const snapshot = await callTool(harness.tools, "kanban_snapshot", { detail: "full" });
-		expect(snapshot.content[0]?.text).toContain("feature:kanban-metadata,epic:operator-followthrough,docs");
+		const exported = await callTool(harness.tools, "kanban_export_json", {});
+		expect(exported.details.tasks).toEqual([expect.objectContaining({ id: "T-005", tags: ["feature:kanban-metadata", "epic:operator-followthrough", "docs"] })]);
 
 		const taskFile = harness.readTaskFile("T-005");
 		expect(taskFile).toContain("tags: [feature:kanban-metadata, epic:operator-followthrough, docs]");
@@ -114,8 +114,8 @@ describe("kanban_create", () => {
 			tags: "customer-x,theme.alpha",
 		});
 
-		const detail = await callTool(harness.tools, "kanban_snapshot", { task_id: "T-006" });
-		expect(detail.content[0]?.text).toContain("- Tags: customer-x,theme.alpha");
+		const detail = await callTool(harness.tools, "kanban_export_json", {});
+		expect(detail.details.tasks).toEqual([expect.objectContaining({ id: "T-006", tags: ["customer-x", "theme.alpha"] })]);
 	});
 });
 

@@ -7,7 +7,8 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
+import { withAdvisoryLock } from "../../lib/file-lock.js";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 
@@ -95,7 +96,11 @@ export function mergeOllamaModelsConfig(existing: PiModelConfig, models: PiModel
 		apiKey: "ollama",
 		...currentOllama,
 		compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, ...(currentOllama.compat ?? {}) },
-		models,
+		// Discovery owns inventory; existing fields are explicit configuration.
+		models: models.map(model => {
+			const override = currentOllama.models?.find(existingModel => existingModel.id === model.id);
+			return { ...model, ...override, ...(model.compat || override?.compat ? { compat: { ...model.compat, ...override?.compat } } : {}) };
+		}),
 	};
 	return { ...existing, providers };
 }
@@ -177,13 +182,16 @@ async function syncOllamaModels(options: SyncOptions = {}): Promise<ToolResult> 
 	const modelsPath = options.modelsPath ?? process.env.PI_OLLAMA_MODELS_PATH ?? DEFAULT_MODELS_PATH;
 	const command = await resolveOllamaCommand();
 	const models = await discoverOllamaModels(command);
-	const existing = await readExistingConfig(modelsPath);
-	const changed = modelIdsChanged(existing, models);
-	const config = mergeOllamaModelsConfig(existing, models);
-	if (options.dryRun !== true) {
-		await writeFileAtomic(modelsPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-	}
-	return ok(JSON.stringify({ dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed, models: models.map((model) => model.id) }, null, 2), { dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed });
+	const mergeAndSave = async () => {
+		const existing = await readExistingConfig(modelsPath);
+		const changed = modelIdsChanged(existing, models);
+		const config = mergeOllamaModelsConfig(existing, models);
+		if (options.dryRun !== true) {
+			await writeFileAtomic(modelsPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+		}
+		return ok(JSON.stringify({ dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed, models: models.map((model) => model.id) }, null, 2), { dryRun: options.dryRun === true, modelsPath, modelCount: models.length, changed });
+	};
+	return options.dryRun === true ? mergeAndSave() : withAdvisoryLock(modelsPath, mergeAndSave);
 }
 
 export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
@@ -193,7 +201,7 @@ export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
 			const modelCount = (result.details.modelCount as number) ?? 0;
 			ctx.ui.setStatus("ollama", `ollama: synced ${modelCount}`);
 			if (result.details.changed === true) {
-				ctx.ui.notify(`ollama: synced ${modelCount} model(s). Run /reload if new models are missing from picker.`, "info");
+				ctx.ui.notify(`ollama: synced ${modelCount} model(s). Open /model to refresh the picker.`, "info");
 			}
 		} catch (error) {
 			ctx.ui.setStatus("ollama", "ollama: skipped");

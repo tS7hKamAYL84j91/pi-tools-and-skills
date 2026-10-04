@@ -9,7 +9,7 @@ interface SourceCliArgs {
 }
 
 function usage(): string {
-	return "Usage: npx tsx scripts/session-source-cli.ts [--source-root <dir>] [--limit N]";
+	return "Usage: npx jiti scripts/session-source-cli.ts [--source-root <dir>] [--limit N]";
 }
 
 function parseArgs(argv: readonly string[]): SourceCliArgs {

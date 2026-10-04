@@ -18,7 +18,7 @@ interface SelectCliArgs {
 
 function usage(): string {
 	return [
-		"Usage: npx tsx scripts/session-spool-select-cli.ts [--source-root <dir>] [--limit N] [--pick N --spool --registry-dir <absolute-dir> --agent-id <id> --name <display-name> --cwd <cwd>] [--max-events N]",
+		"Usage: npx jiti scripts/session-spool-select-cli.ts [--source-root <dir>] [--limit N] [--pick N --spool --registry-dir <absolute-dir> --agent-id <id> --name <display-name> --cwd <cwd>] [--max-events N]",
 		"",
 		"Lists recent pi session sources read-only by default. Spooling runs only when both --pick and --spool are supplied explicitly.",
 	].join("\n");

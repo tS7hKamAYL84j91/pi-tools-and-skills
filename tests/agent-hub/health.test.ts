@@ -1,0 +1,365 @@
+/**
+ * Tests for agent health assessment (extensions/pi-agent-hub/registry/health.ts)
+ *
+ * Tests assessHealth status taxonomy and tracker behavior.
+ */
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAgentRecord } from "./helpers.js";
+
+// Mock isPidAlive — control which PIDs are alive
+vi.mock("../../lib/agent-registry.js", async (importOriginal) => {
+	const orig = await importOriginal<typeof import("../../lib/agent-registry.js")>();
+	return {
+		...orig,
+		isPidAlive: vi.fn(() => true),
+	};
+});
+
+// Mock readSessionLog — control what activity events are returned
+vi.mock("../../lib/session-log.js", () => ({
+	readSessionLog: vi.fn(() => []),
+}));
+
+import { isPidAlive } from "../../lib/agent-registry.js";
+import { readSessionLog } from "../../lib/session-log.js";
+import { assessHealth, formatHealthTable, summarizeHealth } from "../../extensions/pi-agent-hub/registry/health.js";
+
+const mockIsPidAlive = isPidAlive as ReturnType<typeof vi.fn>;
+const mockReadSessionLog = readSessionLog as ReturnType<typeof vi.fn>;
+
+// ── Fixtures ────────────────────────────────────────────────────
+
+function makeStallTracker(): Map<string, { lastHash: string; stallCount: number }> {
+	return new Map();
+}
+
+// ── assessHealth: external agents ───────────────────────────────
+
+describe("assessHealth — external agents", () => {
+	it("treats a registered external peer as alive without PID or stall checks", () => {
+		mockIsPidAlive.mockClear();
+		mockIsPidAlive.mockReturnValue(false);
+		const mailboxPath = "/persist/external-worker/inbox";
+		const record = makeAgentRecord({
+			kind: "external",
+			pid: 0,
+			status: "waiting",
+			pendingMessages: 4,
+			mailboxPath,
+		});
+		const tracker = makeStallTracker();
+		tracker.set(record.id, { lastHash: "unchanged", stallCount: 99 });
+
+		const health = assessHealth(record, tracker);
+
+		expect(health).toMatchObject({
+			alive: true,
+			status: "waiting",
+			stallCycles: 0,
+			pendingMessages: 4,
+			socket: mailboxPath,
+		});
+		expect(mockIsPidAlive).not.toHaveBeenCalled();
+		expect(tracker.has(record.id)).toBe(false);
+	});
+
+	it("preserves an external peer's blocked status without checking its PID", () => {
+		mockIsPidAlive.mockClear();
+		mockIsPidAlive.mockReturnValue(false);
+		const record = makeAgentRecord({
+			kind: "external",
+			pid: 0,
+			status: "blocked",
+			mailboxPath: "/persist/blocked-worker/inbox",
+		});
+
+		const health = assessHealth(record, makeStallTracker());
+
+		expect(health.status).toBe("blocked");
+		expect(health.alive).toBe(true);
+		expect(mockIsPidAlive).not.toHaveBeenCalled();
+	});
+});
+
+// ── assessHealth: terminated ────────────────────────────────────
+
+describe("assessHealth — terminated", () => {
+	it("returns terminated when PID is dead", () => {
+		mockIsPidAlive.mockReturnValue(false);
+		const record = makeAgentRecord();
+		const tracker = makeStallTracker();
+
+		const h = assessHealth(record, tracker);
+		expect(h.status).toBe("terminated");
+		expect(h.alive).toBe(false);
+	});
+
+	it("clears stall tracker for terminated agents", () => {
+		mockIsPidAlive.mockReturnValue(false);
+		const record = makeAgentRecord();
+		const tracker = makeStallTracker();
+		tracker.set(record.id, { lastHash: "abc", stallCount: 5 });
+
+		assessHealth(record, tracker);
+		expect(tracker.has(record.id)).toBe(false);
+	});
+});
+
+// ── assessHealth: blocked ───────────────────────────────────────
+
+describe("assessHealth — blocked", () => {
+	it("returns blocked when agent self-reports blocked", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		const record = makeAgentRecord({ status: "blocked" });
+		const h = assessHealth(record, makeStallTracker());
+		expect(h.status).toBe("blocked");
+	});
+});
+
+// ── assessHealth: waiting ───────────────────────────────────────
+
+describe("assessHealth — waiting", () => {
+	it("returns waiting when agent is idle", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		const record = makeAgentRecord({ status: "waiting" });
+		const h = assessHealth(record, makeStallTracker());
+		expect(h.status).toBe("waiting");
+	});
+
+	it("clears stall tracker when waiting", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		const record = makeAgentRecord({ status: "waiting" });
+		const tracker = makeStallTracker();
+		tracker.set(record.id, { lastHash: "abc", stallCount: 3 });
+
+		assessHealth(record, tracker);
+		expect(tracker.has(record.id)).toBe(false);
+	});
+});
+
+// ── assessHealth: api_error ─────────────────────────────────────
+
+describe("assessHealth — api_error", () => {
+	it("returns api_error when recent activity has errors", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		mockReadSessionLog.mockReturnValue([
+			{ ts: 1000, event: "tool_result", tool: "bash", isError: true },
+			{ ts: 2000, event: "tool_result", tool: "bash", isError: true },
+		]);
+		const record = makeAgentRecord({ status: "running" });
+		const h = assessHealth(record, makeStallTracker());
+		expect(h.status).toBe("api_error");
+	});
+});
+
+// ── assessHealth: stall detection (sleep-aware) ─────────────────
+
+describe("assessHealth — stall detection", () => {
+	beforeEach(() => {
+		mockIsPidAlive.mockReturnValue(true);
+		// Return consistent events so hash doesn't change between calls
+		mockReadSessionLog.mockReturnValue([
+			{ ts: 1000, event: "tool_call", tool: "bash" },
+		]);
+	});
+
+	it("returns active on first call (no prior hash)", () => {
+		const record = makeAgentRecord({ status: "running" });
+		const tracker = makeStallTracker();
+		const h = assessHealth(record, tracker);
+		expect(h.status).toBe("active");
+		expect(h.stallCycles).toBe(0);
+	});
+
+	it("increments stall count on unchanged activity", () => {
+		const record = makeAgentRecord({ status: "running" });
+		const tracker = makeStallTracker();
+
+		// First call — establishes baseline
+		assessHealth(record, tracker);
+
+		// Second call — same hash
+		const h2 = assessHealth(record, tracker);
+		expect(h2.stallCycles).toBe(1);
+		expect(h2.status).toBe("active"); // below threshold
+	});
+
+	it("returns stalled after reaching threshold with stale heartbeat", () => {
+		const record = makeAgentRecord({
+			status: "running",
+			heartbeat: Date.now() - 120_000, // 2 minutes ago — stale
+		});
+		const tracker = makeStallTracker();
+
+		// Build up stall cycles
+		assessHealth(record, tracker); // cycle 0 (baseline)
+		assessHealth(record, tracker); // cycle 1
+		assessHealth(record, tracker); // cycle 2
+		const h = assessHealth(record, tracker); // cycle 3 — at threshold
+
+		expect(h.stallCycles).toBe(3);
+		expect(h.status).toBe("stalled");
+	});
+
+	it("returns sleeping when threshold reached but heartbeat is fresh", () => {
+		const record = makeAgentRecord({
+			status: "running",
+			heartbeat: Date.now() - 5_000, // 5 seconds ago — fresh
+		});
+		const tracker = makeStallTracker();
+
+		assessHealth(record, tracker); // baseline
+		assessHealth(record, tracker); // cycle 1
+		assessHealth(record, tracker); // cycle 2
+		const h = assessHealth(record, tracker); // cycle 3
+
+		expect(h.stallCycles).toBe(3);
+		expect(h.status).toBe("sleeping");
+	});
+
+	it("resets stall count when activity changes", () => {
+		const record = makeAgentRecord({ status: "running" });
+		const tracker = makeStallTracker();
+
+		// First call
+		assessHealth(record, tracker);
+
+		// Same hash
+		assessHealth(record, tracker);
+		expect(tracker.get(record.id)?.stallCount).toBe(1);
+
+		// New activity
+		mockReadSessionLog.mockReturnValue([
+			{ ts: 3000, event: "tool_call", tool: "read" },
+		]);
+		const h = assessHealth(record, tracker);
+		expect(h.stallCycles).toBe(0);
+		expect(h.status).toBe("active");
+	});
+
+	it("respects custom stall threshold", () => {
+		const record = makeAgentRecord({
+			status: "running",
+			heartbeat: Date.now() - 120_000,
+		});
+		const tracker = makeStallTracker();
+
+		assessHealth(record, tracker, 2); // baseline
+		assessHealth(record, tracker, 2); // cycle 1
+		const h = assessHealth(record, tracker, 2); // cycle 2 — at threshold=2
+
+		expect(h.stallCycles).toBe(2);
+		expect(h.status).toBe("stalled");
+	});
+});
+
+// ── assessHealth: priority ordering ─────────────────────────────
+
+describe("assessHealth — status priority", () => {
+	it("terminated takes priority over everything", () => {
+		mockIsPidAlive.mockReturnValue(false);
+		const record = makeAgentRecord({ status: "blocked" });
+		const h = assessHealth(record, makeStallTracker());
+		expect(h.status).toBe("terminated");
+	});
+
+	it("blocked takes priority over api_error", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		mockReadSessionLog.mockReturnValue([
+			{ ts: 1, event: "tool_result", tool: "x", isError: true },
+		]);
+		const record = makeAgentRecord({ status: "blocked" });
+		const h = assessHealth(record, makeStallTracker());
+		expect(h.status).toBe("blocked");
+	});
+
+	it("api_error takes priority over stall detection", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		mockReadSessionLog.mockReturnValue([
+			{ ts: 1, event: "tool_result", tool: "x", isError: true },
+			{ ts: 2, event: "tool_result", tool: "y", isError: true },
+		]);
+		const record = makeAgentRecord({ status: "running" });
+		const tracker = makeStallTracker();
+		// Even with stall history, api_error wins
+		tracker.set(record.id, { lastHash: "old", stallCount: 10 });
+		const h = assessHealth(record, tracker);
+		expect(h.status).toBe("api_error");
+	});
+});
+
+// ── assessHealth: structured output ─────────────────────────────
+
+describe("summarizeHealth", () => {
+	it("returns zero counts for an empty registry", () => {
+		expect(summarizeHealth([])).toEqual({
+			total: 0,
+			actionable: 0,
+			byStatus: {},
+			pendingMessages: 0,
+			terminated: 0,
+			blocked: 0,
+			stalled: 0,
+			apiErrors: 0,
+		});
+	});
+
+	it("returns privacy-preserving aggregate observability counts", () => {
+		const healths = [
+			{ name: "a", pid: 1, alive: false, status: "terminated" as const, heartbeatAge: 1, stallCycles: 0, model: "m", pendingMessages: 0, socket: "/tmp/a.sock" },
+			{ name: "b", pid: 2, alive: true, status: "blocked" as const, heartbeatAge: 2, stallCycles: 0, model: "m", pendingMessages: 2, socket: "/tmp/b.sock" },
+			{ name: "c", pid: 3, alive: true, status: "waiting" as const, heartbeatAge: 3, stallCycles: 0, model: "m", pendingMessages: 0, socket: "/tmp/c.sock" },
+		];
+
+		const summary = summarizeHealth(healths);
+
+		expect(summary).toEqual({
+			total: 3,
+			actionable: 3,
+			byStatus: { terminated: 1, blocked: 1, waiting: 1 },
+			pendingMessages: 2,
+			terminated: 1,
+			blocked: 1,
+			stalled: 0,
+			apiErrors: 0,
+		});
+	});
+
+	it("formats a summary header without raw session content and keeps agent shape", () => {
+		const health = { name: "test-agent", pid: 123, alive: true, status: "api_error" as const, heartbeatAge: 1_000, stallCycles: 0, model: "model", pendingMessages: 1, socket: "/tmp/test.sock" };
+
+		const text = formatHealthTable([health]);
+
+		expect(text).toContain("Agent health (1): actionable=2 pending=1 terminated=0 blocked=0 stalled=0 api_errors=1");
+		expect(text).toContain("test-agent");
+		expect(text).not.toContain("raw error body");
+		expect(Object.keys(health).sort()).toEqual(["alive", "heartbeatAge", "model", "name", "pendingMessages", "pid", "socket", "stallCycles", "status"].sort());
+	});
+});
+
+// ── assessHealth: structured output ─────────────────────────────
+
+describe("assessHealth — output structure", () => {
+	it("includes all required fields", () => {
+		mockIsPidAlive.mockReturnValue(true);
+		mockReadSessionLog.mockReturnValue([]);
+		const record = makeAgentRecord({
+			model: "anthropic/claude-sonnet-4-6",
+			pendingMessages: 3,
+		});
+		const h = assessHealth(record, makeStallTracker());
+
+		expect(h).toHaveProperty("name", "test-agent");
+		expect(h).toHaveProperty("pid", 12345);
+		expect(h).toHaveProperty("alive", true);
+		expect(h).toHaveProperty("status");
+		expect(h).toHaveProperty("heartbeatAge");
+		expect(h.heartbeatAge).toBeGreaterThanOrEqual(0);
+		expect(h).toHaveProperty("stallCycles");
+		expect(h).toHaveProperty("model", "anthropic/claude-sonnet-4-6");
+		expect(h).toHaveProperty("pendingMessages", 3);
+		expect(h).toHaveProperty("socket");
+		expect(h.socket).toContain(".sock");
+	});
+});

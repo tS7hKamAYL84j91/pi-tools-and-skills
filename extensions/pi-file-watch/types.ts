@@ -43,4 +43,5 @@ export interface WatcherRuntimeState {
 	config: FileWatchConfig | undefined;
 	lastEventAt: number | undefined;
 	eventCount: number;
+	overflowEvents: number;
 }

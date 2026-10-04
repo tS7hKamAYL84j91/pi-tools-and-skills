@@ -132,14 +132,14 @@ export async function appendRunHistory(
 	taskId: string,
 	entry: ScheduleRunHistoryEntry,
 ): Promise<void> {
-	const existing = await loadRunHistory(config, taskId);
-	const entries = existing?.entries.slice(-MAX_HISTORY_ENTRIES + 1) ?? [];
-	const next: ScheduleRunHistory = {
-		taskId,
-		entries: [...entries, entry],
-	};
 	const store = await ConfinedStore.createAutomationsHome(config);
-	await store.writePrivateFileAtomic(runHistoryPath(config, taskId), `${JSON.stringify(next, null, 2)}\n`);
+	const path = runHistoryPath(config, taskId);
+	await store.withAdvisoryLock(path, async () => {
+		const existing = await loadRunHistory(config, taskId);
+		const entries = existing?.entries.slice(-MAX_HISTORY_ENTRIES + 1) ?? [];
+		const next: ScheduleRunHistory = { taskId, entries: [...entries, entry] };
+		await store.writePrivateFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+	});
 }
 
 export interface PriorSummary {

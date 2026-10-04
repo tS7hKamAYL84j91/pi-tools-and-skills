@@ -1,9 +1,11 @@
 /** Tool registrations for verified pi-goal completion and explicit blockers. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ok } from "../../lib/tool-result.js";
 import { blockGoal, verifyGoalCompletion } from "./goal-completion.js";
 import { goalScopeForContext } from "./goal-helpers.js";
+import { readGoalHook, saveGoalHook } from "./goal-hook.js";
+import { formatGoalDiagnostic } from "./goal-diagnostics.js";
 import { loadGoal } from "./goal-persist.js";
 import { renderGoalSummary } from "./goal-render.js";
 import type { GoalRuntime } from "./goal-runtime.js";
@@ -30,28 +32,47 @@ export function registerGoalTools(
  refreshUi: (ctx: ExtensionContext, state?: GoalState | null) => Promise<void>,
 ): void {
  pi.registerTool({
+  name: "goal_hook", label: "Goal Completion Hook",
+  description: "Inspect or amend the workspace-local completion hook in .pi/goal/settings.json. Saving does not execute it; goal_complete runs it. Authorized local agents may configure it, not bypass task requirements.",
+  parameters: Type.Object({
+   command: Type.Optional(Type.String({ description: "Hook shell command, run in this workspace; empty means unconfigured. Never include secrets." })),
+   timeout_ms: Type.Optional(Type.Integer({ minimum: 1000, maximum: 86400000, description: "Hook timeout; default 15 minutes." })),
+   expected_revision: Type.Optional(Type.String({ description: "Revision from inspection (or absent); reject a conflicting edit." })),
+  }),
+  async execute(_id, params, _signal, _onUpdate, ctx) {
+   if (params.command === undefined && params.timeout_ms !== undefined) throw new Error("Supply command when setting hook timeout");
+   const hook = params.command === undefined ? await readGoalHook(ctx.cwd)
+    : await saveGoalHook(ctx.cwd, { command: params.command, timeoutMs: params.timeout_ms }, params.expected_revision);
+   const details = hook ? { ...hook, command: formatGoalDiagnostic(hook.command), configured: Boolean(hook.command), path: ".pi/goal/settings.json" } : { configured: false, revision: "absent", path: ".pi/goal/settings.json" };
+   return ok(hook?.command ? "Local completion hook configured; runs only on goal_complete." : "Completion hook missing; configure goal_hook or /goal hook before completion. Goal can start/stop independently.", details);
+  },
+ });
+ pi.registerTool({
   name: "goal_get", label: "Goal Get",
   description: "Read the current project-local pi goal state.",
   promptSnippet: "Read the active project goal, source file, run status, and completion requirements.",
   parameters: Type.Object({}),
   async execute(_id, _params, _signal, _onUpdate, ctx) {
    const state = await loadGoal(ctx.cwd, goalScopeForContext(ctx));
-   return ok(state ? renderGoalSummary(state) : "No pi goal is set.", state ? { ...state } : {});
+   let hookStatus: string;
+   try { hookStatus = (await readGoalHook(ctx.cwd))?.command ? "Local completion hook configured (.pi/goal/settings.json)." : "Local completion hook missing; configure goal_hook or /goal hook."; }
+   catch (error) { hookStatus = `Invalid local hook: ${formatGoalDiagnostic(error)}`; }
+   return ok(`${state ? renderGoalSummary(state) : "No pi goal is set."}\n${hookStatus}`, state ? { ...state, hookStatus } : { hookStatus });
   },
  });
  pi.registerTool({
   name: "goal_complete", label: "Goal Complete",
-  description: "Request goal completion through the operator-configured trusted verifier.",
-  promptSnippet: "Complete only after every in-scope requirement is satisfied and the trusted verifier passes.",
+  description: "Request goal completion by executing the workspace-local completion hook.",
+  promptSnippet: "Complete only after auditing scope and passing the local completion hook.",
   promptGuidelines: [
    "Use goal_complete only after auditing every requirement against current files and running relevant validation.",
-   "goal_complete requires PI_GOAL_GATE_COMMAND configured by the operator; evidence prose cannot replace verification.",
+   "goal_complete runs the hook in .pi/goal/settings.json. If missing, declare and configure it using goal_hook locally; evidence prose cannot replace validation.",
    "If goal_complete returns a retryable rejection, repair within the current scope; use goal_block for a genuine blocker, never completion.",
   ],
   parameters: Type.Object({
    evidence: Type.String({ description: "Concrete completion evidence and validation summary." }),
    gate_command: Type.Optional(Type.String({
-    description: "Deprecated compatibility input. Ignored and never executed; only PI_GOAL_GATE_COMMAND configures the trusted gate.",
+    description: "Deprecated compatibility input. Ignored and never executed; configure the local completion hook with goal_hook.",
     deprecated: true,
    })),
   }),
@@ -62,7 +83,7 @@ export function registerGoalTools(
    const result = await verifyGoalCompletion(ctx, evidence, signal);
    await refreshUi(ctx, result.state);
    if (result.error) throw new Error(result.error);
-   return { ...ok(`Goal complete — trusted verifier passed. Evidence: ${evidence}`, { ...result.state }), terminate: true };
+   return { ...ok(`Goal complete — local completion hook passed. Evidence: ${evidence}`, { ...result.state }), terminate: true };
   },
  });
  pi.registerTool({

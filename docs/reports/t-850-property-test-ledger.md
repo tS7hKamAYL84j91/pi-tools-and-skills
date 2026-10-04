@@ -1,6 +1,6 @@
 # T-850 bounded property-test ledger
 
-Status: active
+Status: historical
 
 Fixed default fast-check configuration: seed `8412026`, 100 cases per property (`tests/lib/fast-check.ts`). No network, wall-clock, or schedule execution.
 

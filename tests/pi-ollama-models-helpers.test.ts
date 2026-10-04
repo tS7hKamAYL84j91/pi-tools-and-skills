@@ -1,14 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ollamaModelsExtension, {
 	mergeOllamaModelsConfig,
 	modelFromOllamaShow,
 	modelIdsChanged,
 	parseOllamaList,
 } from "../extensions/pi-ollama-models/index.js";
+
+import { withAdvisoryLock } from "../lib/file-lock.js";
 
 interface OllamaToolResult {
 	details: Record<string, unknown>;
@@ -79,6 +81,42 @@ describe("pi ollama models extension helpers", () => {
 		expect(config.providers?.openrouter).toEqual({ apiKey: "cmd" });
 		expect(config.providers?.ollama?.baseUrl).toBe("custom");
 		expect(config.providers?.ollama?.models).toEqual([model]);
+	});
+
+	it("preserves configured model fields and merges compatibility defaults", () => {
+		const discovered = modelFromOllamaShow("qwen3:8b", "architecture qwen3\ncontext length 40960");
+		const override = { ...discovered, name: "My model", contextWindow: 16384, maxTokens: 2048, compat: { supportsTools: false } };
+		const config = mergeOllamaModelsConfig({ providers: { ollama: { baseUrl: "custom", models: [override] } } }, [discovered]);
+		expect(config.providers?.ollama?.models?.[0]).toMatchObject({ name: "My model", contextWindow: 16384, maxTokens: 2048, compat: { thinkingFormat: "qwen-chat-template", supportsTools: false } });
+	});
+
+	it("serializes the full merge with cooperating config writers", async () => {
+		const root = await mkdtemp(join(tmpdir(), "ollama-lock-"));
+		const command = join(root, "ollama"), modelsPath = join(root, "models.json"), marker = join(root, "discovered");
+		const oldCommand = process.env.PI_OLLAMA_COMMAND, oldPath = process.env.PI_OLLAMA_MODELS_PATH;
+		let syncing: Promise<OllamaToolResult> | undefined;
+		try {
+			await writeExecutable(command, `#!/bin/sh\nif [ "$1" = "list" ]; then\n printf 'NAME ID SIZE MODIFIED\\nfixture abc 1 GB now\\n'\nelse\n touch '${marker}'\n printf 'architecture llama\\ncontext length 8192\\n'\nfi\n`);
+			process.env.PI_OLLAMA_COMMAND = command; process.env.PI_OLLAMA_MODELS_PATH = modelsPath;
+			let tool: RegisteredOllamaTool | undefined;
+			ollamaModelsExtension({ on() {}, registerTool(value: RegisteredOllamaTool) { tool = value; } } as unknown as ExtensionAPI);
+			if (!tool) throw new Error("missing tool");
+			let finished = false;
+			await withAdvisoryLock(modelsPath, async () => {
+				syncing = tool?.execute("fixture", {}).then(result => { finished = true; return result; });
+				await vi.waitFor(async () => expect((await stat(marker)).isFile()).toBe(true));
+				await new Promise(resolve => setTimeout(resolve, 100));
+				expect(finished).toBe(false);
+				await writeFile(modelsPath, JSON.stringify({ providers: { other: { baseUrl: "fixture" }, ollama: { models: [{ id: "fixture", contextWindow: 2048 }] } } }));
+			});
+			await syncing;
+			expect(JSON.parse(await readFile(modelsPath, "utf8"))).toMatchObject({ providers: { other: { baseUrl: "fixture" }, ollama: { models: [{ id: "fixture", contextWindow: 2048 }] } } });
+			expect((await stat(modelsPath)).mode & 0o777).toBe(0o600);
+		} finally {
+			await syncing?.catch(() => {});
+			restoreEnv("PI_OLLAMA_COMMAND", oldCommand); restoreEnv("PI_OLLAMA_MODELS_PATH", oldPath);
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	it("detects model inventory changes for startup UX", () => {
