@@ -16,14 +16,7 @@ cd pi-tools-and-skills
 npm ci
 ```
 
-Install from npm — the umbrella, or one extension:
-
-```sh
-pi install npm:@solo-visual/pi-tools-and-skills   # all extensions, skills and prompts
-pi install npm:@solo-visual/pi-goal              # a single extension
-```
-
-Or install from source with `pi install /absolute/path/to/pi-tools-and-skills`,
+Install from source with `pi install /absolute/path/to/pi-tools-and-skills`,
 `pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`, or
 `make setup-package PACKAGE=<name>`.
 `make setup` registers this checkout globally with Agent Hub and Goal enabled.

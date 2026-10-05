@@ -68,12 +68,9 @@ GitHub Actions**.
 
 ## 6. Verify consumer installs
 
-In a temporary HOME (never the live environment without approval):
-
-```sh
-HOME=$(mktemp -d) pi install npm:@solo-visual/pi-goal
-HOME=$(mktemp -d) pi install npm:@solo-visual/pi-tools-and-skills
-```
+After the manual publication prerequisites are complete, verify consumer installs
+in a temporary HOME (never the live environment without approval). Registry
+installation instructions remain withheld until publication is ready.
 
 - [ ] Single extension loads and its tools/commands register.
 - [ ] Umbrella loads the extensions plus skills and prompts.
