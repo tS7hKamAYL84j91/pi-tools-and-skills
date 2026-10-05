@@ -8,7 +8,6 @@ Pi discovers these through the root package manifest (`"skills"` in
 
 | Skill | Purpose |
 | --- | --- |
-| `abbs-fleet` | ABBS shared-context coordination |
 | `fire-review` | Focused code review |
 | `node-esm-gotchas` | Node ESM/TypeScript pitfalls |
 | `pi-extension-dev` | Authoring Pi extensions |

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The `abbs-fleet` skill: CoAS-private operations guidance that does not belong in the published package. `worktree-isolation` no longer cites internal ticket/repo specifics.
 - Automations daemon, systemd unit, Agent Hub daemon client, published daemon protocol, and their tests/build configuration. Agent Hub now uses only its file-backed registry and Maildir; Automations keeps the Pi-hosted scheduler. No daemon mode, flag, or compatibility layer remains.
 
 ### Added

@@ -5,9 +5,6 @@ description: >-
   branch so concurrent agents never edit the same checkout. Use when spawning
   agents whose task will modify files, when coordinating multiple in-flight
   edits, or when recovering stale worktrees after failed or abandoned runs.
-  Exists because of the T-923 collision: two agents edited the same pi-kanban
-  overlay files concurrently and left a transient duplicate-declaration
-  breakage.
 ---
 
 # Worktree Isolation
@@ -19,11 +16,10 @@ own branch. The spawner owns the merge. Read-only helpers skip isolation.
 
 Git worktrees give each agent an independent checkout of the same repository.
 Without one, concurrent agents edit the same files and the later writer collides
-with the earlier one — T-923 is the recorded evidence: an in-flight run and a
-second run both refactored `extensions/pi-kanban/overlay-*.ts`, producing a
-duplicate `beginModalFrame` declaration and a doubled function signature that
-broke the build mid-task. Worktree isolation makes that collision impossible
-instead of merely recoverable.
+with the earlier one: an in-flight run and a second run touch the same module,
+leaving duplicate declarations or a half-applied refactor that breaks the build
+mid-task. Worktree isolation makes that collision impossible instead of merely
+recoverable.
 
 ## When to isolate
 
@@ -41,10 +37,8 @@ instead of merely recoverable.
    git worktree add /tmp/<repo>-<agent>-<task> -b <agent>/<task>
    ```
 
-   This repo's existing convention is `/tmp/pi-tools-<task>` with task-prefixed
-   branches (`fix/t-888-scheduler-dedup`); any location outside the checkout
-   (`../worktrees/<name>`) is fine. Never place a worktree inside the main
-   checkout.
+   Any location outside the checkout (`/tmp/...`, `../worktrees/<name>`) is
+   fine. Never place a worktree inside the main checkout.
 2. Spawn the sub-agent with its cwd pointed at the worktree (pi `spawn_agent`
    takes a `cwd` parameter). State the worktree path and branch name in the
    brief so the agent commits on its own branch, not on the main checkout's.
@@ -57,7 +51,7 @@ instead of merely recoverable.
   merge, push, or touch branches outside their worktree.
 - The main checkout stays on its branch; agents never run `worktree add` from
   inside another worktree.
-- Commit inside the worktree follows the normal [pi-git-workflow](../pi-git-workflow/SKILL.md)
+- Commits inside the worktree follow the normal [pi-git-workflow](../pi-git-workflow/SKILL.md)
   rules: explicit staging, project checks, conventional commit messages.
 
 ## Completion (owner)
@@ -77,11 +71,10 @@ instead of merely recoverable.
   `git -C <path> status --short`. Salvage anything useful as a patch or diff
   before removal; do not `--force` over uncommitted work blindly.
 - If the worktree directory was deleted behind git's back, the entry lingers:
-  `git worktree prune -v` removes stale registrations (observed with several
-  abandoned `/tmp` worktrees in this repo's history).
+  `git worktree prune -v` removes stale registrations.
 - Never remove a worktree you did not spawn without confirming it has no active
-  owner and no uncommitted work — cleanup is the pi-git-workflow "separate
-  work" rule.
+  owner and no uncommitted work — cleanup follows the same "separate work" rule
+  as pi-git-workflow.
 - Diagnose drift first: `git worktree list` shows every live worktree and its
   branch; unknown or detached-HEAD entries are stale candidates, not targets
   for reuse.
