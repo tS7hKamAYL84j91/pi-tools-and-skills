@@ -20,6 +20,10 @@ structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 - `fleet-mcp` bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` JSON): tools `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, `fleet_status` over Agent Hub external registrar + Maildir; stdio default, loopback-only bearer HTTP (>=16 chars), absolute-root/bounded-limit/single-principal validation, atomic idempotent receipts (`0600`/`0700`), redacted errors; deployment/Tailscale/multi-principal out of scope.
 - `spawn_agent` accepts an optional `capsule` — a compressed session handoff rendered into the child system prompt as an explicitly-labelled, secret-redacted, 4,000-char-bounded background block; `brief.context` stays the task-scoped field.
 
+### Fixed
+
+- Matrix module-global SDK logging is silenced so queue/event housekeeping (e.g. "Stopping queue 'message' as it is now empty") no longer reaches the console or pi's TUI; warn/error still route to the extension notify path.
+
 ### Changed
 
 - CI tests on the latest Node only; Node 22/24/25 compatibility matrix removed.

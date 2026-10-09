@@ -32,6 +32,32 @@ function formatLogArg(arg: unknown): string {
 	}
 }
 
+/**
+ * Silence matrix-js-sdk's module-global `logger`.
+ *
+ * Module-level SDK code (scheduler, embedded, sliding-sync) logs through the
+ * package's global logger — a loglevel logger bound to `console.*` and NOT
+ * replaced by the per-client `logger` option. Left as-is, its housekeeping
+ * (e.g. "Stopping queue 'message' as it is now empty", pending-event status
+ * lines) reaches the console and pi's TUI. Override it so only warn/error reach
+ * the extension's notify path.
+ */
+export async function silenceSdkGlobalLogger(
+	onLog?: MatrixAdapterCallbacks["onLog"],
+): Promise<void> {
+	try {
+		const { logger } = await import("matrix-js-sdk/lib/logger.js");
+		logger.trace = () => {};
+		logger.debug = () => {};
+		logger.info = () => {};
+		logger.log = () => {};
+		logger.warn = (...args: unknown[]) => onLog?.(args.map(formatLogArg).join(" "), "warning");
+		logger.error = (...args: unknown[]) => onLog?.(args.map(formatLogArg).join(" "), "error");
+	} catch {
+		/* Deep import shape may change; the per-client logger still applies. */
+	}
+}
+
 export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private client?: AnySdk;
 	private connected = false;
@@ -50,6 +76,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		this.callbackTasks.open();
 		this.callbacks = callbacks;
 		const sdk = await this.loadSdk();
+		await silenceSdkGlobalLogger(callbacks.onLog);
 
 		const store = new sdk.MemoryStore();
 		const savedToken = await this.syncState.load();
