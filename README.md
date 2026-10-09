@@ -29,18 +29,18 @@ Run `make help` for setup, removal, checks, and utility commands.
 Each package README owns its commands, settings, supported installation scope,
 and operating limits. This index deliberately does not repeat those contracts.
 
-| Package | Responsibility |
-| --- | --- |
-| [Agent Hub](extensions/pi-agent-hub/README.md) | Agent registry, transport, spawning and health |
-| [Goal](extensions/pi-goal/README.md) | Owned goal execution and local completion hook |
-| [Team Workflows](extensions/pi-team-workflows/README.md) | Bounded consult, debate and research |
-| [Boost](extensions/pi-boost/README.md) | Prompt-scoped model switching and restoration |
-| [Automations](extensions/pi-automations/README.md) | Pi-hosted scheduling and workspace context |
-| [Kanban](extensions/pi-kanban/README.md) | Optional human task overview |
-| [Matrix](extensions/pi-matrix/README.md) | Human-facing Matrix transport |
-| [File Watch](extensions/pi-file-watch/README.md) | Explicit, bounded file notifications |
-| [Ollama Models](extensions/pi-ollama-models/README.md) | Local Ollama model discovery |
-| [Fleet MCP](fleet-mcp/README.md) | Standalone MCP adapter |
+| Package                                                  | Responsibility                                 |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| [Agent Hub](extensions/pi-agent-hub/README.md)           | Agent registry, transport, spawning and health |
+| [Goal](extensions/pi-goal/README.md)                     | Owned goal execution and local completion hook |
+| [Team Workflows](extensions/pi-team-workflows/README.md) | Bounded consult, debate and research           |
+| [Boost](extensions/pi-boost/README.md)                   | Prompt-scoped model switching and restoration  |
+| [Automations](extensions/pi-automations/README.md)       | Pi-hosted scheduling and workspace context     |
+| [Kanban](extensions/pi-kanban/README.md)                 | Optional human task overview                   |
+| [Matrix](extensions/pi-matrix/README.md)                 | Human-facing Matrix transport                  |
+| [File Watch](extensions/pi-file-watch/README.md)         | Explicit, bounded file notifications           |
+| [Ollama Models](extensions/pi-ollama-models/README.md)   | Local Ollama model discovery                   |
+| [Fleet MCP](fleet-mcp/README.md)                         | Standalone MCP adapter                         |
 
 ## Where things belong
 
