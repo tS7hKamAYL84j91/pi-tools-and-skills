@@ -6,7 +6,6 @@ out/
 *.tsbuildinfo
 .DS_Store
 coverage/
-dist-npm/
 .pi/
 .workers/
 .ralph/

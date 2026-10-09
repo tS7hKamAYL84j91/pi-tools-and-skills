@@ -15,12 +15,11 @@ module has multiple independent owners.
 | `file-lock.ts`, `file-persistence.ts`, `pi-settings.ts`, `private-local-mode.ts` | Multiple extensions, Fleet applications and shared stores |
 | `confined-store.ts`, `confined-store-security.ts`, `path-inside.ts` | Automations stores and shared path/config primitives; keep the security boundary central, not copied into consumers |
 | `gate-command.ts`, `runtime-child-process.ts` | Goal/Kanban verification and Team Workflows child execution; preserve shared cancellation/output boundaries |
-| `secret-redaction.ts` | Goal diagnostics, session logs and trusted-gate output |
+| `secret-redaction.ts` | Goal diagnostics and trusted-gate output |
 | `tool-result.ts`, `tui-confirmation.ts`, `toggle-command.ts` | Multiple extension tool/UI surfaces |
 | `automations-config.ts`, `automations-types.ts` | Automations and Agent Hub public configuration boundary |
 | `automations-governance.ts` | Automations governance and its public type facade; policy/config primitive, not scheduler orchestration |
-| `session-log.ts` | Agent Hub registry and UI consumers; generic Pi-session reader/redactor, not registry lifecycle |
-| `session-hook-installer.ts`, `session-source-discovery.ts`, `session-spool-runner.ts` | Standalone session CLIs and shared session pipeline |
+| `session-log.ts` | Agent Hub registry and UI consumers; generic Pi-session reader/redactor |
 | `completion-signal.ts`, `task-brief.ts` | Agent Hub registry/spawner protocol contracts; pure data/parsing, no extension runtime state |
 
 ## Intentional single-consumer infrastructure
@@ -33,8 +32,6 @@ their tests create a second caller:
 - `declarative-discovery.ts` — Team Workflows paths consume generic layered discovery;
   parsing and execution stay in Team Workflows.
 - `tui-overflow.ts` — Team Workflows rendering uses pure bounded-scroll/count cues.
-- `session-journal.ts`, `session-spool.ts` — internal stages of the shared
-  session pipeline, not extension-owned orchestration.
 
 Team Workflows' `runtime-agent-messaging.ts` and `runtime-control-plane.ts` instead live
 in `extensions/pi-team-workflows/`: their only production feature consumer is live-agent

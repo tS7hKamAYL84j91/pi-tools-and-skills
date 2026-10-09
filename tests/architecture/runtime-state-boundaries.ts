@@ -52,16 +52,6 @@ const DIRECT_STATE_WRITE_EXCEPTIONS: DirectWriteException[] = [
 		reason:
 			"Core IO-layer module: owns the synchronous O_NOFOLLOW private-file creation helper used by registry and session writes.",
 	},
-	{
-		path: "lib/session-hook-installer.ts",
-		reason:
-			"Core IO-layer module: writes session lifecycle hook files before higher-level persistence helpers are loaded.",
-	},
-	{
-		path: "lib/session-spool.ts",
-		reason:
-			"Core IO-layer module: spools transient session output to disk when the persistence queue is not yet available.",
-	},
 ];
 
 describe("runtime state boundary", () => {

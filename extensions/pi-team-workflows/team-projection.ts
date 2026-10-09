@@ -7,7 +7,7 @@
  * `teams.roots` user root) so the live copy becomes the editable source of
  * truth for that team. Projection is idempotent and never overwrites an
  * existing user file unless `force` is set (the explicit `/teams seed --force`
- * escape hatch). See `docs/adr/026-project-built-in-teams-into-user-scope.md`.
+ * escape hatch). See decision 026 in `docs/decisions.md`.
  */
 
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";

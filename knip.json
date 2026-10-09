@@ -4,7 +4,6 @@
     "extensions/*/index.ts",
     "lib/*.ts",
     "lib/**/*.ts",
-    "scripts/session-*-cli.ts",
     "scripts/*.mjs",
     "benchmarks/*.mjs",
     "fleet-mcp/index.ts"

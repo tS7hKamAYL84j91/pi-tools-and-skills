@@ -53,8 +53,8 @@ def legacy_package_dir(package_dir: str) -> str:
 def load_settings(settings_path: str) -> dict[str, Any]:
     if not os.path.exists(settings_path):
         return {}
-    # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
     try:
+        # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
         with open(settings_path, "r") as handle:
             loaded = json.load(handle)
     except (OSError, json.JSONDecodeError) as error:
@@ -64,8 +64,8 @@ def load_settings(settings_path: str) -> dict[str, Any]:
 
 
 def save_settings(settings_path: str, settings: dict[str, Any]) -> None:
-    # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
     try:
+        # nosemgrep: tspi-path-traversal-python -- setup-pi supplies this trusted local settings path.
         with open(settings_path, "w") as handle:
             json.dump(settings, handle, indent=2)
             handle.write("\n")

@@ -6,7 +6,6 @@ import { FleetGateway } from "./gateway.js";
 import { createMcpServer, startHttp } from "./server.js";
 
 interface FleetRuntime {
-	gateway: FleetGateway;
 	close(): Promise<void>;
 }
 
@@ -33,7 +32,6 @@ export async function startFleet(config: FleetConfig): Promise<FleetRuntime> {
 	}
 
 	return {
-		gateway,
 		async close() {
 			if (httpServer) await closeHttp(httpServer);
 			await Promise.all(mcpServers.map((server) => server.close()));

@@ -14,12 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- npm distribution under the `@solo-visual` scope: one self-contained package per extension plus the `@solo-visual/pi-tools-and-skills` umbrella, staged by `npm run pack:extensions` / `npm run pack:umbrella` (vendor-at-pack) and published with provenance by the tag-triggered `release` workflow.
 - Local direct-vs-Goal ARM64 benchmark with frozen official-test judging, authored-test mutation checks, and a ten-problem continuation bundle; dry-run by default and never submits to Exercism.
 - `fleet-mcp`: bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` env JSON) exposing `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, and `fleet_status` over the existing Agent Hub external registrar and Maildir transport. Stdio transport by default; optional HTTP transport is loopback-only and requires a configured bearer token (>=16 chars). Config validation enforces absolute roots, bounded page/text/ack limits, and fixed single-principal ownership; idempotent send receipts and registrations persist atomically (0600 state, 0700 dir) with redacted MCP error responses. Deployment/Tailscale/multi-principal identity provisioning is explicitly out of scope.
 
 ### Changed
 
+- Distribution is Git-only: npm publishing, the tag-triggered `release` publish matrix, vendor-at-pack staging and `dist-npm/` are removed. Each extension keeps its own `package.json` so a single extension can still be installed by path or `git:` ref; a release is a verified tag.
+- The decision log is now one SPR line per decision and folds in the removed `docs/specs/` tree; `tests/architecture/docs-hygiene.ts` validates relative links in tracked Markdown (fenced code excluded).
 - Goal completion executes the workspace-local hook in `.pi/goal/settings.json`; evidence prose alone cannot complete a goal. One bounded hook run per request; a missing, invalid, failed or timed-out hook leaves the goal open for local repair. Genuine blockers pause through `goal_block`, and liveness warnings never interrupt active work.
 - Renamed the `pi-coas` extension to `pi-automations` (hard cutover, no backward compatibility): tools `coas_*` → `automations_*`, commands `/coas` → `/automations(-status|-doctor|-workspaces|-schedules)`, env `COAS_*` → `AUTOMATIONS_*`, settings `coasProfile` → `automationsProfile`, state home `.pi/coas` → `.pi/automations` (default `<cwd>/.pi/automations`; `AGENT_HOME` fallback removed). Explicit-cwd targeting now requires an existing runtime under the target (ADR-062).
 - Goal now keeps original file sources and writes only `goal.json` plus one active `GOAL.md` summary. Generated TODO/SPEC/PLAN/STATUS scaffolding and plan/approve no-op commands are removed; source documents, existing history and execution safety controls remain intact.

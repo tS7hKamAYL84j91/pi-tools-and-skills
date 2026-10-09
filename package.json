@@ -9,8 +9,6 @@
 		"check:namespace": "node scripts/check-namespace.mjs",
 		"check:template-safety": "node scripts/check-template-safety.mjs",
 		"build:fleet-mcp": "tsc -p fleet-mcp/tsconfig.build.json",
-		"pack:extensions": "node scripts/pack-packages.mjs --all",
-		"pack:umbrella": "node scripts/pack-packages.mjs --umbrella",
 		"start:fleet-mcp": "node dist/fleet-mcp/index.js",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome lint fleet-mcp/ extensions/ lib/ tests/ scripts/ benchmarks/",
@@ -20,7 +18,6 @@
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage --testTimeout=15000",
 		"test:watch": "vitest",
-		"test:evals": "vitest run tests/evals",
 		"benchmark:teams:live": "node benchmarks/team-live-benchmark.mjs",
 		"benchmark:goal": "python3 -B benchmarks/goal-benchmark.py",
 		"knip": "knip"

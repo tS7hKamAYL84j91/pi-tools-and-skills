@@ -32,9 +32,6 @@ jobs:
       - name: Build Fleet MCP
         run: npm run build:fleet-mcp
 
-      - name: Verify publish staging
-        run: npm run pack:extensions && npm run pack:umbrella
-
       - name: Run tests
         run: npm test
 

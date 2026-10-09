@@ -97,7 +97,7 @@ Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging,spaw
 
 Agent Hub registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; healthy idle peers are suppressed.
 
-Design note: `docs/adr/022-panopticon-memory-snapshot.md` defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It remains design-only: the validated T-595/596/597 prototype modules were deleted under ADR-054's no-exemptions rule (see the prototype disposition note in ADR-022), and Agent Hub does not currently write these snapshots.
+Design note: decision 022 in [`docs/decisions.md`](../../docs/decisions.md) defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It remains design-only: the validated prototype modules were deleted under decision 054's no-exemptions rule, and Agent Hub does not currently write these snapshots.
 
 ## What this does NOT do
 

@@ -1,8 +1,8 @@
 # Architecture boundaries
 
 This document owns cross-cutting boundaries, not command catalogs or historical
-implementation reports. Package READMEs own usage; [ADRs](adr/README.md) record
-decisions. Superseded diagrams and completed reviews remain in Git history.
+implementation reports. Package READMEs own usage; the [decision log](decisions.md)
+records decisions. Superseded diagrams and completed reviews remain in Git history.
 
 ## Responsibility and state ownership
 
@@ -86,10 +86,8 @@ repository-relative output path.
 - **Boost:** restore on settlement rather than interrupting live work. Settings
   and model/profile defaults are not altered by repository refactors.
 
-See Goal's [source intent](../extensions/pi-goal/src/md/README.md), ADRs
-[051](adr/051-pi-goal-session-lineage-isolation.md),
-[059](adr/059-goal-driver-ownership.md) and
-[060](adr/060-automations-scheduler-slot-admission.md) for the detailed contracts.
+See Goal's [source intent](../extensions/pi-goal/src/md/README.md) and decisions 051,
+059 and 060 in the [decision log](decisions.md) for the detailed contracts.
 
 ## Validation by purpose
 

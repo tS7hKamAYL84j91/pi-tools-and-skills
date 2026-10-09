@@ -17,7 +17,7 @@ not an operator verifier automatically installed into Goal.
 ## Offline checks
 
 ```sh
-npm run test:evals
+npm test -- tests/evals
 python3 -B tests/evals/goal_benchmark_test.py
 ```
 
