@@ -84,6 +84,8 @@ export interface SpawnedAgent {
 	emitter: EventEmitter;
 	tempDir?: string;
 	done: boolean;
+	/** Set before a deliberate stop so exit does not raise the missing-DONE notice. */
+	expectedExit?: boolean;
 }
 
 const MAX_RECENT_EVENTS = 100;

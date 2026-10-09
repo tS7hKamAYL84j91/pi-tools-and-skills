@@ -102,3 +102,12 @@ export function hasCompletionSignal(
 	signalledAgents.add(agent.name);
 	return true;
 }
+
+/** True when an exited agent should raise the missing-DONE notice (unexpected exit without a signal). */
+export function shouldNotifyMissingDone(
+	agent: SpawnedAgent,
+	signalledAgents: Set<string>,
+): boolean {
+	if (agent.expectedExit) return false;
+	return !hasCompletionSignal(agent, signalledAgents);
+}

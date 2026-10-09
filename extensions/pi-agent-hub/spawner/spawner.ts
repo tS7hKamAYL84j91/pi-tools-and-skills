@@ -17,7 +17,7 @@ import {
 	type SpawnedAgent,
 } from "./spawn-service.js";
 import { rpcWrite } from "./spawn-rpc.js";
-import { hasCompletionSignal } from "./spawn-events.js";
+import { shouldNotifyMissingDone } from "./spawn-events.js";
 import type { SpawnerContext } from "./spawner-types.js";
 import {
 	registerSpawnAgentTool,
@@ -46,7 +46,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 
 	/** Called when a spawned agent's process exits. Checks for missing DONE. */
 	function onAgentExit(agent: SpawnedAgent): void {
-		if (hasCompletionSignal(agent, signalledAgents)) return;
+		if (!shouldNotifyMissingDone(agent, signalledAgents)) return;
 		const durationMs = Date.now() - agent.startedAt;
 		for (const cb of missingDoneListeners) {
 			try { cb(agent.name, agent.pid, agent.proc.exitCode ?? null, durationMs); } catch { /* best-effort */ }
@@ -72,7 +72,10 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 			const writeAbort = (a: SpawnedAgent) => rpcWrite(a, { type: "abort" });
 			const pending = [...agents.values()]
 				.filter((a) => !a.done)
-				.map((a) => gracefulKill(a, writeAbort));
+				.map((a) => {
+					a.expectedExit = true;
+					return gracefulKill(a, writeAbort);
+				});
 			await Promise.all(pending);
 		},
 

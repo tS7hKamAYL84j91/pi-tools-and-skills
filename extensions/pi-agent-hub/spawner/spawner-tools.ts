@@ -24,6 +24,7 @@ import {
 } from "./spawner-utils.js";
 import {
 	buildSpawnEnv,
+	buildSystemPrompt,
 	cleanupTempDir,
 	prepareSystemPromptTempDir,
 } from "./spawner-launch.js";
@@ -47,6 +48,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
 			"Or use agent_send once it registers in Agent Hub (takes 1–2 seconds).",
 			"Use agent_peek to monitor its activity log.",
+			"capsule: pass a compressed session handoff (objective, state, decisions, constraints, files) — context, not instructions; redacted and capped at 4,000 chars.",
 			"scope: 'task' (default) excludes the agent from workspace schedule delivery; 'workspace' opts in to receive workspace-level schedules per ADR-0008.",
 		],
 		parameters: Type.Object({
@@ -70,6 +72,12 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			),
 			systemPrompt: Type.Optional(
 				Type.String({ description: "Additional system prompt to append" }),
+			),
+			capsule: Type.Optional(
+				Type.String({
+					description:
+						"Compressed session handoff (objective, state, decisions, constraints, files) rendered into the child's system prompt; redacted and capped at 4,000 chars. Context only — not instructions.",
+				}),
 			),
 			sessionDir: Type.Optional(
 				Type.String({ description: "Session directory for persistence" }),
@@ -116,7 +124,9 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 
 			const agentCwd = params.cwd ?? process.cwd();
 			const args = buildArgList(params);
-			const { tempDir, args: systemPromptArgs } = prepareSystemPromptTempDir(params.systemPrompt);
+			const { tempDir, args: systemPromptArgs } = prepareSystemPromptTempDir(
+				buildSystemPrompt(params.systemPrompt, params.capsule),
+			);
 			args.push(...systemPromptArgs);
 
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true, mode: 0o700 });
@@ -381,11 +391,13 @@ export function registerKillAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): vo
 			const { pid } = agent;
 
 			if (params.force) {
+				agent.expectedExit = true;
 				try { agent.proc.kill("SIGKILL"); } catch { /* already exited */ }
 				ctx.agents.delete(params.name);
 				return ok(`Force-killed "${params.name}" (pid ${pid}).`, { name: params.name, pid, method: "SIGKILL" });
 			}
 
+			agent.expectedExit = true;
 			await gracefulKill(agent, (a) => rpcWrite(a, { type: "abort" }));
 			ctx.agents.delete(params.name);
 			return ok(

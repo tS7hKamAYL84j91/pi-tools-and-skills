@@ -18,10 +18,12 @@ structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 
 - Local direct-vs-Goal ARM64 benchmark (frozen official-test judging, authored-test mutation checks, ten-problem continuation bundle); dry-run default, never submits to Exercism.
 - `fleet-mcp` bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` JSON): tools `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, `fleet_status` over Agent Hub external registrar + Maildir; stdio default, loopback-only bearer HTTP (>=16 chars), absolute-root/bounded-limit/single-principal validation, atomic idempotent receipts (`0600`/`0700`), redacted errors; deployment/Tailscale/multi-principal out of scope.
+- `spawn_agent` accepts an optional `capsule` — a compressed session handoff rendered into the child system prompt as an explicitly-labelled, secret-redacted, 4,000-char-bounded background block; `brief.context` stays the task-scoped field.
 
 ### Changed
 
 - CI tests on the latest Node only; Node 22/24/25 compatibility matrix removed.
+- Deliberate stops (`kill_agent`, session shutdown) mark an expected exit, so they no longer raise the missing-DONE follow-up; unexpected exits still notify.
 - Distribution Git-only: npm publishing, tag-triggered `release` matrix, vendor-at-pack staging and `dist-npm/` removed; per-extension `package.json` keeps path/`git:` install; release = verified tag.
 - Decision log = one SPR line per decision, absorbing the removed `docs/specs/`; `tests/architecture/docs-hygiene.ts` validates relative links in tracked Markdown (fenced code excluded).
 - Goal completion runs the workspace-local `.pi/goal/settings.json` hook (evidence prose cannot complete); one bounded run/request, missing/invalid/failed/timeout leaves the goal open, genuine blockers pause via `goal_block`, liveness warnings never interrupt work.

@@ -65,6 +65,16 @@ On Pi 1.0.1, RPC waits for final `agent_settled`, not an intermediate
 prompts return without waiting for a nonexistent run. Listeners are installed
 before writing; deadlines still bound every wait.
 
+## Spawned-worker context capsule
+
+`spawn_agent` accepts an optional `capsule` — a compressed handoff from the
+spawning session (objective, current state, decisions, constraints, files in
+play). It is appended to the child's system prompt as an explicitly-labelled
+background block, passed through `lib/secret-redaction`, and capped at 4,000
+characters. The capsule is context, not authority: it cannot grant permissions
+and may be stale, so treat its claims as unverified. `brief.context` remains the
+task-scoped prose field.
+
 ## Spawned-worker output bounds
 
 Recent output retains at most 100 events and 1 MiB of UTF-8 text across stdout,
@@ -95,7 +105,7 @@ Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging,spaw
 
 ## State and UI
 
-Agent Hub registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; healthy idle peers are suppressed.
+Agent Hub registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; deliberate stops (`kill_agent`, session shutdown) are suppressed because their exit is expected; healthy idle peers are suppressed.
 
 Design note: decision 022 in [`docs/decisions.md`](../../docs/decisions.md) defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It remains design-only: the validated prototype modules were deleted under decision 054's no-exemptions rule, and Agent Hub does not currently write these snapshots.
 

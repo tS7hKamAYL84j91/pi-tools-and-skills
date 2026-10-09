@@ -23,6 +23,7 @@ export interface SpawnAgentParams {
 	model?: string;
 	tools?: string[];
 	systemPrompt?: string;
+	capsule?: string;
 	sessionDir?: string;
 }
 

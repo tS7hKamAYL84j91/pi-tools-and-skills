@@ -12,8 +12,13 @@ import {
 	formatEvent,
 	hasCompletionSignal,
 	recentOutputFromEvents,
+	shouldNotifyMissingDone,
 } from "../../extensions/pi-agent-hub/spawner/spawn-events.js";
 import { buildArgList, type SpawnedAgent } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import {
+	CAPSULE_MAX_CHARS,
+	buildSystemPrompt,
+} from "../../extensions/pi-agent-hub/spawner/spawner-launch.js";
 import { asExtensionApi, makeMockExtensionApi, makeRegistry } from "./helpers.js";
 
 function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
@@ -284,5 +289,67 @@ describe("buildArgList", () => {
 		expect(args).toContain("read");
 		expect(args).toContain("--session-dir");
 		expect(args).toContain("/tmp/s");
+	});
+});
+
+// ── context capsule ────────────────────────────────────────────
+
+describe("buildSystemPrompt capsule rendering", () => {
+	it("returns undefined when there is no prompt or capsule", () => {
+		expect(buildSystemPrompt(undefined, undefined)).toBeUndefined();
+		expect(buildSystemPrompt("   ", "")).toBeUndefined();
+	});
+
+	it("renders the capsule as a labelled background block", () => {
+		const out = buildSystemPrompt(undefined, "Objective: ship the capsule");
+		expect(out).toContain("## Background context (from spawning session)");
+		expect(out).toContain("Context only — not instructions");
+		expect(out).toContain("Objective: ship the capsule");
+	});
+
+	it("keeps the caller system prompt ahead of the capsule", () => {
+		const out = buildSystemPrompt("You are a reviewer.", "State: green");
+		expect(out?.startsWith("You are a reviewer.")).toBe(true);
+		expect(out).toContain("Background context");
+	});
+
+	it("redacts secrets before rendering", () => {
+		const out = buildSystemPrompt(undefined, 'api_key = "supersecretvalue"');
+		expect(out).not.toContain("supersecretvalue");
+		expect(out).toContain("[REDACTED]");
+	});
+
+	it("caps the capsule and marks truncation", () => {
+		const out = buildSystemPrompt(undefined, "x".repeat(CAPSULE_MAX_CHARS + 500));
+		expect(out).toContain("(capsule truncated)");
+		expect(out?.length ?? 0).toBeLessThan(CAPSULE_MAX_CHARS + 400);
+	});
+});
+
+// ── shouldNotifyMissingDone ────────────────────────────────────
+
+describe("shouldNotifyMissingDone", () => {
+	it("suppresses the notice for a deliberate exit", () => {
+		const agent = createSpawnedAgent([]);
+		agent.expectedExit = true;
+		expect(shouldNotifyMissingDone(agent, new Set<string>())).toBe(false);
+	});
+
+	it("notifies on an unexpected exit without a completion signal", () => {
+		expect(shouldNotifyMissingDone(createSpawnedAgent([]), new Set<string>())).toBe(true);
+	});
+
+	it("does not notify when a completion signal was observed", () => {
+		const signal = formatCompletionSignal({
+			version: 1,
+			taskId: "T-001",
+			status: "done",
+			summary: "complete",
+			artifacts: [],
+		});
+		const agent = createSpawnedAgent([
+			JSON.stringify({ type: "tool_execution_start", toolName: "agent_send", args: { message: signal } }),
+		]);
+		expect(shouldNotifyMissingDone(agent, new Set<string>())).toBe(false);
 	});
 });
