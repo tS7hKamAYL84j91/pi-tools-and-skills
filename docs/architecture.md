@@ -97,7 +97,7 @@ See Goal's [source intent](../extensions/pi-goal/src/md/README.md) and decisions
 | `tests/architecture/api-contracts.ts` | Dependency direction, extension isolation and cycles |
 | `tests/architecture/lib-layering.ts` | Production consumers, pure core and inward dependencies |
 | State, confinement, Goal, Kanban and tool-contract suites | Permissions, authority, transactions, truthful outcomes |
-| `tests/architecture/tui-render-paths.ts` and UX policy suites | Render purity, confirmation and bounded UI output |
+| `tests/architecture/tui-render-paths.ts` | Render purity (no synchronous I/O in render closures) |
 | `tests/evals/` | Offline fixture, fake-RPC and evaluation-contract regressions |
 | [`benchmarks/`](../benchmarks/README.md) | Explicit live experiments; not CI proof or operational completion |
 

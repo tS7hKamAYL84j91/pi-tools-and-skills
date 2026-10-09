@@ -1,78 +1,81 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable changes as SPR (Sparse Priming Representation) lines: dense, complete
+facts for an LLM audience. Exact identifiers (versions, dates, commands, tools,
+env keys, ADR numbers) are preserved; full prose rationale lives in Git history
+(`git log --all -S <topic>`). [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 
 ## [Unreleased]
 
 ### Removed
 
-- The `abbs-fleet` skill: CoAS-private operations guidance that does not belong in the published package. `worktree-isolation` no longer cites internal ticket/repo specifics.
-- Automations daemon, systemd unit, Agent Hub daemon client, published daemon protocol, and their tests/build configuration. Agent Hub now uses only its file-backed registry and Maildir; Automations keeps the Pi-hosted scheduler. No daemon mode, flag, or compatibility layer remains.
+- `abbs-fleet` skill removed (CoAS-private operations guidance, unfit for the published package); `worktree-isolation` de-internalised.
+- Automations daemon, systemd unit, Agent Hub daemon client, published daemon protocol + tests/build config removed; Agent Hub = file-backed registry + Maildir only, Automations = Pi-hosted scheduler only, no daemon mode/flag/compat layer.
+- Style-only architecture fitness tests removed (`clean-code.ts`, `ux-tools-policy.ts`, doc-count/archive/SPR-format checks in `docs-hygiene.ts`); relative-link validation retained.
 
 ### Added
 
-- Local direct-vs-Goal ARM64 benchmark with frozen official-test judging, authored-test mutation checks, and a ten-problem continuation bundle; dry-run by default and never submits to Exercism.
-- `fleet-mcp`: bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` env JSON) exposing `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, and `fleet_status` over the existing Agent Hub external registrar and Maildir transport. Stdio transport by default; optional HTTP transport is loopback-only and requires a configured bearer token (>=16 chars). Config validation enforces absolute roots, bounded page/text/ack limits, and fixed single-principal ownership; idempotent send receipts and registrations persist atomically (0600 state, 0700 dir) with redacted MCP error responses. Deployment/Tailscale/multi-principal identity provisioning is explicitly out of scope.
+- Local direct-vs-Goal ARM64 benchmark (frozen official-test judging, authored-test mutation checks, ten-problem continuation bundle); dry-run default, never submits to Exercism.
+- `fleet-mcp` bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` JSON): tools `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, `fleet_status` over Agent Hub external registrar + Maildir; stdio default, loopback-only bearer HTTP (>=16 chars), absolute-root/bounded-limit/single-principal validation, atomic idempotent receipts (`0600`/`0700`), redacted errors; deployment/Tailscale/multi-principal out of scope.
 
 ### Changed
 
-- Distribution is Git-only: npm publishing, the tag-triggered `release` publish matrix, vendor-at-pack staging and `dist-npm/` are removed. Each extension keeps its own `package.json` so a single extension can still be installed by path or `git:` ref; a release is a verified tag.
-- The decision log is now one SPR line per decision and folds in the removed `docs/specs/` tree; `tests/architecture/docs-hygiene.ts` validates relative links in tracked Markdown (fenced code excluded).
-- Goal completion executes the workspace-local hook in `.pi/goal/settings.json`; evidence prose alone cannot complete a goal. One bounded hook run per request; a missing, invalid, failed or timed-out hook leaves the goal open for local repair. Genuine blockers pause through `goal_block`, and liveness warnings never interrupt active work.
-- Renamed the `pi-coas` extension to `pi-automations` (hard cutover, no backward compatibility): tools `coas_*` → `automations_*`, commands `/coas` → `/automations(-status|-doctor|-workspaces|-schedules)`, env `COAS_*` → `AUTOMATIONS_*`, settings `coasProfile` → `automationsProfile`, state home `.pi/coas` → `.pi/automations` (default `<cwd>/.pi/automations`; `AGENT_HOME` fallback removed). Explicit-cwd targeting now requires an existing runtime under the target (ADR-062).
-- Goal now keeps original file sources and writes only `goal.json` plus one active `GOAL.md` summary. Generated TODO/SPEC/PLAN/STATUS scaffolding and plan/approve no-op commands are removed; source documents, existing history and execution safety controls remain intact.
-- Team Workflows now has one session-backed run/status/stop authority via `team_run`, `team_runs`, `team_stop` and `/teams run|async|status|stop`. Removed `/team` interception modes, redundant runtime tools and typo/implicit aliases. Async commands share the tool delivery path; terminal-run stops are rejected without changing history. Model bindings and profile defaults are unchanged.
-- Kanban views are read-only. JSON export remains; the Markdown/snapshot export and snapshot-only modules were removed. `kanban_compact` is the only compaction trigger, and explicit compaction retains unique backups.
-- Automations schedules are now session/workspace scoped and model-agnostic: schedule creation no longer snapshots the active model, the scheduler no longer subscribes to `model_select`, and model changes never skip due runs. Legacy `MODEL_SNAPSHOT` fields and `skipped-drift` history remain readable but are inert.
-- Renamed two extensions for clarity: `pi-panopticon` → `pi-agent-hub` and `pi-teams` → `pi-team-workflows`. Directory and package names change only; tools, commands, configuration keys and persisted state/event identifiers are unchanged (ADR-064).
-- Aligned the host dependency and toolchain with Pi 1.0.1: Pi/TUI dev dependencies and peers moved to `^1.0.1`, schema imports moved to host-provided `typebox`, and `engines.node` moved to `>=22.19`.
-- Boost restores the baseline model on Pi's `agent_settled` boundary instead of polling after `agent_end`; Goal, Agent Hub RPC waits and Automations finalize on the same settled boundary.
-- Refactored `fleet-mcp` into explicit config, versioned state-store, gateway-policy, direct-Maildir backend, MCP transport, and runtime-lifecycle layers. The package now has a working uniform-ESM build/run path, fixed-principal tool schemas (no caller-selected `client_key`), serialized state mutations, durable acknowledgement/unregister tombstones, strict HTTP handling, accurate readiness, graceful shutdown, and documented deployment boundaries.
-- `/goal <text>` and `/goal file <path>` now execute immediately and continue until evidence-based completion. Planning, milestone verification, approval tools and plan/approve no-op commands are removed. Plain run/resume uses an unbounded persisted sentinel, while `--turns N` remains available for an explicit 1–20 turn bound. Ownership, stop/pause, session replacement, liveness containment, and the local completion hook remain enforced.
-- pi-boost no longer ships hard-coded provider/model defaults: unconfigured boost settings plan from the host model registry's text-capable models (`ctx.modelRegistry.getAvailable()`), with a warned auto fallback and fail-closed behavior when no usable model exists; stale explicit selections are never silently substituted. `/boost` settings gains a registry-backed multi-select model list (capped at 4, empty = auto). Single mode remains one model with no judge; fusion stays explicit (ADR-056).
+- CI tests on the latest Node only; Node 22/24/25 compatibility matrix removed.
+- Distribution Git-only: npm publishing, tag-triggered `release` matrix, vendor-at-pack staging and `dist-npm/` removed; per-extension `package.json` keeps path/`git:` install; release = verified tag.
+- Decision log = one SPR line per decision, absorbing the removed `docs/specs/`; `tests/architecture/docs-hygiene.ts` validates relative links in tracked Markdown (fenced code excluded).
+- Goal completion runs the workspace-local `.pi/goal/settings.json` hook (evidence prose cannot complete); one bounded run/request, missing/invalid/failed/timeout leaves the goal open, genuine blockers pause via `goal_block`, liveness warnings never interrupt work.
+- `pi-coas` → `pi-automations` hard cutover: tools `coas_*`→`automations_*`, commands `/coas`→`/automations(-status|-doctor|-workspaces|-schedules)`, env `COAS_*`→`AUTOMATIONS_*`, settings `coasProfile`→`automationsProfile`, state `.pi/coas`→`.pi/automations` (default `<cwd>/.pi/automations`, `AGENT_HOME` fallback removed); explicit-cwd needs an existing runtime (ADR-062).
+- Goal keeps original file sources and writes only `goal.json` + one active `GOAL.md`; generated TODO/SPEC/PLAN/STATUS scaffolding and plan/approve no-ops removed; sources/history/safety controls intact.
+- Team Workflows: one session-backed run/status/stop authority (`team_run`, `team_runs`, `team_stop`, `/teams run|async|status|stop`); `/team` interception modes, redundant runtime tools and typo/implicit aliases removed; async shares the tool delivery path; terminal-run stops rejected without history change; model bindings/profiles unchanged.
+- Kanban views read-only; JSON export kept, Markdown/snapshot export + snapshot-only modules removed; `kanban_compact` is the sole compaction trigger, explicit compaction keeps unique backups.
+- Automations schedules session/workspace-scoped and model-agnostic: no model snapshot at creation, scheduler unsubscribed from `model_select`, model changes never skip due runs; legacy `MODEL_SNAPSHOT`/`skipped-drift` readable but inert.
+- `pi-panopticon`→`pi-agent-hub`, `pi-teams`→`pi-team-workflows` (directory/package names only; tools/commands/config keys/persisted identifiers unchanged, ADR-064).
+- Host dependency/toolchain aligned to Pi 1.0.1: Pi/TUI dev deps + peers `^1.0.1`, schema imports use host `typebox`, `engines.node` `>=22.19`.
+- Boost restores the baseline model on Pi's `agent_settled` boundary (not polling after `agent_end`); Goal, Agent Hub RPC waits and Automations finalize on the same boundary.
+- `fleet-mcp` refactored into config/state-store/gateway-policy/Maildir-backend/MCP-transport/runtime-lifecycle layers: uniform-ESM build/run, fixed-principal schemas (no caller `client_key`), serialized mutations, durable ack/unregister tombstones, strict HTTP, accurate readiness, graceful shutdown, documented deployment boundaries.
+- `/goal <text>` and `/goal file <path>` run immediately to evidence-based completion; planning/milestone-verification/approval tools + plan/approve no-ops removed; plain run/resume = unbounded persisted sentinel, `--turns N` = explicit 1–20 turns; ownership/stop/pause/session-replacement/liveness-containment/local completion hook enforced.
+- pi-boost ships no hard-coded provider/model defaults: unconfigured settings plan from host-registry text-capable models (`ctx.modelRegistry.getAvailable()`), warned auto fallback, fail-closed when none usable, stale explicit selections never substituted; `/boost` gains a registry-backed multi-select (cap 4, empty = auto); single mode = one model, no judge; fusion explicit (ADR-056).
 
 ## [1.2.0] - 2026-09-01
 
 ### Added
 
-- Matrix extension now uses `matrix-js-sdk@41.9.0` instead of the deprecated `matrix-bot-sdk@0.8.0`.
-- Internal `MatrixClientAdapter` boundary so the bridge depends only on a narrow adapter interface.
-- `FileSyncStateStore` for atomic, permission-restricted, symlink-rejected Matrix sync-token persistence with corrupt-state quarantine.
+- Matrix: `matrix-js-sdk@41.9.0` replaces deprecated `matrix-bot-sdk@0.8.0`.
+- `MatrixClientAdapter` boundary: bridge depends only on a narrow adapter interface.
+- `FileSyncStateStore`: atomic, permission-restricted, symlink-rejected Matrix sync-token persistence with corrupt-state quarantine.
 - Bounded Matrix ingress policy (`maxBuffer`, `globalBurstLimit`, `perSenderBurstLimit`, `rateWindowMs`, `overflowPolicy`) with redacted diagnostics.
-- `engines.node: ">=22"` declared in the root package and every extension manifest.
-- `coverage/` ignored by git.
-- Structured tool-failure metadata (`FailureDetails`) with optional `code`, `retryable`, `action`, `schemaVersion`, `truncated`, and `correlationId`.
-- Deterministic behavioral evaluation harness under `tests/evals/` with tool-selection and team-routing fixtures.
-- CI workflow covering namespace/type/lint/knip/coverage checks, Node 22/24/25 compatibility, production audit, gitleaks secret scan, and per-package install smoke tests.
-- `lib/daemon-protocol/` published daemon protocol surface (ADR-053): paths, capability proof with `AdmissionScope`, registry types, wire codec, and `RegistryEventBuffer` — `pi-panopticon` and per-extension installs now resolve without the private systemd-deployed daemon.
-- ADR index (`docs/adr/README.md`) documenting the 024/033 numbering collisions, the 020/028 gaps, and the next sequential ADR slot.
-- Architecture guard test enforcing zero `daemon/src` imports inside `lib/daemon-protocol/`.
+- `engines.node: ">=22"` in the root package and every extension manifest.
+- `coverage/` git-ignored.
+- Structured tool-failure metadata `FailureDetails` (`code`, `retryable`, `action`, `schemaVersion`, `truncated`, `correlationId`).
+- Deterministic behavioral evaluation harness under `tests/evals/` (tool-selection + team-routing fixtures).
+- CI: namespace/type/lint/knip/coverage checks, Node 22/24/25 compatibility, production audit, gitleaks secret scan, per-package install smoke tests.
+- `lib/daemon-protocol/` published surface (ADR-053): paths, `AdmissionScope` capability proof, registry types, wire codec, `RegistryEventBuffer`; `pi-panopticon` + per-extension installs resolve without the private systemd daemon.
+- ADR index (`docs/adr/README.md`): 024/033 numbering collisions, 020/028 gaps, next sequential slot.
+- Architecture guard test: zero `daemon/src` imports inside `lib/daemon-protocol/`.
 
 ### Security
 
-- Removed the `matrix-bot-sdk -> request -> request-promise` dependency chain; production `npm audit --omit=dev --audit-level=high` now reports zero findings.
-- Matrix diagnostics redact access tokens, bearer tokens, and terminal escape sequences.
+- Removed the `matrix-bot-sdk -> request -> request-promise` chain; production `npm audit --omit=dev --audit-level=high` = zero findings.
+- Matrix diagnostics redact access/bearer tokens + terminal escape sequences.
 
 ### Changed
 
-- `fail()` in `lib/tool-result.ts` now accepts `FailureDetails` while remaining backward compatible with arbitrary `Record<string, unknown>` details.
-- `fitness.yml` now runs only the architecture-fitness suites instead of duplicating the full CI check+test run; `actions/checkout` is commit-SHA-pinned in both workflows; the `install-smoke` matrix covers all 11 extension packages plus the root.
-- Biome lint scope extended to `scripts/`; knip entry extended to `scripts/*.mjs` (closes the orphan-script blind spot).
-- `README.md` prerequisites clarified (Python 3 is only needed for `security:semgrep`); `package.json` `description`/`author` filled.
-- `extensions/pi-panopticon/README.md` drops the provisional MEMORY.md surface references.
+- `fail()` in `lib/tool-result.ts` accepts `FailureDetails`, backward-compatible with arbitrary `Record<string, unknown>` details.
+- `fitness.yml` runs only architecture-fitness suites (no duplicate check+test); `actions/checkout` SHA-pinned in both workflows; `install-smoke` matrix = all 11 extension packages + root.
+- Biome lint scope extends to `scripts/`; knip entry extends to `scripts/*.mjs` (closes the orphan-script blind spot).
+- `README.md` prerequisites clarified (Python 3 only for `security:semgrep`); `package.json` `description`/`author` filled.
+- `extensions/pi-panopticon/README.md` drops provisional MEMORY.md surface references.
 
 ### Removed
 
-- Retired `pi-bionic`, `pi-doctor`, and `pi-event-loop` extensions, manifests, tests, fixtures, examples, and operator documentation; the retained CoAS scheduler is now exposed as `pi-scheduler`.
-- Removed the superseded hierarchical Teams/swarm runtime, compatibility commands/tools, manifests, and tests; retained `pi-teams` now provides only consult, debate, and research protocols.
-- Test-only production modules removed per ADR-054 with their tests and fixtures: `pi-teams/worktree-isolation.ts`, `pi-panopticon/ui/memory-renderer.ts`, `pi-panopticon/ui/memory-writer.ts`, and `pi-kanban/lifecycle.ts`; the pi-teams `node:child_process` boundary is now zero. The no-exemptions test-only-import fitness rule is implemented and lands with the remaining module dispositions (tracked separately).
-- Unreferenced scripts removed: `scripts/session-spool-hook.mjs` (ADR-017 POC) and `scripts/t851-artifact-smoke.sh`.
+- Retired `pi-bionic`, `pi-doctor`, `pi-event-loop` (extensions/manifests/tests/fixtures/examples/operator docs); retained CoAS scheduler exposed as `pi-scheduler`.
+- Removed the superseded hierarchical Teams/swarm runtime + compatibility commands/tools/manifests/tests; retained `pi-teams` = consult/debate/research only.
+- Removed test-only production modules per ADR-054 (+ tests/fixtures): `pi-teams/worktree-isolation.ts`, `pi-panopticon/ui/memory-renderer.ts`, `pi-panopticon/ui/memory-writer.ts`, `pi-kanban/lifecycle.ts`; pi-teams `node:child_process` boundary now zero; the no-exemptions test-only-import rule lands with the remaining dispositions (tracked separately).
+- Removed unreferenced scripts `scripts/session-spool-hook.mjs` (ADR-017 POC) and `scripts/t851-artifact-smoke.sh`.
 
 ## [1.1.0] - 2026-06-24
 
 ### Added
 
-- Initial release of the SOTA readiness tracking report and architecture fitness gates.
+- Initial release: SOTA readiness tracking report + architecture fitness gates.

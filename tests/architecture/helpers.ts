@@ -27,14 +27,6 @@ export function extensionNames(): string[] {
 	);
 }
 
-export function sourceFiles(): string[] {
-	return [...listTsFiles("extensions"), ...listTsFiles("lib")];
-}
-
-export function stringLiteralMatches(content: string, pattern: RegExp): string[] {
-	return [...content.matchAll(pattern)].map((match) => match[1] ?? "").filter(Boolean);
-}
-
 export function localImportSpecifiers(content: string): string[] {
 	const importPattern =
 		/from\s+["'](\.\.?\/[^"']+)["']|import\s+["'](\.\.?\/[^"']+)["']|import\s*\([^)]*["'](\.\.?\/[^"']+)["'][^)]*\)/g;
