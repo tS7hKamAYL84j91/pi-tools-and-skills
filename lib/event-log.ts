@@ -30,12 +30,6 @@ const JSON_CODEC: EventLogCodec<unknown> = {
 	decode: (line) => JSON.parse(line) as unknown,
 };
 
-/** Codec for legacy logs whose events are already complete text lines. */
-export const textEventLogCodec: EventLogCodec<string> = {
-	encode: (event) => event,
-	decode: (line) => line,
-};
-
 /** A small JSON-lines WAL. Every mutation is serialized by the log lock. */
 export class EventLog<T> {
 	private readonly codec: EventLogCodec<T>;

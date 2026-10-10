@@ -1,15 +1,15 @@
 /**
  * Cross-process transaction boundary for the authoritative Kanban event log.
  *
- * Only this module appends to board.log. Shared mutation semantics live in
- * board-actions.ts (and claim-tools.ts for claim conflict handling).
+ * Only this module appends to board.events.jsonl. Shared mutation semantics
+ * live in board-actions.ts (and claim-tools.ts for claim conflict handling).
  */
 
-import { EventLog, textEventLogCodec } from "../../lib/event-log.js";
+import { EventLog } from "../../lib/event-log.js";
+import { kanbanEventCodec, makeEvent, type KanbanEvent } from "./board-events.js";
 import {
 	type BoardState,
 	boardLogPath,
-	escapeLogValue,
 	nowZ,
 	parseBoard,
 	sanitiseAgent,
@@ -17,37 +17,36 @@ import {
 } from "./board.js";
 
 interface BoardTransactionResult<T> {
-	readonly events: readonly string[];
+	readonly events: readonly KanbanEvent[];
 	readonly result: T;
 }
 
-/** Lines appended by this process, used by the watcher for self-detection. */
+/** Encoded lines appended by this process, used by the watcher for self-detection. */
 export const selfAppendedLines = new Set<string>();
 
-function boardEventLog(): EventLog<string> {
-	return new EventLog(boardLogPath(), { codec: textEventLogCodec });
+function boardEventLog(): EventLog<KanbanEvent> {
+	return new EventLog<KanbanEvent>(boardLogPath(), { codec: kanbanEventCodec });
 }
 
-/** Run work while holding the one advisory lock for board.log. */
+/** Run work while holding the one advisory lock for board.events.jsonl. */
 export async function withBoardLock<T>(fn: () => Promise<T>): Promise<T> {
 	return boardEventLog().withLock(fn);
 }
 
-async function appendBoardEventsLocked(events: readonly string[]): Promise<void> {
+async function appendBoardEventsLocked(events: readonly KanbanEvent[]): Promise<void> {
 	if (events.length === 0) {
 		return;
 	}
-	const newlyRegistered = events.filter(
-		(event) => !selfAppendedLines.has(event),
-	);
-	for (const event of events) {
-		selfAppendedLines.add(event);
+	const encoded = events.map((event) => kanbanEventCodec.encode(event));
+	const newlyRegistered = encoded.filter((line) => !selfAppendedLines.has(line));
+	for (const line of encoded) {
+		selfAppendedLines.add(line);
 	}
 	try {
 		await boardEventLog().appendLocked(events);
 	} catch (error) {
-		for (const event of newlyRegistered) {
-			selfAppendedLines.delete(event);
+		for (const line of newlyRegistered) {
+			selfAppendedLines.delete(line);
 		}
 		throw error;
 	}
@@ -68,8 +67,8 @@ export async function withBoardTransaction<T>(
 }
 
 /** Append one ordinary event through the shared board lock. */
-export async function logAppend(line: string): Promise<void> {
-	await withBoardLock(async () => appendBoardEventsLocked([line]));
+export async function logAppend(event: KanbanEvent): Promise<void> {
+	await withBoardLock(async () => appendBoardEventsLocked([event]));
 }
 
 /** Validate and append a DELETE event atomically. */
@@ -92,11 +91,13 @@ export async function deleteTask(
 				`Cannot delete task ${taskId}: it is currently in 'in-progress'. Complete the task before deleting it.`,
 			);
 		}
-		const reasonSuffix = reason ? ` reason="${escapeLogValue(reason)}"` : "";
+		const event = makeEvent(
+			"delete",
+			{ ts: nowZ(), task_id: taskId, agent: sanitiseAgent(agent) },
+			{ ...(reason ? { reason } : {}) },
+		);
 		return {
-			events: [
-				`${nowZ()} DELETE ${taskId} ${sanitiseAgent(agent)}${reasonSuffix}`,
-			],
+			events: [event],
 			result: { task_id: taskId, previousCol: task.col, reason },
 		};
 	});
@@ -123,10 +124,13 @@ export async function moveTask(
 		if (from === to) {
 			throw new Error(`Task ${taskId} is already in ${to}.`);
 		}
+		const event = makeEvent(
+			"move",
+			{ ts: nowZ(), task_id: taskId, agent: sanitiseAgent(agent) },
+			{ from, to },
+		);
 		return {
-			events: [
-				`${nowZ()} MOVE ${taskId} ${sanitiseAgent(agent)} from=${from} to=${to}`,
-			],
+			events: [event],
 			result: { task_id: taskId, from, to },
 		};
 	});

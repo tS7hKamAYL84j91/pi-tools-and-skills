@@ -1,5 +1,5 @@
 /**
- * Kanban overlay board.log watcher: debounced live refresh with selection
+ * Kanban overlay board.events.jsonl watcher: debounced live refresh with selection
  * capture at event time. Owns the FSWatcher, debounce timer, and live flag
  * so the controller stays free of watcher plumbing.
  *
@@ -112,7 +112,7 @@ export class BoardLogWatcher {
 	private markUnavailable(): void {
 		this.liveFlag = false;
 		this.callbacks.onUnavailable();
-		// A deleted or replaced board.log detaches the inode watch without an
+		// A deleted or replaced board.events.jsonl detaches the inode watch without an
 		// error event; one bounded retry per outage re-attaches when it returns.
 		this.scheduleRestart();
 	}

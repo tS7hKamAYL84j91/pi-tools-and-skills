@@ -20,7 +20,7 @@ import {
 import { deleteTask, moveTask } from "./board-transactions.js";
 
 /**
- * Operator identity recorded in board.log for overlay mutations. Set
+ * Operator identity recorded in board.events.jsonl for overlay mutations. Set
  * KANBAN_OVERLAY_AGENT to attribute actions to a specific human/operator.
  * The label is not an authenticated identity; it attributes actions only.
  */

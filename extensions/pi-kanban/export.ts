@@ -14,6 +14,7 @@ interface KanbanExportTask {
 	blockedReason?: string;
 	createdAt?: string;
 	completedAt?: string;
+	discoveredFrom?: string;
 	verificationRequired?: boolean;
 	checks?: { command: string; result: string; exit_code: number }[];
 }
@@ -21,6 +22,7 @@ interface KanbanExportTask {
 interface KanbanExport {
 	schemaVersion: 1;
 	totalEvents: number;
+	skippedEvents?: number;
 	counts: Record<string, number>;
 	tasks: KanbanExportTask[];
 }
@@ -42,6 +44,7 @@ function exportTask(task: TaskState): KanbanExportTask {
 		...(task.reason ? { blockedReason: task.reason } : {}),
 		...(task.createdAt ? { createdAt: task.createdAt } : {}),
 		...(task.completedAt ? { completedAt: task.completedAt } : {}),
+		...(task.discoveredFrom ? { discoveredFrom: task.discoveredFrom } : {}),
 	};
 	if (task.verificationRequired || task.checks.length > 0) {
 		result.verificationRequired = task.verificationRequired;
@@ -62,5 +65,11 @@ export function exportBoardJson(board: BoardState): KanbanExport {
 		.map(exportTask);
 	const counts: Record<string, number> = {};
 	for (const task of tasks) counts[task.column] = (counts[task.column] ?? 0) + 1;
-	return { schemaVersion: 1, totalEvents: board.totalEvents, counts, tasks };
+	return {
+		schemaVersion: 1,
+		totalEvents: board.totalEvents,
+		...(board.skippedEvents > 0 ? { skippedEvents: board.skippedEvents } : {}),
+		counts,
+		tasks,
+	};
 }

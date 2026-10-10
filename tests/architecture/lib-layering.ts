@@ -52,7 +52,7 @@ describe("lib layering", () => {
 
 	it("does not count test references or unrelated basename matches as consumers", () => {
 		expect(productionFiles.some((file) => file.startsWith("tests/") || file.endsWith(".test.ts"))).toBe(false);
-		expect([...callersOf("lib/event-log.ts")]).toEqual(["extensions/pi-kanban/board-transactions.ts"]);
+		expect([...callersOf("lib/event-log.ts")]).toEqual(["extensions/pi-kanban/board-events.ts", "extensions/pi-kanban/board-transactions.ts"]);
 		expect(callersOf("not-a-library/event-log.ts").size).toBe(0);
 	});
 

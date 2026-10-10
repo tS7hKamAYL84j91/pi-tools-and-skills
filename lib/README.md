@@ -27,8 +27,8 @@ module has multiple independent owners.
 These remain central for a concrete infrastructure responsibility, not because
 their tests create a second caller:
 
-- `event-log.ts` — Kanban's transaction consumer delegates generic lock-held
-  append behavior to this persistence primitive.
+- `event-log.ts` — Kanban's transaction consumer (`board-transactions.ts`) delegates generic lock-held
+  append behavior to this persistence primitive; the typed codec contract is used by `board-events.ts`.
 - `declarative-discovery.ts` — Team Workflows paths consume generic layered discovery;
   parsing and execution stay in Team Workflows.
 - `tui-overflow.ts` — Team Workflows rendering uses pure bounded-scroll/count cues.

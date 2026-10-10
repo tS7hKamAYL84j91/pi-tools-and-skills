@@ -17,13 +17,14 @@ function tree(path: string): unknown {
 }
 
 function largeLog(): string {
-	return '2026-01-01T00:00:00.000Z CREATE T-001 lead title="Visible task" priority="high"\n' +
-		'2026-01-01T00:00:01.000Z MOVE T-001 lead from=backlog to=todo\n'.repeat(600);
+	const create = JSON.stringify({ v: 1, ts: "2026-01-01T00:00:00.000Z", type: "create", task_id: "T-001", agent: "lead", title: "Visible task", priority: "high" });
+	const move = JSON.stringify({ v: 1, ts: "2026-01-01T00:00:01.000Z", type: "move", task_id: "T-001", agent: "lead", from: "backlog", to: "todo" });
+	return `${create}\n${Array.from({ length: 600 }, () => move).join("\n")}\n`;
 }
 
 describe("read-only board views", () => {
 	it("does not alter files, events or backups even above the former compaction threshold", async () => {
-		harness.writeBoardLog(largeLog());
+		harness.writeEventLog(largeLog());
 		writeFileSync(join(harness.tmpDir, "snapshot.md"), "Existing exported snapshot");
 		const before = tree(harness.tmpDir);
 		const result = await callTool(harness.tools, "kanban_export_json", {});
@@ -34,22 +35,23 @@ describe("read-only board views", () => {
 	it("removes snapshot tools but reads historical SNAPSHOT events without mutating them", async () => {
 		expect(harness.tools.has("kanban_snapshot")).toBe(false);
 		expect(harness.tools.has("kanban_export")).toBe(false);
-		const original = largeLog() + '2026-01-01T00:00:02Z SNAPSHOT T-SYS orchestrator seq=601\n';
-		harness.writeBoardLog(original);
+		const original = `${largeLog()}${JSON.stringify({ v: 1, ts: "2026-01-01T00:00:02Z", type: "snapshot", task_id: "T-SYS", agent: "orchestrator", seq: 601 })}\n`;
+		harness.writeEventLog(original);
 		expect((await parseBoard()).tasks.get("T-001")?.title).toBe("Visible task");
 		await callTool(harness.tools, "kanban_export_json", {});
-		expect(harness.readBoardLog()).toBe(original);
+		expect(harness.readEventLog()).toBe(original);
 	});
 
 	it("compacts only on request and preserves distinct backups even at the same timestamp", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		const original = largeLog();
-		harness.writeBoardLog(original);
+		harness.writeEventLog(original);
 		const first = await callTool(harness.tools, "kanban_compact", {});
 		const firstBackup = first.details.backupPath as string;
 		expect(readFileSync(firstBackup, "utf8")).toBe(original);
-		const compacted = harness.readBoardLog();
-		expect(compacted).toContain("COMPACT");
+		const compacted = harness.readEventLog();
+		expect(compacted).not.toBe(original);
+		expect(compacted.split("\n").filter(Boolean).every((line) => (JSON.parse(line) as { v: number }).v === 1)).toBe(true);
 		expect(compacted.length).toBeLessThan(original.length);
 		const second = await callTool(harness.tools, "kanban_compact", {});
 		expect(second.details.backupPath).not.toBe(firstBackup);

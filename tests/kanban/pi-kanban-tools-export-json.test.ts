@@ -28,7 +28,7 @@ describe("kanban_export_json", () => {
 		});
 		await callTool(harness.tools, "kanban_move", { task_id: "T-101", agent: "lead", to: "todo" });
 		await callTool(harness.tools, "kanban_delete", { task_id: "T-102", agent: "lead", reason: "test cleanup" });
-		const before = harness.readBoardLog();
+		const before = harness.readEventLog();
 
 		const result = await callTool(harness.tools, "kanban_export_json", {});
 		const exported = JSON.parse(result.content[0]?.text ?? "{}");
@@ -43,7 +43,7 @@ describe("kanban_export_json", () => {
 		expect(result.details).toEqual(exported);
 		expect(result.content[0]?.text).not.toContain("private-description-sentinel");
 		expect(result.content[0]?.text).not.toContain("private-note-sentinel");
-		expect(harness.readBoardLog()).toBe(before);
+		expect(harness.readEventLog()).toBe(before);
 		expect(existsSync(join(harness.tmpDir, "snapshot.md"))).toBe(false);
 	});
 });

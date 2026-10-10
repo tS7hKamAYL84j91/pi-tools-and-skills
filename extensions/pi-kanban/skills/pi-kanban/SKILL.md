@@ -31,6 +31,6 @@ an explicit operation, not an inspection side effect.
 
 Task IDs use `T-NNN`. WIP defaults to three. Metadata edits require backlog/todo;
 notes can be added to existing tasks. In-progress tasks cannot be deleted; blocked
-deletion requires confirmation. Task Markdown supplements authoritative board.log.
+deletion requires confirmation. Task Markdown supplements authoritative board.events.jsonl.
 Preserve owner checks, WIP limits, verification evidence, trusted completion gates,
 confirmation, locks and backups. Use `agent_status`, not Kanban, for agent health.

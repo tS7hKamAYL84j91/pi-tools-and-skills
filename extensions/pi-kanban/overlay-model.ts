@@ -25,7 +25,7 @@ export interface OverlayViewModel {
 	filterQuery?: string;
 	isFiltering?: boolean;
 	hiddenDoneCount?: number;
-	/** Whether the board refreshes live from board.log; shown in the header. */
+	/** Whether the board refreshes live from board.events.jsonl; shown in the header. */
 	liveRefresh?: boolean;
 }
 

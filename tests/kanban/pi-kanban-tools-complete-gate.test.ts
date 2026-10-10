@@ -58,7 +58,9 @@ describe("kanban_complete verification gate", () => {
 		});
 		expect(result.isError).toBeFalsy();
 		expect(result.content[0]?.text).toContain("Completed T-100");
-		expect(harness.readBoardLog()).toContain("COMPLETE T-100 worker-1 duration=45m");
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "complete", task_id: "T-100", agent: "worker-1", duration: "45m" }),
+		);
 	});
 
 	it("rejects completion by non-claiming agent", async () => {
@@ -69,7 +71,7 @@ describe("kanban_complete verification gate", () => {
 				agent: "worker-2",
 			}),
 		).rejects.toThrow(/not the claimed owner/);
-		expect(harness.readBoardLog()).not.toContain("COMPLETE T-101");
+		expect(harness.readEvents().some((e) => e.type === "complete" && e.task_id === "T-101")).toBe(false);
 	});
 
 	it("rejects missing evidence when KANBAN_REQUIRE_CHECK_EVIDENCE=1", async () => {
@@ -81,7 +83,7 @@ describe("kanban_complete verification gate", () => {
 				agent: "worker-1",
 			}),
 		).rejects.toThrow(/requires verification evidence/);
-		expect(harness.readBoardLog()).not.toContain("COMPLETE T-102");
+		expect(harness.readEvents().some((e) => e.type === "complete" && e.task_id === "T-102")).toBe(false);
 	});
 
 	it("rejects failed check exit_code", async () => {
@@ -93,7 +95,7 @@ describe("kanban_complete verification gate", () => {
 				checks: [{ command: "npm test", result: "1 failed", exit_code: 1 }],
 			}),
 		).rejects.toThrow(/requires verification evidence/);
-		expect(harness.readBoardLog()).not.toContain("COMPLETE T-103");
+		expect(harness.readEvents().some((e) => e.type === "complete" && e.task_id === "T-103")).toBe(false);
 	});
 
 	it("accepts passing checks and persists them on the task", async () => {
@@ -109,7 +111,9 @@ describe("kanban_complete verification gate", () => {
 		});
 		expect(result.isError).toBeFalsy();
 		expect(result.details.checks).toHaveLength(2);
-		expect(harness.readBoardLog()).toContain('checks=');
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "complete", task_id: "T-104", checks: expect.any(Array) }),
+		);
 
 		const json = await callTool(harness.tools, "kanban_export_json", {});
 		const task = (json.details.tasks as Array<{ id: string; checks?: unknown[] }>).find((t) => t.id === "T-104");

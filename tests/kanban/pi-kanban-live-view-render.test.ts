@@ -69,6 +69,7 @@ describe("kanban overlay rendering", () => {
 		model: string;
 		expires: string;
 		reason: string;
+		discoveredFrom: string;
 		notes: string[];
 		completedAt: string;
 		duration: string;
@@ -91,6 +92,7 @@ describe("kanban overlay rendering", () => {
 			model: "",
 			expires: "",
 			reason: "",
+			discoveredFrom: "",
 			notes: [],
 			completedAt: "",
 			duration: "",
@@ -118,9 +120,10 @@ describe("kanban overlay rendering", () => {
 	}
 
 	it("maps omitted parser priority to the legacy medium default", async () => {
-		harness.writeBoardLog(
-			'2026-01-01T00:00:00Z CREATE T-009 lead title="Legacy" tags=""\n2026-01-01T00:00:01Z MOVE T-009 lead from=backlog to=todo',
-		);
+		harness.writeEvents([
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-009", agent: "lead", title: "Legacy", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:00:01Z", type: "move", task_id: "T-009", agent: "lead", from: "backlog", to: "todo" },
+		]);
 		const board = await parseBoard();
 		expect(board.tasks.get("T-009")?.priority).toBe("medium");
 		expect(tasksInColumn(board, "todo").map((task) => task.id)).toEqual([
@@ -137,6 +140,7 @@ describe("kanban overlay rendering", () => {
 			tasks: new Map([low, unknown, high, highTie].map((task) => [task.id, task])),
 			order: [low.id, unknown.id, high.id, highTie.id],
 			totalEvents: 4,
+			skippedEvents: 0,
 		};
 
 		expect(tasksInColumn(board, "todo").map((task) => task.id)).toEqual([
@@ -154,6 +158,7 @@ describe("kanban overlay rendering", () => {
 			tasks: new Map([old, recent].map((task) => [task.id, task])),
 			order: [old.id, recent.id],
 			totalEvents: 2,
+			skippedEvents: 0,
 		};
 		expect(tasksInColumn(board, "done").map((task) => task.id)).toEqual([
 			"T-002",
@@ -171,6 +176,7 @@ describe("kanban overlay rendering", () => {
 			]),
 			order: [first.id, deleted.id],
 			totalEvents: 2,
+			skippedEvents: 0,
 		};
 		expect(tasksInColumn(board, "todo")).toEqual([first]);
 		expect(tasksInColumn(board, "done")).toEqual([]);
@@ -186,6 +192,7 @@ describe("kanban overlay rendering", () => {
 			]),
 			order: [task.id, hidden.id],
 			totalEvents: 2,
+			skippedEvents: 0,
 		};
 		const view = buildOverlayViewModel({
 			board,
@@ -207,15 +214,13 @@ describe("kanban overlay rendering", () => {
 	});
 
 	it("widget renders compact one-line counts", async () => {
-		harness.writeBoardLog(
-			[
-				'2026-01-01T00:00:00Z CREATE T-001 lead title="First" priority="high" tags=""',
-				'2026-01-01T00:00:00Z CREATE T-002 lead title="Second" priority="medium" tags=""',
-				"2026-01-01T00:01:00Z MOVE T-001 lead from=backlog to=todo",
-				"2026-01-01T00:01:00Z CLAIM T-002 lead expires=2026-01-01T02:02:00Z",
-				"2026-01-01T00:02:00Z MOVE T-002 lead from=backlog to=in-progress",
-			].join("\n"),
-		);
+		harness.writeEvents([
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-001", agent: "lead", title: "First", priority: "high", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-002", agent: "lead", title: "Second", priority: "medium", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:01:00Z", type: "move", task_id: "T-001", agent: "lead", from: "backlog", to: "todo" },
+			{ v: 1, ts: "2026-01-01T00:01:00Z", type: "claim", task_id: "T-002", agent: "lead", expires: "2026-01-01T02:02:00Z" },
+			{ v: 1, ts: "2026-01-01T00:02:00Z", type: "move", task_id: "T-002", agent: "lead", from: "backlog", to: "in-progress" },
+		]);
 		const board = await parseBoard();
 		const lines = buildWidgetLines(board);
 		expect(lines).toHaveLength(1);
@@ -226,15 +231,13 @@ describe("kanban overlay rendering", () => {
 	});
 
 	it("footer status uses the same compact counts-only text", async () => {
-		harness.writeBoardLog(
-			[
-				'2026-01-01T00:00:00Z CREATE T-001 lead title="First" priority="high" tags=""',
-				'2026-01-01T00:00:00Z CREATE T-002 lead title="Second" priority="medium" tags=""',
-				"2026-01-01T00:01:00Z MOVE T-001 lead from=backlog to=todo",
-				"2026-01-01T00:01:00Z CLAIM T-002 lead expires=2026-01-01T02:02:00Z",
-				"2026-01-01T00:02:00Z MOVE T-002 lead from=backlog to=in-progress",
-			].join("\n"),
-		);
+		harness.writeEvents([
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-001", agent: "lead", title: "First", priority: "high", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-002", agent: "lead", title: "Second", priority: "medium", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:01:00Z", type: "move", task_id: "T-001", agent: "lead", from: "backlog", to: "todo" },
+			{ v: 1, ts: "2026-01-01T00:01:00Z", type: "claim", task_id: "T-002", agent: "lead", expires: "2026-01-01T02:02:00Z" },
+			{ v: 1, ts: "2026-01-01T00:02:00Z", type: "move", task_id: "T-002", agent: "lead", from: "backlog", to: "in-progress" },
+		]);
 		const board = await parseBoard();
 		expect(buildStatusText(board)).toMatch(
 			/^pi-kanban: wip 1\/\d+ \| todo 1 \| blocked 0 \| done 0$/,
@@ -242,16 +245,14 @@ describe("kanban overlay rendering", () => {
 	});
 
 	it("widget shows blocked count without reason in compact header", async () => {
-		harness.writeBoardLog(
-			[
-				'2026-01-01T00:00:00Z CREATE T-001 lead title="Blocked task" priority="high" tags=""',
-				"2026-01-01T00:01:00Z MOVE T-001 lead from=backlog to=todo",
-				"2026-01-01T00:02:00Z CLAIM T-001 worker-1 expires=2026-01-01T02:02:00Z",
-				"2026-01-01T00:02:00Z MOVE T-001 worker-1 from=todo to=in-progress",
-				'2026-01-01T00:03:00Z BLOCK T-001 worker-1 reason="waiting on deploy"',
-				"2026-01-01T00:03:00Z MOVE T-001 worker-1 from=in-progress to=blocked",
-			].join("\n"),
-		);
+		harness.writeEvents([
+			{ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-001", agent: "lead", title: "Blocked task", priority: "high", tags: "" },
+			{ v: 1, ts: "2026-01-01T00:01:00Z", type: "move", task_id: "T-001", agent: "lead", from: "backlog", to: "todo" },
+			{ v: 1, ts: "2026-01-01T00:02:00Z", type: "claim", task_id: "T-001", agent: "worker-1", expires: "2026-01-01T02:02:00Z" },
+			{ v: 1, ts: "2026-01-01T00:02:00Z", type: "move", task_id: "T-001", agent: "worker-1", from: "todo", to: "in-progress" },
+			{ v: 1, ts: "2026-01-01T00:03:00Z", type: "block", task_id: "T-001", agent: "worker-1", reason: "waiting on deploy" },
+			{ v: 1, ts: "2026-01-01T00:03:00Z", type: "move", task_id: "T-001", agent: "worker-1", from: "in-progress", to: "blocked" },
+		]);
 		const board = await parseBoard();
 		const lines = buildWidgetLines(board);
 		const header = lines[0] ?? "";
@@ -277,6 +278,7 @@ describe("kanban overlay rendering", () => {
 			model: "",
 			expires: "",
 			reason: "",
+			discoveredFrom: "",
 			notes: [],
 			completedAt: "",
 			duration: "",

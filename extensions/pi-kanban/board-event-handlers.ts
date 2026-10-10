@@ -1,6 +1,8 @@
 /**
- * Pure event-application helpers for the pi-kanban board parser.
+ * Pure event-application helpers for the pi-kanban board replay.
  */
+import type { KanbanEvent } from "./board-events.js";
+
 export interface TaskState {
 	id: string;
 	col: string;
@@ -15,6 +17,7 @@ export interface TaskState {
 	model: string;
 	expires: string;
 	reason: string;
+	discoveredFrom: string;
 	notes: string[];
 	completedAt: string;
 	duration: string;
@@ -30,158 +33,74 @@ export interface TaskVerificationCheck {
 	readonly exitCode: number;
 }
 
-/** Event shape passed to applyEvent. */
-interface BoardEvent {
-	readonly task: TaskState;
-	readonly event: string;
-	readonly agent: string;
-	readonly timestamp: string;
-	readonly payload: Record<string, string>;
-}
-
-/** Apply a single event to a task accumulator. */
-export function applyEvent(boardEvent: BoardEvent): void {
-	const { task, event, agent, timestamp, payload } = boardEvent;
-	switch (event) {
-		case "CREATE":
-			applyCreate(task, agent, timestamp, payload);
+/** Apply one typed event to a task accumulator. */
+export function applyEvent(task: TaskState, event: KanbanEvent): void {
+	switch (event.type) {
+		case "create":
+			if (event.title) task.title = event.title;
+			if (event.priority) task.priority = event.priority;
+			if (event.tags) task.tags = event.tags;
+			if (event.description) task.description = event.description;
+			if (event.discovered_from) task.discoveredFrom = event.discovered_from;
+			task.createdAt = event.ts;
+			task.agent = event.agent;
 			break;
-		case "MOVE":
-			if (payload.to) task.col = payload.to;
+		case "move":
+			task.col = event.to;
 			break;
-		case "CLAIM":
-			applyClaim(task, agent, payload);
+		case "claim":
+			if (!task.claimed) {
+				task.claimed = true;
+				task.claimAgent = event.agent;
+				task.col = "in-progress";
+				if (event.expires) task.expires = event.expires;
+				if (event.model) task.model = event.model;
+			}
 			break;
-		case "UNCLAIM":
-		case "EXPIRE":
+		case "unclaim":
+		case "expire":
 			task.claimed = false;
 			task.claimAgent = "";
 			task.expires = "";
 			break;
-		case "COMPLETE":
-			applyComplete(task, agent, timestamp, payload);
+		case "complete":
+			task.claimed = false;
+			task.claimAgent = "";
+			task.expires = "";
+			task.completedAt = event.ts;
+			task.col = "done";
+			if (event.duration) task.duration = event.duration;
+			task.doneAgent = event.agent;
+			if (event.verification_required === true) task.verificationRequired = true;
+			if (event.checks) {
+				task.checks = event.checks.map((check) => ({
+					command: check.command,
+					result: check.result,
+					exitCode: check.exit_code,
+				}));
+			}
 			break;
-		case "BLOCK":
+		case "block":
 			task.claimed = false;
 			task.claimAgent = "";
 			task.col = "blocked";
-			if (payload.reason) task.reason = payload.reason;
+			if (event.reason) task.reason = event.reason;
 			break;
-		case "UNBLOCK":
+		case "unblock":
 			task.reason = "";
 			task.col = "todo";
 			break;
-		case "NOTE":
-			task.notes.push(`${timestamp} [${agent}] ${payload.text ?? ""}`);
+		case "note":
+			task.notes.push(`${event.ts} [${event.agent}] ${event.text}`);
 			break;
-		case "DELETE":
+		case "delete":
 			task.deleted = true;
 			break;
-		case "EDIT":
-			applyEdit(task, payload);
+		case "edit":
+			if (event.title) task.title = event.title;
+			if (event.priority) task.priority = event.priority;
+			if (event.tags) task.tags = event.tags;
+			if (event.description) task.description = event.description;
 			break;
 	}
-}
-
-function applyCreate(
-	task: TaskState,
-	agent: string,
-	timestamp: string,
-	payload: Record<string, string>,
-): void {
-	if (payload.title) task.title = payload.title;
-	if (payload.priority) task.priority = payload.priority;
-	if (payload.tags) task.tags = payload.tags;
-	if (payload.description) task.description = payload.description;
-	task.createdAt = timestamp;
-	task.agent = agent;
-}
-
-function applyClaim(task: TaskState, agent: string, payload: Record<string, string>): void {
-	if (!task.claimed) {
-		task.claimed = true;
-		task.claimAgent = agent;
-		task.col = "in-progress";
-		if (payload.expires) task.expires = payload.expires;
-		if (payload.model) task.model = payload.model;
-	}
-}
-
-function applyComplete(
-	task: TaskState,
-	agent: string,
-	timestamp: string,
-	payload: Record<string, string>,
-): void {
-	task.claimed = false;
-	task.claimAgent = "";
-	task.expires = "";
-	task.completedAt = timestamp;
-	task.col = "done";
-	if (payload.duration) task.duration = payload.duration;
-	task.doneAgent = agent;
-	if (payload.verification_required)
-		task.verificationRequired = payload.verification_required === "true";
-	if (payload.checks) {
-		task.checks = parseChecks(payload.checks);
-	}
-}
-
-function applyEdit(task: TaskState, payload: Record<string, string>): void {
-	if (payload.title) task.title = payload.title;
-	if (payload.priority) task.priority = payload.priority;
-	if (payload.tags) task.tags = payload.tags;
-	if (payload.description) task.description = payload.description;
-}
-
-function parseChecks(raw: string): TaskVerificationCheck[] {
-	try {
-		const unquoted = raw.replace(/'/g, '"');
-		const parsed = JSON.parse(unquoted) as unknown;
-		if (!Array.isArray(parsed)) return [];
-		return parsed
-			.filter((c): c is Record<string, unknown> => c !== null && typeof c === "object")
-			.map((c) => ({
-				command: typeof c.command === "string" ? c.command : "",
-				result: typeof c.result === "string" ? c.result : "",
-				exitCode: typeof c.exit_code === "number" ? c.exit_code : typeof c.exitCode === "number" ? c.exitCode : -1,
-			}))
-			.filter((c) => c.command || c.result);
-	} catch {
-		return [];
-	}
-}
-
-/** Serialize checks for the event log. */
-export function formatChecks(checks: TaskVerificationCheck[]): string {
-	return JSON.stringify(
-		checks.map((c) => ({ command: c.command, result: c.result, exit_code: c.exitCode })),
-	);
-}
-
-/** Parse key=value pairs (with quoted values) from log fields. */
-export function parseKV(fields: string[]): Record<string, string> {
-	const kv: Record<string, string> = {};
-	let i = 0;
-	while (i < fields.length) {
-		const field = fields[i] ?? "";
-		const eq = field.indexOf("=");
-		if (eq <= 0) {
-			i++;
-			continue;
-		}
-		const key = field.slice(0, eq);
-		let val = field.slice(eq + 1);
-		if (val.startsWith('"')) {
-			val = val.slice(1);
-			while (!val.endsWith('"') && i + 1 < fields.length) {
-				i++;
-				val += ` ${fields[i] ?? ""}`;
-			}
-			if (val.endsWith('"')) val = val.slice(0, -1);
-		}
-		kv[key] = val;
-		i++;
-	}
-	return kv;
 }

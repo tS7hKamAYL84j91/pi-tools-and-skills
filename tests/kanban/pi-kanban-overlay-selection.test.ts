@@ -22,6 +22,7 @@ function task(id: string, title: string, priority = "medium"): TaskState {
 		model: "",
 		expires: "",
 		reason: "",
+		discoveredFrom: "",
 		notes: [],
 		completedAt: "",
 		duration: "",
@@ -33,7 +34,7 @@ function task(id: string, title: string, priority = "medium"): TaskState {
 }
 
 function board(tasks: TaskState[]) {
-	return { tasks: new Map(tasks.map((item) => [item.id, item])), order: tasks.map((item) => item.id), totalEvents: tasks.length };
+	return { tasks: new Map(tasks.map((item) => [item.id, item])), order: tasks.map((item) => item.id), totalEvents: tasks.length, skippedEvents: 0 };
 }
 
 describe("Kanban overlay selection contract", () => {

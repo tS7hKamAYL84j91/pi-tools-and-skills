@@ -47,15 +47,28 @@ describe("Kanban board transactions", () => {
 		)?.details.agent;
 		const task = (await parseBoard()).tasks.get("T-070");
 		expect(task).toMatchObject({ claimed: true, claimAgent: winner });
-		const log = harness.readBoardLog();
-		expect(log.match(/ CLAIM T-070 /g)).toHaveLength(1);
-		expect(log).not.toContain("UNCLAIM T-070");
+		const log = harness.readEventLog();
+		const events = log
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as { type: string; task_id: string });
+		expect(events.filter((e) => e.type === "claim" && e.task_id === "T-070")).toHaveLength(1);
+		expect(events.some((e) => e.type === "unclaim" && e.task_id === "T-070")).toBe(false);
 	});
 
 	it("holds the board lock across compaction and preserves a waiting append", async () => {
-		harness.writeBoardLog(
-			'2026-01-01T00:00:00.000Z CREATE T-071 lead title="Keep me" priority="high" tags=""\n',
-		);
+		harness.writeEvents([
+			{
+				v: 1,
+				ts: "2026-01-01T00:00:00.000Z",
+				type: "create",
+				task_id: "T-071",
+				agent: "lead",
+				title: "Keep me",
+				priority: "high",
+				tags: "",
+			},
+		]);
 		const lockAcquired = deferred();
 		const releaseLock = deferred();
 		const heldLock = withBoardLock(async () => {
@@ -70,9 +83,14 @@ describe("Kanban board transactions", () => {
 			compacted = true;
 			return result;
 		});
-		const append = logAppend(
-			'2026-01-02T00:00:00.000Z NOTE T-071 worker text="survives"',
-		).then(() => {
+		const append = logAppend({
+			v: 1,
+			ts: "2026-01-02T00:00:00.000Z",
+			type: "note",
+			task_id: "T-071",
+			agent: "worker",
+			text: "survives",
+		}).then(() => {
 			appended = true;
 		});
 		await new Promise((resolve) => setTimeout(resolve, 100));
@@ -89,6 +107,11 @@ describe("Kanban board transactions", () => {
 		expect(task?.notes).toContain(
 			"2026-01-02T00:00:00.000Z [worker] survives",
 		);
-		expect(harness.readBoardLog().match(/NOTE T-071 worker/g)).toHaveLength(1);
+		const events = harness
+			.readEventLog()
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as { type: string; task_id: string; agent: string });
+		expect(events.filter((e) => e.type === "note" && e.task_id === "T-071" && e.agent === "worker")).toHaveLength(1);
 	});
 });

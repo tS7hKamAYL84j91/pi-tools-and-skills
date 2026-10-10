@@ -39,6 +39,6 @@ describe("Kanban directory resolution", () => {
 		mkdirSync(join(tmpDir, "kanban"), { recursive: true });
 		mkdirSync(join(tmpDir, "pi-kanban"), { recursive: true });
 
-		expect(boardLogPath()).toBe(join(process.cwd(), "pi-kanban", "board.log"));
+		expect(boardLogPath()).toBe(join(process.cwd(), "pi-kanban", "board.events.jsonl"));
 	});
 });

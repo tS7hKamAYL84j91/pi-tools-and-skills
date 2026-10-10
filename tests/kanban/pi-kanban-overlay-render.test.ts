@@ -28,6 +28,7 @@ function task(overrides: Partial<TaskState> = {}): TaskState {
 		model: "",
 		expires: "",
 		reason: "",
+		discoveredFrom: "",
 		notes: [],
 		completedAt: "",
 		duration: "",

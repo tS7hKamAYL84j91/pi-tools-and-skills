@@ -1,7 +1,7 @@
 /**
  * Kanban board state — parser, types, and path helpers.
  *
- * Reads board.log and produces a BoardState with all tasks
+ * Reads board.events.jsonl and produces a BoardState with all tasks
  * bucketed by column. Pure event-sourcing: each log line is
  * an event that mutates a TaskState accumulator.
  */
@@ -10,7 +10,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
-import { applyEvent, parseKV } from "./board-event-handlers.js";
+import { applyEvent } from "./board-event-handlers.js";
+import { KanbanEventVersionError, kanbanEventCodec, type KanbanEvent } from "./board-events.js";
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -57,20 +58,11 @@ function kanbanDir(): string {
 	return dir;
 }
 
-export const boardLogPath = (): string => join(kanbanDir(), "board.log");
+export const boardLogPath = (): string => join(kanbanDir(), "board.events.jsonl");
 export const nowZ = (): string => new Date().toISOString();
 
 /**
- * Escape a value for inclusion in a quote-wrapped log field (e.g. `text="..."`).
- * The board.log parser only understands a single pair of double quotes per
- * field — it has no escape sequence — so any embedded `"` must be replaced
- * to keep the line round-trippable through parseBoard.
- */
-export const escapeLogValue = (s: string): string =>
-	s.replace(/[\r\n]/g, " ").replace(/"/g, "'");
-
-/**
- * Sanitise an agent name for safe inclusion in log lines.
+ * Sanitise an agent name for safe inclusion in board state and display.
  * Strips anything that isn't lowercase alphanumeric or hyphen.
  */
 export const sanitiseAgent = (s: string): string =>
@@ -214,6 +206,8 @@ export interface BoardState {
 	/** Insertion-ordered task IDs */
 	order: string[];
 	totalEvents: number;
+	/** Lines that decoded at a known version but were malformed or unknown. */
+	skippedEvents: number;
 }
 
 // ── Parser ──────────────────────────────────────────────────────
@@ -235,6 +229,7 @@ function newTask(id: string, ts: string): TaskState {
 		model: "",
 		expires: "",
 		reason: "",
+		discoveredFrom: "",
 		completedAt: "",
 		duration: "",
 		doneAgent: "",
@@ -243,31 +238,37 @@ function newTask(id: string, ts: string): TaskState {
 	};
 }
 
-/** Parse board.log into fully materialised board state. */
+/** Parse board.events.jsonl into fully materialised board state. */
 export async function parseBoard(): Promise<BoardState> {
 	const raw = await readFile(boardLogPath(), "utf-8");
 	const lines = raw.split("\n").filter((l) => l.trim());
 	const tasks = new Map<string, TaskState>();
 	const order: string[] = [];
+	let totalEvents = 0;
+	let skippedEvents = 0;
 
 	for (const line of lines) {
-		const parts = line.split(/\s+/);
-		const ts = parts[0] ?? "";
-		const event = parts[1] ?? "";
-		const tid = parts[2] ?? "";
-		const agent = parts[3] ?? "";
-
-		if (!/^T-\d+$/.test(tid)) continue;
-
+		let event: KanbanEvent;
+		try {
+			event = kanbanEventCodec.decode(line);
+		} catch (error) {
+			// A newer event version is never safe to ignore: fail loud rather than
+			// report board state silently missing events we cannot understand.
+			if (error instanceof KanbanEventVersionError) throw error;
+			// Malformed or unknown lines at a known version are counted, not silently dropped.
+			skippedEvents++;
+			continue;
+		}
+		totalEvents++;
+		const tid = event.task_id;
 		if (!tasks.has(tid)) {
-			tasks.set(tid, newTask(tid, ts));
+			tasks.set(tid, newTask(tid, event.ts));
 			order.push(tid);
 		}
-		const task = tasks.get(tid) as TaskState;
-		applyEvent({ task, event, agent, timestamp: ts, payload: parseKV(parts.slice(4)) });
+		applyEvent(tasks.get(tid) as TaskState, event);
 	}
 
-	return { tasks, order, totalEvents: lines.length };
+	return { tasks, order, totalEvents, skippedEvents };
 }
 
 // ── Shared helpers ──────────────────────────────────────────────

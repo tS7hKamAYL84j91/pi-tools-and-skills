@@ -208,7 +208,7 @@ export class KanbanOverlay implements Component, Focusable {
 						this.requestRender();
 					})
 					.catch(() => {
-							/* board.log vanished; watcher already reports not live */
+							/* board.events.jsonl vanished; watcher already reports not live */
 						});
 			});
 	}

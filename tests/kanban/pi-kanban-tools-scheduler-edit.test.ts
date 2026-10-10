@@ -133,8 +133,9 @@ describe("kanban_edit note + kanban_block", () => {
 		expect(result.isError).toBeFalsy();
 		expect(result.details.changed).toEqual({ note: "halfway done" });
 
-		const log = harness.readBoardLog();
-		expect(log).toContain('NOTE T-050 worker-1 text="halfway done"');
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "note", task_id: "T-050", agent: "worker-1", text: "halfway done" }),
+		);
 
 		const taskFile = harness.readTaskFile("T-050");
 		expect(taskFile).toContain("halfway done");
@@ -148,24 +149,26 @@ describe("kanban_edit note + kanban_block", () => {
 		});
 		expect(result.isError).toBeFalsy();
 
-		const log = harness.readBoardLog();
-		expect(log).toContain('BLOCK T-050 worker-1 reason="waiting on API key"');
-		expect(log).toContain("MOVE T-050 worker-1 from=in-progress to=blocked");
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "block", task_id: "T-050", agent: "worker-1", reason: "waiting on API key" }),
+		);
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "move", task_id: "T-050", agent: "worker-1", from: "in-progress", to: "blocked" }),
+		);
 	});
 
-	it("escapes embedded quotes in notes so the log round-trips through parseBoard", async () => {
-		// The log parser only understands one pair of double quotes per field, so embedded
-		// `"` characters must be replaced. Without escaping, the next board read would mis-parse.
+	it("round-trips embedded quotes in notes through the JSONL log", async () => {
+		// JSONL encodes values, so embedded `"` need no escaping and the next
+		// board read always round-trips.
 		await callTool(harness.tools, "kanban_edit", {
 			task_id: "T-050",
 			agent: "worker-1",
 			note: 'use "quotes" carefully',
 		});
 
-		// Raw log line should not contain a stray internal `"`
-		const log = harness.readBoardLog();
-		expect(log).toContain("use 'quotes' carefully");
-		expect(log).not.toContain('text="use "quotes"');
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "note", task_id: "T-050", text: 'use "quotes" carefully' }),
+		);
 
 		// Structured export must still retain the task after the embedded quote.
 		const snap = await callTool(harness.tools, "kanban_export_json", {});

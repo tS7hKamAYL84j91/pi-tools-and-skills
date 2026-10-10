@@ -7,12 +7,12 @@ import { Type } from "typebox";
 import { ok, type ToolResult } from "../../lib/tool-result.js";
 import {
 	appendTaskNote,
-	escapeLogValue,
 	nowZ,
 	rewriteTaskFile,
 	sanitiseAgent,
 	validateTaskId,
 } from "./board.js";
+import { makeEvent, type KanbanEvent } from "./board-events.js";
 import {
 	blockTask,
 	createTask,
@@ -55,11 +55,18 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 					default: "",
 				}),
 			),
+			discovered_from: Type.Optional(
+				Type.String({
+					description:
+						"Optional T-NNN of the task during which this work was discovered (provenance link)",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal): Promise<ToolResult> {
 			const { task_id, agent, title, priority } = params;
 			const tags = params.tags ?? "";
 			const description = params.description ?? "";
+			const discovered_from = params.discovered_from;
 			const { fileWarning } = await createTask({
 				taskId: task_id,
 				agent,
@@ -67,9 +74,10 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 				priority,
 				tags,
 				description,
+				discovered_from,
 			});
 			// A task-file write failure is a partial success: the task exists in
-			// the authoritative board.log. Do not retry creation with a new id.
+			// the authoritative board.events.jsonl. Do not retry creation with a new id.
 			const note = fileWarning
 				? `\nNote: the task file could not be written (${fileWarning}); the board log has the task. Do not retry creation.`
 				: "";
@@ -79,6 +87,7 @@ function registerKanbanCreate(pi: ExtensionAPI): void {
 				priority,
 				tags,
 				description,
+				...(discovered_from ? { discovered_from } : {}),
 				...(fileWarning ? { fileWarning } : {}),
 			});
 		},
@@ -145,7 +154,7 @@ async function performEdit(
 		const changes: string[] = [];
 		const changed: Record<string, string> = {};
 		if (title && title !== task.title) {
-			changes.push(`title="${escapeLogValue(title)}"`);
+			changes.push(`title="${title}"`);
 			changed.title = title;
 		}
 		if (priority && priority !== task.priority) {
@@ -153,11 +162,11 @@ async function performEdit(
 			changed.priority = priority;
 		}
 		if (tags && tags !== task.tags) {
-			changes.push(`tags="${escapeLogValue(tags)}"`);
+			changes.push(`tags="${tags}"`);
 			changed.tags = tags;
 		}
 		if (description && description !== task.description) {
-			changes.push(`description="${escapeLogValue(description)}"`);
+			changes.push(`description="${description}"`);
 			changed.description = description;
 		}
 		if (note) {
@@ -166,14 +175,20 @@ async function performEdit(
 
 		const timestamp = nowZ();
 		const safeAgent = sanitiseAgent(agent);
-		const events: string[] = [];
+		const fields = { ts: timestamp, task_id, agent: safeAgent };
+		const events: KanbanEvent[] = [];
 		if (changes.length > 0) {
-			events.push(`${timestamp} EDIT ${task_id} ${safeAgent} ${changes.join(" ")}`);
+			events.push(
+				makeEvent("edit", fields, {
+					...(changed.title !== undefined ? { title: changed.title } : {}),
+					...(changed.priority !== undefined ? { priority: changed.priority } : {}),
+					...(changed.tags !== undefined ? { tags: changed.tags } : {}),
+					...(changed.description !== undefined ? { description: changed.description } : {}),
+				}),
+			);
 		}
 		if (note) {
-			events.push(
-				`${timestamp} NOTE ${task_id} ${safeAgent} text="${escapeLogValue(note)}"`,
-			);
+			events.push(makeEvent("note", fields, { text: note }));
 		}
 		return {
 			events,

@@ -1,6 +1,6 @@
 # Pi Kanban Extension
 
-An optional human-facing board backed by an append-only `board.log`, with a TUI
+An optional human-facing board backed by an append-only `board.events.jsonl`, with a TUI
 and explicit tools. It is not an agent execution workflow. Follow the project's
 board-access policy; in this repository Gravitas owns the optional overview.
 
@@ -10,16 +10,26 @@ board-access policy; in this repository Gravitas owns the optional overview.
 | --- | --- | --- |
 | View board or task | `/kanban` live overlay | Viewing is read-only; mutations require explicit actions |
 | Read structured data | `kanban_export_json` | Read-only JSON result; no file writes or events |
-| Compact history | `kanban_compact` | Explicitly backs up and rewrites `board.log` under the board lock |
+| Compact history | `kanban_compact` | Explicitly backs up and rewrites `board.events.jsonl` under the board lock |
 
 Viewing and completing tasks never trigger compaction. Markdown snapshots and
 export tools have been removed. Existing `snapshot.md` artifacts are left intact;
-historical SNAPSHOT events remain readable, but no new ones are emitted.
+legacy `SNAPSHOT` log lines are not typed events, so they are skipped (and counted).
+Unknown event versions are never skipped: a line whose `v` is newer than this
+build aborts the read (`KanbanEventVersionError`) rather than report stale state;
+malformed lines at a known version are surfaced as `skippedEvents` in
+`kanban_export_json`.
 
 ## Board model and storage
 
-`board.log` is authoritative. Events materialize task state on each read; writes
-are serialized through board transactions.
+`board.events.jsonl` is authoritative. Each line is one versioned (`v: 1`) typed
+JSON event — `create | move | claim | unclaim | expire | complete | block |
+unblock | note | delete | edit`. Events replay in order to materialize task
+state on each read; writes are serialized through board transactions.
+
+Legacy text `board.log` is no longer read. Migrate an existing board once with
+`node scripts/migrate-kanban-log.mjs <kanbanDir>`, which writes the typed log and
+archives the old one under `archive/`.
 
 ```text
 backlog → todo → in-progress → done
@@ -35,9 +45,9 @@ recent-first. WIP defaults to three in-progress tasks, configurable through
 The board directory resolves from `KANBAN_DIR`, then `<cwd>/pi-kanban/`. There is
 no automatic directory creation from viewing.
 
-- `board.log`: event history and authoritative task state.
+- `board.events.jsonl`: event history and authoritative task state.
 - `tasks/T-NNN.md`: task descriptions/notes written by create/edit operations.
-- `archive/board.log.bak.<timestamp>-<unique-id>`: backups from explicit compaction.
+- `archive/board.events.jsonl.bak.<timestamp>-<unique-id>`: backups from explicit compaction.
 
 Task files supplement the log; they do not establish a second execution record.
 Existing task descriptions and creation timestamps survive note updates.
@@ -46,7 +56,7 @@ Existing task descriptions and creation timestamps survive note updates.
 
 | Tool | Purpose |
 | --- | --- |
-| `kanban_create` | Create a unique `T-NNN` task in backlog |
+| `kanban_create` | Create a unique `T-NNN` task in backlog (optional `discovered_from: T-NNN` provenance link) |
 | `kanban_claim` | Claim a specified/next todo task or reassign an in-progress task |
 | `kanban_complete` | Complete an owned in-progress task, enforcing configured checks |
 | `kanban_block` / `kanban_unblock` | Record a blocker or return a blocked task to todo |
@@ -98,7 +108,7 @@ and the last seven days of completed-task notes. Older details remain in backups
   the overlay cannot steal work. One board mutation runs at a time — repeated
   keys while an operation is pending are rejected as busy — and closing the
   overlay aborts an in-flight gate without committing (events already appended
-  to board.log are retained).
+  to board.events.jsonl are retained).
 - Overlay mutations are recorded under the `KANBAN_OVERLAY_AGENT` identity
   (default `operator`). This is an audit label for attribution, not an
   authenticated identity; set it to attribute human board actions accurately.

@@ -12,7 +12,7 @@ records decisions. Superseded diagrams and completed reviews remain in Git histo
 | [Team Workflows](../extensions/pi-team-workflows/README.md) | `TeamStateManager`, session run events and private result artifacts | Direct bounded protocols; no parallel lifecycle registry |
 | [Goal](../extensions/pi-goal/README.md) | Session-bound `goal.json`, driver token/generation/revision | `GOAL.md` is a projection; source files and native sessions remain intact |
 | [Automations](../extensions/pi-automations/README.md) | Schedule files, slot admission, approval and workspace context | Runs inside Pi; no independent background scheduler |
-| [Kanban](../extensions/pi-kanban/README.md) | Append-only `board.log` | Task Markdown is derived; live views and JSON export are read-only |
+| [Kanban](../extensions/pi-kanban/README.md) | Append-only typed `board.events.jsonl` | Task Markdown is derived; live views and JSON export are read-only |
 | [Boost](../extensions/pi-boost/README.md) | In-session lease and model restoration | Failed restoration blocks further dispatch; no fusion engine |
 | [Matrix](../extensions/pi-matrix/README.md) | Human-facing transport and attachment cache | Trusted-sender filtering and bounded media handling; input remains untrusted |
 | [File Watch](../extensions/pi-file-watch/README.md) | Explicit watcher configuration and runtime subscriptions | Validated path/symlink policy; no implicit workspace sweep |

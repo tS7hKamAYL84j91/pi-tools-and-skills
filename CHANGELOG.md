@@ -26,6 +26,8 @@ structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 
 ### Changed
 
+- Kanban reads fail loud on an event line whose `v` exceeds this build's version (`KanbanEventVersionError`) instead of silently dropping it; malformed lines at a known version are counted and surfaced as `skippedEvents` in `kanban_export_json`. `kanban_create` accepts optional `discovered_from: T-NNN` (validated parent), recorded as create-event provenance and exported as `discoveredFrom`.
+- Kanban's authoritative log is now typed JSONL: `board.events.jsonl` holds one versioned (`v: 1`), schema-validated event per line (`create | move | claim | unclaim | expire | complete | block | unblock | note | delete | edit`). The space-delimited text `board.log` reader and its quote/checks escaping are removed; migrate an existing board once with `node scripts/migrate-kanban-log.mjs <kanbanDir>` (archives the old log).
 - CI tests on the latest Node only; Node 22/24/25 compatibility matrix removed.
 - Deliberate stops (`kill_agent`, session shutdown) mark an expected exit, so they no longer raise the missing-DONE follow-up; unexpected exits still notify.
 - Distribution Git-only: npm publishing, tag-triggered `release` matrix, vendor-at-pack staging and `dist-npm/` removed; per-extension `package.json` keeps path/`git:` install; release = verified tag.

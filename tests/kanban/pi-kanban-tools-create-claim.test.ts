@@ -19,15 +19,52 @@ describe("kanban_create", () => {
 		expect(result.content[0]?.text).toContain("Created T-001");
 		expect(result.details.task_id).toBe("T-001");
 
-		const log = harness.readBoardLog();
-		expect(log).toContain("CREATE T-001 lead");
-		expect(log).toContain('title="Build the thing"');
-		expect(log).toContain('priority="high"');
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "create", task_id: "T-001", agent: "lead", title: "Build the thing", priority: "high" }),
+		);
 
 		const taskFile = harness.readTaskFile("T-001");
 		expect(taskFile).toContain('title: "Build the thing"');
 		expect(taskFile).toContain("priority: high");
 		expect(taskFile).toContain("A task that builds the thing");
+	});
+
+	it("records discovered_from provenance and rejects unknown parents", async () => {
+		await callTool(harness.tools, "kanban_create", {
+			task_id: "T-010",
+			agent: "lead",
+			title: "Origin",
+			priority: "medium",
+		});
+
+		const created = await callTool(harness.tools, "kanban_create", {
+			task_id: "T-011",
+			agent: "lead",
+			title: "Found while working on T-010",
+			priority: "high",
+			discovered_from: "T-010",
+		});
+		expect(created.isError).toBeFalsy();
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "create", task_id: "T-011", discovered_from: "T-010" }),
+		);
+
+		const exported = JSON.parse(
+			(await callTool(harness.tools, "kanban_export_json", {})).content[0]?.text ?? "{}",
+		);
+		expect(exported.tasks).toContainEqual(
+			expect.objectContaining({ id: "T-011", discoveredFrom: "T-010" }),
+		);
+
+		await expect(
+			callTool(harness.tools, "kanban_create", {
+				task_id: "T-012",
+				agent: "lead",
+				title: "Orphan",
+				priority: "low",
+				discovered_from: "T-999",
+			}),
+		).rejects.toThrow(/discovered_from task T-999 does not exist/);
 	});
 
 	it("rejects duplicate task IDs", async () => {
@@ -145,9 +182,12 @@ describe("kanban_claim", () => {
 		expect(result.details.result).toBe("CLAIMED");
 		expect(result.details.claimed).toBe(true);
 
-		const log = harness.readBoardLog();
-		expect(log).toContain("CLAIM T-010 worker-1");
-		expect(log).toContain("MOVE T-010 worker-1 from=todo to=in-progress");
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "claim", task_id: "T-010", agent: "worker-1" }),
+		);
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "move", task_id: "T-010", agent: "worker-1", from: "todo", to: "in-progress" }),
+		);
 	});
 
 	it("returns TASK_NOT_FOUND for unknown task", async () => {
@@ -175,9 +215,12 @@ describe("kanban_claim", () => {
 		expect(result.details.oldAgent).toBe("worker-1");
 		expect(result.details.newAgent).toBe("worker-2");
 
-		const log = harness.readBoardLog();
-		expect(log).toContain("UNCLAIM T-010 worker-1");
-		expect(log).toContain("CLAIM T-010 worker-2");
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "unclaim", task_id: "T-010", agent: "worker-1" }),
+		);
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "claim", task_id: "T-010", agent: "worker-2" }),
+		);
 	});
 
 	it("returns WRONG_COLUMN if task not in todo", async () => {
@@ -259,9 +302,12 @@ describe("kanban_complete", () => {
 		expect(result.details.task_id).toBe("T-030");
 		expect(result.details.duration).toBe("45m");
 
-		const log = harness.readBoardLog();
-		expect(log).toContain("COMPLETE T-030 worker-1 duration=45m");
-		expect(log).toContain("MOVE T-030 worker-1 from=in-progress to=done");
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "complete", task_id: "T-030", agent: "worker-1", duration: "45m" }),
+		);
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "move", task_id: "T-030", agent: "worker-1", from: "in-progress", to: "done" }),
+		);
 	});
 
 	it("rejects completing a task not in in-progress", async () => {

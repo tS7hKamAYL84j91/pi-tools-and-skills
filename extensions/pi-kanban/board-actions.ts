@@ -1,14 +1,13 @@
 /**
  * Shared board action transactions: the single guard implementation for
  * tools and the TUI overlay. Only board-transactions.ts appends to
- * board.log; these operations run inside its locked transactions.
+ * board.events.jsonl; these operations run inside its locked transactions.
  */
 
 import { runGateCommand } from "../../lib/gate-command.js";
-import { formatChecks } from "./board-event-handlers.js";
+import { makeEvent, type KanbanEvent } from "./board-events.js";
 import {
 	type BoardState,
-	escapeLogValue,
 	getTask,
 	nowZ,
 	PRIORITY_ORDER,
@@ -63,7 +62,6 @@ export async function claimTask(
 	options: ClaimOptions = {},
 ): Promise<ClaimOutcome> {
 	return withBoardTransaction((board) => {
-		const modelSuffix = model ? ` model=${model}` : "";
 		let taskId = targetTaskId;
 		let reassigningFrom = "";
 
@@ -146,9 +144,17 @@ export async function claimTask(
 		const safeAgent = sanitiseAgent(agent);
 		if (reassigningFrom) {
 			return {
-					events: [
-					`${timestamp} UNCLAIM ${taskId} ${sanitiseAgent(reassigningFrom)}`,
-					`${timestamp} CLAIM ${taskId} ${safeAgent} expires=${expires}${modelSuffix}`,
+				events: [
+					makeEvent(
+						"unclaim",
+						{ ts: timestamp, task_id: taskId as string, agent: sanitiseAgent(reassigningFrom) },
+						{},
+					),
+					makeEvent(
+						"claim",
+						{ ts: timestamp, task_id: taskId as string, agent: safeAgent },
+						{ expires, ...(model ? { model } : {}) },
+					),
 				],
 				result: {
 					status: "reassigned",
@@ -164,8 +170,16 @@ export async function claimTask(
 		const fromColumn = task?.col ?? "todo";
 		return {
 			events: [
-				`${timestamp} CLAIM ${taskId} ${safeAgent} expires=${expires}${modelSuffix}`,
-				`${timestamp} MOVE ${taskId} ${safeAgent} from=${fromColumn} to=in-progress`,
+				makeEvent(
+					"claim",
+					{ ts: timestamp, task_id: taskId as string, agent: safeAgent },
+					{ expires, ...(model ? { model } : {}) },
+				),
+				makeEvent(
+					"move",
+					{ ts: timestamp, task_id: taskId as string, agent: safeAgent },
+					{ from: fromColumn, to: "in-progress" },
+				),
 			],
 			result: {
 				status: "claimed",
@@ -248,22 +262,35 @@ function validateTaskComplete(
 	}
 }
 
-function completeLogLine(inputs: {
+function completeEvent(inputs: {
 	timestamp: string;
 	taskId: string;
 	agent: string;
 	duration: string;
 	needsVerification: boolean;
 	checks: TaskVerificationCheck[];
-}): string {
-	const verificationPayload = inputs.needsVerification
-		? " verification_required=true"
-		: "";
-	const checkPayload =
-		inputs.checks.length > 0
-			? ` checks="${escapeLogValue(formatChecks(inputs.checks))}"`
-			: "";
-	return `${inputs.timestamp} COMPLETE ${inputs.taskId} ${sanitiseAgent(inputs.agent)} duration=${inputs.duration}${verificationPayload}${checkPayload}`;
+}): KanbanEvent {
+	return makeEvent(
+		"complete",
+		{
+			ts: inputs.timestamp,
+			task_id: inputs.taskId,
+			agent: sanitiseAgent(inputs.agent),
+		},
+		{
+			duration: inputs.duration,
+			...(inputs.needsVerification ? { verification_required: true } : {}),
+			...(inputs.checks.length > 0
+				? {
+						checks: inputs.checks.map((check) => ({
+							command: check.command,
+							result: check.result,
+							exit_code: check.exitCode,
+						})),
+					}
+				: {}),
+		},
+	);
 }
 
 /** Append the COMPLETE + done-move events after re-validating under the lock. */
@@ -282,9 +309,10 @@ async function completeTask(
 		validateTaskComplete(task, taskId, agent, checks);
 		const needsVerification = taskRequiresVerification(task, checks);
 		const timestamp = nowZ();
+		const safeAgent = sanitiseAgent(agent);
 		return {
 			events: [
-				completeLogLine({
+				completeEvent({
 					timestamp,
 					taskId,
 					agent,
@@ -292,7 +320,11 @@ async function completeTask(
 					needsVerification,
 					checks,
 				}),
-				`${timestamp} MOVE ${taskId} ${sanitiseAgent(agent)} from=in-progress to=done`,
+				makeEvent(
+					"move",
+					{ ts: timestamp, task_id: taskId, agent: safeAgent },
+					{ from: "in-progress", to: "done" },
+				),
 			],
 			result: undefined,
 		};
@@ -317,8 +349,16 @@ export async function blockTask(
 		const safeAgent = sanitiseAgent(agent);
 		return {
 			events: [
-				`${timestamp} BLOCK ${taskId} ${safeAgent} reason="${escapeLogValue(reason)}"`,
-				`${timestamp} MOVE ${taskId} ${safeAgent} from=in-progress to=blocked`,
+				makeEvent(
+					"block",
+					{ ts: timestamp, task_id: taskId, agent: safeAgent },
+					{ reason },
+				),
+				makeEvent(
+					"move",
+					{ ts: timestamp, task_id: taskId, agent: safeAgent },
+					{ from: "in-progress", to: "blocked" },
+				),
 			],
 			result: undefined,
 		};
@@ -345,8 +385,16 @@ export async function unblockTask(
 		const safeAgent = sanitiseAgent(agent);
 		return {
 			events: [
-				`${timestamp} UNBLOCK ${taskId} ${safeAgent} resolution="${escapeLogValue(resolution)}"`,
-				`${timestamp} MOVE ${taskId} ${safeAgent} from=blocked to=todo`,
+				makeEvent(
+					"unblock",
+					{ ts: timestamp, task_id: taskId, agent: safeAgent },
+					{ resolution },
+				),
+				makeEvent(
+					"move",
+					{ ts: timestamp, task_id: taskId, agent: safeAgent },
+					{ from: "blocked", to: "todo" },
+				),
 			],
 			result: undefined,
 		};
@@ -366,7 +414,7 @@ function nextTaskId(board: BoardState): string {
 /** Create a task in backlog. See finishTaskFile for the durability boundary. */
 interface CreateTaskResult {
 	taskId: string;
-	/** Present when the board.log event was appended but the task file could not be written. */
+	/** Present when the board event was appended but the task file could not be written. */
 	fileWarning?: string;
 }
 
@@ -377,17 +425,35 @@ interface CreateTaskInput {
 	priority: string;
 	tags?: string;
 	description?: string;
+	discovered_from?: string;
 }
 
-function createEventLine(taskId: string, input: CreateTaskInput): string {
-	const descPart = input.description
-		? ` description="${escapeLogValue(input.description)}"`
-		: "";
-	return `${nowZ()} CREATE ${taskId} ${sanitiseAgent(input.agent)} title="${escapeLogValue(input.title)}" priority="${input.priority}" tags="${escapeLogValue(input.tags ?? "")}"${descPart}`;
+function createEvent(taskId: string, input: CreateTaskInput): KanbanEvent {
+	return makeEvent(
+		"create",
+		{ ts: nowZ(), task_id: taskId, agent: sanitiseAgent(input.agent) },
+		{
+			title: input.title,
+			priority: input.priority,
+			tags: input.tags ?? "",
+			...(input.description ? { description: input.description } : {}),
+			...(input.discovered_from ? { discovered_from: input.discovered_from } : {}),
+		},
+	);
+}
+
+/** Reject a discovered_from reference that is malformed, missing, or deleted. */
+function validateDiscovery(board: BoardState, discoveredFrom: string | undefined): void {
+	if (!discoveredFrom) return;
+	validateTaskId(discoveredFrom);
+	const parent = board.tasks.get(discoveredFrom);
+	if (!parent || parent.deleted) {
+		throw new Error(`discovered_from task ${discoveredFrom} does not exist`);
+	}
 }
 
 /**
- * The board.log event is appended under the board lock; the Markdown task
+ * The board event is appended under the board lock; the Markdown task
  * file is written after the lock is released. A file-write failure is a
  * partial success: the task exists in the authoritative log and creation
  * must not be retried with a new id.
@@ -413,21 +479,17 @@ async function finishTaskFile(
 }
 
 /** Create a task with an explicit id; the id must not already exist. */
-export async function createTask(input: {
-	taskId: string;
-	agent: string;
-	title: string;
-	priority: string;
-	tags?: string;
-	description?: string;
-}): Promise<CreateTaskResult> {
+export async function createTask(
+	input: CreateTaskInput & { taskId: string },
+): Promise<CreateTaskResult> {
 	const { taskId } = await withBoardTransaction((board) => {
 		validateTaskId(input.taskId);
+		validateDiscovery(board, input.discovered_from);
 		if (board.tasks.has(input.taskId)) {
 			throw new Error(`Task ID ${input.taskId} already exists`);
 		}
 		return {
-			events: [createEventLine(input.taskId, input)],
+			events: [createEvent(input.taskId, input)],
 			result: { taskId: input.taskId },
 		};
 	});
@@ -440,8 +502,9 @@ export async function createTaskWithNextId(
 ): Promise<CreateTaskResult> {
 	const { taskId } = await withBoardTransaction((board) => {
 		const taskId = nextTaskId(board);
+		validateDiscovery(board, input.discovered_from);
 		return {
-			events: [createEventLine(taskId, input)],
+			events: [createEvent(taskId, input)],
 			result: { taskId },
 		};
 	});

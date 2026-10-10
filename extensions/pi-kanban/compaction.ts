@@ -1,7 +1,7 @@
 /**
- * Kanban board.log compaction.
+ * Kanban board.events.jsonl compaction.
  *
- * Rewrites board.log to a minimal reconstruction of current state, preserving
+ * Rewrites the log to a minimal reconstruction of current state, preserving
  * BLOCK/UNBLOCK diagnostic history and recent notes. Runs only when explicitly
  * requested through kanban_compact; viewing and completing tasks do not compact.
  */
@@ -11,12 +11,13 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 
+import { boardLogPath, nowZ, parseBoard } from "./board.js";
 import {
-	boardLogPath,
-	escapeLogValue,
-	nowZ,
-	parseBoard,
-} from "./board.js";
+	KanbanEventVersionError,
+	kanbanEventCodec,
+	makeEvent,
+	type KanbanEvent,
+} from "./board-events.js";
 import { withBoardLock } from "./board-transactions.js";
 
 // ── Re-entrance guard ────────────────────────────────────────────
@@ -34,7 +35,7 @@ interface CompactionResult {
 }
 
 /**
- * Core compaction: read board.log, build minimal reconstruction,
+ * Core compaction: read the log, build a minimal reconstruction,
  * back up the old log, and write the new one.
  */
 async function runCompactionLocked(): Promise<CompactionResult> {
@@ -48,65 +49,101 @@ async function runCompactionLocked(): Promise<CompactionResult> {
 	const backupTs = nowZ().replace(/:/g, "-");
 	const archiveDir = join(dirname(logPath), "archive");
 	await mkdir(archiveDir, { recursive: true });
-	const backupPath = join(archiveDir, `board.log.bak.${backupTs}-${randomUUID()}`);
+	const backupPath = join(
+		archiveDir,
+		`board.events.jsonl.bak.${backupTs}-${randomUUID()}`,
+	);
 	await writeFileAtomic(backupPath, raw, { encoding: "utf-8" });
 
-	// Preserve BLOCK/UNBLOCK diagnostic history per task
-	const blockHistory = new Map<string, string[]>();
+	// Preserve BLOCK/UNBLOCK diagnostic history per task, in original order.
+	const blockHistory = new Map<string, KanbanEvent[]>();
 	for (const line of originalLines) {
-		const parts = line.split(/\s+/);
-		const event = parts[1] ?? "";
-		const tid = parts[2] ?? "";
-		if (event === "BLOCK" || event === "UNBLOCK") {
-			if (!blockHistory.has(tid)) blockHistory.set(tid, []);
-			blockHistory.get(tid)?.push(line);
+		let event: KanbanEvent;
+		try {
+			event = kanbanEventCodec.decode(line);
+		} catch (error) {
+			if (error instanceof KanbanEventVersionError) throw error;
+			continue;
+		}
+		if (event.type === "block" || event.type === "unblock") {
+			if (!blockHistory.has(event.task_id)) blockHistory.set(event.task_id, []);
+			blockHistory.get(event.task_id)?.push(event);
 		}
 	}
 
 	const sevenDaysAgo = new Date(
 		Date.now() - 7 * 24 * 60 * 60 * 1000,
 	).toISOString();
-	const newLines: string[] = [];
 	const ts = nowZ();
+	const newEvents: KanbanEvent[] = [];
+	const compactFields = (task_id: string, at: string = ts) => ({
+		ts: at,
+		task_id,
+		agent: "compact",
+	});
+	const compactMove = (task_id: string, to: string) =>
+		makeEvent("move", compactFields(task_id), { from: "backlog", to });
 
 	for (const tid of board.order) {
 		const task = board.tasks.get(tid);
 		if (!task || task.deleted) continue;
-		const descPart = task.description
-			? ` description="${escapeLogValue(task.description)}"`
-			: "";
-		newLines.push(
-			`${task.createdAt} CREATE ${tid} compact title="${escapeLogValue(task.title)}" priority="${task.priority}" tags="${escapeLogValue(task.tags)}"${descPart}`,
+		newEvents.push(
+			makeEvent("create", compactFields(tid, task.createdAt || ts), {
+				title: task.title,
+				priority: task.priority,
+				tags: task.tags,
+				...(task.description ? { description: task.description } : {}),
+			}),
 		);
-		const bh = blockHistory.get(tid);
-		if (bh) newLines.push(...bh);
+		const history = blockHistory.get(tid);
+		if (history) newEvents.push(...history);
 
 		switch (task.col) {
 			case "todo":
-				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=todo`);
+				newEvents.push(compactMove(tid, "todo"));
 				break;
 			case "in-progress":
-				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=in-progress`);
+				newEvents.push(compactMove(tid, "in-progress"));
 				if (task.claimed) {
 					const expires =
 						task.expires || new Date(Date.now() + 7_200_000).toISOString();
-					newLines.push(
-						`${ts} CLAIM ${tid} ${task.claimAgent || "unknown"} expires=${expires}`,
+					newEvents.push(
+						makeEvent(
+							"claim",
+							{ ts, task_id: tid, agent: task.claimAgent || "unknown" },
+							{ expires },
+						),
 					);
 				}
 				break;
 			case "blocked":
-				newLines.push(`${ts} MOVE ${tid} compact from=backlog to=blocked`);
+				newEvents.push(compactMove(tid, "blocked"));
 				break;
 			case "done":
-			{
-				const checksPart = task.checks.length > 0 ? ` checks="${escapeLogValue(JSON.stringify(task.checks.map((c) => ({ command: c.command, result: c.result, exit_code: c.exitCode }))))}"` : "";
-				const verificationPart = task.verificationRequired ? ` verification_required=true` : "";
-				newLines.push(
-					`${task.completedAt || ts} COMPLETE ${tid} ${task.doneAgent || "unknown"} duration=${task.duration || "unknown"}${verificationPart}${checksPart}`,
+				newEvents.push(
+					makeEvent(
+						"complete",
+						{
+							ts: task.completedAt || ts,
+							task_id: tid,
+							agent: task.doneAgent || "unknown",
+						},
+						{
+							duration: task.duration || "unknown",
+							...(task.verificationRequired ? { verification_required: true } : {}),
+							...(task.checks.length > 0
+								? {
+										checks: task.checks.map((check) => ({
+											command: check.command,
+											result: check.result,
+											exit_code: check.exitCode,
+										})),
+									}
+								: {}),
+						},
+					),
 				);
-			}
-			break;
+				break;
 		}
 
 		const keepAllNotes = task.col !== "done";
@@ -115,8 +152,12 @@ async function runCompactionLocked(): Promise<CompactionResult> {
 			if (!noteMatch) continue;
 			const [, noteTs, noteAgent, noteText] = noteMatch;
 			if (keepAllNotes || (noteTs ?? "") >= sevenDaysAgo) {
-				newLines.push(
-					`${noteTs} NOTE ${tid} ${noteAgent} text="${escapeLogValue(noteText ?? "")}"`,
+				newEvents.push(
+					makeEvent(
+						"note",
+						{ ts: noteTs ?? ts, task_id: tid, agent: noteAgent ?? "unknown" },
+						{ text: noteText ?? "" },
+					),
 				);
 			}
 		}
@@ -125,11 +166,12 @@ async function runCompactionLocked(): Promise<CompactionResult> {
 	const tasksPreserved = [...board.tasks.values()].filter(
 		(t) => !t.deleted,
 	).length;
-	const eventsAfter = newLines.length + 1;
-	newLines.push(
-		`${ts} COMPACT T-000 compact events_before=${eventsBefore} events_after=${eventsAfter}`,
+	const eventsAfter = newEvents.length;
+	await writeFileAtomic(
+		logPath,
+		`${newEvents.map(kanbanEventCodec.encode).join("\n")}\n`,
+		{ encoding: "utf-8" },
 	);
-	await writeFileAtomic(logPath, `${newLines.join("\n")}\n`, { encoding: "utf-8" });
 
 	return { eventsBefore, eventsAfter, backupPath, tasksPreserved };
 }

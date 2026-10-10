@@ -75,9 +75,11 @@ export async function callTool(
 
 interface TempKanbanDir {
 	readonly tmpDir: string;
-	readBoardLog(): string;
+	readEventLog(): string;
+	readEvents(): Array<Record<string, unknown>>;
 	readTaskFile(taskId: string): string;
-	writeBoardLog(content: string): void;
+	writeEventLog(content: string): void;
+	writeEvents(events: readonly Record<string, unknown>[]): void;
 }
 
 export function setupTempKanbanDir(prefix: string): TempKanbanDir {
@@ -87,7 +89,7 @@ export function setupTempKanbanDir(prefix: string): TempKanbanDir {
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), prefix));
 		mkdirSync(join(tmpDir, "tasks"), { recursive: true });
-		writeFileSync(join(tmpDir, "board.log"), "", "utf-8");
+		writeFileSync(join(tmpDir, "board.events.jsonl"), "", "utf-8");
 
 		prevKanbanDir = process.env.KANBAN_DIR;
 		process.env.KANBAN_DIR = tmpDir;
@@ -103,14 +105,24 @@ export function setupTempKanbanDir(prefix: string): TempKanbanDir {
 		get tmpDir() {
 			return tmpDir;
 		},
-		readBoardLog() {
-			return readFileSync(join(tmpDir, "board.log"), "utf-8");
+		readEventLog() {
+			return readFileSync(join(tmpDir, "board.events.jsonl"), "utf-8");
+		},
+		readEvents() {
+			return readFileSync(join(tmpDir, "board.events.jsonl"), "utf-8")
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => JSON.parse(line) as Record<string, unknown>);
 		},
 		readTaskFile(taskId: string) {
 			return readFileSync(join(tmpDir, "tasks", `${taskId}.md`), "utf-8");
 		},
-		writeBoardLog(content: string) {
-			writeFileSync(join(tmpDir, "board.log"), content, "utf-8");
+		writeEventLog(content: string) {
+			writeFileSync(join(tmpDir, "board.events.jsonl"), content, "utf-8");
+		},
+		writeEvents(events: readonly Record<string, unknown>[]) {
+			const content = events.length > 0 ? `${events.map((event) => JSON.stringify(event)).join("\n")}\n` : "";
+			writeFileSync(join(tmpDir, "board.events.jsonl"), content, "utf-8");
 		},
 	};
 }
@@ -136,14 +148,20 @@ export function setupKanbanToolHarness(): KanbanToolHarness {
 		get tools() {
 			return tools;
 		},
-		readBoardLog() {
-			return tempDir.readBoardLog();
+		readEventLog() {
+			return tempDir.readEventLog();
+		},
+		readEvents() {
+			return tempDir.readEvents();
 		},
 		readTaskFile(taskId: string) {
 			return tempDir.readTaskFile(taskId);
 		},
-		writeBoardLog(content: string) {
-			tempDir.writeBoardLog(content);
+		writeEventLog(content: string) {
+			tempDir.writeEventLog(content);
+		},
+		writeEvents(events: readonly Record<string, unknown>[]) {
+			tempDir.writeEvents(events);
 		},
 	};
 }

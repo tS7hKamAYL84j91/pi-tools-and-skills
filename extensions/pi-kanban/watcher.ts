@@ -1,7 +1,7 @@
 /**
- * Kanban board.log watcher — fast-path widget + slow-path LLM injection.
+ * Kanban board.events.jsonl watcher — fast-path widget + slow-path LLM injection.
  *
- * Watches board.log for changes and:
+ * Watches board.events.jsonl for changes and:
  * 1. Fast path (every change): updates TUI widget with WIP/status summary
  * 2. Slow path (external update + idle + cooldown): injects a followUp
  *    message to trigger the orchestrator
@@ -151,7 +151,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 				maybeInject();
 			}
 		} catch {
-			/* board.log may not exist yet */
+			/* board.events.jsonl may not exist yet */
 		}
 	}
 
@@ -226,7 +226,7 @@ export function setupWatcher(pi: ExtensionAPI): void {
 				/* non-fatal */
 			});
 		} catch {
-			/* board.log path may not resolve — watcher will not start */
+			/* board.events.jsonl path may not resolve — watcher will not start */
 		}
 	}
 

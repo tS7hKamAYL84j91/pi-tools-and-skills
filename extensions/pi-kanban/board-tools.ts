@@ -130,7 +130,7 @@ function registerKanbanDelete(pi: ExtensionAPI): void {
 		description:
 			"Soft-delete a kanban task from the board by appending a DELETE event. " +
 			"Blocked tasks may be deleted after confirmation; in-progress tasks cannot be deleted. " +
-			"The deletion is recorded in board.log for audit purposes and the task will no longer " +
+			"The deletion is recorded in board.events.jsonl for audit purposes and the task will no longer " +
 			"appear in board views.",
 		promptSnippet: "Delete a kanban task from the board",
 		parameters: Type.Object({

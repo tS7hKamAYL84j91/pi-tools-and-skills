@@ -12,7 +12,7 @@ import type { BoardState } from "../../extensions/pi-kanban/board.js";
 import { type BoardWatchFactory, BoardLogWatcher } from "../../extensions/pi-kanban/overlay-watcher.js";
 
 let dir = "";
-const boardLog = () => join(dir, "board.log");
+const boardLog = () => join(dir, "board.events.jsonl");
 
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "kanban-watcher-test-"));
@@ -27,8 +27,8 @@ function seedBoard(content: string): void {
 	writeFileSync(boardLog(), content, "utf8");
 }
 
-const oneTaskLog = '2026-01-01T00:00:00Z CREATE T-001 lead title="Only" priority="high" tags=""\n';
-const twoTaskLog = `${oneTaskLog}2026-01-01T00:00:01Z CREATE T-002 lead title="Second" priority="low" tags=""\n`;
+const oneTaskLog = `${JSON.stringify({ v: 1, ts: "2026-01-01T00:00:00Z", type: "create", task_id: "T-001", agent: "lead", title: "Only", priority: "high", tags: "" })}\n`;
+const twoTaskLog = `${oneTaskLog}${JSON.stringify({ v: 1, ts: "2026-01-01T00:00:01Z", type: "create", task_id: "T-002", agent: "lead", title: "Second", priority: "low", tags: "" })}\n`;
 
 /** Fake watch factory: records the active callback and lets tests fire events. */
 function makeWatchHarness() {
@@ -169,7 +169,7 @@ describe("BoardLogWatcher live reporting", () => {
 		const harness = makeWatchHarness();
 		const handle = makeWatcher(harness);
 		try {
-			const replacement = join(dir, "board.log.tmp");
+			const replacement = join(dir, "board.events.jsonl.tmp");
 			writeFileSync(replacement, twoTaskLog, "utf8");
 			renameSync(replacement, boardLog());
 			harness.fire("rename");

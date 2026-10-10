@@ -26,7 +26,9 @@ describe("overlay and board guard logic", () => {
 		expect(before.content[0]?.text).toContain("waiting on API key");
 		const result = await callTool(harness.tools, "kanban_delete", { task_id: "T-121", agent: "lead", reason: "stale blocker" });
 		expect(result.details.previousCol).toBe("blocked");
-		expect(harness.readBoardLog()).toMatch(/DELETE T-121 lead reason="stale blocker"/);
+		expect(harness.readEvents()).toContainEqual(
+			expect.objectContaining({ type: "delete", task_id: "T-121", agent: "lead", reason: "stale blocker" }),
+		);
 		expect((await callTool(harness.tools, "kanban_export_json", {})).content[0]?.text).not.toContain("T-121");
 	});
 	it("confirmed blocked deletion runs through the TUI controller; cancellation does not delete", async () => {
@@ -40,11 +42,13 @@ describe("overlay and board guard logic", () => {
 			overlay.handleInput("d");
 			expect(overlay.render(80).join("\n")).toContain("Delete Task?");
 			overlay.handleInput("n");
-			expect(harness.readBoardLog()).not.toContain("DELETE T-124");
+			expect(harness.readEvents().some((e) => e.type === "delete" && e.task_id === "T-124")).toBe(false);
 			overlay.handleInput("d");
 			overlay.handleInput("y");
 			await new Promise(resolve => setTimeout(resolve, 50));
-			expect(harness.readBoardLog()).toMatch(/DELETE T-124 lead/);
+			expect(harness.readEvents()).toContainEqual(
+				expect.objectContaining({ type: "delete", task_id: "T-124", agent: "lead" }),
+			);
 		} finally { overlay.dispose(); }
 	});
 	it("allows backlog deletion", async () => {

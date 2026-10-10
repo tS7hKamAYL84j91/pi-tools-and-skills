@@ -13,7 +13,7 @@ function task(id: string, col: TaskState["col"], title: string, deleted: boolean
 	return {
 		id, col, title, deleted, priority: "medium", claimed: false, notes: [], createdAt: "2026-01-01",
 		tags: "", description: "", agent: "", claimAgent: "", model: "", expires: "", reason: "",
-		completedAt: "", duration: "", doneAgent: "", verificationRequired: false, checks: [],
+		discoveredFrom: "", completedAt: "", duration: "", doneAgent: "", verificationRequired: false, checks: [],
 	};
 }
 
@@ -30,7 +30,7 @@ describe("bounded Kanban projection properties", () => {
 					order.push(id);
 					tasks.set(id, task(id, col, title, deleted));
 				}
-				const board: BoardState = { tasks, order, totalEvents: entries.length };
+				const board: BoardState = { tasks, order, totalEvents: entries.length, skippedEvents: 0 };
 				for (const column of ["backlog", "todo", "in-progress", "blocked"] as const) {
 					const expected = order.map((id) => tasks.get(id)).filter((candidate): candidate is TaskState =>
 						candidate !== undefined && !candidate.deleted && candidate.col === column && candidate.title.toLowerCase().includes(query),
