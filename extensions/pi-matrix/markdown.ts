@@ -2,12 +2,13 @@
 
 const MATRIX_HTML_FORMAT = "org.matrix.custom.html";
 
-interface MatrixMarkdownContent {
-	[msgtype: string]: string;
+interface MatrixMarkdownContent extends Record<string, unknown> {
 	msgtype: "m.text";
 	body: string;
 	format: typeof MATRIX_HTML_FORMAT;
 	formatted_body: string;
+	/** Optional Matrix reply relation so a reply is correlated to one event. */
+	"m.relates_to"?: { "m.in_reply_to": { event_id: string } };
 }
 
 function escapeHtml(text: string): string {
@@ -202,11 +203,19 @@ export function markdownToMatrixPlainText(text: string): string {
 }
 
 /** Build a complete Matrix m.text event content object from Markdown. */
-export function markdownToMatrixContent(text: string): MatrixMarkdownContent {
-	return {
+export function markdownToMatrixContent(
+	text: string,
+	options: { inReplyTo?: string } = {},
+): MatrixMarkdownContent {
+	const content: MatrixMarkdownContent = {
 		msgtype: "m.text",
 		body: markdownToMatrixPlainText(text),
 		format: MATRIX_HTML_FORMAT,
 		formatted_body: markdownToMatrixHtml(text),
 	};
+	const replyTo = options.inReplyTo?.trim();
+	if (replyTo) {
+		content["m.relates_to"] = { "m.in_reply_to": { event_id: replyTo } };
+	}
+	return content;
 }

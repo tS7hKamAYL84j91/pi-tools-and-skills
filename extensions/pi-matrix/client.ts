@@ -211,6 +211,15 @@ export class MatrixBridgeClient {
 		};
 	}
 
+	/** Send a text message correlated to a specific inbound event. */
+	async reply(text: string, inReplyTo: string): Promise<{ eventId: string }> {
+		const roomId = this.replyRoomId();
+		if (!roomId) {
+			throw new Error("Matrix room is not configured yet; send the bot a DM first.");
+		}
+		return this.adapter.sendMessage(roomId, markdownToMatrixContent(text, { inReplyTo }));
+	}
+
 	/** Room a reply belongs to: the bound room, else the last accepted inbound room. */
 	replyRoomId(): string | null {
 		return this.config.roomId ?? this.lastInboundRoomId;

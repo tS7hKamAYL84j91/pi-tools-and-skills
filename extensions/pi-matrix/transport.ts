@@ -144,6 +144,8 @@ export class MatrixTransport implements MessageTransport {
 	private client: MatrixBridgeClient;
 	private limiter: MatrixIngressLimiter;
 	private policy: Required<MatrixIngressConfig>;
+	/** Most recent buffered inbound event; the next reply is correlated to it. */
+	private pendingReplyTo: string | null = null;
 
 	constructor(
 		client: MatrixBridgeClient,
@@ -178,13 +180,23 @@ export class MatrixTransport implements MessageTransport {
 			ts: msg.timestampMs,
 			attachments: msg.attachments,
 		});
+		// Only a message that actually reached the buffer can be replied to.
+		this.pendingReplyTo = msg.eventId;
 	}
 
 	async send(_peer: AgentRecord, _from: string, message: string): Promise<DeliveryResult> {
 		try {
 			// The client owns reply-room resolution (bound room, else last accepted
 			// inbound room) so a dropped/foreign room can never redirect a reply.
-			const { eventId } = await this.client.send(message);
+			// The Matrix reply relation points at the most recent message that was
+			// actually buffered for this agent (its message_read id), then clears so
+			// a later proactive send is not falsely threaded. Correlation is
+			// descriptive: it grants nothing.
+			const replyTo = this.pendingReplyTo;
+			const { eventId } = replyTo
+				? await this.client.reply(message, replyTo)
+				: await this.client.send(message);
+			this.pendingReplyTo = null;
 			return { accepted: true, immediate: true, reference: eventId };
 		} catch (err) {
 			return { accepted: false, immediate: false, error: err instanceof Error ? err.message : String(err) };
