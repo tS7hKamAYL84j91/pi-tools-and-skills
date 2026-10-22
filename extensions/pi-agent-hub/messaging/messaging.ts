@@ -289,7 +289,7 @@ export function createMessaging(config: MessagingConfig) {
 				core.startWatcher();
 			},
 			pokePending() {
-				core.pokeNow();
+				core.pokeNow(false);
 			},
 			drainAll() {
 				const messages = core.drainAllChannels();

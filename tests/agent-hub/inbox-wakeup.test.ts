@@ -67,15 +67,15 @@ describe("Agent Hub inbox wakeups", () => {
 		expect(transport.receive).not.toHaveBeenCalled();
 	});
 
-	it("defers while busy and injects once idle without another filesystem event", () => {
+	it("queues a follow-up while busy instead of waiting for idle", () => {
 		const { core, api, ctx } = fixture();
 		ctx.isIdle.mockReturnValue(false);
 		core.schedulePoke();
 		vi.advanceTimersByTime(4000);
-		expect(api.sendUserMessage).not.toHaveBeenCalled();
-		ctx.isIdle.mockReturnValue(true);
-		vi.advanceTimersByTime(2000);
+		// A busy agent still gets the notification queued; idle-only gating used to
+		// strand chat messages until a long autonomous run finished.
 		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).toHaveBeenCalledWith(expect.stringContaining("new message"), { deliverAs: "followUp" });
 	});
 
 	it("recovers a failed watcher setup and still wakes for unread mail", () => {
@@ -122,12 +122,15 @@ describe("Agent Hub inbox wakeups", () => {
 		expect(api.sendUserMessage).toHaveBeenCalledTimes(2);
 	});
 
-	it("notifies for new arrivals even when earlier mail is still unread", () => {
+	it("holds one outstanding notification and retries it after the window", () => {
 		const { core, api, setPending } = fixture();
 		core.startWatcher();
 		core.pokeNow();
 		setPending(2);
 		vi.advanceTimersByTime(7000);
+		// No second queued reminder while the first is still unconsumed.
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		vi.advanceTimersByTime(30_000);
 		expect(api.sendUserMessage).toHaveBeenCalledTimes(2);
 		expect(api.sendUserMessage).toHaveBeenLastCalledWith("2 new messages. Use message_read to see them.", { deliverAs: "followUp" });
 	});

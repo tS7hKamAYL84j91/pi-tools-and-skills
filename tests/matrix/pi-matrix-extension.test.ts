@@ -522,14 +522,30 @@ describe("Matrix inbound message handling", () => {
 		const config = makeAttachmentConfig("/tmp", { trustedSenders: [], allowAnySender: true });
 		const client = new MatrixBridgeClient(config, createFakeAdapter());
 
-		const msg = await buildInbound(client, "!dm:matrix.org", "@dev:matrix.org", "$event/dev", {
+		const msg = await buildInbound(client, "!room:matrix.org", "@dev:matrix.org", "$event/dev", {
 			msgtype: "m.text",
 			body: "dev hello",
 		});
 
 		expect((msg as { senderMxid?: string })?.senderMxid).toBe("@dev:matrix.org");
 		expect(isTrustedMatrixSender(config, "@dev:matrix.org")).toBe(true);
-		expect(shouldJoinMatrixInvite(config, "!dm:matrix.org", "@dev:matrix.org")).toBe(true);
+		expect(shouldJoinMatrixInvite(config, "!room:matrix.org", "@dev:matrix.org")).toBe(true);
+	});
+
+	it("drops traffic from rooms other than the configured room", async () => {
+		const client = new MatrixBridgeClient(makeAttachmentConfig("/tmp"), createFakeAdapter());
+
+		const foreign = await buildInbound(client, "!other:matrix.org", "@user:matrix.org", "$event/foreign", {
+			msgtype: "m.text",
+			body: "another agent's room",
+		});
+		const bound = await buildInbound(client, "!room:matrix.org", "@user:matrix.org", "$event/bound", {
+			msgtype: "m.text",
+			body: "mine",
+		});
+
+		expect(foreign).toBeNull();
+		expect((bound as { body?: string })?.body).toBe("mine");
 	});
 
 	it("allows trusted senders and denies untrusted senders", async () => {
@@ -547,8 +563,8 @@ describe("Matrix inbound message handling", () => {
 		expect(untrustedMsg).toBeNull();
 	});
 
-	it("joins approved room invites but filters messages by sender trust", async () => {
-		const config = makeAttachmentConfig("/tmp", { trustedSenders: [] });
+	it("joins an unbound room only for a trusted inviter and always drops foreign messages", async () => {
+		const config = makeAttachmentConfig("/tmp", { trustedSenders: ["@user:matrix.org"], roomId: undefined });
 		const client = new MatrixBridgeClient(config, createFakeAdapter());
 
 		const msg = await buildInbound(client, "!room:matrix.org", "@stranger:matrix.org", "$event/approved-room-stranger", {
@@ -556,7 +572,8 @@ describe("Matrix inbound message handling", () => {
 			body: "room hello",
 		});
 
-		expect(shouldJoinMatrixInvite(config, "!room:matrix.org", "@stranger:matrix.org")).toBe(true);
+		expect(shouldJoinMatrixInvite(config, "!new:matrix.org", "@user:matrix.org")).toBe(true);
+		expect(shouldJoinMatrixInvite(config, "!new:matrix.org", "@stranger:matrix.org")).toBe(false);
 		expect(msg).toBeNull();
 	});
 

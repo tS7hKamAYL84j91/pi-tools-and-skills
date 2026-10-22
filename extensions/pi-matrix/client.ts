@@ -47,9 +47,22 @@ export function isTrustedMatrixSender(config: MatrixConfig, sender?: string): se
 	return config.trustedSenders.includes(sender);
 }
 
+/**
+ * Rooms this agent is allowed to receive from.
+ *
+ * A configured `roomId` is the agent's single delivery room: traffic from any
+ * other room is dropped, because several agents may share one Matrix account.
+ * Without a configured room (interactive DM bootstrap) any trusted sender room
+ * is accepted.
+ */
+export function isConfiguredRoom(config: MatrixConfig, roomId: string): boolean {
+	return !config.roomId || roomId === config.roomId;
+}
+
 export function shouldJoinMatrixInvite(config: MatrixConfig, roomId: string, sender?: string): boolean {
-	if (config.roomId && roomId === config.roomId) return true;
-	return isTrustedMatrixSender(config, sender);
+	if (!isTrustedMatrixSender(config, sender)) return false;
+	if (config.roomId) return roomId === config.roomId;
+	return true;
 }
 
 // ── Client wrapper ──────────────────────────────────────────────
@@ -60,6 +73,8 @@ export class MatrixBridgeClient {
 	private notifyFn?: NotifyFn;
 	private readonly seenEventIds = new BoundedRecentSet(MAX_SEEN_EVENT_IDS);
 	private readonly downloadResources: AttachmentDownloadResources;
+	/** Most recent accepted inbound room; only used when no room is configured. */
+	private lastInboundRoomId: string | null = null;
 	private lifecycleController = new AbortController();
 
 	constructor(
@@ -88,12 +103,16 @@ export class MatrixBridgeClient {
 		});
 		this.connected = this.adapter.isConnected();
 
-		// Ensure we've joined the configured room when one is configured.
+		// Ensure we've joined the configured room when one is configured. Surface a
+		// failure: an agent bound to a room it has not joined receives nothing.
 		if (this.config.roomId) {
 			try {
 				await this.adapter.joinRoom(this.config.roomId);
-			} catch {
-				/* non-fatal — invite may arrive later */
+			} catch (err) {
+				this.notifyFn?.(
+					`not joined to configured room ${this.config.roomId}: ${err instanceof Error ? err.message : String(err)}`,
+					"warning",
+				);
 			}
 		}
 	}
@@ -102,6 +121,17 @@ export class MatrixBridgeClient {
 		if (event.membership !== "invite") return;
 		const roomId = event.roomId;
 		const sender = event.sender;
+		// A room-bound agent never grows beyond its configured room, even when one
+		// Matrix account serves several agents.
+		if (this.config.roomId && roomId !== this.config.roomId) {
+			this.notifyFn?.(`declining invite to unbound room ${roomId}`, "info");
+			try {
+				await this.adapter.leaveRoom(roomId);
+			} catch {
+				/* non-fatal */
+			}
+			return;
+		}
 		if (shouldJoinMatrixInvite(this.config, roomId, sender)) {
 			this.notifyFn?.(`joining invite from ${sender ?? "unknown sender"} (room ${roomId})`, "info");
 			try {
@@ -125,6 +155,7 @@ export class MatrixBridgeClient {
 
 		const msg = await this.buildInboundMessage(event);
 		if (!msg) return;
+		if (!this.config.roomId) this.lastInboundRoomId = msg.roomId;
 		try {
 			await this.onInbound?.(msg);
 		} catch {
@@ -135,6 +166,9 @@ export class MatrixBridgeClient {
 	private async buildInboundMessage(event: MatrixInboundEvent): Promise<InboundMessage | null> {
 		const sender = event.sender;
 		if (!isTrustedMatrixSender(this.config, sender)) return null;
+		// Delivery is bound to the configured room; other traffic on the shared
+		// account belongs to another agent's conversation.
+		if (!isConfiguredRoom(this.config, event.roomId)) return null;
 
 		const content = event.content;
 		const msgtype = content?.msgtype;
@@ -177,12 +211,18 @@ export class MatrixBridgeClient {
 		};
 	}
 
-	/** Send a text message to the configured room. */
+	/** Room a reply belongs to: the bound room, else the last accepted inbound room. */
+	replyRoomId(): string | null {
+		return this.config.roomId ?? this.lastInboundRoomId;
+	}
+
+	/** Send a text message to the configured/bound room. */
 	async send(text: string): Promise<{ eventId: string }> {
-		if (!this.config.roomId) {
+		const roomId = this.replyRoomId();
+		if (!roomId) {
 			throw new Error("Matrix room is not configured yet; send the bot a DM first.");
 		}
-		return this.sendTo(this.config.roomId, text);
+		return this.sendTo(roomId, text);
 	}
 
 	/** Send a text message to an explicit Matrix room. */

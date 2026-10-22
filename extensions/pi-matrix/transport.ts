@@ -142,7 +142,6 @@ export class MatrixTransport implements MessageTransport {
 	private buffer: InboundMessage[] = [];
 	private channelLabel: string;
 	private client: MatrixBridgeClient;
-	private lastInboundRoomId: string | null = null;
 	private limiter: MatrixIngressLimiter;
 	private policy: Required<MatrixIngressConfig>;
 
@@ -160,7 +159,6 @@ export class MatrixTransport implements MessageTransport {
 
 	/** Push a Matrix inbound message into the buffer. Called from the sync loop handler. */
 	pushInbound(msg: MatrixInboundMessage): void {
-		this.lastInboundRoomId = msg.roomId;
 		if (!this.limiter.tryAccept(msg.senderMxid, msg.timestampMs)) {
 			return;
 		}
@@ -184,9 +182,9 @@ export class MatrixTransport implements MessageTransport {
 
 	async send(_peer: AgentRecord, _from: string, message: string): Promise<DeliveryResult> {
 		try {
-			const { eventId } = this.lastInboundRoomId
-				? await this.client.sendTo(this.lastInboundRoomId, message)
-				: await this.client.send(message);
+			// The client owns reply-room resolution (bound room, else last accepted
+			// inbound room) so a dropped/foreign room can never redirect a reply.
+			const { eventId } = await this.client.send(message);
 			return { accepted: true, immediate: true, reference: eventId };
 		} catch (err) {
 			return { accepted: false, immediate: false, error: err instanceof Error ? err.message : String(err) };
