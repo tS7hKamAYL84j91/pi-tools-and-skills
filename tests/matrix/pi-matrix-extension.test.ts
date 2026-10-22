@@ -123,6 +123,62 @@ describe("loadMatrixConfig", () => {
 		expect(config?.accessToken).toBe("syt_test_token");
 	});
 
+	it("keeps sync state per room, so one Matrix account serves several agent rooms", async () => {
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!gm-room:matrix.org",
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+		const a = loadMatrixConfig(projectSettingsPath);
+
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!other-room:matrix.org",
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		const b = loadMatrixConfig(projectSettingsPath);
+
+		expect(a?.storagePath).toContain("gm-room");
+		expect(b?.storagePath).toContain("other-room");
+		expect(a?.storagePath).not.toBe(b?.storagePath);
+	});
+
+	it("honours an explicit storagePath", async () => {
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!room:matrix.org",
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+			storagePath: "/tmp/custom-sync",
+		});
+		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+		expect(loadMatrixConfig(projectSettingsPath)?.storagePath).toBe("/tmp/custom-sync");
+	});
+
+	it("is suppressed for a disabled process or a spawned subagent", async () => {
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!room:matrix.org",
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		const { loadMatrixConfig, isMatrixSuppressed } = await import("../../extensions/pi-matrix/config.js");
+
+		expect(isMatrixSuppressed({})).toBe(false);
+		expect(isMatrixSuppressed({ PI_MATRIX_DISABLED: "1" })).toBe(true);
+		expect(isMatrixSuppressed({ PI_PANOPTICON_PARENT_ID: "1234-abc" })).toBe(true);
+
+		process.env.PI_MATRIX_DISABLED = "1";
+		try {
+			expect(loadMatrixConfig(projectSettingsPath)).toBeNull();
+		} finally {
+			delete process.env.PI_MATRIX_DISABLED;
+		}
+	});
+
 	it("loads custom attachment and sender trust settings", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",

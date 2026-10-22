@@ -10,10 +10,32 @@ import { join } from "node:path";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { MatrixConfig, MatrixIngressConfig } from "./types.js";
 
-const DEFAULT_STORAGE_PATH = join(homedir(), ".pi", "agent", "matrix-sync");
+const DEFAULT_STORAGE_ROOT = join(homedir(), ".pi", "agent", "matrix-sync");
 const DEFAULT_ATTACHMENT_CACHE_PATH = join(homedir(), ".pi", "agent", "matrix-attachments");
 const DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_ALLOWED_MIME_PREFIXES = ["image/", "application/pdf", "text/", "audio/", "video/"];
+
+/**
+ * Sync state must be per room: several agents can share one Matrix account and
+ * they must not overwrite each other's next_batch token.
+ */
+function defaultStoragePath(roomId: string | undefined, channelLabel: string): string {
+	const scope = (roomId ?? channelLabel).replace(/[^A-Za-z0-9._-]+/g, "_");
+	return join(DEFAULT_STORAGE_ROOT, scope);
+}
+
+/**
+ * Whether this process must not open a Matrix channel at all.
+ *
+ * The human room belongs to the lead agent. A spawned subagent inherits the
+ * lead's cwd and settings, and a fusion sidekick shares the lead's workspace;
+ * neither may bind or answer in the lead's room. Identity here comes from
+ * launch metadata (environment), never from a model-chosen name.
+ */
+export function isMatrixSuppressed(env: NodeJS.ProcessEnv = process.env): boolean {
+	if (env.PI_MATRIX_DISABLED === "1" || env.PI_MATRIX_DISABLED?.toLowerCase() === "true") return true;
+	return Boolean(env.PI_PANOPTICON_PARENT_ID);
+}
 
 interface RawMatrixSettings {
 	homeserver?: unknown;
@@ -45,6 +67,7 @@ function readMatrixSettings(path: string): RawMatrixSettings | null {
 export function loadMatrixConfig(
 	projectSettingsPath?: string,
 ): MatrixConfig | null {
+	if (isMatrixSuppressed()) return null;
 	const projectSettings = projectSettingsPath
 		? readMatrixSettings(projectSettingsPath)
 		: null;
@@ -80,7 +103,7 @@ export function loadMatrixConfig(
 	}
 
 	const storagePath = expandHome(
-		optionalString(raw.storagePath) ?? DEFAULT_STORAGE_PATH,
+		optionalString(raw.storagePath) ?? defaultStoragePath(roomId, optionalString(raw.channelLabel) ?? "matrix"),
 	);
 	const attachmentCachePath = expandHome(
 		optionalString(raw.attachmentCachePath) ?? DEFAULT_ATTACHMENT_CACHE_PATH,
