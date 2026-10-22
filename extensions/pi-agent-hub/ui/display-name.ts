@@ -1,5 +1,9 @@
 /**
- * Agent display-name helpers for duplicate registry names.
+ * Agent display-name helpers for namespaced and duplicate registry names.
  */
 
-export { agentDisplayName, findAgentByDisplayName } from "../../../lib/agent-names.js";
+export {
+	agentBaseName,
+	agentDisplayName,
+	findAgentByDisplayName,
+} from "../../../lib/agent-names.js";

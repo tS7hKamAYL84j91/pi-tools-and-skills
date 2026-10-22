@@ -12,6 +12,7 @@ import { REGISTRY_DIR, isPidAlive } from "../../../lib/agent-registry.js";
 import { readSessionLog } from "../../../lib/session-log.js";
 import type { Registry } from "../types.js";
 import type { AgentListModeStore } from "../ui/list-mode.js";
+import { agentBaseName } from "../ui/display-name.js";
 import { ok } from "../types.js";
 import { resolvePeer, peerNames } from "./peers.js";
 import { filterAgentList } from "./visibility.js";
@@ -133,7 +134,7 @@ export function assessHealth(
 	if (record.kind === "external") {
 		stallTracker.delete(record.id);
 		return {
-			name: record.name,
+			name: agentBaseName(record),
 			pid: record.pid,
 			alive: true,
 			status: record.status === "blocked" ? "blocked" : "waiting",
@@ -148,7 +149,7 @@ export function assessHealth(
 	const alive = isPidAlive(record.pid);
 	const sock = agentSocketPath(record.id);
 	const health: AgentHealth = {
-		name: record.name,
+		name: agentBaseName(record),
 		pid: record.pid,
 		alive,
 		status: "unknown",
