@@ -33,7 +33,8 @@ import {
 	findAgentByDisplayName,
 } from "../../lib/agent-names.js";
 import { canSee } from "../../extensions/pi-agent-hub/registry/visibility.js";
-import { makeAgentRecord } from "./helpers.js";
+import { getSelfName } from "../../extensions/pi-agent-hub/registry/peers.js";
+import { makeAgentRecord, makeRegistry } from "./helpers.js";
 
 // ── Registry-dir isolation (same pattern as registry-persistence.test.ts) ──
 
@@ -721,6 +722,13 @@ describe("namespace is not permission", () => {
 		expect(helper.getRecord()?.name).toBe("helper-x");
 		helper.unregister();
 	});
+});
+
+it("attributes sent messages with the namespace-qualified name", () => {
+	const helper = makeRegistry(makeAgentRecord({ id: "9301-h", name: "helper-x", namespace: "eo-lead" }));
+	expect(getSelfName(helper)).toBe("eo-lead/helper-x");
+	const root = makeRegistry(makeAgentRecord({ id: "9302-r", name: "eo-lead" }));
+	expect(getSelfName(root)).toBe("eo-lead");
 });
 
 // ── Spawn chain ────────────────────────────────────────────────────

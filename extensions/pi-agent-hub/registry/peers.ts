@@ -8,12 +8,13 @@
 import type { AgentRecord } from "../types.js";
 import { ok } from "../types.js";
 import type { Registry } from "../types.js";
-import { agentDisplayName, findAgentByDisplayName } from "../ui/display-name.js";
+import { agentBaseName, agentDisplayName, findAgentByDisplayName } from "../../../lib/agent-names.js";
 import { visibleRecords } from "./visibility.js";
 
-/** Get the current agent's display name. */
+/** Get the current agent's display name (namespace-qualified for helpers). */
 export function getSelfName(registry: Registry): string {
-	return registry.getRecord()?.name ?? "unknown";
+	const record = registry.getRecord();
+	return record ? agentBaseName(record) : "unknown";
 }
 
 /** Resolve a peer agent by name (case-insensitive, excludes self). */
