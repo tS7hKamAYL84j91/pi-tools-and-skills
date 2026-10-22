@@ -7,6 +7,7 @@ import { basename, join } from "node:path";
 import type { AgentRecord } from "../../../lib/agent-registry.js";
 import {
 	ensureRegistryDir,
+	isValidAgentName,
 	isPidAlive,
 	REGISTRY_DIR,
 	runAgentCleanup,
@@ -14,6 +15,7 @@ import {
 } from "../../../lib/agent-registry.js";
 import { ensurePrivateFileForRead } from "../../../lib/private-local-mode.js";
 import { auditRegistryRelease } from "./registry-audit.js";
+import { NAMESPACE_OWNERS_FILE } from "./namespace-ownership.js";
 
 /** Classify an agent record's lifecycle state. */
 export function classifyRecord(
@@ -50,7 +52,10 @@ function parseRegistryFile(fullPath: string, now: number): AgentRecord | null {
 			removeRegistryFile(fullPath);
 			return null;
 		}
-		if (!record.name) {
+		// Unsafe or missing names ("/", "#", traversal-shaped, hand-edited) fall
+		// back to the cwd basename so no record name can equal another agent's
+		// derived qualified or disambiguated display label.
+		if (!isValidAgentName(record.name)) {
 			record.name = basename(record.cwd) || record.id.slice(0, 8);
 		}
 		const classification = classifyRecord(record, now, isPidAlive(record.pid));
@@ -74,8 +79,13 @@ export function readVolatileRegistryRecords(): AgentRecord[] {
 	try {
 		ensureRegistryDir();
 		const now = Date.now();
+		// The durable namespace-ownership journal lives in the registry dir but
+		// is not a volatile agent record — the reaping sweep must never touch it.
 		const files = readdirSync(REGISTRY_DIR).filter(
-			(file) => typeof file === "string" && file.endsWith(".json"),
+			(file) =>
+				typeof file === "string" &&
+				file.endsWith(".json") &&
+				file !== NAMESPACE_OWNERS_FILE,
 		);
 		const records: AgentRecord[] = [];
 		for (const file of files) {

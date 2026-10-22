@@ -28,8 +28,12 @@ export interface Registry {
 	updateModel(model: string): void;
 	/** Update task string and flush. */
 	setTask(task: string): void;
-	/** Update agent name and flush. */
-	setName(name: string, source?: AgentRecord["name_source"]): void;
+	/** Update agent name and flush. Returns false (no mutation) when another live agent holds the name. */
+	setName(name: string, source?: AgentRecord["name_source"]): boolean;
+	/** Return true when no different live agent holds this name and no other lead reserved it. */
+	canClaimName(name: string): boolean;
+	/** Wait for the latest durable ownership write (tests/shutdown). */
+	awaitOwnershipWrite(): Promise<void>;
 	/** Update pending message count and flush. */
 	updatePendingMessages(count: number): void;
 

@@ -10,6 +10,7 @@ import type {
 	AgentRecord,
 	AgentStatus,
 } from "../../../lib/agent-registry.js";
+import { isValidAgentName } from "../../../lib/agent-registry.js";
 
 export const STATUS_SYMBOL: Record<AgentStatus, string> = {
 	running: "R",
@@ -85,24 +86,77 @@ interface PickActiveNameInput {
 	selfId: string;
 	sessionName?: string;
 	spawnName?: string;
+	/** Declared panopticon name from project launch metadata (root agents only). */
+	declaredName?: string;
+	/** Lower-cased lead labels reserved for other owners; never claimable here. */
+	reservedNames?: readonly string[];
 }
 
-/** Resolve active name by precedence: session/programmatic > spawn > generated. */
+/**
+ * Pick a variant of `base` unique among live peers and not reserved:
+ * appends -2, -3, … then falls back to a self-id suffix.
+ */
+function uniqueName(
+	base: string,
+	input: PickActiveNameInput,
+): string {
+	const reserved = input.reservedNames ?? [];
+	const isClaimable = (candidate: string) =>
+		!nameTaken(candidate, input.records, input.selfId) &&
+		!reserved.includes(candidate.toLowerCase());
+	if (isClaimable(base)) return base;
+	for (let i = 2; i < 100; i++) {
+		const candidate = `${base}-${i}`;
+		if (isClaimable(candidate)) return candidate;
+	}
+	return `${base}-${input.selfId.slice(0, 6)}`;
+}
+
+/**
+ * Resolve active name by precedence: session > spawn > declared > generated.
+ *
+ * Session and declared names are claims, not entitlements: a name already held
+ * by a different live agent, or reserved in the durable ownership journal for
+ * another lead, is skipped (never silently duplicated) so a rename cannot
+ * shadow or deny-service another agent's routing. Spawned agents always have a
+ * spawn name, so they never fall through to the project's declared lead label.
+ */
 export function pickActiveName(input: PickActiveNameInput): {
 	name: string;
 	source: AgentNameSource;
 } {
-	if (input.sessionName) {
-		return { name: input.sessionName, source: "user" };
+	const reserved = input.reservedNames ?? [];
+	const isClaimable = (candidate: string) =>
+		!nameTaken(candidate, input.records, input.selfId) &&
+		!reserved.includes(candidate.toLowerCase());
+	// Unsafe claim strings (containing "/" or "#") are treated as absent so a
+	// plain name can never equal a derived qualified or disambiguated label.
+	const safeSessionName =
+		input.sessionName && isValidAgentName(input.sessionName) ? input.sessionName : undefined;
+	const safeSpawnName =
+		input.spawnName && isValidAgentName(input.spawnName) ? input.spawnName : undefined;
+	const safeDeclaredName =
+		input.declaredName && isValidAgentName(input.declaredName) ? input.declaredName : undefined;
+	if (safeSessionName && isClaimable(safeSessionName)) {
+		return { name: safeSessionName, source: "user" };
 	}
-	if (input.spawnName) {
+	if (safeSpawnName) {
 		return {
-			name: pickName(input.cwd, input.records, input.selfId, input.spawnName),
+			name: uniqueName(safeSpawnName, input),
 			source: "spawn",
 		};
 	}
+	if (safeDeclaredName) {
+		if (isClaimable(safeDeclaredName)) {
+			return { name: safeDeclaredName, source: "declared" };
+		}
+		return {
+			name: uniqueName(safeDeclaredName, input),
+			source: "generated",
+		};
+	}
 	return {
-		name: pickName(input.cwd, input.records, input.selfId),
+		name: uniqueName(basename(input.cwd) || "agent", input),
 		source: "generated",
 	};
 }

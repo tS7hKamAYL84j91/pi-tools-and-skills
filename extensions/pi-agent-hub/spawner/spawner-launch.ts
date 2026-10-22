@@ -7,6 +7,7 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	PANOPTICON_NAMESPACE_ENV,
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_SPAWN_NAME_ENV,
 	PANOPTICON_VISIBILITY_ENV,
@@ -71,10 +72,26 @@ export function cleanupTempDir(tempDir: string | undefined): void {
 	}
 }
 
+/**
+ * Compute the namespace anchor a spawning parent passes to its child.
+ *
+ * The anchor is the parent's own namespace when it is itself a supporting
+ * agent (grandchildren stay in the lead's namespace), otherwise the parent's
+ * current canonical name. Derived from registry state at spawn time — never
+ * from the child's self-declared name — so a later rename cannot move a
+ * supporting agent between namespaces.
+ */
+export function parentNamespaceAnchor(
+	parent: { namespace?: string; name: string } | undefined,
+): string | undefined {
+	return parent?.namespace ?? parent?.name;
+}
+
 export function buildSpawnEnv(
 	registrySelfId: string,
 	spawnName: string,
 	scope: AgentScope | undefined,
+	namespace?: string,
 ): NodeJS.ProcessEnv {
 	return {
 		...process.env,
@@ -82,5 +99,6 @@ export function buildSpawnEnv(
 		[PANOPTICON_VISIBILITY_ENV]: "scoped",
 		[PANOPTICON_SPAWN_NAME_ENV]: spawnName,
 		[PANOPTICON_SCOPE_ENV]: scope ?? "task",
+		...(namespace ? { [PANOPTICON_NAMESPACE_ENV]: namespace } : {}),
 	};
 }

@@ -6,15 +6,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { ok, fail, type ToolResult } from "../types.js";
 import type { Registry } from "../types.js";
+import { isValidAgentName } from "../../../lib/agent-registry.js";
 
 function validateName(name: string | undefined): string | undefined {
 	const trimmed = name?.trim();
 	if (!trimmed) {
 		return undefined;
 	}
-	if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(trimmed)) {
+	if (!isValidAgentName(trimmed)) {
 		throw new Error(
-			"Name must start with alphanumeric, then alphanumeric/hyphens/dots/underscores",
+			"Name must start with alphanumeric, then alphanumeric/hyphens/dots/underscores (no '/' or '#')",
 		);
 	}
 	return trimmed;
@@ -43,9 +44,12 @@ function formatName(details: ReturnType<typeof getNameDetails>): string {
 	].join("\n");
 }
 
-function setName(pi: ExtensionAPI, registry: Registry, name: string): void {
+function setName(pi: ExtensionAPI, registry: Registry, name: string): boolean {
+	// Registry first: its claim guard is authoritative; only commit the session
+	// name when the registry accepted the rename.
+	if (!registry.setName(name, "programmatic")) return false;
 	pi.setSessionName(name);
-	registry.setName(name, "programmatic");
+	return true;
 }
 
 export function registerNameControls(pi: ExtensionAPI, registry: Registry): void {
@@ -75,7 +79,20 @@ export function registerNameControls(pi: ExtensionAPI, registry: Registry): void
 				if (!name) {
 					return fail("Name cannot be empty.", { reason: "empty_name" });
 				}
-				setName(pi, registry, name);
+				// A prefix is not authority: refuse to shadow another live agent's
+					// name (impersonation/DoS) before the session name is committed.
+				if (!registry.canClaimName(name)) {
+					return fail(
+						`Name "${name}" is already used by another live agent. Pick a different name.`,
+						{ reason: "name_taken", name },
+					);
+				}
+				if (!setName(pi, registry, name)) {
+					return fail(
+						`Name "${name}" is already used by another live agent. Pick a different name.`,
+						{ reason: "name_taken", name },
+					);
+				}
 				return ok(`Name set to ${name}.`, { name });
 			} catch (err) {
 				return fail((err as Error).message, { reason: "invalid_name" });

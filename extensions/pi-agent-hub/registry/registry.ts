@@ -17,14 +17,23 @@ import type {
 	AgentStatus,
 } from "../../../lib/agent-registry.js";
 import {
+	PANOPTICON_NAMESPACE_ENV,
 	PANOPTICON_PARENT_ID_ENV,
 	PANOPTICON_SPAWN_NAME_ENV,
 	PANOPTICON_VISIBILITY_ENV,
+	isValidAgentName,
+	normalizeNamespace,
 	reapOrphanedMailboxes,
 	REGISTRY_DIR,
 } from "../../../lib/agent-registry.js";
 import type { Registry as RegistryInterface } from "../types.js";
-import { buildRecord, pickActiveName } from "./record-utils.js";
+import { readDeclaredName } from "./declared-name.js";
+import {
+	isReservedName,
+	recordDeclaredOwnership,
+	reservedNamesFor,
+} from "./namespace-ownership.js";
+import { buildRecord, nameTaken, pickActiveName } from "./record-utils.js";
 import { readVolatileRegistryRecords } from "./registry-reader.js";
 import { flushRecord } from "./registry-persistence.js";
 
@@ -34,6 +43,8 @@ export { classifyRecord } from "./registry-reader.js";
 
 const HEARTBEAT_MS = 5_000;
 const ORPHAN_REAP_MS = 60_000;
+/** Ownership-journal refresh cadence for declared leads. */
+const OWNERSHIP_REFRESH_MS = 60_000;
 
 // ── Registry class ──────────────────────────────────────────────
 
@@ -46,8 +57,11 @@ export default class Registry implements RegistryInterface {
 	private record: AgentRecord | undefined;
 	private externalPeers: AgentRecord[] = [];
 	private lastSyncedSessionName: string | undefined;
+	private declaredName: string | undefined;
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private orphanReapTimer: ReturnType<typeof setInterval> | null = null;
+	private ownershipWrite: Promise<void> = Promise.resolve();
+	private lastOwnershipRefreshAt = 0;
 
 	constructor(
 		selfId: string,
@@ -69,18 +83,35 @@ export default class Registry implements RegistryInterface {
 		const records = this.readAllPeers();
 		const spawnName = process.env[PANOPTICON_SPAWN_NAME_ENV];
 		const sessionName = this.readSessionName();
+		// Root agents adopt the project's declared panopticon name from trusted
+		// launch metadata; spawned agents keep their spawn name (see pickActiveName).
+		this.declaredName = spawnName ? undefined : readDeclaredName(cwd);
+		// Reserved lead labels (durable ownership journal) are never claimable;
+		// an agent may retake only its own declared label (restart takeover).
+		const reservedNames = reservedNamesFor({
+			selfId: this.selfId,
+			takeoverName: this.declaredName,
+		});
 		const { name, source } = pickActiveName({
 			cwd,
 			records,
 			selfId: this.selfId,
 			sessionName,
 			spawnName,
+			declaredName: this.declaredName,
+			reservedNames,
 		});
-		this.lastSyncedSessionName = sessionName;
+		this.lastSyncedSessionName = source === "user" ? sessionName : undefined;
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
 		const visibility =
 			process.env[PANOPTICON_VISIBILITY_ENV] === "scoped" ? "scoped" : "global";
+		// Namespace claims arrive from the trusted spawner env only; invalid
+		// claims are dropped rather than trusted (defense in depth — namespaces
+		// are routing/display metadata, never permission or filesystem paths).
+		const namespace = normalizeNamespace(
+			process.env[PANOPTICON_NAMESPACE_ENV],
+		);
 
 		// Create the record
 		this.record = {
@@ -95,6 +126,9 @@ export default class Registry implements RegistryInterface {
 			heartbeat: Date.now(),
 			status: "waiting" as const,
 			...(parentId ? { parentId } : {}),
+			...(namespace
+				? { namespace, namespace_source: "env" as const }
+				: {}),
 			visibility,
 			sessionDir: ctx.sessionManager.getSessionDir(),
 			sessionFile: ctx.sessionManager.getSessionFile(),
@@ -102,6 +136,12 @@ export default class Registry implements RegistryInterface {
 
 		// Write to disk
 		this.flush();
+
+		// Journalled ownership for declared leads: the claim persists across
+		// restarts so a renamed helper can never squat a reserved lead label.
+		if (source === "declared" && this.declaredName === name) {
+			this.refreshOwnership(Date.now());
+		}
 
 		// Start heartbeat
 		this.heartbeatTimer = setInterval(() => {
@@ -171,17 +211,41 @@ export default class Registry implements RegistryInterface {
 		}
 	}
 
-	setName(name: string, source?: AgentNameSource): void {
-		if (this.record) {
-			this.record.name = name;
-			if (source) {
-				this.record.name_source = source;
-			}
-			if (source === "programmatic" || source === "user") {
-				this.lastSyncedSessionName = name;
-			}
-			this.flush();
+	/**
+	 * Update agent name and flush. Refuses names already held by a different
+	 * live agent or reserved in the durable ownership journal for another
+	 * lead; returns false without mutating in those cases.
+	 */
+	setName(name: string, source?: AgentNameSource): boolean {
+		if (!this.record) return false;
+		// Unsafe names ("/", "#", …) are refused outright: they could equal
+		// another agent's derived qualified or disambiguated display label.
+		if (!isValidAgentName(name)) return false;
+		if (!this.canClaimName(name)) return false;
+		this.record.name = name;
+		if (source) {
+			this.record.name_source = source;
 		}
+		if (source === "programmatic" || source === "user") {
+			this.lastSyncedSessionName = name;
+		}
+		this.flush();
+		return true;
+	}
+
+	/** Return true when no different live agent holds this name and no other lead reserved it. */
+	canClaimName(name: string): boolean {
+		if (nameTaken(name, this.readAllPeers(), this.selfId)) return false;
+		const reserved = reservedNamesFor({
+			selfId: this.selfId,
+			takeoverName: this.declaredName,
+		});
+		return !isReservedName(name, reserved);
+	}
+
+	/** Wait for the latest durable ownership write (tests/shutdown). */
+	awaitOwnershipWrite(): Promise<void> {
+		return this.ownershipWrite;
 	}
 
 	updatePendingMessages(count: number): void {
@@ -214,14 +278,39 @@ export default class Registry implements RegistryInterface {
 
 		this.syncSessionName();
 
+		const now = Date.now();
 		this.record = buildRecord(
 			this.record,
 			this.record.status,
 			this.record.task,
-			Date.now(),
+			now,
 		);
 
 		this.flush();
+
+		// Declared leads keep their durable ownership claim fresh.
+		if (
+			this.record.name_source === "declared" &&
+			this.record.name === this.declaredName &&
+			now - this.lastOwnershipRefreshAt >= OWNERSHIP_REFRESH_MS
+		) {
+			this.refreshOwnership(now);
+		}
+	}
+
+	private refreshOwnership(now: number): void {
+		const record = this.record;
+		if (!record) return;
+		this.lastOwnershipRefreshAt = now;
+		this.ownershipWrite = recordDeclaredOwnership({
+			name: record.name,
+			ownerId: record.id,
+			cwd: record.cwd,
+			createdAt: now,
+			lastSeenAt: now,
+		}).catch(() => {
+			// best-effort: claim is re-recorded on the next heartbeat
+	});
 	}
 
 	private readSessionName(): string | undefined {
@@ -238,8 +327,13 @@ export default class Registry implements RegistryInterface {
 		const sessionName = this.readSessionName();
 		if (sessionName === this.lastSyncedSessionName) return;
 
-		const records = this.readAllPeers();
 		if (sessionName) {
+			// Unsafe session names are never adopted as registry names (they
+			// could collide with derived display labels); a claimable session
+			// name is skipped while another live agent or lead reservation holds
+			// it, and retried on a later heartbeat (self-healing, no duplicates).
+			if (!isValidAgentName(sessionName)) return;
+			if (!this.canClaimName(sessionName)) return;
 			this.lastSyncedSessionName = sessionName;
 			this.record.name = sessionName;
 			this.record.name_source = "user";
@@ -247,11 +341,17 @@ export default class Registry implements RegistryInterface {
 		}
 
 		this.lastSyncedSessionName = undefined;
+		const reservedNames = reservedNamesFor({
+			selfId: this.selfId,
+			takeoverName: this.declaredName,
+		});
 		const { name, source } = pickActiveName({
 			cwd: this.record.cwd,
-			records,
+			records: this.readAllPeers(),
 			selfId: this.selfId,
 			spawnName: this.record.spawn_name,
+			declaredName: this.declaredName,
+			reservedNames,
 		});
 		this.record.name = name;
 		this.record.name_source = source;

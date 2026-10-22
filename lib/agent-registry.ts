@@ -30,6 +30,8 @@ export const PANOPTICON_PARENT_ID_ENV = "PI_PANOPTICON_PARENT_ID";
 export const PANOPTICON_VISIBILITY_ENV = "PI_PANOPTICON_VISIBILITY";
 /** Env var read by spawned agents to use their requested spawn name in the registry. */
 export const PANOPTICON_SPAWN_NAME_ENV = "PI_PANOPTICON_SPAWN_NAME";
+/** Env var carrying the canonical parent-namespace anchor for a supporting agent. */
+export const PANOPTICON_NAMESPACE_ENV = "PI_PANOPTICON_NAMESPACE";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -44,7 +46,12 @@ export type AgentStatus =
 
 export type AgentVisibility = "global" | "scoped";
 
-export type AgentNameSource = "spawn" | "user" | "programmatic" | "generated";
+export type AgentNameSource =
+	| "spawn"
+	| "user"
+	| "programmatic"
+	| "generated"
+	| "declared";
 
 export type AgentKind = "pi" | "external";
 
@@ -65,6 +72,15 @@ export interface AgentRecord {
 	status: AgentStatus;
 	/** Parent agent id for spawned/scoped agents. Manual agents omit this. */
 	parentId?: string;
+	/**
+	 * Canonical parent-namespace anchor for supporting agents (the owning
+	 * lead's canonical label, e.g. "eo-agent-comms-gm"). Root/lead and legacy
+	 * agents omit this. A namespace label is display/routing metadata only —
+	 * it never grants permissions and is never used raw in filesystem paths.
+	 */
+	namespace?: string;
+	/** Where the namespace claim came from. Currently only inherited spawn env. */
+	namespace_source?: "env";
 	/** Visibility mode: global agents see all; scoped agents see parent, siblings, and children. */
 	visibility?: AgentVisibility;
 	task?: string;
@@ -73,6 +89,46 @@ export interface AgentRecord {
 	sessionFile?: string;
 	/** Durable mailbox path for external agents (kind === 'external'). */
 	mailboxPath?: string;
+}
+
+// ── Namespace validation ───────────────────────────────────────
+
+/**
+ * Namespace anchors are lowercase labels derived from canonical agent names.
+ * Path separators, traversal segments, uppercase, and edge punctuation are
+ * rejected so a namespace can never smuggle a filesystem path or a lookalike
+ * of another anchor. Namespaces are still never interpolated into paths;
+ * this charset is defense in depth.
+ */
+const NAMESPACE_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+
+/**
+ * Registry-name charset shared by set_name, declared metadata, session sync,
+ * and registry-file parsing. Excludes "/" and "#" so a plain record name can
+ * never equal another agent's qualified namespace label ("lead/child") or a
+ * duplicate-disambiguation suffix ("name#id6") — those forms are derived,
+ * never claimable.
+ */
+export const SAFE_AGENT_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+/** True when `name` is a safe registry name (charset above, trimmed non-empty). */
+export function isValidAgentName(name: string): boolean {
+	const trimmed = name?.trim();
+	return !!trimmed && SAFE_AGENT_NAME.test(trimmed);
+}
+
+/**
+ * Normalise a raw namespace claim to a safe anchor, or undefined when the
+ * claim is invalid and must be ignored. Lowercases, trims, and rejects
+ * traversal-shaped values ("..", any "/" or "\\", empty, >64 chars).
+ */
+export function normalizeNamespace(raw: string | undefined): string | undefined {
+	const trimmed = raw?.trim().toLowerCase();
+	if (!trimmed || trimmed.length > 64) return undefined;
+	if (trimmed.includes("..") || trimmed.includes("/") || trimmed.includes("\\")) {
+		return undefined;
+	}
+	return NAMESPACE_PATTERN.test(trimmed) ? trimmed : undefined;
 }
 
 // ── Dead-agent cleanup hooks ────────────────────────────────────

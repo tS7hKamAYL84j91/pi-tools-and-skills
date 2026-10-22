@@ -26,6 +26,7 @@ import {
 	buildSpawnEnv,
 	buildSystemPrompt,
 	cleanupTempDir,
+	parentNamespaceAnchor,
 	prepareSystemPromptTempDir,
 } from "./spawner-launch.js";
 import type { SpawnerContext } from "./spawner-types.js";
@@ -138,7 +139,12 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				args,
 				model: params.model,
 				tempDir,
-				env: buildSpawnEnv(ctx.registry.selfId, params.name, agentScope),
+				env: buildSpawnEnv(
+					ctx.registry.selfId,
+				params.name,
+				agentScope,
+					parentNamespaceAnchor(ctx.registry.getRecord()),
+				),
 			});
 			if (!agent.pid) {
 				cleanupTempDir(tempDir);
