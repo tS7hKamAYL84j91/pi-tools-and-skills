@@ -29,6 +29,7 @@ import {
 	parentNamespaceAnchor,
 	prepareSystemPromptTempDir,
 } from "./spawner-launch.js";
+import { isValidAgentName } from "../../../lib/agent-registry.js";
 import type { SpawnerContext } from "./spawner-types.js";
 
 // ── spawn_agent ─────────────────────────────────────────────
@@ -97,6 +98,17 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 
 		async execute(_toolCallId, params, _signal): Promise<ToolResult> {
 			const startedAt = Date.now();
+			// Spawn names become registry labels, env values and (via slug) a
+			// session-dir path segment: reject unsafe names up front.
+			if (!isValidAgentName(params.name)) {
+				return fail(
+					`Invalid agent name "${params.name}". Use letters, numbers, dots, underscores, and hyphens (no '/' or '#').`,
+					{
+						error: "invalid_name",
+						envelope: createResultEnvelope({ tool: "spawn_agent", params, result: { code: "invalid_name" }, startedAt, success: false, error: "invalid_name" }),
+					},
+				);
+			}
 			if (params.task && params.brief) {
 				return fail(
 					"Cannot specify both 'task' and 'brief'. Use 'brief' for structured dispatch, 'task' for plain text.",

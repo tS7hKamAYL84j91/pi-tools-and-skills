@@ -6,6 +6,7 @@
  */
 
 import { parseCompletionSignal } from "../../../lib/completion-signal.js";
+import { redactSecrets } from "../../../lib/secret-redaction.js";
 import type { SpawnedAgent } from "./spawn-service.js";
 
 type Evt = Record<string, unknown>;
@@ -50,10 +51,12 @@ const EVENT_FORMATTERS: Record<string, (e: Evt) => string> = {
 export function formatEvent(line: string): string {
 	const evt = parseEvent(line);
 	if (!evt) {
-		return line.slice(0, 120);
+		// Child output is untrusted: secret-shaped values are redacted before
+		// the line can surface in parent-agent tool output or model context.
+		return redactSecrets(line.slice(0, 120));
 	}
 	const fmt = EVENT_FORMATTERS[String(evt.type ?? "?")];
-	return fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`;
+	return redactSecrets(fmt ? fmt(evt) : `  [${evt.type ?? "?"}]`);
 }
 
 /** Format the last `lines` events from an array into readable output. */

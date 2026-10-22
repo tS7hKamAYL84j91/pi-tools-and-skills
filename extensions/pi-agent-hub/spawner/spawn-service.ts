@@ -49,17 +49,28 @@ interface ArgParams {
 	name: string;
 }
 
-function defaultSubagentSessionDir(name: string): string {
-	return join(homedir(), ".pi", "agent", "sessions", "subagents", name);
+/** Slug for filesystem path segments derived from a caller-supplied name. */
+export function safeSessionSlug(name: string): string {
+	const slug = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+	return slug || "agent";
 }
+
+function defaultSubagentSessionDir(name: string): string {
+	return join(homedir(), ".pi", "agent", "sessions", "subagents", safeSessionSlug(name));
+}
+
+/** Model IDs are charset-validated: anything secret- or path-shaped is dropped. */
+const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
 /**
  * Build the CLI arg list for spawning a pi agent (pure — no side effects).
- * System-prompt file creation is handled separately by the caller.
+ * System-prompt file creation is handled separately by the caller. Nothing
+ * secret- or traversal-shaped ever reaches argv (visible to other processes
+ * via ps), regardless of what the caller passes in.
  */
 export function buildArgList(p: ArgParams): string[] {
 	const args = ["--mode", "rpc"];
-	if (p.model) args.push("--models", p.model);
+	if (p.model && SAFE_MODEL_ID.test(p.model)) args.push("--models", p.model);
 	const tools = Array.isArray(p.tools) ? p.tools : [];
 	if (tools.length > 0) {
 		const validToolName = /^[a-zA-Z0-9_-]+$/;
