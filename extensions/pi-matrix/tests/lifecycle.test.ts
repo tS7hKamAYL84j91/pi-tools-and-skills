@@ -117,6 +117,19 @@ describe("Matrix lifecycle", () => {
 		expect(mocks.instances[0]?.stop).toHaveBeenCalledTimes(1);
 	});
 
+	it("stops the previous client when a replaced session re-emits session_start", async () => {
+		const api = createApi();
+		matrixExtension(api);
+
+		await emit(api, "session_start", {}, createContext());
+		await emit(api, "session_start", { reason: "resume" }, createContext());
+
+		expect(mocks.instances).toHaveLength(2);
+		expect(mocks.instances[0]?.stop).toHaveBeenCalledTimes(1);
+		expect(mocks.instances[1]?.start).toHaveBeenCalledTimes(1);
+		expect(mocks.registerChannel).toHaveBeenCalledTimes(2);
+	});
+
 	it("warns when allowAnySender is enabled", async () => {
 		const api = createApi();
 		matrixExtension(api);

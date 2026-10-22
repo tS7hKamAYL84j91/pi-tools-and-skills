@@ -72,6 +72,21 @@ export default function (pi: ExtensionAPI): void {
 	// ── Lifecycle ───────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, c) => {
+		// A replaced session (new/resume/fork/reload) re-emits session_start in the
+		// same process. Stop the previous sync loop before starting another, or two
+		// Matrix clients would consume the same room and both answer Jim.
+		if (transport) {
+			unregisterChannel(channelLabel);
+			transport = null;
+		}
+		if (client) {
+			try {
+				await client.stop();
+			} catch {
+				/* Preserve startup; the old client is discarded below. */
+			}
+			client = null;
+		}
 		ctx = c;
 		config = null;
 		lastError = null;
