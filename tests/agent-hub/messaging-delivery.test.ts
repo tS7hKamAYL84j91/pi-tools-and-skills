@@ -137,6 +137,18 @@ describe("message notification delivery", () => {
 		expect(sendUserMessage.mock.calls[0]?.[1]).toEqual({ deliverAs: "followUp" });
 	});
 
+	it("queued notification is not consumption: mail stays pending until message_read", () => {
+		setContext(false);
+		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
+		core.schedulePoke();
+		vi.advanceTimersByTime(2_000);
+
+		expect(pokeCount()).toBe(1);
+		expect(transport.pendingCount("")).toBe(1);
+		expect(core.drainAllChannels()).toHaveLength(1);
+		expect(transport.pendingCount("")).toBe(0);
+	});
+
 	it("does not stack one queued notification per arriving message", () => {
 		setContext(false);
 		transport.push({ id: "$1", from: "matrix:jim", text: "one", ts: Date.now() });
