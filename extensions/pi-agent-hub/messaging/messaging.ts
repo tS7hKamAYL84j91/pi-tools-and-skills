@@ -96,7 +96,11 @@ export function createMessaging(config: MessagingConfig) {
 		let disposeChannelNotify: (() => void) | null = null;
 		const core = new MessagingCore(pi, registry, config);
 
-		// ── message_read tool ──────────────────────────────────
+		// A completed turn is the boundary at which a queued notification is pulled;
+	// record it so an unconsumed reminder is not re-queued on a timer.
+	pi.on("turn_end", () => core.noteTurnBoundary());
+
+	// ── message_read tool ──────────────────────────────────
 
 		pi.registerTool({
 			name: "message_read",
@@ -289,6 +293,8 @@ export function createMessaging(config: MessagingConfig) {
 				core.startWatcher();
 			},
 			pokePending() {
+				// agent_end is a turn boundary too.
+				core.noteTurnBoundary();
 				core.pokeNow(false);
 			},
 			drainAll() {

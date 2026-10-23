@@ -189,6 +189,69 @@ describe("message notification delivery", () => {
 		expect(sendUserMessage.mock.calls[1]?.[0]).toContain("1 new message");
 	});
 
+	it("bounds retries when notifications are never consumed (no duplicate reminders)", () => {
+		// Reproduced the CASMI report: with mail pending and a model that never
+		// reads, the old retry queued one reminder every 30s, so a later single
+		// message_read drained the mail and the remaining reminder turns each saw
+		// "No unread messages". Retries must be bounded while no turn has run.
+		setContext(false);
+		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
+		core.pokeNow();
+		for (let i = 0; i < 12; i += 1) {
+			vi.advanceTimersByTime(31_000);
+			core.schedulePoke();
+		}
+		// Old behaviour queued 13 reminders for the same unread mail in this window.
+		expect(pokeCount()).toBeLessThanOrEqual(4);
+		expect(pokeCount()).toBeGreaterThanOrEqual(1);
+	});
+
+	it("does not re-queue an unconsumed reminder after a turn boundary", () => {
+		setContext(false);
+		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
+		core.pokeNow();
+		expect(pokeCount()).toBe(1);
+
+		// The queued reminder was pulled by a turn; the model chose not to read.
+		core.noteTurnBoundary();
+		for (let i = 0; i < 12; i += 1) {
+			vi.advanceTimersByTime(31_000);
+			core.schedulePoke();
+		}
+		expect(pokeCount()).toBe(1);
+	});
+
+	it("notifies once for genuinely new mail after an unconsumed reminder had its turn", () => {
+		setContext(false);
+		transport.push({ id: "$1", from: "matrix:jim", text: "one", ts: Date.now() });
+		core.pokeNow();
+		core.noteTurnBoundary();
+
+		transport.push({ id: "$2", from: "matrix:jim", text: "two", ts: Date.now() });
+		core.schedulePoke();
+		vi.advanceTimersByTime(2_000);
+
+		expect(pokeCount()).toBe(2);
+		expect(sendUserMessage.mock.calls[1]?.[0]).toContain("2 new messages");
+	});
+
+	it("an empty read resets reminder state and leaves no stale poke", () => {
+		setContext(true);
+		// Nothing pending: an empty message_read must not arm any reminder.
+		expect(core.drainAllChannels()).toHaveLength(0);
+		for (let i = 0; i < 6; i += 1) {
+			vi.advanceTimersByTime(31_000);
+			core.schedulePoke();
+		}
+		expect(pokeCount()).toBe(0);
+
+		// A genuine arrival afterwards still pokes promptly.
+		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
+		core.schedulePoke();
+		vi.advanceTimersByTime(2_000);
+		expect(pokeCount()).toBe(1);
+	});
+
 	it("does not poke when nothing is pending", () => {
 		setContext(true);
 		core.schedulePoke();

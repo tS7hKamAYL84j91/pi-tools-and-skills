@@ -320,6 +320,8 @@ describe("extension registration smoke tests", () => {
 			"session_shutdown",
 			"session_start",
 			"tool_call",
+			// Turn boundary used to avoid re-queuing an unconsumed message reminder.
+			"turn_end",
 		]);
 	});
 

@@ -19,14 +19,17 @@ export interface ChannelMessage extends InboundMessage {
 /** Debounce before announcing newly arrived messages. */
 const POKE_DEBOUNCE_MS = 2_000;
 /**
- * Re-announce window for a notification that was not consumed.
+ * Re-announce window for a notification that never reached a turn.
  *
- * `pi.sendUserMessage` is fire-and-forget: it can fail (for example during
- * compaction) or the model can finish a turn without calling `message_read`.
- * Without a bounded retry the pending count would sit above `notifiedCount`
- * forever and the periodic check would never poke again.
+ * `pi.sendUserMessage` is fire-and-forget and can fail (for example during
+ * compaction). A retry is only justified while no turn boundary has happened
+ * since the poke: once a turn has run, the notification was delivered and
+ * re-queuing the same reminder would leave duplicate "N new messages" turns
+ * behind for mail the first `message_read` already consumed.
  */
 const POKE_RETRY_MS = 30_000;
+/** Hard cap so a broken injection path cannot queue reminders forever. */
+const MAX_POKE_RETRIES = 3;
 
 export class MessagingCore {
 	private extensionCtx: ExtensionContext | null = null;
@@ -35,6 +38,8 @@ export class MessagingCore {
 	private pendingCheck: ReturnType<typeof setInterval> | null = null;
 	private notifiedCount = 0;
 	private lastPokeAt = 0;
+	private turnSincePoke = false;
+	private pokeRetries = 0;
 
 	constructor(
 		private pi: ExtensionAPI,
@@ -59,19 +64,37 @@ export class MessagingCore {
 	schedulePoke(): void {
 		if (!this.extensionCtx) return;
 		if (this.totalPending() === 0) {
-			this.notifiedCount = 0;
+			this.resetPokeState();
 			return;
 		}
 		if (this.pokeTimeout) return;
+		const delay = this.nextPokeDelay();
+		if (delay === null) return;
 		this.pokeTimeout = setTimeout(() => {
 			this.pokeTimeout = null;
 			if (this.totalPending() === 0) {
-				this.notifiedCount = 0;
+				this.resetPokeState();
 				return;
 			}
 			this.pokeNow();
-		}, this.nextPokeDelay());
+		}, delay);
 		this.pokeTimeout.unref();
+	}
+
+	/**
+	 * A model turn completed (turn_end / agent_end). A queued notification is
+	 * pulled at a turn boundary, so after one the reminder must not be re-queued
+	 * on a timer; only genuinely new mail justifies another notification.
+	 */
+	noteTurnBoundary(): void {
+		if (this.notifiedCount > 0) this.turnSincePoke = true;
+	}
+
+	private resetPokeState(): void {
+		this.notifiedCount = 0;
+		this.lastPokeAt = 0;
+		this.turnSincePoke = false;
+		this.pokeRetries = 0;
 	}
 
 	/**
@@ -81,8 +104,14 @@ export class MessagingCore {
 	 * retried only after POKE_RETRY_MS, so a busy agent gets one queued poke
 	 * rather than one per arriving message.
 	 */
-	private nextPokeDelay(): number {
+	private nextPokeDelay(): number | null {
 		if (this.notifiedCount === 0) return POKE_DEBOUNCE_MS;
+		if (this.turnSincePoke) {
+			// The outstanding reminder already had its turn: only newer mail is
+			// worth another notification.
+			return this.totalPending() > this.notifiedCount ? POKE_DEBOUNCE_MS : null;
+		}
+		if (this.pokeRetries >= MAX_POKE_RETRIES) return null;
 		const elapsed = Date.now() - this.lastPokeAt;
 		return Math.max(POKE_DEBOUNCE_MS, POKE_RETRY_MS - elapsed);
 	}
@@ -91,20 +120,33 @@ export class MessagingCore {
 		if (!this.extensionCtx) return;
 		const count = this.totalPending();
 		if (count === 0) {
-			this.notifiedCount = 0;
+			this.resetPokeState();
 			return;
 		}
-		// One outstanding notification is enough: it is either consumed by
-		// message_read or retried after POKE_RETRY_MS.
-		if (!force && this.notifiedCount > 0 && Date.now() - this.lastPokeAt < POKE_RETRY_MS) {
-			this.schedulePoke();
-			return;
+		// One outstanding notification is enough. It is either consumed by
+		// message_read, or retried while it never reached a turn (failed
+		// injection), or superseded once a turn ran and newer mail arrived.
+		if (!force && this.notifiedCount > 0) {
+			const elapsed = Date.now() - this.lastPokeAt;
+			if (this.turnSincePoke) {
+				if (count <= this.notifiedCount) {
+					this.schedulePoke();
+					return;
+				}
+			} else if (elapsed < POKE_RETRY_MS || this.pokeRetries >= MAX_POKE_RETRIES) {
+				this.schedulePoke();
+				return;
+			}
 		}
 		if (this.pokeTimeout) { clearTimeout(this.pokeTimeout); this.pokeTimeout = null; }
 		const previousCount = this.notifiedCount;
 		const previousPokeAt = this.lastPokeAt;
+		const previousRetries = this.pokeRetries;
+		const previousTurn = this.turnSincePoke;
+		this.pokeRetries = previousCount > 0 ? previousRetries + 1 : 0;
 		this.notifiedCount = count;
 		this.lastPokeAt = Date.now();
+		this.turnSincePoke = false;
 		try {
 			// Idle: sendUserMessage starts a turn. Busy: "followUp" queues the
 			// notification for the next turn boundary instead of interrupting or,
@@ -117,13 +159,14 @@ export class MessagingCore {
 			// Keep mail unread and retry a transient injection failure.
 			this.notifiedCount = previousCount;
 			this.lastPokeAt = previousPokeAt;
+			this.pokeRetries = previousRetries;
+			this.turnSincePoke = previousTurn;
 			this.schedulePoke();
 		}
 	}
 
 	drainAllChannels(): ChannelMessage[] {
-		this.notifiedCount = 0;
-		this.lastPokeAt = 0;
+		this.resetPokeState();
 		// The outstanding notification has been consumed; drop any retry timer so
 		// the next arrival triggers a fresh debounced poke instead of inheriting
 		// the previous retry window.
@@ -162,7 +205,7 @@ export class MessagingCore {
 		this.pendingCheck ??= setInterval(() => {
 			this.attachWatcher();
 			this.updatePendingCount();
-			if (this.totalPending() === 0) this.notifiedCount = 0;
+			if (this.totalPending() === 0) this.resetPokeState();
 			else this.schedulePoke();
 		}, 5000);
 		this.pendingCheck.unref();
@@ -192,7 +235,6 @@ export class MessagingCore {
 		if (this.pendingCheck) { clearInterval(this.pendingCheck); this.pendingCheck = null; }
 		this.inboxWatcher?.close();
 		this.inboxWatcher = null;
-		this.notifiedCount = 0;
-		this.lastPokeAt = 0;
+		this.resetPokeState();
 	}
 }

@@ -144,6 +144,32 @@ describe("per-GM Matrix room vertical", () => {
 		expect(adapterB.joined).toEqual([otherRoom]);
 	});
 
+	it("surfaces only real text messages: no state, own echo or filtered events", async () => {
+		const adapter = makeAdapter();
+		const { transport } = await startAgent(
+			writeProjectSettings("gm-one", "!gm-one:matrix.example.net"),
+			adapter,
+		);
+		const room = "!gm-one:matrix.example.net";
+
+		// State event / membership change: no msgtype, must not reach the buffer.
+		await adapter.emit({ roomId: room, eventId: "$member:1", content: { membership: "invite" } });
+		// Own echo and historical replay.
+		await adapter.emit({ roomId: room, eventId: "$own:1", isLocalEcho: true });
+		await adapter.emit({ roomId: room, eventId: "$old:1", isHistorical: true });
+		// Untrusted sender.
+		await adapter.emit({
+			roomId: room,
+			eventId: "$bad:1",
+			sender: "@mallory:matrix.example.net",
+			content: { msgtype: "m.text", body: "hi" },
+		});
+		// Genuine message still arrives.
+		await adapter.emit({ roomId: room, eventId: "$ok:1", content: { msgtype: "m.text", body: "hello" } });
+
+		expect(transport.receive("gm-one").map((m) => m.id)).toEqual(["$ok:1"]);
+	});
+
 	it("keeps a spawned helper out of the lead's room", async () => {
 		const settings = writeProjectSettings("gm-one", "!gm-one:matrix.example.net");
 		process.env.PI_PANOPTICON_PARENT_ID = "123-abc";
