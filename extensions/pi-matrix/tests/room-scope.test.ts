@@ -177,7 +177,7 @@ describe("MatrixBridgeClient room scoping", () => {
 		expect(adapter.sent[0]?.roomId).toBe(OTHER_ROOM);
 	});
 
-	it("declines invites outside the bound room and joins its own room", async () => {
+	it("ignores invites outside the bound room and joins only its own room", async () => {
 		const adapter = makeAdapter();
 		const config = makeConfig({ roomId: GM_ROOM });
 		await startClient(config, adapter);
@@ -185,7 +185,10 @@ describe("MatrixBridgeClient room scoping", () => {
 		await adapter.emitInvite(OTHER_ROOM);
 		await adapter.emitInvite(GM_ROOM);
 
-		expect(adapter.left).toContain(OTHER_ROOM);
+		// Leaving a foreign room would mutate the shared account's membership
+		// (withdraw the invite / kick the owning agent), so foreign invites are
+		// ignored outright.
+		expect(adapter.left).toEqual([]);
 		expect(adapter.joined).toContain(GM_ROOM);
 		expect(adapter.joined).not.toContain(OTHER_ROOM);
 	});

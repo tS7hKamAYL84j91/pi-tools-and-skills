@@ -121,18 +121,30 @@ export class MatrixBridgeClient {
 		if (event.membership !== "invite") return;
 		const roomId = event.roomId;
 		const sender = event.sender;
-		// A room-bound agent never grows beyond its configured room, even when one
-		// Matrix account serves several agents.
-		if (this.config.roomId && roomId !== this.config.roomId) {
-			this.notifyFn?.(`declining invite to unbound room ${roomId}`, "info");
+
+		// One Matrix account can back several room-bound agents, and this client's
+		// leave/join are ACCOUNT-GLOBAL. A foreign invite belongs to another
+		// agent's conversation: ignore it entirely — never join it, and never
+		// leave/decline it, which would withdraw the invite or kick the owning
+		// agent out of the room it is accepting.
+		if (this.config.roomId && roomId !== this.config.roomId) return;
+
+		if (this.config.roomId) {
+			// Own room only; still require a trusted inviter. Ignoring (rather than
+			// leaving) an untrusted invite cannot disturb shared account state.
+			if (!isTrustedMatrixSender(this.config, sender)) return;
+			this.notifyFn?.(`joining invite from ${sender ?? "unknown sender"} (room ${roomId})`, "info");
 			try {
-				await this.adapter.leaveRoom(roomId);
+				await this.adapter.joinRoom(roomId);
 			} catch {
-				/* non-fatal */
+				/* non-fatal — the invite can be accepted later */
 			}
 			return;
 		}
-		if (shouldJoinMatrixInvite(this.config, roomId, sender)) {
+
+		// Unbound bootstrap (one client for the account, e.g. Lumen): accept a
+		// trusted DM/room invite, decline an untrusted one.
+		if (isTrustedMatrixSender(this.config, sender)) {
 			this.notifyFn?.(`joining invite from ${sender ?? "unknown sender"} (room ${roomId})`, "info");
 			try {
 				await this.adapter.joinRoom(roomId);
