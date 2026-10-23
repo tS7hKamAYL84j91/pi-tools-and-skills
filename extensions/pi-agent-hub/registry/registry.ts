@@ -127,6 +127,7 @@ export default class Registry implements RegistryInterface {
 			id: this.selfId,
 			name,
 			...(storedSpawnName ? { spawn_name: storedSpawnName } : {}),
+			...(this.declaredName ? { declared_name: this.declaredName } : {}),
 			name_source: source,
 			pid: process.pid,
 			cwd,
@@ -146,9 +147,11 @@ export default class Registry implements RegistryInterface {
 		// Write to disk
 		this.flush();
 
-		// Journalled ownership for declared leads: the claim persists across
-		// restarts so a renamed helper can never squat a reserved lead label.
-		if (source === "declared" && this.declaredName === name) {
+		// Journalled ownership for declared leads. The claim keys on the DECLARED
+		// launch label, not the picked display name: a lead resuming a session with
+		// a pre-existing session name must still reserve its canonical label, or
+		// reservation/child-namespace protection would silently disengage.
+		if (this.declaredName && !nameTaken(this.declaredName, records, this.selfId)) {
 			this.refreshOwnership(Date.now());
 		}
 
@@ -299,8 +302,8 @@ export default class Registry implements RegistryInterface {
 
 		// Declared leads keep their durable ownership claim fresh.
 		if (
-			this.record.name_source === "declared" &&
-			this.record.name === this.declaredName &&
+			this.record.declared_name &&
+			this.record.declared_name === this.declaredName &&
 			now - this.lastOwnershipRefreshAt >= OWNERSHIP_REFRESH_MS
 		) {
 			this.refreshOwnership(now);
@@ -312,7 +315,7 @@ export default class Registry implements RegistryInterface {
 		if (!record) return;
 		this.lastOwnershipRefreshAt = now;
 		this.ownershipWrite = recordDeclaredOwnership({
-			name: record.name,
+			name: record.declared_name ?? record.name,
 			ownerId: record.id,
 			cwd: record.cwd,
 			createdAt: now,

@@ -103,6 +103,18 @@ export function findAgentByDisplayName(
 		return preferred.length === 1 ? preferred[0] : undefined;
 	}
 
+	// The declared canonical label stays addressable across a resume whose
+	// active display name is a pre-existing session alias.
+	const declaredMatches = records.filter(
+		(record) =>
+			!record.namespace &&
+			!!record.declared_name &&
+			normalizedName(record.declared_name) === selector,
+	);
+	if (declaredMatches.length === 1) {
+		return declaredMatches[0];
+	}
+
 	// A spawn alias may not equal another record's namespace anchor: that is a
 	// lead label, and a bare helper alias must never capture it. Registration
 	// additionally refuses to store an alias that collided or is reserved.

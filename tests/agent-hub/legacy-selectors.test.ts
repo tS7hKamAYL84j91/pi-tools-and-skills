@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { findAgentByDisplayName } from "../../lib/agent-names.js";
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
+import { parentNamespaceAnchor } from "../../extensions/pi-agent-hub/spawner/spawner-launch.js";
+import { loadNamespaceOwners } from "../../extensions/pi-agent-hub/registry/namespace-ownership.js";
 import { resolvePeer } from "../../extensions/pi-agent-hub/registry/peers.js";
 import { makeAgentRecord, makeRegistry } from "./helpers.js";
 
@@ -123,6 +125,31 @@ describe("legacy selectors after namespace activation", () => {
 		expect(findAgentByDisplayName(peers, "lead-agent/lead-agent-sidekick")?.id).toBe(self?.id);
 		// The lead's own label is not captured by the sidekick.
 		expect(findAgentByDisplayName(peers, "lead-agent")).toBeUndefined();
+	});
+
+	it("a lead resuming a stale session alias still reserves its declared canonical label", async () => {
+		const project = makeProject("canonical-lead");
+		process.chdir(project);
+		// The resumed session carries an older display alias.
+		const registry = new Registry("9000-lead", () => "stale-alias");
+		registries.push(registry);
+		registry.register(makeContext(project));
+		const record = registry.getRecord();
+
+		expect(record?.name).toBe("stale-alias");
+		expect(record?.declared_name).toBe("canonical-lead");
+		await registry.awaitOwnershipWrite();
+		const owners = loadNamespaceOwners();
+		expect(owners.some((entry) => entry.name === "canonical-lead" && entry.ownerId === "9000-lead")).toBe(true);
+
+		// Children keep the canonical anchor, not the display alias.
+		expect(parentNamespaceAnchor(record ?? undefined)).toBe("canonical-lead");
+		// A helper can still address the lead by its canonical label while the
+		// lead displays the resumed session alias.
+		const helperSelf = makeAgentRecord({ id: "9000-helper", name: "helper-x", namespace: "canonical-lead" });
+		const leadRecord = makeAgentRecord({ id: "9000-lead", name: "stale-alias", declared_name: "canonical-lead" });
+		const reg = makeRegistry(helperSelf, [helperSelf, leadRecord]);
+		expect(resolvePeer(reg, "canonical-lead")?.id).toBe("9000-lead");
 	});
 
 	it("refuses to store a spawn alias that names another owner's reserved lead", () => {

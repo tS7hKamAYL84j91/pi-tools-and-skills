@@ -62,6 +62,13 @@ export interface AgentRecord {
 	spawn_name?: string;
 	/** Source of the active registry/display name. */
 	name_source?: AgentNameSource;
+	/**
+	 * Declared canonical lead name from trusted project launch metadata
+	 * (automationsProfile.panopticonName). Stable across resume even when a
+	 * pre-existing session name is the active display label; used for the
+	 * durable ownership claim and as the child namespace anchor.
+	 */
+	declared_name?: string;
 	/** Agent kind: pi (default) or external non-pi peer. */
 	kind?: AgentKind;
 	pid: number;

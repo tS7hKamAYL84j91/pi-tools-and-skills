@@ -82,9 +82,11 @@ export function cleanupTempDir(tempDir: string | undefined): void {
  * supporting agent between namespaces.
  */
 export function parentNamespaceAnchor(
-	parent: { namespace?: string; name: string } | undefined,
+	parent: { namespace?: string; declared_name?: string; name: string } | undefined,
 ): string | undefined {
-	return parent?.namespace ?? parent?.name;
+	// The declared launch label is stable across a resume with a stale session
+	// alias, so children keep a canonical anchor instead of flipping with display.
+	return parent?.namespace ?? parent?.declared_name ?? parent?.name;
 }
 
 export function buildSpawnEnv(
