@@ -14,6 +14,8 @@ const DEFAULT_STORAGE_ROOT = join(homedir(), ".pi", "agent", "matrix-sync");
 const DEFAULT_ATTACHMENT_CACHE_PATH = join(homedir(), ".pi", "agent", "matrix-attachments");
 const DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_ALLOWED_MIME_PREFIXES = ["image/", "application/pdf", "text/", "audio/", "video/"];
+/** Logical mention names share the agent-name charset (no separators/prefixes). */
+const MENTION_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
  * Sync state must be per room: several agents can share one Matrix account and
@@ -41,6 +43,9 @@ interface RawMatrixSettings {
 	homeserver?: unknown;
 	userId?: unknown;
 	roomId?: unknown;
+	sharedRoomId?: unknown;
+	mentionNames?: unknown;
+	mentionAll?: unknown;
 	accessTokenEnv?: unknown;
 	storagePath?: unknown;
 	attachmentCachePath?: unknown;
@@ -78,6 +83,7 @@ export function loadMatrixConfig(
 	const homeserver = requireString(raw.homeserver, "matrix.homeserver");
 	const userId = requireString(raw.userId, "matrix.userId");
 	const roomId = optionalString(raw.roomId);
+	const sharedRoomId = optionalString(raw.sharedRoomId);
 	const accessTokenEnv = requireString(
 		raw.accessTokenEnv,
 		"matrix.accessTokenEnv",
@@ -93,6 +99,32 @@ export function loadMatrixConfig(
 			`matrix.roomId must be a Matrix room ID (e.g. "!abc" or "!abc:matrix.org"); got "${roomId}"`,
 		);
 	}
+	if (sharedRoomId && !sharedRoomId.startsWith("!")) {
+		throw new Error(
+			`matrix.sharedRoomId must be a Matrix room ID; got "${sharedRoomId}"`,
+		);
+	}
+	if (sharedRoomId && sharedRoomId === roomId) {
+		throw new Error(
+			"matrix.sharedRoomId must differ from matrix.roomId (the private room stays private)",
+		);
+	}
+
+	// A shared room without a mention gate would deliver every message to every
+	// lead on this account. Fail closed instead.
+	const mentionNames = Array.isArray(raw.mentionNames)
+		? (raw.mentionNames as unknown[]).filter(
+				(name): name is string => typeof name === "string" && MENTION_NAME.test(name.trim()),
+			).map((name) => name.trim().toLowerCase())
+		: [];
+	if (sharedRoomId && mentionNames.length === 0) {
+		throw new Error(
+			"matrix.sharedRoomId requires matrix.mentionNames (the logical @mentions this agent answers); refusing an ungated shared room",
+		);
+	}
+	const mentionAll = raw.mentionAll === undefined
+		? true
+		: requireBoolean(raw.mentionAll, "matrix.mentionAll");
 
 	const accessToken = process.env[accessTokenEnv];
 	if (!accessToken) {
@@ -130,6 +162,9 @@ export function loadMatrixConfig(
 		homeserver,
 		userId,
 		roomId,
+		sharedRoomId,
+		mentionNames,
+		mentionAll,
 		accessToken,
 		storagePath,
 		attachmentCachePath,

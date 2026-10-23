@@ -201,6 +201,67 @@ describe("loadMatrixConfig", () => {
 		expect(config?.allowAnySender).toBe(true);
 	});
 
+	it("loads a shared room with its mention gate and lower-cases the names", async () => {
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org",
+			sharedRoomId: "!shared:matrix.org",
+			mentionNames: ["Lead-A", "gemma"],
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+		const config = loadMatrixConfig(projectSettingsPath);
+
+		expect(config?.roomId).toBe("!private:matrix.org");
+		expect(config?.sharedRoomId).toBe("!shared:matrix.org");
+		expect(config?.mentionNames).toEqual(["lead-a", "gemma"]);
+		expect(config?.mentionAll).toBe(true);
+	});
+
+	it("refuses an ungated shared room, a non-room id, or a shared room equal to the private one", async () => {
+		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org",
+			sharedRoomId: "!shared:matrix.org",
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/mentionNames/);
+
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org",
+			sharedRoomId: "shared:matrix.org",
+			mentionNames: ["lead-a"],
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/sharedRoomId/);
+
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!same:matrix.org",
+			sharedRoomId: "!same:matrix.org",
+			mentionNames: ["lead-a"],
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/must differ/);
+
+		writeSettings({
+			homeserver: "https://matrix.org",
+			userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org",
+			sharedRoomId: "!shared:matrix.org",
+			mentionNames: ["../../etc/passwd"],
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/mentionNames/);
+	});
+
 	it("throws when maxAttachmentBytes is invalid", async () => {
 		writeSettings({
 			homeserver: "https://matrix.org",

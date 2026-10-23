@@ -24,6 +24,20 @@ export interface MatrixConfig {
 	userId: string;
 	/** Optional primary room for replies. If unset, replies go to the latest inbound DM/room. */
 	roomId?: string;
+	/**
+	 * Optional shared room (several agents on this account). Messages from it are
+	 * delivered only when they mention this agent's declared names, so an
+	 * unmentioned message cannot notify, queue or wake this agent.
+	 */
+	sharedRoomId?: string;
+	/**
+	 * Launcher-declared logical mention names for this agent (never a model name).
+	 * The loader requires a non-empty list whenever `sharedRoomId` is set; an
+	 * absent list therefore drops every shared-room message (fail closed).
+	 */
+	mentionNames?: string[];
+	/** Whether the shared room accepts `@all` as "everyone" (default true). */
+	mentionAll?: boolean;
 	/** Bearer access token (resolved from env at runtime) */
 	accessToken: string;
 	/** Filesystem path for sync state storage */

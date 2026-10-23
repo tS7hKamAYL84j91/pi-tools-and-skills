@@ -20,6 +20,7 @@ import { extractMatrixAttachment, isMatrixMediaMsgtype } from "./attachments.js"
 import type { MatrixRoomMessageEvent } from "./attachments.js";
 import { createAttachmentDownloadResources } from "./attachment-download.js";
 import { markdownToMatrixContent } from "./markdown.js";
+import { mentionsAgent } from "./mention.js";
 import { BoundedRecentSet } from "./resource-bounds.js";
 import type { AttachmentDownloadResources } from "./resource-bounds.js";
 import type { MatrixConfig } from "./types.js";
@@ -55,8 +56,27 @@ export function isTrustedMatrixSender(config: MatrixConfig, sender?: string): se
  * Without a configured room (interactive DM bootstrap) any trusted sender room
  * is accepted.
  */
+export function configuredRooms(config: MatrixConfig): string[] {
+	return [config.roomId, config.sharedRoomId].filter(
+		(room): room is string => typeof room === "string" && room.length > 0,
+	);
+}
+
 export function isConfiguredRoom(config: MatrixConfig, roomId: string): boolean {
-	return !config.roomId || roomId === config.roomId;
+	const rooms = configuredRooms(config);
+	return rooms.length === 0 || rooms.includes(roomId);
+}
+
+/** True when this message is in the shared room and mentions this agent. */
+export function isAddressedToAgent(
+	config: MatrixConfig,
+	roomId: string,
+	body: string,
+): boolean {
+	if (!config.sharedRoomId || roomId !== config.sharedRoomId) return true;
+	return mentionsAgent(body, config.mentionNames ?? [], {
+		all: config.mentionAll !== false,
+	});
 }
 
 export function shouldJoinMatrixInvite(config: MatrixConfig, roomId: string, sender?: string): boolean {
@@ -103,14 +123,14 @@ export class MatrixBridgeClient {
 		});
 		this.connected = this.adapter.isConnected();
 
-		// Ensure we've joined the configured room when one is configured. Surface a
-		// failure: an agent bound to a room it has not joined receives nothing.
-		if (this.config.roomId) {
+		// Ensure we've joined every configured room. Surface a failure: an agent
+		// bound to a room it has not joined receives nothing there.
+		for (const roomId of configuredRooms(this.config)) {
 			try {
-				await this.adapter.joinRoom(this.config.roomId);
+				await this.adapter.joinRoom(roomId);
 			} catch (err) {
 				this.notifyFn?.(
-					`not joined to configured room ${this.config.roomId}: ${err instanceof Error ? err.message : String(err)}`,
+					`not joined to configured room ${roomId}: ${err instanceof Error ? err.message : String(err)}`,
 					"warning",
 				);
 			}
@@ -127,9 +147,11 @@ export class MatrixBridgeClient {
 		// agent's conversation: ignore it entirely — never join it, and never
 		// leave/decline it, which would withdraw the invite or kick the owning
 		// agent out of the room it is accepting.
-		if (this.config.roomId && roomId !== this.config.roomId) return;
+		if (configuredRooms(this.config).length > 0 && !isConfiguredRoom(this.config, roomId)) {
+			return;
+		}
 
-		if (this.config.roomId) {
+		if (configuredRooms(this.config).length > 0) {
 			// Own room only; still require a trusted inviter. Ignoring (rather than
 			// leaving) an untrusted invite cannot disturb shared account state.
 			if (!isTrustedMatrixSender(this.config, sender)) return;
@@ -167,7 +189,9 @@ export class MatrixBridgeClient {
 
 		const msg = await this.buildInboundMessage(event);
 		if (!msg) return;
-		if (!this.config.roomId) this.lastInboundRoomId = msg.roomId;
+		// Replies follow the room of the message being answered (private room or the
+		// shared room), so a shared-room question is answered in the shared room.
+		this.lastInboundRoomId = msg.roomId;
 		try {
 			await this.onInbound?.(msg);
 		} catch {
@@ -178,7 +202,7 @@ export class MatrixBridgeClient {
 	private async buildInboundMessage(event: MatrixInboundEvent): Promise<InboundMessage | null> {
 		const sender = event.sender;
 		if (!isTrustedMatrixSender(this.config, sender)) return null;
-		// Delivery is bound to the configured room; other traffic on the shared
+		// Delivery is bound to the configured rooms; other traffic on the shared
 		// account belongs to another agent's conversation.
 		if (!isConfiguredRoom(this.config, event.roomId)) return null;
 
@@ -213,6 +237,10 @@ export class MatrixBridgeClient {
 				: "";
 		if (!body && attachments.length === 0) return null;
 
+		// The shared room is mention-gated: an unmentioned message is dropped BEFORE
+		// it reaches the transport, so it cannot notify, queue or wake this agent.
+		if (!isAddressedToAgent(this.config, event.roomId, body)) return null;
+
 		return {
 			roomId: event.roomId,
 			senderMxid: sender,
@@ -232,9 +260,9 @@ export class MatrixBridgeClient {
 		return this.adapter.sendMessage(roomId, markdownToMatrixContent(text, { inReplyTo }));
 	}
 
-	/** Room a reply belongs to: the bound room, else the last accepted inbound room. */
+	/** Room a reply belongs to: the room of the message being answered, else the private room. */
 	replyRoomId(): string | null {
-		return this.config.roomId ?? this.lastInboundRoomId;
+		return this.lastInboundRoomId ?? this.config.roomId ?? null;
 	}
 
 	/** Send a text message to the configured/bound room. */
