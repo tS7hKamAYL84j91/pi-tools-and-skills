@@ -44,8 +44,9 @@ const PREFERRED_UNQUALIFIED_SOURCES = new Set(["user", "declared"]);
  * Unqualified labels address namespace-less records only: a namespaced helper
  * that renamed itself to its lead's label can never capture the lead's bare
  * routing label, even while the lead is down. Duplicated bare names prefer a
- * trusted user/declared claim over a generated one, and the immutable spawn
- * name from the trusted spawner remains reachable as a legacy alias.
+ * trusted user/declared claim over a generated one, and the trusted spawn name
+ * remains reachable as a legacy alias — except for an alias that equals another
+ * record's namespace anchor, which is a lead label, not a helper alias.
  */
 export function findAgentByDisplayName(
 	records: readonly AgentRecord[],
@@ -66,7 +67,18 @@ export function findAgentByDisplayName(
 		const baseMatches = records.filter(
 			(record) => normalizedName(agentBaseName(record)) === selector,
 		);
-		return baseMatches.length === 1 ? baseMatches[0] : undefined;
+		if (baseMatches.length === 1) {
+			return baseMatches[0];
+		}
+		// Qualified spawn alias: a renamed namespaced helper stays reachable as
+		// "lead/spawn-name", with explicit attribution.
+		const qualifiedSpawnMatches = records.filter(
+			(record) =>
+				record.namespace &&
+				!!record.spawn_name &&
+				normalizedName(`${record.namespace}/${record.spawn_name}`) === selector,
+		);
+		return qualifiedSpawnMatches.length === 1 ? qualifiedSpawnMatches[0] : undefined;
 	}
 
 	const displayMatch = records.find(
@@ -91,9 +103,19 @@ export function findAgentByDisplayName(
 		return preferred.length === 1 ? preferred[0] : undefined;
 	}
 
+	// A spawn alias may not equal another record's namespace anchor: that is a
+	// lead label, and a bare helper alias must never capture it. Registration
+	// additionally refuses to store an alias that collided or is reserved.
+	const leadLabels = new Set(
+		records
+			.filter((record) => !!record.namespace)
+			.map((record) => normalizedName(record.namespace as string)),
+	);
 	const spawnMatches = records.filter(
 		(record) =>
-			!!record.spawn_name && normalizedName(record.spawn_name) === selector,
+			!!record.spawn_name &&
+			normalizedName(record.spawn_name) === selector &&
+			!leadLabels.has(normalizedName(record.spawn_name)),
 	);
 	return spawnMatches.length === 1 ? spawnMatches[0] : undefined;
 }

@@ -101,6 +101,15 @@ export default class Registry implements RegistryInterface {
 			declaredName: this.declaredName,
 			reservedNames,
 		});
+		// A spawn name is a trusted launch label, not an entitlement: keep it as a
+		// resolvable alias only when it is actually claimable. If it collided and the
+		// active name was suffixed, or it names another owner's reserved lead, the raw
+		// alias is dropped (the agent stays reachable by its active name) so a helper
+		// can never advertise a lead's label as its alias.
+		const storedSpawnName =
+			spawnName && name === spawnName && !isReservedName(spawnName, reservedNames)
+				? spawnName
+				: undefined;
 		this.lastSyncedSessionName = source === "user" ? sessionName : undefined;
 
 		const parentId = process.env[PANOPTICON_PARENT_ID_ENV];
@@ -117,7 +126,7 @@ export default class Registry implements RegistryInterface {
 		this.record = {
 			id: this.selfId,
 			name,
-			...(spawnName ? { spawn_name: spawnName } : {}),
+			...(storedSpawnName ? { spawn_name: storedSpawnName } : {}),
 			name_source: source,
 			pid: process.pid,
 			cwd,

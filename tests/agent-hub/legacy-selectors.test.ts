@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { findAgentByDisplayName } from "../../lib/agent-names.js";
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
-import { makeAgentRecord } from "./helpers.js";
+import { resolvePeer } from "../../extensions/pi-agent-hub/registry/peers.js";
+import { makeAgentRecord, makeRegistry } from "./helpers.js";
 
 const paths = vi.hoisted(() => ({ registry: "" }));
 vi.mock("../../lib/agent-registry.js", async (original) => ({
@@ -122,6 +123,119 @@ describe("legacy selectors after namespace activation", () => {
 		expect(findAgentByDisplayName(peers, "lead-agent/lead-agent-sidekick")?.id).toBe(self?.id);
 		// The lead's own label is not captured by the sidekick.
 		expect(findAgentByDisplayName(peers, "lead-agent")).toBeUndefined();
+	});
+
+	it("refuses to store a spawn alias that names another owner's reserved lead", () => {
+		const project = makeProject("lead-agent");
+		const journal = join(paths.registry, "namespace-owners.json");
+		writeFileSync(
+			journal,
+			JSON.stringify({
+				version: 1,
+				owners: [{ name: "coas", ownerId: "coas-root", cwd: "/home/jim/git/coas", createdAt: 1, lastSeenAt: 1 }],
+			}),
+			{ mode: 0o600 },
+		);
+		// A helper asks to be called "coas" (a reserved lead label) while that
+		// lead is down, and carries its own namespace.
+		process.env.PI_PANOPTICON_SPAWN_NAME = "coas";
+		process.env.PI_PANOPTICON_NAMESPACE = "other-lead";
+		process.env.PI_PANOPTICON_PARENT_ID = "999-parent";
+		process.chdir(project);
+
+		const registry = new Registry("9003-h", () => undefined);
+		registries.push(registry);
+		registry.register(makeContext(project));
+		const record = registry.getRecord();
+
+		// Active name is suffixed away from the reserved label; the raw alias is
+		// not stored, so "coas" can never route to the helper.
+		expect(record).toMatchObject({ name: "coas-2", namespace: "other-lead", name_source: "spawn" });
+		expect(record?.spawn_name).toBeUndefined();
+		const peers = [...registry.readAllPeers().filter((p) => p.id !== record?.id), ...(record ? [record] : [])];
+		expect(findAgentByDisplayName(peers, "coas")).toBeUndefined();
+		expect(findAgentByDisplayName(peers, "other-lead/coas-2")?.id).toBe(record?.id);
+	});
+
+	it("drops a spawn alias that collided with a live peer", () => {
+		writePeerRecord({ id: "9004-live", name: "researcher" });
+		process.env.PI_PANOPTICON_SPAWN_NAME = "researcher";
+		process.chdir(paths.registry);
+
+		const registry = new Registry("9005-h", () => undefined);
+		registries.push(registry);
+		registry.register(makeContext(paths.registry));
+		expect(registry.getRecord()).toMatchObject({ name: "researcher-2", name_source: "spawn" });
+		expect(registry.getRecord()?.spawn_name).toBeUndefined();
+	});
+
+	it("keeps a claimable spawn name as a bare legacy alias even when namespaced", () => {
+		// The restarted Fusion sidekick is namespaced but is still addressed by its
+		// bare name by the running pair — that must keep working.
+		const helper = makeAgentRecord({
+			id: "9006-h",
+			name: "api-builder",
+			spawn_name: "api-builder",
+			namespace: "lead-a",
+			name_source: "spawn",
+		});
+		expect(findAgentByDisplayName([helper], "api-builder")).toBe(helper);
+		expect(findAgentByDisplayName([helper], "lead-a/api-builder")).toBe(helper);
+
+		// After a rename the qualified spawn alias still finds it.
+		const renamed = makeAgentRecord({
+			id: "9006-h",
+			name: "renamed",
+			spawn_name: "api-builder",
+			namespace: "lead-a",
+			name_source: "spawn",
+		});
+		expect(findAgentByDisplayName([renamed], "lead-a/api-builder")).toBe(renamed);
+	});
+
+	it("never exposes a bare alias equal to another record's lead label", () => {
+		const leadA = makeAgentRecord({ id: "9007-a", name: "lead-a" });
+		const leadB = makeAgentRecord({ id: "9008-b", name: "lead-b" });
+		// Hand-written/legacy shape: a namespaced helper whose alias is lead-b's label.
+		const squatter = makeAgentRecord({
+			id: "9009-s",
+			name: "helper",
+			spawn_name: "lead-b",
+			namespace: "lead-a",
+		});
+
+		const records = [leadA, leadB, squatter];
+		expect(findAgentByDisplayName(records, "lead-b")).toBe(leadB);
+		// With the lead absent, only the routing boundary (which also consults the
+		// durable ownership journal) can prove "lead-b" is a lead label; the pure
+		// resolver test above covers the record-visible anchor case.
+	});
+
+	it("a reserved lead label is not answered by a helper alias while the lead is down", () => {
+		writeFileSync(
+			join(paths.registry, "namespace-owners.json"),
+			JSON.stringify({
+				version: 1,
+				owners: [{ name: "coas", ownerId: "coas-root", cwd: "/home/jim/git/coas", createdAt: 1, lastSeenAt: 1 }],
+			}),
+			{ mode: 0o600 },
+		);
+		const squatter = makeAgentRecord({
+			id: "9010-s",
+			name: "helper",
+			spawn_name: "coas",
+			namespace: "lead-a",
+		});
+		const self = makeAgentRecord({ id: "9012-self", name: "some-peer" });
+		const registry = makeRegistry(self, [self, squatter]);
+
+		expect(resolvePeer(registry, "coas")).toBeUndefined();
+		expect(resolvePeer(registry, "lead-a/helper")?.id).toBe(squatter.id);
+
+		// The real lead (namespace-less, canonical name) still resolves when it runs.
+		const lead = makeAgentRecord({ id: "9011-lead", name: "coas" });
+		const withLead = makeRegistry(self, [self, squatter, lead]);
+		expect(resolvePeer(withLead, "coas")?.id).toBe(lead.id);
 	});
 
 	it("a pre-upgrade fusion peer without namespace still resolves by bare name", () => {
