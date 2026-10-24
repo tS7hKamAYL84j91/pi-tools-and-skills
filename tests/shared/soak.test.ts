@@ -13,11 +13,28 @@
  * - Memory usage (before/after)
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import * as fs from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { REGISTRY_DIR } from "../../lib/agent-registry.js";
+import { NAMESPACE_OWNERS_FILE } from "../../extensions/pi-agent-hub/registry/namespace-ownership.js";
+
+// ── Registry-dir isolation (same pattern as registry-persistence.test.ts) ──
+// The soak reads records from the registry dir; it must never touch the live
+// ~/.pi/agents (machine-local records made this suite non-hermetic) and must
+// ignore the durable namespace-ownership journal that shares that dir.
+
+const paths = vi.hoisted(() => ({ registry: "" }));
+vi.mock("../../lib/agent-registry.js", async (original) => ({
+	...await original<typeof import("../../lib/agent-registry.js")>(),
+	get REGISTRY_DIR() { return paths.registry; },
+	ensureRegistryDir: () => fs.mkdirSync(paths.registry, { recursive: true, mode: 0o700 }),
+	reapOrphanedMailboxes: () => ({ removed: 0 }),
+}));
+
+const tempDirs: string[] = [];
 
 // ── Test Configuration ──────────────────────────────────────────
 
@@ -59,6 +76,11 @@ interface MessageRecord {
 
 /**
  * Read all agent records from disk.
+ *
+ * The durable namespace-ownership journal (namespace-owners.json) lives in
+ * the registry dir but is not an agent record: skip it exactly like
+ * extensions/pi-agent-hub/registry/registry-reader.ts does, or the integrity
+ * check fails as soon as a lead claims its canonical namespace.
  */
 function readAllAgents(): AgentRecord[] {
 	const agents: AgentRecord[] = [];
@@ -66,6 +88,7 @@ function readAllAgents(): AgentRecord[] {
 
 	const files = fs.readdirSync(REGISTRY_DIR);
 	for (const file of files) {
+		if (file === NAMESPACE_OWNERS_FILE) continue;
 		if (file.endsWith(".json")) {
 			try {
 				const path = join(REGISTRY_DIR, file);
@@ -99,6 +122,30 @@ function createMockAgent(name: string, index = 0): AgentRecord {
 		sessionDir: undefined,
 		sessionFile: undefined,
 	};
+}
+
+/**
+ * Write one fixture agent record into the isolated registry dir (0600, as
+ * the real registry writes them). Shape matches a post-namespace-activation
+ * registry: plain leads plus a namespaced supporting agent.
+ */
+function writeRegistryFixture(
+	record: Partial<AgentRecord> & { id: string; name: string },
+): void {
+	const now = Date.now();
+	fs.writeFileSync(
+		join(paths.registry, `${record.id}.json`),
+		JSON.stringify({
+			pid: process.pid,
+			cwd: "/tmp",
+			model: "test/model",
+			startedAt: now - 1000,
+			heartbeat: now,
+			status: "running",
+			...record,
+		}),
+		{ mode: 0o600 },
+	);
 }
 
 /**
@@ -192,6 +239,33 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 
 	beforeAll(() => {
 		metrics.startTime = Date.now();
+		// Hermetic registry fixture: a temp REGISTRY_DIR with two plain lead
+		// records, one namespaced helper, and the ownership journal. The
+		// integrity check must read exactly the three records and never parse
+		// the journal as an agent record (the live defect this guards against).
+		paths.registry = fs.mkdtempSync(join(tmpdir(), "pi-soak-registry-"));
+		tempDirs.push(paths.registry);
+		const now = Date.now();
+		writeRegistryFixture({ id: "soak-lead-a-1", name: "soak-lead-a", declared_name: "soak-lead-a" });
+		writeRegistryFixture({ id: "soak-lead-b-2", name: "soak-lead-b", declared_name: "soak-lead-b" });
+		writeRegistryFixture({
+			id: "soak-helper-3",
+			name: "soak-helper",
+			namespace: "soak-lead-a",
+			namespace_source: "env",
+			spawn_name: "soak-helper",
+		});
+		fs.writeFileSync(
+			join(paths.registry, NAMESPACE_OWNERS_FILE),
+			JSON.stringify({
+				version: 1,
+				owners: [
+					{ name: "soak-lead-a", ownerId: "soak-lead-a-1", cwd: "/tmp", createdAt: now, lastSeenAt: now },
+					{ name: "soak-lead-b", ownerId: "soak-lead-b-2", cwd: "/tmp", createdAt: now, lastSeenAt: now },
+				],
+			}),
+			{ mode: 0o600 },
+		);
 		console.log(
 			`\n🚀 Starting soak test: ${NUM_AGENTS} agents, ${NUM_MESSAGES} messages\n`,
 		);
@@ -252,6 +326,9 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 		// Clean up
 		messages = [];
 		agents = [];
+		for (const dir of tempDirs.splice(0)) {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("spawns N agents", () => {
@@ -331,6 +408,12 @@ describe("Soak Test: Multi-Agent Messaging", () => {
 
 	it("maintains registry integrity", () => {
 		agents = readAllAgents();
+
+		// Exactly the three fixture records: two leads and one namespaced
+		// helper. The ownership journal shares the registry dir and must never
+		// surface as a (corrupt) agent record.
+		expect(agents).toHaveLength(3);
+		expect(agents.filter((agent) => agent.namespace)).toHaveLength(1);
 
 		// Simulate heartbeat updates
 		for (const agent of agents) {
