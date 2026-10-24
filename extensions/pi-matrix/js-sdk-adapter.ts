@@ -63,7 +63,17 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private connected = false;
 	private callbacks?: MatrixAdapterCallbacks;
 	private syncState: SyncStateStore;
-	private pendingToken: string | null = null;
+	/** Newest cursor the SDK reported, whether or not it is durable yet. */
+	private latestToken: string | null = null;
+	/** Cursor already written to the store. */
+	private persistedToken: string | null = null;
+	/** Serialises cursor writes so two sync events cannot interleave a save. */
+	private cursorWrites: Promise<void> = Promise.resolve();
+	/**
+	 * Optional gate: when it returns false the cursor is held back because the
+	 * process still holds unread messages in memory only.
+	 */
+	private canPersistCursor?: () => boolean;
 	private readonly callbackTasks = new BoundedTaskSet(MAX_CALLBACK_TASKS);
 	/** Wall clock at start; only used to reject replay when no token was saved. */
 	private startWallClockMs = Date.now();
@@ -75,8 +85,9 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 
 	crypto = null;
 
-	constructor(syncState: SyncStateStore) {
+	constructor(syncState: SyncStateStore, options: { canPersistCursor?: () => boolean } = {}) {
 		this.syncState = syncState;
+		this.canPersistCursor = options.canPersistCursor;
 	}
 
 	async start(config: MatrixConfig, callbacks: MatrixAdapterCallbacks): Promise<void> {
@@ -89,6 +100,8 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		this.startWallClockMs = Date.now();
 		const savedToken = await this.syncState.load();
 		this.resumedFromSavedToken = Boolean(savedToken);
+		this.latestToken = savedToken ?? null;
+		this.persistedToken = savedToken ?? null;
 		if (savedToken) {
 			store.setSyncToken(savedToken);
 		}
@@ -206,15 +219,40 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			// Reading only one shape silently stops persisting the cursor, so every
 			// restart re-syncs from scratch and can replay old messages as new.
 			const token = data?.nextSyncToken ?? data?.next_batch;
-			if (typeof token === "string" && token.length > 0 && token !== this.pendingToken) {
-				this.pendingToken = token;
-				try {
-					await this.syncState.save(token);
-				} catch (err) {
-					callbacks.onLog?.(`failed to persist sync token: ${(err as Error).message}`, "error");
-				}
+			if (typeof token !== "string" || token.length === 0) return;
+			this.latestToken = token;
+			// Do not advance the durable cursor past messages that only exist in this
+			// process's unread buffer: a restart would skip mail Jim sent while the
+			// agent was busy in a long turn. The transport flushes on drain.
+			if (this.canPersistCursor && !this.canPersistCursor()) return;
+			await this.persistCursor(token, callbacks);
+		});
+	}
+
+	/** Persist the newest observed cursor if it is still only in memory. */
+	async flushCursor(): Promise<void> {
+		const token = this.latestToken;
+		if (!token || token === this.persistedToken) return;
+		if (this.canPersistCursor && !this.canPersistCursor()) return;
+		await this.persistCursor(token, this.callbacks);
+	}
+
+	private persistCursor(
+		token: string,
+		callbacks?: MatrixAdapterCallbacks,
+	): Promise<void> {
+		if (token === this.persistedToken) return this.cursorWrites;
+		this.cursorWrites = this.cursorWrites.then(async () => {
+			// Re-check inside the queue: an earlier write may have covered it.
+			if (token === this.persistedToken) return;
+			try {
+				await this.syncState.save(token);
+				this.persistedToken = token;
+			} catch (err) {
+				callbacks?.onLog?.(`failed to persist sync token: ${(err as Error).message}`, "error");
 			}
 		});
+		return this.cursorWrites;
 	}
 
 	private bindMembership(sdk: AnySdk, config: MatrixConfig, callbacks: MatrixAdapterCallbacks): void {

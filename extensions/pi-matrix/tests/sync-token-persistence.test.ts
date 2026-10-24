@@ -25,7 +25,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("matrix-js-sdk", () => mocks.sdk);
 
 import { MatrixJsSdkAdapter } from "../js-sdk-adapter.js";
-import type { MatrixAdapterCallbacks, MatrixInboundEvent } from "../adapter.js";
+import { MatrixBridgeClient } from "../client.js";
+import { MatrixTransport } from "../transport.js";
+import type { MatrixAdapterCallbacks, MatrixClientAdapter, MatrixInboundEvent } from "../adapter.js";
 import type { MatrixConfig } from "../types.js";
 
 type Handler = (...args: unknown[]) => unknown;
@@ -84,7 +86,11 @@ function timelineEvent(options: { id: string; ts: number; sender?: string }) {
 	};
 }
 
-async function startHarness(savedToken: string | null, save?: (token: string) => Promise<void>) {
+async function startHarness(
+	savedToken: string | null,
+	save?: (token: string) => Promise<void>,
+	canPersistCursor?: () => boolean,
+) {
 	const client = createFakeClient();
 	mocks.sdk.createClient.mockReturnValue(client);
 	const saveCalls: string[] = [];
@@ -93,11 +99,14 @@ async function startHarness(savedToken: string | null, save?: (token: string) =>
 		await save?.(token);
 	});
 	const load = vi.fn(async () => savedToken);
-	const adapter = new MatrixJsSdkAdapter({
-		load,
-		save: saveFn,
-		reset: vi.fn(async () => {}),
-	});
+	const adapter = new MatrixJsSdkAdapter(
+		{
+			load,
+			save: saveFn,
+			reset: vi.fn(async () => {}),
+		},
+		canPersistCursor ? { canPersistCursor } : {},
+	);
 	const inbound: MatrixInboundEvent[] = [];
 	const onLog = vi.fn();
 	const callbacks = {
@@ -175,5 +184,80 @@ describe("MatrixJsSdkAdapter fresh-initial-sync replay guard", () => {
 		await vi.waitFor(() => expect(inbound).toHaveLength(1));
 		// A resumed cursor means the SDK already skipped history: this is new mail.
 		expect(inbound[0]).toMatchObject({ eventId: "$downtime", isHistorical: false });
+	});
+});
+
+describe("MatrixJsSdkAdapter held cursor on a busy turn", () => {
+	it("holds the cursor while unread messages are buffered and flushes on drain", async () => {
+		let drained = false;
+		const { client, saveCalls, adapter } = await startHarness(null, undefined, () => drained);
+		client.emit("sync", "SYNCING", "PREPARED", { nextSyncToken: "s_busy" });
+		await Promise.resolve();
+		expect(saveCalls).toEqual([]);
+
+		// Same cursor again while still busy: still nothing durable.
+		client.emit("sync", "SYNCING", "SYNCING", { nextSyncToken: "s_busy" });
+		await Promise.resolve();
+		expect(saveCalls).toEqual([]);
+
+		drained = true;
+		await adapter.flushCursor();
+		expect(saveCalls).toEqual(["s_busy"]);
+	});
+
+	it("flushing twice does not rewrite the same cursor", async () => {
+		const { client, saveFn, adapter } = await startHarness(null, undefined, () => true);
+		client.emit("sync", "SYNCING", "PREPARED", { nextSyncToken: "s_1" });
+		await vi.waitFor(() => expect(saveFn).toHaveBeenCalledTimes(1));
+		await adapter.flushCursor();
+		expect(saveFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not advance past a cursor that is still unread when a new sync arrives", async () => {
+		let drained = false;
+		const { client, saveCalls } = await startHarness(null, undefined, () => drained);
+		client.emit("sync", "SYNCING", "PREPARED", { nextSyncToken: "s_1" });
+		client.emit("sync", "SYNCING", "SYNCING", { nextSyncToken: "s_2" });
+		await Promise.resolve();
+		expect(saveCalls).toEqual([]);
+		drained = true;
+		client.emit("sync", "SYNCING", "SYNCING", { nextSyncToken: "s_3" });
+		await vi.waitFor(() => expect(saveCalls).toEqual(["s_3"]));
+	});
+});
+
+describe("MatrixTransport drain signal", () => {
+	it("tells the client to flush its held cursor once messages are read", () => {
+		const noteInboundConsumed = vi.fn();
+		const fakeClient = { noteInboundConsumed } as unknown as MatrixBridgeClient;
+		const transport = new MatrixTransport(fakeClient, "matrix");
+		transport.pushInbound({
+			roomId: "!room:example.org",
+			senderMxid: "@jim:example.org",
+			body: "hello",
+			eventId: "$evt",
+			timestampMs: Date.now(),
+		});
+		const messages = transport.receive("");
+		expect(messages).toHaveLength(1);
+		expect(noteInboundConsumed).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not signal a flush when there was nothing buffered", () => {
+		const noteInboundConsumed = vi.fn();
+		const fakeClient = { noteInboundConsumed } as unknown as MatrixBridgeClient;
+		const transport = new MatrixTransport(fakeClient, "matrix");
+		expect(transport.receive("")).toEqual([]);
+		expect(noteInboundConsumed).not.toHaveBeenCalled();
+	});
+
+	it("exposes flushCursor through MatrixBridgeClient to the adapter", async () => {
+		const flushCursor = vi.fn(async () => {});
+		const bridge = new MatrixBridgeClient(
+			config(),
+			{ flushCursor } as unknown as MatrixClientAdapter,
+		);
+		bridge.noteInboundConsumed();
+		await vi.waitFor(() => expect(flushCursor).toHaveBeenCalledTimes(1));
 	});
 });

@@ -48,6 +48,11 @@ export interface MatrixClientAdapter {
 	/** Whether the adapter is currently in a prepared/syncing state. */
 	isConnected(): boolean;
 	/**
+	 * Persist the newest observed sync cursor now, when the adapter is holding it
+	 * back because unread messages are still buffered in memory.
+	 */
+	flushCursor?(): Promise<void>;
+	/**
 	 * Expose SDK crypto capabilities only when end-to-end encryption is enabled.
 	 * For unencrypted deployments this is null.
 	 */

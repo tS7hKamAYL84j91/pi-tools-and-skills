@@ -115,7 +115,15 @@ export default function (pi: ExtensionAPI): void {
 
 		connectionState = "connecting";
 		updateStatus();
-		client = new MatrixBridgeClient(config, new MatrixJsSdkAdapter(new FileSyncStateStore({ storagePath: config.storagePath })));
+		// Hold the durable sync cursor back while unread Matrix messages are only in
+		// this process's buffer, so a restart during a long turn cannot skip them.
+		client = new MatrixBridgeClient(
+			config,
+			new MatrixJsSdkAdapter(
+				new FileSyncStateStore({ storagePath: config.storagePath }),
+				{ canPersistCursor: () => (transport?.pendingCount("") ?? 0) === 0 },
+			),
+		);
 		transport = new MatrixTransport(client, channelLabel, config.ingress, (msg) =>
 			emitMatrixMessage(c, msg, "warning"),
 		);

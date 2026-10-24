@@ -207,6 +207,10 @@ export class MatrixTransport implements MessageTransport {
 		this.limiter.flushDiagnostic();
 		const messages = [...this.buffer];
 		this.buffer.length = 0;
+		// Everything received so far is now in the model's context: let the client
+		// persist the newest cursor it was holding back during the busy turn.
+		// Optional call: transports are also exercised against stub clients.
+		if (messages.length > 0) this.client.noteInboundConsumed?.();
 		return messages;
 	}
 

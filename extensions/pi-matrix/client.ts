@@ -265,6 +265,14 @@ export class MatrixBridgeClient {
 		return this.lastInboundRoomId ?? this.config.roomId ?? null;
 	}
 
+	/**
+	 * The unread buffer was consumed (message_read). Let the adapter advance the
+	 * durable sync cursor it was holding back while messages were only in memory.
+	 */
+	noteInboundConsumed(): void {
+		void this.adapter.flushCursor?.();
+	}
+
 	/** Send a text message to the configured/bound room. */
 	async send(text: string): Promise<{ eventId: string }> {
 		const roomId = this.replyRoomId();
