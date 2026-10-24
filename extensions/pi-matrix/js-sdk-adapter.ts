@@ -65,6 +65,13 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 	private syncState: SyncStateStore;
 	private pendingToken: string | null = null;
 	private readonly callbackTasks = new BoundedTaskSet(MAX_CALLBACK_TASKS);
+	/** Wall clock at start; only used to reject replay when no token was saved. */
+	private startWallClockMs = Date.now();
+	/**
+	 * Whether this client resumed from a persisted sync token. Without one the SDK
+	 * does a fresh initial sync and replays recent room history.
+	 */
+	private resumedFromSavedToken = false;
 
 	crypto = null;
 
@@ -79,7 +86,9 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		await silenceSdkGlobalLogger(callbacks.onLog);
 
 		const store = new sdk.MemoryStore();
+		this.startWallClockMs = Date.now();
 		const savedToken = await this.syncState.load();
+		this.resumedFromSavedToken = Boolean(savedToken);
 		if (savedToken) {
 			store.setSyncToken(savedToken);
 		}
@@ -192,7 +201,11 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 				this.connected = connected;
 				callbacks.onConnectionChange?.(connected);
 			}
-			const token = data?.next_batch;
+			// matrix-js-sdk emits ISyncStateData here ({oldSyncToken, nextSyncToken,
+			// catchingUp}); older releases exposed the raw /sync body's next_batch.
+			// Reading only one shape silently stops persisting the cursor, so every
+			// restart re-syncs from scratch and can replay old messages as new.
+			const token = data?.nextSyncToken ?? data?.next_batch;
 			if (typeof token === "string" && token.length > 0 && token !== this.pendingToken) {
 				this.pendingToken = token;
 				try {
@@ -233,17 +246,28 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			if (sender === config.userId) return;
 			const status = event.getStatus?.();
 			const isLocalEcho = status !== undefined && status !== null && status !== "SENT" && status !== null;
+			const timestampMs = event.getTs?.() ?? Date.now();
 			const normalised: MatrixInboundEvent = {
 				roomId: event.getRoomId?.() ?? `${config.userId}-unknown`,
 				sender: sender ?? "unknown",
 				eventId: event.getId?.() ?? `${Date.now()}`,
-				timestampMs: event.getTs?.() ?? Date.now(),
+				timestampMs,
 				content: (rawEvent.content as Record<string, unknown>) ?? {},
-				isHistorical: false,
+				isHistorical: this.isFreshInitialSyncReplay(timestampMs),
 				isLocalEcho,
 			};
 			this.runCallback("timeline", callbacks, () => callbacks.onMessage(normalised));
 		});
+	}
+
+	/**
+	 * Reject replayed history from a fresh initial sync (no saved token).
+	 *
+	 * With a saved cursor every returned event is new — including mail sent while
+	 * this process was down — so age alone must never discard it.
+	 */
+	private isFreshInitialSyncReplay(timestampMs: number): boolean {
+		return !this.resumedFromSavedToken && timestampMs < this.startWallClockMs;
 	}
 
 	private runCallback(
