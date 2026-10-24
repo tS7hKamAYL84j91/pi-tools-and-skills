@@ -22,6 +22,22 @@ type AnySdk = any;
 const SYNC_TIMEOUT_MS = 30_000;
 const MAX_CALLBACK_TASKS = 8;
 
+/**
+ * Fixed-shape failure label for an upstream error.
+ *
+ * Deliberately never returns `error.message`: Matrix SDK/server messages can carry
+ * request URLs, tokens or account detail. A standard `errcode` is safe by shape;
+ * otherwise only the error class name is reported.
+ */
+function safeFailureCode(error: unknown): string {
+	const errcode = (error as { errcode?: unknown } | null | undefined)?.errcode;
+	if (typeof errcode === "string" && /^[A-Z][A-Z0-9_]{2,39}$/.test(errcode)) {
+		return `errcode ${errcode}`;
+	}
+	const name = error instanceof Error ? error.name : "Error";
+	return /^[A-Za-z][A-Za-z0-9_.-]{0,39}$/.test(name) ? `error ${name}` : "error";
+}
+
 function formatLogArg(arg: unknown): string {
 	if (typeof arg === "string") return arg;
 	if (arg instanceof Error) return arg.message;
@@ -123,6 +139,14 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		this.bindMembership(sdk, config, callbacks);
 		this.bindTimeline(sdk, config, callbacks);
 
+		// A dedicated credential must prove its identity before it touches the
+		// account: verify whoami first, then sync, then join. A mismatch aborts the
+		// start so a wrong or half-provisioned token cannot bind a lead's room or
+		// answer in it.
+		if (config.verifyIdentity) {
+			await this.verifyCredentialIdentity(config);
+		}
+
 		await this.client.startClient({ initialSyncLimit: 1 });
 		await this.waitForPrepared(sdk, SYNC_TIMEOUT_MS);
 	}
@@ -203,6 +227,34 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			});
 		} catch {
 			/* SDK may not expose log events */
+		}
+	}
+
+	/**
+	 * Prove the access token belongs to `config.userId` (`/account/whoami`).
+	 *
+	 * Exact comparison: MXID case folding is not an identity check. Neither the
+	 * token, the upstream error text, nor the returned identity is echoed anywhere:
+	 * SDK/server errors can embed request URLs or credentials, and the whoami value
+	 * is untrusted upstream data. Only a fixed-shape code is reported.
+	 */
+	private async verifyCredentialIdentity(config: MatrixConfig): Promise<void> {
+		if (!this.client) throw new Error("Matrix client is not started");
+		let whoamiUser: unknown;
+		try {
+			const whoami = await this.client.whoami();
+			whoamiUser = whoami?.user_id;
+		} catch (error) {
+			throw new Error(
+				`matrix: credential identity could not be verified (${safeFailureCode(error)}); ` +
+					"refusing to sync or join",
+			);
+		}
+		if (whoamiUser !== config.userId) {
+			throw new Error(
+				"matrix: credential identity mismatch — the resolved token does not belong to the " +
+					"rendered matrix.userId; refusing to sync or join",
+			);
 		}
 	}
 

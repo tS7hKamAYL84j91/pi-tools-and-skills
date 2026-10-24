@@ -219,6 +219,68 @@ describe("loadMatrixConfig", () => {
 		expect(config?.mentionAll).toBe(true);
 	});
 
+	it("resolves a dedicated token from the secret store and requires identity proof", async () => {
+		const binDir = mkdtempSync(join(tmpdir(), "pi-matrix-secret-bin-"));
+		const bin = join(binDir, "fake-coas-secrets");
+		const argvLog = join(binDir, "argv.log");
+		writeFileSync(
+			bin,
+			`#!/bin/sh\nprintf '%s\\n' "$*" > '${argvLog}'\nprintf '%s\\n' 'syt_dedicated_token_value'\n`,
+			{ mode: 0o700 },
+		);
+		const previousBin = process.env.COAS_SECRETS_BIN;
+		process.env.COAS_SECRETS_BIN = bin;
+		try {
+			writeSettings({
+				homeserver: "https://matrix.org",
+				userId: "@lead-a:matrix.org",
+				roomId: "!private:matrix.org",
+				// A stale shared env var must be ignored, not used as a fallback.
+				accessTokenEnv: "MATRIX_TEST_TOKEN",
+				tokenSecret: "matrix-token-lead-a",
+			});
+			const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+			const config = loadMatrixConfig(projectSettingsPath);
+
+			expect(config?.accessToken).toBe("syt_dedicated_token_value");
+			expect(config?.verifyIdentity).toBe(true);
+			expect(config?.tokenSecret).toBe("matrix-token-lead-a");
+			expect(readFileSync(argvLog, "utf8").trim()).toBe("get matrix-token-lead-a");
+			expect(readFileSync(argvLog, "utf8")).not.toContain("syt_dedicated_token_value");
+
+			// A failing secret store must not fall back to the inherited env token.
+			process.env.COAS_SECRETS_BIN = join(binDir, "missing-binary");
+			expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(
+				/refusing to fall back to an inherited token/,
+			);
+
+			// A secret whose content is not a usable token is rejected, not used.
+			process.env.COAS_SECRETS_BIN = bin;
+			writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' 'not a token with spaces'\n`, { mode: 0o700 });
+			writeSettings({
+				homeserver: "https://matrix.org",
+				userId: "@lead-a:matrix.org",
+				roomId: "!private:matrix.org",
+				tokenSecret: "matrix-token-lead-a",
+			});
+			expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/usable access token/);
+
+			// Option-like secret references are refused before anything runs.
+			process.env.COAS_SECRETS_BIN = bin;
+			writeSettings({
+				homeserver: "https://matrix.org",
+				userId: "@lead-a:matrix.org",
+				roomId: "!private:matrix.org",
+				tokenSecret: "--get",
+			});
+			expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/secret key name/);
+		} finally {
+			if (previousBin === undefined) delete process.env.COAS_SECRETS_BIN;
+			else process.env.COAS_SECRETS_BIN = previousBin;
+			rmSync(binDir, { recursive: true, force: true });
+		}
+	});
+
 	it("refuses an ungated shared room, a non-room id, or a shared room equal to the private one", async () => {
 		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
 

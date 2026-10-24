@@ -8,6 +8,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
+import { resolveSecretToken } from "./secret-token.js";
 import type { MatrixConfig, MatrixIngressConfig } from "./types.js";
 
 const DEFAULT_STORAGE_ROOT = join(homedir(), ".pi", "agent", "matrix-sync");
@@ -47,6 +48,7 @@ interface RawMatrixSettings {
 	mentionNames?: unknown;
 	mentionAll?: unknown;
 	accessTokenEnv?: unknown;
+	tokenSecret?: unknown;
 	storagePath?: unknown;
 	attachmentCachePath?: unknown;
 	maxAttachmentBytes?: unknown;
@@ -84,10 +86,9 @@ export function loadMatrixConfig(
 	const userId = requireString(raw.userId, "matrix.userId");
 	const roomId = optionalString(raw.roomId);
 	const sharedRoomId = optionalString(raw.sharedRoomId);
-	const accessTokenEnv = requireString(
-		raw.accessTokenEnv,
-		"matrix.accessTokenEnv",
-	);
+	// A dedicated credential is requested by naming a secret key; the inherited
+	// shared token stays the fallback only for profiles that do not ask for one.
+	const tokenSecret = optionalString(raw.tokenSecret);
 
 	if (!userId.startsWith("@") || !userId.includes(":")) {
 		throw new Error(
@@ -126,12 +127,22 @@ export function loadMatrixConfig(
 		? true
 		: requireBoolean(raw.mentionAll, "matrix.mentionAll");
 
-	const accessToken = process.env[accessTokenEnv];
-	if (!accessToken) {
-		throw new Error(
-			`matrix: env var "${accessTokenEnv}" is not set. ` +
-				`Provide it from your workspace runtime or secret manager before starting pi.`,
-		);
+	let accessToken: string;
+	let verifyIdentity = false;
+	if (tokenSecret) {
+		accessToken = resolveSecretToken(tokenSecret);
+		// A dedicated credential must prove who it is before any sync or join.
+		verifyIdentity = true;
+	} else {
+		const accessTokenEnv = requireString(raw.accessTokenEnv, "matrix.accessTokenEnv");
+		const inherited = process.env[accessTokenEnv];
+		if (!inherited) {
+			throw new Error(
+				`matrix: env var "${accessTokenEnv}" is not set. ` +
+					`Provide it from your workspace runtime or secret manager before starting pi.`,
+			);
+		}
+		accessToken = inherited;
 	}
 
 	const storagePath = expandHome(
@@ -165,6 +176,8 @@ export function loadMatrixConfig(
 		sharedRoomId,
 		mentionNames,
 		mentionAll,
+		tokenSecret,
+		verifyIdentity,
 		accessToken,
 		storagePath,
 		attachmentCachePath,

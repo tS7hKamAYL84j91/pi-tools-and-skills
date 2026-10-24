@@ -38,7 +38,20 @@ export interface MatrixConfig {
 	mentionNames?: string[];
 	/** Whether the shared room accepts `@all` as "everyone" (default true). */
 	mentionAll?: boolean;
-	/** Bearer access token (resolved from env at runtime) */
+	/**
+	 * Secret-store key for a dedicated credential (`matrix.tokenSecret`). When set,
+	 * the token is resolved from the CoAS secret store and the profile's own
+	 * identity must be verified before sync/join. Never falls back to an inherited
+	 * shared token.
+	 */
+	tokenSecret?: string;
+	/**
+	 * Whether the adapter must prove the credential's identity (`whoami`) equals
+	 * `userId` before it starts syncing or joining. Set when a dedicated credential
+	 * was resolved.
+	 */
+	verifyIdentity?: boolean;
+	/** Bearer access token (resolved from env or the secret store at runtime) */
 	accessToken: string;
 	/** Filesystem path for sync state storage */
 	storagePath: string;
