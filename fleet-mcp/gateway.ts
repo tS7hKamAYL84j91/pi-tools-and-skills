@@ -341,6 +341,9 @@ export class FleetGateway {
 		return {
 			backend: "maildir",
 			connected: true,
+			// An unusable native grant denies native access but keeps the external
+			// mailbox service reporting healthy, so operators see the cause here.
+			native: await this.backend.nativeAvailability(),
 			own_identity: owner.id,
 			pending: this.backend.pending(owner),
 			observed_at: Date.now(),

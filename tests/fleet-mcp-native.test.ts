@@ -50,45 +50,65 @@ function config(nativeAgentId?: string) {
 	return parseFleetConfig({ workspaceAlias: "test", workspaceRoot: join(root, "workspace"), mailboxRoot: join(root, "mail"), stateDir: join(root, "state"), principal: "external-test", ...(nativeAgentId ? { nativeAgentId } : {}) });
 }
 
+/** The gateway projects agents as an untyped payload; tests only need the ids. */
+function agentIds(agents: readonly unknown[]): string[] {
+	return agents.map((agent) => (agent as { readonly agent_id: string }).agent_id);
+}
+
 function sessionBinding() {
 	if (!native.sessionFile) throw new Error("native sessionFile required for binding");
 	return { pid: native.pid, sessionFile: native.sessionFile, cwd: native.cwd, visibility: "global" as const };
 }
 
 describe("Fleet native discovery and delivery", () => {
-	it("recovers across reference disappearance and reload without changing recipient authority", async () => {
+	it("keeps external discovery available while a native reference is missing or reloading", async () => {
 		const peer = { ...native, id: "scoped-peer", sessionFile: join(root, "peer.jsonl"), visibility: "scoped" as const, parentId: "parent" };
 		await saveNative(peer);
 		const settings = parseFleetConfig({ ...config(), nativeSession: sessionBinding() });
 		const gateway = new FleetGateway(settings);
 		await gateway.init();
+		const own = await gateway.register("test", "external-test");
 		const before = await gateway.agents("test");
+		// Native authority is denied while the reference is gone: no native peers,
+		// but the external agent this process serves stays reachable.
 		await rm(join(paths.registry, `${native.id}.json`));
-		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+		const denied = await gateway.agents("test");
+		expect(agentIds(denied)).toEqual([own.agent_id]);
+		expect((await gateway.status("test") as { native: string }).native).toBe("unavailable");
+		// A same-process reload replaces the registry ID; authority is not
+		// transferred to a new process, only re-resolved for this exact session.
 		const reloaded = { ...native, id: "reloaded-root" };
 		await saveNative(reloaded);
 		const after = await gateway.agents("test");
 		expect(before).toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: native.id }), expect.objectContaining({ agent_id: peer.id })]));
-		expect(after).toHaveLength(before.length);
 		expect(after).toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: reloaded.id }), expect.objectContaining({ agent_id: peer.id })]));
+		expect((await gateway.status("test") as { native: string }).native).toBe("available");
+		// Duplicate matches fail closed: ambiguous identity denies native access
+		// rather than picking one of the candidates.
 		await saveNative(native);
-		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+		expect(agentIds(await gateway.agents("test"))).toEqual([own.agent_id]);
+		expect((await gateway.status("test") as { native: string }).native).toBe("unavailable");
 		await rm(join(paths.registry, `${native.id}.json`));
 		await expect(gateway.agents("test")).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ agent_id: reloaded.id }), expect.objectContaining({ agent_id: peer.id })]));
 	});
 
-	it("reports HTTP 503 during a missing reference and returns to 200 after reload", async () => {
+	it("reports ready and degraded native status while a reference is missing", async () => {
 		const settings = { ...config(), nativeSession: sessionBinding(), transport: "http" as const, bearerToken: randomBytes(24).toString("hex"), listenPort: 0 };
 		const gateway = new FleetGateway(settings);
 		await gateway.init();
+		await gateway.register("test", "external-test");
 		const server = await startHttp(settings, gateway);
 		const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/readyz`;
 		try {
 			expect((await fetch(url)).status).toBe(200);
 			await rm(join(paths.registry, `${native.id}.json`));
-			expect((await fetch(url)).status).toBe(503);
+			// A stale native grant no longer takes the external service down; the
+			// cause is reported through fleet_status and native peers stay denied.
+			expect((await fetch(url)).status).toBe(200);
+			expect((await gateway.status("test") as { native: string }).native).toBe("unavailable");
 			await saveNative({ ...native, id: "after-reload" });
 			expect((await fetch(url)).status).toBe(200);
+			expect((await gateway.status("test") as { native: string }).native).toBe("available");
 		} finally {
 			await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 		}
@@ -276,12 +296,16 @@ describe("Fleet native discovery and delivery", () => {
 		expect(transport.receive(native.id)[0]).not.toHaveProperty("senderId");
 	});
 
-	it("rejects stale references and native name collisions", async () => {
+	it("rejects native name collisions and denies a stale reference without failing the service", async () => {
 		const gateway = new FleetGateway(config(native.id));
 		await gateway.init();
 		await expect(gateway.register("test", native.name)).rejects.toMatchObject({ code: "CONFLICT" });
+		const own = await gateway.register("test", "external-test");
 		await saveNative({ ...native, heartbeat: Date.now() - 60_000 });
-		await expect(gateway.agents("test")).rejects.toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+		// A stale reference is a denied grant, not a backend outage.
+		expect(agentIds(await gateway.agents("test"))).toEqual([own.agent_id]);
+		expect((await gateway.status("test") as { native: string }).native).toBe("unavailable");
+		expect(await gateway.ready()).toBe(true);
 	});
 
 	it("ignores corrupt, forged and symlinked records without modifying them", async () => {

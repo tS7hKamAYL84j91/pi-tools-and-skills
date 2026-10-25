@@ -135,6 +135,54 @@ describe("external agent registrar", () => {
 		expect(await loadExternalAgents(config)).toHaveLength(1);
 	});
 
+	it("stores mailbox paths relative to the mailbox root so the manifest is portable", async () => {
+		const record = await registerExternalAgent(config, { name: "worker-1" });
+		const manifest = JSON.parse(
+			readFileSync(join(config.workspaceRoot, "external-agents.json"), "utf8"),
+		) as Array<{ readonly id: string; readonly mailboxPath: string }>;
+
+		expect(manifest).toHaveLength(1);
+		expect(manifest[0]?.id).toBe(record.id);
+		expect(manifest[0]?.mailboxPath).toBe(`${record.id}/inbox`);
+
+		// A container that mounts the same tree under a different prefix resolves
+		// the same entry against its own root; the record path follows that root.
+		const containerRoot = join(config.workspaceRoot, "container-mailboxes");
+		const [containerView] = await loadExternalAgents({ workspaceRoot: config.workspaceRoot, mailboxRoot: containerRoot });
+		expect(containerView?.mailboxPath).toBe(join(containerRoot, record.id, "inbox"));
+		expect(containerView?.id).toBe(record.id);
+	});
+
+	it("accepts a legacy absolute manifest path only inside this reader's root", async () => {
+		const record = await registerExternalAgent(config, { name: "worker-1" });
+		const manifestPath = join(config.workspaceRoot, "external-agents.json");
+		const stored = JSON.parse(readFileSync(manifestPath, "utf8")) as Array<Record<string, unknown>>;
+		const legacy = stored.map((entry) => ({ ...entry, mailboxPath: join(config.mailboxRoot, record.id, "inbox") }));
+		writeFileSync(manifestPath, JSON.stringify(legacy, null, 2), "utf8");
+
+		const [loaded] = await loadExternalAgents(config);
+		expect(loaded?.mailboxPath).toBe(join(config.mailboxRoot, record.id, "inbox"));
+		// Loading never rewrites the manifest back to the portable form.
+		expect(readFileSync(manifestPath, "utf8")).toBe(JSON.stringify(legacy, null, 2));
+	});
+
+	it("rejects relative traversal, empty, and outside-absolute manifest paths", async () => {
+		const record = await registerExternalAgent(config, { name: "worker-1" });
+		const manifestPath = join(config.workspaceRoot, "external-agents.json");
+		const stored = JSON.parse(readFileSync(manifestPath, "utf8")) as Array<Record<string, unknown>>;
+		const outside = mkdtempSync(join(tmpdir(), "pi-ext-agent-outside-"));
+		try {
+			for (const mailboxPath of ["../escape/inbox", ".", "", `/tmp/${record.id}/inbox`, join(outside, "inbox"), `${record.id}/../../inbox`]) {
+				const authority = JSON.stringify(stored.map((entry) => ({ ...entry, mailboxPath })), null, 2);
+				writeFileSync(manifestPath, authority, "utf8");
+				await expect(loadExternalAgents(config), mailboxPath).rejects.toThrow(/invalid entry/);
+				expect(readFileSync(manifestPath, "utf8")).toBe(authority);
+			}
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
 	it("rejects relative and out-of-root mailbox paths", async () => {
 		await expect(
 			registerExternalAgent(config, { name: "relative", mailboxPath: "relative/inbox" }),

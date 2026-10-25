@@ -30,12 +30,23 @@ The build emits uniform ESM into ignored `dist/`; the runtime entrypoint is `dis
 | `principal` | no | Fixed stdio/legacy HTTP identity (`local-stdio` by default) |
 | `httpPrincipals` | mapped HTTP | Nonempty array of `{principal, bearerToken}`; up to 100 unique principals and credentials; mutually exclusive with `bearerToken` |
 | `nativeAgentId` | no | Real, live native reference ID granting its existing Agent Hub visibility; mutually exclusive with `nativeSession` |
-| `nativeSession` | no | Operator-approved `{pid, sessionFile, cwd, visibility: "global"}` binding; absolute paths, positive PID, global root only. Neither binding means external-only |
+| `nativeSession` | no | Operator-approved `{pid, sessionFile, cwd, visibility: "global"}` binding; absolute paths, positive PID, global root only. Neither binding means external-only. An unresolvable binding denies native access and is reported as `native: "unavailable"`; it does not fail the external service |
 | `limits.pageSize` | no | Default 20, maximum 100 |
 | `limits.maxTextBytes` | no | Default 32768 UTF-8 bytes |
 | `limits.maxAckIds` | no | Default and maximum 100 |
 
 Mount `workspaceRoot` and `mailboxRoot` according to the existing Agent Hub layout. `stateDir` must be writable and persistent; Fleet MCP creates it as `0700` and atomically writes `state.json` as `0600`.
+
+`<workspaceRoot>/external-agents.json` stores each mailbox as a path **relative to
+`mailboxRoot`** (`<id>/inbox`), so one manifest is valid for the host and for a
+container that mounts the same tree under a different prefix. Readers resolve the
+relative path against their own `mailboxRoot` and reject anything that escapes it
+(`..`, empty or `.` segments, and absolute paths outside the root). An absolute
+path is accepted only as a legacy entry already inside the reader's own root, and
+nothing is rewritten on read. A manifest written by an older host still holds
+absolute host paths; rewrite those entries to `<id>/inbox` on the host (or
+re-register the agents) before a different-namespace reader can use them — the
+service never repairs the manifest on its own.
 
 HTTP exposes `POST /mcp`, `GET /healthz`, and `GET /readyz`. `/mcp` requires an exact bearer token comparison. Health and readiness contain no identity, path, or credential details.
 
@@ -64,6 +75,14 @@ Registry records remain trusted same-user local metadata, not cryptographically
 authenticated identities.
 
 Native recipients must already have a Maildir inbox. Configure opted-in native Pi sessions with `PI_PANOPTICON_EXTERNAL_WORKSPACE_ROOT` matching Fleet's host `workspaceRoot` and `PI_PANOPTICON_EXTERNAL_MAILBOX_ROOT` matching `mailboxRoot` (legacy `PI_PANOPTICON_*` names are retained). Agent Hub refreshes that validated source before peer tools resolve names, so registration/removal is visible without restarting sessions. Defaults retain the native session's workspace and standard persistent mailbox root. These settings require operator approval; Fleet never changes them.
+
+A configured native grant that cannot be resolved (stale PID, replaced process,
+revoked scope) is a **denied grant, not a backend outage**: native peers are
+withheld, every external agent this process serves stays reachable, and
+`fleet_status` reports `native: "unavailable"`. `/readyz` reflects the external
+service only. Identity is never re-bound to a name or a display label, because a
+free-name claim would hand Fleet's native visibility to whichever process holds
+the name; recovering native access requires operator rebinding.
 
 Messages retain the legacy sender label and may carry additive `senderId` metadata. Fleet exposes the canonical ID when present; unresolvable legacy native labels have `sender_id: null`. Maildir provenance is still not cryptographic authentication (`authentication_confidence: unknown`).
 

@@ -70,6 +70,40 @@ function confinedMailboxPath(path: string, root: string): string {
 	return resolvedPath;
 }
 
+/**
+ * Mailbox paths are stored relative to the mailbox root: the manifest is shared
+ * between the host and containers that mount the same tree at a different
+ * prefix, so an absolute path would only be valid in the namespace that wrote it.
+ */
+function storedMailboxPath(absolutePath: string, root: string): string {
+	return relative(root, absolutePath).split(sep).join("/");
+}
+
+/**
+ * Resolve a stored mailbox path against this reader's mailbox root.
+ *
+ * Relative paths are the portable form. An absolute path is accepted only as a
+ * legacy entry that is already inside this root; everything else fails closed,
+ * including traversal segments and empty or NUL-bearing values.
+ */
+function resolveStoredMailboxPath(stored: string, root: string): string {
+	if (stored.length === 0 || stored.includes("\0")) {
+		throw new Error("External agent mailbox path is invalid");
+	}
+	if (isAbsolute(stored)) {
+		return confinedMailboxPath(stored, root);
+	}
+	if (stored.split(/[\\/]/).some((segment) => segment === "" || segment === "." || segment === "..")) {
+		throw new Error("External agent mailbox path must be a plain relative path inside the mailbox root");
+	}
+	const resolvedPath = resolve(root, stored);
+	const pathFromRoot = relative(root, resolvedPath);
+	if (!pathFromRoot || pathFromRoot === ".." || pathFromRoot.startsWith(`..${sep}`) || isAbsolute(pathFromRoot)) {
+		throw new Error(`External agent mailbox path must be inside ${root}`);
+	}
+	return resolvedPath;
+}
+
 async function loadManifest(config: ExternalRuntimeConfig): Promise<ExternalAgentManifestEntry[]> {
 	const path = manifestPath(config);
 	const mailboxRoot = resolveMailboxRoot(config);
@@ -155,7 +189,8 @@ function isValidManifestEntry(value: unknown, mailboxRoot: string): value is Ext
 		return false;
 	}
 	try {
-		return confinedMailboxPath(item.mailboxPath, mailboxRoot) === item.mailboxPath;
+		resolveStoredMailboxPath(item.mailboxPath, mailboxRoot);
+		return true;
 	} catch {
 		return false;
 	}
@@ -201,13 +236,14 @@ export async function registerExternalAgent(
 			id,
 			name,
 			kind: "external",
-			mailboxPath,
+			// Portable form: readers resolve it against their own mailbox root.
+			mailboxPath: storedMailboxPath(mailboxPath, mailboxRoot),
 			startedAt: now,
 			heartbeat: now,
 			status: "waiting",
 		};
 		await saveManifest(path, [...existing, entry]);
-		return manifestEntryToRecord(entry, workspaceRoot);
+		return manifestEntryToRecord(entry, workspaceRoot, mailboxRoot);
 	});
 }
 
@@ -223,7 +259,8 @@ export async function unregisterExternalAgent(config: ExternalRuntimeConfig, id:
 /** Load all valid external agents from this workspace's manifest. */
 export async function loadExternalAgents(config: ExternalRuntimeConfig): Promise<AgentRecord[]> {
 	const workspaceRoot = resolveWorkspaceRoot(config);
-	return (await loadManifest(config)).map((entry) => manifestEntryToRecord(entry, workspaceRoot));
+	const mailboxRoot = resolveMailboxRoot(config);
+	return (await loadManifest(config)).map((entry) => manifestEntryToRecord(entry, workspaceRoot, mailboxRoot));
 }
 
 /** List all valid external agents registered in this workspace. */
@@ -240,7 +277,11 @@ function hasErrorCode(error: unknown, code: string): boolean {
 	);
 }
 
-function manifestEntryToRecord(entry: ExternalAgentManifestEntry, workspaceRoot: string): AgentRecord {
+function manifestEntryToRecord(
+	entry: ExternalAgentManifestEntry,
+	workspaceRoot: string,
+	mailboxRoot: string,
+): AgentRecord {
 	return {
 		id: entry.id,
 		name: entry.name,
@@ -251,6 +292,6 @@ function manifestEntryToRecord(entry: ExternalAgentManifestEntry, workspaceRoot:
 		startedAt: entry.startedAt,
 		heartbeat: entry.heartbeat,
 		status: entry.status,
-		mailboxPath: entry.mailboxPath,
+		mailboxPath: resolveStoredMailboxPath(entry.mailboxPath, mailboxRoot),
 	};
 }

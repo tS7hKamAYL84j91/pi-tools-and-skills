@@ -22,6 +22,9 @@ export interface BackendMessage {
 	correlationId?: string;
 }
 
+/** Whether an operator-configured native grant can be resolved right now. */
+export type NativeAvailability = "unconfigured" | "available" | "unavailable";
+
 export interface FleetBackend {
 	register(displayName: string): Promise<AgentRecord>;
 	unregister(agentId: string): Promise<void>;
@@ -30,6 +33,7 @@ export interface FleetBackend {
 	inbox(owner: AgentRecord): BackendMessage[];
 	ack(owner: AgentRecord, messageId: string): void;
 	pending(owner: AgentRecord): number;
+	nativeAvailability(): Promise<NativeAvailability>;
 }
 
 /** Same-host Agent Hub registration and direct Maildir messaging. */
@@ -42,7 +46,7 @@ export class DirectMaildirBackend implements FleetBackend {
 	}
 
 	async register(displayName: string): Promise<AgentRecord> {
-		return registerExternalAgent(this.registrarConfig, { name: displayName }, await visibleNativePeers(this.config.nativeAgentId, this.config.nativeSession));
+		return registerExternalAgent(this.registrarConfig, { name: displayName }, await this.nativePeersOrNone());
 	}
 
 	unregister(agentId: string): Promise<void> {
@@ -50,7 +54,31 @@ export class DirectMaildirBackend implements FleetBackend {
 	}
 
 	async agents(): Promise<AgentRecord[]> {
-		return [...await listExternalAgents(this.registrarConfig), ...await visibleNativePeers(this.config.nativeAgentId, this.config.nativeSession)];
+		return [...await listExternalAgents(this.registrarConfig), ...await this.nativePeersOrNone()];
+	}
+
+	async nativeAvailability(): Promise<NativeAvailability> {
+		if (!this.config.nativeAgentId && !this.config.nativeSession) return "unconfigured";
+		return (await this.resolveNativePeers()).available ? "available" : "unavailable";
+	}
+
+	/**
+	 * A configured but unusable native grant (stale process, reloaded session,
+	 * revoked authority) denies *native* access. It must not take the external
+	 * mailbox service down with it: the external agents this process serves stay
+	 * reachable, and `fleet_status` reports the grant as unavailable. Identity is
+	 * never re-bound to a name, so no authority transfers to a new process.
+	 */
+	private async nativePeersOrNone(): Promise<AgentRecord[]> {
+		return (await this.resolveNativePeers()).peers;
+	}
+
+	private async resolveNativePeers(): Promise<{ peers: AgentRecord[]; available: boolean }> {
+		try {
+			return { peers: await visibleNativePeers(this.config.nativeAgentId, this.config.nativeSession), available: true };
+		} catch {
+			return { peers: [], available: false };
+		}
 	}
 
 	async send(
