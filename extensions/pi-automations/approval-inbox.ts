@@ -171,7 +171,12 @@ export async function listApprovalArtifacts(config: AutomationsConfig): Promise<
 		.filter((item) => !retained.has(item.requestId) || Date.parse(item.updatedAt) < cutoff)
 		.map((item) => item.requestId);
 	await removeApprovalArtifacts(config, expired);
+	// Never return a row this call just deleted: a viewer would offer a decision
+	// on an artifact that no longer exists.
+	const removed = new Set(expired);
 	return sorted.filter(
-		(item) => isPendingApproval(item.status) || item.status === "approved" || retained.has(item.requestId),
+		(item) =>
+			!removed.has(item.requestId) &&
+			(isPendingApproval(item.status) || item.status === "approved" || retained.has(item.requestId)),
 	);
 }

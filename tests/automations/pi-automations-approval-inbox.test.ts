@@ -137,6 +137,32 @@ describe("Automations approval inbox", () => {
 		await scheduler.stop();
 	});
 
+	it("never lists a terminal artifact the same call just pruned", async () => {
+		const project = join(tmpdir(), `pi-automations-approval-prune-${process.pid}-${Date.now()}`);
+		homes.push(project);
+		const home = join(project, ".pi", "automations");
+		const inbox = join(home, "schedule-runs", "awaiting-approval");
+		await mkdir(inbox, { recursive: true });
+		const old = new Date(Date.now() - 400 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, "Z");
+		const artifact = {
+			version: 1,
+			requestId: "expired-request",
+			taskId: "task",
+			runId: "run-1",
+			claimToken: "0123456789abcdef0123",
+			status: "rejected",
+			prompt: "old",
+			createdAt: old,
+			updatedAt: old,
+		};
+		await writeFile(join(inbox, "expired-request.json"), `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+
+		// Inside the newest-N window but past the age cutoff: deleted by retention,
+		// so it must not come back in the same response either.
+		expect(await listApprovalArtifacts({ automationsHome: home })).toEqual([]);
+		expect(existsSync(join(inbox, "expired-request.json"))).toBe(false);
+	});
+
 	it("keeps a deferred approval decidable and counts it until it is decided", async () => {
 		const project = join(tmpdir(), `pi-automations-approval-defer-${process.pid}-${Date.now()}`);
 		homes.push(project);
