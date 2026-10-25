@@ -39,6 +39,7 @@ and operating limits. This index deliberately does not repeat those contracts.
 | [Kanban](extensions/pi-kanban/README.md)                 | Optional human task overview                   |
 | [Matrix](extensions/pi-matrix/README.md)                 | Human-facing Matrix transport                  |
 | [File Watch](extensions/pi-file-watch/README.md)         | Explicit, bounded file notifications           |
+| [Overview](extensions/pi-overview/README.md)             | Read-only project overview (`/overview`)       |
 | [Ollama Models](extensions/pi-ollama-models/README.md)   | Local Ollama model discovery                   |
 | [Fleet MCP](fleet-mcp/README.md)                         | Standalone MCP adapter                         |
 
