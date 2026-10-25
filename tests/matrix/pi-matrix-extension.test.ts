@@ -10,9 +10,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { mxidLocalpart } from "../../extensions/pi-matrix/bridge.js";
 import { extractMatrixAttachment } from "../../extensions/pi-matrix/attachments.js";
@@ -26,6 +26,7 @@ import {
 import { MatrixTransport } from "../../extensions/pi-matrix/transport.js";
 import type { MatrixConfig } from "../../extensions/pi-matrix/types.js";
 import type { MatrixDownloadClient } from "../../extensions/pi-matrix/attachments.js";
+import { isolateMatrixEnv } from "./matrix-env.js";
 
 function createFakeAdapter(overrides: Partial<MatrixClientAdapter> = {}): MatrixClientAdapter {
 	return {
@@ -70,17 +71,22 @@ describe("loadMatrixConfig", () => {
 	let tmpDir: string;
 	let projectSettingsPath: string;
 	let prevToken: string | undefined;
+	let restoreMatrixEnv: (() => void) | undefined;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "matrix-config-test-"));
 		projectSettingsPath = join(tmpDir, "settings.json");
 		prevToken = process.env.MATRIX_TEST_TOKEN;
 		process.env.MATRIX_TEST_TOKEN = "syt_test_token";
+		// A spawned-agent shell exports launch metadata that suppresses config.
+		restoreMatrixEnv = isolateMatrixEnv();
 	});
 
 	afterEach(() => {
 		if (prevToken === undefined) delete process.env.MATRIX_TEST_TOKEN;
 		else process.env.MATRIX_TEST_TOKEN = prevToken;
+		restoreMatrixEnv?.();
+		restoreMatrixEnv = undefined;
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
@@ -438,6 +444,9 @@ describe("Matrix attachment extraction", () => {
 		expect(attachment?.eventId).toBe("$event/image");
 		expect(attachment?.error).toBeUndefined();
 		expect(readFileSync(attachment?.localPath ?? "", "utf8")).toBe("png");
+		// Media sent by the human is cached in a private directory, not an
+		// umask-default one (mode is asserted without the setuid/sticky bits).
+		expect(statSync(dirname(attachment?.localPath ?? "")).mode & 0o777).toBe(0o700);
 	});
 
 	it("surfaces disallowed MIME types without downloading", async () => {

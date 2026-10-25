@@ -58,8 +58,8 @@ In your workspace's `.pi/settings.json`:
 | `trustedSenders` | no | `[]` (deny) | MXIDs allowed to message the bot |
 | `allowAnySender` | no | `false` | Explicit dev/test escape hatch to accept messages and DM invites from any MXID |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |
-| `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path |
-| `attachmentCachePath` | no | `~/.pi/agent/matrix-attachments` | Local cache for downloaded attachments |
+| `storagePath` | no | `~/.pi/agent/matrix-sync` | Sync state storage path. Created with mode `0700`; the `sync.json` token file is `0600`. |
+| `attachmentCachePath` | no | `~/.pi/agent/matrix-attachments` | Local cache for downloaded attachments. Per-event cache directories are created with mode `0700`. |
 | `maxAttachmentBytes` | no | `26214400` | Per-attachment download/write limit |
 | `allowedMimePrefixes` | no | images, PDFs, text, audio, video | MIME classes allowed for download. Entries ending in `/` match prefixes (for example `image/`); concrete entries match exactly (for example `application/pdf`). Empty array disables MIME filtering. |
 

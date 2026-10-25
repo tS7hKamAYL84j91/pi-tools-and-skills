@@ -24,6 +24,7 @@ import { MatrixBridgeClient } from "../../extensions/pi-matrix/client.js";
 import { loadMatrixConfig } from "../../extensions/pi-matrix/config.js";
 import { MatrixTransport } from "../../extensions/pi-matrix/transport.js";
 import type { MatrixConfig } from "../../extensions/pi-matrix/types.js";
+import { isolateMatrixEnv } from "./matrix-env.js";
 
 const HOME = "matrix.example.net";
 const JIM = `@jim:${HOME}`;
@@ -80,18 +81,22 @@ async function startAgent(settingsPath: string, adapter: FakeAdapter) {
 
 let dir: string;
 let previousToken: string | undefined;
+let restoreMatrixEnv: (() => void) | undefined;
 
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "matrix-vertical-"));
 	previousToken = process.env[TOKEN_ENV];
 	process.env[TOKEN_ENV] = "dummy-fixture-token";
+	// This slice exercises config loading; a spawned-agent shell suppresses it.
+	restoreMatrixEnv = isolateMatrixEnv();
 });
 
 afterEach(() => {
 	if (previousToken === undefined) delete process.env[TOKEN_ENV];
 	else process.env[TOKEN_ENV] = previousToken;
+	restoreMatrixEnv?.();
+	restoreMatrixEnv = undefined;
 	rmSync(dir, { recursive: true, force: true });
-	delete process.env.PI_PANOPTICON_PARENT_ID;
 });
 
 function writeProjectSettings(agent: string, roomId: string): string {

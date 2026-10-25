@@ -146,7 +146,9 @@ async function writeAttachment(config: MatrixConfig, attachment: InboundAttachme
 		sanitizeSegment(attachment.roomId ?? "unknown-room"),
 		sanitizeSegment(attachment.eventId),
 	);
-	await mkdir(eventDir, { recursive: true });
+	// The cache holds media sent by the human: keep new directories private
+	// rather than inheriting the umask. Existing directories are left alone.
+	await mkdir(eventDir, { recursive: true, mode: 0o700 });
 	const localPath = join(eventDir, sanitizeFilename(attachment.filename, "attachment"));
 	await writeFileAtomic(localPath, data);
 	return localPath;

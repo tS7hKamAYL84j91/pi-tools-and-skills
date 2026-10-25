@@ -59,4 +59,29 @@ describe("FileSyncStateStore", () => {
 			rmSync(otherDir, { recursive: true, force: true });
 		}
 	});
+
+	it("creates the storage directory private instead of inheriting the umask", async () => {
+		const parent = mkdtempSync(join(tmpdir(), "matrix-sync-test-"));
+		const storagePath = join(parent, "nested", "state");
+		try {
+			const store = new FileSyncStateStore({ storagePath });
+			await store.save("s1_2_3");
+			expect(fs.statSync(storagePath).mode & 0o777).toBe(0o700);
+			expect(await store.load()).toBe("s1_2_3");
+		} finally {
+			rmSync(parent, { recursive: true, force: true });
+		}
+	});
+
+	it("leaves an operator-configured storage directory mode untouched", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "matrix-sync-test-"));
+		try {
+			fs.chmodSync(dir, 0o750);
+			const store = new FileSyncStateStore({ storagePath: dir });
+			await store.save("s1_2_3");
+			expect(fs.statSync(dir).mode & 0o777).toBe(0o750);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

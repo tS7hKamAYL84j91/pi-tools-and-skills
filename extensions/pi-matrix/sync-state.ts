@@ -2,13 +2,14 @@
  * Persistent Matrix sync-token storage.
  *
  * Uses atomic temp-file + rename writes via the shared writeFileAtomic helper,
- * private-local permissions, and rejects symlinked paths to prevent writes to
- * unexpected locations. A quarantine path is used for corrupt state so a restart
- * can recover without looping on a bad token.
+ * a private 0700 storage directory, private-local file permissions, and rejects
+ * symlinked paths to prevent writes to unexpected locations. A quarantine path
+ * is used for corrupt state so a restart can recover without looping on a bad
+ * token.
  */
 
-import { lstat, readFile, rename, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, mkdir, readFile, rename, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../lib/file-persistence.js";
 import type { SyncStateStore } from "./adapter.js";
 
@@ -49,6 +50,10 @@ export class FileSyncStateStore implements SyncStateStore {
 
 	async save(token: string): Promise<void> {
 		await this.rejectSymlink(this.syncFile);
+		// writeFileAtomic creates missing parents from the umask, which is usually
+		// world-readable; create this one private instead. An existing directory is
+		// left exactly as the operator configured it.
+		await mkdir(dirname(this.syncFile), { recursive: true, mode: 0o700 });
 		await writeFileAtomic(this.syncFile, JSON.stringify({ nextBatch: token }), { mode: 0o600 });
 	}
 
