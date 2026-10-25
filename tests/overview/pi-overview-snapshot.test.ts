@@ -117,6 +117,35 @@ describe("overviewLines", () => {
 			expect(lines.join("\n")).toContain("not a git repository");
 		}
 	});
+
+	it("fits the overlay row budget and marks a clipped commit list", () => {
+		const snapshot = gatherProjectSnapshot(gitRepo());
+		for (const rows of [20, 24, 40]) {
+			const lines = overviewLines(snapshot, facts, 100, fakeTheme, rows);
+			// Mirror pi-tui's overlay math for { maxHeight: "80%", margin: 2 }.
+			const budget = Math.max(1, Math.min(Math.floor(rows * 0.8), Math.max(1, rows - 4)));
+			expect(lines.length).toBeLessThanOrEqual(budget);
+			// The facts the panel exists to show survive a short terminal.
+			expect(lines.join("\n")).toContain("1 uncommitted");
+			expect(lines.join("\n")).toContain("workspace");
+		}
+	});
+
+	it("keeps branch and dirty state when the terminal is too short for commits", () => {
+		const snapshot = gatherProjectSnapshot(gitRepo());
+		const lines = overviewLines(snapshot, facts, 100, fakeTheme, 10);
+		const body = lines.join("\n");
+		expect(lines.length).toBeLessThanOrEqual(6);
+		expect(body).toContain("1 uncommitted");
+		expect(body).not.toContain("recent commits");
+	});
+
+	it("keeps every commit when the row count is unknown", () => {
+		const snapshot = gatherProjectSnapshot(gitRepo());
+		const body = overviewLines(snapshot, facts, 100, fakeTheme).join("\n");
+		expect(body).toContain("first commit");
+		expect(body).not.toContain("more)");
+	});
 });
 
 describe("summaryLine", () => {

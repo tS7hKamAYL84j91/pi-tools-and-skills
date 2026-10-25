@@ -36,9 +36,10 @@ function overlayComponent(
 	facts: OverviewFacts,
 	theme: Theme,
 	done: () => void,
+	rows?: number,
 ) {
 	return {
-		render: (width: number) => overviewLines(snapshot, facts, width, theme),
+		render: (width: number) => overviewLines(snapshot, facts, width, theme, rows),
 		invalidate: () => {},
 		handleInput: (data: string) => {
 			if (
@@ -68,9 +69,12 @@ export default function overviewExtension(pi: ExtensionAPI): void {
 			}
 
 			await ctx.ui.custom<string | null>(
-				(_tui, theme, _keybindings, done) => {
+				(tui, theme, _keybindings, done) => {
 					const close = () => done(null);
-					return overlayComponent(snapshot, facts, theme, close);
+					// pi-tui clips overlay lines past maxHeight silently; give the renderer
+					// the real row count so it can cap the commit list instead.
+					const rows = (tui as { terminal?: { rows?: number } }).terminal?.rows;
+					return overlayComponent(snapshot, facts, theme, close, rows);
 				},
 				{
 					overlay: true,

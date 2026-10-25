@@ -54,7 +54,8 @@ In your workspace's `.pi/settings.json`:
 | `homeserver` | yes | — | Homeserver base URL |
 | `userId` | yes | — | Bot's full MXID |
 | `roomId` | yes | — | Primary room for replies |
-| `accessTokenEnv` | yes | — | Name of an environment variable already populated by your runtime/secret manager |
+| `accessTokenEnv` | yes* | — | Name of an environment variable already populated by your runtime/secret manager. *Optional when `tokenSecret` is set |
+| `tokenSecret` | no | — | `op://`/keychain-style secret reference resolved at startup. When both `tokenSecret` and `accessTokenEnv` are present, `tokenSecret` wins and the environment variable is never read |
 | `trustedSenders` | no | `[]` (deny) | MXIDs allowed to message the bot |
 | `allowAnySender` | no | `false` | Explicit dev/test escape hatch to accept messages and DM invites from any MXID |
 | `channelLabel` | no | `"matrix"` | Channel name in message attribution |

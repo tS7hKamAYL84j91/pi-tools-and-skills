@@ -94,12 +94,23 @@ function formatTokens(value: number): string {
 	return value.toLocaleString("en-GB");
 }
 
+/**
+ * Rows pi-tui will actually paint for the overlay options used here
+ * ({ maxHeight: "80%", margin: 2 }). Unknown rows (non-TUI hosts, test fakes)
+ * keep the unbounded legacy render.
+ */
+function overlayLineBudget(rows: number | undefined): number | undefined {
+	if (rows === undefined) return undefined;
+	return Math.max(1, Math.min(Math.floor(rows * 0.8), Math.max(1, rows - 4)));
+}
+
 /** Pure renderer: width-bounded lines for the overlay. */
 export function overviewLines(
 	snapshot: ProjectSnapshot,
 	facts: OverviewFacts,
 	width: number,
 	theme: Theme,
+	rows?: number,
 ): string[] {
 	const lines: string[] = [];
 	const row = (label: string, value: string): void => {
@@ -135,16 +146,37 @@ export function overviewLines(
 		row("decisions", `${snapshot.decisions.count} in ${snapshot.decisions.path}`);
 	}
 
-	lines.push("");
-	lines.push(truncateToWidth(theme.fg("dim", " recent commits"), width));
-	if (snapshot.commits.length === 0) {
-		lines.push(truncateToWidth(theme.fg("dim", "  (none)"), width));
-	} else {
-		for (const commit of snapshot.commits) {
-			lines.push(truncateToWidth(`  ${commit}`, width));
+	const budget = overlayLineBudget(rows);
+	const hint = truncateToWidth(theme.fg("dim", " esc/q/enter close"), width);
+	// Everything above the commit list is the reason the panel exists (branch and
+	// dirty state first). Only commits and the hint may yield to a short terminal.
+	const coreLines = lines.length;
+	const hintFits = budget === undefined || coreLines + 4 <= budget;
+	const reserved = (budget === undefined ? Number.POSITIVE_INFINITY : budget) - coreLines - (hintFits ? 2 : 0);
+	const commitBudget = reserved - 2; // blank + "recent commits" header
+
+	if (budget === undefined || commitBudget >= 1) {
+		lines.push("");
+		lines.push(truncateToWidth(theme.fg("dim", " recent commits"), width));
+		if (snapshot.commits.length === 0) {
+			lines.push(truncateToWidth(theme.fg("dim", "  (none)"), width));
+		} else if (snapshot.commits.length <= commitBudget) {
+			for (const commit of snapshot.commits) {
+				lines.push(truncateToWidth(`  ${commit}`, width));
+			}
+		} else {
+			// Leave one line for the count so a clipped list never looks complete.
+			const shown = Math.max(0, commitBudget - 1);
+			for (const commit of snapshot.commits.slice(0, shown)) {
+				lines.push(truncateToWidth(`  ${commit}`, width));
+			}
+			lines.push(truncateToWidth(theme.fg("dim", `  …(+${snapshot.commits.length - shown} more)`), width));
 		}
 	}
-	lines.push("");
-	lines.push(truncateToWidth(theme.fg("dim", " esc/enter close"), width));
-	return lines;
+	if (hintFits) {
+		lines.push("");
+		lines.push(hint);
+	}
+	// Safety net: pi-tui drops lines past maxHeight silently, so never exceed it.
+	return budget === undefined ? lines : lines.slice(0, budget);
 }
