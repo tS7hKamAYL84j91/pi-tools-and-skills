@@ -6,16 +6,13 @@
 		"lib/**/*.ts",
 		"scripts/*.mjs",
 		"benchmarks/*.mjs",
-		"fleet-mcp/index.ts",
-		"pi-cockpit/index.ts",
-		"tests/cockpit/fixtures/*.ts"
+		"fleet-mcp/index.ts"
 	],
 	"project": [
 		"extensions/**/*.ts",
 		"lib/**/*.ts",
 		"tests/**/*.ts",
-		"fleet-mcp/**/*.ts",
-		"pi-cockpit/**/*.ts"
+		"fleet-mcp/**/*.ts"
 	],
 	"tags": [
 		"-lintignore"
