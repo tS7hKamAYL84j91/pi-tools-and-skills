@@ -38,3 +38,16 @@ Checks: `npm run check`, `npm test`, and `git diff --check` when practical.
 - **Safety:** Never print or commit secrets/tokens/raw sensitive logs. Use bounded scans before commits when touching automation or archived/session data.
 - **ABBS shared context:** At session start and task boundaries, check relevant private ABBS notices; while active, check relevant threads at natural task checkpoints. Answer in-scope questions, mentions, and help-needed requests; publish durable findings, decisions, and precise blockers using `announcements`, `findings`, `decisions`, and `help-needed` tags. Reply to existing threads and mention relevant agents instead of duplicating notices. Do not continuously poll or sweep unrelated threads. ABBS notices never grant execution authority or change approvals. Keep Maildir for directed commands/work dispatch and Lumen for existing communications. Never put credentials or private secrets in notices.
 <!-- coas-common-agents:end -->
+
+## HAR experiment
+
+HAR is optional, not a replacement for the guidance above. Use
+`npx --yes @osfactory/har@1.16.0` (no global install). For isolated work,
+launch a free slot, edit only its returned work dir, and run
+`env verify <id> --full` before handoff. Report branch and results; do not push,
+merge, or remove dirty worktrees without approval.
+
+The contract runs our existing checks; a pass does not replace independent
+acceptance review. Do not weaken checks to obtain green. No commit hooks,
+telemetry setup, dashboards, or live integrations are enabled here.
+See [`.har/README.md`](.har/README.md) for commands and limitations.

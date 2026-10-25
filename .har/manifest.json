@@ -1,0 +1,34 @@
+{
+  "version": "1",
+  "runtimeVersion": "1.0.0",
+  "cliVersion": "1.16.0",
+  "outputDir": ".har",
+  "createdAt": "2026-10-25T16:10:53.792Z",
+  "updatedAt": "2026-10-25T16:10:53.792Z",
+  "adaptationSummary": "Local optional CLI experiment: existing check/test/diff stages; no infra, telemetry setup, or commit hooks",
+  "profile": "cli",
+  "fileChecksums": {
+    ".gitignore": "cd13b779520b9ba6",
+    "README.md": "963530a811de62fd",
+    "STAGES.md": "b7eccf2bc2bbc017",
+    "docker-compose.agent.yml": "643ba51e2378fe28",
+    "gitignore.template": "cd13b779520b9ba6",
+    "harness.env": "6cb310a2734077b3",
+    "justfile": "446701c852927ce1",
+    "stages.json": "6e6049447d19ff23",
+    "stages/README.sh": "23b2e858dd2dc27a",
+    "stages/readiness.sh": "8c8d7574d52d54b4"
+  },
+  "templateChecksums": {
+    "STAGES.md": "b7eccf2bc2bbc017",
+    "lib/verify-runner.mjs": "42f6ba565d51b854",
+    "stages/README.sh": "23b2e858dd2dc27a",
+    "stages/readiness.sh": "8c8d7574d52d54b4",
+    "docker-compose.agent.yml": "643ba51e2378fe28",
+    ".gitignore": "cd13b779520b9ba6",
+    "harness.env": "7f4b4974c4acddeb",
+    "justfile": "446701c852927ce1",
+    "stages.json": "e1d0fa9c7b60faaf",
+    "README.md": "ad345fa8aac3e22f"
+  }
+}
