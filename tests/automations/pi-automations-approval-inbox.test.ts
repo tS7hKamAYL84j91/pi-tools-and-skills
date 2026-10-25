@@ -6,7 +6,7 @@ import { minuteKey } from "../../extensions/pi-automations/scheduler-util.js";
 import { tmpdir } from "node:os";
 import { PiScheduler } from "../../extensions/pi-automations/pi-scheduler.js";
 import { approveApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-automations/approval-inbox.js";
-import { ConfinedStore } from "../../extensions/pi-automations/store.js";
+import { ConfinedStore } from "../../lib/confined-store.js";
 import { registerAutomationsApprovalTools } from "../../extensions/pi-automations/tools-approval.js";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
 import type { ToolResult } from "../../lib/tool-result.js";

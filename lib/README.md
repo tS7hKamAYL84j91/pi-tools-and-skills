@@ -19,7 +19,7 @@ module has multiple independent owners.
 | `tool-result.ts`, `tui-confirmation.ts`, `toggle-command.ts` | Multiple extension tool/UI surfaces |
 | `automations-config.ts`, `automations-types.ts` | Automations and Agent Hub public configuration boundary |
 | `automations-run-state.ts`, `automations-paths.ts` | Automations scheduler run-state persistence plus the shared identifier/timestamp helpers it and the approval-inbox reader both use |
-| `automations-approval-inbox.ts` | Agent Hub's reader/decider for the Automations-owned approval-inbox artifacts; the on-disk contract and its safety checks stay shared instead of being copied into the consumer extension |
+| `automations-approval-inbox.ts` | The approval-inbox on-disk contract (path, v1 schema, parsing, read/write, principal rule) shared by the Automations scheduler that parks/decides/prunes artifacts and the Agent Hub view that lists and decides them for one agent |
 | `automations-governance.ts` | Automations governance and its public type facade; policy/config primitive, not scheduler orchestration |
 | `session-log.ts` | Agent Hub registry and UI consumers; generic Pi-session reader/redactor |
 | `completion-signal.ts`, `task-brief.ts` | Agent Hub registry/spawner protocol contracts; pure data/parsing, no extension runtime state |

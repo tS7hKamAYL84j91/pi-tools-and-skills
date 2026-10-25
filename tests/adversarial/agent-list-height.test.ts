@@ -65,7 +65,9 @@ describe("agent list overlay height acceptance", () => {
 		const compact = [40, 52, 70, 80, 120, 160].map((width) => render(3, width, undefined, true).length);
 		expect(new Set(full).size).toBe(1);
 		expect(new Set(compact).size).toBe(1);
-		expect(full[0]).toBe(compact[0]! + 3);
+		const [compactHeight] = compact;
+		if (compactHeight === undefined) throw new Error("expected a compact height at 40 columns");
+		expect(full[0]).toBe(compactHeight + 3);
 	});
 
 	it("fits the full-chrome clip from 14 rows up", () => {

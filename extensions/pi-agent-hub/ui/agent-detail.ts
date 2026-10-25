@@ -168,7 +168,14 @@ export async function showAgentDetail(
 	const isSelf = rec.id === deps.selfId;
 	const sessionEvents = rec.sessionFile ? readSessionLog(rec.sessionFile, 20) : [];
 	const config = deps.getAutomationsConfig?.(ctx);
-	const approvals = config ? await listAgentApprovals(config, rec, deps.selfId) : [];
+	// Inbox reads are best effort here: a refused or unreadable Automations store
+	// must not make the agent detail view unusable.
+	const approvals = config
+		? await listAgentApprovals(config, rec, deps.selfId).catch((error: unknown) => {
+			ctx.ui.notify(`Approvals unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning");
+			return [];
+		})
+		: [];
 	const pendingApprovals: PendingApproval[] = [...approvals];
 	let selectedApprovalIndex = 0;
 	let action: AgentDetailAction | undefined;

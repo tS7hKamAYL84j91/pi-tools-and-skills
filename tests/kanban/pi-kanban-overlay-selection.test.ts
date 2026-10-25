@@ -43,7 +43,7 @@ describe("Kanban overlay selection contract", () => {
 		const reordered = [task("T-2", "other", "high"), task("T-1", "anchor", "low")];
 		const row = restoreSelectedRow(reordered, "T-1", 0);
 		expect(selectedTaskId(reordered, row)).toBe("T-1");
-		expect(restoreSelectedRow([reordered[0]!], "T-1", row)).toBe(0);
+		expect(restoreSelectedRow(reordered.slice(0, 1), "T-1", row)).toBe(0);
 		expect(restoreSelectedRow([], "T-1", row)).toBe(0);
 		expect(original[0]?.id).toBe("T-1");
 	});

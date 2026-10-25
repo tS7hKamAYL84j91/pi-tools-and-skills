@@ -10,6 +10,11 @@ import { getGoalRuntime } from "../../extensions/pi-goal/goal-runtime.js";
 import { goalPaths } from "../../extensions/pi-goal/goal-types.js";
 import type { GoalState } from "../../extensions/pi-goal/goal-types.js";
 
+/** Reducer input is non-null for these mutation cases; fail loudly instead of asserting. */
+function requireCurrentState(current: GoalState | null): GoalState {
+	if (current === null) throw new Error("expected an existing goal state in the reducer");
+	return current;
+}
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -114,12 +119,12 @@ describe("T-886 caller migration regressions", () => {
 		const state = await createTextGoal(cwd, "conflict", undefined);
 		const created = await transactGoal(cwd, undefined, "absent", () => state);
 		if (created.status !== "applied" || created.state === null) throw new Error("Expected created state");
-		const stale = await transactGoal(cwd, undefined, { goalId: created.state.goalId, revision: 0 }, (current) => ({ ...current!, objective: "stale" }));
+		const stale = await transactGoal(cwd, undefined, { goalId: created.state.goalId, revision: 0 }, (current) => ({ ...requireCurrentState(current), objective: "stale" }));
 		expect(stale.status).toBe("conflict");
 		const paths = goalPaths(cwd);
 		await rm(paths.summaryPath, { force: true });
 		await mkdir(paths.summaryPath, { recursive: true });
-		const failed = await transactGoal(cwd, undefined, { goalId: created.state.goalId, revision: created.state.revision }, (current) => ({ ...current!, objective: "projection" }));
+		const failed = await transactGoal(cwd, undefined, { goalId: created.state.goalId, revision: created.state.revision }, (current) => ({ ...requireCurrentState(current), objective: "projection" }));
 		expect(failed).toMatchObject({ status: "applied", projection: "failed" });
 	});
 });
@@ -158,12 +163,14 @@ function createHost(cwd: string, failBinding = false): TestHost {
 	} as unknown as ExtensionAPI;
 	registerGoalCommands(pi, getGoalRuntime());
 	const context = createContext(cwd, branch, () => undefined);
+	const command = commands.get("goal");
+	if (!command) throw new Error("goal command was not registered");
 	return {
 		cwd,
 		bindings,
 		contextScope: () => createScope(cwd, branch, appendBinding),
 		appendBinding,
-		command: commands.get("goal")!,
+		command,
 		context,
 	} as TestHost & { readonly context: ExtensionCommandContext };
 }

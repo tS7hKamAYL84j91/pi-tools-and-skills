@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { addSchedule } from "../../extensions/pi-automations/schedules.js";
@@ -242,6 +242,14 @@ describe("approval-inbox overlay", () => {
 			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("approved");
 			expect(resumeApprovedRun).toHaveBeenCalledOnce();
 		});
+		// The hub writes the shared contract, not a lossy copy: Automations still
+		// owns the claim-check fields it parks with.
+		const stored = JSON.parse(
+			await readFile(join(home, "schedule-runs", "awaiting-approval", `${requestId}.json`), "utf8"),
+		) as Record<string, unknown>;
+		expect(stored.version).toBe(1);
+		expect(typeof stored.claimToken).toBe("string");
+		expect(stored.taskId).toBe((await readApprovalArtifact({ automationsHome: home }, requestId))?.taskId);
 		expect(resumeApprovedRun).toHaveBeenCalledWith({ automationsHome: home }, requestId);
 		const afterLines = harness.component.render(80);
 		expect(afterLines.join("\n")).not.toContain("Pending Approvals");

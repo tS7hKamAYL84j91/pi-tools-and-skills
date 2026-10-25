@@ -35,7 +35,7 @@ const passthroughTheme = { fg: (_color: string, text: string) => text, bold: (te
 
 interface CapturedOverlay {
 	component: Component & { handleInput(data: string): void };
-	done: (value: void) => void;
+	done: (value: undefined) => void;
 }
 
 function context(overrides: Partial<Record<string, unknown>> = {}): { ctx: ExtensionContext; overlay: () => CapturedOverlay | undefined } {
@@ -47,7 +47,7 @@ function context(overrides: Partial<Record<string, unknown>> = {}): { ctx: Exten
 		ui: {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
-			custom: vi.fn(async (factory: (tui: TUI, theme: unknown, kb: unknown, done: (v: void) => void) => Component) => {
+			custom: vi.fn(async (factory: (tui: TUI, theme: unknown, kb: unknown, done: (v: undefined) => void) => Component) => {
 				const done = vi.fn();
 				const component = factory(fakeTui, passthroughTheme, {}, done);
 				captured = { component: component as CapturedOverlay["component"], done };

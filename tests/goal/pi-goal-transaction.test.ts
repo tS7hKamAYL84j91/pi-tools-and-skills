@@ -8,6 +8,11 @@ import { admitGoal, claimGoal, releaseGoal, revokeGoal } from "../../extensions/
 import { goalPaths } from "../../extensions/pi-goal/goal-types.js";
 import type { GoalExpected, GoalState } from "../../extensions/pi-goal/goal-types.js";
 
+/** Reducer input is non-null for these mutation cases; fail loudly instead of asserting. */
+function requireCurrentState(current: GoalState | null): GoalState {
+	if (current === null) throw new Error("expected an existing goal state in the reducer");
+	return current;
+}
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -53,7 +58,7 @@ describe("pi-goal revision transaction seam", () => {
 		expect(created.status).toBe("applied");
 		if (created.status !== "applied" || created.state === null) throw new Error("Expected created state");
 		const expected: GoalExpected = { goalId: created.state.goalId, revision: created.state.revision };
-		const mutate = (objective: string) => transactGoal(cwd, undefined, expected, (current: GoalState | null) => ({ ...current!, objective }));
+		const mutate = (objective: string) => transactGoal(cwd, undefined, expected, (current: GoalState | null) => ({ ...requireCurrentState(current), objective }));
 		const results = await Promise.all([mutate("winner-a"), mutate("winner-b")]);
 		expect(results.filter((result) => result.status === "applied")).toHaveLength(1);
 		expect(results.filter((result) => result.status === "conflict")).toHaveLength(1);
@@ -65,9 +70,9 @@ describe("pi-goal revision transaction seam", () => {
 		const created = await transactGoal(cwd, undefined, "absent", () => ({ ...initial, runActive: true, owner: { token: "owner", generation: 1 } }));
 		if (created.status !== "applied" || created.state === null) throw new Error("Expected created state");
 		const expected = { goalId: created.state.goalId, revision: created.state.revision, owner: { token: "owner", generation: 1 } };
-		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...current!, goalId: "other" }))).rejects.toThrow("goalId");
-		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...current!, owner: undefined }))).rejects.toThrow("owner");
-		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...current!, owner: { token: "", generation: 0 } }))).rejects.toThrow("owner");
+		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...requireCurrentState(current), goalId: "other" }))).rejects.toThrow("goalId");
+		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...requireCurrentState(current), owner: undefined }))).rejects.toThrow("owner");
+		await expect(transactGoal(cwd, undefined, expected, (current) => ({ ...requireCurrentState(current), owner: { token: "", generation: 0 } }))).rejects.toThrow("owner");
 	});
 
 	it("rejects an owner mismatch without applying the reducer", async () => {
@@ -108,7 +113,7 @@ describe("pi-goal revision transaction seam", () => {
 		const loaded = await loadGoal(cwd);
 		expect(loaded?.owner).toEqual({ token, generation: 7 });
 		if (!loaded) throw new Error("Expected valid owner");
-		const result = await transactGoal(cwd, undefined, { goalId: loaded.goalId, revision: loaded.revision, owner: loaded.owner }, (current) => ({ ...current!, objective: "owner mutation" }));
+		const result = await transactGoal(cwd, undefined, { goalId: loaded.goalId, revision: loaded.revision, owner: loaded.owner }, (current) => ({ ...requireCurrentState(current), objective: "owner mutation" }));
 		expect(result.status).toBe("applied");
 	});
 
@@ -125,9 +130,9 @@ describe("pi-goal revision transaction seam", () => {
 		const loaded = await loadGoal(cwd);
 		if (!loaded) throw new Error("Expected legacy state");
 		const expected = { goalId: loaded.goalId, revision: 0 };
-		const first = await transactGoal(cwd, undefined, expected, (current) => ({ ...current!, objective: "first" }));
+		const first = await transactGoal(cwd, undefined, expected, (current) => ({ ...requireCurrentState(current), objective: "first" }));
 		expect(first).toMatchObject({ status: "applied", previousRevision: 0 });
-		const stale = await transactGoal(cwd, undefined, expected, (current) => ({ ...current!, objective: "stale" }));
+		const stale = await transactGoal(cwd, undefined, expected, (current) => ({ ...requireCurrentState(current), objective: "stale" }));
 		expect(stale).toMatchObject({ status: "conflict" });
 	});
 
