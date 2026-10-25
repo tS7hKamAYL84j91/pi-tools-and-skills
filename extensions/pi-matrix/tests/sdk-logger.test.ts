@@ -108,4 +108,15 @@ describe("MatrixJsSdkAdapter sdk logger", () => {
 		expect(onLog).toHaveBeenCalledWith("sync failed boom", "error");
 		expect(onLog).toHaveBeenCalledWith("rate limited 42", "warning");
 	});
+
+	it("drops MatrixRTC call-session housekeeping instead of surfacing it in the session", async () => {
+		const { logger, onLog } = await startWithLogger();
+		logger.warn("MatrixRTCSession !room:matrix.org: onCallMembershipEvent", { membership: "join" });
+		logger.error("MatrixRTCSession !room:matrix.org: failed to resolve focus");
+		logger.warn("  MatrixRTC !room:matrix.org: delayed event resend");
+		expect(onLog).not.toHaveBeenCalled();
+		// Unrelated warnings are still delivered.
+		logger.warn("M_UNKNOWN_TOKEN");
+		expect(onLog).toHaveBeenCalledWith("M_UNKNOWN_TOKEN", "warning");
+	});
 });

@@ -33,6 +33,32 @@ function formatLogArg(arg: unknown): string {
 }
 
 /**
+ * SDK log families that are routine noise for a text-only bridge.
+ *
+ * matrix-js-sdk reports MatrixRTC (Element Call) session housekeeping at warn
+ * level for call-membership traffic in a room, so any room where a human uses
+ * calls pushes unsolicited `MatrixRTCSession !room…` lines into the session.
+ * This bridge never joins calls, so those lines carry no actionable state.
+ */
+const IGNORED_SDK_LOG_PREFIXES = ["MatrixRTCSession", "MatrixRTC"] as const;
+
+/** True for SDK log messages this bridge deliberately does not surface. */
+function isIgnoredSdkLog(message: string): boolean {
+	const text = message.trimStart();
+	return IGNORED_SDK_LOG_PREFIXES.some((prefix) => text.startsWith(prefix));
+}
+
+function routeSdkLog(
+	onLog: MatrixAdapterCallbacks["onLog"] | undefined,
+	args: unknown[],
+	level: "warning" | "error",
+): void {
+	const message = args.map(formatLogArg).join(" ");
+	if (isIgnoredSdkLog(message)) return;
+	onLog?.(message, level);
+}
+
+/**
  * Silence matrix-js-sdk's module-global `logger`.
  *
  * Module-level SDK code (scheduler, embedded, sliding-sync) logs through the
@@ -51,8 +77,8 @@ export async function silenceSdkGlobalLogger(
 		logger.debug = () => {};
 		logger.info = () => {};
 		logger.log = () => {};
-		logger.warn = (...args: unknown[]) => onLog?.(args.map(formatLogArg).join(" "), "warning");
-		logger.error = (...args: unknown[]) => onLog?.(args.map(formatLogArg).join(" "), "error");
+		logger.warn = (...args: unknown[]) => routeSdkLog(onLog, args, "warning");
+		logger.error = (...args: unknown[]) => routeSdkLog(onLog, args, "error");
 	} catch {
 		/* Deep import shape may change; the per-client logger still applies. */
 	}
@@ -184,10 +210,10 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			// Keep it silent as well so legacy paths cannot bypass the filter.
 			log: () => {},
 			warn: (...args: unknown[]) => {
-				notify?.(args.map(formatLogArg).join(" "), "warning");
+				routeSdkLog(notify, args, "warning");
 			},
 			error: (...args: unknown[]) => {
-				notify?.(args.map(formatLogArg).join(" "), "error");
+				routeSdkLog(notify, args, "error");
 			},
 			getChild: () => logger,
 		};
@@ -201,6 +227,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		// matrix-js-sdk logs via a global logger in some versions; best-effort hook.
 		try {
 			this.client.on("log", (data: { level: string; message: string }) => {
+				if (isIgnoredSdkLog(data.message)) return;
 				const level = data.level === "error" ? "error" : data.level === "warn" ? "warning" : "info";
 				notify(data.message, level);
 			});

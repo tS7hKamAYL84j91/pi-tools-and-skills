@@ -35,4 +35,14 @@ describe("silenceSdkGlobalLogger", () => {
 		expect(onLog).toHaveBeenCalledWith("careful", "warning");
 		expect(onLog).toHaveBeenCalledWith("boom", "error");
 	});
+
+	it("keeps MatrixRTC call-session logging out of the session", async () => {
+		const onLog = vi.fn();
+		await silenceSdkGlobalLogger(onLog);
+
+		logger.warn("MatrixRTCSession !mX51bLCoK1LvmNVpc5kwYxIUcHJEZDf2o:matrix.org: call membership");
+		logger.error("MatrixRTCSession !mX51bLCoK1LvmNVpc5kwYxIUcHJEZDf2o:matrix.org: no focus");
+
+		expect(onLog).not.toHaveBeenCalled();
+	});
 });
