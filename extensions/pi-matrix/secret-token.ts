@@ -24,9 +24,9 @@ export const SECRETS_BIN_ENV = "COAS_SECRETS_BIN";
 export const SECRETS_WRAPPER_ENV = "COAS_SECRETS_WRAPPER";
 const DEFAULT_SECRETS_BIN = "coas-secrets";
 
-export type SecretRunner = (bin: string, args: string[]) => string;
+type SecretRunner = (bin: string, args: string[]) => string;
 
-export interface ResolveSecretTokenOptions {
+interface ResolveSecretTokenOptions {
 	env?: NodeJS.ProcessEnv;
 	/** Injection point for tests; production uses execFileSync. */
 	run?: SecretRunner;
