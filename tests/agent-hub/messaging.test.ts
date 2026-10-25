@@ -119,8 +119,43 @@ describe("agent_send", () => {
 
 	it("sends via the send transport", async () => {
 		const result = await executeTool("agent_send", { name: "alice", message: "hello" });
-		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello", SELF.id);
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello", SELF.id, {});
 		expect(toolText(result)).toContain("Sent to alice");
+	});
+
+	it("treats empty or whitespace-only metadata as absent", async () => {
+		const result = await executeTool("agent_send", {
+			name: "alice",
+			message: "hello",
+			inReplyTo: "   ",
+			correlationId: "",
+		});
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "hello", SELF.id, {});
+		expect(toolText(result)).toContain("Sent to alice");
+		const details = (result as { details?: Record<string, unknown> }).details ?? {};
+		expect(details).not.toHaveProperty("inReplyTo");
+		expect(details).not.toHaveProperty("correlationId");
+	});
+
+	it("forwards optional descriptive metadata", async () => {
+		await executeTool("agent_send", {
+			name: "alice",
+			message: "review please",
+			type: "request",
+			inReplyTo: "001.json",
+			correlationId: "interaction-456",
+		});
+		expect(sendTransport.send).toHaveBeenCalledWith(PEER_A, "me", "review please", SELF.id, {
+			type: "request",
+			inReplyTo: "001.json",
+			correlationId: "interaction-456",
+		});
+	});
+
+	it("rejects an unknown type without sending", async () => {
+		const result = await executeTool("agent_send", { name: "alice", message: "hi", type: "urgent" });
+		expect(toolText(result)).toContain('Invalid type "urgent"');
+		expect(sendTransport.send).not.toHaveBeenCalled();
 	});
 
 	it("does not use the broadcast transport", async () => {
@@ -280,6 +315,35 @@ describe("inbox draining", () => {
 		expect(toolText(result)).toContain("<external-messages>");
 		expect(sendTransport.ack).toHaveBeenCalledWith(SELF.id, "002.json");
 		expect(sendTransport.prune).toHaveBeenCalled();
+	});
+
+	it("message_read shows sender and descriptive metadata", async () => {
+		sendTransport.receive.mockReturnValue([
+			{
+				id: "002.json",
+				from: "bob",
+				text: "please review",
+				ts: 2,
+				type: "request",
+				inReplyTo: "001.json",
+				correlationId: "interaction-456",
+			},
+		]);
+		const result = await executeTool("message_read", {});
+		const text = toolText(result);
+		expect(text).toContain("[agent:bob]");
+		expect(text).toContain("[id=002.json; request; reply-to=001.json; correlation=interaction-456]");
+		expect(text).toContain("please review");
+	});
+
+	it("message_read leaves legacy messages unannotated", async () => {
+		sendTransport.receive.mockReturnValue([
+			{ id: "002.json", from: "bob", text: "pong", ts: 2 },
+		]);
+		const text = toolText(await executeTool("message_read", {}));
+		expect(text).toContain("[id=002.json]");
+		expect(text).not.toContain("reply-to=");
+		expect(text).not.toContain("[request");
 	});
 
 	it("message_read includes attachment metadata", async () => {

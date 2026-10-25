@@ -11,7 +11,14 @@ import {
 	ensurePrivateFileForRead,
 	writeNewPrivateFileSync,
 } from "../private-local-mode.js";
-import type { DeliveryResult, InboundMessage, MessageTransport } from "../message-transport.js";
+import type {
+	DeliveryResult,
+	InboundAttachment,
+	InboundMessage,
+	MessageMetadata,
+	MessageTransport,
+} from "../message-transport.js";
+import { metadataString, normalizeMessageMetadata } from "../message-transport.js";
 export function assertSafeAgentId(agentId: string): void {
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(agentId)) {
 		throw new Error(`invalid agent id for Maildir path: ${agentId || "(empty)"}`);
@@ -53,7 +60,7 @@ export function inboxReadNew(
 							message: (() => {
 								const messagePath = join(newDir, f);
 								ensurePrivateFileForRead(messagePath);
-								return JSON.parse(readFileSync(messagePath, "utf-8")) as InboundMessage;
+								return normalizeStoredMessage(JSON.parse(readFileSync(messagePath, "utf-8")));
 							})(),
 						},
 					];
@@ -66,6 +73,62 @@ export function inboxReadNew(
 		/* inbox dir may not exist */
 		return [];
 	}
+}
+
+const ATTACHMENT_KINDS = ["image", "file", "audio", "video"] as const;
+
+/** Accept only a well-formed attachment record; unknown shapes are dropped. */
+function normalizeAttachment(value: unknown): InboundAttachment | undefined {
+	if (value === null || typeof value !== "object") return undefined;
+	const raw = value as Record<string, unknown>;
+	const kind = metadataString(raw.kind);
+	const filename = metadataString(raw.filename);
+	const eventId = metadataString(raw.eventId);
+	if (!kind || !(ATTACHMENT_KINDS as readonly string[]).includes(kind) || !filename || !eventId) {
+		return undefined;
+	}
+	const attachment: InboundAttachment = {
+		kind: kind as InboundAttachment["kind"],
+		filename,
+		eventId,
+	};
+	for (const key of ["mimeType", "localPath", "mxcUrl", "roomId", "senderMxid", "error"] as const) {
+		const field = metadataString(raw[key]);
+		if (field) attachment[key] = field;
+	}
+	if (typeof raw.sizeBytes === "number" && Number.isFinite(raw.sizeBytes)) attachment.sizeBytes = raw.sizeBytes;
+	if (typeof raw.timestampMs === "number" && Number.isFinite(raw.timestampMs)) attachment.timestampMs = raw.timestampMs;
+	if (raw.encrypted === true) attachment.encrypted = true;
+	return attachment;
+}
+
+/**
+ * Coerce a stored envelope to the documented shape. Metadata fields are
+ * accepted only as non-empty strings (type must be a documented value), so a
+ * forged or corrupt envelope cannot inject objects/numbers into structured
+ * tool output.
+ */
+function normalizeStoredMessage(value: unknown): InboundMessage {
+	const raw = (value !== null && typeof value === "object" ? value : {}) as Record<string, unknown>;
+	const message: InboundMessage = {
+		id: typeof raw.id === "string" ? raw.id : "",
+		from: typeof raw.from === "string" ? raw.from : "",
+		text: typeof raw.text === "string" ? raw.text : "",
+		ts: typeof raw.ts === "number" ? raw.ts : 0,
+	};
+	const senderId = metadataString(raw.senderId);
+	if (senderId) message.senderId = senderId;
+	const meta = normalizeMessageMetadata(raw);
+	if (meta.type) message.type = meta.type;
+	if (meta.inReplyTo) message.inReplyTo = meta.inReplyTo;
+	if (meta.correlationId) message.correlationId = meta.correlationId;
+	if (Array.isArray(raw.attachments)) {
+		const attachments = raw.attachments
+			.map(normalizeAttachment)
+			.filter((attachment): attachment is InboundAttachment => attachment !== undefined);
+		if (attachments.length > 0) message.attachments = attachments;
+	}
+	return message;
 }
 export function inboxAcknowledge(agentId: string, filename: string, mailboxPath?: string): void {
 	try {
@@ -92,16 +155,25 @@ export function inboxPruneCur(agentId: string, keep = 50, mailboxPath?: string):
 		/* best-effort: cur dir may not exist */
 	}
 }
+export interface DurableWriteTarget extends MessageMetadata {
+	mailboxPath?: string;
+	senderId?: string;
+}
+
 export function durableWrite(
 	targetId: string,
 	from: string,
 	text: string,
-	target?: string | { mailboxPath?: string; senderId?: string },
+	target?: string | DurableWriteTarget,
 ): DeliveryResult {
 	try {
-		const mailboxPath = typeof target === "string" ? target : target?.mailboxPath;
-		const senderId = typeof target === "string" ? undefined : target?.senderId;
+		// A string target is a mailbox path (legacy contract); an object supplies
+		// the path plus sender and descriptive metadata.
+		const options: DurableWriteTarget = typeof target === "string" ? { mailboxPath: target } : (target ?? {});
+		const mailboxPath = options.mailboxPath;
+		const senderId = options.senderId;
 		if (senderId !== undefined) assertSafeAgentId(senderId);
+		const meta = normalizeMessageMetadata(options);
 		const base = inboxPaths(targetId, mailboxPath).base;
 		ensurePrivateDirectory(base);
 		ensurePrivateDirectory(join(base, "tmp"));
@@ -112,7 +184,12 @@ export function durableWrite(
 		const filename = `${ts}-${uuid}.json`;
 		const tmpPath = join(base, "tmp", filename);
 		assertPrivateFileTarget(tmpPath);
-		writeNewPrivateFileSync(tmpPath, JSON.stringify({ id: uuid, from, text, ts, ...(senderId ? { senderId } : {}) }));
+		const envelope: InboundMessage = { id: uuid, from, text, ts };
+		if (senderId) envelope.senderId = senderId;
+		if (meta.type) envelope.type = meta.type;
+		if (meta.inReplyTo) envelope.inReplyTo = meta.inReplyTo;
+		if (meta.correlationId) envelope.correlationId = meta.correlationId;
+		writeNewPrivateFileSync(tmpPath, JSON.stringify(envelope));
 		const newPath = join(base, "new", filename);
 		assertPrivateFileTarget(newPath);
 		renameSync(tmpPath, newPath);
@@ -122,7 +199,13 @@ export function durableWrite(
 	}
 }
 class MaildirTransport implements MessageTransport {
-	async send(peer: AgentRecord, from: string, message: string, senderId?: string): Promise<DeliveryResult> {
+	async send(
+		peer: AgentRecord,
+		from: string,
+		message: string,
+		senderId?: string,
+		meta?: MessageMetadata,
+	): Promise<DeliveryResult> {
 		if (peer.kind === "external" && !peer.mailboxPath) {
 			return {
 				accepted: false,
@@ -131,7 +214,7 @@ class MaildirTransport implements MessageTransport {
 			};
 		}
 		const mailboxPath = peer.kind === "external" ? peer.mailboxPath : undefined;
-		return durableWrite(peer.id, from, message, { mailboxPath, senderId });
+		return durableWrite(peer.id, from, message, { mailboxPath, senderId, ...meta });
 	}
 	receive(agentId: string, mailboxPath?: string): InboundMessage[] {
 		return inboxReadNew(agentId, mailboxPath).map(({ filename, message }) => ({

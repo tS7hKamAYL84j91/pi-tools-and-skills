@@ -17,8 +17,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { onAgentCleanup } from "../../../lib/agent-registry.js";
-import type { InboundAttachment } from "../../../lib/message-transport.js";
-import { getChannel, getChannels, onChannelNotify } from "../../../lib/message-transport.js";
+import type { InboundAttachment, MessageType } from "../../../lib/message-transport.js";
+import { MESSAGE_TYPES, getChannel, getChannels, normalizeMessageMetadata, onChannelNotify } from "../../../lib/message-transport.js";
 import type { Registry } from "../types.js";
 import { ok, fail } from "../types.js";
 import { getSelfName, resolvePeer, peerNames, notFound } from "../registry/peers.js";
@@ -50,7 +50,14 @@ function formatAttachment(a: InboundAttachment): string {
 
 function formatChannelMessage(m: ChannelMessage): string {
 	const time = new Date(m.ts).toLocaleTimeString("en-GB", { hour12: false });
-	const firstLine = `[${time}] [${m.channel}:${m.from}] ${m.text}`;
+	const tags = [
+		`id=${m.id}`,
+		typeof m.type === "string" && m.type !== "message" ? m.type : undefined,
+		m.inReplyTo ? `reply-to=${m.inReplyTo}` : undefined,
+		m.correlationId ? `correlation=${m.correlationId}` : undefined,
+	].filter((tag): tag is string => tag !== undefined);
+	const meta = tags.length > 0 ? ` [${tags.join("; ")}]` : "";
+	const firstLine = `[${time}] [${m.channel}:${m.from}]${meta} ${m.text}`;
 	const attachments = m.attachments?.map(formatAttachment) ?? [];
 	return attachments.length > 0 ? `${firstLine}\n${attachments.join("\n")}` : firstLine;
 }
@@ -64,6 +71,9 @@ function messageDetails(messages: ChannelMessage[]): Record<string, unknown> {
 			id: m.id,
 			from: m.from,
 			...(m.senderId ? { senderId: m.senderId } : {}),
+			type: m.type ?? "message",
+			...(m.inReplyTo ? { inReplyTo: m.inReplyTo } : {}),
+			...(m.correlationId ? { correlationId: m.correlationId } : {}),
 			text: m.text,
 			ts: m.ts,
 			attachments: m.attachments ?? [],
@@ -190,6 +200,8 @@ export function createMessaging(config: MessagingConfig) {
 			description:
 				"Send a message to a named peer agent. Resolves the name from the registry " +
 				"and delivers via the configured transport. " +
+				"Optional type/inReplyTo/correlationId are descriptive metadata only — they never " +
+				"trigger execution, permissions, scheduling, or workflow transitions. " +
 				"Use agent_peek first to see available agents.",
 			promptSnippet: "Send a message to a named peer agent",
 			promptGuidelines: [
@@ -200,15 +212,43 @@ export function createMessaging(config: MessagingConfig) {
 			parameters: Type.Object({
 				name: Type.String({ description: 'Agent name (e.g. "alice", "api-builder")' }),
 				message: Type.String({ description: "Message to send" }),
+				type: Type.Optional(
+					Type.Unsafe<MessageType>({
+						type: "string",
+						enum: [...MESSAGE_TYPES],
+						description: 'Optional descriptive type. Defaults to "message".',
+					}),
+				),
+				inReplyTo: Type.Optional(
+					Type.String({
+						maxLength: 256,
+						description: "Optional id of the message being answered (e.g. the id shown by message_read).",
+					}),
+				),
+				correlationId: Type.Optional(
+					Type.String({
+						maxLength: 256,
+						description: "Optional grouping value for related messages; not a task or result handle.",
+					}),
+				),
 			}),
 
 			async execute(_id, params) {
+				const type = params.type?.trim();
+				if (type && !(MESSAGE_TYPES as readonly string[]).includes(type)) {
+					return fail(`Invalid type "${type}". Use one of: ${MESSAGE_TYPES.join(", ")}.`);
+				}
 				const peer = resolvePeer(registry, params.name);
 				if (!peer) return notFound(registry, params.name);
 
 				const from = getSelfName(registry);
 				const preview = truncate(params.message);
-				const d = await config.send.send(peer, from, params.message, registry.getRecord()?.id);
+				const meta = normalizeMessageMetadata({
+					type: type as MessageType | undefined,
+					inReplyTo: params.inReplyTo,
+					correlationId: params.correlationId,
+				});
+				const d = await config.send.send(peer, from, params.message, registry.getRecord()?.id, meta);
 
 				if (!d.accepted) return ok(
 					`Failed to send to "${params.name}": ${d.error}`,
@@ -216,7 +256,7 @@ export function createMessaging(config: MessagingConfig) {
 				);
 				return ok(
 					`Sent to ${params.name}: ${preview}`,
-					{ name: params.name, messageLength: params.message.length, immediate: d.immediate, reference: d.reference },
+					{ name: params.name, messageLength: params.message.length, immediate: d.immediate, reference: d.reference, ...meta },
 				);
 			},
 		});

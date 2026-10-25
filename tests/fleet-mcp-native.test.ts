@@ -12,6 +12,7 @@ import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { startHttp } from "../fleet-mcp/server.js";
 import { createMessaging } from "../extensions/pi-agent-hub/messaging/messaging.js";
 import { setupExternalPeerSource } from "../extensions/pi-agent-hub/registry/external-peer-source.js";
+import { listExternalAgents } from "../extensions/pi-agent-hub/registry/external-registrar.js";
 import { registerChannel, unregisterChannel } from "../lib/message-transport.js";
 import type { AgentRecord } from "../lib/agent-registry.js";
 import { join } from "node:path";
@@ -50,7 +51,8 @@ function config(nativeAgentId?: string) {
 }
 
 function sessionBinding() {
-	return { pid: native.pid, sessionFile: native.sessionFile!, cwd: native.cwd, visibility: "global" as const };
+	if (!native.sessionFile) throw new Error("native sessionFile required for binding");
+	return { pid: native.pid, sessionFile: native.sessionFile, cwd: native.cwd, visibility: "global" as const };
 }
 
 describe("Fleet native discovery and delivery", () => {
@@ -148,6 +150,7 @@ describe("Fleet native discovery and delivery", () => {
 				await saveNative({ ...native, heartbeat: Date.now() });
 				let stdout: string;
 				try {
+					// biome-ignore lint/suspicious/noTemplateCurlyInString: mcporter expands this from env
 					({ stdout } = await promisify(execFile)("npx", ["--yes", "mcporter@0.13.10", "--config", mcporterConfig, "--log-level", "error", "call", "--http-url", url.href, "--allow-http", "--header", "Authorization=Bearer ${FLEET_MCP_TEST_TOKEN}", "--tool", name, "--args", JSON.stringify({ workspace: "test", ...args }), "--output", "json", "--no-oauth"], {
 						cwd: root, env: { ...process.env, FLEET_MCP_TEST_TOKEN: settings.bearerToken }, timeout: 30_000, maxBuffer: 65_536,
 					}));
@@ -223,6 +226,42 @@ describe("Fleet native discovery and delivery", () => {
 		await gateway.register("test", "outside");
 		await expect(gateway.send("test", hidden.id, "must not deliver", "hidden")).rejects.toMatchObject({ code: "NOT_FOUND" });
 		expect(transport.receive(hidden.id)).toEqual([]);
+	});
+
+	it("persists descriptive send metadata into the Maildir envelope and inbox", async () => {
+		const gateway = new FleetGateway(config(native.id));
+		await gateway.init();
+		const external = await gateway.register("test", "outside");
+		const receipt = await gateway.send("test", native.id, "synthetic request", "meta-1", "interaction-456", "request", "001.json");
+		const transport = createMaildirTransport();
+		expect(transport.receive(native.id)).toEqual([
+			expect.objectContaining({
+				id: receipt.message_id,
+				from: "outside",
+				senderId: external.agent_id,
+				text: "synthetic request",
+				type: "request",
+				inReplyTo: "001.json",
+				correlationId: "interaction-456",
+			}),
+		]);
+		transport.ack(native.id, receipt.message_id);
+		const externalRecord = (await listExternalAgents(config())).find((agent) => agent.id === external.agent_id);
+		expect(externalRecord).toBeDefined();
+		if (!externalRecord) throw new Error("externalRecord required");
+		await transport.send(externalRecord, native.name, "synthetic reply", native.id, {
+			type: "reply",
+			inReplyTo: receipt.message_id,
+			correlationId: "interaction-456",
+		});
+		expect(await gateway.inbox("test")).toEqual([
+			expect.objectContaining({
+				sender_label: native.name,
+				type: "reply",
+				in_reply_to: receipt.message_id,
+				correlation_id: "interaction-456",
+			}),
+		]);
 	});
 
 	it("preserves native-to-native Maildir delivery and optional legacy sender labels", async () => {

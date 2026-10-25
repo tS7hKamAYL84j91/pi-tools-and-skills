@@ -73,7 +73,11 @@ A container with only external mailbox/workspace mounts is **not native-integrat
 
 - `fleet_register_external(workspace, display_name)`
 - `fleet_agents(workspace)`
-- `fleet_send(workspace, recipient_id, text, idempotency_key, correlation_id?)`
+- `fleet_send(workspace, recipient_id, text, idempotency_key, correlation_id?, type?, in_reply_to?)`
+  — `correlation_id`, `type` (`message` | `request` | `reply` | `notification`), and
+  `in_reply_to` are descriptive metadata only: they never trigger execution, permissions,
+  scheduling, or workflow transitions. They are stored in the Maildir envelope and returned
+  by `fleet_inbox` as `type` / `in_reply_to` / `correlation_id`.
 - `fleet_broadcast(workspace, text, idempotency_key, filter?)`
 - `fleet_inbox(workspace)`
 - `fleet_ack(workspace, message_ids)`

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRecord } from "../lib/agent-registry.js";
+import type { MessageMetadata, MessageType } from "../lib/message-transport.js";
 import { createMaildirTransport, inboxPaths } from "../lib/transports/maildir.js";
 import {
 	listExternalAgents,
@@ -16,13 +17,16 @@ export interface BackendMessage {
 	senderId?: string;
 	text: string;
 	ts: number;
+	type?: MessageType;
+	inReplyTo?: string;
+	correlationId?: string;
 }
 
 export interface FleetBackend {
 	register(displayName: string): Promise<AgentRecord>;
 	unregister(agentId: string): Promise<void>;
 	agents(): Promise<AgentRecord[]>;
-	send(sender: AgentRecord, recipient: AgentRecord, text: string): Promise<{ accepted: boolean; reference?: string }>;
+	send(sender: AgentRecord, recipient: AgentRecord, text: string, meta?: MessageMetadata): Promise<{ accepted: boolean; reference?: string }>;
 	inbox(owner: AgentRecord): BackendMessage[];
 	ack(owner: AgentRecord, messageId: string): void;
 	pending(owner: AgentRecord): number;
@@ -53,9 +57,10 @@ export class DirectMaildirBackend implements FleetBackend {
 		sender: AgentRecord,
 		recipient: AgentRecord,
 		text: string,
+		meta?: MessageMetadata,
 	): Promise<{ accepted: boolean; reference?: string }> {
 		if (recipient.kind !== "external" && !nativeInboxAvailable(recipient)) return { accepted: false };
-		const delivery = await this.transport.send(recipient, sender.name, text, sender.id);
+		const delivery = await this.transport.send(recipient, sender.name, text, sender.id, meta);
 		return { accepted: delivery.accepted, ...(delivery.reference ? { reference: delivery.reference } : {}) };
 	}
 

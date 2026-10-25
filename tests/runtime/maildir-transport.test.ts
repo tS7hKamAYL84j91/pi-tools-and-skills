@@ -41,7 +41,7 @@ vi.mock("node:crypto", () => ({
 import * as nodefs from "node:fs";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import type { MessageTransport } from "../../lib/message-transport.js";
-import { createMaildirTransport } from "../../lib/transports/maildir.js";
+import { createMaildirTransport, durableWrite } from "../../lib/transports/maildir.js";
 
 const mockWriteFileSync = nodefs.writeFileSync as MockedFunction<
 	typeof nodefs.writeFileSync
@@ -155,6 +155,66 @@ describe("send", () => {
 	});
 });
 
+// ── envelope metadata ──────────────────────────────────────────
+
+describe("envelope metadata", () => {
+	function writtenEnvelope(): Record<string, unknown> {
+		const call = mockWriteFileSync.mock.calls.at(-1);
+		expect(call).toBeDefined();
+		return JSON.parse(String(call?.[1])) as Record<string, unknown>;
+	}
+
+	it("persists optional type, reply reference, and correlation", async () => {
+		await transport.send(PEER, "alice", "review please", "peer-id", {
+			type: "request",
+			inReplyTo: "001.json",
+			correlationId: "interaction-456",
+		});
+		expect(writtenEnvelope()).toEqual({
+			id: "test-uuid-1234",
+			from: "alice",
+			text: "review please",
+			ts: expect.any(Number),
+			senderId: "peer-id",
+			type: "request",
+			inReplyTo: "001.json",
+			correlationId: "interaction-456",
+		});
+	});
+
+	it("keeps the legacy envelope when no metadata is supplied", async () => {
+		await transport.send(PEER, "alice", "hello");
+		const envelope = writtenEnvelope();
+		expect(Object.keys(envelope).sort()).toEqual(["from", "id", "text", "ts"]);
+	});
+
+	it("omits metadata fields that were not supplied", async () => {
+		await transport.send(PEER, "alice", "fyi", undefined, { correlationId: "batch-1" });
+		const envelope = writtenEnvelope();
+		expect(envelope).toMatchObject({ from: "alice", correlationId: "batch-1" });
+		expect(envelope).not.toHaveProperty("type");
+		expect(envelope).not.toHaveProperty("inReplyTo");
+	});
+
+	it("trims metadata and treats empty or whitespace-only values as absent", async () => {
+		await transport.send(PEER, "alice", "fyi", undefined, {
+			inReplyTo: "   ",
+			correlationId: "  interaction-1  ",
+		});
+		const envelope = writtenEnvelope();
+		expect(envelope.correlationId).toBe("interaction-1");
+		expect(envelope).not.toHaveProperty("type");
+		expect(envelope).not.toHaveProperty("inReplyTo");
+	});
+
+	it("keeps the legacy durableWrite string-target mailbox contract", () => {
+		const result = durableWrite("peer-id", "alice", "hello", "/custom/external/mailbox");
+		expect(result.accepted).toBe(true);
+		expect(mockChmodSync).toHaveBeenCalledWith("/custom/external/mailbox", 0o700);
+		expect(mockChmodSync).not.toHaveBeenCalledWith("/fake/.pi/agents/peer-id/inbox", 0o700);
+	});
+});
+
 // ── receive ─────────────────────────────────────────────────────
 
 describe("receive", () => {
@@ -196,6 +256,73 @@ describe("receive", () => {
 			text: "pong",
 			ts: 2,
 		});
+	});
+
+	it("passes through legacy envelopes without metadata fields", () => {
+		mockReaddirSync.mockReturnValue([
+			"001.json",
+		] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValueOnce('{"id":"x","from":"alice","text":"ping","ts":1}');
+		const [message] = transport.receive("my-id");
+		expect(message).toEqual({ id: "001.json", from: "alice", text: "ping", ts: 1 });
+	});
+
+	it("returns envelope metadata to the receiver", () => {
+		mockReaddirSync.mockReturnValue([
+			"002.json",
+		] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValueOnce(
+			'{"id":"y","from":"bob","text":"pong","ts":2,"type":"reply","inReplyTo":"001.json","correlationId":"interaction-9"}',
+		);
+		expect(transport.receive("my-id")[0]).toEqual({
+			id: "002.json",
+			from: "bob",
+			text: "pong",
+			ts: 2,
+			type: "reply",
+			inReplyTo: "001.json",
+			correlationId: "interaction-9",
+		});
+	});
+
+	it("drops forged non-string metadata instead of echoing it", () => {
+		mockReaddirSync.mockReturnValue([
+			"003.json",
+		] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValueOnce(
+			'{"id":"z","from":"bob","text":"t","ts":3,"senderId":{},' +
+				'"type":{"nested":1},"inReplyTo":{"a":1},"correlationId":42}',
+		);
+		expect(transport.receive("my-id")[0]).toEqual({
+			id: "003.json",
+			from: "bob",
+			text: "t",
+			ts: 3,
+		});
+	});
+
+	it("drops an undocumented message type instead of rendering it", () => {
+		mockReaddirSync.mockReturnValue([
+			"004.json",
+		] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValueOnce(
+			'{"id":"q","from":"bob","text":"t","ts":4,"type":"REQUEST"}',
+		);
+		expect(transport.receive("my-id")[0]).toEqual({ id: "004.json", from: "bob", text: "t", ts: 4 });
+	});
+
+	it("keeps only well-formed attachments", () => {
+		mockReaddirSync.mockReturnValue([
+			"005.json",
+		] as unknown as ReturnType<typeof nodefs.readdirSync>);
+		mockReadFileSync.mockReturnValueOnce(
+			'{"id":"a","from":"bob","text":"t","ts":5,"attachments":[' +
+				'"plain-string",7,{"nested":{"deep":[1,2]}},{"kind":9},' +
+				'{"kind":"image","filename":" photo.png ","eventId":"$e1","sizeBytes":12,"encrypted":true,"mimeType":42}]}',
+		);
+		expect(transport.receive("my-id")[0]?.attachments).toEqual([
+			{ kind: "image", filename: "photo.png", eventId: "$e1", sizeBytes: 12, encrypted: true },
+		]);
 	});
 
 	it("skips files that fail to parse", () => {

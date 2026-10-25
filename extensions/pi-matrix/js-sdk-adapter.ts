@@ -123,6 +123,9 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 		this.bindMembership(sdk, config, callbacks);
 		this.bindTimeline(sdk, config, callbacks);
 
+		if (config.verifyIdentity) {
+			await this.verifyCredentialIdentity(config);
+		}
 		await this.client.startClient({ initialSyncLimit: 1 });
 		await this.waitForPrepared(sdk, SYNC_TIMEOUT_MS);
 	}
@@ -203,6 +206,24 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			});
 		} catch {
 			/* SDK may not expose log events */
+		}
+	}
+
+	/** Prove the credential's exact MXID before any sync/join; never echo errors. */
+	private async verifyCredentialIdentity(config: MatrixConfig): Promise<void> {
+		if (!this.client) throw new Error("Matrix client is not started");
+		let whoamiUser: unknown;
+		try {
+			const whoami = await this.client.whoami();
+			whoamiUser = whoami?.user_id;
+		} catch (error) {
+			const code = error && typeof error === "object" && "errcode" in error ? error.errcode : undefined;
+			const safeReason = typeof code === "string" && /^M_[A-Z0-9_]{1,60}$/.test(code)
+				? `errcode ${code}` : "error Error";
+			throw new Error(`matrix: credential identity could not be verified (${safeReason}); refusing to sync or join`);
+		}
+		if (whoamiUser !== config.userId) {
+			throw new Error("matrix: credential identity mismatch — resolved token does not belong to the rendered matrix.userId; refusing to sync or join");
 		}
 	}
 

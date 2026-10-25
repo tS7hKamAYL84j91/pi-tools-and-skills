@@ -6,9 +6,14 @@ import type { AgentOverlayDeps } from "./agent-overlay-types.js";
 import { openAgentListOverlay } from "./agent-list.js";
 import { showAgentDetail } from "./agent-detail.js";
 
+export type { AgentListOverlayArgs } from "./agent-list.js";
 export {
 	renderAgentListOverlay,
 	sortAgentOverlayRecords,
+	agentListMaxVisible,
+	agentListCompact,
+	agentListTooShort,
+	AGENT_LIST_MIN_ROWS,
 } from "./agent-list.js";
 export {
 	renderAgentDetailOverlay,

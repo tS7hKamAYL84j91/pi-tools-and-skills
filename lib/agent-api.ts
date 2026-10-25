@@ -22,6 +22,7 @@ import {
 	type AgentRecord,
 } from "./agent-registry.js";
 import { agentDisplayName, findAgentByDisplayName } from "./agent-names.js";
+import type { MessageMetadata } from "./message-transport.js";
 import { getMaildirTransport } from "./transports/maildir.js";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -137,11 +138,12 @@ export async function sendAgentMessage(
 	agentId: string,
 	from: string,
 	text: string,
+	meta?: MessageMetadata,
 ): Promise<boolean> {
 	const stub: AgentRecord = {
 		id: agentId, name: "", pid: 0, cwd: "",
 		model: "", startedAt: 0, heartbeat: 0, status: "running",
 	};
-	const result = await transport.send(stub, from, text);
+	const result = await transport.send(stub, from, text, undefined, meta);
 	return result.accepted;
 }

@@ -9,11 +9,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { PI_SETTINGS_PATH, readPiSettingsKey } from "../../lib/pi-settings.js";
 import type { MatrixConfig, MatrixIngressConfig } from "./types.js";
+import { resolveSecretToken } from "./secret-token.js";
 
 const DEFAULT_STORAGE_ROOT = join(homedir(), ".pi", "agent", "matrix-sync");
 const DEFAULT_ATTACHMENT_CACHE_PATH = join(homedir(), ".pi", "agent", "matrix-attachments");
 const DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_ALLOWED_MIME_PREFIXES = ["image/", "application/pdf", "text/", "audio/", "video/"];
+/** A Matrix user id, used to validate per-agent mention identities. */
+const MXID = /^@[^:\s]+:[^\s]+$/;
 /** Logical mention names share the agent-name charset (no separators/prefixes). */
 const MENTION_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -46,7 +49,9 @@ interface RawMatrixSettings {
 	sharedRoomId?: unknown;
 	mentionNames?: unknown;
 	mentionAll?: unknown;
+	mentionUserIds?: unknown;
 	accessTokenEnv?: unknown;
+	tokenSecret?: unknown;
 	storagePath?: unknown;
 	attachmentCachePath?: unknown;
 	maxAttachmentBytes?: unknown;
@@ -84,10 +89,7 @@ export function loadMatrixConfig(
 	const userId = requireString(raw.userId, "matrix.userId");
 	const roomId = optionalString(raw.roomId);
 	const sharedRoomId = optionalString(raw.sharedRoomId);
-	const accessTokenEnv = requireString(
-		raw.accessTokenEnv,
-		"matrix.accessTokenEnv",
-	);
+	const tokenSecret = optionalString(raw.tokenSecret);
 
 	if (!userId.startsWith("@") || !userId.includes(":")) {
 		throw new Error(
@@ -126,12 +128,28 @@ export function loadMatrixConfig(
 		? true
 		: requireBoolean(raw.mentionAll, "matrix.mentionAll");
 
-	const accessToken = process.env[accessTokenEnv];
-	if (!accessToken) {
-		throw new Error(
-			`matrix: env var "${accessTokenEnv}" is not set. ` +
-				`Provide it from your workspace runtime or secret manager before starting pi.`,
-		);
+	// Only explicit per-lead identities may be addressed by native pills.
+	const mentionUserIds = Array.isArray(raw.mentionUserIds)
+		? (raw.mentionUserIds as unknown[]).filter(
+				(id): id is string => typeof id === "string" && MXID.test(id.trim()),
+			).map((id) => id.trim())
+		: [];
+
+	let accessToken: string;
+	let verifyIdentity = false;
+	if (tokenSecret) {
+		accessToken = resolveSecretToken(tokenSecret);
+		verifyIdentity = true;
+	} else {
+		const accessTokenEnv = requireString(raw.accessTokenEnv, "matrix.accessTokenEnv");
+		const inherited = process.env[accessTokenEnv];
+		if (!inherited) {
+			throw new Error(
+				`matrix: env var "${accessTokenEnv}" is not set. ` +
+					`Provide it from your workspace runtime or secret manager before starting pi.`,
+			);
+		}
+		accessToken = inherited;
 	}
 
 	const storagePath = expandHome(
@@ -165,6 +183,9 @@ export function loadMatrixConfig(
 		sharedRoomId,
 		mentionNames,
 		mentionAll,
+		mentionUserIds,
+		tokenSecret,
+		verifyIdentity,
 		accessToken,
 		storagePath,
 		attachmentCachePath,

@@ -30,7 +30,7 @@ const JOURNAL_VERSION = 1;
 const SAFE_OWNER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
 const SAFE_REGISTRY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-export interface NamespaceOwnerEntry {
+interface NamespaceOwnerEntry {
 	/** Declared canonical lead name (the namespace anchor label). */
 	name: string;
 	/** Registry id of the declaring agent process at claim time. */

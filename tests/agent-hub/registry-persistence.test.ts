@@ -23,6 +23,9 @@ beforeEach(async () => {
 });
 afterEach(async () => {
 	registry.unregister();
+	// A declared panopticon name makes the heartbeat fire an async ownership
+	// journal write; settle it before removing the directory or rm races it.
+	await registry.awaitOwnershipWrite();
 	vi.useRealTimers();
 	await rm(paths.registry, { recursive: true, force: true });
 });

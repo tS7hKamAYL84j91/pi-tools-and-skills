@@ -12,13 +12,58 @@ import {
 	SelectList,
 	type SelectItem,
 	matchesKey,
+	truncateToWidth,
 } from "@earendil-works/pi-tui";
 import { formatAge, sortRecords, STATUS_SYMBOL } from "../registry/record-utils.js";
 import type { AgentRecord } from "../types.js";
 import { agentDisplayName } from "./display-name.js";
 import { filterAgentList } from "../registry/visibility.js";
-import { accentBorder, buildStatusSegments } from "./ui-format.js";
+import { accentBorder, renderStatusWidget } from "./ui-format.js";
 import type { AgentOverlayDeps } from "./agent-overlay-types.js";
+
+/**
+ * Fixed non-list lines in the agent list overlay: top/bottom borders, title,
+ * status block (`Text` with a blank padding line either side), separator, hint,
+ * plus one line reserved for the search input, and a list budget derived at
+ * open time so toggling search and SelectList's scroll-info row cannot push the
+ * overlay past pi-tui's maxHeight clip (which drops bottom lines silently).
+ * Short terminals drop the status block (`compact`, -3 lines); below
+ * AGENT_LIST_MIN_ROWS the overlay cannot fit at all and is skipped.
+ */
+const AGENT_LIST_CHROME_LINES = 9;
+const AGENT_LIST_COMPACT_CHROME_LINES = 6;
+/** Below this many terminal rows the status block is dropped to keep a list row visible. */
+const AGENT_LIST_COMPACT_BELOW_ROWS = 14;
+/** Below this many terminal rows even compact chrome cannot fit one list row. */
+export const AGENT_LIST_MIN_ROWS = 12;
+const AGENT_LIST_MAX_VISIBLE_CAP = 12;
+
+/** @internal Max list rows so the overlay fits; selection never scrolls out of view.
+ *  Unknown rows (e.g. test fakes, non-TUI hosts) keep the legacy full-list cap. */
+export function agentListMaxVisible(
+	rows: number | undefined,
+	agentCount: number,
+	compact = false,
+): number {
+	if (rows === undefined) return Math.min(agentCount, AGENT_LIST_MAX_VISIBLE_CAP);
+	// Mirror pi-tui's overlay math for { maxHeight: "80%", margin: 2 } (floor + clamp).
+	const maxHeightLines = Math.max(1, Math.min(Math.floor(rows * 0.8), Math.max(1, rows - 4)));
+	const chrome = compact ? AGENT_LIST_COMPACT_CHROME_LINES : AGENT_LIST_CHROME_LINES;
+	const listBudget = Math.max(1, maxHeightLines - chrome);
+	if (agentCount <= listBudget) return Math.min(agentCount, AGENT_LIST_MAX_VISIBLE_CAP);
+	// Clipped list: SelectList appends its scroll-info row, so reserve one line.
+	return Math.max(1, Math.min(AGENT_LIST_MAX_VISIBLE_CAP, listBudget - 1));
+}
+
+/** @internal True when the terminal is too short for the full chrome. */
+export function agentListCompact(rows: number | undefined): boolean {
+	return rows !== undefined && rows < AGENT_LIST_COMPACT_BELOW_ROWS;
+}
+
+/** @internal True when the terminal cannot fit the overlay at all (skip it). */
+export function agentListTooShort(rows: number | undefined): boolean {
+	return rows !== undefined && rows < AGENT_LIST_MIN_ROWS;
+}
 
 interface MutableSelectListInternals {
 	filteredItems: SelectItem[];
@@ -65,11 +110,15 @@ function agentSelectItems(records: readonly AgentRecord[], selfId: string): Sele
 	});
 }
 
-interface RenderAgentListOverlayArgs {
+export interface AgentListOverlayArgs {
 	records: AgentRecord[];
 	selfId: string;
 	theme: Theme;
 	width: number;
+	/** Optional row cap; the live overlay passes agentListMaxVisible(terminalRows, count). */
+	maxVisible?: number;
+	/** Drop the status block on short terminals so at least one list row fits. */
+	compact?: boolean;
 }
 
 /** @internal Sort agent overlays with self first, then unread-message urgency. */
@@ -84,7 +133,20 @@ export function sortAgentOverlayRecords(
 	});
 }
 
-interface AgentListComponentOptions extends Omit<RenderAgentListOverlayArgs, "width"> {
+/** Compact, width-appropriate key hints; chosen so they never need wrapping. */
+function hintFor(width: number, searchActive: boolean): string {
+	if (searchActive) {
+		if (width >= 60) return "  type to filter · ↑/↓ navigate · enter detail · esc clear";
+		if (width >= 40) return "  type filter · ↑/↓ · enter · esc clear";
+		return "  / filter · esc";
+	}
+	if (width >= 70) return "  ↑/↓ navigate · enter detail · / filter · esc close · unread first";
+	if (width >= 60) return "  ↑/↓ · enter detail · / filter · esc close · unread first";
+	if (width >= 44) return "  ↑/↓ · enter · / filter · esc close";
+	return "  ↑/↓ · enter · esc";
+}
+
+interface AgentListComponentOptions extends Omit<AgentListOverlayArgs, "width"> {
 	searchActive?: boolean;
 	query?: string;
 }
@@ -105,7 +167,7 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 	const sortedRecords = sortAgentOverlayRecords(args.records, args.selfId);
 	const selectList = new AgentSelectList(
 		agentSelectItems(sortedRecords, args.selfId),
-		Math.min(sortedRecords.length, 12),
+		args.maxVisible ?? Math.min(sortedRecords.length, AGENT_LIST_MAX_VISIBLE_CAP),
 		agentSelectListTheme(args.theme),
 	);
 	const searchInput = new Input();
@@ -126,25 +188,32 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 			searchInput.focused = value && searchActive;
 		},
 		render: (width: number) => {
+			// Every chrome row is truncated to one line. A wrapping Text would make
+			// the overlay height depend on terminal width, so pi-tui's maxHeight clip
+			// would silently drop bottom list rows and the selection could scroll out
+			// of view. Single-line chrome keeps AGENT_LIST_CHROME_LINES exact.
+			const single = (text: string) =>
+				new Text(truncateToWidth(text, Math.max(1, width - 2)), 1, 0);
 			const container = new Container();
 			container.addChild(accentBorder(args.theme));
 			container.addChild(
-				new Text(
+				single(
 					args.theme.fg("accent", args.theme.bold(" Agent Hub")) +
 						args.theme.fg("dim", ` - ${args.records.length} agent${args.records.length !== 1 ? "s" : ""}`),
-					1,
-					0,
 				),
 			);
-			container.addChild(new Text(` ${buildStatusSegments(args.records, args.selfId, args.theme).join(args.theme.fg("dim", " | "))}`, 1, 1));
-			container.addChild(new Text(args.theme.fg("dim", " ─────────────────────────────────────────────────────"), 1, 0));
+			// Status block keeps its one blank padding line either side; short
+			// terminals drop it so the list itself still fits the maxHeight clip.
+			if (args.compact !== true) {
+				const statusLine = renderStatusWidget(args.records, args.selfId, args.theme, Math.max(10, width - 2)).join("");
+				container.addChild(new Text(statusLine, 1, 1));
+			}
+			container.addChild(single(args.theme.fg("dim", " ─────────────────────────────────────────────────────")));
 			if (searchActive) {
 				container.addChild(searchInput);
 			}
 			container.addChild(selectList);
-			container.addChild(new Text(args.theme.fg("dim", searchActive
-				? "  type to filter · ↑/↓ navigate · enter detail · esc clear"
-				: "  ↑/↓ navigate · enter detail · / filter · esc close · unread first"), 1, 0));
+			container.addChild(single(args.theme.fg("dim", hintFor(width, searchActive))));
 			container.addChild(accentBorder(args.theme));
 			return container.render(width);
 		},
@@ -182,7 +251,7 @@ function createAgentListComponent(args: AgentListComponentOptions): Component & 
 	return component;
 }
 
-export function renderAgentListOverlay(args: RenderAgentListOverlayArgs & { searchActive?: boolean; query?: string }): string[] {
+export function renderAgentListOverlay(args: AgentListOverlayArgs & { searchActive?: boolean; query?: string }): string[] {
 	return createAgentListComponent(args).render(args.width);
 }
 
@@ -200,10 +269,24 @@ export async function openAgentListOverlay(
 	}
 
 	await ctx.ui.custom<string | null>((tui, theme, _kb, innerDone) => {
+		const rows = (tui as { terminal?: { rows?: number } }).terminal?.rows;
+		// Too short for even compact chrome: say so instead of rendering an
+		// overlay whose clipped bottom row could hide the selection.
+		if (agentListTooShort(rows)) {
+			ctx.ui.notify(
+				`Terminal too short for the agent list (needs ${AGENT_LIST_MIN_ROWS}+ rows)`,
+				"warning",
+			);
+			innerDone(null);
+			return { render: () => [], invalidate: () => {}, handleInput: () => {} };
+		}
+		const compact = agentListCompact(rows);
 		const component = createAgentListComponent({
 			records,
 			selfId: deps.selfId,
 			theme,
+			compact,
+			maxVisible: agentListMaxVisible(rows, records.length, compact),
 		});
 		component.selectList.onSelect = (item) => innerDone(item.value);
 		component.selectList.onCancel = () => innerDone(null);
@@ -231,5 +314,5 @@ export async function openAgentListOverlay(
 			anchor: "center",
 			margin: 2,
 		},
-	}).then((value) => done(value));
+	}).then((value) => done(value ?? null));
 }

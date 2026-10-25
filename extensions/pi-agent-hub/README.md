@@ -25,7 +25,7 @@ rename does not edit live settings.
 
 ### Commands
 
-- `/agents` — open the agent overlay for status, detail, direct messages, and stop/kill controls.
+- `/agents` — open the agent overlay for status, detail, direct messages, and stop/kill controls. The list fits the terminal: at 12–13 rows the status block is dropped, and below 12 rows the overlay reports that the terminal is too short instead of opening clipped.
 - `/send` — send a direct peer message from the command line.
 - `/panopticon-reconcile on|off` — toggle reconciliation follow-up notifications.
 - `/agent-list-mode` and `/agents-mode` — adjust agent list display mode.

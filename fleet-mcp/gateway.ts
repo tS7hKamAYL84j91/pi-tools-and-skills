@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 import type { AgentRecord } from "../lib/agent-registry.js";
+import type { MessageMetadata, MessageType } from "../lib/message-transport.js";
+import { normalizeMessageMetadata } from "../lib/message-transport.js";
 import { DirectMaildirBackend, type FleetBackend } from "./backend.js";
 import type { FleetConfig } from "./config.js";
 import { FleetStateStore, type Registration, type SendReceipt, type BroadcastSnapshot } from "./state-store.js";
@@ -15,6 +17,32 @@ export class FleetError extends Error {
 
 function registrationKey(principal: string, agentId: string, idempotencyKey: string): string {
 	return JSON.stringify([principal, agentId, idempotencyKey]);
+}
+
+/**
+ * True only when two fingerprints differ solely in the correlation slot and the
+ * difference is legacy empty string vs absent (null). Used on replay only.
+ */
+function legacyEmptyCorrelation(prior: string, current: string): boolean {
+	let a: unknown;
+	let b: unknown;
+	try {
+		a = JSON.parse(prior);
+		b = JSON.parse(current);
+	} catch {
+		return false;
+	}
+	if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+	const priorParts: unknown[] = a;
+	const currentParts: unknown[] = b;
+	if (priorParts.length < 3) return false;
+	return priorParts.every((part, index) => {
+		const other = currentParts[index];
+		if (index === 2) {
+			return (part === "" && other === null) || (part === null && other === "");
+		}
+		return part === other;
+	});
 }
 
 function truncateUtf8(text: string, maxBytes: number): { text: string; truncated: boolean } {
@@ -119,7 +147,9 @@ export class FleetGateway {
 		recipientId: string,
 		text: string,
 		idempotencyKey: string,
-		correlationId?: string,
+		metaOrCorrelation?: MessageMetadata | string,
+		type?: MessageType,
+		inReplyTo?: string,
 	): Promise<SendReceipt> {
 		this.checkWorkspace(workspace);
 		if (Buffer.byteLength(text, "utf8") > this.config.limits.maxTextBytes) {
@@ -131,31 +161,67 @@ export class FleetGateway {
 			const registration = state.registrations.get(this.config.principal);
 			if (!registration) throw new FleetError("UNAUTHENTICATED");
 			const key = registrationKey(this.config.principal, registration.agentId, idempotencyKey);
-			const fingerprint = JSON.stringify([recipientId, text, correlationId]);
+			const meta = typeof metaOrCorrelation === "string" || metaOrCorrelation === undefined
+				? normalizeMessageMetadata({ correlationId: metaOrCorrelation, type, inReplyTo })
+				: normalizeMessageMetadata(metaOrCorrelation);
+			// Legacy fingerprints are [recipient, text, correlation]. Append metadata
+			// only when it is semantically non-default, so an explicit type "message"
+			// matches an omitted type and pre-upgrade receipts keep matching.
+			const metaFingerprint = [meta.type ?? null, meta.inReplyTo ?? null];
+			const defaultMeta = (meta.type === undefined || meta.type === "message") && meta.inReplyTo === undefined;
+			// Fingerprint the raw caller-supplied correlation, not the trimmed stored
+			// value: receipts written by the previous release used the raw string, so
+			// trimming here would turn a pre-upgrade replay into a spurious CONFLICT.
+			const rawCorrelation = typeof metaOrCorrelation === "string"
+				? metaOrCorrelation
+				: metaOrCorrelation?.correlationId;
+			// Raw when it carries content (so a padded pre-upgrade receipt replays),
+			// null when blank (blank and absent stay the same request).
+			const fingerprintCorrelation =
+				typeof rawCorrelation === "string" && rawCorrelation.trim().length > 0
+					? rawCorrelation
+					: null;
+			const fingerprint = JSON.stringify([
+				recipientId,
+				text,
+				fingerprintCorrelation,
+				...(defaultMeta ? [] : metaFingerprint),
+			]);
 			const prior = state.idempotency.get(key);
 			if (prior) {
-				if (prior.fingerprint !== fingerprint) throw new FleetError("CONFLICT");
+				// Replay only: a receipt written by the previous release could store
+				// [r, t, ""] for an absent correlation (its schema allowed ""). An
+				// empty correlation and an absent one are the same request, so accept
+				// that legacy shape without weakening any other mismatch.
+				if (prior.fingerprint !== fingerprint && !legacyEmptyCorrelation(prior.fingerprint, fingerprint)) {
+					throw new FleetError("CONFLICT");
+				}
 				if (!(await this.backendAgents()).some((agent) => agent.id === registration.agentId && agent.kind === "external")) throw new FleetError("FORBIDDEN");
 				return prior.receipt;
 			}
 
-			const receipt = await this.deliver(registration.agentId, recipientId, text, correlationId);
+			const receipt = await this.deliver(registration.agentId, recipientId, text, meta);
 			state.idempotency.set(key, { fingerprint, receipt });
 			return receipt;
 		});
 	}
 
-	private async deliver(ownerId: string, recipientId: string, text: string, correlationId?: string): Promise<SendReceipt> {
+	private async deliver(
+		ownerId: string,
+		recipientId: string,
+		text: string,
+		meta: MessageMetadata = {},
+	): Promise<SendReceipt> {
 		const agents = await this.backendAgents();
 		const owner = agents.find((agent) => agent.id === ownerId && agent.kind === "external");
 		if (!owner) throw new FleetError("FORBIDDEN");
 		const recipient = agents.find((agent) => agent.id === recipientId);
 		if (!recipient) throw new FleetError("NOT_FOUND");
 		let delivery: { accepted: boolean; reference?: string };
-		try { delivery = await this.backend.send(owner, recipient, text); }
+		try { delivery = await this.backend.send(owner, recipient, text, meta); }
 		catch { throw new FleetError("BACKEND_UNAVAILABLE", true); }
 		if (!delivery.accepted || !delivery.reference) throw new FleetError("BACKEND_UNAVAILABLE", true);
-		return { message_id: delivery.reference, accepted_at: Date.now(), state: "accepted", ...(correlationId ? { correlation_id: correlationId } : {}) };
+		return { message_id: delivery.reference, accepted_at: Date.now(), state: "accepted", ...(meta.correlationId ? { correlation_id: meta.correlationId } : {}) };
 	}
 
 	async broadcast(workspace: string, text: string, idempotencyKey: string, filter?: string) {
@@ -212,6 +278,9 @@ export class FleetGateway {
 					message_id: message.id,
 					sender_id: message.senderId ?? (/^ext-[A-Za-z0-9._-]+$/.test(message.from) ? message.from : null),
 					sender_label: message.from,
+					type: message.type ?? "message",
+					in_reply_to: message.inReplyTo ?? null,
+					correlation_id: message.correlationId ?? null,
 					text: bounded.text,
 					truncated: bounded.truncated,
 					timestamp: message.ts,

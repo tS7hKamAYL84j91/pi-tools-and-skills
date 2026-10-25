@@ -20,7 +20,7 @@ import { extractMatrixAttachment, isMatrixMediaMsgtype } from "./attachments.js"
 import type { MatrixRoomMessageEvent } from "./attachments.js";
 import { createAttachmentDownloadResources } from "./attachment-download.js";
 import { markdownToMatrixContent } from "./markdown.js";
-import { mentionsAgent } from "./mention.js";
+import { addressesOwnUserIds, mentionedUserIds, mentionsAgent } from "./mention.js";
 import { BoundedRecentSet } from "./resource-bounds.js";
 import type { AttachmentDownloadResources } from "./resource-bounds.js";
 import type { MatrixConfig } from "./types.js";
@@ -56,7 +56,7 @@ export function isTrustedMatrixSender(config: MatrixConfig, sender?: string): se
  * Without a configured room (interactive DM bootstrap) any trusted sender room
  * is accepted.
  */
-export function configuredRooms(config: MatrixConfig): string[] {
+function configuredRooms(config: MatrixConfig): string[] {
 	return [config.roomId, config.sharedRoomId].filter(
 		(room): room is string => typeof room === "string" && room.length > 0,
 	);
@@ -68,7 +68,7 @@ export function isConfiguredRoom(config: MatrixConfig, roomId: string): boolean 
 }
 
 /** True when this message is in the shared room and mentions this agent. */
-export function isAddressedToAgent(
+function isAddressedToAgent(
 	config: MatrixConfig,
 	roomId: string,
 	body: string,
@@ -239,7 +239,13 @@ export class MatrixBridgeClient {
 
 		// The shared room is mention-gated: an unmentioned message is dropped BEFORE
 		// it reaches the transport, so it cannot notify, queue or wake this agent.
-		if (!isAddressedToAgent(this.config, event.roomId, body)) return null;
+		// Native pills address only this lead's explicitly configured own identity.
+		if (
+			!isAddressedToAgent(this.config, event.roomId, body) &&
+			!addressesOwnUserIds(mentionedUserIds(event.content), this.config.mentionUserIds ?? [])
+		) {
+			return null;
+		}
 
 		return {
 			roomId: event.roomId,

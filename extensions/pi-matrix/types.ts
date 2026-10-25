@@ -38,7 +38,13 @@ export interface MatrixConfig {
 	mentionNames?: string[];
 	/** Whether the shared room accepts `@all` as "everyone" (default true). */
 	mentionAll?: boolean;
-	/** Bearer access token (resolved from env at runtime) */
+	/** Explicit own MXIDs for exact native mention matching; absent means none. */
+	mentionUserIds?: string[];
+	/** Dedicated Matrix token reference; never falls back to the shared token. */
+	tokenSecret?: string;
+	/** Require whoami == userId before starting sync or joining rooms. */
+	verifyIdentity?: boolean;
+	/** Bearer access token (resolved from env or the secret store at runtime) */
 	accessToken: string;
 	/** Filesystem path for sync state storage */
 	storagePath: string;

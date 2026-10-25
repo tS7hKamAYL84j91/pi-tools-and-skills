@@ -38,8 +38,9 @@ const STATUS_COLOR: Record<AgentStatus, ThemeColor> = {
 	unknown: "muted",
 };
 
-/** Build status segments for all agents; self is bold accent. */
-export function buildStatusSegments(
+/** Build status segments for all agents; self is bold accent. Kept internal —
+ *  only renderStatusWidget consumes it now. */
+function buildStatusSegments(
 	records: AgentRecord[],
 	selfId: string,
 	theme: ExtensionContext["ui"]["theme"],

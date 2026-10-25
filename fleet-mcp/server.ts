@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server as HttpServer } from "n
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as z from "zod/v4";
+import { MESSAGE_TYPES } from "../lib/message-transport.js";
 import type { FleetConfig } from "./config.js";
 import { FleetError, type FleetGateway } from "./gateway.js";
 
@@ -71,7 +72,9 @@ export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): Mc
 				recipient_id: z.string().min(1),
 				text: z.string(),
 				idempotency_key: z.string().min(1).max(256),
-				correlation_id: z.string().optional(),
+				correlation_id: z.string().max(256).optional(),
+				type: z.enum(MESSAGE_TYPES).optional(),
+				in_reply_to: z.string().max(256).optional(),
 			}),
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
@@ -83,6 +86,8 @@ export function createMcpServer(_config: FleetConfig, gateway: FleetGateway): Mc
 					args.text,
 					args.idempotency_key,
 					args.correlation_id,
+					args.type,
+					args.in_reply_to,
 				),
 			),
 	);

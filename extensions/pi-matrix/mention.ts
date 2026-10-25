@@ -10,6 +10,9 @@
  * they cannot notify, queue or wake an agent. Silence is the default.
  */
 
+/** Matrix user id shape, used to reject anything that is not an MXID. */
+const MXID = /^@[^:\s]+:[^\s]+$/;
+
 /** Trailing sentence punctuation that must not become part of a token. */
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/;
 
@@ -48,4 +51,25 @@ export function mentionsAgent(
 	);
 	if (options.all !== false) declared.add("all");
 	return extractMentions(body).some((token) => declared.has(token));
+}
+
+/** Native mentions, preserved exactly as supplied by the Matrix client. */
+export function mentionedUserIds(content: unknown): string[] {
+	if (!content || typeof content !== "object") return [];
+	const mentions = (content as { "m.mentions"?: unknown })["m.mentions"];
+	if (!mentions || typeof mentions !== "object") return [];
+	const ids = (mentions as { user_ids?: unknown }).user_ids;
+	if (!Array.isArray(ids)) return [];
+	return ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+/** Exact identity only: never case-fold an MXID into an authorised address. */
+export function addressesOwnUserIds(
+	mentioned: readonly string[],
+	ownUserIds: readonly string[],
+): boolean {
+	if (mentioned.length === 0 || ownUserIds.length === 0) return false;
+	const own = new Set(ownUserIds.filter((id) => MXID.test(id)));
+	if (own.size === 0) return false;
+	return mentioned.some((id) => own.has(id));
 }

@@ -41,6 +41,59 @@ export interface InboundAttachment {
 	error?: string;
 }
 
+/**
+ * Descriptive message type. Metadata only — it never triggers execution,
+ * permissions, scheduling, or workflow transitions.
+ */
+export const MESSAGE_TYPES = ["message", "request", "reply", "notification"] as const;
+export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+/** Optional descriptive metadata carried alongside a message. */
+export interface MessageMetadata {
+	/** Defaults to an ordinary message when absent. */
+	type?: MessageType;
+	/** Opaque id of the message being answered (e.g. the Maildir filename the recipient saw). */
+	inReplyTo?: string;
+	/** Opaque grouping value for related messages; not a task record or result handle. */
+	correlationId?: string;
+}
+
+/**
+ * Upper bound for every descriptive metadata string, shared by the write and
+ * read boundaries. The send tools already cap at 256; a mailbox writer (the
+ * stated Maildir threat model) must not be able to store a multi-kilobyte
+ * inReplyTo/correlationId that later reaches the model unbounded. Over-long
+ * values are treated as absent rather than truncated: a partial identifier is
+ * worse than none.
+ */
+export const MESSAGE_METADATA_MAX_LENGTH = 256;
+
+export function metadataString(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	if (trimmed.length === 0 || trimmed.length > MESSAGE_METADATA_MAX_LENGTH) return undefined;
+	return trimmed;
+}
+
+/**
+ * Normalize optional metadata at every boundary: trim strings and treat
+ * empty/whitespace-only or non-string values as absent. Maildir, Fleet, and
+ * the send tools share this policy so persisted envelopes never carry
+ * meaningless empty fields.
+ */
+export function normalizeMessageMetadata(meta?: MessageMetadata | Record<string, unknown>): MessageMetadata {
+	const normalized: MessageMetadata = {};
+	// Only the documented vocabulary is accepted on either boundary; unknown
+	// values are dropped rather than guessed at.
+	const type = metadataString(meta?.type);
+	if (type && (MESSAGE_TYPES as readonly string[]).includes(type)) normalized.type = type as MessageType;
+	const inReplyTo = metadataString(meta?.inReplyTo);
+	if (inReplyTo) normalized.inReplyTo = inReplyTo;
+	const correlationId = metadataString(meta?.correlationId);
+	if (correlationId) normalized.correlationId = correlationId;
+	return normalized;
+}
+
 /** A message waiting to be consumed on the receive side. */
 export interface InboundMessage {
 	/** Opaque identifier — pass back to `ack()` after processing. */
@@ -50,6 +103,10 @@ export interface InboundMessage {
 	senderId?: string;
 	text: string;
 	ts: number;
+	/** Absent on legacy envelopes; treat as an ordinary message. */
+	type?: MessageType;
+	inReplyTo?: string;
+	correlationId?: string;
 	attachments?: InboundAttachment[];
 }
 
@@ -62,6 +119,7 @@ export interface MessageTransport {
 		from: string,
 		message: string,
 		senderId?: string,
+		meta?: MessageMetadata,
 	): Promise<DeliveryResult>;
 
 	/** Return all pending inbound messages for `agentId`, oldest first. */

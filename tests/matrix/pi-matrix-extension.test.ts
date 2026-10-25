@@ -219,6 +219,53 @@ describe("loadMatrixConfig", () => {
 		expect(config?.mentionAll).toBe(true);
 	});
 
+	it("keeps only valid native mention ids and defaults to none", async () => {
+		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+		writeSettings({
+			homeserver: "https://matrix.org", userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org", sharedRoomId: "!shared:matrix.org",
+			mentionNames: ["lead-a"],
+			mentionUserIds: [" @lead-a:matrix.org ", "not-an-mxid", 7, "", "@Lead-C:matrix.org"],
+			accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(loadMatrixConfig(projectSettingsPath)?.mentionUserIds).toEqual([
+			"@lead-a:matrix.org", "@Lead-C:matrix.org",
+		]);
+		writeSettings({
+			homeserver: "https://matrix.org", userId: "@agent-bot:matrix.org",
+			roomId: "!private:matrix.org", accessTokenEnv: "MATRIX_TEST_TOKEN",
+		});
+		expect(loadMatrixConfig(projectSettingsPath)?.mentionUserIds).toEqual([]);
+	});
+
+	it("loads a dedicated credential through the wrapper, ignores stale env and fails closed", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "matrix-own-token-"));
+		const bin = join(dir, "coas-secrets");
+		const log = join(dir, "argv.log");
+		const previous = process.env.COAS_SECRETS_BIN;
+		process.env.COAS_SECRETS_BIN = bin;
+		try {
+			writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$*" > '${log}'\nprintf '%s\\n' 'dummy_dedicated_token'\n`, { mode: 0o700 });
+			writeSettings({
+				homeserver: "https://matrix.org", userId: "@chief:matrix.org",
+				roomId: "!private:matrix.org", accessTokenEnv: "MATRIX_TEST_TOKEN",
+				tokenSecret: "matrix-token-chief",
+			});
+			const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
+			const config = loadMatrixConfig(projectSettingsPath);
+			expect(config?.accessToken).toBe("dummy_dedicated_token");
+			expect(config?.verifyIdentity).toBe(true);
+			expect(readFileSync(log, "utf8").trim()).toBe("get matrix-token-chief");
+			expect(readFileSync(log, "utf8")).not.toContain("dummy_dedicated_token");
+			process.env.COAS_SECRETS_BIN = join(dir, "missing");
+			expect(() => loadMatrixConfig(projectSettingsPath)).toThrow(/refusing to fall back/);
+		} finally {
+			if (previous === undefined) delete process.env.COAS_SECRETS_BIN;
+			else process.env.COAS_SECRETS_BIN = previous;
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("refuses an ungated shared room, a non-room id, or a shared room equal to the private one", async () => {
 		const { loadMatrixConfig } = await import("../../extensions/pi-matrix/config.js");
 

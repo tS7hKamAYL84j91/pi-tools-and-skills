@@ -93,6 +93,24 @@ describe("fleet MCP architecture", () => {
 		await alpha.unregister("test", a.agent_id);
 	});
 
+	it("treats default metadata as absent in idempotency fingerprints", async () => {
+		const shared = await workspace();
+		const alpha = await gateway(shared.config("alpha-client"));
+		const beta = await gateway(shared.config("beta-client"));
+		await alpha.register("test", "alpha");
+		const b = await beta.register("test", "beta");
+
+		// An explicit default type is the same request as an omitted type.
+		const defaultType = await alpha.send("test", b.agent_id, "default-typed", "k2", undefined, "message");
+		expect((await alpha.send("test", b.agent_id, "default-typed", "k2")).message_id).toBe(defaultType.message_id);
+		await expect(alpha.send("test", b.agent_id, "default-typed", "k2", undefined, "request")).rejects.toMatchObject({ code: "CONFLICT" });
+
+		// An empty or whitespace-only correlation is the same request as no correlation.
+		const noCorrelation = await alpha.send("test", b.agent_id, "uncorrelated", "k3");
+		expect((await alpha.send("test", b.agent_id, "uncorrelated", "k3", "  ")).message_id).toBe(noCorrelation.message_id);
+		expect(noCorrelation.correlation_id).toBeUndefined();
+	});
+
 	it.each([
 		{ text: "hello", limit: 3, expected: "hel", truncated: true },
 		{ text: "abc", limit: 3, expected: "abc", truncated: false },
