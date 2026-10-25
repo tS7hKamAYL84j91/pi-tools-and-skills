@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { minuteKey } from "../../extensions/pi-automations/scheduler-util.js";
 import { tmpdir } from "node:os";
 import { PiScheduler } from "../../extensions/pi-automations/pi-scheduler.js";
-import { approveApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-automations/approval-inbox.js";
+import { approveApproval, countAwaitingApprovals, deferApproval, listApprovalArtifacts, parkApproval, readApprovalArtifact, rejectApproval } from "../../extensions/pi-automations/approval-inbox.js";
 import { ConfinedStore } from "../../lib/confined-store.js";
 import { registerAutomationsApprovalTools } from "../../extensions/pi-automations/tools-approval.js";
 import { PANOPTICON_SPAWN_NAME_ENV } from "../../lib/agent-registry.js";
@@ -135,6 +135,27 @@ describe("Automations approval inbox", () => {
 		expect(JSON.parse(await readFile(slotPath, "utf8")).status).toBe("uncertain");
 		expect(await scheduler.resumeApprovedRun({ automationsHome: home }, requestId)).toBe(false);
 		await scheduler.stop();
+	});
+
+	it("keeps a deferred approval decidable and counts it until it is decided", async () => {
+		const project = join(tmpdir(), `pi-automations-approval-defer-${process.pid}-${Date.now()}`);
+		homes.push(project);
+		const home = join(project, ".pi", "automations");
+		await mkdir(join(home, "workspace"), { recursive: true });
+		await parkApproval({ config: { automationsHome: home }, taskId: "task", runId: "run", prompt: "prompt", requestId: "request" });
+		process.env.PI_PRINCIPAL = "1";
+
+		expect((await deferApproval({ automationsHome: home }, "request")).status).toBe("deferred");
+		// Deferred means "not now": it stays pending and can still be decided.
+		expect(await countAwaitingApprovals({ automationsHome: home })).toBe(1);
+		const approved = await approveApproval({ automationsHome: home }, "request");
+		expect(approved.status).toBe("approved");
+		expect((await readApprovalArtifact({ automationsHome: home }, "request"))?.status).toBe("approved");
+		expect(await countAwaitingApprovals({ automationsHome: home })).toBe(0);
+
+		// Re-decision after a decision that already committed is a no-op, not a rewrite.
+		expect((await rejectApproval({ automationsHome: home }, "request")).status).toBe("approved");
+		expect((await readApprovalArtifact({ automationsHome: home }, "request"))?.status).toBe("approved");
 	});
 
 	it("returns a failed tool result when an approved run cannot resume", async () => {

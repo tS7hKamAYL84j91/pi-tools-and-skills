@@ -105,10 +105,11 @@ async function decide(
 	return withAdvisoryLock(approvalArtifactPath(config, requestId), async () => {
 		const current = await readApprovalArtifact(config, requestId);
 		if (!current) throw new Error(`Unknown approval request: ${requestId}`);
+		// Deferred means "not now" and stays decidable; completed/rejected are final
+		// and an approval cannot be withdrawn once a run may have been resumed.
 		if (
 			current.status === "completed" ||
 			current.status === "rejected" ||
-			current.status === "deferred" ||
 			(current.status === "approved" && status !== "approved")
 		) {
 			return current;

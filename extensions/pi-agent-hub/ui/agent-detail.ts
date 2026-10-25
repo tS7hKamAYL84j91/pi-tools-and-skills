@@ -22,6 +22,7 @@ import {
 import {
 	approveAgentApproval,
 	deferAgentApproval,
+	isPendingApproval,
 	isPrincipal,
 	listAgentApprovals,
 	rejectAgentApproval,
@@ -186,15 +187,30 @@ export async function showAgentDetail(
 			const approval = pendingApprovals[selectedApprovalIndex];
 			if (!approval) return;
 			try {
-				await DECISION_APIS[decision](config, approval.requestId);
+				const result = await DECISION_APIS[decision](config, approval.requestId);
+				if (!result.changed) {
+					// Frozen artifact (already final, or a stale row): report the no-op and
+					// keep the row instead of claiming a decision was recorded.
+					ctx.ui.notify(
+						`Approval unchanged: ${approval.requestId} is already ${result.status}.`,
+						"info",
+					);
+					tui.requestRender();
+					return;
+				}
 				if (decision === "approve" && deps.resumeApprovedRun) {
 					const resumed = await deps.resumeApprovedRun(config, approval.requestId);
 					if (!resumed) {
 						ctx.ui.notify(`Approval recorded but scheduled run could not be resumed: ${approval.requestId}`, "warning");
 					}
 				}
-				pendingApprovals.splice(selectedApprovalIndex, 1);
-				selectedApprovalIndex = Math.max(0, Math.min(selectedApprovalIndex, pendingApprovals.length - 1));
+				if (isPendingApproval(result.status)) {
+					// Deferred is still waiting on this agent: keep the row, show its status.
+					pendingApprovals[selectedApprovalIndex] = { ...approval, status: result.status };
+				} else {
+					pendingApprovals.splice(selectedApprovalIndex, 1);
+					selectedApprovalIndex = Math.max(0, Math.min(selectedApprovalIndex, pendingApprovals.length - 1));
+				}
 				tui.requestRender();
 			} catch (err) {
 				ctx.ui.notify(String(err), "error");

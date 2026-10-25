@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { addSchedule } from "../../extensions/pi-automations/schedules.js";
 import { parkApproval, readApprovalArtifact } from "../../extensions/pi-automations/approval-inbox.js";
+import {
+	approveAgentApproval,
+	deferAgentApproval,
+	rejectAgentApproval,
+} from "../../lib/automations-approval-inbox.js";
 import { renderAgentDetailOverlay, showAgentDetail } from "../../extensions/pi-agent-hub/ui/agent-overlay.js";
 import { makeRegistry } from "./helpers.js";
 import type { Theme } from "@earendil-works/pi-coding-agent";
@@ -272,18 +277,43 @@ describe("approval-inbox overlay", () => {
 		await promise;
 	});
 
-	it("defers a pending run and records the terminal status", async () => {
+	it("defers a pending run, keeps it listed, and still allows a later approval", async () => {
 		process.env.PI_PRINCIPAL = "1";
 		const home = await makeAutomationsHome();
 		const { requestId } = await makeScheduleAndArtifact(home, "worker");
-		const deps = makeDeps({ automationsHome: home });
+		const resumeApprovedRun = vi.fn(async () => true);
+		const deps = makeDeps({ automationsHome: home, resumeApprovedRun });
 		const { harness, promise } = await openAgentDetail(deps);
 		harness.component.handleInput("d");
 		await vi.waitFor(async () => {
 			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("deferred");
 		});
-		expect(deps.resumeApprovedRun).not.toHaveBeenCalled();
+		// Deferred means "not now": the row stays on the pane and can be approved.
+		expect(harness.component.render(80).join("\n")).toContain("Pending Approvals");
+		expect(resumeApprovedRun).not.toHaveBeenCalled();
+		harness.component.handleInput("a");
+		await vi.waitFor(async () => {
+			expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("approved");
+			expect(resumeApprovedRun).toHaveBeenCalledOnce();
+		});
+		expect(harness.component.render(80).join("\n")).not.toContain("Pending Approvals");
 		harness.component.handleInput("\x1b");
 		await promise;
+	});
+});
+
+describe("hub approval decisions", () => {
+	it("reports a no-op instead of a decision when the artifact is already final", async () => {
+		process.env.PI_PRINCIPAL = "1";
+		const home = await makeAutomationsHome();
+		const { requestId } = await makeScheduleAndArtifact(home, "worker");
+		await rejectAgentApproval({ automationsHome: home }, requestId);
+
+		const approve = await approveAgentApproval({ automationsHome: home }, requestId);
+		expect(approve).toEqual({ requestId, status: "rejected", changed: false });
+		expect((await readApprovalArtifact({ automationsHome: home }, requestId))?.status).toBe("rejected");
+
+		const defer = await deferAgentApproval({ automationsHome: home }, requestId);
+		expect(defer.changed).toBe(false);
 	});
 });

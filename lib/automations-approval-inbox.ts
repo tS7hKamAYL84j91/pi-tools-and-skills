@@ -257,62 +257,63 @@ export async function listAgentApprovals(
 	return pending;
 }
 
-type ApprovalDecision = "approved" | "rejected" | "deferred";
+type ApprovalDecisionStatus = "approved" | "rejected" | "deferred";
+
+/**
+ * Outcome of a decision attempt. `changed` is false when the artifact already
+ * held that status or was frozen by a commitment, so a caller can report an
+ * honest no-op instead of claiming a decision was recorded.
+ */
+export interface ApprovalDecision {
+	readonly requestId: string;
+	readonly status: ApprovalStatus;
+	readonly changed: boolean;
+}
 
 async function decideAgentApproval(
 	config: AutomationsConfig,
 	requestId: string,
-	status: ApprovalDecision,
-): Promise<PendingApproval | undefined> {
+	status: ApprovalDecisionStatus,
+): Promise<ApprovalDecision> {
 	if (!isPrincipal()) throw new Error("Approval decisions require principal authority");
 	return withAdvisoryLock(approvalArtifactPath(config, requestId), async () => {
 		const current = await readApprovalArtifact(config, requestId);
 		if (!current) throw new Error(`Unknown approval request: ${requestId}`);
+		// Deferred stays decidable: it means "not now", and the row keeps its actions.
+		// Completed and rejected are final, and an approval cannot be withdrawn after
+		// the run may already have been resumed.
 		if (
 			current.status === "completed" ||
 			current.status === "rejected" ||
-			current.status === "deferred" ||
 			(current.status === "approved" && status !== "approved")
 		) {
-			return toPending(current);
+			return { requestId, status: current.status, changed: false };
 		}
-		if (current.status === status) return toPending(current);
+		if (current.status === status) return { requestId, status: current.status, changed: false };
 		const next: ApprovalArtifact = { ...current, status, updatedAt: isoUtc() };
 		await writeApprovalArtifact(config, next);
-		return toPending(next);
+		return { requestId, status: next.status, changed: true };
 	});
-}
-
-function toPending(artifact: ApprovalArtifact): PendingApproval | undefined {
-	if (!isPendingApproval(artifact.status)) return undefined;
-	return {
-		requestId: artifact.requestId,
-		taskId: artifact.taskId,
-		runId: artifact.runId,
-		prompt: artifact.prompt,
-		createdAt: artifact.createdAt,
-		status: artifact.status,
-	};
 }
 
 export async function approveAgentApproval(
 	config: AutomationsConfig,
 	requestId: string,
-): Promise<PendingApproval | undefined> {
+): Promise<ApprovalDecision> {
 	return decideAgentApproval(config, requestId, "approved");
 }
 
 export async function rejectAgentApproval(
 	config: AutomationsConfig,
 	requestId: string,
-): Promise<PendingApproval | undefined> {
+): Promise<ApprovalDecision> {
 	return decideAgentApproval(config, requestId, "rejected");
 }
 
 export async function deferAgentApproval(
 	config: AutomationsConfig,
 	requestId: string,
-): Promise<PendingApproval | undefined> {
+): Promise<ApprovalDecision> {
 	return decideAgentApproval(config, requestId, "deferred");
 }
 
