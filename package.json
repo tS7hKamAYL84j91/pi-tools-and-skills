@@ -11,7 +11,8 @@
 		"build:fleet-mcp": "tsc -p fleet-mcp/tsconfig.build.json",
 		"start:fleet-mcp": "node dist/fleet-mcp/index.js",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint fleet-mcp/ extensions/ lib/ pi-cockpit/ tests/ scripts/ benchmarks/",		"type-coverage": "type-coverage --strict --at-least 95",
+		"lint": "biome lint fleet-mcp/ extensions/ lib/ pi-cockpit/ tests/ scripts/ benchmarks/",
+		"type-coverage": "type-coverage --strict --at-least 95",
 		"security:semgrep": "node scripts/semgrep-scan.mjs",
 		"check": "npm run check:namespace && npm run check:template-safety && npm run typecheck && npm run lint && npm run knip && npm run type-coverage",
 		"test": "vitest run",
@@ -19,7 +20,8 @@
 		"test:watch": "vitest",
 		"benchmark:teams:live": "node benchmarks/team-live-benchmark.mjs",
 		"benchmark:goal": "python3 -B benchmarks/goal-benchmark.py",
-		"knip": "knip"
+		"knip": "knip",
+		"test:tui": "vitest run --config vitest.termwright.config.ts"
 	},
 	"repository": {
 		"type": "git",
@@ -68,6 +70,9 @@
 		"@biomejs/biome": "^2.4.9",
 		"@earendil-works/pi-coding-agent": "1.0.1",
 		"@earendil-works/pi-tui": "1.0.1",
+		"@termwright/driver": "^0.7.7",
+		"@termwright/pty": "^0.7.7",
+		"@termwright/pty-linux-arm64": "^0.7.7",
 		"@types/node": "^25.5.2",
 		"@vitest/coverage-v8": "4.1.11",
 		"archunit": "^2.1.66",

@@ -1,24 +1,30 @@
 {
-  "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": [
-    "extensions/*/index.ts",
-    "lib/*.ts",
-    "lib/**/*.ts",
-    "scripts/*.mjs",
-    "benchmarks/*.mjs",
-    "fleet-mcp/index.ts",
-    "pi-cockpit/index.ts",
-    "tests/cockpit/fixtures/*.ts"
-  ],
-  "project": [
-    "extensions/**/*.ts",
-    "lib/**/*.ts",
-    "tests/**/*.ts",
-    "fleet-mcp/**/*.ts",
-    "pi-cockpit/**/*.ts"
-  ],
-  "tags": [
-    "-lintignore"
-  ],
-  "ignoreBinaries": ["python3"]
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"entry": [
+		"extensions/*/index.ts",
+		"lib/*.ts",
+		"lib/**/*.ts",
+		"scripts/*.mjs",
+		"benchmarks/*.mjs",
+		"fleet-mcp/index.ts",
+		"pi-cockpit/index.ts",
+		"tests/cockpit/fixtures/*.ts"
+	],
+	"project": [
+		"extensions/**/*.ts",
+		"lib/**/*.ts",
+		"tests/**/*.ts",
+		"fleet-mcp/**/*.ts",
+		"pi-cockpit/**/*.ts"
+	],
+	"tags": [
+		"-lintignore"
+	],
+	"ignoreBinaries": [
+		"python3"
+	],
+	"ignoreDependencies": [
+		"@termwright/pty",
+		"@termwright/pty-linux-arm64"
+	]
 }

@@ -16,6 +16,14 @@ Rendering uses the host theme and every line is width-bounded. Snapshots are
 gathered on demand — fixed git commands with no user input, plus a bounded read
 of the decision log — so opening the panel never writes to the repository.
 
+## Verification
+
+`npm run test:tui` launches real `pi` in a throwaway project through a PTY
+(termwright), trusts the folder, runs `/overview`, asserts the branch, dirty
+count, and commit line, then closes with `esc`. It is kept out of `npm test` so
+CI never starts an interactive session; `npx termwright ui` opens the
+interactive runner and trace viewer for the same file.
+
 ## What this does NOT do
 
 - Does not render chat, own the terminal, or replace the built-in TUI.
