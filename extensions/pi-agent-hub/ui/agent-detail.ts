@@ -26,7 +26,7 @@ import {
 	listAgentApprovals,
 	rejectAgentApproval,
 	type PendingApproval,
-} from "../../pi-automations/lib/automations-approval-inbox.js";
+} from "../../../lib/automations-approval-inbox.js";
 
 interface RenderAgentDetailOverlayArgs {
 	record: AgentRecord;

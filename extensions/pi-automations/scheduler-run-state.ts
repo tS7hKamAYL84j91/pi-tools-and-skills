@@ -1,13 +1,13 @@
 /** Continuation run-state persistence for the pi-automations pi-scheduler. */
 
 import { ConfinedStore } from "./store.js";
-import { loadRunState as loadSharedRunState, saveRunState as saveSharedRunState } from "./lib/automations-run-state.js";
+import { loadRunState as loadSharedRunState, saveRunState as saveSharedRunState } from "../../lib/automations-run-state.js";
 import { scheduleRunsPath } from "./schedules.js";
 import { assertSafeId } from "./store-paths.js";
-import type { ScheduleRunState } from "./lib/automations-run-state.js";
+import type { ScheduleRunState } from "../../lib/automations-run-state.js";
 import type { AutomationsConfig, ScheduleEntry } from "./types.js";
 
-export type { ScheduleRunState } from "./lib/automations-run-state.js";
+export type { ScheduleRunState } from "../../lib/automations-run-state.js";
 
 export async function loadRunState(config: AutomationsConfig, taskId: string): Promise<ScheduleRunState | undefined> {
 	try {

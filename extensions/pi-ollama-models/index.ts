@@ -17,7 +17,18 @@ const DEFAULT_MODELS_PATH = join(homedir(), ".pi", "agent", "models.json");
 const DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const DEFAULT_CONTEXT_WINDOW = 8192; // Conservative fallback to prevent context overflow on small local models
 const DEFAULT_MAX_TOKENS = 4096; // Standard max output token limit for stable completions
-const STANDARD_OLLAMA_COMMANDS = ["/usr/local/bin/ollama", "/usr/bin/ollama"] as const;
+const STANDARD_OLLAMA_COMMANDS: readonly string[] = [
+	"/opt/homebrew/bin/ollama", // Apple Silicon Homebrew
+	"/usr/local/bin/ollama", // Intel Homebrew and manual installs
+	"/usr/bin/ollama", // distribution packages
+	join(homedir(), ".local", "bin", "ollama"), // upstream install.sh
+];
+
+/** Normal local state, not a fault: no approved Ollama executable exists. */
+class OllamaNotInstalledError extends Error {}
+
+/** Ollama is installed but its local service did not answer `ollama list`. */
+class OllamaServiceUnavailableError extends Error {}
 
 interface PiModelConfig {
 	providers?: Record<string, PiProviderConfig>;
@@ -154,22 +165,22 @@ async function resolveOllamaCommand(): Promise<string> {
 			return candidate;
 		}
 	}
-	throw new Error(`No Ollama executable found at approved standard paths: ${STANDARD_OLLAMA_COMMANDS.join(", ")}`);
+	throw new OllamaNotInstalledError(`No Ollama executable found at approved standard paths: ${STANDARD_OLLAMA_COMMANDS.join(", ")}`);
 }
 
 async function discoverOllamaModels(command: string): Promise<PiModel[]> {
+	let stdout: string;
 	try {
-		const { stdout } = await execFileAsync(command, ["list"], { timeout: 10_000, maxBuffer: 1024 * 1024 });
-		const ids = parseOllamaList(stdout);
-		const models: PiModel[] = [];
-		for (const id of ids) {
-			const show = await execFileAsync(command, ["show", id], { timeout: 10_000, maxBuffer: 1024 * 1024 }).catch(() => ({ stdout: "" }));
-			models.push(modelFromOllamaShow(id, show.stdout));
-		}
-		return models;
+		({ stdout } = await execFileAsync(command, ["list"], { timeout: 10_000, maxBuffer: 1024 * 1024 }));
 	} catch (error) {
-		throw new Error(`Failed to query Ollama service via command '${command}': ${error instanceof Error ? error.message : String(error)}`);
+		throw new OllamaServiceUnavailableError(`Failed to query Ollama service via command '${command}': ${error instanceof Error ? error.message : String(error)}`);
 	}
+	// Model metadata probes are independent; run them together so startup pays
+	// one round-trip instead of one per model.
+	return Promise.all(parseOllamaList(stdout).map(async (id) => {
+		const show = await execFileAsync(command, ["show", id], { timeout: 10_000, maxBuffer: 1024 * 1024 }).catch(() => ({ stdout: "" }));
+		return modelFromOllamaShow(id, show.stdout);
+	}));
 }
 
 export function modelIdsChanged(existing: PiModelConfig, models: PiModel[]): boolean {
@@ -204,6 +215,16 @@ export default function piOllamaModelsExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify(`ollama: synced ${modelCount} model(s). Open /model to refresh the picker.`, "info");
 			}
 		} catch (error) {
+			// A missing binary or a stopped local service is a normal laptop state:
+			// report it on the status line instead of a startup warning toast.
+			if (error instanceof OllamaNotInstalledError) {
+				ctx.ui.setStatus("ollama", "ollama: not installed");
+				return;
+			}
+			if (error instanceof OllamaServiceUnavailableError) {
+				ctx.ui.setStatus("ollama", "ollama: unavailable");
+				return;
+			}
 			ctx.ui.setStatus("ollama", "ollama: skipped");
 			ctx.ui.notify(`ollama: sync skipped — ${error instanceof Error ? error.message : "unknown error"}`, "warning");
 		}

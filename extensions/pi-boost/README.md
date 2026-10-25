@@ -34,6 +34,9 @@ when it is `plan` or `challenge`:
 - The lease is **not a model-switch timer**. Boost restores the baseline on Pi's
   `agent_settled` event, never in the middle of retries or queued follow-ups.
   No completion polling or settle timeout is needed.
+- If the session ends mid-boost (`reload`, `new`, `resume`, quit), the shutdown
+  handler restores the baseline too, so the next session does not start on the
+  boost model. Restoration stays best effort there because the UI may already be gone.
 - Powerline shows only lease state and remaining yields: `Boost off · 3 left`, `Boost active · 2 left`, `Boost expired · 2 left`, `Boost blocked · restore failed`.
 - Max yields is hard-capped at 3 per lease. Exhausting the count before expiry still requires `/boost reset`.
 - If baseline restoration fails, boost blocks further dispatch until `/boost reset` retries the restore.

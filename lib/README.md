@@ -18,6 +18,8 @@ module has multiple independent owners.
 | `secret-redaction.ts` | Goal diagnostics and trusted-gate output |
 | `tool-result.ts`, `tui-confirmation.ts`, `toggle-command.ts` | Multiple extension tool/UI surfaces |
 | `automations-config.ts`, `automations-types.ts` | Automations and Agent Hub public configuration boundary |
+| `automations-run-state.ts`, `automations-paths.ts` | Automations scheduler run-state persistence plus the shared identifier/timestamp helpers it and the approval-inbox reader both use |
+| `automations-approval-inbox.ts` | Agent Hub's reader/decider for the Automations-owned approval-inbox artifacts; the on-disk contract and its safety checks stay shared instead of being copied into the consumer extension |
 | `automations-governance.ts` | Automations governance and its public type facade; policy/config primitive, not scheduler orchestration |
 | `session-log.ts` | Agent Hub registry and UI consumers; generic Pi-session reader/redactor |
 | `completion-signal.ts`, `task-brief.ts` | Agent Hub registry/spawner protocol contracts; pure data/parsing, no extension runtime state |
@@ -32,6 +34,9 @@ their tests create a second caller:
 - `declarative-discovery.ts` — Team Workflows paths consume generic layered discovery;
   parsing and execution stay in Team Workflows.
 - `tui-overflow.ts` — Team Workflows rendering uses pure bounded-scroll/count cues.
+- `automations-schedule-target.ts` — one production consumer (the shared approval-inbox
+  reader) needs the schedule `TARGET_AGENT` lookup; it stays beside the approval-inbox
+  contract rather than being copied into Agent Hub.
 
 Team Workflows' `runtime-agent-messaging.ts` and `runtime-control-plane.ts` instead live
 in `extensions/pi-team-workflows/`: their only production feature consumer is live-agent

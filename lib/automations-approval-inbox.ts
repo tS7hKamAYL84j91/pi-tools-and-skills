@@ -1,12 +1,18 @@
-/** Approval-inbox helpers shared by the Agent Hub agent detail overlay. */
+/**
+ * Agent Hub reader/decider for the Automations approval-inbox artifacts.
+ *
+ * Automations writes the inbox (`extensions/pi-automations/approval-inbox.ts`);
+ * this module is the consumer side of that on-disk contract, so the schema and
+ * safety checks live in the shared layer instead of being copied into Agent Hub.
+ */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { withAdvisoryLock } from "../../../lib/file-lock.js";
-import { ConfinedStore } from "../../../lib/confined-store.js";
+import { withAdvisoryLock } from "./file-lock.js";
+import { ConfinedStore } from "./confined-store.js";
 import { assertSafeId, isoUtc } from "./automations-paths.js";
 import { loadRunState, saveRunState, type ScheduleRunState } from "./automations-run-state.js";
-import type { AutomationsConfig } from "../../../lib/automations-types.js";
+import type { AutomationsConfig } from "./automations-types.js";
 import { readScheduleTargetAgent } from "./automations-schedule-target.js";
 
 const INBOX_DIR = "schedule-runs/awaiting-approval";

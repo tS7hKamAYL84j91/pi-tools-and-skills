@@ -41,7 +41,12 @@ function overlayComponent(
 		render: (width: number) => overviewLines(snapshot, facts, width, theme),
 		invalidate: () => {},
 		handleInput: (data: string) => {
-			if (matchesKey(data, "escape") || matchesKey(data, "enter") || matchesKey(data, "return")) {
+			if (
+				matchesKey(data, "escape") ||
+				matchesKey(data, "q") ||
+				matchesKey(data, "enter") ||
+				matchesKey(data, "return")
+			) {
 				done();
 			}
 		},

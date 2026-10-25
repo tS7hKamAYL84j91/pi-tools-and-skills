@@ -4,7 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import { resumeAgentApproval } from "../pi-automations/lib/automations-approval-inbox.js";
+import { resumeAgentApproval } from "../../lib/automations-approval-inbox.js";
 import { resolveAutomationsConfig } from "../../lib/automations-config.js";
 import type { AutomationsConfig } from "../../lib/automations-types.js";
 import {

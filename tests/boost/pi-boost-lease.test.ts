@@ -79,6 +79,11 @@ function createFakePi() {
 			if (!handler) throw new Error("agent_settled not registered");
 			return handler;
 		},
+		shutdown: () => {
+			const handler = handlers.get("session_shutdown");
+			if (!handler) throw new Error("session_shutdown not registered");
+			return handler;
+		},
 		command: () => {
 			if (!command) throw new Error("boost command not registered");
 			return command;
@@ -181,6 +186,28 @@ describe("boost in-session model lease", () => {
 		await command()("reset", ctx);
 		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
 		expect(await lastStatus(ctx)).not.toContain("blocked");
+	});
+
+	it("restores the baseline when the session ends mid-boost", async () => {
+		const { pi, setModel, shutdown, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await command()("run", ctx);
+		expect(setModel).toHaveBeenLastCalledWith(BOOST_MODEL);
+
+		// A reload/new/resume/quit ends the session without an agent_settled.
+		await shutdown()({}, ctx);
+		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
+	});
+
+	it("leaves the lease untouched when a session ends with no boost in flight", async () => {
+		const { pi, setModel, shutdown } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createFakeContext();
+
+		await shutdown()({}, ctx);
+		expect(setModel).not.toHaveBeenCalled();
 	});
 
 	it("denies without consuming a yield when the boost model has no auth", async () => {

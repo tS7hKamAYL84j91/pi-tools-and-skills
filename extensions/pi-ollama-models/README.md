@@ -25,9 +25,9 @@ It mirrors the useful part of Automations Quartermaster/setup behavior: discover
 make setup-package PACKAGE=pi-ollama-models
 ```
 
-Then run `pi`. Normal sync status appears as `ollama: synced N`; a notification is shown only when the discovered model inventory changes or sync fails. Open `/model` to reload `models.json` and refresh the picker.
+Then run `pi`. Normal sync status appears as `ollama: synced N`; a notification is shown only when the discovered model inventory changes or sync fails unexpectedly. A missing executable reports `ollama: not installed` and a stopped local service reports `ollama: unavailable` on the status line, without a startup warning. Open `/model` to reload `models.json` and refresh the picker.
 
-The extension executes Ollama only through an approved absolute path. Set `PI_OLLAMA_COMMAND` to an absolute executable whose basename is exactly `ollama`, or leave it unset to try only `/usr/local/bin/ollama` and `/usr/bin/ollama`. If none is executable, sync is skipped. PATH, `which`, the current directory, and project-local bare commands are never used for resolution.
+The extension executes Ollama only through an approved absolute path. Set `PI_OLLAMA_COMMAND` to an absolute executable whose basename is exactly `ollama`, or leave it unset to try only the fixed candidates `/opt/homebrew/bin/ollama`, `/usr/local/bin/ollama`, `/usr/bin/ollama` and `~/.local/bin/ollama`. If none is executable, sync is skipped. PATH, `which`, the current directory, and project-local bare commands are never used for resolution. Model metadata (`ollama show`) is probed concurrently, so startup pays one round-trip rather than one per model.
 
 ## Tool
 

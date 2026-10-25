@@ -1,9 +1,9 @@
 /** Continuation run-state persistence for the Automations scheduler. */
 
 import { join } from "node:path";
-import { ConfinedStore } from "../../../lib/confined-store.js";
+import { ConfinedStore } from "./confined-store.js";
 import { assertSafeId } from "./automations-paths.js";
-import type { AutomationsConfig } from "../../../lib/automations-types.js";
+import type { AutomationsConfig } from "./automations-types.js";
 
 export interface ScheduleRunState {
 	readonly taskId: string;

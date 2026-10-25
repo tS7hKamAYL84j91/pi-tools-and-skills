@@ -19,6 +19,7 @@ make setup-package PACKAGE=<package>
 | [`pi-kanban`](pi-kanban/README.md) | Optional human task overview |
 | [`pi-matrix`](pi-matrix/README.md) | Human-facing Matrix transport |
 | [`pi-ollama-models`](pi-ollama-models/README.md) | Local Ollama model discovery |
+| [`pi-overview`](pi-overview/README.md) | Read-only project/session panel (`/overview`) |
 | [`pi-team-workflows`](pi-team-workflows/README.md) | Bounded consult, debate and research |
 
 Shared code lives in [`../lib`](../lib/README.md). Extensions must not import

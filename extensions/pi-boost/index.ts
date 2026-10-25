@@ -81,6 +81,19 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 			}
 		});
 
+		// A session that ends mid-boost (reload, new, resume, quit) never settles,
+		// so restore the baseline here rather than leaving the next session -- and
+		// the process-wide lease -- pointing at the boost model. Best effort: the
+		// UI may already be gone.
+		pi.on("session_shutdown", async () => {
+			if (!lease.originalModel) return;
+			try {
+				await restoreBaseline();
+			} catch {
+				lease.revertFailed = true;
+			}
+		});
+
 		pi.registerCommand("boost", {
 			description:
 				"Boost a prompt with the boost model (default: verbatim prompt; /boost plan for a TODO plan; /boost challenge for anti-rut framing)",

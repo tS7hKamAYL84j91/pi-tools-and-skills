@@ -120,7 +120,7 @@ describe("extension registration smoke tests", () => {
 		boostExtension(api);
 		expectRegistered(registrations.commands, ["boost"]);
 		expectRegistered(registrations.tools, []);
-		expectRegistered(registrations.events, ["agent_settled"]);
+		expectRegistered(registrations.events, ["agent_settled", "session_shutdown"]);
 	});
 	it("retains deprecated, ignored gate inputs in Goal and Kanban public schemas", () => {
 		const goal = createFakeApi();

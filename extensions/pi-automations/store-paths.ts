@@ -2,7 +2,7 @@
 
 import { join } from "node:path";
 import { assertInside, pathInside } from "../../lib/path-inside.js";
-import { assertSafeId, isoUtc } from "./lib/automations-paths.js";
+import { assertSafeId, isoUtc } from "../../lib/automations-paths.js";
 import type { AutomationsConfig } from "./types.js";
 
 export { assertInside, assertSafeId, isoUtc, pathInside };

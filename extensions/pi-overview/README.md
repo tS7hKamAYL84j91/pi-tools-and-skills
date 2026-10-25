@@ -9,7 +9,7 @@ In non-interactive sessions (`ctx.mode !== "tui"`) it falls back to a single
 notification line instead of an overlay.
 
 ```text
-/overview        open the panel (esc or enter closes)
+/overview        open the panel (esc, q or enter closes)
 ```
 
 Rendering uses the host theme and every line is width-bounded. Snapshots are

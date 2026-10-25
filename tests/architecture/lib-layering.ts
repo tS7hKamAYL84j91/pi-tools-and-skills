@@ -19,6 +19,7 @@ const CORE_LIB_FILES = new Set([
 /** Generic infrastructure kept central for the reasons in lib/README.md. */
 const SINGLE_CONSUMER_PRIMITIVES = new Set([
 	"declarative-discovery.ts", "event-log.ts", "tui-overflow.ts",
+	"automations-schedule-target.ts",
 ]);
 
 const NODE_IO_IMPORT = /from\s+["']node:(?:fs|fs\/promises|child_process|os)["']/;
