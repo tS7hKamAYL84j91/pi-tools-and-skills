@@ -15,7 +15,7 @@ ifneq ($(filter 1 true yes,$(DRY_RUN)),)
 CLEAN_MAILBOXES_ARGS := --dry-run
 endif
 
-.PHONY: help setup setup-package setup-clean setup-package-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch clean-mailboxes
+.PHONY: help setup setup-package setup-clean setup-package-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch test-tui clean-mailboxes
 
 ##@ General
 help: ## Show available make targets
@@ -70,6 +70,9 @@ test: ## Run tests
 
 test-watch: ## Run tests in watch mode
 	$(NPM) run test:watch
+
+test-tui: ## Run real-terminal acceptance tests (PTY; needs a trusted local pi checkout)
+	$(NPM) run test:tui
 
 ##@ Maintenance
 clean-mailboxes: ## Clean stale agent mailboxes (set DRY_RUN=1 to preview)

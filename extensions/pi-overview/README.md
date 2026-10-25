@@ -18,11 +18,16 @@ of the decision log — so opening the panel never writes to the repository.
 
 ## Verification
 
-`npm run test:tui` launches real `pi` in a throwaway project through a PTY
-(termwright), trusts the folder, runs `/overview`, asserts the branch, dirty
-count, and commit line, then closes with `esc`. It is kept out of `npm test` so
-CI never starts an interactive session; `npx termwright ui` opens the
-interactive runner and trace viewer for the same file.
+`npm run test:tui` (or `make test-tui`) launches real `pi` in a throwaway project
+through a PTY (termwright), trusts the folder, runs `/overview`, asserts the
+branch, dirty count, and commit line, then closes with `esc`. `npx termwright ui`
+opens the interactive runner and trace viewer for the same file.
+
+This is **manual release acceptance, not part of `npm test` or CI**: it starts an
+interactive session, which CI must not do. Run `make test-tui` before a release
+or after changing the overlay, the key bindings, or the snapshot renderer. It is
+the only check that proves the panel in a real terminal, and it caught a stale
+hint assertion that the unit suite could not.
 
 ## What this does NOT do
 

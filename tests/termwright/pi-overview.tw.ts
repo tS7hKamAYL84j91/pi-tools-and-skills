@@ -83,7 +83,9 @@ describe("pi-overview in a real terminal", () => {
 		expect(screen).toContain("recent commits");
 		expect(screen).toContain("probe: initial commit");
 		expect(screen).toMatch(/uncommitted/);
-		expect(screen).toContain("esc/enter close");
+		// Structural only: the hint wording is cosmetic copy and moves with key
+		// bindings. The behaviour that matters is asserted below by pressing Escape.
+		expect(screen).toMatch(/esc.*close/i);
 
 		await app.press("Escape");
 		await app.getByScreenText("Project overview").waitFor({ state: "hidden" });
