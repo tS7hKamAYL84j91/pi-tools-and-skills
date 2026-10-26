@@ -12,6 +12,7 @@ import {
 	ensureExternalMailbox,
 	externalMailboxPath,
 } from "./external-mailbox.js";
+import { isReservedName, reservedNamesFor } from "./namespace-ownership.js";
 
 const EXTERNAL_MANIFEST_VERSION = 1;
 const SAFE_EXTERNAL_ID = /^ext-[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -213,6 +214,13 @@ export async function registerExternalAgent(
 	const name = normalizeName(input.name);
 	if (!SAFE_EXTERNAL_NAME.test(name)) {
 		throw new Error("External agent name must contain letters, numbers, or hyphens");
+	}
+	// A declared lead's label is durable ownership (namespace journal): an
+	// external registration is never a lead lifecycle, so a reserved lead
+	// label is unclaimable here even while the lead process is temporarily
+	// down and therefore absent from the caller's peer snapshot.
+	if (isReservedName(name, reservedNamesFor({ selfId: "" }))) {
+		throw new Error(`Agent name "${name}" is reserved for a declared lead`);
 	}
 	const workspaceRoot = resolveWorkspaceRoot(config);
 	const path = manifestPath(config);

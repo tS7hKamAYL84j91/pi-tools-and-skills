@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	loadExternalAgents,
 	registerExternalAgent,
@@ -21,6 +21,18 @@ import {
 } from "../../extensions/pi-agent-hub/registry/external-registrar.js";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { createMaildirTransport } from "../../lib/transports/maildir.js";
+
+// Registration checks the namespace-ownership journal for reserved lead
+// labels; keep that read inside this test's fixture, not the live registry.
+const paths = vi.hoisted(() => ({ registry: "" }));
+vi.mock("../../lib/agent-registry.js", async (original) => ({
+	...await original<typeof import("../../lib/agent-registry.js")>(),
+	get REGISTRY_DIR() {
+		return paths.registry;
+	},
+	ensureRegistryDir: () => mkdirSync(paths.registry, { recursive: true, mode: 0o700 }),
+	reapOrphanedMailboxes: () => ({ removed: 0 }),
+}));
 
 interface TestConfig {
 	workspaceRoot: string;
@@ -51,6 +63,7 @@ describe("external agent registrar", () => {
 
 	beforeEach(() => {
 		config = makeConfig();
+		paths.registry = join(config.workspaceRoot, "registry");
 	});
 
 	afterEach(() => {

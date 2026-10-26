@@ -25,9 +25,12 @@ export function resolvePeer(registry: Registry, name: string): AgentRecord | und
 		(record) => !self || record.id !== self.id,
 	);
 	// A bare label reserved for a lead (durable ownership journal) is satisfied
-	// only by a namespace-less record. This keeps messaging a lead working while
-	// it is online and still stops a helper's spawn alias from answering the
-	// lead's label after the lead has stopped.
+	// only by a namespace-less, non-external record. This keeps messaging a lead
+	// working while it is online, still stops a helper's spawn alias from
+	// answering the lead's label after the lead has stopped, and never hands
+	// the label to an external manifest record: the external manifest is a
+	// designed operator-writable surface, so a lead's traffic must not reroute
+	// to an external mailbox just because such an entry exists.
 	const selector = name.replace(/^@/, "").trim();
 	if (selector && !selector.includes("/")) {
 		const reserved = reservedNamesFor({
@@ -35,7 +38,7 @@ export function resolvePeer(registry: Registry, name: string): AgentRecord | und
 		});
 		if (isReservedName(selector, reserved)) {
 			return findAgentByDisplayName(
-				records.filter((record) => !record.namespace),
+				records.filter((record) => !record.namespace && record.kind !== "external"),
 				name,
 			);
 		}
