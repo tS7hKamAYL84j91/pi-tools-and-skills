@@ -116,8 +116,21 @@ export class MessagingCore {
 		return Math.max(POKE_DEBOUNCE_MS, POKE_RETRY_MS - elapsed);
 	}
 
+	/** Idle gate: a queued follow-up cannot be recalled once injected. */
+	private isIdle(): boolean {
+		if (!this.extensionCtx) return false;
+		return typeof this.extensionCtx.isIdle === "function" ? this.extensionCtx.isIdle() : true;
+	}
+
 	pokeNow(force = false): void {
 		if (!this.extensionCtx) return;
+		if (!force && !this.isIdle()) {
+			// Never queue a count-bearing prompt into a running turn: message_read can
+			// drain the same mail before the follow-up lands, which is the phantom
+			// "N new messages" prompt (issue 57). Re-evaluate at the next boundary.
+			this.schedulePoke();
+			return;
+		}
 		const count = this.totalPending();
 		if (count === 0) {
 			this.resetPokeState();
@@ -139,20 +152,26 @@ export class MessagingCore {
 			}
 		}
 		if (this.pokeTimeout) { clearTimeout(this.pokeTimeout); this.pokeTimeout = null; }
+		// Re-read immediately before injecting: mail can be drained between the
+		// schedule and this call, and the prompt must state what is still unread.
+		const freshCount = this.totalPending();
+		if (freshCount === 0) {
+			this.resetPokeState();
+			return;
+		}
 		const previousCount = this.notifiedCount;
 		const previousPokeAt = this.lastPokeAt;
 		const previousRetries = this.pokeRetries;
 		const previousTurn = this.turnSincePoke;
 		this.pokeRetries = previousCount > 0 ? previousRetries + 1 : 0;
-		this.notifiedCount = count;
+		this.notifiedCount = freshCount;
 		this.lastPokeAt = Date.now();
 		this.turnSincePoke = false;
 		try {
-			// Idle: sendUserMessage starts a turn. Busy: "followUp" queues the
-			// notification for the next turn boundary instead of interrupting or,
-			// worse, waiting for the agent to become idle before it is even queued.
+			// Injected only while idle, so the count cannot be drained out from under
+			// it. followUp keeps the reminder out of the model's tool loop.
 			this.pi.sendUserMessage(
-				`${count} new message${count > 1 ? "s" : ""}. Use message_read to see ${count > 1 ? "them" : "it"}.`,
+				`${freshCount} new message${freshCount > 1 ? "s" : ""}. Use message_read to see ${freshCount > 1 ? "them" : "it"}.`,
 				{ deliverAs: "followUp" },
 			);
 		} catch {

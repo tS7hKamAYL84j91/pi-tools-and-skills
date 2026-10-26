@@ -127,18 +127,41 @@ describe("message notification delivery", () => {
 		);
 	});
 
-	it("pokes a busy agent too, queuing a follow-up instead of waiting for idle", () => {
+	it("holds the announcement while a turn is running instead of queueing a stale count", () => {
 		setContext(false);
 		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
 		core.schedulePoke();
 		vi.advanceTimersByTime(2_000);
 
+		// A queued follow-up cannot be recalled; a running turn may still drain this mail.
+		expect(pokeCount()).toBe(0);
+
+		setContext(true);
+		core.pokeNow();
 		expect(pokeCount()).toBe(1);
 		expect(sendUserMessage.mock.calls[0]?.[1]).toEqual({ deliverAs: "followUp" });
 	});
 
-	it("queued notification is not consumption: mail stays pending until message_read", () => {
+	it("never announces mail the previous turn already drained (issue 57)", () => {
 		setContext(false);
+		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
+		core.schedulePoke();
+		vi.advanceTimersByTime(2_000);
+		expect(pokeCount()).toBe(0);
+
+		// The running turn reads and acknowledges the same mail.
+		expect(core.drainAllChannels()).toHaveLength(1);
+		core.noteTurnBoundary();
+		core.schedulePoke();
+		vi.advanceTimersByTime(120_000);
+
+		// No phantom "1 new message" for a verified-empty inbox.
+		expect(pokeCount()).toBe(0);
+		expect(transport.pendingCount("")).toBe(0);
+	});
+
+	it("an announcement is not consumption: mail stays pending until message_read", () => {
+		setContext(true);
 		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
 		core.schedulePoke();
 		vi.advanceTimersByTime(2_000);
@@ -150,7 +173,7 @@ describe("message notification delivery", () => {
 	});
 
 	it("does not stack one queued notification per arriving message", () => {
-		setContext(false);
+		setContext(true);
 		transport.push({ id: "$1", from: "matrix:jim", text: "one", ts: Date.now() });
 		core.schedulePoke();
 		vi.advanceTimersByTime(2_000);
@@ -194,7 +217,7 @@ describe("message notification delivery", () => {
 		// reads, the old retry queued one reminder every 30s, so a later single
 		// message_read drained the mail and the remaining reminder turns each saw
 		// "No unread messages". Retries must be bounded while no turn has run.
-		setContext(false);
+		setContext(true);
 		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
 		core.pokeNow();
 		for (let i = 0; i < 12; i += 1) {
@@ -207,7 +230,7 @@ describe("message notification delivery", () => {
 	});
 
 	it("does not re-queue an unconsumed reminder after a turn boundary", () => {
-		setContext(false);
+		setContext(true);
 		transport.push({ id: "$1", from: "matrix:jim", text: "hi", ts: Date.now() });
 		core.pokeNow();
 		expect(pokeCount()).toBe(1);
@@ -222,7 +245,7 @@ describe("message notification delivery", () => {
 	});
 
 	it("notifies once for genuinely new mail after an unconsumed reminder had its turn", () => {
-		setContext(false);
+		setContext(true);
 		transport.push({ id: "$1", from: "matrix:jim", text: "one", ts: Date.now() });
 		core.pokeNow();
 		core.noteTurnBoundary();

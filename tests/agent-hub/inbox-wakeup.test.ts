@@ -67,13 +67,19 @@ describe("Agent Hub inbox wakeups", () => {
 		expect(transport.receive).not.toHaveBeenCalled();
 	});
 
-	it("queues a follow-up while busy instead of waiting for idle", () => {
+	it("waits for an idle moment instead of queueing mail the running turn may drain", () => {
 		const { core, api, ctx } = fixture();
 		ctx.isIdle.mockReturnValue(false);
 		core.schedulePoke();
 		vi.advanceTimersByTime(4000);
-		// A busy agent still gets the notification queued; idle-only gating used to
-		// strand chat messages until a long autonomous run finished.
+		// Issue 57: a queued count cannot be recalled, and message_read in the
+		// running turn turns it into a phantom "N new messages" prompt.
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+
+		// The turn ends and the count is re-read: only unread mail is announced.
+		ctx.isIdle.mockReturnValue(true);
+		core.schedulePoke();
+		vi.advanceTimersByTime(4000);
 		expect(api.sendUserMessage).toHaveBeenCalledOnce();
 		expect(api.sendUserMessage).toHaveBeenCalledWith(expect.stringContaining("new message"), { deliverAs: "followUp" });
 	});
