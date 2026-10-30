@@ -28,6 +28,7 @@ structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 
 ### Changed
 
+- pi-boost: bare `/boost` upserts the lease heartbeat instead of opening settings (T-1058) — creates the lease window when absent, restarts the TTL on a live lease without consuming a yield, renews an expired one; settings stay on `/boost settings`, and in-flight turns, `RevertFailed` reset-only recovery, and the hard 3-yield cap keep their ADR-057 contracts.
 - Kanban reads fail loud on an event line whose `v` exceeds this build's version (`KanbanEventVersionError`) instead of silently dropping it; malformed lines at a known version are counted and surfaced as `skippedEvents` in `kanban_export_json`. `kanban_create` accepts optional `discovered_from: T-NNN` (validated parent), recorded as create-event provenance and exported as `discoveredFrom`.
 - Kanban's authoritative log is now typed JSONL: `board.events.jsonl` holds one versioned (`v: 1`), schema-validated event per line (`create | move | claim | unclaim | expire | complete | block | unblock | note | delete | edit`). The space-delimited text `board.log` reader and its quote/checks escaping are removed; migrate an existing board once with `node scripts/migrate-kanban-log.mjs <kanbanDir>` (archives the old log).
 - CI tests on the latest Node only; Node 22/24/25 compatibility matrix removed.

@@ -22,14 +22,15 @@ when it is `plan` or `challenge`:
   truncated, never the whole history). With no prompt and no recent problem,
   the boost is denied without consuming a yield.
 - Ambiguity: a free-text prompt that happens to start with `plan` or `challenge` selects that mode — rephrase or quote if starting with those words is unintended.
-- `/boost` or `/boost settings` — select **Boost model** and press Enter for Pi's actual `/model` selector (search, scoped/all toggle, catalog refresh). Pick a model or press Esc to return to settings; selection changes only `boost.model`, not the active session or Pi's default model. The next rows configure max yields and **Lease time (minutes)**: 5, 10, 15, 30, or 60.
+- `/boost` — start or renew the lease: creates the window when no lease exists, restarts the TTL on a live lease, and renews an expired one; no prompt runs and no yield is consumed.
+- `/boost settings` — select **Boost model** and press Enter for Pi's actual `/model` selector (search, scoped/all toggle, catalog refresh). Pick a model or press Esc to return to settings; selection changes only `boost.model`, not the active session or Pi's default model. The next rows configure max yields and **Lease time (minutes)**: 5, 10, 15, 30, or 60.
 - `/boost status` — show lease state, yields, configured duration, and model configuration.
 - `/boost reset` — reset the yield count; also retries baseline restoration if a restore failed.
 - `/boost clear` — clear the configured boost model (back to auto).
 
 ## Lease behavior
 
-- A lease covers up to 3 yields and expires after the configured duration from its first yield (default 10 minutes). The next `/boost` or `/boost <prompt>` automatically renews an idle expired lease; no manual reset needed. `/boost status` is read-only.
+- A lease covers up to 3 yields and expires after the configured duration from its first yield (default 10 minutes). Bare `/boost` upserts the lease (create if absent, restart the TTL when live), and the next `/boost <prompt>` automatically renews an idle expired lease; exhaustion within the window still needs `/boost reset`. `/boost status` is read-only.
 - Duration changes apply to the current lease too, measured from its original start. Settings persist as `boost.leaseMinutes`; integer values 1–60 are accepted, invalid values fall back to 10.
 - The lease is **not a model-switch timer**. Boost restores the baseline on Pi's
   `agent_settled` event, never in the middle of retries or queued follow-ups.
