@@ -8,6 +8,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
+import { stripChildCredentials } from "../../../lib/child-env.js";
 import { EventEmitter } from "node:events";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -143,6 +144,21 @@ export async function gracefulKill(
 
 // ── Child process spawning ──────────────────────────────────────
 
+// Credential stripping lives in lib/child-env (shared with the team-workflows
+// runtime substrate); re-exported under the historical name for importers.
+export { CHILD_CREDENTIAL_ENV_KEYS as CHILD_STRIP_ENV_KEYS } from "../../../lib/child-env.js";
+
+/**
+ * Child environment: the caller's env (or the parent process env) minus the
+ * Matrix credential keys. A fresh object — the parent's process.env and any
+ * caller-owned env object are never mutated. Not an OS boundary between
+ * same-UID processes; it only stops the spawner from gratuitously handing a
+ * suppressed helper a Matrix credential.
+ */
+function childEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+	return stripChildCredentials(env ?? process.env);
+}
+
 interface SpawnOpts {
 	name: string;
 	cwd: string;
@@ -158,7 +174,7 @@ export function spawnChild(opts: SpawnOpts): SpawnedAgent {
 	const proc = spawn(PI_BINARY, args, {
 		cwd: agentCwd,
 		stdio: ["pipe", "pipe", "pipe"],
-		env: env ?? process.env,
+		env: childEnv(env),
 	});
 
 	const agent: SpawnedAgent = {

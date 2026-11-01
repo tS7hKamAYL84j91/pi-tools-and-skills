@@ -43,6 +43,10 @@ export async function runGateCommand(command: string, cwd: string, signal?: Abor
 		args: process.platform === "win32" ? ["/c", command] : ["-c", command],
 		cwd,
 		signal,
+		// Gate commands are user-configured (other owners' projects may depend
+		// on their env as rendered); their environment stays byte-for-byte
+		// unchanged rather than credential-stripped.
+		stripCredentials: false,
 	});
 	let failureKind: GateResult["failureKind"];
 	if (signal?.aborted) failureKind = "cancelled";
