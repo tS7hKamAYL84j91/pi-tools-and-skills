@@ -40,19 +40,27 @@ function makeConfig(): TestConfig {
 	return { workspaceRoot, mailboxRoot: join(workspaceRoot, "mailboxes") };
 }
 
-function writeJournal(entries: Array<{ name: string; ownerId: string }>): void {
+function writeJournal(
+	entries: Array<{ name: string; ownerId: string; ageHours?: number }>,
+): void {
 	mkdirSync(paths.registry, { recursive: true, mode: 0o700 });
+	const now = Date.now();
 	writeFileSync(
 		join(paths.registry, "namespace-owners.json"),
 		JSON.stringify({
 			version: 1,
-			owners: entries.map((entry) => ({
-				name: entry.name,
-				ownerId: entry.ownerId,
-				cwd: "/tmp/lead-project",
-				createdAt: Date.now(),
-				lastSeenAt: Date.now(),
-			})),
+			owners: entries.map((entry) => {
+				// Reserved entries do not expire: a claim's age is deliberately
+				// irrelevant to the guard. Stale fixtures pin that invariant.
+				const claimedAt = now - (entry.ageHours ?? 0) * 3_600_000;
+				return {
+					name: entry.name,
+					ownerId: entry.ownerId,
+					cwd: "/tmp/lead-project",
+					createdAt: claimedAt,
+					lastSeenAt: claimedAt,
+				};
+			}),
 		}),
 	);
 }
@@ -97,6 +105,18 @@ describe("external agents cannot claim declared lead labels", () => {
 		expect(await loadExternalAgents(config)).toEqual([]);
 	});
 
+	it("refuses a journal-reserved lead label whose claim is days stale (dormant lead)", async () => {
+		// Reserved entries do not expire; the down-lead window must never depend
+		// on claim freshness. Live shape 2026-10-26: bisecur-ios-gm down since
+		// 10-24, its journal claim unrefreshable while the pane is dead — the
+		// exact label an external registration must still not take.
+		writeJournal([{ name: "bisecur-ios-gm", ownerId: "479035-mvmw", ageHours: 72 }]);
+		await expect(
+			registerExternalAgent(config, { name: "Bisecur iOS GM" }, []),
+		).rejects.toThrow(/reserved for a declared lead/);
+		expect(await loadExternalAgents(config)).toEqual([]);
+	});
+
 	it("refuses a case-variant display name that normalizes to the reserved label", async () => {
 		writeJournal([{ name: "bisecur-ios-gm", ownerId: "479035-mvmw" }]);
 		await expect(
@@ -120,6 +140,16 @@ describe("external agents cannot claim declared lead labels", () => {
 		const registry = makeRegistry(helperSelf(), [externalRecord("kaggle-enveda-casmi26-gm")]);
 		expect(resolvePeer(registry, "kaggle-enveda-casmi26-gm")).toBeUndefined();
 		expect(resolvePeer(registry, "@kaggle-enveda-casmi26-gm")).toBeUndefined();
+	});
+
+	it("resolvePeer never answers a stale-claimed lead label with an external record", () => {
+		// Two-week-old claim, lead down, external manifest entry carries the
+		// label: freshness filtering here would reopen the impersonation hole.
+		writeJournal([
+			{ name: "kaggle-enveda-casmi26-gm", ownerId: "431234-lost", ageHours: 24 * 14 },
+		]);
+		const registry = makeRegistry(helperSelf(), [externalRecord("kaggle-enveda-casmi26-gm")]);
+		expect(resolvePeer(registry, "kaggle-enveda-casmi26-gm")).toBeUndefined();
 	});
 
 	it("a live lead still resolves its reserved label while an external record carries the same name", () => {
