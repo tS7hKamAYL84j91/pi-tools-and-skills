@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { buildArgList, safeSessionSlug } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
 import { recentOutputFromEvents } from "../../extensions/pi-agent-hub/spawner/spawn-events.js";
-import { spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import { CHILD_STRIP_ENV_KEYS, spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
 
 // ── Dummy fixtures only — never real credential material ─────────
 
@@ -108,5 +108,98 @@ describe("spawn output redaction", () => {
 		expect(output).not.toContain(DUMMY_BEARER);
 		expect(output).not.toContain(DUMMY_API_KEY);
 		expect(output).not.toContain(DUMMY_PASSWORD);
+	});
+});
+
+// ── Child env credential boundary (dummy fixtures) ──────────────
+
+const STRIPPED_KEYS = [
+	"MATRIX_ACCESS_TOKEN",
+	"MATRIX_BOT_PASSWORD",
+	"MATRIX_RECOVERY_PASSPHRASE",
+];
+
+function spawnOptionsOf(index = 0): { env: NodeJS.ProcessEnv } {
+	const call = mock.spawn.mock.calls[index];
+	if (!call) throw new Error("spawn was not called");
+	return call[2] as { env: NodeJS.ProcessEnv };
+}
+
+/** Overwrite the three credential keys with dummies, restoring prior values. */
+function withDummyCredentials(run: () => void): void {
+	const saved = new Map<string, string | undefined>();
+	for (const key of STRIPPED_KEYS) {
+		saved.set(key, process.env[key]);
+		process.env[key] = `fixture-dummy-${key.toLowerCase()}-value`;
+	}
+	try {
+		run();
+	} finally {
+		for (const key of STRIPPED_KEYS) {
+			const original = saved.get(key);
+			if (original === undefined) delete process.env[key];
+			else process.env[key] = original;
+		}
+	}
+}
+
+describe("child env credential boundary", () => {
+	let proc: ReturnType<typeof fakeChild>;
+	beforeEach(() => {
+		proc = fakeChild();
+		mock.spawn.mockReset();
+		mock.spawn.mockReturnValue(proc);
+	});
+
+	it("strips exactly the three Matrix credential key names", () => {
+		expect([...CHILD_STRIP_ENV_KEYS]).toEqual(STRIPPED_KEYS);
+	});
+
+	it("does not hand the parent's Matrix credentials to the child by default", () => {
+		withDummyCredentials(() => {
+			spawnChild({ name: "helper", cwd: "/unused", args: [] });
+			const opts = spawnOptionsOf();
+			for (const key of STRIPPED_KEYS) expect(opts.env[key]).toBeUndefined();
+			// The spawn never mutates the parent's own process env.
+			expect(process.env.MATRIX_ACCESS_TOKEN).toBe(
+				"fixture-dummy-matrix_access_token-value",
+			);
+		});
+	});
+
+	it("sanitizes an explicit caller env and leaves the caller's object untouched", () => {
+		const callerEnv: NodeJS.ProcessEnv = {
+			PATH: "/usr/bin:/bin",
+			HOME: "/home/fixture",
+			PI_PANOPTICON_PARENT_ID: "85747-fixture-lead",
+			PI_PANOPTICON_NAMESPACE: "eo-agent-comms-gm",
+			PI_PANOPTICON_SPAWN_NAME: "helper",
+			MATRIX_ACCESS_TOKEN: DUMMY_TOKEN,
+			MATRIX_BOT_PASSWORD: DUMMY_PASSWORD,
+			MATRIX_RECOVERY_PASSPHRASE: "fixture-dummy-recovery",
+		};
+		spawnChild({ name: "helper", cwd: "/unused", args: [], env: callerEnv });
+		const opts = spawnOptionsOf();
+		for (const key of STRIPPED_KEYS) expect(opts.env[key]).toBeUndefined();
+		// Ordinary and panopticon routing vars survive into the child.
+		expect(opts.env.PATH).toBe("/usr/bin:/bin");
+		expect(opts.env.HOME).toBe("/home/fixture");
+		expect(opts.env.PI_PANOPTICON_PARENT_ID).toBe("85747-fixture-lead");
+		expect(opts.env.PI_PANOPTICON_NAMESPACE).toBe("eo-agent-comms-gm");
+		expect(opts.env.PI_PANOPTICON_SPAWN_NAME).toBe("helper");
+		// The caller-owned env object is not mutated either.
+		expect(callerEnv.MATRIX_ACCESS_TOKEN).toBe(DUMMY_TOKEN);
+		expect(callerEnv.MATRIX_BOT_PASSWORD).toBe(DUMMY_PASSWORD);
+	});
+
+	it("keeps stripping across repeated spawns (no hidden state between calls)", () => {
+		withDummyCredentials(() => {
+			spawnChild({ name: "one", cwd: "/unused", args: [] });
+			spawnChild({ name: "two", cwd: "/unused", args: [] });
+			for (const index of [0, 1]) {
+				const opts = spawnOptionsOf(index);
+				for (const key of STRIPPED_KEYS) expect(opts.env[key]).toBeUndefined();
+			}
+		});
 	});
 });

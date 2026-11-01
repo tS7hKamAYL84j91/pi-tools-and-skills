@@ -143,6 +143,32 @@ export async function gracefulKill(
 
 // ── Child process spawning ──────────────────────────────────────
 
+/**
+ * Matrix credentials a hub-spawned child is never handed by default.
+ * Supporting agents are Matrix-suppressed (PI_PANOPTICON_PARENT_ID,
+ * PI_MATRIX_DISABLED) and resolve their own secrets through the dedicated
+ * tokenSecret path, so an inherited live credential is pure exposure. Key
+ * names only — no value inspection, so no regex ever touches secret values.
+ */
+export const CHILD_STRIP_ENV_KEYS = [
+	"MATRIX_ACCESS_TOKEN",
+	"MATRIX_BOT_PASSWORD",
+	"MATRIX_RECOVERY_PASSPHRASE",
+] as const;
+
+/**
+ * Child environment: the caller's env (or the parent process env) minus the
+ * Matrix credential keys. Builds a fresh object, so the parent's process.env
+ * and any caller-owned env object are never mutated. This is not an OS
+ * boundary between same-UID processes; it only stops the spawner from
+ * gratuitously handing a suppressed helper a Matrix credential.
+ */
+function childEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+	const child: NodeJS.ProcessEnv = { ...(env ?? process.env) };
+	for (const key of CHILD_STRIP_ENV_KEYS) delete child[key];
+	return child;
+}
+
 interface SpawnOpts {
 	name: string;
 	cwd: string;
@@ -158,7 +184,7 @@ export function spawnChild(opts: SpawnOpts): SpawnedAgent {
 	const proc = spawn(PI_BINARY, args, {
 		cwd: agentCwd,
 		stdio: ["pipe", "pipe", "pipe"],
-		env: env ?? process.env,
+		env: childEnv(env),
 	});
 
 	const agent: SpawnedAgent = {
