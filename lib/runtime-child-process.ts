@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { stripChildCredentials } from "./child-env.js";
 
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 const KILL_GRACE_MS = 250;
@@ -15,6 +16,12 @@ export interface RuntimeChildProcessRequest {
 	readonly args: string[];
 	readonly cwd: string;
 	readonly env?: Record<string, string>;
+	/**
+	 * Strip Matrix credential keys from the child env (default). Pass false
+	 * explicitly when the child's env must stay byte-for-byte unchanged (e.g.
+	 * user-configured gate commands owned by other projects).
+	 */
+	readonly stripCredentials?: boolean;
 	readonly stdin?: string;
 	readonly signal?: AbortSignal;
 }
@@ -130,10 +137,9 @@ export function spawnRuntimeChildProcess(
 				cwd: request.cwd,
 				detached: process.platform !== "win32",
 				stdio: [request.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-				env: {
-					...process.env,
-					...request.env,
-				},
+				env: request.stripCredentials === false
+					? { ...process.env, ...request.env }
+					: stripChildCredentials({ ...process.env, ...request.env }),
 			});
 		} catch (error) {
 			resolve(immediateResult(startedAt, (error as Error).message));

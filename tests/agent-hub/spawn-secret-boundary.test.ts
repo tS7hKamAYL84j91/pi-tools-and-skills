@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { buildArgList, safeSessionSlug } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
 import { recentOutputFromEvents } from "../../extensions/pi-agent-hub/spawner/spawn-events.js";
-import { CHILD_STRIP_ENV_KEYS, spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import { CHILD_CREDENTIAL_ENV_KEYS } from "../../lib/child-env.js";
+import { spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
 
 // ── Dummy fixtures only — never real credential material ─────────
 
@@ -152,7 +153,7 @@ describe("child env credential boundary", () => {
 	});
 
 	it("strips exactly the three Matrix credential key names", () => {
-		expect([...CHILD_STRIP_ENV_KEYS]).toEqual(STRIPPED_KEYS);
+		expect([...CHILD_CREDENTIAL_ENV_KEYS]).toEqual(STRIPPED_KEYS);
 	});
 
 	it("does not hand the parent's Matrix credentials to the child by default", () => {
