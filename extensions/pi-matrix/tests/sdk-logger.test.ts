@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("matrix-js-sdk", () => mocks.sdk);
 
+import loglevel from "loglevel";
 import { MatrixJsSdkAdapter } from "../js-sdk-adapter.js";
 import type { MatrixAdapterCallbacks } from "../adapter.js";
 import type { MatrixConfig } from "../types.js";
@@ -114,9 +115,38 @@ describe("MatrixJsSdkAdapter sdk logger", () => {
 		logger.warn("MatrixRTCSession !room:matrix.org: onCallMembershipEvent", { membership: "join" });
 		logger.error("MatrixRTCSession !room:matrix.org: failed to resolve focus");
 		logger.warn("  MatrixRTC !room:matrix.org: delayed event resend");
+		// child loggers prepend a `[… ]` span before the family name
+		logger.warn("[MatrixRTCSession !room:matrix.org m.call#ROOM] No membership changes detected");
 		expect(onLog).not.toHaveBeenCalled();
 		// Unrelated warnings are still delivered.
 		logger.warn("M_UNKNOWN_TOKEN");
 		expect(onLog).toHaveBeenCalledWith("M_UNKNOWN_TOKEN", "warning");
+	});
+
+	it("drops homeserver default push rule reconciliation warnings", async () => {
+		const { logger, onLog } = await startWithLogger();
+		logger.warn("Missing default global override push rule .m.rule.contains_display_name");
+		logger.warn("Missing default global override push rule .m.rule.roomnotif");
+		logger.warn("Adding default global override push rule .org.matrix.msc3786.rule.room.server_acl");
+		logger.warn("Adding default global underride push rule .org.matrix.msc3914.rule.room.call");
+		expect(onLog).not.toHaveBeenCalled();
+	});
+
+	it("routes runtime loglevel child loggers through the same filter", async () => {
+		// matrix-js-sdk derives console-bound child loggers from `logger.getChild`
+		// (loglevel registry names "matrix-[…]"); those bypass the client logger.
+		const { onLog } = await startWithLogger();
+		const rtc = loglevel.getLogger("matrix-[MatrixRTCSession !room:matrix.org m.call#ROOM]");
+		rtc.debug("No membership changes detected for room !room:matrix.org");
+		rtc.info("Leaving call session in room !room:matrix.org");
+		rtc.error("MembershipManager encountered an unrecoverable error:", new Error("boom"));
+		expect(onLog).toHaveBeenCalledTimes(1);
+		expect(onLog).toHaveBeenCalledWith("MembershipManager encountered an unrecoverable error: boom", "error");
+		// Non-SDK loglevel loggers keep their factory behaviour.
+		rtc.warn("rate limited", 42);
+		expect(onLog).toHaveBeenCalledWith("rate limited 42", "warning");
+		const other = loglevel.getLogger("other-namespace");
+		other.debug("not silenced");
+		expect(onLog).toHaveBeenCalledTimes(2);
 	});
 });

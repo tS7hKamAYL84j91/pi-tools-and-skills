@@ -35,16 +35,37 @@ function formatLogArg(arg: unknown): string {
 /**
  * SDK log families that are routine noise for a text-only bridge.
  *
- * matrix-js-sdk reports MatrixRTC (Element Call) session housekeeping at warn
- * level for call-membership traffic in a room, so any room where a human uses
- * calls pushes unsolicited `MatrixRTCSession !room…` lines into the session.
- * This bridge never joins calls, so those lines carry no actionable state.
+ * matrix-js-sdk reports MatrixRTC (Element Call) session housekeeping for
+ * call-membership traffic in a room, so any room where a human uses calls
+ * pushes unsolicited `[MatrixRTCSession …]` lines into the session. This
+ * bridge never joins calls, so those lines carry no actionable state.
  */
 const IGNORED_SDK_LOG_PREFIXES = ["MatrixRTCSession", "MatrixRTC"] as const;
 
+/**
+ * Homeserver vs. SDK default-push-rule drift.
+ *
+ * On every sync the SDK reconciles its expected default rules against the
+ * account's server-side rules and warns per difference ("Missing default
+ * global override push rule .m.rule.contains_display_name"). This bridge does
+ * not evaluate notifications, so the bookkeeping is irrelevant.
+ */
+const DEFAULT_PUSH_RULE_LOG = /^(Missing|Adding) default global (?:override|underride) push rule /;
+
+/** SDK child loggers tag lines with a `[Family …]` span, e.g. `[MatrixRTCSession !room …]`. */
+const SDK_LOG_SPAN = /^\[([^\]]+)\]\s+/;
+
 /** True for SDK log messages this bridge deliberately does not surface. */
 function isIgnoredSdkLog(message: string): boolean {
-	const text = message.trimStart();
+	let text = message.trimStart();
+	if (DEFAULT_PUSH_RULE_LOG.test(text)) return true;
+	// The family name can live inside the span rather than the message itself,
+	// so check the span content too (e.g. `[… ] No membership changes detected`).
+	const span = text.match(SDK_LOG_SPAN);
+	if (span) {
+		if (IGNORED_SDK_LOG_PREFIXES.some((prefix) => (span[1] ?? "").startsWith(prefix))) return true;
+		text = text.slice(span[0].length).trimStart();
+	}
 	return IGNORED_SDK_LOG_PREFIXES.some((prefix) => text.startsWith(prefix));
 }
 
@@ -59,14 +80,18 @@ function routeSdkLog(
 }
 
 /**
- * Silence matrix-js-sdk's module-global `logger`.
+ * Silence matrix-js-sdk logging that is not routed through a client's logger.
  *
  * Module-level SDK code (scheduler, embedded, sliding-sync) logs through the
  * package's global logger — a loglevel logger bound to `console.*` and NOT
  * replaced by the per-client `logger` option. Left as-is, its housekeeping
- * (e.g. "Stopping queue 'message' as it is now empty", pending-event status
- * lines) reaches the console and pi's TUI. Override it so only warn/error reach
- * the extension's notify path.
+ * (e.g. "Stopping queue 'message' as it is now empty") reaches the console.
+ *
+ * Child loggers created at runtime via the SDK's `logger.getChild` go one
+ * step further: `loglevel.getLogger("matrix-[…]")` returns a console-bound
+ * logger with a DEBUG level, so e.g. MatrixRTC housekeeping lines bypass every
+ * logger object entirely. Replacing loglevel's methodFactory for the SDK's
+ * "matrix" namespace routes those children through the same filter instead.
  */
 export async function silenceSdkGlobalLogger(
 	onLog?: MatrixAdapterCallbacks["onLog"],
@@ -79,6 +104,29 @@ export async function silenceSdkGlobalLogger(
 		logger.log = () => {};
 		logger.warn = (...args: unknown[]) => routeSdkLog(onLog, args, "warning");
 		logger.error = (...args: unknown[]) => routeSdkLog(onLog, args, "error");
+
+		const loglevel = (await import("loglevel").catch(() => null)) as
+			| {
+					default: {
+						methodFactory: (
+							methodName: string,
+							level: number,
+							loggerName: string,
+						) => (...args: unknown[]) => void;
+					};
+			  }
+			| null;
+		if (loglevel) {
+			const previous = loglevel.default.methodFactory;
+			loglevel.default.methodFactory = (methodName, _level, loggerName) => {
+				if (loggerName !== "matrix" && !loggerName.startsWith("matrix-")) {
+					return previous(methodName, _level, loggerName);
+				}
+				if (methodName === "warn") return (...args: unknown[]) => routeSdkLog(onLog, args, "warning");
+				if (methodName === "error") return (...args: unknown[]) => routeSdkLog(onLog, args, "error");
+				return () => {};
+			};
+		}
 	} catch {
 		/* Deep import shape may change; the per-client logger still applies. */
 	}
