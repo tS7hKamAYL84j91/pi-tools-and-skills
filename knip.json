@@ -21,7 +21,6 @@
 		"python3"
 	],
 	"ignoreDependencies": [
-		"@termwright/pty",
-		"@termwright/pty-linux-arm64"
+		"@termwright/pty"
 	]
 }
