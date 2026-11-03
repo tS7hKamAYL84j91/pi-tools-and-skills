@@ -144,10 +144,6 @@ export async function gracefulKill(
 
 // ── Child process spawning ──────────────────────────────────────
 
-// Credential stripping lives in lib/child-env (shared with the team-workflows
-// runtime substrate); re-exported under the historical name for importers.
-export { CHILD_CREDENTIAL_ENV_KEYS as CHILD_STRIP_ENV_KEYS } from "../../../lib/child-env.js";
-
 /**
  * Child environment: the caller's env (or the parent process env) minus the
  * Matrix credential keys. A fresh object — the parent's process.env and any

@@ -14,7 +14,7 @@ module has multiple independent owners.
 | `message-transport.ts`, `maildir.ts` (under `transports/`) | Matrix, Team Workflows, Agent Hub and Fleet transport contracts/adapters |
 | `file-lock.ts`, `file-persistence.ts`, `pi-settings.ts`, `private-local-mode.ts` | Multiple extensions, Fleet applications and shared stores |
 | `confined-store.ts`, `confined-store-security.ts`, `path-inside.ts` | Automations stores and shared path/config primitives; keep the security boundary central, not copied into consumers |
-| `gate-command.ts`, `runtime-child-process.ts` | Goal/Kanban verification and Team Workflows child execution; preserve shared cancellation/output boundaries |
+| `gate-command.ts`, `runtime-child-process.ts`, `child-env.ts` | Goal/Kanban verification and Team Workflows child execution; preserve shared cancellation/output boundaries. `child-env.ts` is the one credential-stripping boundary for spawned children (Agent Hub spawner and Team Workflows runtime substrate), with the gate-command opt-out explicit |
 | `secret-redaction.ts` | Goal diagnostics and trusted-gate output |
 | `tool-result.ts`, `tui-confirmation.ts`, `toggle-command.ts` | Multiple extension tool/UI surfaces |
 | `automations-config.ts`, `automations-types.ts` | Automations and Agent Hub public configuration boundary |
