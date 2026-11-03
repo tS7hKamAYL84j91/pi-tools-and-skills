@@ -32,6 +32,20 @@ rename does not edit live settings.
 - `/panopticon-reconcile on|off` — toggle reconciliation follow-up notifications.
 - `/agent-list-mode` and `/agents-mode` — adjust agent list display mode.
 
+## Side-pane navigation metadata
+
+Interactive Zellij agents publish optional `zellij: { sessionName, paneId }`
+on their normal registry writes (including registration and heartbeats).
+Headless/RPC children and agents with a parent ID omit it to avoid advertising
+an inherited terminal. No configuration or model settings change.
+
+The standalone [side pane](../../scripts/README.md#agent-hub-side-pane-poc)
+uses this only for user-requested, same-tab/session focus via Enter or a mouse
+click. It does not send messages, resume sessions, control agents or change
+registry state. Metadata is a navigation hint, never authorization. Existing
+agents need to load this Hub version before they advertise their terminal;
+the view does not retrofit records or reload agents itself.
+
 ## Inbox Notifications
 
 Unread inbox notifications are independent of reconciliation alerts. Filesystem

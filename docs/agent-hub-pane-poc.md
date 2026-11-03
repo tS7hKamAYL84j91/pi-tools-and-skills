@@ -1,8 +1,10 @@
 # Agent Hub status side-pane PoC
 
-Status: Jim directly authorized implementation in the specified worktree. Live rollout remains outside scope. Usage and implementation limits are in [scripts/README.md](../scripts/README.md#agent-hub-side-pane-poc).
+Status: Jim directly authorized implementation in the specified worktree, a live demo in the pi-tools tab, compact Hub-style rows/colours, and then keyboard/mouse focus navigation. Wider rollout and agent reloads remain separately gated. Usage and implementation limits are in [scripts/README.md](../scripts/README.md#agent-hub-side-pane-poc).
 
 Revision 2 (2026-11-03): aligned to the view CLI contract the CoAS half already committed in `da9d685` (`--scope`, `--json`, exit 3, row set, registry hygiene). Where this document and that contract disagree, the contract wins and this document is corrected.
+
+Revision 3 (Jim's direct live-feedback requests): human rows are `<glyph> - <name> - <status>` with Hub dark-theme colours. Details remain in JSON. The side pane may focus a uniquely identified agent terminal in its own tab/session on Enter or a row click; it still never mutates agent state. This narrowly supersedes the original display-only restriction.
 
 ## Goal
 
@@ -12,7 +14,7 @@ Show the agents associated with one EO Zellij tab, including their current sessi
 
 - pi-tools-and-skills owns the reusable terminal view and Hub data adapter: `/home/jim/git/worktrees/agent-hub-pane/pi-tools`, branch `feature/agent-hub-pane-poc`.
 - CoAS owns optional placement and launch through its existing manifest/layout renderer: `/home/jim/git/worktrees/agent-hub-pane/coas`.
-- No edits to canonical working trees or their uncommitted work. No push, merge, live pane launch, restart, dependency installation into the live runtime, or configuration changes under this specification.
+- No edits to canonical working trees or their uncommitted work. No push, merge, agent restart, dependency installation into the live runtime, or configuration changes. Jim approved only the pi-tools-tab demo pane launch/refresh; no other live panes are changed.
 - Read repository AGENTS.md, existing Hub modules/tests, and applicable installed Pi documentation before implementation. Reuse existing UI/read utilities wherever suitable.
 
 ## Minimal deliverable
@@ -39,22 +41,16 @@ Borrow compact agent hierarchy, clear textual status alongside color, and groupe
 Example, illustrative only:
 
 ```text
-CASMI · Agent Hub
-Lead       running
-  session  Ranker review
-  model    provider/model
-Sidekick   waiting
-  session  <short session ID>
-  unread   2
-Updated 2s ago · read-only
+demo · hub
+R - quartermaster - running
+W - reviewer - waiting
 q quit
 ```
 
-- Show lead and scoped helpers, status, model, and current session title/ID when genuinely available.
-- Show heartbeat/last-observed age rather than inventing a last-action timestamp.
+- Show lead and scoped helpers as compact glyph/name/status rows. Model, pending count, absolute heartbeat and current session ID remain in JSON; unavailable titles are null. Do not invent a last-action timestamp.
 - Preserve useful information at 30–40 columns; truncate safely and respect terminal height/resize. Include non-TTY/no-color output.
 - Avoid busy repainting: a modest refresh interval (e.g. two seconds) is sufficient. Stop cleanly on q, SIGINT and SIGTERM and restore terminal state.
-- Selection/detail navigation is optional only if existing Hub UI makes it cheap; not a first-pass requirement.
+- With valid Zellij context, arrows or j/k select, Enter or a left-click focuses the row's terminal. Keep the same row text, highlighting the selection. Restore mouse reporting/raw mode/cursor on exit; pause redraw while unfocused.
 
 ## Scope and identity contract
 
@@ -81,9 +77,19 @@ Existing sources to inspect include `lib/agent-registry.ts`, Hub registry/health
 - Bound reads and handle disappearing/malformed records, partial session writes and stale timestamps without crashing or hiding all healthy entries.
 - A running process or fresh heartbeat is not proof of scientific progress. Retain distinctions among reported status, stale observation and unavailable process evidence.
 
+## Focus-only navigation (revision 3)
+
+- Agents self-report optional `zellij: { sessionName, paneId }` on ordinary Hub registry writes, including registration/heartbeat. Interactive terminals only; headless/RPC agents and children with `parentId` must not advertise inherited parent panes. Old records without metadata remain visible but not focusable until updated Hub code is loaded by those agents.
+- The view reads only its own three Zellij environment keys. No other process's environment is inspected. Identity is navigation data, never authority.
+- The only subprocess is a bounded, shell-free `zellij` call: `list-panes --json --all` for validation, or `focus-pane-id terminal_N` on explicit user input. The session argument comes from the view's own environment, never from a record.
+- Find the view's unique non-plugin terminal first; targets must be unique non-plugin terminals in that exact tab/session, not the view itself. Use explicit self-reported IDs; cwd only corroborates them, never selects a target. No title/cwd guessing.
+- Refuse missing/ambiguous metadata, duplicate pane claims, dead/unknown process evidence, future/older-than-30-second heartbeats, changed cwd, failed listing or failed focus. No tab/session switching, agent signals, restarts, messages or registry writes. Missing Zellij disables navigation but keeps the list usable.
+- This is not an ownership proof: a fresh record and list snapshot cannot atomically exclude a terminal exiting/reusing its ID between validation and focus. Same-tab-only validation bounds this navigation race; no action beyond focus follows it.
+- Multiple namespace-less canonical claimants remain visible as ambiguous; renaming a display name does not elect a unique owner.
+
 ## Security and resource boundaries
 
-Read-only display, not an authorization surface. Do not read credentials or process environments, acquire locks as a coordinator, consume inboxes, send messages, stop processes or grant access. Display only the selected metadata. Sanitize all terminal-bound names/titles/model strings, including ANSI, OSC hyperlinks, control characters and embedded newlines. No raw log dumps on errors.
+Agent state remains read-only; focus is not an authorization surface. Do not read credentials or other processes' environments, acquire locks as a coordinator, consume inboxes, send messages, stop processes or grant access. Display only the selected metadata. Sanitize all terminal-bound names/titles/model strings, including ANSI, OSC hyperlinks, control characters and embedded newlines. No raw log dumps on errors.
 
 ## CoAS integration boundary
 
@@ -99,7 +105,8 @@ CoAS adds an opt-in side pane using the existing renderer/template and normal ca
 6. `--once` exits promptly with deterministic fixture output and works from a foreign cwd using the documented runner; `--json` implies `--once` and an unreadable registry exits `3` with a JSON error object.
 7. Registry hygiene: `namespace-owners.json` and `<id>/` directories are ignored, and `kind: "external"` rows never appear.
 8. CoAS dry-run/render tests prove opt-in-only placement, correct canonical scope, unchanged default layout and preserved launch/security argv.
-9. Run `npm run check`, relevant tests and full `npm test` when practical, plus `git diff --check`. Report exact commands/results and limitations; do not weaken checks.
+9. Stubbed Zellij tests prove same-tab/session-only focus, refusal cases, exact argv, fragmented mouse/keyboard input, quiet-after-focus and mouse/raw/cursor restoration. Tests never invoke a live Zellij session.
+10. Run `npm run check`, relevant tests and full `npm test` when practical, plus `git diff --check`. Report exact commands/results and limitations; do not weaken checks.
 
 ## Handoff
 

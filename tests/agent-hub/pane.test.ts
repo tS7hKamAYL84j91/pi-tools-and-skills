@@ -8,6 +8,7 @@ import {
 	rmSync,
 	symlinkSync,
 	writeFileSync,
+	chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -384,7 +385,8 @@ before = termios.tcgetattr(slave)
 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 20, 28, 0, 0))
 args = [sys.argv[1], '--scope', 'lead', '--registry', sys.argv[2], '--interval', '10']
 if sys.argv[3] == 'true': args.append('--no-color')
-p = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave)
+env = {k: v for k, v in os.environ.items() if k not in ('ZELLIJ', 'ZELLIJ_SESSION_NAME', 'ZELLIJ_PANE_ID')}
+p = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave, env=env)
 data = b''
 def until(needle):
     global data
@@ -416,6 +418,127 @@ finally:
 		{ encoding: "utf8", timeout: 10000 },
 	);
 	expect(output.trim()).toBe("restored");
+});
+
+it("keeps ambiguity visible in narrow headers", () => {
+	for (const width of [20, 24, 28, 32]) {
+		const view = {
+			scope: "pi-tools-and-skills",
+			leadState: "ambiguous",
+			records: [],
+		};
+		const text = JSON.parse(
+			evaluate(
+				`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width})));`,
+			),
+		) as string;
+		expect(text.split("\n")[0]).toBe("hub (ambiguous)");
+	}
+});
+
+it.each([
+	"mouse",
+	"keyboard",
+	"gone",
+	"marker",
+])("handles %s selection safely with a stub and restores the terminal", (method) => {
+	const now = Date.now();
+	const live = {
+		pid: process.pid,
+		startedAt: now - process.uptime() * 1000,
+		heartbeat: now,
+		cwd: "/work",
+	};
+	record("lead", { ...live, zellij: { sessionName: "fixture", paneId: 2 } });
+	record("helper", {
+		...live,
+		namespace: "lead",
+		zellij: { sessionName: "fixture", paneId: 17 },
+	});
+	if (method === "marker") writeFileSync(join(dir, "bad.json"), "{");
+	const log = join(dir, "calls");
+	const focused = join(dir, "focused");
+	const stub = join(dir, "zellij");
+	writeFileSync(
+		stub,
+		`#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n'); if(args.includes('focus-pane-id')) {fs.writeFileSync(${JSON.stringify(focused)},'17');} else { process.stdout.write(JSON.stringify([{id:99,tab_id:1,is_plugin:false,is_focused:!fs.existsSync(${JSON.stringify(focused)}),pane_cwd:'/view'},{id:2,tab_id:1,is_plugin:false,pane_cwd:'/work'},{id:17,tab_id:1,is_plugin:false,pane_cwd:'/work'},{id:8,tab_id:2,is_plugin:false,pane_cwd:'/work'}])); }`,
+	);
+	chmodSync(stub, 0o755);
+	const output = execFileSync(
+		"python3",
+		[
+			"-c",
+			`
+import os, pty, subprocess, termios, fcntl, struct, select, time, sys
+master, slave = pty.openpty()
+before = termios.tcgetattr(slave)
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 5 if sys.argv[3]=='marker' else 20, 40, 0, 0))
+env = dict(os.environ, ZELLIJ='0', ZELLIJ_SESSION_NAME='fixture', ZELLIJ_PANE_ID='99', PATH=sys.argv[2]+os.pathsep+os.environ['PATH'])
+p = subprocess.Popen([sys.argv[1], '--scope', 'lead', '--registry', sys.argv[2], '--interval', '0.25'], stdin=slave, stdout=slave, stderr=slave, env=env)
+data = b''
+def until(needle):
+    global data
+    deadline = time.monotonic()+4
+    while needle not in data and time.monotonic()<deadline:
+        if select.select([master], [], [], 0.05)[0]: data += os.read(master,65536)
+    assert needle in data, repr(data)
+try:
+    until(b'click enter')
+    assert b'\\x1b[?1000h' in data and b'\\x1b[?1006h' in data
+    assert b'\\x1b[7m' in data
+    assert b'\\x1b[?2004h' in data
+    flag=os.path.join(sys.argv[2],'focused')
+    if sys.argv[3]=='gone':
+        os.write(master,b'j')
+        time.sleep(0.15)
+        os.unlink(os.path.join(sys.argv[2],'helper.json'))
+        data=b''
+        until(b'selected agent left')
+        os.write(master,b'\\r')
+        time.sleep(0.4)
+        assert not os.path.exists(flag), 'selection silently migrated'
+    elif sys.argv[3]=='marker':
+        os.write(master,b'\\x1b[<0;8;3M')
+        time.sleep(0.4)
+        assert not os.path.exists(flag), 'marker click focused an agent'
+    else:
+        os.write(master, b'\\x1b[<0;8;3M' if sys.argv[3]=='mouse' else b'j\\r')
+        deadline=time.monotonic()+4
+        while not os.path.exists(flag) and time.monotonic()<deadline: time.sleep(0.02)
+        assert os.path.exists(flag)
+        time.sleep(0.1)
+        while select.select([master],[],[],0)[0]: os.read(master,65536)
+        assert not select.select([master],[],[],0.6)[0], 'redrew while unfocused'
+        os.unlink(flag)
+        data=b''
+        until(b'click enter')
+    os.write(master,b'q')
+    until(b'\\x1b[?1000l')
+    until(b'\\x1b[?1006l')
+    until(b'\\x1b[?2004l')
+    assert p.wait(timeout=3)==0
+    assert termios.tcgetattr(slave)==before
+    print('focused and restored')
+finally:
+    if p.poll() is None: p.kill(); p.wait()
+    os.close(master); os.close(slave)
+`,
+			executable,
+			dir,
+			method,
+		],
+		{ encoding: "utf8", timeout: 12000 },
+	);
+	expect(output.trim()).toBe("focused and restored");
+	const calls = readFileSync(log, "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line) as string[]);
+	expect(calls.filter((args) => args.includes("focus-pane-id"))).toEqual(
+		method === "gone" || method === "marker"
+			? []
+			: [["--session", "fixture", "action", "focus-pane-id", "terminal_17"]],
+	);
 });
 
 it("prints help from a foreign cwd", () => {

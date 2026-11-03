@@ -29,6 +29,19 @@ lead state stays in the header. Names truncate first with an ellipsis; at very
 narrow widths the status word is dropped. Model, heartbeat, pending count and
 session metadata remain in the unchanged JSON snapshot, not the compact rows.
 
+In Zellij, arrows or j/k select a row; Enter or a left mouse click focuses its
+uniquely identified terminal in **this tab and session only**. No title/cwd
+matching guesses. Focus requires fresh (at most 30 seconds old) heartbeat, live process
+evidence and explicit `AgentRecord.zellij` identity. Old records without it
+show a notice; load the updated Hub in those agents before using focus. Headless
+children do not advertise their parent's terminal. Missing Zellij disables
+navigation. The view stops redrawing while another pane has focus, and restores
+mouse reporting/raw mode on exit. Bracketed paste is enabled and ignored, so
+pasted text cannot activate navigation or quit. Selection follows the agent ID;
+if it disappears, Enter never silently targets a replacement row. It invokes only bounded `zellij list-panes`
+and user-triggered `focus-pane-id` commands; agent state is still read-only.
+Self-reported identity is not authority; the list/focus race cannot be atomic.
+
 Rows use exact declared lead identity (legacy name fallback only when absent)
 and exact namespace membership; external records are excluded. Multiple lead
 matches are explicitly ambiguous, not silently resolved by mutable display
@@ -36,8 +49,7 @@ name. A dead lead is unavailable; exact-namespace helpers remain visible. Proces
 (`live/stale/unknown`) is separate from reported status and heartbeat freshness.
 Linux `/proc` start time uses a one-sided PID-reuse guard: a record predating
 the process by more than 120 seconds is stale. Registration may lag process
-startup without an upper bound; missing readable `/proc` yields unknown. No process signals are
-sent. A live PID does not prove progress. JSON carries absolute heartbeat timestamps,
+startup without an upper bound; missing readable `/proc` yields unknown. No signals are sent to agents. A live PID does not prove progress. JSON carries absolute heartbeat timestamps,
 so unchanged fixtures/process evidence produce byte-stable snapshots.
 Non-TTY continuous output appends frames, skipping refreshes under backpressure;
 a closed output consumer exits cleanly.
@@ -62,8 +74,8 @@ From this checkout, a safe fixture demo (no live registry access):
 This shows only `demo-session-agent` (lead) and `reviewer` (helper); the unrelated
 fixture is excluded. Omit `--json` for the text frame.
 
-See [the bounded specification](../docs/agent-hub-pane-poc.md). No live rollout
-is part of this PoC.
+See [the bounded specification](../docs/agent-hub-pane-poc.md). Jim authorized the single pi-tools-tab demo; broader rollout and loading the
+updated Hub into existing agents require separate approval.
 
 ## Setup
 

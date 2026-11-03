@@ -14,6 +14,8 @@ import {
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { ownPaneIdentity } from "../extensions/pi-agent-hub/registry/zellij-pane.mjs";
+import { createNavigator, inputParser } from "./pi-agents-pane-navigation.mjs";
 
 const MAX_RECORD = 64 * 1024;
 const MAX_FILES = 4096;
@@ -109,7 +111,7 @@ function sessionId(record) {
 	);
 }
 
-export function snapshot(registry, scope, state) {
+export function snapshot(registry, scope, state, navigation = false) {
 	let procStat;
 	const readProc = (path) => {
 		if (path !== "/proc/stat") return readFileSync(path, "utf8");
@@ -167,6 +169,15 @@ export function snapshot(registry, scope, state) {
 				sessionId:
 					sessionId(record) === null ? null : safeText(sessionId(record)),
 				sessionTitle: null,
+				...(navigation
+					? {
+							navigation: {
+								cwd: record.cwd,
+								parentId: record.parentId,
+								zellij: record.zellij,
+							},
+						}
+					: {}),
 			});
 		}
 	} catch {
@@ -247,15 +258,26 @@ function compactRow(row, width) {
 	return `${prefix}${display}${suffix}`;
 }
 
-export function render(view, width = 28, height = 40, color = false) {
+export function render(
+	view,
+	width = 28,
+	height = 40,
+	color = false,
+	interaction = {},
+) {
 	const lines = [];
 	const roles = new Map([[0, view.error ? "error" : "accent"]]);
 	if (view.error) lines.push(`${view.error}: ${view.path}`);
 	else {
+		const header = `${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`;
 		lines.push(
-			`${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`,
+			clip(header, width) === header
+				? header
+				: view.leadState !== "resolved"
+					? `hub (${view.leadState})`
+					: `${clip(view.scope, Math.max(0, width - 7))} · hub`,
 		);
-		for (const row of view.records) {
+		for (const row of view.records.slice(interaction.offset ?? 0)) {
 			roles.set(
 				lines.length,
 				Object.hasOwn(STATUS_COLOR, row.status)
@@ -269,21 +291,37 @@ export function render(view, width = 28, height = 40, color = false) {
 				`skipped ${view.skipped}${view.truncated ? " / scan capped" : ""}`,
 			);
 	}
-	const available = Math.max(1, height - 1);
+	const available = Math.max(1, height - 1 - (interaction.notice ? 1 : 0));
 	const shown = lines.slice(0, available);
 	if (lines.length > available) {
 		shown[available - 1] = `... ${lines.length - available + 1} lines hidden`;
 		roles.set(available - 1, "dim");
 	}
+	if (interaction.notice && shown.length < height - 1) {
+		roles.set(shown.length, "warning");
+		shown.push(safeText(interaction.notice));
+	}
 	roles.set(shown.length, "dim");
-	shown.push("q quit");
+	shown.push(interaction.enabled ? "j/k click enter q quit" : "q quit");
 	return `${shown
 		.slice(0, height)
 		.map((line, index) => {
 			const text = clip(line, width);
-			return color
+			const selected =
+				interaction.enabled &&
+				index > 0 &&
+				index < shown.length - 1 &&
+				view.records?.[(interaction.offset ?? 0) + index - 1]?.id ===
+					interaction.selectedId &&
+				line ===
+					compactRow(
+						view.records[(interaction.offset ?? 0) + index - 1],
+						width,
+					);
+			const decorated = color
 				? `\x1b[38;2;${DARK_COLORS[roles.get(index) ?? "dim"].join(";")}m${text}\x1b[0m`
 				: text;
+			return selected ? `\x1b[7m${decorated}\x1b[0m` : decorated;
 		})
 		.join("\n")}\n`;
 }
@@ -369,17 +407,67 @@ export function main(args = process.argv.slice(2)) {
 	const tty = Boolean(process.stdout.isTTY);
 	const input = Boolean(tty && process.stdin.isTTY);
 	const wasRaw = process.stdin.isRaw;
+	const navigator = createNavigator(
+		ownPaneIdentity({
+			inside: process.env.ZELLIJ,
+			sessionName: process.env.ZELLIJ_SESSION_NAME,
+			paneId: process.env.ZELLIJ_PANE_ID,
+			interactive: input,
+		}),
+	);
+	const parseInput = inputParser();
 	let timer,
-		stopped = false;
+		stopped = false,
+		enabled = false,
+		mouse = false,
+		selectedId,
+		initialized = false,
+		offset = 0,
+		notice = "",
+		view,
+		visibleRows = 0;
+	const setMouse = (active) => {
+		if (active === mouse || !input || outputBroken) return;
+		mouse = active;
+		process.stdout.write(
+			active ? "\x1b[?1000h\x1b[?1006h" : "\x1b[?1000l\x1b[?1006l",
+		);
+	};
 	const draw = () => {
 		if (stopped || outputBroken || process.stdout.writableNeedDrain) return;
+		const context = navigator.inspect();
+		enabled = Boolean(context);
+		setMouse(enabled && context?.own.is_focused === true);
+		if (context && context.own.is_focused !== true) return; // quiet while another pane owns focus
+		view = snapshot(options.registry, options.scope, undefined, input);
+		const rows = view.records ?? [];
+		let index = rows.findIndex((row) => row.id === selectedId);
+		if (!initialized && rows.length) {
+			index = 0;
+			selectedId = rows[0].id;
+			initialized = true;
+		} else if (index < 0 && initialized) {
+			notice = "selected agent left the registry";
+		} else if (notice === "selected agent left the registry") notice = "";
+		index = Math.max(0, index);
+		const height = Math.max(1, (process.stdout.rows || 40) - 1);
+		const capacity = Math.max(
+			0,
+			height - 2 - (notice ? 1 : 0) - (view.skipped || view.truncated ? 1 : 0),
+		);
+		if (index < offset) offset = index;
+		if (capacity > 0 && index >= offset + capacity)
+			offset = index - capacity + 1;
+		const page = rows.slice(offset, offset + capacity);
+		visibleRows = page.length;
 		if (tty) process.stdout.write("\x1b[H\x1b[2J");
 		process.stdout.write(
 			render(
-				frame(),
+				view.error ? view : { ...view, records: page },
 				Math.max(1, (process.stdout.columns || 80) - 1),
-				Math.max(1, (process.stdout.rows || 40) - 1),
+				height,
 				tty && !options.noColor,
+				{ enabled, selectedId, notice },
 			),
 		);
 	};
@@ -400,11 +488,51 @@ export function main(args = process.argv.slice(2)) {
 			}
 			process.stdin.pause();
 		}
+		setMouse(false);
+		if (input && !outputBroken) process.stdout.write("\x1b[?2004l");
 		if (tty && !outputBroken) process.stdout.write("\x1b[?25h");
 	};
 	cleanup = stop;
 	const key = (data) => {
-		if (data.toString().includes("q") || data.includes(3)) stop();
+		for (const event of parseInput(data)) {
+			if (event.type === "quit") {
+				stop();
+				return;
+			}
+			if (!enabled || !view?.records?.length) continue;
+			let index = view.records.findIndex((row) => row.id === selectedId);
+			if (event.type === "move") {
+				index = Math.max(
+					0,
+					Math.min(view.records.length - 1, index + event.delta),
+				);
+				selectedId = view.records[index].id;
+				notice = "";
+				draw();
+			} else if (event.type === "focus" || event.type === "click") {
+				if (event.type === "click") {
+					if (
+						event.x < 1 ||
+						event.x >= (process.stdout.columns || 80) ||
+						event.y < 2 ||
+						event.y >= 2 + visibleRows
+					)
+						continue;
+					index = offset + event.y - 2;
+					selectedId = view.records[index]?.id;
+				}
+				const fresh = snapshot(
+					options.registry,
+					options.scope,
+					undefined,
+					true,
+				);
+				const row = fresh.records?.find((item) => item.id === selectedId);
+				notice = navigator.focus(row, fresh.records ?? []) ?? "";
+				if (notice) draw();
+				else setMouse(false);
+			}
+		}
 	};
 	process.on("SIGINT", stop);
 	process.on("SIGTERM", stop);
@@ -412,6 +540,7 @@ export function main(args = process.argv.slice(2)) {
 	process.stdout.on("resize", draw);
 	if (input) {
 		process.stdin.setRawMode(true);
+		process.stdout.write("\x1b[?2004h");
 		process.stdin.resume();
 		process.stdin.on("data", key);
 	}
