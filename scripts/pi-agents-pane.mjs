@@ -91,7 +91,9 @@ export function processState(
 		if (!Number.isFinite(ticks) || !Number.isFinite(record.startedAt))
 			return "unknown";
 		const started = Number(boot[1]) * 1000 + ticks * 10;
-		return Math.abs(started - record.startedAt) <= 120_000 ? "live" : "stale";
+		// One-sided PID-reuse guard: registration may lag exec without an upper bound.
+		const skew = started - record.startedAt;
+		return skew > 120_000 ? "stale" : "live";
 	} catch {
 		return "unknown";
 	}

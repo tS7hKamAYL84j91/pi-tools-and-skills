@@ -25,8 +25,9 @@ and exact namespace membership; external records are excluded. Multiple lead
 matches are explicitly ambiguous, not silently resolved by mutable display
 name. A dead lead is unavailable; exact-namespace helpers remain visible. Process evidence
 (`live/stale/unknown`) is separate from reported status and heartbeat freshness.
-Linux `/proc` start time is compared within 120 seconds against `startedAt`;
-without readable `/proc`, process evidence is unknown. No process signals are
+Linux `/proc` start time uses a one-sided PID-reuse guard: a record predating
+the process by more than 120 seconds is stale. Registration may lag process
+startup without an upper bound; missing readable `/proc` yields unknown. No process signals are
 sent. A live PID does not prove progress. JSON carries absolute heartbeat timestamps,
 so unchanged fixtures/process evidence produce byte-stable snapshots; relative
 ages and the 30-second freshness threshold are calculated only for text output.

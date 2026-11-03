@@ -216,8 +216,27 @@ it("classifies process generation, dead pid, zombies and missing proc determinis
 		"unknown",
 		"stale",
 		"live",
-		"stale",
+		"live",
 	]);
+});
+
+it.each([
+	{ offset: -130000, state: "stale" },
+	{ offset: -120001, state: "stale" },
+	{ offset: -120000, state: "live" },
+	{ offset: 120000, state: "live" },
+	{ offset: 130000, state: "live" },
+	{ offset: 600000, state: "live" },
+])("uses one-sided PID reuse tolerance at registration offset $offset", ({
+	offset,
+	state,
+}) => {
+	const result = evaluate(`
+		const fields = ['S', ...Array(18).fill('0'), '100'];
+		const read = path => path === '/proc/stat' ? 'btime 1000\\n' : '123 (fixture) ' + fields.join(' ');
+		process.stdout.write(pane.processState({pid: 123, startedAt: 1001000 + ${offset}}, read));
+	`);
+	expect(result).toBe(state);
 });
 
 it("separates stale heartbeat from process liveness and marks future heartbeat unknown", () => {
