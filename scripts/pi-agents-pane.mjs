@@ -196,35 +196,73 @@ export function snapshot(registry, scope, state) {
 	};
 }
 
-export function render(view, width = 28, height = 40, now = Date.now()) {
+// Source of truth: extensions/pi-agent-hub/registry/record-utils.ts STATUS_SYMBOL.
+// Kept here so the standalone pane needs neither a TS loader nor the Pi runtime.
+const STATUS_SYMBOL = {
+	running: "R",
+	waiting: "W",
+	done: "D",
+	blocked: "B",
+	stalled: "S",
+	terminated: "X",
+	unknown: "?",
+};
+
+// Hub role mapping: extensions/pi-agent-hub/ui/ui-format.ts STATUS_COLOR.
+// RGB values resolved from Pi's built-in dark.json; no runtime theme dependency.
+const STATUS_COLOR = {
+	running: "success",
+	waiting: "accent",
+	done: "dim",
+	blocked: "warning",
+	stalled: "warning",
+	terminated: "error",
+	unknown: "muted",
+};
+const DARK_COLORS = {
+	accent: [167, 152, 215],
+	success: [104, 183, 141],
+	warning: [205, 154, 34],
+	error: [234, 127, 129],
+	dim: [126, 136, 142],
+	muted: [157, 165, 169],
+};
+
+function compactRow(row, width) {
+	const status = safeText(row.status);
+	const glyph = Object.hasOwn(STATUS_SYMBOL, status)
+		? STATUS_SYMBOL[status]
+		: "?";
+	const prefix = `${glyph} - `;
+	let suffix = ` - ${status}`;
+	let room = width - prefix.length - suffix.length;
+	if (room < 2) {
+		suffix = "";
+		room = Math.max(0, width - prefix.length);
+	}
+	const name = safeText(row.name);
+	const clipped = clip(name, room);
+	const display =
+		clipped === name ? name : room >= 2 ? `${clip(name, room - 2)}…` : clipped;
+	return `${prefix}${display}${suffix}`;
+}
+
+export function render(view, width = 28, height = 40, color = false) {
 	const lines = [];
+	const roles = new Map([[0, view.error ? "error" : "accent"]]);
 	if (view.error) lines.push(`${view.error}: ${view.path}`);
 	else {
-		lines.push(`${view.scope} / Agent Hub`, `lead: ${view.leadState}`);
+		lines.push(
+			`${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`,
+		);
 		for (const row of view.records) {
-			const age =
-				row.heartbeat !== null && row.heartbeat <= now
-					? now - row.heartbeat
-					: null;
-			const seconds = age === null ? null : Math.floor(age / 1000);
-			const elapsed =
-				seconds === null
-					? "?"
-					: seconds < 60
-						? `${seconds}s`
-						: seconds < 3600
-							? `${Math.floor(seconds / 60)}m`
-							: seconds < 86400
-								? `${Math.floor(seconds / 3600)}h`
-								: `${Math.floor(seconds / 86400)}d`;
-			lines.push(
-				`${row.lead ? "*" : "-"} ${row.name}`,
-				`  ${row.status} / ${row.state}`,
-				`  pid ${row.pid} msg ${row.pendingMessages ?? "?"}`,
-				`  seen ${elapsed} / ${age === null ? "unknown" : age > 30_000 ? "old" : "fresh"}`,
-				`  model ${row.model}`,
-				`  session ${row.sessionId ?? "unavailable"}`,
+			roles.set(
+				lines.length,
+				Object.hasOwn(STATUS_COLOR, row.status)
+					? STATUS_COLOR[row.status]
+					: "muted",
 			);
+			lines.push(compactRow(row, width));
 		}
 		if (view.skipped || view.truncated)
 			lines.push(
@@ -233,12 +271,20 @@ export function render(view, width = 28, height = 40, now = Date.now()) {
 	}
 	const available = Math.max(1, height - 1);
 	const shown = lines.slice(0, available);
-	if (lines.length > available)
+	if (lines.length > available) {
 		shown[available - 1] = `... ${lines.length - available + 1} lines hidden`;
-	shown.push("read-only / q quit");
+		roles.set(available - 1, "dim");
+	}
+	roles.set(shown.length, "dim");
+	shown.push("q quit");
 	return `${shown
 		.slice(0, height)
-		.map((line) => clip(line, width))
+		.map((line, index) => {
+			const text = clip(line, width);
+			return color
+				? `\x1b[38;2;${DARK_COLORS[roles.get(index) ?? "dim"].join(";")}m${text}\x1b[0m`
+				: text;
+		})
 		.join("\n")}\n`;
 }
 
@@ -262,7 +308,7 @@ export function parseArgs(args) {
 			options.json = true;
 			options.once = true;
 		} else if (arg === "--no-color") {
-			/* monochrome by design */
+			options.noColor = true;
 		} else if (["--scope", "--registry", "--interval"].includes(arg)) {
 			const value = args[++i];
 			if (!value || value.startsWith("--"))
@@ -310,7 +356,12 @@ export function main(args = process.argv.slice(2)) {
 		process.stdout.write(
 			options.json
 				? `${JSON.stringify(view)}\n`
-				: render(view, process.stdout.columns || 80, 10000),
+				: render(
+						view,
+						process.stdout.columns || 80,
+						10000,
+						Boolean(process.stdout.isTTY && !options.noColor),
+					),
 		);
 		process.exitCode = view.error ? 3 : 0;
 		return;
@@ -328,6 +379,7 @@ export function main(args = process.argv.slice(2)) {
 				frame(),
 				Math.max(1, (process.stdout.columns || 80) - 1),
 				Math.max(1, (process.stdout.rows || 40) - 1),
+				tty && !options.noColor,
 			),
 		);
 	};

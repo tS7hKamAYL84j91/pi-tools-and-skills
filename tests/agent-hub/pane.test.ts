@@ -239,16 +239,89 @@ it.each([
 	expect(result).toBe(state);
 });
 
-it("separates stale heartbeat from process liveness and marks future heartbeat unknown", () => {
-	record("lead", { heartbeat: 1 });
-	record("child", { namespace: "lead", heartbeat: 9999999999999 });
-	const value = evaluate(
-		`process.stdout.write(pane.render(pane.snapshot(${JSON.stringify(dir)}, 'lead', () => 'live'), 80, 40, 60000));`,
+it.each([
+	{ status: "running", rgb: "104;183;141" },
+	{ status: "waiting", rgb: "167;152;215" },
+	{ status: "done", rgb: "126;136;142" },
+	{ status: "blocked", rgb: "205;154;34" },
+	{ status: "stalled", rgb: "205;154;34" },
+	{ status: "terminated", rgb: "234;127;129" },
+	{ status: "unknown", rgb: "157;165;169" },
+])("uses Hub dark-theme colour for $status without changing text or width", ({
+	status,
+	rgb,
+}) => {
+	const view = {
+		scope: "demo",
+		leadState: "resolved",
+		records: [{ name: "agent", status }],
+	};
+	const output = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, 28, 40, true)));`,
+		),
+	) as string;
+	const row = output.split("\n")[1] ?? "";
+	expect(row.startsWith(`\x1b[38;2;${rgb}m`)).toBe(true);
+	expect(row.endsWith("\x1b[0m")).toBe(true);
+	const plain = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, 28, 40)));`,
+		),
+	) as string;
+	expect(row.slice(`\x1b[38;2;${rgb}m`.length, -4)).toBe(plain.split("\n")[1]);
+});
+
+it.each([
+	28, 40, 80,
+])("renders exact Hub-style compact rows at %i columns", (width) => {
+	const view = {
+		scope: "demo",
+		leadState: "resolved",
+		records: [
+			{ name: "quartermaster", status: "running" },
+			{ name: "reviewer", status: "waiting" },
+		],
+	};
+	const output = evaluate(
+		`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width})));`,
 	);
-	expect(value).toContain("lead: resolved");
-	expect(value).toContain("waiting / live");
-	expect(value).toContain("seen 59s / old");
-	expect(value).toContain("seen ? / unknown");
+	expect(JSON.parse(output)).toBe(
+		"demo · hub\nR - quartermaster - running\nW - reviewer - waiting\nq quit\n",
+	);
+});
+
+it.each([
+	{ width: 28, line: "R - very-long-na… - running" },
+	{ width: 20, line: "R - very… - running" },
+	{ width: 12, line: "R - very-l…" },
+	{ width: 4, line: "R - " },
+])("truncates name before dropping status at $width columns", ({
+	width,
+	line,
+}) => {
+	const view = {
+		scope: "demo",
+		leadState: "resolved",
+		records: [{ name: "very-long-name-for-an-agent", status: "running" }],
+	};
+	const output = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width})));`,
+		),
+	) as string;
+	expect(output.split("\n")[1]).toBe(line);
+});
+
+it("retains heartbeat and model in JSON while omitting details from compact rows", () => {
+	record("lead", { heartbeat: 1 });
+	const view = JSON.parse(cli("--json").stdout);
+	expect(view.records[0].heartbeat).toBe(1);
+	expect(view.records[0].model).toBe("fixture/model");
+	const output = cli("--once").stdout;
+	expect(output).toContain("W - lead - waiting");
+	expect(output).not.toContain("fixture/model");
+	expect(output).not.toContain("seen ");
 });
 
 it("sanitizes ANSI, OSC, controls, newlines and bidi; truncates Unicode and terminal height", () => {
@@ -265,7 +338,7 @@ it("sanitizes ANSI, OSC, controls, newlines and bidi; truncates Unicode and term
 		`process.stdout.write(JSON.stringify(pane.render(pane.snapshot(${JSON.stringify(dir)}, 'lead'), 8, 5)));`,
 	);
 	const lines = (JSON.parse(narrow) as string).trimEnd().split("\n");
-	expect(lines).toHaveLength(5);
+	expect(lines).toHaveLength(3);
 	for (const line of lines) expect([...line].length).toBeLessThanOrEqual(8);
 	expect(evaluate(`process.stdout.write(pane.clip('模型😀abc', 5));`)).toBe(
 		"模型",
@@ -295,7 +368,10 @@ it.each(
 	expect(spawnSync(executable, args, { encoding: "utf8" }).status).toBe(2);
 });
 
-it("restores terminal state on q and redraws after resize (isolated PTY)", () => {
+it.each([
+	false,
+	true,
+])("restores terminal state and honors no-color=%s (isolated PTY)", (noColor) => {
 	record("lead");
 	const output = execFileSync(
 		"python3",
@@ -306,7 +382,9 @@ import os, pty, subprocess, termios, fcntl, struct, select, time, signal, sys
 master, slave = pty.openpty()
 before = termios.tcgetattr(slave)
 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 20, 28, 0, 0))
-p = subprocess.Popen([sys.argv[1], '--scope', 'lead', '--registry', sys.argv[2], '--interval', '10'], stdin=slave, stdout=slave, stderr=slave)
+args = [sys.argv[1], '--scope', 'lead', '--registry', sys.argv[2], '--interval', '10']
+if sys.argv[3] == 'true': args.append('--no-color')
+p = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave)
 data = b''
 def until(needle):
     global data
@@ -315,7 +393,8 @@ def until(needle):
         if select.select([master], [], [], 0.1)[0]: data += os.read(master, 65536)
     assert needle in data, repr(data)
 try:
-    until(b'read-only')
+    until(b'q quit')
+    assert (b'\\x1b[38;2;' in data) == (sys.argv[3] == 'false')
     assert b'\\x1b[?25l' in data
     data = b''
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 10, 12, 0, 0))
@@ -332,6 +411,7 @@ finally:
 `,
 			executable,
 			dir,
+			String(noColor),
 		],
 		{ encoding: "utf8", timeout: 10000 },
 	);
@@ -364,12 +444,12 @@ it("retries unreadable registry and exits cleanly on SIGTERM", async () => {
 		output += data.toString();
 		if (
 			output.includes("registry unreadable") &&
-			!output.includes("lead: unavailable")
+			!output.includes("lead · hub (unavailable)")
 		) {
 			mkdirSync(dir, { recursive: true });
 			record("lead");
 		}
-		if (output.includes("lead: unavailable")) child.kill("SIGTERM");
+		if (output.includes("lead · hub (unavailable)")) child.kill("SIGTERM");
 	});
 	try {
 		expect(await done).toBe(0);
@@ -378,5 +458,5 @@ it("retries unreadable registry and exits cleanly on SIGTERM", async () => {
 		child.kill("SIGKILL");
 	}
 	expect(output).toContain("registry unreadable");
-	expect(output).toContain("lead: unavailable");
+	expect(output).toContain("lead · hub (unavailable)");
 });

@@ -18,7 +18,16 @@ Use `--registry <fixture-dir> --once --json` for a one-shot diagnostic. JSON
 implies once; unreadable registry exits 3, usage errors exit 2. Default refresh
 is two seconds (`--interval 0.25..3600`); q, Ctrl-C, SIGINT or SIGTERM stops the
 view. Missing registry in continuous mode is shown and retried. Output is
-monochrome, including `--no-color`, and bounded to terminal width/height.
+bounded to terminal width/height. TTY output uses Hub status roles with Pi's
+built-in dark-theme RGB palette (running green, waiting purple, blocked/stalled
+yellow, terminated red, done dim, unknown muted). `--no-color` and non-TTY
+output remain plain; JSON is unchanged. The palette is bundled, not dynamically
+loaded from Pi theme settings.
+Human output uses the Hub glyph listing: `R - quartermaster - running`, one
+line per agent, beneath `<scope> · hub` with a `q quit` footer. Non-resolved
+lead state stays in the header. Names truncate first with an ellipsis; at very
+narrow widths the status word is dropped. Model, heartbeat, pending count and
+session metadata remain in the unchanged JSON snapshot, not the compact rows.
 
 Rows use exact declared lead identity (legacy name fallback only when absent)
 and exact namespace membership; external records are excluded. Multiple lead
@@ -29,8 +38,7 @@ Linux `/proc` start time uses a one-sided PID-reuse guard: a record predating
 the process by more than 120 seconds is stale. Registration may lag process
 startup without an upper bound; missing readable `/proc` yields unknown. No process signals are
 sent. A live PID does not prove progress. JSON carries absolute heartbeat timestamps,
-so unchanged fixtures/process evidence produce byte-stable snapshots; relative
-ages and the 30-second freshness threshold are calculated only for text output.
+so unchanged fixtures/process evidence produce byte-stable snapshots.
 Non-TTY continuous output appends frames, skipping refreshes under backpressure;
 a closed output consumer exits cleanly.
 
