@@ -30,4 +30,8 @@ regexes = [
   '''test_token''',
   '''example_token''',
   '''Bearer example''',
+  # Dummy fixture values in tests; the ``fixture-dummy-`` prefix marks every one
+  # of them, and the raw hex string is a claim-token placeholder, not a secret.
+  '''fixture-dummy-''',
+  '''0123456789abcdef0123''',
 ]
