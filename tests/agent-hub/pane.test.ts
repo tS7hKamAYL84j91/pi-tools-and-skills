@@ -50,6 +50,36 @@ it("refresh defaults to ten seconds but accepts an explicit override", () => {
 	expect(JSON.parse(output)).toEqual([10, 2]);
 });
 
+it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", () => {
+	const code = `
+		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
+		console.log(JSON.stringify([
+			parseArgs(["--scope", "lead"]).interval,
+			parseArgs(["--scope", "lead", "--interval", "2"]).interval,
+		]));
+	`;
+	const run = (env: NodeJS.ProcessEnv) =>
+		JSON.parse(
+			execFileSync(process.execPath, ["--input-type=module", "-e", code], {
+				encoding: "utf8",
+				env: { ...process.env, ...env },
+			}),
+		) as number[];
+	expect(run({ PI_AGENTS_PANE_INTERVAL: "5" })).toEqual([5, 2]);
+	expect(run({ PI_AGENTS_PANE_INTERVAL: "" })).toEqual([10, 2]);
+	const bad = spawnSync(
+		process.execPath,
+		[
+			"--input-type=module",
+			"-e",
+			`const { main } = await import(${JSON.stringify(moduleUrl)}); main(["--scope", "lead"]);`,
+		],
+		{ encoding: "utf8", env: { ...process.env, PI_AGENTS_PANE_INTERVAL: "banana" } },
+	);
+	expect(bad.status).toBe(2);
+	expect(bad.stderr).toContain("PI_AGENTS_PANE_INTERVAL must be 0.25–3600 seconds");
+});
+
 function cli(...args: string[]) {
 	return spawnSync(
 		executable,

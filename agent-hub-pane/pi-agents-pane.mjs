@@ -508,11 +508,22 @@ export function render(
 }
 
 const USAGE =
-	"pi-agents-pane --scope <lead> [--registry <dir>] [--interval <seconds>] [--once] [--json] [--no-color]\n";
+	"pi-agents-pane --scope <lead> [--registry <dir>] [--interval <seconds>] [--once] [--json] [--no-color]\n" +
+	"Refresh cadence: --interval beats PI_AGENTS_PANE_INTERVAL (0.25–3600), which beats the 10 s default.\n";
+
+function defaultInterval() {
+	const raw = process.env.PI_AGENTS_PANE_INTERVAL;
+	if (raw === undefined || raw.trim() === "") return 10;
+	const value = Number(raw);
+	if (!Number.isFinite(value))
+		throw new Error("PI_AGENTS_PANE_INTERVAL must be 0.25–3600 seconds");
+	return value;
+}
+
 export function parseArgs(args) {
 	const options = {
 		registry: join(homedir(), ".pi", "agents"),
-		interval: 10,
+		interval: defaultInterval(),
 		once: false,
 		json: false,
 	};
@@ -560,7 +571,8 @@ export function main(args = process.argv.slice(2)) {
 	let options;
 	try {
 		options = parseArgs(args);
-	} catch {
+	} catch (error) {
+		if (error instanceof Error) process.stderr.write(`${error.message}\n`);
 		process.stderr.write(USAGE);
 		process.exitCode = 2;
 		return;
