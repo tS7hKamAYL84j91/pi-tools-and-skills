@@ -405,15 +405,15 @@ it.each([
 		`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width})));`,
 	);
 	expect(JSON.parse(output)).toBe(
-		"demo · hub\nR - quartermaster - running\nW - reviewer - waiting\nq:quit\n",
+		"demo · hub\nrunning - quartermaster\nwaiting - reviewer\nq:quit\n",
 	);
 });
 
 it.each([
-	{ width: 28, line: "R - very-long-na… - running" },
-	{ width: 20, line: "R - very… - running" },
-	{ width: 12, line: "R - very-l…" },
-	{ width: 4, line: "R - " },
+	{ width: 28, line: "running - very-long-name-f…" },
+	{ width: 20, line: "running - very-lon…" },
+	{ width: 12, line: "running - …" },
+	{ width: 4, line: "runn" },
 ])("truncates name before dropping status at $width columns", ({
 	width,
 	line,
@@ -437,7 +437,7 @@ it("retains heartbeat and model in JSON while omitting details from compact rows
 	expect(view.records[0].heartbeat).toBe(1);
 	expect(view.records[0].model).toBe("fixture/model");
 	const output = cli("--once").stdout;
-	expect(output).toContain("W - lead - waiting");
+	expect(output).toContain("waiting - lead - model");
 	expect(output).not.toContain("fixture/model");
 	expect(output).not.toContain("seen ");
 });
@@ -717,7 +717,7 @@ try:
         # Live status must continue updating while the floating agent has focus.
         assert select.select([master],[],[],1.5)[0], 'stopped refreshing while unfocused'
         data=b''
-        until(b'W - helper - waiting')
+        until(b'waiting - helper - model')
         os.unlink(flag)
         data=b''
         until(b'l:lead q:quit')

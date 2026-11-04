@@ -364,16 +364,20 @@ const DARK_COLORS = {
 	muted: [157, 165, 169],
 };
 
+function shortModel(model) {
+	if (!model) return "";
+	const clean = safeText(model).split("/").pop() ?? "";
+	return clean.replace(/:cloud$/, "").replace(/:latest$/, "");
+}
+
 function compactRow(row, width) {
 	const status = safeText(row.status);
-	const glyph = Object.hasOwn(STATUS_SYMBOL, status)
-		? STATUS_SYMBOL[status]
-		: "?";
 	const indent = row.parentId ? "  ↳ " : "";
-	const prefix = `${indent}${glyph} - `;
-	let suffix = ` - ${status}`;
+	const prefix = `${indent}${status} - `;
+	const model = shortModel(row.model);
+	let suffix = model ? ` - ${model}` : "";
 	let room = width - prefix.length - suffix.length;
-	if (room < 2) {
+	if (room < 3) {
 		suffix = "";
 		room = Math.max(0, width - prefix.length);
 	}
