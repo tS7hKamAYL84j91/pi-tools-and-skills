@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
+import { paneChildEnv } from "./helpers.js";
 import { ownPaneIdentity, paneIdentity } from "../../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 
 const url = pathToFileURL(
@@ -26,7 +27,7 @@ const identity = {sessionName:'session',paneId:99};
 const runner = args => {calls.push(args); return JSON.stringify(panes);};
 ${code}`,
 			],
-			{ encoding: "utf8" },
+			{ encoding: "utf8", env: paneChildEnv() },
 		),
 	);
 }

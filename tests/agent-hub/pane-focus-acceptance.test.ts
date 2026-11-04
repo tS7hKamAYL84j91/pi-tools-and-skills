@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { paneChildEnv } from "./helpers.js";
 
 const navigationUrl = pathToFileURL(
 	resolve("agent-hub-pane/pi-agents-pane-navigation.mjs"),
@@ -28,6 +29,7 @@ function probe(code: string): unknown {
 		spawnSync(process.execPath, ["--input-type=module", "-e", code], {
 			encoding: "utf8",
 			timeout: 10_000,
+			env: paneChildEnv(),
 		}).stdout.trim(),
 	);
 }
@@ -115,7 +117,7 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 });
 
 const hasScript =
-	spawnSync("script", ["--version"], { encoding: "utf8" }).status === 0;
+	spawnSync("script", ["--version"], { encoding: "utf8", env: paneChildEnv() }).status === 0;
 
 function startedAt(pid: number): number {
 	const stat = readFileSync("/proc/stat", "utf8");
@@ -215,14 +217,13 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		"focuses the selected helper pane exactly once, and only on enter",
 		() => {
 			const { registry, bin, log } = fixture();
-			const env = {
-				...process.env,
+			const env = paneChildEnv({
 				ZELLIJ: "0",
 				ZELLIJ_SESSION_NAME: "S",
 				ZELLIJ_PANE_ID: "1",
 				ZELLIJ_STUB_LOG: log,
 				PATH: `${bin}:${process.env.PATH ?? ""}`,
-			};
+			});
 			const args = [
 				"--scope",
 				"lead",
@@ -256,15 +257,14 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		const result = runInPty(
 			["--scope", "lead", "--registry", registry, "--interval", "60", "--no-color"],
 			"\x1b[<0;8;3M\x1b[<0;8;3Mq",
-			{
-				...process.env,
+			paneChildEnv({
 				PI_AGENTS_PANE_STARTUP_DELAY: "20",
 				ZELLIJ: "0",
 				ZELLIJ_SESSION_NAME: "S",
 				ZELLIJ_PANE_ID: "1",
 				ZELLIJ_STUB_LOG: log,
 				PATH: `${bin}:${process.env.PATH ?? ""}`,
-			},
+			}),
 		);
 		expect(result.status).toBe(0);
 		expect(calls(log).filter((argv) => argv.includes("focus-pane-id"))).toEqual([
@@ -278,14 +278,13 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 
 	it.skipIf(!hasScript)("never touches zellij for --once or --json", () => {
 		const { registry, bin, log } = fixture();
-		const env = {
-			...process.env,
+		const env = paneChildEnv({
 			ZELLIJ: "0",
 			ZELLIJ_SESSION_NAME: "S",
 			ZELLIJ_PANE_ID: "1",
 			ZELLIJ_STUB_LOG: log,
 			PATH: `${bin}:${process.env.PATH ?? ""}`,
-		};
+		});
 		for (const extra of [["--once"], ["--json"]]) {
 			const result = spawnSync(
 				resolve("agent-hub-pane/pi-agents-pane"),

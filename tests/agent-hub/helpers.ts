@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { vi, type MockedFunction } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
+import { stripChildCredentials } from "../../lib/child-env.js";
 import type { Registry } from "../../extensions/pi-agent-hub/types.js";
 
 export function makeAgentRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
@@ -95,4 +96,22 @@ function makeTheme() {
 
 export function toolText(result: unknown): string {
 	return (result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
+}
+
+/**
+ * Environment for child processes spawned by pane tests.
+ *
+ * The pane suites run inside agent panes whose shell may hold live Matrix
+ * credentials, and they spawn the real panel binary and PTY fixtures as
+ * children. A spawned display/fixture child is not a chat surface and is
+ * never handed a credential (2026-11-01 standard), and mirrors the production
+ * panel argv by carrying PI_MATRIX_DISABLED. Key names only —
+ * stripChildCredentials never inspects values.
+ */
+export function paneChildEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+	return {
+		...stripChildCredentials(process.env),
+		PI_MATRIX_DISABLED: "1",
+		...overrides,
+	};
 }
