@@ -98,7 +98,7 @@ try {
 		helper,
 		`import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {ownPaneIdentity} from ${JSON.stringify(pathToFileURL(join(root, "lib/zellij-pane.mjs")).href)};
+import {ownPaneIdentity} from ${JSON.stringify(pathToFileURL(join(root, "extensions/pi-agent-hub/registry/zellij-pane.mjs")).href)};
 const name=process.argv[2];
 const zellij=ownPaneIdentity({inside:process.env.ZELLIJ,sessionName:process.env.ZELLIJ_SESSION_NAME,paneId:process.env.ZELLIJ_PANE_ID,interactive:Boolean(process.stdin.isTTY&&process.stdout.isTTY)});
 if(!zellij)throw new Error('fixture did not get its own terminal identity');
