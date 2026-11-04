@@ -15,8 +15,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-const executable = resolve("scripts/pi-agents-pane");
-const moduleUrl = pathToFileURL(resolve("scripts/pi-agents-pane.mjs")).href;
+const executable = resolve("agent-hub-pane/pi-agents-pane");
+const moduleUrl = pathToFileURL(resolve("agent-hub-pane/pi-agents-pane.mjs")).href;
 let dir: string;
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "hub-pane-"));

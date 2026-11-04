@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { ownPaneIdentity, paneIdentity } from "../../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 
 const url = pathToFileURL(
-	resolve("scripts/pi-agents-pane-navigation.mjs"),
+	resolve("agent-hub-pane/pi-agents-pane-navigation.mjs"),
 ).href;
 function probe(code: string): unknown {
 	return JSON.parse(

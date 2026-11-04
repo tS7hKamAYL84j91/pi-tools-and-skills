@@ -107,7 +107,7 @@ Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging,spaw
 
 ## Zellij integration
 
-An external agent-list pane ([`scripts/pi-agents-pane`](../../scripts/README.md#agent-hub-side-pane)) can run in **each Zellij tab**. Agent Hub supplies
+An external agent-list pane ([`agent-hub-pane/pi-agents-pane`](../../agent-hub-pane/README.md)) can run in **each Zellij tab**. Agent Hub supplies
 agent locations; the extension itself does not spawn the side pane.
 
 Read the optional `zellij` field in each native agent's local record at

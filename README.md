@@ -48,7 +48,8 @@ Each package README documents its commands, settings, install scope, and limits.
 - [`lib/`](lib/README.md) — shared contracts and infrastructure.
 - `fleet-mcp/` — standalone MCP gateway.
 - `skills/`, `prompts/` — reusable skills and `/` prompt templates.
-- [`scripts/`](scripts/README.md) — setup, maintenance, check scripts, and the Zellij Agent Hub side pane (`pi-agents-pane`).
+- [`agent-hub-pane/`](agent-hub-pane/README.md) — Zellij Agent Hub side pane (`pi-agents-pane`).
+- [`scripts/`](scripts/README.md) — setup, maintenance, and check scripts.
 - [`benchmarks/`](benchmarks/README.md) — evaluation runners.
 - `tests/` — offline unit, contract, and architecture tests.
 - [`docs/`](docs/README.md) — [architecture](docs/architecture.md) and [decisions](docs/decisions.md).

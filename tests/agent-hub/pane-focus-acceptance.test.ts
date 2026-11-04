@@ -19,9 +19,9 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const navigationUrl = pathToFileURL(
-	resolve("scripts/pi-agents-pane-navigation.mjs"),
+	resolve("agent-hub-pane/pi-agents-pane-navigation.mjs"),
 ).href;
-const paneUrl = pathToFileURL(resolve("scripts/pi-agents-pane.mjs")).href;
+const paneUrl = pathToFileURL(resolve("agent-hub-pane/pi-agents-pane.mjs")).href;
 
 function probe(code: string): unknown {
 	return JSON.parse(
@@ -193,7 +193,7 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 				'(sleep 0.5; printf "%s" "$1") | script -qec "$2" /dev/null',
 				"fixture",
 				input,
-				[process.execPath, resolve("scripts/pi-agents-pane"), ...args].join(
+				[process.execPath, resolve("agent-hub-pane/pi-agents-pane"), ...args].join(
 					" ",
 				),
 			],
@@ -263,7 +263,7 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		};
 		for (const extra of [["--once"], ["--json"]]) {
 			const result = spawnSync(
-				resolve("scripts/pi-agents-pane"),
+				resolve("agent-hub-pane/pi-agents-pane"),
 				["--scope", "lead", "--registry", registry, ...extra],
 				{
 					encoding: "utf8",
