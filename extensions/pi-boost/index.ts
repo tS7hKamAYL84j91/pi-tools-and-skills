@@ -96,7 +96,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 
 		pi.registerCommand("boost", {
 			description:
-				"Bare /boost starts or renews the lease; /boost <prompt> boosts with the boost model (default: verbatim prompt; /boost plan for a TODO plan; /boost challenge for anti-rut framing; /boost settings opens the picker)",
+				"Boost a prompt with the boost model (default: verbatim prompt; /boost plan for a TODO plan; /boost challenge for anti-rut framing)",
 			handler: async (args, ctx) => {
 				const rest = args.trim();
 				const leaseMinutes = await resolveLeaseMinutes();
@@ -138,51 +138,11 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				const renewed = renewExpiredLease(lease, Date.now(), leaseMinutes * 60_000);
-				if (renewed) {
+				if (renewExpiredLease(lease, Date.now(), leaseMinutes * 60_000)) {
 					await updateStatus(ctx, lease);
 				}
 
-				if (rest === "") {
-					// Bare /boost is the lease heartbeat (T-1058): create the window when
-					// no lease exists, restart the TTL on a live one; an expired lease
-					// renews above. In-flight turns and failed restorations keep their
-					// existing contracts (ADR-057; reset releases explicitly).
-					if (lease.revertFailed && lease.originalModel) {
-						ctx.ui.notify(
-							"Boost lease is blocked: baseline restore failed. Run /boost reset to retry restoration.",
-							"warning",
-						);
-						await updateStatus(ctx, lease);
-						return;
-					}
-					if (lease.originalModel) {
-						ctx.ui.notify(
-							"Boost already active: a boost turn is in flight; lease window unchanged.",
-							"info",
-						);
-						return;
-					}
-					lease.startedAtMs = Date.now();
-					if (lease.yieldsUsed === 0) {
-						ctx.ui.notify(
-							renewed
-								? `Boost lease renewed: yields cleared, TTL restarts now (lease=${leaseMinutes}m).`
-								: `Boost lease started: TTL begins now (lease=${leaseMinutes}m).`,
-								"info",
-						);
-					} else {
-						const maxYields = await resolveMaxYields();
-						ctx.ui.notify(
-							`Boost lease renewed: TTL restarts now (lease=${leaseMinutes}m · ${lease.yieldsUsed}/${maxYields} yields used).`,
-							"info",
-						);
-					}
-					await updateStatus(ctx, lease);
-					return;
-				}
-
-				if (rest === "settings") {
+				if (rest === "settings" || rest === "") {
 					await openBoostSettingsOverlay(ctx);
 					await updateStatus(ctx, lease);
 					return;
@@ -261,7 +221,8 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				if (lease.yieldsUsed === 0) lease.startedAtMs = Date.now();
+				const previousStartedAtMs = lease.startedAtMs;
+				lease.startedAtMs = Date.now();
 				lease.yieldsUsed++;
 				await updateStatus(ctx, lease);
 
@@ -276,6 +237,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				} catch (error) {
 					// Failed dispatch consumes no yield; restore immediately (ADR-057 §3).
 					lease.yieldsUsed = Math.max(0, lease.yieldsUsed - 1);
+					lease.startedAtMs = previousStartedAtMs;
 					try {
 						await restoreBaseline();
 					} catch {

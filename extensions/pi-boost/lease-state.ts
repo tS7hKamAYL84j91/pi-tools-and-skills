@@ -20,7 +20,7 @@ interface BoostLeaseState {
 	originalModel: BoostCandidateModel | undefined;
 	/** Sticky failure: baseline restore failed; dispatch blocked until reset retries it. */
 	revertFailed: boolean;
-	/** Wall-clock start (first successful yield); leases expire after the configured duration. */
+	/** Wall-clock start (latest accepted yield); leases expire after the configured duration. */
 	startedAtMs: number | undefined;
 }
 

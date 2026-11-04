@@ -47,7 +47,7 @@ export async function openBoostSettingsOverlay(ctx: ExtensionContext): Promise<v
 				label: "Lease time (minutes)",
 				currentValue: String(leaseMinutes),
 				values: ["5", "10", "15", "30", "60"],
-				description: "Measured from the first boost turn; applies to the current lease too. Never interrupts a running turn.",
+				description: "Restarts on every accepted boost turn and applies to the current lease too. Never interrupts a running turn.",
 			},
 		], 8, getSettingsListTheme(), (id, value) => {
 			if (id === "model" || id === "maxYields" || id === "leaseMinutes") {

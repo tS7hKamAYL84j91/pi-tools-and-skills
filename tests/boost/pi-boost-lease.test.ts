@@ -235,6 +235,29 @@ describe("boost in-session model lease", () => {
 		);
 	});
 
+	it("restarts the TTL on each accepted prompt without clearing yields", async () => {
+		vi.useFakeTimers();
+		try {
+			const { pi, settled, command } = createFakePi();
+			createBoostExtension()(pi);
+			const ctx = createFakeContext();
+			await command()("first", ctx);
+			await settled()({}, ctx);
+			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
+			await command()("second", ctx);
+			await settled()({}, ctx);
+			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).not.toContain("expired");
+			expect(lastNotify(ctx)).toContain("2/3 used");
+			vi.setSystemTime(Date.now() + 1);
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).toContain("expired");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("automatically renews an expired lease on the next boost prompt", async () => {
 		vi.useFakeTimers();
 		try {
@@ -260,7 +283,7 @@ describe("boost in-session model lease", () => {
 		}
 	});
 
-	it("bare /boost renews an expired exhausted lease without consuming a yield", async () => {
+	it("bare /boost opens settings on an expired exhausted lease without consuming a yield", async () => {
 		vi.useFakeTimers();
 		try {
 			const { pi, settled, command } = createFakePi();
@@ -272,84 +295,12 @@ describe("boost in-session model lease", () => {
 			}
 			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS);
 			await command()("", ctx);
-			expect(ctx.ui.custom).not.toHaveBeenCalled();
-			expect(lastNotify(ctx)).toContain("Boost lease renewed: yields cleared");
+			expect(ctx.ui.custom).toHaveBeenCalledOnce();
 			expect(await lastStatus(ctx)).toContain("3 left");
 			await command()("run", ctx);
 			expect(await lastStatus(ctx)).toContain("active");
 			expect(await lastStatus(ctx)).toContain("2 left");
 		} finally { vi.useRealTimers(); }
-	});
-
-	it("bare /boost starts a lease window when no lease exists", async () => {
-		const { pi, setModel, settled, command } = createFakePi();
-		createBoostExtension()(pi);
-		const ctx = createFakeContext();
-
-		await command()("", ctx);
-		expect(ctx.ui.custom).not.toHaveBeenCalled();
-		expect(setModel).not.toHaveBeenCalled();
-		expect(lastNotify(ctx)).toContain("Boost lease started");
-		expect(await lastStatus(ctx)).toContain("3 left");
-
-		await command()("run", ctx);
-		expect(await lastStatus(ctx)).toContain("active");
-		expect(await lastStatus(ctx)).toContain("2 left");
-		await settled()({}, ctx);
-	});
-
-	it("bare /boost restarts the TTL on a live lease without consuming a yield", async () => {
-		vi.useFakeTimers();
-		try {
-			const { pi, settled, command } = createFakePi();
-			createBoostExtension()(pi);
-			const ctx = createFakeContext();
-			await command()("run", ctx);
-			await settled()({}, ctx);
-
-			vi.setSystemTime(Date.now() + 9 * 60_000 + 50_000);
-			await command()("", ctx);
-			expect(lastNotify(ctx)).toContain("Boost lease renewed: TTL restarts now");
-			expect(await lastStatus(ctx)).toContain("2 left");
-
-			// Past the original 10-minute expiry but inside the restarted window:
-			vi.setSystemTime(Date.now() + 9 * 60_000 + 59_000);
-			await command()("status", ctx);
-			expect(lastNotify(ctx)).not.toContain("expired");
-			expect(lastNotify(ctx)).toContain("1/3 used");
-		} finally { vi.useRealTimers(); }
-	});
-
-	it("bare /boost leaves an in-flight boost alone", async () => {
-		const { pi, setModel, command } = createFakePi();
-		createBoostExtension()(pi);
-		const ctx = createFakeContext();
-
-		await command()("run", ctx);
-		await command()("", ctx);
-		expect(setModel).toHaveBeenCalledTimes(1);
-		expect(lastNotify(ctx)).toContain("already active");
-		expect(await lastStatus(ctx)).toContain("active");
-	});
-
-	it("bare /boost points a blocked lease at reset without retrying", async () => {
-		const setModel = vi
-			.fn<(model: unknown) => Promise<boolean>>()
-			.mockResolvedValueOnce(true) // boost switch
-			.mockRejectedValueOnce(new Error("restore boom")); // settled restore
-		const { pi, settled, command } = createFakePi();
-		(pi as unknown as { setModel: typeof setModel }).setModel = setModel;
-		createBoostExtension()(pi);
-		const ctx = createFakeContext();
-
-		await command()("run", ctx);
-		await settled()({}, ctx);
-		expect(await lastStatus(ctx)).toContain("blocked");
-
-		await command()("", ctx);
-		expect(setModel).toHaveBeenCalledTimes(2);
-		expect(lastNotify(ctx)).toContain("Run /boost reset to retry restoration");
-		expect(await lastStatus(ctx)).toContain("blocked");
 	});
 
 	it("does not renew or interrupt an in-flight boost after expiry", async () => {
@@ -497,6 +448,55 @@ describe("boost in-session model lease", () => {
 		expect(await lastStatus(ctx)).toContain("off");
 		await command()("run after reset", ctx);
 		expect(await lastStatus(ctx)).toContain("active");
+	});
+
+	it("does not restart the TTL when a boost is denied", async () => {
+		vi.useFakeTimers();
+		try {
+			const { pi, settled, command } = createFakePi();
+			createBoostExtension()(pi);
+			const ctx = createFakeContext();
+			for (let index = 0; index < 3; index++) {
+				await command()("run", ctx);
+				await settled()({}, ctx);
+			}
+			expect(await lastStatus(ctx)).toContain("0 left");
+
+			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
+			await command()("denied", ctx);
+			expect(lastNotify(ctx)).toContain("lease exhausted");
+			vi.setSystemTime(Date.now() + 1);
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).toContain("expired");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("restores the previous TTL when a dispatch fails", async () => {
+		vi.useFakeTimers();
+		try {
+			const { pi, settled, sendUserMessage, command } = createFakePi();
+			createBoostExtension()(pi);
+			const ctx = createFakeContext();
+
+			await command()("first", ctx);
+			await settled()({}, ctx);
+			vi.setSystemTime(Date.now() + 5 * 60_000);
+			sendUserMessage.mockImplementationOnce(() => {
+				throw new Error("send boom");
+			});
+			await command()("second", ctx);
+			expect(lastNotify(ctx)).toContain("Boost failed to dispatch");
+
+			// The refund rolls the TTL back, so the lease still expires on the
+			// original clock rather than 5 minutes later.
+			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 5 * 60_000 + 1);
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).toContain("expired");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("refunds the yield and restores immediately when dispatch throws", async () => {
