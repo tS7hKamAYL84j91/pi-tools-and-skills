@@ -16,6 +16,7 @@ structure and [Semantic Versioning](https://semver.org/spec/v2.0.0.html) apply.
 
 ### Added
 
+- Agent Hub publishes optional `zellij: { sessionName, paneId }` agent-location hints for external UIs, including an agent-list pane per tab. Headless/RPC children omit them; hints are advisory, not authority. See [Zellij integration](extensions/pi-agent-hub/README.md#zellij-integration) for the record format and consumer requirements.
 - Local direct-vs-Goal ARM64 benchmark (frozen official-test judging, authored-test mutation checks, ten-problem continuation bundle); dry-run default, never submits to Exercism.
 - `fleet-mcp` bounded v1 Fleet MCP server (`fleet-mcp/index.ts`, `FLEET_MCP_CONFIG` JSON): tools `fleet_register_external`, `fleet_agents`, `fleet_send`, `fleet_inbox`, `fleet_ack`, `fleet_unregister_external`, `fleet_status` over Agent Hub external registrar + Maildir; stdio default, loopback-only bearer HTTP (>=16 chars), absolute-root/bounded-limit/single-principal validation, atomic idempotent receipts (`0600`/`0700`), redacted errors; deployment/Tailscale/multi-principal out of scope.
 - `spawn_agent` accepts an optional `capsule` — a compressed session handoff rendered into the child system prompt as an explicitly-labelled, secret-redacted, 4,000-char-bounded background block; `brief.context` stays the task-scoped field.

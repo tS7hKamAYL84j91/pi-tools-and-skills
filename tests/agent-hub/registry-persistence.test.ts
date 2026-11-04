@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
-import * as paneMetadata from "../../lib/zellij-pane.mjs";
+import * as paneMetadata from "../../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 import { makeAgentRecord, makeMockContext } from "./helpers.js";
 
 const paths = vi.hoisted(() => ({ registry: "" }));

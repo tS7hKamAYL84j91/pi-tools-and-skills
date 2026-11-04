@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ownPaneIdentity, paneIdentity } from "../../lib/zellij-pane.mjs";
+import { ownPaneIdentity, paneIdentity } from "../../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 
 describe("paneIdentity", () => {
 	it.each(["0", "17", "terminal_17"])("normalizes %s", (paneId) => {

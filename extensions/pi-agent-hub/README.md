@@ -1,5 +1,7 @@
 # Pi Agent Hub Extension
 
+![Integrated Agent Hub: registry, messaging, spawning, and peer workflows](../../docs/images/pi-agent-hub.jpeg)
+
 Multi-agent visibility, messaging, spawning, health checks, and lifecycle controls for pi sessions.
 
 ## Rename compatibility
@@ -102,6 +104,36 @@ Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging,spaw
 
 - Acts as a foundational registry used by `pi-matrix` for channel registration.
 - Team workflows are owned by the independently installable `pi-team-workflows` extension; Agent Hub exposes no Team Workflows registration surface.
+
+## Zellij integration
+
+An external agent-list pane can run in **each Zellij tab**. Agent Hub supplies
+agent locations; it does not create that pane or implement its navigation UI.
+
+Read the optional `zellij` field in each native agent's local record at
+`~/.pi/agents/<id>.json`:
+
+```json
+{ "zellij": { "sessionName": "office", "paneId": 17 } }
+```
+
+This identifies the **agent's terminal pane**, not the agent-list pane. Match
+it against Zellij's current pane/tab inventory to show agents for a particular
+tab; the record does not contain a tab ID. Multiple list panes can read the
+same registry. Ignore non-agent files and tolerate missing or unreadable records.
+
+Agent Hub refreshes the hint on registration and heartbeats. It requires valid
+`ZELLIJ`, `ZELLIJ_SESSION_NAME` and `ZELLIJ_PANE_ID` values, TTY stdin/stdout,
+and no `parentId`. Headless/RPC children omit it; a missing hint means navigation
+is unavailable, not that the agent is offline. Reload/restart older Pi sessions
+to load this capability; absence alone does not prove they are running old code.
+
+For consumers: validate `sessionName` against
+`^[a-zA-Z0-9][a-zA-Z0-9._ -]{0,127}$` and `paneId` as a non-negative safe integer.
+Recheck the target in Zellij before navigation: records can be stale and pane
+IDs reused. Pass values as separate process arguments, never shell text. These
+hints grant no permissions or ownership. The registry is local operational
+state, not a versioned remote API.
 
 ## State and UI
 

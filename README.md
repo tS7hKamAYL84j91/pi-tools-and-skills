@@ -1,6 +1,6 @@
 # pi-tools-and-skills
 
-![pi-agent-hub](docs/images/pi-agent-hub.jpeg)
+![Layered project context: Fleet orchestration, Agent Hub, extensions, and prompt surfaces](docs/images/project-context-hub-prompt.jpeg)
 
 Local-first extensions, skills, prompts, and shared libraries for
 [Pi](https://github.com/earendil-works/pi).

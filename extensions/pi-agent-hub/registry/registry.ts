@@ -36,7 +36,7 @@ import {
 import { buildRecord, nameTaken, pickActiveName } from "./record-utils.js";
 import { readVolatileRegistryRecords } from "./registry-reader.js";
 import { flushRecord } from "./registry-persistence.js";
-import { ownPaneIdentity } from '../../../lib/zellij-pane.mjs';
+import { ownPaneIdentity } from "./zellij-pane.mjs";
 
 export { classifyRecord } from "./registry-reader.js";
 
