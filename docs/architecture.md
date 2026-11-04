@@ -16,6 +16,7 @@ records decisions. Superseded diagrams and completed reviews remain in Git histo
 | [Boost](../extensions/pi-boost/README.md) | In-session lease and model restoration | Failed restoration blocks further dispatch; no fusion engine |
 | [Matrix](../extensions/pi-matrix/README.md) | Human-facing transport and attachment cache | Trusted-sender filtering and bounded media handling; input remains untrusted |
 | [File Watch](../extensions/pi-file-watch/README.md) | Explicit watcher configuration and runtime subscriptions | Validated path/symlink policy; no implicit workspace sweep |
+| [Overview](../extensions/pi-overview/README.md) | Point-in-time `/overview` snapshot (git, session, model, decision count) | Read-only; no background watcher, state writes or child processes |
 | [Ollama Models](../extensions/pi-ollama-models/README.md) | Only the Ollama entry in Pi's model registry | Operator-selected executable; caller command/path overrides are inert |
 | [Fleet MCP](../fleet-mcp/README.md) | MCP receipts and external-client state | Gateway authorization; backend adapts existing registrar/transport |
 
@@ -48,6 +49,8 @@ flowchart TD
   pure benchmark helpers; live provider calls require explicit opt-in.
 - Cross-extension state access uses documented APIs, tools or session events,
   not parsing another extension's private state files.
+- Spawned helpers and team-member children receive a sanitized environment
+  (`lib/child-env.ts`) that strips Matrix credentials by default.
 
 ## Persistence and confinement
 
@@ -101,8 +104,5 @@ See Goal's [source intent](../extensions/pi-goal/src/md/README.md) and decisions
 | `tests/evals/` | Offline fixture, fake-RPC and evaluation-contract regressions |
 | [`benchmarks/`](../benchmarks/README.md) | Explicit live experiments; not CI proof or operational completion |
 
-Line count, approximate complexity, parameter count, cohesion and historical
-co-change are inspection aids—not pass/fail architecture contracts. Removing
-those quotas does not remove dependency, persistence, permission or verification
-gates. New checks should fail on a concrete forbidden behavior, not require
-artificial file splits or an unrelated reduction whenever a hotspot changes.
+Architecture checks enforce concrete dependency, persistence, permission and
+verification rules — not line-count or complexity quotas.
