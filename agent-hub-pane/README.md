@@ -23,7 +23,7 @@ Footer: `n:new c:close l:lead q:quit` (`n+ c- l:lead q:quit` below 27 columns; r
 
 - **Select row**: `j` / `k` or Up / Down arrows.
 - **Focus agent**: `Enter` or left mouse click. Uniquely targets the agent's pane in this tab/session. Reveals/raises hidden floating panes; focusing a tiled pane hides floating panes while agents continue running.
-- **Create agent**: `n`, enter a name, press `Enter` to preview, then `Enter` or `y` to confirm. Starts an interactive `pi --name <name>` floating pane in this tab and project directory using Pi's default configured model. Matrix credentials are removed.
+- **Create agent**: `n`, enter a name, press `Enter` to preview, then `Enter` or `y` to confirm. Starts an interactive `pi --name <name>` floating pane in this tab and project directory using Pi's default configured model. Known Matrix credential environment variables are removed and Matrix is disabled. Custom credential variable names may still be inherited from the Zellij server; do not expose secrets there.
 - **Close pane**: `c`, verify pane number in prompt, press `Enter` or `y` within 5 seconds to confirm (`n` cancels). Performs a Zellij pane close.
 - **Designate lead**: `l` sets the selected agent as the panel-local lead until exit.
 - **Quit**: `q` or `Ctrl-C` exits and restores terminal state.

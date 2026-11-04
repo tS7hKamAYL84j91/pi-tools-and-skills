@@ -278,6 +278,8 @@ export function createNavigator(identity, run = runZellij) {
 				"-u",
 				"MATRIX_ACCESS_TOKEN",
 				"-u",
+				"MATRIX_BOT_TOKEN",
+				"-u",
 				"MATRIX_BOT_PASSWORD",
 				"-u",
 				"MATRIX_RECOVERY_PASSPHRASE",

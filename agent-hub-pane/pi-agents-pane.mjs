@@ -401,7 +401,7 @@ function rowLines(row, width) {
 	const singleLine = `${title} │ ${details}`;
 
 	// When singleLine doesn't fit, drop to 2 lines unless the width is too narrow (< 16):
-	if (singleLine.length <= width || width < 16) {
+	if (clip(singleLine, width) === singleLine || width < 16) {
 		return [clip(singleLine, width)];
 	}
 
@@ -416,6 +416,22 @@ function rowLines(row, width) {
 
 export function compactRow(row, width) {
 	return rowLines(row, width)[0];
+}
+
+export function pageRows(rows, selectedId, offset, capacity, width) {
+	const selected = rows.findIndex((row) => row.id === selectedId);
+	if (selected >= 0 && selected < offset) offset = selected;
+	const countLines = (start, end) => rows.slice(start, end).reduce((sum, row) => sum + rowLines(row, width).length, 0);
+	while (selected >= offset && offset < selected && countLines(offset, selected + 1) > capacity) offset++;
+	const page = [];
+	const lines = [];
+	for (const row of rows.slice(offset)) {
+		const count = rowLines(row, width).length;
+		if (lines.length + count > capacity) break;
+		page.push(row);
+		for (let n = 0; n < count; n++) lines.push(row.id);
+	}
+	return { offset, page, lines };
 }
 
 export function render(
@@ -594,7 +610,7 @@ export function main(args = process.argv.slice(2)) {
 		offset = 0,
 		notice = "",
 		view,
-		visibleRows = 0,
+		visibleLines = [],
 		checking = false,
 		focusGeneration = 0,
 		context = null,
@@ -652,8 +668,11 @@ export function main(args = process.argv.slice(2)) {
 		if (index < offset) offset = index;
 		if (capacity > 0 && index >= offset + capacity)
 			offset = index - capacity + 1;
-		const page = rows.slice(offset, offset + capacity);
-		visibleRows = page.length;
+		const width = Math.max(1, (process.stdout.columns || 80) - 1);
+		const paging = pageRows(rows, selectedId, offset, capacity, width);
+		offset = paging.offset;
+		const page = paging.page;
+		visibleLines = paging.lines;
 		if (tty) process.stdout.write("\x1b[H\x1b[2J");
 		process.stdout.write(
 			render(
@@ -842,6 +861,7 @@ export function main(args = process.argv.slice(2)) {
 			if (!enabled || !view?.records?.length) continue;
 			let index = view.records.findIndex((row) => row.id === selectedId);
 			if (event.type === "close") {
+				if (!visibleLines.includes(selectedId)) continue;
 				const row = view.records.find((item) => item.id === selectedId);
 				if (!row) {
 					notice = "selected agent left the registry";
@@ -891,6 +911,12 @@ export function main(args = process.argv.slice(2)) {
 					(raw === "\r" || raw === "\n"))
 			) {
 				if (!confirmation) continue;
+				if (!visibleLines.includes(confirmation.id)) {
+					confirmation = undefined;
+					notice = "Close cancelled: agent not visible";
+					draw();
+					continue;
+				}
 				if (confirmation !== confirmationAtStart) {
 					confirmation = undefined;
 					notice = "Press c then y separately";
@@ -917,6 +943,7 @@ export function main(args = process.argv.slice(2)) {
 				}
 				draw();
 			} else if (event.type === "lead") {
+				if (!visibleLines.includes(selectedId)) continue;
 				confirmation = undefined;
 				const row = view.records.find((item) => item.id === selectedId);
 				if (!row) {
@@ -943,12 +970,12 @@ export function main(args = process.argv.slice(2)) {
 						event.x < 1 ||
 						event.x >= (process.stdout.columns || 80) ||
 						event.y < 2 ||
-						event.y >= 2 + visibleRows
+						event.y >= 2 + visibleLines.length
 					)
 						continue;
-					index = offset + event.y - 2;
-					selectedId = view.records[index]?.id;
+					selectedId = visibleLines[event.y - 2];
 				}
+				if (!visibleLines.includes(selectedId)) continue;
 				const fresh = snapshot(
 					options.registry,
 					options.scope,

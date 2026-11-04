@@ -390,6 +390,25 @@ it.each([
 	expect(row.slice(`\x1b[38;2;${rgb}m`.length, -4)).toBe(plain.split("\n")[1]);
 });
 
+it("keeps selected two-line cards visible and maps both lines to the same agent", () => {
+	const rows = Array.from({ length: 12 }, (_, i) => ({ id: `agent-${i}`, name: `agent-${i}-with-a-long-name`, status: "waiting", model: "provider/a-long-model" }));
+	const results = JSON.parse(evaluate(`
+		const rows = ${JSON.stringify(rows)};
+		let offset = 0;
+		const pages = rows.map(row => {
+			const page = pane.pageRows(rows, row.id, offset, 7, 28);
+			offset = page.offset;
+			return { selected: row.id, lines: page.lines };
+		});
+		process.stdout.write(JSON.stringify(pages));
+	`)) as { selected: string; lines: string[] }[];
+	for (const { selected, lines } of results) {
+		expect(lines.length).toBeLessThanOrEqual(7);
+		expect(lines.filter((id) => id === selected)).toHaveLength(2);
+		for (let i = 0; i < lines.length; i += 2) expect(lines[i]).toBe(lines[i + 1]);
+	}
+});
+
 it("uses the unknown symbol for inherited property names", () => {
 	const view = { scope: "demo", leadState: "resolved", records: [{ name: "agent", status: "constructor" }] };
 	const output = JSON.parse(evaluate(

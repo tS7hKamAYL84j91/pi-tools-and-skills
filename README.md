@@ -40,7 +40,13 @@ Each package README documents its commands, settings, install scope, and limits.
 | [File Watch](extensions/pi-file-watch/README.md)         | Explicit, bounded file notifications           |
 | [Overview](extensions/pi-overview/README.md)             | Read-only project overview (`/overview`)       |
 | [Ollama Models](extensions/pi-ollama-models/README.md)   | Local Ollama model discovery                   |
-| [Fleet MCP](fleet-mcp/README.md)                         | Standalone MCP adapter                         |
+
+## Standalone tools
+
+| Tool | Responsibility |
+| --- | --- |
+| [Fleet MCP](fleet-mcp/README.md) | Standalone MCP adapter |
+| [Agent Hub pane](agent-hub-pane/README.md) | Zellij side pane for Agent Hub |
 
 ## Layout
 
