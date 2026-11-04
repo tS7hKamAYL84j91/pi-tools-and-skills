@@ -1,4 +1,3 @@
 #!/usr/bin/env node
-import "../agent-hub-pane/pi-agents-pane.mjs";
 import { main } from "../agent-hub-pane/pi-agents-pane.mjs";
 main(process.argv.slice(2));

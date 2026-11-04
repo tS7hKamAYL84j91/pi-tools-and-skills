@@ -120,7 +120,7 @@ save();setInterval(save,1000);
 		join(dir, "layout.kdl"),
 		`layout {
  tab name="fixture" {
-  pane name="hub-view" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "scripts/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"; }
+  pane name="hub-view" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "agent-hub-pane/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"; }
   floating_panes {
    pane name="alpha" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "alpha"; width "60%"; height "60%"; x "30%"; y "20%"; }
    pane name="beta" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "beta"; width "60%"; height "60%"; x "30%"; y "20%"; }

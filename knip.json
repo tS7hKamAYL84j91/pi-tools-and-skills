@@ -5,6 +5,7 @@
 		"lib/*.ts",
 		"lib/**/*.ts",
 		"scripts/*.mjs",
+		"agent-hub-pane/*.mjs",
 		"benchmarks/*.mjs",
 		"fleet-mcp/index.ts"
 	],
