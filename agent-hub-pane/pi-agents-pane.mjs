@@ -370,22 +370,53 @@ function shortModel(model) {
 	return clean.replace(/:cloud$/, "").replace(/:latest$/, "");
 }
 
-function compactRow(row, width) {
+function formatAge(startedAt) {
+	if (!Number.isFinite(startedAt) || startedAt <= 0) return "";
+	const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+	if (secs < 60) return `${secs}s`;
+	const mins = Math.round(secs / 60);
+	if (mins < 60) return `${mins}m`;
+	const hours = Math.round(mins / 60);
+	return `${hours}h`;
+}
+
+function rowLines(row, width) {
 	const status = safeText(row.status);
+	const glyph = Object.hasOwn(STATUS_SYMBOL, status) ? STATUS_SYMBOL[status] : "?";
 	const indent = row.parentId ? "  ↳ " : "";
-	const prefix = `${indent}${status} - `;
-	const model = shortModel(row.model);
-	let suffix = model ? ` - ${model}` : "";
-	let room = width - prefix.length - suffix.length;
-	if (room < 3) {
-		suffix = "";
-		room = Math.max(0, width - prefix.length);
-	}
 	const name = safeText(row.name);
-	const clipped = clip(name, room);
-	const display =
-		clipped === name ? name : room >= 2 ? `${clip(name, room - 2)}…` : clipped;
-	return `${prefix}${display}${suffix}`;
+	const model = shortModel(row.model);
+	const age = formatAge(row.navigation?.startedAt);
+
+	// Line 1 header: "<indent><glyph> <name>"
+	const titlePrefix = `${indent}${glyph} `;
+	const title = `${titlePrefix}${name}`;
+
+	// Details line elements: "<status> │ <model> │ up <age>"
+	const detailsParts = [status];
+	if (model) detailsParts.push(model);
+	if (age) detailsParts.push(`up ${age}`);
+	const details = detailsParts.join(" │ ");
+
+	// Single-line candidate: "<indent><glyph> <name> │ <status> │ <model> │ up <age>"
+	const singleLine = `${title} │ ${details}`;
+
+	// When singleLine doesn't fit, drop to 2 lines unless the width is too narrow (< 16):
+	if (singleLine.length <= width || width < 16) {
+		return [clip(singleLine, width)];
+	}
+
+	// Otherwise, drop to 2 lines without truncating words:
+	// Line 1: "<indent><glyph> <name>"
+	// Line 2: "  <indent><status> │ <model> │ up <age>"
+	const line1 = clip(title, width);
+	const line2Indent = `${indent}  `;
+	const line2 = clip(`${line2Indent}${details}`, width);
+	return [line1, line2];
+}
+
+export function compactRow(row, width) {
+	return rowLines(row, width)[0];
 }
 
 export function render(
@@ -397,65 +428,62 @@ export function render(
 ) {
 	const lines = [];
 	const roles = new Map([[0, view.error ? "error" : "accent"]]);
-	if (view.error) lines.push(`${view.error}: ${view.path}`);
+	if (view.error) lines.push({ rowId: null, text: `${view.error}: ${view.path}` });
 	else {
 		const header = interaction.chosenLeadName
 			? `lead: ${safeText(interaction.chosenLeadName)}`
 			: `${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`;
-		lines.push(
+		const headerText =
 			clip(header, width) === header
 				? header
 				: view.leadState !== "resolved"
 					? `hub (${view.leadState})`
-					: `${clip(view.scope, Math.max(0, width - 7))} · hub`,
-		);
+					: `${clip(view.scope, Math.max(0, width - 7))} · hub`;
+		lines.push({ rowId: null, text: headerText });
 		for (const row of view.records.slice(interaction.offset ?? 0)) {
-			roles.set(
-				lines.length,
-				Object.hasOwn(STATUS_COLOR, row.status)
-					? STATUS_COLOR[row.status]
-					: "muted",
-			);
-			lines.push(compactRow(row, width));
+			const itemLines = rowLines(row, width);
+			for (let i = 0; i < itemLines.length; i++) {
+				const isTitle = i === 0;
+				roles.set(
+					lines.length,
+					isTitle && Object.hasOwn(STATUS_COLOR, row.status)
+						? STATUS_COLOR[row.status]
+						: "muted",
+				);
+				lines.push({ rowId: row.id, text: itemLines[i] });
+			}
 		}
 		if (view.skipped || view.truncated)
-			lines.push(
-				`skipped ${view.skipped}${view.truncated ? " / scan capped" : ""}`,
-			);
+			lines.push({ rowId: null, text: `skipped ${view.skipped}${view.truncated ? " / scan capped" : ""}` });
 	}
 	const available = Math.max(1, height - 1 - (interaction.notice ? 1 : 0));
 	const shown = lines.slice(0, available);
 	if (lines.length > available) {
-		shown[available - 1] = `... ${lines.length - available + 1} lines hidden`;
+		shown[available - 1] = { rowId: null, text: `... ${lines.length - available + 1} lines hidden` };
 		roles.set(available - 1, "dim");
 	}
 	if (interaction.notice && shown.length < height - 1) {
 		roles.set(shown.length, "warning");
-		shown.push(safeText(interaction.notice));
+		shown.push({ rowId: null, text: safeText(interaction.notice) });
 	}
 	roles.set(shown.length, "dim");
-	shown.push(
-		interaction.enabled
+	shown.push({
+		rowId: null,
+		text: interaction.enabled
 			? width >= 27
 				? "n:new c:close l:lead q:quit"
 				: "n+ c- l:lead q:quit"
 			: "q:quit",
-	);
+	});
 	return `${shown
 		.slice(0, height)
-		.map((line, index) => {
-			const text = clip(line, width);
+		.map((entry, index) => {
+			const rawText = typeof entry === "string" ? entry : entry.text;
+			const text = clip(rawText, width);
 			const selected =
 				interaction.enabled &&
-				index > 0 &&
-				index < shown.length - 1 &&
-				view.records?.[(interaction.offset ?? 0) + index - 1]?.id ===
-					interaction.selectedId &&
-				line ===
-					compactRow(
-						view.records[(interaction.offset ?? 0) + index - 1],
-						width,
-					);
+				entry.rowId &&
+				entry.rowId === interaction.selectedId;
 			const decorated = color
 				? `\x1b[38;2;${DARK_COLORS[roles.get(index) ?? "dim"].join(";")}m${text}\x1b[0m`
 				: text;
