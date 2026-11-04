@@ -1,8 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
 import { paneIdentity } from "../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 
-/** Fixed Zellij queries and focus only; never a shell, input injection, or pane creation. */
+/** Fixed Zellij queries/actions only; never a shell or input injection. */
 function runZellij(args) {
 	return execFileSync("zellij", args, {
 		encoding: "utf8",
@@ -23,6 +23,74 @@ function recordPane(row) {
 }
 
 export function createNavigator(identity, run = runZellij) {
+	const inspectAsync = () => {
+		if (!identity) return Promise.resolve(null);
+		const call = (args) =>
+			new Promise((resolveCall, reject) =>
+				execFile(
+					"zellij",
+					args,
+					{ encoding: "utf8", timeout: 1000, maxBuffer: 512 * 1024 },
+					(error, stdout, stderr) =>
+						error
+							? reject(
+									Object.assign(error, { status: error.code, stdout, stderr }),
+								)
+							: resolveCall(stdout),
+				),
+			);
+		const args = ["--session", identity.sessionName, "action"];
+		return call([...args, "list-panes", "--json", "--all"])
+			.then(async (output) => {
+				const panes = JSON.parse(output);
+				if (!Array.isArray(panes) || panes.length > 4096) return null;
+				const own = panes.filter(
+					(p) => p && p.is_plugin === false && p.id === identity.paneId,
+				);
+				if (
+					own.length !== 1 ||
+					!Number.isSafeInteger(own[0].tab_id) ||
+					own[0].tab_id < 0
+				)
+					return null;
+				const view = { ...own[0] };
+				if (
+					panes.some(
+						(p) =>
+							p?.tab_id === view.tab_id &&
+							p.is_plugin === false &&
+							p.is_floating === true,
+					)
+				) {
+					let visible;
+					try {
+						const answer = (
+							await call([
+								...args,
+								"are-floating-panes-visible",
+								"--tab-id",
+								String(view.tab_id),
+							])
+						).trim();
+						if (answer !== "true" && answer !== "false") return null;
+						visible = answer === "true";
+					} catch (error) {
+						if (
+							(error.status === 2 &&
+								error.stdout === "" &&
+								error.stderr?.trim() === "false") ||
+							(error.status === 1 && error.stdout?.trim() === "false")
+						)
+							visible = false;
+						else return null;
+					}
+					view.is_focused =
+						view.is_focused === true && Boolean(view.is_floating) === visible;
+				}
+				return { panes, own: view };
+			})
+			.catch(() => null);
+	};
 	const inspect = () => {
 		if (!identity) return null;
 		try {
@@ -88,7 +156,7 @@ export function createNavigator(identity, run = runZellij) {
 			return null;
 		}
 	};
-	const focus = (row, rows, now = Date.now()) => {
+	const act = (row, rows, action, now = Date.now()) => {
 		const context = inspect();
 		if (!context || context.own.is_focused !== true)
 			return "navigation unavailable";
@@ -137,21 +205,114 @@ export function createNavigator(identity, run = runZellij) {
 			resolve(nav.cwd) !== resolve(panes[0].pane_cwd)
 		)
 			return "pane identity changed";
+		if (action === "verify") return null;
 		try {
 			// Zellij 0.44.1 focus-pane-id also reveals the floating layer and raises this target.
 			run([
 				"--session",
 				identity.sessionName,
 				"action",
-				"focus-pane-id",
+				...(action === "close"
+					? ["close-pane", "--pane-id"]
+					: ["focus-pane-id"]),
 				`terminal_${target.paneId}`,
 			]);
+			if (action === "close") {
+				const after = inspect();
+				if (
+					!after ||
+					after.panes.some(
+						(p) => p && p.is_plugin === false && p.id === target.paneId,
+					)
+				)
+					return "Close not verified";
+			}
 			return null;
 		} catch {
-			return "pane gone or focus failed";
+			return action === "close"
+				? "pane gone or close failed"
+				: "pane gone or focus failed";
 		}
 	};
-	return { inspect, focus };
+	const create = (name, scope, lead, rows) => {
+		if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name) || name.includes(".."))
+			return "Invalid agent name";
+		if (
+			!/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(scope) ||
+			scope.includes("..")
+		)
+			return "Hub scope cannot host agents";
+		if (
+			name.toLowerCase() === scope ||
+			rows.some((row) => row.name.toLowerCase() === name.toLowerCase())
+		)
+			return "Name already in use";
+		const error = act(lead, rows, "verify");
+		if (error) return error;
+		const context = inspect();
+		if (!context || context.own.is_focused !== true)
+			return "navigation unavailable";
+		if (
+			context.panes.filter(
+				(p) => p?.tab_id === context.own.tab_id && p.is_plugin === false,
+			).length >= 32
+		)
+			return "Tab pane limit reached";
+		const cwd = lead.navigation.cwd;
+		try {
+			const result = run([
+				"--session",
+				identity.sessionName,
+				"action",
+				"new-pane",
+				"--tab-id",
+				String(context.own.tab_id),
+				"--floating",
+				"--cwd",
+				cwd,
+				"--name",
+				name,
+				"--",
+				"env",
+				"-u",
+				"MATRIX_ACCESS_TOKEN",
+				"-u",
+				"MATRIX_BOT_PASSWORD",
+				"-u",
+				"MATRIX_RECOVERY_PASSPHRASE",
+				"-u",
+				"PI_PANOPTICON_PARENT_ID",
+				"-u",
+				"PI_CODING_AGENT_SESSION_DIR",
+				"PI_MATRIX_DISABLED=1",
+				`PI_PANOPTICON_NAMESPACE=${scope}`,
+				`PI_PANOPTICON_SPAWN_NAME=${name}`,
+				"pi",
+				"--name",
+				name,
+			]);
+			const match = /^terminal_(\d+)\s*$/.exec(result);
+			if (!match) return "Agent launch uncertain; check panes";
+			const after = inspect();
+			const created = after?.panes.filter(
+				(p) => p?.is_plugin === false && p.id === Number(match[1]),
+			);
+			return created?.length === 1 &&
+				created[0].tab_id === context.own.tab_id &&
+				created[0].is_floating === true
+				? null
+				: "Agent launch uncertain; check panes";
+		} catch {
+			return "Agent launch uncertain; check panes";
+		}
+	};
+	return {
+		inspect,
+		inspectAsync,
+		create,
+		focus: (row, rows, now) => act(row, rows, "focus", now),
+		close: (row, rows, now) => act(row, rows, "close", now),
+	};
 }
 
 /** Bounded incremental decoder. Paste and control-string payloads never become actions. */
@@ -239,7 +400,11 @@ export function inputParser() {
 				sequence = "";
 				continue;
 			}
-			if (char === "q") events.push({ type: "quit" });
+			if (char === "c") events.push({ type: "close" });
+			else if (char === "y") events.push({ type: "confirm" });
+			else if (char === "n") events.push({ type: "cancel" });
+			else if (char === "l") events.push({ type: "lead" });
+			else if (char === "q") events.push({ type: "quit" });
 			else if (char === "j" || char === "k")
 				events.push({ type: "move", delta: char === "j" ? 1 : -1 });
 			else if (char === "\r" || char === "\n") events.push({ type: "focus" });

@@ -41,7 +41,7 @@ export function clip(value, width) {
 	return result;
 }
 
-function recordFile(path) {
+function readBoundedJson(path) {
 	let fd;
 	try {
 		fd = openSync(
@@ -53,17 +53,63 @@ function recordFile(path) {
 		const buffer = Buffer.alloc(stat.size + 1);
 		const count = readSync(fd, buffer, 0, buffer.length, 0);
 		if (count > MAX_RECORD) return null;
-		const value = JSON.parse(buffer.subarray(0, count).toString("utf8"));
-		return value &&
-			typeof value.id === "string" &&
-			Number.isSafeInteger(value.pid) &&
-			value.pid > 0
-			? value
-			: null;
+		return JSON.parse(buffer.subarray(0, count).toString("utf8"));
 	} catch {
 		return null;
 	} finally {
 		if (fd !== undefined) closeSync(fd);
+	}
+}
+
+function recordFile(path) {
+	const value = readBoundedJson(path);
+	return value &&
+		typeof value.id === "string" &&
+		Number.isSafeInteger(value.pid) &&
+		value.pid > 0
+		? value
+		: null;
+}
+
+// Check all known claims, not just rows shown in this panel. Unknown/incomplete
+// scans fail closed; Hub remains authoritative and also enforces name ownership.
+export function nameAvailable(registry, name) {
+	let dir;
+	try {
+		dir = opendirSync(registry);
+		let count = 0;
+		for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
+			if (++count > MAX_FILES) return false;
+			if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+			if (entry.name === "namespace-owners.json") {
+				const journal = readBoundedJson(join(registry, entry.name));
+				if (!journal || !Array.isArray(journal.owners)) return false;
+				if (
+					journal.owners.some(
+						(owner) =>
+							typeof owner?.name === "string" &&
+							owner.name.toLowerCase() === name.toLowerCase(),
+					)
+				)
+					return false;
+				continue;
+			}
+			const row = recordFile(join(registry, entry.name));
+			if (!row || `${row.id}.json` !== entry.name) return false;
+			if (
+				[row.name, row.declared_name, row.spawn_name, row.namespace].some(
+					(value) =>
+						typeof value === "string" &&
+						value.toLowerCase() === name.toLowerCase(),
+				)
+			)
+				return false;
+		}
+		return true;
+	} catch {
+		return false;
+	} finally {
+		if (dir) dir.closeSync();
 	}
 }
 
@@ -148,7 +194,8 @@ export function snapshot(registry, scope, state, navigation = false) {
 				(record.declared_name == null
 					? record.name === scope
 					: record.declared_name === scope);
-			if (!lead && record.namespace !== scope) continue;
+			// Hub normalizes namespace anchors to lowercase; declared lead names retain case.
+			if (!lead && record.namespace !== scope.toLowerCase()) continue;
 			records.push({
 				id: safeText(record.id),
 				name: safeText(record.name),
@@ -173,6 +220,7 @@ export function snapshot(registry, scope, state, navigation = false) {
 					? {
 							navigation: {
 								cwd: record.cwd,
+								startedAt: record.startedAt,
 								parentId: record.parentId,
 								zellij: record.zellij,
 							},
@@ -204,6 +252,46 @@ export function snapshot(registry, scope, state, navigation = false) {
 		records,
 		skipped,
 		truncated,
+	};
+}
+
+export function closeConfirmationMatches(request, row, now = Date.now()) {
+	return Boolean(
+		request &&
+			row &&
+			now <= request.expires &&
+			row.id === request.id &&
+			row.pid === request.pid &&
+			row.navigation?.startedAt === request.startedAt &&
+			row.name === request.name &&
+			row.status === request.status &&
+			row.navigation?.zellij?.sessionName === request.session &&
+			row.navigation?.zellij?.paneId === request.paneId,
+	);
+}
+
+// Panel-only designation: no registry or ownership mutation. IDs are bound to
+// the current process instance, so a choice never silently transfers on restart.
+export function designateLead(view, selectedId) {
+	if (!view.records) return view;
+	const chosen = selectedId
+		? view.records.find((row) => row.id === selectedId)
+		: undefined;
+	const exact = view.records.filter(
+		(row) => row.lead && row.name === view.scope,
+	);
+	const automatic = exact.length === 1 ? exact[0] : undefined;
+	const lead = chosen ?? (selectedId ? undefined : automatic);
+	if (!lead) return selectedId ? { ...view, leadState: "unavailable" } : view;
+	return {
+		...view,
+		leadState:
+			lead.state === "live"
+				? "resolved"
+				: lead.state === "stale"
+					? "unavailable"
+					: "unknown",
+		records: [lead, ...view.records.filter((row) => row.id !== lead.id)],
 	};
 }
 
@@ -269,7 +357,9 @@ export function render(
 	const roles = new Map([[0, view.error ? "error" : "accent"]]);
 	if (view.error) lines.push(`${view.error}: ${view.path}`);
 	else {
-		const header = `${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`;
+		const header = interaction.chosenLeadName
+			? `lead: ${safeText(interaction.chosenLeadName)}`
+			: `${view.scope} · hub${view.leadState === "resolved" ? "" : ` (${view.leadState})`}`;
 		lines.push(
 			clip(header, width) === header
 				? header
@@ -302,7 +392,7 @@ export function render(
 		shown.push(safeText(interaction.notice));
 	}
 	roles.set(shown.length, "dim");
-	shown.push(interaction.enabled ? "j/k click enter q quit" : "q quit");
+	shown.push(interaction.enabled ? "j/k n new c l q" : "q quit");
 	return `${shown
 		.slice(0, height)
 		.map((line, index) => {
@@ -421,11 +511,19 @@ export function main(args = process.argv.slice(2)) {
 		enabled = false,
 		mouse = false,
 		selectedId,
+		chosenLeadId,
+		newAgentName,
+		creation,
+		confirmation,
 		initialized = false,
 		offset = 0,
 		notice = "",
 		view,
-		visibleRows = 0;
+		visibleRows = 0,
+		checking = false,
+		focusGeneration = 0,
+		context = null,
+		pendingInput = [];
 	const setMouse = (active) => {
 		if (active === mouse || !input || outputBroken) return;
 		mouse = active;
@@ -435,11 +533,31 @@ export function main(args = process.argv.slice(2)) {
 	};
 	const draw = () => {
 		if (stopped || outputBroken || process.stdout.writableNeedDrain) return;
-		const context = navigator.inspect();
 		enabled = Boolean(context);
+		if (
+			(newAgentName !== undefined || creation) &&
+			context?.own.is_focused !== true
+		) {
+			newAgentName = undefined;
+			creation = undefined;
+			notice = "New agent cancelled";
+		}
+		if (creation && Date.now() > creation.expires) {
+			creation = undefined;
+			notice = "New agent cancelled";
+		}
+		if (
+			confirmation &&
+			(context?.own.is_focused !== true || Date.now() > confirmation.expires)
+		) {
+			confirmation = undefined;
+			notice = "Close cancelled";
+		}
 		setMouse(enabled && context?.own.is_focused === true);
-		if (context && context.own.is_focused !== true) return; // quiet while another pane owns focus
-		view = snapshot(options.registry, options.scope, undefined, input);
+		view = designateLead(
+			snapshot(options.registry, options.scope, undefined, input),
+			chosenLeadId,
+		);
 		const rows = view.records ?? [];
 		let index = rows.findIndex((row) => row.id === selectedId);
 		if (!initialized && rows.length) {
@@ -447,6 +565,7 @@ export function main(args = process.argv.slice(2)) {
 			selectedId = rows[0].id;
 			initialized = true;
 		} else if (index < 0 && initialized) {
+			confirmation = undefined;
 			notice = "selected agent left the registry";
 		} else if (notice === "selected agent left the registry") notice = "";
 		index = Math.max(0, index);
@@ -467,7 +586,14 @@ export function main(args = process.argv.slice(2)) {
 				Math.max(1, (process.stdout.columns || 80) - 1),
 				height,
 				tty && !options.noColor,
-				{ enabled, selectedId, notice },
+				{
+					enabled,
+					selectedId,
+					notice,
+					chosenLeadName: chosenLeadId
+						? rows.find((row) => row.id === chosenLeadId)?.name
+						: undefined,
+				},
 			),
 		);
 	};
@@ -493,15 +619,221 @@ export function main(args = process.argv.slice(2)) {
 		if (tty && !outputBroken) process.stdout.write("\x1b[?25h");
 	};
 	cleanup = stop;
-	const key = (data) => {
-		for (const event of parseInput(data)) {
+	const key = (data, replay = false) => {
+		if (newAgentName !== undefined) {
+			const input = data.toString();
+			if (input === "\x1b" || input === "\x03") {
+				newAgentName = undefined;
+				notice = "New agent cancelled";
+				draw();
+				return;
+			}
+			if (input === "\x7f" || input === "\b")
+				newAgentName = newAgentName.slice(0, -1);
+			else if (input === "\r" || input === "\n") {
+				const name = newAgentName;
+				newAgentName = undefined;
+				const fresh = designateLead(
+					snapshot(options.registry, options.scope, undefined, true),
+					chosenLeadId,
+				);
+				const lead =
+					fresh.leadState === "resolved" ? fresh.records?.[0] : undefined;
+				if (
+					!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name) ||
+					name.includes("..")
+				)
+					notice = "Invalid agent name";
+				else if (!lead) notice = "Choose a live lead first";
+				else if (!nameAvailable(options.registry, name))
+					notice = "Name unavailable or registry unreadable";
+				else {
+					creation = {
+						name,
+						leadId: lead.id,
+						pid: lead.pid,
+						startedAt: lead.navigation?.startedAt,
+						pane: JSON.stringify(lead.navigation?.zellij),
+						expires: Date.now() + 10000,
+					};
+					notice = `Default model? y/n ${name}`;
+				}
+				draw();
+				return;
+			} else if (
+				/^[a-zA-Z0-9._-]+$/.test(input) &&
+				newAgentName.length + input.length <= 64
+			)
+				newAgentName += input;
+			notice = `Name: ${newAgentName}`;
+			draw();
+			return;
+		}
+		if (
+			context === null &&
+			checking &&
+			data.toString() !== "q" &&
+			!data.includes(3)
+		) {
+			if (pendingInput.length < 16) pendingInput.push(data);
+			return;
+		}
+		const events = parseInput(data);
+		const raw = data.toString();
+		if (
+			events.some(
+				(event) => event.type === "close" || event.type === "confirm",
+			) &&
+			raw !== "c" &&
+			raw !== "y"
+		) {
+			confirmation = undefined;
+			creation = undefined;
+			notice = "Use separate confirmation keys";
+			draw();
+			return;
+		}
+		const confirmationAtStart = confirmation;
+		for (const event of events) {
+			if (replay && (event.type === "close" || event.type === "confirm")) {
+				confirmation = undefined;
+				notice = "Repeat c after startup";
+				continue;
+			}
+			if (creation) {
+				if (event.type === "confirm" && raw === "y" && !replay) {
+					const request = creation;
+					creation = undefined;
+					const fresh = designateLead(
+						snapshot(options.registry, options.scope, undefined, true),
+						chosenLeadId,
+					);
+					const lead = fresh.records?.find((row) => row.id === request.leadId);
+					if (
+						Date.now() > request.expires ||
+						fresh.leadState !== "resolved" ||
+						!lead ||
+						lead.pid !== request.pid ||
+						lead.navigation?.startedAt !== request.startedAt ||
+						JSON.stringify(lead.navigation?.zellij) !== request.pane ||
+						!nameAvailable(options.registry, request.name)
+					)
+						notice = "Create cancelled: state changed";
+					else
+						notice =
+							navigator.create(
+								request.name,
+								options.scope.toLowerCase(),
+								lead,
+								fresh.records ?? [],
+							) ?? `Requested: ${request.name}`;
+					if (notice.startsWith("Requested:")) {
+						focusGeneration++;
+						if (context)
+							context = {
+								...context,
+								own: { ...context.own, is_focused: false },
+							};
+						setMouse(false);
+					}
+				} else {
+					creation = undefined;
+					notice = "New agent cancelled";
+				}
+				draw();
+				continue;
+			}
 			if (event.type === "quit") {
 				stop();
 				return;
 			}
 			if (!enabled || !view?.records?.length) continue;
 			let index = view.records.findIndex((row) => row.id === selectedId);
-			if (event.type === "move") {
+			if (event.type === "close") {
+				const row = view.records.find((item) => item.id === selectedId);
+				if (!row) {
+					notice = "selected agent left the registry";
+					draw();
+					continue;
+				}
+				const hint = row.navigation?.zellij;
+				if (
+					context?.own.is_focused !== true ||
+					!hint ||
+					!Number.isSafeInteger(hint.paneId)
+				) {
+					notice = "No verified pane to close";
+					draw();
+					continue;
+				}
+				confirmation = {
+					id: row.id,
+					pid: row.pid,
+					startedAt: row.navigation?.startedAt,
+					name: row.name,
+					status: row.status,
+					session: hint.sessionName,
+					paneId: hint.paneId,
+					expires: Date.now() + 5000,
+				};
+				const symbol = Object.hasOwn(STATUS_SYMBOL, row.status)
+					? STATUS_SYMBOL[row.status]
+					: "?";
+				notice = `Close #${hint.paneId} [${symbol}] y/n ${row.name}`;
+				draw();
+			} else if (event.type === "cancel") {
+				if (confirmation) {
+					confirmation = undefined;
+					notice = "Close cancelled";
+				} else if (
+					!replay &&
+					data.toString() === "n" &&
+					context?.own.is_focused === true
+				) {
+					newAgentName = "";
+					notice = "Name: ";
+				}
+				draw();
+			} else if (event.type === "confirm") {
+				if (!confirmation) continue;
+				if (confirmation !== confirmationAtStart) {
+					confirmation = undefined;
+					notice = "Press c then y separately";
+					draw();
+					continue;
+				}
+				const request = confirmation;
+				confirmation = undefined;
+				const fresh = snapshot(
+					options.registry,
+					options.scope,
+					undefined,
+					true,
+				);
+				const row = fresh.records?.find((item) => item.id === request.id);
+				if (Date.now() > request.expires) {
+					notice = "Close cancelled: expired";
+				} else if (!closeConfirmationMatches(request, row)) {
+					notice = "Close cancelled: agent changed";
+				} else {
+					notice =
+						navigator.close(row, fresh.records ?? []) ??
+						`Pane closed: ${row.name}`;
+				}
+				draw();
+			} else if (event.type === "lead") {
+				confirmation = undefined;
+				const row = view.records.find((item) => item.id === selectedId);
+				if (!row) {
+					notice = "selected agent left the registry";
+					draw();
+					continue;
+				}
+				chosenLeadId = row.id;
+				notice = `lead: ${row.name}`;
+				draw();
+			} else if (event.type === "move") {
+				confirmation = undefined;
 				index = Math.max(
 					0,
 					Math.min(view.records.length - 1, index + event.delta),
@@ -510,6 +842,7 @@ export function main(args = process.argv.slice(2)) {
 				notice = "";
 				draw();
 			} else if (event.type === "focus" || event.type === "click") {
+				confirmation = undefined;
 				if (event.type === "click") {
 					if (
 						event.x < 1 ||
@@ -535,9 +868,33 @@ export function main(args = process.argv.slice(2)) {
 				}
 				notice = navigator.focus(row, fresh.records ?? []) ?? "";
 				if (notice) draw();
-				else setMouse(false);
+				else {
+					focusGeneration++;
+					if (context)
+						context = {
+							...context,
+							own: { ...context.own, is_focused: false },
+						};
+					setMouse(false);
+				}
 			}
 		}
+	};
+	const refresh = () => {
+		draw();
+		if (checking || stopped) return;
+		checking = true;
+		const generation = focusGeneration;
+		void navigator.inspectAsync().then((result) => {
+			checking = false;
+			if (!stopped && generation === focusGeneration) {
+				context = result;
+				draw();
+				const queued = pendingInput;
+				pendingInput = [];
+				for (const data of queued) key(data, true);
+			}
+		});
 	};
 	process.on("SIGINT", stop);
 	process.on("SIGTERM", stop);
@@ -550,6 +907,6 @@ export function main(args = process.argv.slice(2)) {
 		process.stdin.on("data", key);
 	}
 	if (tty) process.stdout.write("\x1b[?25l");
-	draw();
-	timer = setInterval(draw, options.interval * 1000);
+	refresh();
+	timer = setInterval(refresh, options.interval * 1000);
 }

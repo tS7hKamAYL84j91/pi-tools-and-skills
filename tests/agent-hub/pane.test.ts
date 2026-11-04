@@ -150,6 +150,108 @@ it.each([
 	}
 });
 
+it("designates a lead in the panel without altering registry identity", () => {
+	const v = {
+		scope: "lead",
+		leadState: "ambiguous",
+		records: [
+			{ id: "a", name: "alias", lead: true, state: "live" },
+			{ id: "b", name: "lead", lead: true, state: "live" },
+			{ id: "c", name: "helper", lead: false, state: "live" },
+		],
+	};
+	const result = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify([pane.designateLead(${JSON.stringify(v)}),pane.designateLead(${JSON.stringify(v)},'c'),pane.designateLead(${JSON.stringify(v)},'missing')]));`,
+		),
+	);
+	expect(result[0].records.map((row: { id: string }) => row.id)).toEqual([
+		"b",
+		"a",
+		"c",
+	]);
+	expect(result[0].leadState).toBe("resolved");
+	expect(result[1].records[0].id).toBe("c");
+	expect(result[1].leadState).toBe("resolved");
+	expect(result[2].leadState).toBe("unavailable");
+	expect(result[2].records).toHaveLength(3);
+});
+
+it("revalidates the armed instance and expiry before closing", () => {
+	const request = {
+		id: "a",
+		pid: 42,
+		startedAt: 100,
+		name: "agent",
+		status: "waiting",
+		session: "S",
+		paneId: 4,
+		expires: 1000,
+	};
+	const row = {
+		id: "a",
+		pid: 42,
+		name: "agent",
+		status: "waiting",
+		navigation: { startedAt: 100, zellij: { sessionName: "S", paneId: 4 } },
+	};
+	const value = JSON.parse(
+		evaluate(
+			`const req=${JSON.stringify(request)},row=${JSON.stringify(row)};process.stdout.write(JSON.stringify([pane.closeConfirmationMatches(req,row,1000),pane.closeConfirmationMatches(req,row,1001),pane.closeConfirmationMatches(req,{...row,pid:43},999),pane.closeConfirmationMatches(req,{...row,navigation:{...row.navigation,startedAt:101}},999),pane.closeConfirmationMatches(req,undefined,999)]));`,
+		),
+	);
+	expect(value).toEqual([true, false, false, false, false]);
+});
+
+it("rejects existing names and declared aliases across the registry", () => {
+	record("root", { name: "elsewhere", declared_name: "reserved" });
+	record("helper", {
+		name: "different",
+		spawn_name: "worker",
+		namespace: "group",
+	});
+	const result = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(['reserved','worker','group','new-agent'].map(name=>pane.nameAvailable(${JSON.stringify(dir)},name))));`,
+		),
+	);
+	expect(result).toEqual([false, false, false, true]);
+});
+
+it("rejects names reserved by the durable ownership journal and fails closed on malformed journal", () => {
+	writeFileSync(
+		join(dir, "namespace-owners.json"),
+		JSON.stringify({ version: 1, owners: [{ name: "ReservedLead" }] }),
+	);
+	let result = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify([pane.nameAvailable(${JSON.stringify(dir)},'reservedlead'),pane.nameAvailable(${JSON.stringify(dir)},'other')]));`,
+		),
+	);
+	expect(result).toEqual([false, true]);
+	writeFileSync(join(dir, "namespace-owners.json"), "{");
+	result = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.nameAvailable(${JSON.stringify(dir)},'other')));`,
+		),
+	);
+	expect(result).toBe(false);
+});
+
+it("includes Hub-normalized helper namespaces for a mixed-case scope", () => {
+	record("root", { name: "Lead", declared_name: "Lead" });
+	record("child", { namespace: "lead" });
+	const result = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.snapshot(${JSON.stringify(dir)},'Lead',()=> 'live')));`,
+		),
+	);
+	expect(result.records.map((r: { id: string }) => r.id)).toEqual([
+		"root",
+		"child",
+	]);
+});
+
 it("keeps exact-namespace helpers when lead is unavailable", () => {
 	record("child", { namespace: "lead" });
 	const view = JSON.parse(cli("--json").stdout);
@@ -439,6 +541,11 @@ it("keeps ambiguity visible in narrow headers", () => {
 it.each([
 	"mouse",
 	"keyboard",
+	"close",
+	"new",
+	"new-cancel",
+	"new-escape",
+	"startup",
 	"gone",
 	"marker",
 ])("handles %s selection safely with a stub and restores the terminal", (method) => {
@@ -461,8 +568,18 @@ it.each([
 	const stub = join(dir, "zellij");
 	writeFileSync(
 		stub,
-		`#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n'); if(args.includes('focus-pane-id')) {fs.writeFileSync(${JSON.stringify(focused)},'17');} else { process.stdout.write(JSON.stringify([{id:99,tab_id:1,is_plugin:false,is_focused:!fs.existsSync(${JSON.stringify(focused)}),pane_cwd:'/view'},{id:2,tab_id:1,is_plugin:false,pane_cwd:'/work'},{id:17,tab_id:1,is_plugin:false,pane_cwd:'/work'},{id:8,tab_id:2,is_plugin:false,pane_cwd:'/work'}])); }`,
+		`#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n'); if(args.includes('focus-pane-id')) {fs.writeFileSync(${JSON.stringify(focused)},'17');} else if(args.includes('close-pane')) {fs.writeFileSync(${JSON.stringify(join(dir, "closed"))},'17');} else if(args.includes('new-pane')) {fs.writeFileSync(${JSON.stringify(join(dir, "created"))},'40');process.stdout.write('terminal_40\\n');} else if(args.includes('are-floating-panes-visible')) {process.stdout.write('false');} else { process.stdout.write(JSON.stringify([{id:99,tab_id:1,is_plugin:false,is_focused:!fs.existsSync(${JSON.stringify(focused)}),pane_cwd:'/view'},{id:2,tab_id:1,is_plugin:false,pane_cwd:'/work'},...(!fs.existsSync(${JSON.stringify(join(dir, "closed"))})?[{id:17,tab_id:1,is_plugin:false,pane_cwd:'/work'}]:[]),{id:8,tab_id:2,is_plugin:false,pane_cwd:'/work'},...(fs.existsSync(${JSON.stringify(join(dir, "created"))})?[{id:40,tab_id:1,is_plugin:false,is_floating:true,pane_cwd:'/work'}]:[])])); }`,
 	);
+	if (method === "startup") {
+		const source = readFileSync(stub, "utf8");
+		writeFileSync(
+			stub,
+			source.replace(
+				"const fs=require('node:fs');",
+				`const fs=require('node:fs'); if(!fs.existsSync(${JSON.stringify(join(dir, "inspect-started"))})){fs.writeFileSync(${JSON.stringify(join(dir, "inspect-started"))},'1');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,700);fs.writeFileSync(${JSON.stringify(join(dir, "inspect-finished"))},'1');}`,
+			),
+		);
+	}
 	chmodSync(stub, 0o755);
 	const output = execFileSync(
 		"python3",
@@ -483,12 +600,76 @@ def until(needle):
         if select.select([master], [], [], 0.05)[0]: data += os.read(master,65536)
     assert needle in data, repr(data)
 try:
-    until(b'click enter')
+    if sys.argv[3]=='startup':
+        until(b'q quit')
+        deadline=time.monotonic()+3
+        while not os.path.exists(os.path.join(sys.argv[2],'inspect-started')) and time.monotonic()<deadline: time.sleep(0.01)
+        assert os.path.exists(os.path.join(sys.argv[2],'inspect-started'))
+        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
+        os.write(master,b'c')
+        time.sleep(0.1)
+        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
+        os.write(master,b'y')
+        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
+    until(b'j/k n new c l q')
+    if sys.argv[3]=='startup':
+        time.sleep(0.3)
+        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'startup replay closed a pane'
     assert b'\\x1b[?1000h' in data and b'\\x1b[?1006h' in data
     assert b'\\x1b[7m' in data
     assert b'\\x1b[?2004h' in data
     flag=os.path.join(sys.argv[2],'focused')
-    if sys.argv[3]=='gone':
+    if sys.argv[3]=='startup':
+        os.write(master,b'j')
+        time.sleep(0.15)
+        data=b''
+        os.write(master,b'c')
+        until(b'Close #17 [W] y/n helper')
+        os.write(master,b'y')
+        data=b''
+        until(b'Pane closed: helper')
+    elif sys.argv[3] in ('new','new-cancel','new-escape'):
+        data=b''
+        os.write(master,b'n')
+        until(b'Name:')
+        os.write(master,b'cyq-worker')
+        until(b'Name: cyq-worker')
+        assert p.poll() is None and not os.path.exists(os.path.join(sys.argv[2],'closed')), 'name text activated an action'
+        if sys.argv[3]=='new-escape':
+            os.write(master,b'\\x1b')
+            until(b'New agent cancelled')
+        else:
+            os.write(master,b'\\r')
+            until(b'Default model? y/n cyq-worker')
+            assert not os.path.exists(os.path.join(sys.argv[2],'created')), 'launched before confirmation'
+            if sys.argv[3]=='new':
+                os.write(master,b'y')
+                until(b'Requested: cyq-worker')
+            else:
+                os.write(master,b'n')
+                until(b'New agent cancelled')
+        if sys.argv[3]!='new': assert not os.path.exists(os.path.join(sys.argv[2],'created')), 'cancelled launch'
+
+    elif sys.argv[3]=='close':
+        os.write(master,b'j')
+        time.sleep(0.15)
+        data=b''
+        os.write(master,b'cy')
+        until(b'Use separate confirmation keys')
+        os.write(master,b'y')
+        time.sleep(0.15)
+        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined input left an arm'
+        os.write(master,b'abc')
+        os.write(master,b'yes')
+        time.sleep(0.15)
+        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'pasted text closed pane'
+        data=b''
+        os.write(master,b'c')
+        until(b'Close #17 [W] y/n helper')
+        os.write(master,b'y')
+        data=b''
+        until(b'Pane closed: helper')
+    elif sys.argv[3]=='gone':
         os.write(master,b'j')
         time.sleep(0.15)
         os.unlink(os.path.join(sys.argv[2],'helper.json'))
@@ -508,10 +689,14 @@ try:
         assert os.path.exists(flag)
         time.sleep(0.1)
         while select.select([master],[],[],0)[0]: os.read(master,65536)
-        assert not select.select([master],[],[],0.6)[0], 'redrew while unfocused'
+        # Live status must continue updating while the floating agent has focus.
+        assert select.select([master],[],[],1.5)[0], 'stopped refreshing while unfocused'
+        data=b''
+        until(b'W - helper - waiting')
         os.unlink(flag)
         data=b''
-        until(b'click enter')
+        until(b'j/k n new c l q')
+        until(b'\\x1b[?1000h')
     os.write(master,b'q')
     until(b'\\x1b[?1000l')
     until(b'\\x1b[?1006l')
@@ -534,8 +719,35 @@ finally:
 		.trim()
 		.split("\n")
 		.map((line) => JSON.parse(line) as string[]);
+	const launches = calls.filter((args) => args.includes("new-pane"));
+	expect(launches).toHaveLength(method === "new" ? 1 : 0);
+	if (method === "new") {
+		expect(launches[0]).toContain("--floating");
+		expect(launches[0]).toContain("PI_PANOPTICON_NAMESPACE=lead");
+		expect(launches[0]).not.toContain("--model");
+	}
+	expect(calls.filter((args) => args.includes("close-pane"))).toEqual(
+		method === "close" || method === "startup"
+			? [
+					[
+						"--session",
+						"fixture",
+						"action",
+						"close-pane",
+						"--pane-id",
+						"terminal_17",
+					],
+				]
+			: [],
+	);
 	expect(calls.filter((args) => args.includes("focus-pane-id"))).toEqual(
-		method === "gone" || method === "marker"
+		method === "gone" ||
+			method === "new" ||
+			method === "new-cancel" ||
+			method === "new-escape" ||
+			method === "marker" ||
+			method === "close" ||
+			method === "startup"
 			? []
 			: [["--session", "fixture", "action", "focus-pane-id", "terminal_17"]],
 	);
@@ -558,6 +770,7 @@ it("retries unreadable registry and exits cleanly on SIGTERM", async () => {
 		{ stdio: ["ignore", "pipe", "pipe"] },
 	);
 	let output = "";
+	let signalled = false;
 	const done = new Promise<number | null>((resolveDone, reject) => {
 		child.once("error", reject);
 		child.once("exit", resolveDone);
@@ -572,7 +785,10 @@ it("retries unreadable registry and exits cleanly on SIGTERM", async () => {
 			mkdirSync(dir, { recursive: true });
 			record("lead");
 		}
-		if (output.includes("lead · hub (unavailable)")) child.kill("SIGTERM");
+		if (!signalled && output.includes("lead · hub (unavailable)")) {
+			signalled = true;
+			child.kill("SIGTERM");
+		}
 	});
 	try {
 		expect(await done).toBe(0);

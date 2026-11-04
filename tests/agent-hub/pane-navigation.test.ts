@@ -21,7 +21,7 @@ const panes = [
  {id: 2, tab_id: 1, is_plugin: false, is_focused: false, pane_cwd: '/work'},
  {id: 3, tab_id: 2, is_plugin: false, is_focused: false, pane_cwd: '/work'}
 ];
-const row = {id:'agent', state:'live', status:'waiting', heartbeat: 1000, navigation:{cwd:'/work', zellij:{sessionName:'session', paneId:2}}};
+const row = {id:'agent', name:'agent', state:'live', status:'waiting', heartbeat: 1000, navigation:{cwd:'/work', zellij:{sessionName:'session', paneId:2}}};
 const identity = {sessionName:'session',paneId:99};
 const runner = args => {calls.push(args); return JSON.stringify(panes);};
 ${code}`,
@@ -53,6 +53,133 @@ it.each([
 ])("rejects invalid terminal identity %j", (id) => {
 	expect(paneIdentity("session", id)).toBeUndefined();
 });
+it("closes only the uniquely validated same-tab terminal", () => {
+	expect(
+		probe(
+			`const run=args=>{calls.push(args);if(args.includes('close-pane')) panes.splice(1,1);return JSON.stringify(panes)};const result=createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify({result,calls}));`,
+		),
+	).toEqual({
+		result: null,
+		calls: [
+			["--session", "session", "action", "list-panes", "--json", "--all"],
+			[
+				"--session",
+				"session",
+				"action",
+				"close-pane",
+				"--pane-id",
+				"terminal_2",
+			],
+			["--session", "session", "action", "list-panes", "--json", "--all"],
+		],
+	});
+});
+
+it("does not report success when close returns zero but leaves pane present", () => {
+	expect(
+		probe(
+			`const result=createNavigator(identity,runner).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
+		),
+	).toBe("Close not verified");
+});
+
+it("reports an unverifiable close if the second listing fails", () => {
+	expect(
+		probe(
+			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)throw new Error('private failure');return runner(args)};const result=createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
+		),
+	).toBe("Close not verified");
+});
+
+it.each([
+	"not json",
+	"{",
+	"",
+	"{}",
+])("fails closed if post-close listing is malformed: %j", (bad) => {
+	expect(
+		probe(
+			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)return ${JSON.stringify(bad)};return runner(args)};process.stdout.write(JSON.stringify(createNavigator(identity,run).close(row,[row],1001)));`,
+		),
+	).toBe("Close not verified");
+});
+
+it("never closes a duplicate or stale target", () => {
+	expect(
+		probe(
+			`const nav=createNavigator(identity,runner); const duplicate=nav.close(row,[row,{...row,id:'other'}],1001);row.heartbeat=-40000;const stale=nav.close(row,[row],1001);process.stdout.write(JSON.stringify({duplicate,stale,closed:calls.filter(a=>a.includes('close-pane'))}));`,
+		),
+	).toEqual({
+		duplicate: "ambiguous agent pane",
+		stale: "agent observation is stale",
+		closed: [],
+	});
+});
+
+it("creates a floating named agent in the verified lead tab without a model override", () => {
+	const result = probe(
+		`row.heartbeat=Date.now();const run=args=>{calls.push(args);args.includes('new-pane')?(panes.push({id:40,tab_id:1,is_plugin:false,is_floating:true}),0):0;return args.includes('new-pane')?'terminal_40\\n':args.includes('are-floating-panes-visible')?'false':JSON.stringify(panes)};const result=createNavigator(identity,run).create('worker-1','lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.find(a=>a.includes('new-pane'))}));`,
+	);
+	expect(result).toEqual({
+		result: null,
+		launch: [
+			"--session",
+			"session",
+			"action",
+			"new-pane",
+			"--tab-id",
+			"1",
+			"--floating",
+			"--cwd",
+			"/work",
+			"--name",
+			"worker-1",
+			"--",
+			"env",
+			"-u",
+			"MATRIX_ACCESS_TOKEN",
+			"-u",
+			"MATRIX_BOT_PASSWORD",
+			"-u",
+			"MATRIX_RECOVERY_PASSPHRASE",
+			"-u",
+			"PI_PANOPTICON_PARENT_ID",
+			"-u",
+			"PI_CODING_AGENT_SESSION_DIR",
+			"PI_MATRIX_DISABLED=1",
+			"PI_PANOPTICON_NAMESPACE=lead",
+			"PI_PANOPTICON_SPAWN_NAME=worker-1",
+			"pi",
+			"--name",
+			"worker-1",
+		],
+	});
+});
+
+it.each([
+	"lead",
+	"agent",
+	"../bad",
+	"bad;cmd",
+	"--model",
+	"",
+])("refuses duplicate or invalid new-agent name %j without launching", (name) => {
+	const result = probe(
+		`const result=createNavigator(identity,runner).create(${JSON.stringify(name)},'lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.filter(a=>a.includes('new-pane'))}));`,
+	) as { result: unknown; launch: unknown[] };
+	expect(result.result).toBeTruthy();
+	expect(result.launch).toEqual([]);
+});
+
+it("does not launch for stale leads, other tabs or launch errors", () => {
+	const result = probe(
+		`row.heartbeat=Date.now();const nav=createNavigator(identity,runner);row.state='stale';const stale=nav.create('worker','lead',row,[row]);row.state='live';panes[1].tab_id=2;const other=nav.create('worker','lead',row,[row]);process.stdout.write(JSON.stringify({stale,other,launch:calls.filter(a=>a.includes('new-pane'))}));`,
+	) as { stale: string; other: string; launch: unknown[] };
+	expect(result.stale).toBeTruthy();
+	expect(result.other).toBeTruthy();
+	expect(result.launch).toEqual([]);
+});
+
 it("same-tab exact identity focuses only terminal_2 with fixed argv", () => {
 	expect(
 		probe(
@@ -138,6 +265,26 @@ it.each([
 			`panes[1][${JSON.stringify(flag)}]=true; const result=createNavigator(identity,runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,focus:calls.filter(a=>a.includes('focus-pane-id'))}));`,
 		),
 	).toEqual({ result: "pane is unavailable", focus: [] });
+});
+
+it("reports a failed close without retry or leaking stderr", () => {
+	expect(
+		probe(
+			`const nav=createNavigator(identity,args=>{calls.push(args);if(args.includes('close-pane'))throw new Error('private stderr');return JSON.stringify(panes)});const result=nav.close(row,[row],1001);process.stdout.write(JSON.stringify({result,closed:calls.filter(a=>a.includes('close-pane'))}));`,
+		),
+	).toEqual({
+		result: "pane gone or close failed",
+		closed: [
+			[
+				"--session",
+				"session",
+				"action",
+				"close-pane",
+				"--pane-id",
+				"terminal_2",
+			],
+		],
+	});
 });
 
 it("refuses duplicate self-reported pane claims", () => {

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+	chmodSync,
 	mkdtempSync,
 	mkdirSync,
 	readFileSync,
@@ -32,6 +33,9 @@ if (process.env.XDG_RUNTIME_DIR)
 	env.XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
 const registry = join(dir, "agents");
 mkdirSync(registry);
+const bin = join(dir, "bin");
+mkdirSync(bin);
+env.PATH = `${bin}:${env.PATH}`;
 function run(args) {
 	const result = spawnSync("zellij", args, {
 		env,
@@ -103,6 +107,13 @@ const save=()=>writeFileSync(join(${JSON.stringify(registry)},name+'.json'),JSON
 save();setInterval(save,1000);
 `,
 	);
+	// Fixture Pi only: proves argv/environment/pane integration without model calls.
+	const fakePi = join(bin, "pi");
+	writeFileSync(
+		fakePi,
+		`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';\nconst name=process.argv[process.argv.indexOf('--name')+1];\nwriteFileSync(${JSON.stringify(join(dir, "new-agent.json"))},JSON.stringify({name,argv:process.argv.slice(2),namespace:process.env.PI_PANOPTICON_NAMESPACE,spawnName:process.env.PI_PANOPTICON_SPAWN_NAME,parent:process.env.PI_PANOPTICON_PARENT_ID??null,matrixDisabled:process.env.PI_MATRIX_DISABLED,cwd:process.cwd(),pane:process.env.ZELLIJ_PANE_ID}));\nconst start=Date.now(); const save=()=>writeFileSync(${JSON.stringify(join(registry, "gamma.json"))},JSON.stringify({id:'gamma',name,pid:process.pid,cwd:process.cwd(),startedAt:start,heartbeat:Date.now(),status:'waiting',namespace:process.env.PI_PANOPTICON_NAMESPACE,zellij:{sessionName:process.env.ZELLIJ_SESSION_NAME,paneId:Number(process.env.ZELLIJ_PANE_ID)}}));save();setInterval(save,1000);\n`,
+	);
+	chmodSync(fakePi, 0o755);
 	const node = JSON.stringify(process.execPath),
 		cwd = JSON.stringify(dir);
 	writeFileSync(
@@ -150,7 +161,7 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"click enter",
+				"j/k n new c l q",
 			),
 		"interactive view ready",
 	);
@@ -193,7 +204,88 @@ save();setInterval(save,1000);
 			.filter((p) => p.is_floating)
 			.every((p) => !p.exited),
 	);
+	// Close only beta while the floating layer is hidden. Confirmation is a
+	// second, distinct input; verify the tiled Hub and alpha survive unchanged.
+	action("focus-pane-id", `terminal_${view.id}`);
+	await until(() => !visible(view.tab_id), "hide floaters before close");
+	await delay(350);
+	sendInput(view.id, "j");
+	await delay(150);
+	sendInput(view.id, "c");
+	await until(
+		() =>
+			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
+				`Close #${beta.id} [W] y/n`,
+			),
+		"close confirmation",
+	);
+	sendInput(view.id, "y");
+	await until(
+		() => !panes().some((p) => !p.is_plugin && p.id === beta.id),
+		"hidden beta pane closed",
+	);
+	assert(panes().some((p) => !p.is_plugin && p.id === view.id && !p.exited));
+	assert(panes().some((p) => !p.is_plugin && p.id === alpha.id && !p.exited));
+	assert.equal(visible(view.tab_id), false);
+	// Start a fixture agent by typing a name; Pi is a no-model stub in this session.
+	sendInput(view.id, "n");
+	await until(
+		() =>
+			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
+				"Name:",
+			),
+		"new-agent form",
+	);
+	sendInput(view.id, "gamma");
+	await until(
+		() =>
+			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
+				"Name: gamma",
+			),
+		"typed agent name",
+	);
+	sendInput(view.id, "\r");
+	await until(
+		() =>
+			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
+				"Default model? y/n gamma",
+			),
+		"create confirmation",
+	);
+	sendInput(view.id, "y");
+	const created = await until(() => {
+		try {
+			return JSON.parse(readFileSync(join(dir, "new-agent.json"), "utf8"));
+		} catch {
+			return null;
+		}
+	}, "fixture agent started");
+	assert.equal(created.name, "gamma");
+	assert.deepEqual(created.argv, ["--name", "gamma"]);
+	assert.equal(created.namespace, "fixture");
+	assert.equal(created.spawnName, "gamma");
+	assert.equal(created.parent, null);
+	assert.equal(created.matrixDisabled, "1");
+	assert.equal(created.cwd, dir);
+	const gamma = await until(
+		() => panes().find((p) => !p.is_plugin && p.title === "gamma"),
+		"new floating pane",
+	);
+	assert.equal(gamma.tab_id, view.tab_id);
+	assert.equal(gamma.is_floating, true);
+	assert.equal(String(gamma.id), created.pane);
+	action("focus-pane-id", `terminal_${view.id}`);
+	await until(
+		() =>
+			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
+				"W - gamma - waiting",
+			),
+		"new agent visible in Hub",
+	);
 	summary = {
+		create:
+			"named fixture Pi started floating in same tab, without model override",
+		close: "hidden beta closed after confirmation; hub and alpha survive",
 		version,
 		mouse: "hidden beta revealed and focused",
 		keyboard: "hidden alpha revealed and focused",

@@ -67,7 +67,7 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 		const selected = out.split("\n").filter((line) => line.startsWith("\x1b[7m"));
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toContain("lead");
-		expect(out).toContain("j/k click enter q quit");
+		expect(out).toContain("j/k n new c l q");
 	});
 
 	it("keeps the selection on the agent id when rows reorder", () => {
