@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
+import * as paneMetadata from "../../lib/zellij-pane.mjs";
 import { makeAgentRecord, makeMockContext } from "./helpers.js";
 
 const paths = vi.hoisted(() => ({ registry: "" }));
@@ -27,6 +28,7 @@ afterEach(async () => {
 	// journal write; settle it before removing the directory or rm races it.
 	await registry.awaitOwnershipWrite();
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 	await rm(paths.registry, { recursive: true, force: true });
 });
 
@@ -45,6 +47,19 @@ describe("file-backed registry", () => {
 		registry.unregister();
 		await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("refreshes optional self-reported pane metadata on registration and heartbeat", async () => {
+		const capture = vi.spyOn(paneMetadata, "ownPaneIdentity").mockReturnValue({ sessionName: "fixture", paneId: 2 });
+		registry.register(makeMockContext() as unknown as ExtensionContext);
+		const path = join(paths.registry, `${registry.selfId}.json`);
+		expect(JSON.parse(await readFile(path, "utf8")).zellij).toEqual({ sessionName: "fixture", paneId: 2 });
+		capture.mockReturnValue({ sessionName: "fixture", paneId: 17 });
+		vi.advanceTimersByTime(5000);
+		expect(JSON.parse(await readFile(path, "utf8")).zellij.paneId).toBe(17);
+		capture.mockReturnValue(undefined);
+		vi.advanceTimersByTime(5000);
+		expect(JSON.parse(await readFile(path, "utf8")).zellij).toBeUndefined();
 	});
 
 	it("merges validated external peers with native disk records", () => {

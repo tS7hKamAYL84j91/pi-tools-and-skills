@@ -94,6 +94,8 @@ export interface AgentRecord {
 	pendingMessages?: number;
 	sessionDir?: string;
 	sessionFile?: string;
+	/** Self-reported terminal navigation hint, never authority; absent for headless children. */
+	zellij?: { sessionName: string; paneId: number };
 	/** Durable mailbox path for external agents (kind === 'external'). */
 	mailboxPath?: string;
 }

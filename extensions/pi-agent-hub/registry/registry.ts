@@ -36,6 +36,7 @@ import {
 import { buildRecord, nameTaken, pickActiveName } from "./record-utils.js";
 import { readVolatileRegistryRecords } from "./registry-reader.js";
 import { flushRecord } from "./registry-persistence.js";
+import { ownPaneIdentity } from '../../../lib/zellij-pane.mjs';
 
 export { classifyRecord } from "./registry-reader.js";
 
@@ -272,6 +273,17 @@ export default class Registry implements RegistryInterface {
 	}
 
 	flush(): void {
+		if (this.record) {
+			const pane = ownPaneIdentity({
+				inside: process.env.ZELLIJ,
+				sessionName: process.env.ZELLIJ_SESSION_NAME,
+				paneId: process.env.ZELLIJ_PANE_ID,
+				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+				parentId: this.record.parentId,
+			});
+			if (pane) this.record.zellij = pane;
+			else delete this.record.zellij;
+		}
 		flushRecord(this.record);
 	}
 
