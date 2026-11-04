@@ -1,43 +1,32 @@
 # pi-tools-and-skills
 
-![Illustrative layering: a Pi host, Agent Hub, extensions, and prompt surfaces](docs/images/project-context-hub-prompt.jpeg)
+![Project context, Agent Hub, extensions, and prompt surfaces](docs/images/project-context-hub-prompt.jpeg)
 
-Extensions, skills, prompts, and shared libraries for [Pi](https://github.com/earendil-works/pi).
-The sketch is illustrative: Zellij, its plugin, and its config are not in this repo.
+Extensions, skills, prompts, shared libraries, and the Zellij Agent Hub plugin for [Pi](https://github.com/earendil-works/pi).
+Zellij and Fleet config are not in this repo.
 
 ## Install
 
-Needs Node.js 22.19+ and Pi 1.0.1. Local development also needs Python 3.10+ for
-the offline Goal benchmark tests; secret scanning needs gitleaks, and Semgrep for
-`make semgrep-scan`.
+Requires Node.js 22.19+ and Pi 1.0.1. Optional dev tools: Python 3.10+ (offline Goal benchmark tests), gitleaks (`make secret-scan`), and Semgrep (`make semgrep-scan`).
 
 ```sh
 git clone https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git
 cd pi-tools-and-skills
 npm ci
+make setup
 ```
 
-Install the whole checkout:
+- `make setup` — enable this repo (Agent Hub, Goal, skills, and prompts) in your user Pi settings (`~/.pi/agent/settings.json`).
+- `make setup PROJECT=<dir>` — enable it for a single project (`<dir>/.pi/settings.json`).
+- `make setup-package PACKAGE=<name>` — enable one extension in your user Pi settings.
+- `make setup-clean` — remove the user or `PROJECT=<dir>` entry from Pi settings.
+- `make help` — list all commands.
 
-```sh
-pi install /absolute/path/to/pi-tools-and-skills
-pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills
-```
-
-Or one extension: `make setup-package PACKAGE=<name>`.
-
-`make setup` registers this checkout globally with Agent Hub and Goal enabled.
-`make setup PROJECT=<dir>` writes that registration to the project's
-`.pi/settings.json` instead; Pi reads it only after project trust is granted.
-`make setup-clean` removes either. Project-only extensions are enabled per
-workspace. Setup changes package registration only.
-
-`make help` lists every target.
+You can also install directly with `pi install <path-or-git-url>`.
 
 ## Packages
 
-Each package README owns its commands, settings, install scope, and limits. This
-index does not repeat them.
+Each package README documents its commands, settings, install scope, and limits.
 
 | Package                                                  | Responsibility                                 |
 | -------------------------------------------------------- | ---------------------------------------------- |
@@ -55,40 +44,28 @@ index does not repeat them.
 
 ## Layout
 
-A Pi package repo, not an npm workspace: `extensions/*` load by path and install
-individually, with no root `workspaces` field and no cross-package build graph.
-The root `package.json` `files` allowlist decides what the umbrella ships.
-
-- `extensions/` — Pi features and their usage docs.
+- `extensions/` — Pi extensions and their READMEs.
 - [`lib/`](lib/README.md) — shared contracts and infrastructure.
-- `fleet-mcp/` — standalone application, not another registry.
-- `skills/`, `prompts/` — reusable agent guidance; extension-specific skills stay
-  with their extension.
-- `scripts/` — install, maintenance, and build/check commands.
-- [`benchmarks/`](benchmarks/README.md) — evaluation runners, not shipping runtime.
-- `tests/` — offline checks, including benchmark fixture and fake-provider coverage.
-- [`docs/`](docs/README.md) — architecture boundaries and decision history.
-- [`TODO.md`](TODO.md) — current work only; finished work lives in Git history.
+- `fleet-mcp/` — standalone MCP gateway.
+- `skills/`, `prompts/` — reusable skills and `/` prompt templates.
+- `scripts/` — setup, maintenance, and check scripts.
+- [`benchmarks/`](benchmarks/README.md) — evaluation runners.
+- `tests/` — offline unit, contract, and architecture tests.
+- [`docs/`](docs/README.md) — [architecture](docs/architecture.md) and [decisions](docs/decisions.md).
+- [`TODO.md`](TODO.md) — active work only.
 
-## Development and security
+## Development
 
 ```sh
 make check        # namespace, template safety, types, lint, knip, type coverage
 make test         # offline unit, contract, architecture and evaluation tests
-make build        # standalone Fleet MCP adapter (dist/fleet-mcp)
-make secret-scan  # history and working-tree secret checks
-make semgrep-scan # custom Semgrep OSS rules (needs semgrep, or set SEMGREP_BIN)
-make audit        # production dependency advisories
-make ci           # the whole CI gate in one run
+make build        # build Fleet MCP adapter (dist/fleet-mcp)
+make secret-scan  # gitleaks history and working-tree scan
+make semgrep-scan # custom Semgrep OSS rules
+make audit        # production dependency audit
+make ci           # full CI gate
 ```
 
-Run focused tests while editing, full checks before finishing. Architecture tests
-guard dependencies, state ownership, and safety contracts, not file size. See
-[AGENTS.md](AGENTS.md) for contribution rules and
-[architecture](docs/architecture.md) for state and trust ownership.
-
-The design assumes a trusted host. Messages, repository text, and model output are
-untrusted input, never permission to skip a safety gate. Credentials and live
-deployment config stay out of this repo.
+See [AGENTS.md](AGENTS.md) for contribution rules and [architecture](docs/architecture.md) for state and trust boundaries. Credentials and live deployment config stay outside this repo.
 
 [MIT license](LICENSE)
