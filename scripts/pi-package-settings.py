@@ -14,11 +14,13 @@ PACKAGE_EXTENSIONS = [
 ]
 
 USER_INSTALLABLE_PACKAGES = {
+    "pi-agent-hub",
+    "pi-boost",
     "pi-goal",
     "pi-matrix",
-    "pi-team-workflows",
     "pi-ollama-models",
-    "pi-agent-hub",
+    "pi-overview",
+    "pi-team-workflows",
 }
 
 PROJECT_ONLY_PACKAGES = {
@@ -33,12 +35,14 @@ OWNED_EXTENSION_DIRS = [
     "pi-panopticon",  # Legacy direct registration; cleanup only.
     "pi-teams",
     "council",
+    "pi-automations",
+    "pi-boost",
     "pi-file-watch",
+    "pi-goal",
     "pi-kanban",
     "pi-matrix",
-    "pi-automations",
-    "pi-goal",
     "pi-ollama-models",
+    "pi-overview",
 ]
 
 

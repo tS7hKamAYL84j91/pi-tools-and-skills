@@ -45,7 +45,7 @@ describe("pi-team-workflows public ownership boundary", () => {
 	it("documents independent installation and root setup wiring", () => {
 		expect(source("extensions/pi-team-workflows/README.md")).toContain("Standalone declarative team workflows");
 		expect(source("README.md")).toContain("pi-team-workflows");
-		expect(source("Makefile")).toContain("PACKAGE=pi-goal|pi-matrix|pi-ollama-models|pi-agent-hub|pi-team-workflows");
+		expect(source("Makefile")).toMatch(/^setup-package:.*PACKAGE=[^\s)]*pi-team-workflows/m);
 		expect(source("scripts/setup-pi")).toContain("pi-team-workflows");
 		expect(source("scripts/pi-package-settings.py")).toContain('"pi-team-workflows"');
 	});

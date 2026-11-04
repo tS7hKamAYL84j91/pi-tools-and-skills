@@ -8,6 +8,8 @@ SHELL := /bin/bash
 ROOT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 NPM ?= npm
 GITLEAKS ?= gitleaks
+SEMGREP ?= semgrep
+PACKAGE ?=
 DRY_RUN ?= 0
 
 CLEAN_MAILBOXES_ARGS :=
@@ -15,28 +17,42 @@ ifneq ($(filter 1 true yes,$(DRY_RUN)),)
 CLEAN_MAILBOXES_ARGS := --dry-run
 endif
 
-.PHONY: help setup setup-package setup-clean setup-package-clean doctor check typecheck lint knip type-coverage secret-scan test test-watch test-tui clean-mailboxes
+# PROJECT=<dir> targets one project's .pi/settings.json instead of the global
+# ~/.pi/agent/settings.json. Unset means global.
+SETUP_SCOPE_ARGS :=
+ifneq ($(strip $(PROJECT)),)
+SETUP_SCOPE_ARGS := --project "$(strip $(PROJECT))"
+endif
+
+.PHONY: help setup setup-package setup-clean setup-package-clean ci doctor check typecheck lint knip type-coverage secret-scan semgrep-scan audit build test test-watch test-coverage test-tui check-package-imports clean-mailboxes
 
 ##@ General
 help: ## Show available make targets
-	@awk 'BEGIN {FS = ":.*## "; printf "Usage:\n  make <target>\n"} /^##@ / {printf "\n%s\n", substr($$0, 5)} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "; printf "Usage:\n  make <target>\n"} /^##@ / {printf "\n%s\n", substr($$0, 5)} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 ##@ Setup
-setup: ## Register this checkout as a local pi package
-	"$(ROOT_DIR)/scripts/setup-pi"
+setup: ## Register this checkout with Pi (global; set PROJECT=<dir> for one project)
+	"$(ROOT_DIR)/scripts/setup-pi" $(SETUP_SCOPE_ARGS)
 
-setup-package: ## Register one user-installable package globally (PACKAGE=pi-goal|pi-matrix|pi-ollama-models|pi-agent-hub|pi-team-workflows)
-	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=pi-goal|pi-matrix|pi-ollama-models|pi-agent-hub|pi-team-workflows"; exit 2; }
+setup-package: ## Register one user-installable package globally (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-team-workflows)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=<name>; see 'make help'"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi" "$$PACKAGE"
 
-setup-clean: ## Remove this checkout's pi package registration
-	"$(ROOT_DIR)/scripts/setup-pi-clean"
+setup-clean: ## Remove this checkout's registration (global; set PROJECT=<dir> for one project)
+	"$(ROOT_DIR)/scripts/setup-pi-clean" $(SETUP_SCOPE_ARGS)
 
-setup-package-clean: ## Remove one user-installable package registration (PACKAGE=pi-goal|pi-matrix|pi-ollama-models|pi-agent-hub|pi-team-workflows)
-	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=pi-goal|pi-matrix|pi-ollama-models|pi-agent-hub|pi-team-workflows"; exit 2; }
+setup-package-clean: ## Remove one user-installable package registration (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-team-workflows)
+	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=<name>; see 'make help'"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi-clean" "$$PACKAGE"
 
 ##@ Quality
+ci: ## Run the CI gate locally (check, build, tests, package imports, security scans)
+	$(NPM) run check
+	$(NPM) run build:fleet-mcp
+	$(NPM) test
+	cd "$(ROOT_DIR)" && node scripts/check-package-imports.mjs .
+	$(MAKE) --no-print-directory semgrep-scan audit secret-scan
+
 doctor: check test secret-scan ## Run checks, tests, and secret scans
 
 check: ## Run typecheck, lint, knip, and type-coverage
@@ -54,6 +70,13 @@ knip: ## Check for unused files, exports, and dependencies
 type-coverage: ## Check TypeScript type coverage
 	$(NPM) run type-coverage
 
+semgrep-scan: ## Run the custom Semgrep OSS rules (requires semgrep, or set SEMGREP_BIN)
+	@command -v "$(SEMGREP)" >/dev/null 2>&1 || { echo "Error: semgrep not found. Install it with: pip install semgrep (or set SEMGREP_BIN)"; exit 127; }
+	SEMGREP_BIN="$(SEMGREP)" $(NPM) run security:semgrep
+
+audit: ## Audit production dependencies for high-severity advisories
+	$(NPM) audit --omit=dev --audit-level=high
+
 secret-scan: ## Scan git history and working tree for secrets with gitleaks
 	@command -v "$(GITLEAKS)" >/dev/null 2>&1 || { echo "Error: gitleaks not found. Install it with: brew install gitleaks"; exit 127; }
 	$(GITLEAKS) detect --source "$(ROOT_DIR)" --redact --no-banner --verbose
@@ -64,12 +87,22 @@ secret-scan: ## Scan git history and working tree for secrets with gitleaks
 		$(GITLEAKS) detect --source . --no-git --redact --no-banner --verbose; \
 	fi
 
+##@ Build
+build: ## Build the standalone Fleet MCP adapter into dist/
+	$(NPM) run build:fleet-mcp
+
 ##@ Tests
 test: ## Run tests
 	$(NPM) test
 
 test-watch: ## Run tests in watch mode
 	$(NPM) run test:watch
+
+test-coverage: ## Run tests with coverage
+	$(NPM) run test:coverage
+
+check-package-imports: ## Resolve one package's entrypoints without running it (PACKAGE=path, default .)
+	cd "$(ROOT_DIR)" && node scripts/check-package-imports.mjs "$(if $(PACKAGE),$(PACKAGE),.)"
 
 test-tui: ## Run real-terminal acceptance tests (PTY; needs a trusted local pi checkout)
 	$(NPM) run test:tui

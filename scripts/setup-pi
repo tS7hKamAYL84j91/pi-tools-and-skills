@@ -10,7 +10,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PI_DIR="$HOME/.pi/agent"
-SETTINGS_JSON="$PI_DIR/settings.json"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -19,10 +18,15 @@ dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
 usage() {
 	cat <<'HELP'
-Usage: setup-pi [package-name]
+Usage: setup-pi [--project <dir>] [package-name]
 
-Registers this checkout as a pi package. With package-name, registers one
-user-installable extension package globally (pi-goal, pi-matrix, pi-agent-hub, pi-team-workflows).
+Registers this checkout as a pi package. Without --project the registration
+goes to ~/.pi/agent/settings.json; with --project <dir> it goes to
+<dir>/.pi/settings.json for that one project.
+
+With package-name, registers one user-installable extension package
+(pi-agent-hub, pi-boost, pi-goal, pi-matrix, pi-ollama-models, pi-overview,
+pi-team-workflows).
 Project-only packages such as pi-kanban and pi-automations must be enabled
 per workspace instead.
 Runtime setup belongs in the workspace or infrastructure repo that uses it.
@@ -30,19 +34,40 @@ HELP
 }
 
 PACKAGE_NAME=""
-for arg in "$@"; do
-	case "$arg" in
+PROJECT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
 		-h|--help)
 			usage
 			exit 0
 			;;
-		*)
-			if [[ -n "$PACKAGE_NAME" ]]; then
-				red "Error: Unknown argument: $arg"
+		--project)
+			if [[ $# -lt 2 ]]; then
+				red "Error: --project requires a directory"
 				usage
 				exit 1
 			fi
-			PACKAGE_NAME="$arg"
+			PROJECT_DIR="$2"
+			shift 2
+			;;
+		--project=*)
+			PROJECT_DIR="${1#--project=}"
+			shift
+			;;
+		-*)
+			red "Error: Unknown option: $1"
+			usage
+			exit 1
+			;;
+		*)
+			if [[ -n "$PACKAGE_NAME" ]]; then
+				red "Error: Unknown argument: $1"
+				usage
+				exit 1
+			fi
+			PACKAGE_NAME="$1"
+			shift
 			;;
 	esac
 done
@@ -52,7 +77,20 @@ if ! command -v python3 &>/dev/null; then
 	exit 1
 fi
 
-mkdir -p "$PI_DIR"
+if [[ -n "$PROJECT_DIR" ]]; then
+	if [[ ! -d "$PROJECT_DIR" ]]; then
+		red "Error: project directory not found: $PROJECT_DIR"
+		exit 1
+	fi
+	PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+	SETTINGS_JSON="$PROJECT_DIR/.pi/settings.json"
+	SETTINGS_SCOPE="project: $PROJECT_DIR"
+else
+	SETTINGS_JSON="$PI_DIR/settings.json"
+	SETTINGS_SCOPE="global"
+fi
+
+mkdir -p "$(dirname "$SETTINGS_JSON")"
 
 bold "── Register pi-tools-and-skills package ──"
 
@@ -81,6 +119,8 @@ skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' 
 prompt_count=$(find "$PROMPTS_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 green "  settings.json updated:"
+echo  "    settings:   $SETTINGS_JSON"
+echo  "    scope:      $SETTINGS_SCOPE"
 if [[ -n "$PACKAGE_NAME" ]]; then
 	echo  "    package:    $PI_TOOLS_DIR/extensions/$PACKAGE_NAME"
 	echo  "    extensions: from package manifest"
@@ -94,4 +134,7 @@ echo  "    models:     unchanged"
 echo  "    runtime:    unchanged"
 
 echo ""
+if [[ -n "$PROJECT_DIR" ]]; then
+	dim "Project package declarations load only after Pi project trust is granted for $PROJECT_DIR."
+fi
 dim "Project-specific model defaults, shell hooks, secrets, and launchers stay outside this reusable package."

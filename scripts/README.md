@@ -10,5 +10,5 @@ Repository automation. None is loaded by Pi at runtime.
 
 ## Setup
 
-- `setup-pi`, `setup-pi-clean` — register or remove this checkout (see `make help`).
+- `setup-pi`, `setup-pi-clean` — register or remove this checkout globally, or for one project with `--project <dir>` (see `make help`).
 - `pi-package-settings.py` — package-settings helper used by the above.

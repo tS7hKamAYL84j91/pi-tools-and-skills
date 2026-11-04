@@ -1,6 +1,11 @@
 # pi-tools-and-skills
 
-![Layered project context: Fleet orchestration, Agent Hub, extensions, and prompt surfaces](docs/images/project-context-hub-prompt.jpeg)
+![Illustrative layering: a Pi host, Agent Hub, extensions, and prompt surfaces](docs/images/project-context-hub-prompt.jpeg)
+
+The sketch shows a layering, not a shipped stack. This repository owns
+extensions, skills, prompts, shared libraries, and the Fleet MCP adapter. The
+terminal multiplexer in the bottom band — its plugin and its config — belongs to
+the operator's environment and is not part of this repository.
 
 Local-first extensions, skills, prompts, and shared libraries for
 [Pi](https://github.com/earendil-works/pi).
@@ -19,10 +24,13 @@ npm ci
 Install from source with `pi install /absolute/path/to/pi-tools-and-skills`,
 `pi install git:github.com/tS7hKamAYL84j91/pi-tools-and-skills`, or
 `make setup-package PACKAGE=<name>`.
-`make setup` registers this checkout globally with Agent Hub and Goal enabled.
-Project-only extensions remain opt-in through the owning workspace's Pi settings.
+`make setup` registers this checkout globally with Agent Hub and Goal enabled;
+`make setup PROJECT=<dir>` writes the same registration to that project's
+`.pi/settings.json` instead, which Pi reads only after project trust is granted.
+`make setup-clean` removes whichever registration applies. Project-only
+extensions remain opt-in through the owning workspace's Pi settings.
 Setup changes package registration, not runtime/project settings.
-Run `make help` for setup, removal, checks, and utility commands.
+Run `make help` for setup, removal, checks, build, and utility commands.
 
 ## Packages and usage
 
@@ -64,9 +72,13 @@ defines what the umbrella package ships.
 ## Development and security
 
 ```sh
-npm run check          # namespace, template safety, types, lint, knip, coverage
-npm test               # offline unit, contract, architecture and evaluation tests
-make secret-scan      # history and working-tree secret checks
+make check        # namespace, template safety, types, lint, knip, type coverage
+make test         # offline unit, contract, architecture and evaluation tests
+make build        # standalone Fleet MCP adapter (dist/fleet-mcp)
+make secret-scan  # history and working-tree secret checks
+make semgrep-scan # custom Semgrep OSS rules (needs semgrep, or set SEMGREP_BIN)
+make audit        # production dependency advisories
+make ci           # the whole CI gate in one run
 ```
 
 Use focused tests while editing; use full checks before finishing. Architecture

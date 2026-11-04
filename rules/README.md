@@ -3,7 +3,7 @@
 Custom Semgrep rules for agent-generated code review.
 
 ```sh
-npm run security:semgrep
+make semgrep-scan   # or: npm run security:semgrep
 ```
 
 `custom/` holds the active rules: `unsafe-eval`, `secret-literals`,

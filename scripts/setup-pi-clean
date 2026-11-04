@@ -9,7 +9,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SETTINGS_JSON="$HOME/.pi/agent/settings.json"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -18,28 +17,54 @@ dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
 
 usage() {
 	cat <<'HELP'
-Usage: setup-pi-clean [package-name]
+Usage: setup-pi-clean [--project <dir>] [package-name]
 
-Removes pi-tools-and-skills package and legacy direct registrations. With
-package-name, removes one user-installable extension package registration (including pi-team-workflows).
+Removes pi-tools-and-skills package and legacy direct registrations. Without
+--project it cleans ~/.pi/agent/settings.json; with --project <dir> it cleans
+<dir>/.pi/settings.json for that one project.
+
+With package-name, removes one user-installable extension package registration
+(pi-agent-hub, pi-boost, pi-goal, pi-matrix, pi-ollama-models, pi-overview,
+pi-team-workflows).
 Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }
 
 PACKAGE_NAME=""
-for arg in "$@"; do
-	case "$arg" in
+PROJECT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
 		-h|--help)
 			usage
 			exit 0
 			;;
-		*)
-			if [[ -n "$PACKAGE_NAME" ]]; then
-				red "Error: Unknown argument: $arg"
+		--project)
+			if [[ $# -lt 2 ]]; then
+				red "Error: --project requires a directory"
 				usage
 				exit 1
 			fi
-			PACKAGE_NAME="$arg"
+			PROJECT_DIR="$2"
+			shift 2
+			;;
+		--project=*)
+			PROJECT_DIR="${1#--project=}"
+			shift
+			;;
+		-*)
+			red "Error: Unknown option: $1"
+			usage
+			exit 1
+			;;
+		*)
+			if [[ -n "$PACKAGE_NAME" ]]; then
+				red "Error: Unknown argument: $1"
+				usage
+				exit 1
+			fi
+			PACKAGE_NAME="$1"
+			shift
 			;;
 	esac
 done
@@ -47,6 +72,17 @@ done
 if ! command -v python3 &>/dev/null; then
 	red "Error: python3 not found."
 	exit 1
+fi
+
+if [[ -n "$PROJECT_DIR" ]]; then
+	if [[ ! -d "$PROJECT_DIR" ]]; then
+		red "Error: project directory not found: $PROJECT_DIR"
+		exit 1
+	fi
+	PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+	SETTINGS_JSON="$PROJECT_DIR/.pi/settings.json"
+else
+	SETTINGS_JSON="$HOME/.pi/agent/settings.json"
 fi
 
 bold "── Remove pi-tools-and-skills package registration ──"
