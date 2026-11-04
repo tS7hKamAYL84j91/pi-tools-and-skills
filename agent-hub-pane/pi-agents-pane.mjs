@@ -372,7 +372,8 @@ function shortModel(model) {
 function formatAge(startedAt) {
 	if (!Number.isFinite(startedAt) || startedAt <= 0) return "";
 	const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-	if (secs < 60) return `${secs}s`;
+	// Second-by-second uptime would invalidate otherwise unchanged frames.
+	if (secs < 60) return "<1m";
 	const mins = Math.round(secs / 60);
 	if (mins < 60) return `${mins}m`;
 	const hours = Math.round(mins / 60);
@@ -627,6 +628,7 @@ export function main(args = process.argv.slice(2)) {
 		focusGeneration = 0,
 		context = null,
 		pendingInput = [];
+	let lastFrame, lastWidth, lastHeight;
 	const setMouse = (active) => {
 		if (active === mouse || !input || outputBroken) return;
 		mouse = active;
@@ -685,9 +687,7 @@ export function main(args = process.argv.slice(2)) {
 		offset = paging.offset;
 		const page = paging.page;
 		visibleLines = paging.lines;
-		if (tty) process.stdout.write("\x1b[H\x1b[2J");
-		process.stdout.write(
-			render(
+		const frame = render(
 				view.error ? view : { ...view, records: page },
 				Math.max(1, (process.stdout.columns || 80) - 1),
 				height,
@@ -700,8 +700,13 @@ export function main(args = process.argv.slice(2)) {
 						? rows.find((row) => row.id === chosenLeadId)?.name
 						: undefined,
 				},
-			),
-		);
+			);
+		// Avoid making Zellij repaint unchanged frames; dimensions invalidate them.
+		if (tty && frame === lastFrame && width === lastWidth && height === lastHeight) return;
+		process.stdout.write((tty ? "\x1b[H\x1b[2J" : "") + frame);
+		lastFrame = frame;
+		lastWidth = width;
+		lastHeight = height;
 	};
 	const stop = () => {
 		if (stopped) return;

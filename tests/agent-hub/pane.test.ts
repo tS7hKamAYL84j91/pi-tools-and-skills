@@ -42,7 +42,7 @@ function record(id: string, fields: Record<string, unknown> = {}) {
 it("refresh defaults to ten seconds but accepts an explicit override", () => {
 	const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
 		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
-		console.log(JSON.stringify([
+		process.stdout.write(JSON.stringify([
 			parseArgs(["--scope", "lead"]).interval,
 			parseArgs(["--scope", "lead", "--interval", "2"]).interval,
 		]));
@@ -53,7 +53,7 @@ it("refresh defaults to ten seconds but accepts an explicit override", () => {
 it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", () => {
 	const code = `
 		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
-		console.log(JSON.stringify([
+		process.stdout.write(JSON.stringify([
 			parseArgs(["--scope", "lead"]).interval,
 			parseArgs(["--scope", "lead", "--interval", "2"]).interval,
 		]));
@@ -749,7 +749,6 @@ try:
         os.write(master,b'y')
         time.sleep(0.15)
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined input left an arm'
-        data=b''
         os.write(master,b'c\\r')
         until(b'Use separate confirmation keys')
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined c/Enter closed pane'
@@ -781,16 +780,21 @@ try:
         deadline=time.monotonic()+4
         while not os.path.exists(flag) and time.monotonic()<deadline: time.sleep(0.02)
         assert os.path.exists(flag)
-        time.sleep(0.1)
+        # Allow the async navigation check to observe the changed focus.
+        time.sleep(0.6)
         while select.select([master],[],[],0)[0]: os.read(master,65536)
-        # Live status must continue updating while the floating agent has focus.
-        assert select.select([master],[],[],1.5)[0], 'stopped refreshing while unfocused'
+        # Unchanged polls must not repaint the terminal.
+        assert not select.select([master],[],[],0.8)[0], 'repainted unchanged frame'
+        # Real registry changes still appear while the floating agent has focus.
+        import json
+        path=os.path.join(sys.argv[2],'helper.json')
+        with open(path) as f: record=json.load(f)
+        record['model']='fixture/updated-model'
+        with open(path,'w') as f: json.dump(record,f)
         data=b''
-        until(b'waiting')
-        until(b'model')
+        until(b'updated-model')
         os.unlink(flag)
         data=b''
-        until(b'l:lead q:quit')
         until(b'\\x1b[?1000h')
     os.write(master,b'q')
     until(b'\\x1b[?1000l')
