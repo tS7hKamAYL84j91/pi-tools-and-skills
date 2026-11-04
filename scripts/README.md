@@ -18,7 +18,7 @@ Standalone Node ESM terminal view for one Zellij tab's lead agent and its namesp
 
 ### Keys & actions (Zellij interactive mode)
 
-Footer: `n:new c:close l:lead q:quit` (read-only fallback: `q:quit`).
+Footer: `n:new c:close l:lead q:quit` (`n+ c- l:lead q:quit` below 27 columns; read-only fallback: `q:quit`).
 
 - `j` / `k` or arrows — select an agent row.
 - `Enter` or left click — focus the selected agent's pane in the same Zellij tab/session. Hidden floating panes are revealed and raised; focusing a tiled pane hides the floating layer while agents keep running. Requires a fresh heartbeat (≤30s), live PID evidence, and `AgentRecord.zellij` metadata.
