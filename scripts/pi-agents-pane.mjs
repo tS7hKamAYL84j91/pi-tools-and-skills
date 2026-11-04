@@ -528,6 +528,11 @@ export function main(args = process.argv.slice(2)) {
 					true,
 				);
 				const row = fresh.records?.find((item) => item.id === selectedId);
+				if (!row) {
+					notice = "selected agent left the registry";
+					draw();
+					continue;
+				}
 				notice = navigator.focus(row, fresh.records ?? []) ?? "";
 				if (notice) draw();
 				else setMouse(false);

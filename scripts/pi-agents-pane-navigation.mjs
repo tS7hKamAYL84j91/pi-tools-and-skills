@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
 import { paneIdentity } from "../extensions/pi-agent-hub/registry/zellij-pane.mjs";
 
-/** Only these two fixed Zellij actions are ever run; never a shell. */
+/** Fixed Zellij queries and focus only; never a shell, input injection, or pane creation. */
 function runZellij(args) {
 	return execFileSync("zellij", args, {
 		encoding: "utf8",
@@ -40,8 +40,50 @@ export function createNavigator(identity, run = runZellij) {
 			const own = panes.filter(
 				(p) => p && p.is_plugin === false && p.id === identity.paneId,
 			);
-			if (own.length !== 1 || !Number.isSafeInteger(own[0].tab_id)) return null;
-			return { panes, own: own[0] };
+			if (
+				own.length !== 1 ||
+				!Number.isSafeInteger(own[0].tab_id) ||
+				own[0].tab_id < 0
+			)
+				return null;
+			const view = { ...own[0] };
+			// Zellij reports a focused tiled pane AND a focused floating pane.
+			// Only the visible layer owns input; a hidden floating target stays listed.
+			if (
+				panes.some(
+					(p) =>
+						p?.tab_id === view.tab_id &&
+						p.is_plugin === false &&
+						p.is_floating === true,
+				)
+			) {
+				let visible;
+				try {
+					const answer = run([
+						"--session",
+						identity.sessionName,
+						"action",
+						"are-floating-panes-visible",
+						"--tab-id",
+						String(view.tab_id),
+					]).trim();
+					if (answer !== "true" && answer !== "false") return null;
+					visible = answer === "true";
+				} catch (error) {
+					// 0.44.1 reports false on stderr/status 2; documented versions use stdout/status 1.
+					if (
+						(error.status === 2 &&
+							error.stdout === "" &&
+							error.stderr?.trim() === "false") ||
+						(error.status === 1 && error.stdout?.trim() === "false")
+					)
+						visible = false;
+					else return null;
+				}
+				view.is_focused =
+					view.is_focused === true && Boolean(view.is_floating) === visible;
+			}
+			return { panes, own: view };
 		} catch {
 			return null;
 		}
@@ -80,6 +122,12 @@ export function createNavigator(identity, run = runZellij) {
 		);
 		if (panes.length !== 1 || panes[0].tab_id !== context.own.tab_id)
 			return "no pane in this tab";
+		if (
+			panes[0].exited === true ||
+			panes[0].is_selectable === false ||
+			panes[0].is_suppressed === true
+		)
+			return "pane is unavailable";
 		// Cwd is a corroborating check, never an identity search or fallback.
 		if (
 			typeof nav.cwd !== "string" ||
@@ -90,6 +138,7 @@ export function createNavigator(identity, run = runZellij) {
 		)
 			return "pane identity changed";
 		try {
+			// Zellij 0.44.1 focus-pane-id also reveals the floating layer and raises this target.
 			run([
 				"--session",
 				identity.sessionName,

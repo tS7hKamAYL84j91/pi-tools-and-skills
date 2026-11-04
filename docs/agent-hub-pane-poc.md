@@ -6,6 +6,8 @@ Revision 2 (2026-11-03): aligned to the view CLI contract the CoAS half already 
 
 Revision 3 (Jim's direct live-feedback requests): human rows are `<glyph> - <name> - <status>` with Hub dark-theme colours. Details remain in JSON. The side pane may focus a uniquely identified agent terminal in its own tab/session on Enter or a row click; it still never mutates agent state. This narrowly supersedes the original display-only restriction.
 
+Revision 4 (hidden-floating workflow): agents may run in hidden floating panes. Selecting a row reveals the floating layer and focuses/raises the chosen agent; returning to the tiled view hides the layer without stopping agents. Actual Zellij 0.44.1 acceptance is exercised in an isolated, disposable session, not by rearranging Jim's agents.
+
 ## Goal
 
 Show the agents associated with one EO Zellij tab, including their current sessions, in a compact read-only side pane. Agent Hub remains the source of truth. Herdr is UX inspiration only, not a runtime dependency or alternative state store.
@@ -81,9 +83,10 @@ Existing sources to inspect include `lib/agent-registry.ts`, Hub registry/health
 
 - Agents self-report optional `zellij: { sessionName, paneId }` on ordinary Hub registry writes, including registration/heartbeat. Interactive terminals only; headless/RPC agents and children with `parentId` must not advertise inherited parent panes. Old records without metadata remain visible but not focusable until updated Hub code is loaded by those agents.
 - The view reads only its own three Zellij environment keys. No other process's environment is inspected. Identity is navigation data, never authority.
-- The only subprocess is a bounded, shell-free `zellij` call: `list-panes --json --all` for validation, or `focus-pane-id terminal_N` on explicit user input. The session argument comes from the view's own environment, never from a record.
+- The only subprocess is a bounded, shell-free `zellij` call: `list-panes --json --all` and `are-floating-panes-visible --tab-id N` for validation, or `focus-pane-id terminal_N` on explicit user input. The session argument comes from the view's own environment, never from a record.
 - Find the view's unique non-plugin terminal first; targets must be unique non-plugin terminals in that exact tab/session, not the view itself. Use explicit self-reported IDs; cwd only corroborates them, never selects a target. No title/cwd guessing.
 - Refuse missing/ambiguous metadata, duplicate pane claims, dead/unknown process evidence, future/older-than-30-second heartbeats, changed cwd, failed listing or failed focus. No tab/session switching, agent signals, restarts, messages or registry writes. Missing Zellij disables navigation but keeps the list usable.
+- Zellij maintains separate focused panes in the tiled and floating layers. The view checks which layer is visible before accepting focus actions or redrawing. In 0.44.1, `focus-pane-id` reveals/raises hidden floating targets and hides floats when focusing a tiled target; it reveals the whole floating layer, not exclusively one window. Exited, suppressed and unselectable panes are refused.
 - This is not an ownership proof: a fresh record and list snapshot cannot atomically exclude a terminal exiting/reusing its ID between validation and focus. Same-tab-only validation bounds this navigation race; no action beyond focus follows it.
 - Multiple namespace-less canonical claimants remain visible as ambiguous; renaming a display name does not elect a unique owner.
 
@@ -106,7 +109,8 @@ CoAS adds an opt-in side pane using the existing renderer/template and normal ca
 7. Registry hygiene: `namespace-owners.json` and `<id>/` directories are ignored, and `kind: "external"` rows never appear.
 8. CoAS dry-run/render tests prove opt-in-only placement, correct canonical scope, unchanged default layout and preserved launch/security argv.
 9. Stubbed Zellij tests prove same-tab/session-only focus, refusal cases, exact argv, fragmented mouse/keyboard input, quiet-after-focus and mouse/raw/cursor restoration. Tests never invoke a live Zellij session.
-10. Run `npm run check`, relevant tests and full `npm test` when practical, plus `git diff --check`. Report exact commands/results and limitations; do not weaken checks.
+10. `node scripts/test-agent-pane-zellij.mjs` creates a unique detached scratch session and fixture processes. Actual SGR mouse input reveals/focuses hidden beta; arrow+Enter reveals/focuses hidden alpha; returning to the tiled view hides floats without ending agents. It cleans up only its own session/files and must not touch existing sessions.
+11. Run `npm run check`, relevant tests and full `npm test` when practical, plus `git diff --check`. Report exact commands/results and limitations; do not weaken checks.
 
 ## Handoff
 

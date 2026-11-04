@@ -90,6 +90,56 @@ it.each([
 	expect(result.result).toBeTruthy();
 	expect(result.focusCalls).toEqual([]);
 });
+it("reveals a hidden floating target and treats the tiled view as unfocused afterwards", () => {
+	const value = probe(`
+		panes[0].is_floating=false; panes[1].is_floating=true; panes[1].is_focused=true;
+		let visible=false;
+		const run=args=>{
+			calls.push(args);
+			if(args.includes('are-floating-panes-visible')) {
+				if(!visible)throw Object.assign(new Error(),{status:2,stdout:'',stderr:'false\\n'});
+				return 'true\\n';
+			}
+			if(args.includes('focus-pane-id')) {visible=true;return '';}
+			return JSON.stringify(panes);
+		};
+		const nav=createNavigator(identity,run);
+		const before=nav.inspect().own.is_focused;
+		const result=nav.focus(row,[row],1001);
+		const after=nav.inspect().own.is_focused;
+		const again=nav.focus(row,[row],1001);
+		process.stdout.write(JSON.stringify({before,result,after,again,focus:calls.filter(a=>a.includes('focus-pane-id'))}));
+	`);
+	expect(value).toEqual({
+		before: true,
+		result: null,
+		after: false,
+		again: "navigation unavailable",
+		focus: [["--session", "session", "action", "focus-pane-id", "terminal_2"]],
+	});
+});
+
+it.each([
+	"error",
+	"invalid-response",
+])("disables navigation when floating-layer visibility is %s", (mode) => {
+	const value = probe(`panes[1].is_floating=true;
+		const nav=createNavigator(identity,args=>{calls.push(args); if(args.includes('are-floating-panes-visible')) {${mode === "error" ? "throw Object.assign(new Error('private'), {status:2,stdout:'',stderr:'private'});" : "return 'unknown';"}}return JSON.stringify(panes);});
+		process.stdout.write(JSON.stringify({result:nav.focus(row,[row],1001),focus:calls.filter(a=>a.includes('focus-pane-id'))}));`);
+	expect(value).toEqual({ result: "navigation unavailable", focus: [] });
+});
+
+it.each([
+	"exited",
+	"is_suppressed",
+])("refuses %s targets even with a fresh record", (flag) => {
+	expect(
+		probe(
+			`panes[1][${JSON.stringify(flag)}]=true; const result=createNavigator(identity,runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,focus:calls.filter(a=>a.includes('focus-pane-id'))}));`,
+		),
+	).toEqual({ result: "pane is unavailable", focus: [] });
+});
+
 it("refuses duplicate self-reported pane claims", () => {
 	expect(
 		probe(
