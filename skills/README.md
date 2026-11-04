@@ -9,12 +9,8 @@ Pi discovers these through the root package manifest (`"skills"` in
 | Skill | Purpose |
 | --- | --- |
 | `fire-review` | Focused code review |
-| `node-esm-gotchas` | Node ESM/TypeScript pitfalls |
-| `pi-extension-dev` | Authoring Pi extensions |
-| `pi-git-workflow` | Repository git workflow |
-| `pi-model-selection` | Choosing models |
-| `pi-session-management` | Session lifecycle |
-| `skill-creator` | Authoring new skills |
-| `spr-document-compression` | Document compression |
 | `tui-design` | Terminal UI design |
-| `worktree-isolation` | Isolated worktrees |
+
+FIRE and TUI design are retained for external use. Fleet-specific Kanban guidance
+remains bundled with `extensions/pi-kanban`; dormant guidance was removed rather
+than retained solely because it had historical reads. Git history preserves it.

@@ -21,7 +21,7 @@ pi install /absolute/path/to/extensions/pi-team-workflows
 make setup-package PACKAGE=pi-team-workflows
 ```
 
-The package manifest loads `index.ts` and the bundled `pi-team-consultation` skill. It owns the `team_*` tools and `/teams` command described below; no other extension needs to register them.
+The package manifest loads `index.ts`. It owns the `team_*` tools and `/teams` command described below; no other extension needs to register them.
 
 ## Stable Tools/Commands
 

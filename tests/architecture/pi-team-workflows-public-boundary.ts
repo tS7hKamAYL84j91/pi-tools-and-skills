@@ -23,7 +23,7 @@ function collectFiles(dir: string): string[] {
 }
 
 describe("pi-team-workflows public ownership boundary", () => {
-	it("has a standalone package manifest and skill bundle", () => {
+	it("has a standalone extension manifest without retired skill wiring", () => {
 		const manifest = JSON.parse(source("extensions/pi-team-workflows/package.json")) as {
 			name?: string;
 			pi?: { extensions?: string[]; skills?: string[] };
@@ -32,9 +32,9 @@ describe("pi-team-workflows public ownership boundary", () => {
 			name: "@solo-visual/pi-team-workflows",
 			pi: {
 				extensions: ["./index.ts"],
-				skills: ["./skills"],
 			},
 		});
+		expect(manifest.pi?.skills).toBeUndefined();
 	});
 
 	it("keeps Team Workflows registration out of Agent Hub", () => {
