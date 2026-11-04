@@ -78,7 +78,7 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 			.filter((line) => line.startsWith("\x1b[7m"));
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toContain("lead");
-		expect(out).toContain("n:new c:close l q");
+		expect(out).toContain("n:new c:close l:lead q:quit");
 	});
 
 	it("keeps the selection on the agent id when rows reorder", () => {
@@ -99,7 +99,7 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 		const out = render(view, { enabled: false });
 		expect(out).not.toContain("\x1b[7m");
 		expect(out).not.toContain("j/k");
-		expect(out.trimEnd().endsWith("q quit")).toBe(true);
+		expect(out.trimEnd().endsWith("q:quit")).toBe(true);
 	});
 
 	it("sanitizes the notice and keeps it above the footer", () => {

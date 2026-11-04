@@ -161,7 +161,7 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"n:new c:close l q",
+				"l:lead q:quit",
 			),
 		"interactive view ready",
 	);

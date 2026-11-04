@@ -291,6 +291,21 @@ it("maps only the recorded current session filename, never reads session or mail
 	expect(tree(dir)).toEqual(before);
 });
 
+it.each([
+	20, 27, 40,
+])("labels lead and quit in the footer at width %i", (width) => {
+	const view = { scope: "lead", leadState: "resolved", records: [] };
+	const output = JSON.parse(
+		evaluate(
+			`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width}, 40, false, {enabled:true})));`,
+		),
+	) as string;
+	const footer = output.trimEnd().split("\n").at(-1) ?? "";
+	expect(footer).toContain("l:lead");
+	expect(footer).toContain("q:quit");
+	expect(footer.length).toBeLessThanOrEqual(width);
+});
+
 it("handles missing session metadata without inventing a title or session ID", () => {
 	record("lead");
 	const row = JSON.parse(cli("--json").stdout).records[0];
@@ -390,7 +405,7 @@ it.each([
 		`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, ${width})));`,
 	);
 	expect(JSON.parse(output)).toBe(
-		"demo · hub\nR - quartermaster - running\nW - reviewer - waiting\nq quit\n",
+		"demo · hub\nR - quartermaster - running\nW - reviewer - waiting\nq:quit\n",
 	);
 });
 
@@ -497,7 +512,7 @@ def until(needle):
         if select.select([master], [], [], 0.1)[0]: data += os.read(master, 65536)
     assert needle in data, repr(data)
 try:
-    until(b'q quit')
+    until(b'q:quit')
     assert (b'\\x1b[38;2;' in data) == (sys.argv[3] == 'false')
     assert b'\\x1b[?25l' in data
     data = b''
@@ -601,7 +616,7 @@ def until(needle):
     assert needle in data, repr(data)
 try:
     if sys.argv[3]=='startup':
-        until(b'q quit')
+        until(b'q:quit')
         deadline=time.monotonic()+3
         while not os.path.exists(os.path.join(sys.argv[2],'inspect-started')) and time.monotonic()<deadline: time.sleep(0.01)
         assert os.path.exists(os.path.join(sys.argv[2],'inspect-started'))
@@ -611,7 +626,7 @@ try:
         assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
         os.write(master,b'\\r')
         assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
-    until(b'n:new c:close l q')
+    until(b'l:lead q:quit')
     if sys.argv[3]=='startup':
         time.sleep(0.3)
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'startup replay closed a pane'
@@ -705,7 +720,7 @@ try:
         until(b'W - helper - waiting')
         os.unlink(flag)
         data=b''
-        until(b'n:new c:close l q')
+        until(b'l:lead q:quit')
         until(b'\\x1b[?1000h')
     os.write(master,b'q')
     until(b'\\x1b[?1000l')

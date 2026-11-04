@@ -394,10 +394,10 @@ export function render(
 	roles.set(shown.length, "dim");
 	shown.push(
 		interaction.enabled
-			? width >= 24
-				? "j/k ↵ n:new c:close l q"
-				: "j/k ↵ n:new c l q"
-			: "q quit",
+			? width >= 27
+				? "n:new c:close l:lead q:quit"
+				: "n+ c- l:lead q:quit"
+			: "q:quit",
 	);
 	return `${shown
 		.slice(0, height)
