@@ -129,13 +129,32 @@ export class BoundedRecentSet {
 	}
 }
 
-/** Runs a fixed number of detached callback tasks and contains their failures. */
+/** Default bound on queued-but-not-yet-active callback tasks (absorbs sync-turn bursts). */
+const DEFAULT_MAX_PENDING_TASKS = 256;
+
+/**
+ * Runs a bounded number of detached callback tasks and contains their failures.
+ *
+ * The Matrix SDK fires event callbacks synchronously within a single sync turn,
+ * so a run bound alone would drop every event past `maxActive` before any of
+ * them had a chance to complete. Instead of dropping, accepted work beyond the
+ * active bound is queued FIFO and dispatched as slots free up; dropping only
+ * happens when the pending queue itself overflows.
+ */
 export class BoundedTaskSet {
 	private readonly active = new Set<Promise<void>>();
+	private readonly pending: Array<{
+		operation: () => void | Promise<void>;
+		onError: (error: unknown) => void;
+	}> = [];
 	private accepting = true;
 
-	constructor(private readonly maxActive: number) {
+	constructor(
+		private readonly maxActive: number,
+		private readonly maxPending: number = DEFAULT_MAX_PENDING_TASKS,
+	) {
 		if (maxActive <= 0) throw new Error("Matrix callback task bound must be positive.");
+		if (maxPending <= 0) throw new Error("Matrix callback pending bound must be positive.");
 	}
 
 	open(): void {
@@ -143,17 +162,42 @@ export class BoundedTaskSet {
 	}
 
 	tryRun(operation: () => void | Promise<void>, onError: (error: unknown) => void): boolean {
-		if (!this.accepting || this.active.size >= this.maxActive) return false;
+		if (!this.accepting) return false;
+		if (this.active.size < this.maxActive) {
+			this.start(operation, onError);
+			return true;
+		}
+		if (this.pending.length >= this.maxPending) return false;
+		this.pending.push({ operation, onError });
+		return true;
+	}
+
+	private start(operation: () => void | Promise<void>, onError: (error: unknown) => void): void {
 		const task = Promise.resolve()
 			.then(operation)
 			.catch(onError)
-			.finally(() => this.active.delete(task));
+			.finally(() => {
+				this.active.delete(task);
+				this.dispatchQueued();
+			});
 		this.active.add(task);
-		return true;
+	}
+
+	private dispatchQueued(): void {
+		while (this.active.size < this.maxActive && this.pending.length > 0) {
+			const next = this.pending.shift();
+			if (!next) return;
+			this.start(next.operation, next.onError);
+		}
 	}
 
 	async closeAndDrain(): Promise<void> {
 		this.accepting = false;
-		await Promise.allSettled([...this.active]);
+		// Accepted events still run to completion; only events past close are refused.
+		while (this.pending.length > 0 || this.active.size > 0) {
+			this.dispatchQueued();
+			if (this.active.size === 0) break;
+			await Promise.allSettled([...this.active]);
+		}
 	}
 }

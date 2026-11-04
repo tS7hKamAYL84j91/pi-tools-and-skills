@@ -314,11 +314,13 @@ describe("Matrix lifecycle and event work bounds", () => {
 		for (let index = 0; index < 8; index += 1) {
 			eventHandlers.get("timeline")?.(timelineEvent, null, false);
 		}
-		await waitFor(() => membershipCallbackCount === 4 && timelineCallbackCount === 4);
+		await waitFor(() => membershipCallbackCount === 4 && timelineCallbackCount === 5);
 		await waitFor(() => onLog.mock.calls.some((call) => String(call[0]).includes("handler failed")));
 
-		expect(onLog.mock.calls.filter((call) => String(call[0]).includes("work limit"))).toHaveLength(4);
+		expect(onLog.mock.calls.filter((call) => String(call[0]).includes("event dropped"))).toHaveLength(0);
 		blocker.resolve();
 		await adapter.stop();
+		expect(membershipCallbackCount).toBe(4);
+		expect(timelineCallbackCount).toBe(8);
 	});
 });

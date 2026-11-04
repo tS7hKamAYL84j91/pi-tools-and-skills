@@ -417,7 +417,7 @@ export class MatrixJsSdkAdapter implements MatrixClientAdapter {
 			),
 		);
 		if (!accepted) {
-			callbacks.onLog?.(`Matrix ${kind} event dropped: callback work limit reached.`, "warning");
+			callbacks.onLog?.(`Matrix ${kind} event dropped: callback queue overflow.`, "warning");
 		}
 	}
 
