@@ -161,7 +161,7 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"j/k n new c l q",
+				"n:new c:close l q",
 			),
 		"interactive view ready",
 	);
@@ -215,11 +215,11 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				`Close #${beta.id} [W] y/n`,
+				`Close #${beta.id} [W] Y/n`,
 			),
 		"close confirmation",
 	);
-	sendInput(view.id, "y");
+	sendInput(view.id, "\r");
 	await until(
 		() => !panes().some((p) => !p.is_plugin && p.id === beta.id),
 		"hidden beta pane closed",
@@ -248,11 +248,12 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"Default model? y/n gamma",
+				"Default model? Y/n gamma",
 			),
 		"create confirmation",
 	);
-	sendInput(view.id, "y");
+	await delay(350);
+	sendInput(view.id, "\r");
 	const created = await until(() => {
 		try {
 			return JSON.parse(readFileSync(join(dir, "new-agent.json"), "utf8"));

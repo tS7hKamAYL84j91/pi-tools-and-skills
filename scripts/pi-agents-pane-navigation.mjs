@@ -401,8 +401,8 @@ export function inputParser() {
 				continue;
 			}
 			if (char === "c") events.push({ type: "close" });
-			else if (char === "y") events.push({ type: "confirm" });
-			else if (char === "n") events.push({ type: "cancel" });
+			else if (char === "y" || char === "Y") events.push({ type: "confirm" });
+			else if (char === "n" || char === "N") events.push({ type: "cancel" });
 			else if (char === "l") events.push({ type: "lead" });
 			else if (char === "q") events.push({ type: "quit" });
 			else if (char === "j" || char === "k")

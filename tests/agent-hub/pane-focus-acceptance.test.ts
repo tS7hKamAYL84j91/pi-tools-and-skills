@@ -5,13 +5,22 @@
  * wired CLI path (pty + stub `zellij`, no live session touched).
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const navigationUrl = pathToFileURL(resolve("scripts/pi-agents-pane-navigation.mjs")).href;
+const navigationUrl = pathToFileURL(
+	resolve("scripts/pi-agents-pane-navigation.mjs"),
+).href;
 const paneUrl = pathToFileURL(resolve("scripts/pi-agents-pane.mjs")).href;
 
 function probe(code: string): unknown {
@@ -64,16 +73,24 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 
 	it("marks exactly the selected row, by id, and shows the key hint", () => {
 		const out = render(view, { enabled: true, selectedId: "lead", offset: 0 });
-		const selected = out.split("\n").filter((line) => line.startsWith("\x1b[7m"));
+		const selected = out
+			.split("\n")
+			.filter((line) => line.startsWith("\x1b[7m"));
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toContain("lead");
-		expect(out).toContain("j/k n new c l q");
+		expect(out).toContain("n:new c:close l q");
 	});
 
 	it("keeps the selection on the agent id when rows reorder", () => {
 		const reordered = { ...view, records: [view.records[1], view.records[0]] };
-		const out = render(reordered, { enabled: true, selectedId: "helper", offset: 0 });
-		const selected = out.split("\n").filter((line) => line.startsWith("\x1b[7m"));
+		const out = render(reordered, {
+			enabled: true,
+			selectedId: "helper",
+			offset: 0,
+		});
+		const selected = out
+			.split("\n")
+			.filter((line) => line.startsWith("\x1b[7m"));
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toContain("helper");
 	});
@@ -86,20 +103,28 @@ process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(v)}, 60, 20, fa
 	});
 
 	it("sanitizes the notice and keeps it above the footer", () => {
-		const out = render(view, { enabled: true, selectedId: "lead", notice: "\x1b[31mboom\x1b[0m\nnext" });
+		const out = render(view, {
+			enabled: true,
+			selectedId: "lead",
+			notice: "\x1b[31mboom\x1b[0m\nnext",
+		});
 		expect(out).not.toContain("\x1b[31m");
 		expect(out).not.toContain("\nnext");
 		expect(out.trimEnd().split("\n").at(-2)).toContain("boom");
 	});
 });
 
-const hasScript = spawnSync("script", ["--version"], { encoding: "utf8" }).status === 0;
+const hasScript =
+	spawnSync("script", ["--version"], { encoding: "utf8" }).status === 0;
 
 function startedAt(pid: number): number {
 	const stat = readFileSync("/proc/stat", "utf8");
 	const btime = Number(/^btime (\d+)$/m.exec(stat)?.[1]);
 	const line = readFileSync(`/proc/${pid}/stat`, "utf8");
-	const fields = line.slice(line.lastIndexOf(")") + 2).trim().split(/\s+/);
+	const fields = line
+		.slice(line.lastIndexOf(")") + 2)
+		.trim()
+		.split(/\s+/);
 	return btime * 1000 + Number(fields[19]) * 10;
 }
 
@@ -161,12 +186,23 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 	}
 
 	const runInPty = (args: string[], input: string, env: NodeJS.ProcessEnv) =>
-		spawnSync("script", ["-qec", [process.execPath, resolve("scripts/pi-agents-pane"), ...args].join(" "), "/dev/null"], {
-			encoding: "utf8",
-			timeout: 10_000,
-			input,
-			env,
-		});
+		spawnSync(
+			"sh",
+			[
+				"-c",
+				'(sleep 0.5; printf "%s" "$1") | script -qec "$2" /dev/null',
+				"fixture",
+				input,
+				[process.execPath, resolve("scripts/pi-agents-pane"), ...args].join(
+					" ",
+				),
+			],
+			{
+				encoding: "utf8",
+				timeout: 10_000,
+				env,
+			},
+		);
 
 	const calls = (log: string) =>
 		readFileSync(log, "utf8")
@@ -175,30 +211,45 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 			.filter(Boolean)
 			.map((line) => JSON.parse(line) as string[]);
 
-	it.skipIf(!hasScript)("focuses the selected helper pane exactly once, and only on enter", () => {
-		const { registry, bin, log } = fixture();
-		const env = {
-			...process.env,
-			ZELLIJ: "0",
-			ZELLIJ_SESSION_NAME: "S",
-			ZELLIJ_PANE_ID: "1",
-			ZELLIJ_STUB_LOG: log,
-			PATH: `${bin}:${process.env.PATH ?? ""}`,
-		};
-		const args = ["--scope", "lead", "--registry", registry, "--interval", "0.5", "--no-color"];
+	it.skipIf(!hasScript)(
+		"focuses the selected helper pane exactly once, and only on enter",
+		() => {
+			const { registry, bin, log } = fixture();
+			const env = {
+				...process.env,
+				ZELLIJ: "0",
+				ZELLIJ_SESSION_NAME: "S",
+				ZELLIJ_PANE_ID: "1",
+				ZELLIJ_STUB_LOG: log,
+				PATH: `${bin}:${process.env.PATH ?? ""}`,
+			};
+			const args = [
+				"--scope",
+				"lead",
+				"--registry",
+				registry,
+				"--interval",
+				"0.5",
+				"--no-color",
+			];
 
-		const before = runInPty(args, "q", env);
-		expect(before.status).toBe(0);
-		expect(calls(log).filter((argv) => argv.includes("focus-pane-id"))).toEqual([]);
-		expect(calls(log).some((argv) => argv.includes("list-panes"))).toBe(true);
+			const before = runInPty(args, "q", env);
+			expect(before.status).toBe(0);
+			expect(
+				calls(log).filter((argv) => argv.includes("focus-pane-id")),
+			).toEqual([]);
+			expect(calls(log).some((argv) => argv.includes("list-panes"))).toBe(true);
 
-		writeFileSync(log, "");
-		const after = runInPty(args, "jj\rq", env);
-		expect(after.status).toBe(0);
-		const focus = calls(log).filter((argv) => argv.includes("focus-pane-id"));
-		expect(focus).toEqual([["--session", "S", "action", "focus-pane-id", "terminal_7"]]);
-		for (const argv of calls(log)) expect(argv).not.toContain("send-keys");
-	});
+			writeFileSync(log, "");
+			const after = runInPty(args, "jj\rq", env);
+			expect(after.status).toBe(0);
+			const focus = calls(log).filter((argv) => argv.includes("focus-pane-id"));
+			expect(focus).toEqual([
+				["--session", "S", "action", "focus-pane-id", "terminal_7"],
+			]);
+			for (const argv of calls(log)) expect(argv).not.toContain("send-keys");
+		},
+	);
 
 	it.skipIf(!hasScript)("never touches zellij for --once or --json", () => {
 		const { registry, bin, log } = fixture();
@@ -211,10 +262,14 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 			PATH: `${bin}:${process.env.PATH ?? ""}`,
 		};
 		for (const extra of [["--once"], ["--json"]]) {
-			const result = spawnSync(resolve("scripts/pi-agents-pane"), ["--scope", "lead", "--registry", registry, ...extra], {
-				encoding: "utf8",
-				env,
-			});
+			const result = spawnSync(
+				resolve("scripts/pi-agents-pane"),
+				["--scope", "lead", "--registry", registry, ...extra],
+				{
+					encoding: "utf8",
+					env,
+				},
+			);
 			expect(result.status).toBe(0);
 		}
 		expect(readFileSync(log, "utf8").trim()).toBe("");

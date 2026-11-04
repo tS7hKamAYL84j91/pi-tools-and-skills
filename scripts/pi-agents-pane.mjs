@@ -392,7 +392,13 @@ export function render(
 		shown.push(safeText(interaction.notice));
 	}
 	roles.set(shown.length, "dim");
-	shown.push(interaction.enabled ? "j/k n new c l q" : "q quit");
+	shown.push(
+		interaction.enabled
+			? width >= 24
+				? "j/k ↵ n:new c:close l q"
+				: "j/k ↵ n:new c l q"
+			: "q quit",
+	);
 	return `${shown
 		.slice(0, height)
 		.map((line, index) => {
@@ -654,9 +660,10 @@ export function main(args = process.argv.slice(2)) {
 						pid: lead.pid,
 						startedAt: lead.navigation?.startedAt,
 						pane: JSON.stringify(lead.navigation?.zellij),
+						armedAt: Date.now(),
 						expires: Date.now() + 10000,
 					};
-					notice = `Default model? y/n ${name}`;
+					notice = `Default model? Y/n ${name}`;
 				}
 				draw();
 				return;
@@ -685,7 +692,8 @@ export function main(args = process.argv.slice(2)) {
 				(event) => event.type === "close" || event.type === "confirm",
 			) &&
 			raw !== "c" &&
-			raw !== "y"
+			raw !== "y" &&
+			raw !== "Y"
 		) {
 			confirmation = undefined;
 			creation = undefined;
@@ -695,13 +703,28 @@ export function main(args = process.argv.slice(2)) {
 		}
 		const confirmationAtStart = confirmation;
 		for (const event of events) {
-			if (replay && (event.type === "close" || event.type === "confirm")) {
+			if (
+				replay &&
+				(event.type === "close" ||
+					event.type === "confirm" ||
+					event.type === "focus")
+			) {
 				confirmation = undefined;
 				notice = "Repeat c after startup";
 				continue;
 			}
 			if (creation) {
-				if (event.type === "confirm" && raw === "y" && !replay) {
+				// The name-entry Enter cannot be immediately repeated to launch.
+				if (event.type === "focus" && Date.now() - creation.armedAt < 300) {
+					notice = "Wait; Enter confirms";
+					draw();
+					continue;
+				}
+				if (
+					((event.type === "confirm" && (raw === "y" || raw === "Y")) ||
+						(event.type === "focus" && (raw === "\r" || raw === "\n"))) &&
+					!replay
+				) {
 					const request = creation;
 					creation = undefined;
 					const fresh = designateLead(
@@ -779,7 +802,7 @@ export function main(args = process.argv.slice(2)) {
 				const symbol = Object.hasOwn(STATUS_SYMBOL, row.status)
 					? STATUS_SYMBOL[row.status]
 					: "?";
-				notice = `Close #${hint.paneId} [${symbol}] y/n ${row.name}`;
+				notice = `Close #${hint.paneId} [${symbol}] Y/n ${row.name}`;
 				draw();
 			} else if (event.type === "cancel") {
 				if (confirmation) {
@@ -794,7 +817,12 @@ export function main(args = process.argv.slice(2)) {
 					notice = "Name: ";
 				}
 				draw();
-			} else if (event.type === "confirm") {
+			} else if (
+				event.type === "confirm" ||
+				(confirmation &&
+					event.type === "focus" &&
+					(raw === "\r" || raw === "\n"))
+			) {
 				if (!confirmation) continue;
 				if (confirmation !== confirmationAtStart) {
 					confirmation = undefined;

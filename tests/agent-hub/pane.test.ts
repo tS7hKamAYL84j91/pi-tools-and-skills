@@ -609,9 +609,9 @@ try:
         os.write(master,b'c')
         time.sleep(0.1)
         assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
-        os.write(master,b'y')
+        os.write(master,b'\\r')
         assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
-    until(b'j/k n new c l q')
+    until(b'n:new c:close l q')
     if sys.argv[3]=='startup':
         time.sleep(0.3)
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'startup replay closed a pane'
@@ -624,7 +624,7 @@ try:
         time.sleep(0.15)
         data=b''
         os.write(master,b'c')
-        until(b'Close #17 [W] y/n helper')
+        until(b'Close #17 [W] Y/n helper')
         os.write(master,b'y')
         data=b''
         until(b'Pane closed: helper')
@@ -640,10 +640,16 @@ try:
             until(b'New agent cancelled')
         else:
             os.write(master,b'\\r')
-            until(b'Default model? y/n cyq-worker')
+            if sys.argv[3]=='new':
+                time.sleep(0.03)
+                os.write(master,b'\\r')
+            until(b'Default model? Y/n cyq-worker')
             assert not os.path.exists(os.path.join(sys.argv[2],'created')), 'launched before confirmation'
             if sys.argv[3]=='new':
-                os.write(master,b'y')
+                until(b'Wait; Enter confirms')
+                assert not os.path.exists(os.path.join(sys.argv[2],'created')), 'double Enter launched agent'
+                time.sleep(0.35)
+                os.write(master,b'\\r')
                 until(b'Requested: cyq-worker')
             else:
                 os.write(master,b'n')
@@ -659,14 +665,18 @@ try:
         os.write(master,b'y')
         time.sleep(0.15)
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined input left an arm'
+        data=b''
+        os.write(master,b'c\\r')
+        until(b'Use separate confirmation keys')
+        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined c/Enter closed pane'
         os.write(master,b'abc')
         os.write(master,b'yes')
         time.sleep(0.15)
         assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'pasted text closed pane'
         data=b''
         os.write(master,b'c')
-        until(b'Close #17 [W] y/n helper')
-        os.write(master,b'y')
+        until(b'Close #17 [W] Y/n helper')
+        os.write(master,b'\\r')
         data=b''
         until(b'Pane closed: helper')
     elif sys.argv[3]=='gone':
@@ -695,7 +705,7 @@ try:
         until(b'W - helper - waiting')
         os.unlink(flag)
         data=b''
-        until(b'j/k n new c l q')
+        until(b'n:new c:close l q')
         until(b'\\x1b[?1000h')
     os.write(master,b'q')
     until(b'\\x1b[?1000l')

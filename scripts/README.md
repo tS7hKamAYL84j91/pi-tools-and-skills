@@ -30,7 +30,9 @@ narrow widths the status word is dropped. Model, heartbeat, pending count and
 session metadata remain in the unchanged JSON snapshot, not the compact rows.
 
 **Create an agent:** press `n`, type its name, and press Enter. Review the name
-and press `y` separately to confirm (or `n` to cancel). A new interactive Pi
+then press Enter or `y` separately to confirm (or `n` to cancel). The
+`Y/n` prompt marks Yes as the default; Enter accepts it. A rapid repeated
+Enter immediately after name entry is ignored to prevent accidental launch. A new interactive Pi
 starts in a floating pane in this tab and the same project directory, with
 `pi --name <name>` and no `--model` override: Pi chooses its normal configured
 default. The launcher deliberately uses plain `pi` on the Zellij server's PATH,
@@ -80,7 +82,8 @@ existing agent registry state is read-only from the panel.
 Self-reported identity is not authority; the list/focus race cannot be atomic.
 
 To close an agent's pane, select its row, press `c`, check the pane number in
-the prompt, then press `y` within five seconds (`n` cancels). This is a hard
+the prompt, then press Enter or `y` within five seconds (`n` cancels). `Y/n`
+marks Yes as the default; Enter accepts it. This is a hard
 Zellij pane close, not a graceful Pi shutdown: in-flight work and pane scrollback
 may be lost, and children in other panes/processes are not stopped. No keystrokes
 are injected into an agent. The action rechecks the selected instance and pane,
