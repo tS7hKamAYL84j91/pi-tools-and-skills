@@ -234,23 +234,50 @@ export function snapshot(registry, scope, state, navigation = false) {
 	} finally {
 		if (dir) dir.closeSync();
 	}
-	records.sort(
-		(a, b) =>
-			Number(b.lead) - Number(a.lead) ||
-			(a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)),
-	);
-	const leads = records.filter((row) => row.lead).length;
+	// If rendering for display, group children under their parent;
+	// keep raw alphabetical sort for stable JSON snapshot contracts.
+	let ordered = records;
+	if (navigation) {
+		const rootRows = records
+			.filter((r) => !r.parentId)
+			.sort(
+				(a, b) =>
+					Number(b.lead) - Number(a.lead) ||
+					(a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)),
+			);
+		const grouped = [];
+		for (const root of rootRows) {
+			grouped.push(root);
+			const children = records
+				.filter((r) => r.parentId === root.id)
+				.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)));
+			grouped.push(...children);
+		}
+		const placed = new Set(grouped.map((r) => r.id));
+		const orphans = records.filter((r) => !placed.has(r.id));
+		grouped.push(...orphans);
+		ordered = grouped;
+	} else {
+		records.sort(
+			(a, b) =>
+				Number(b.lead) - Number(a.lead) ||
+				(a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)),
+		);
+		ordered = records;
+	}
+
+	const leads = ordered.filter((row) => row.lead).length;
 	return {
 		scope: safeText(scope),
 		leadState:
 			leads > 1
 				? "ambiguous"
-				: leads === 0 || records[0].state === "stale"
+				: leads === 0 || ordered[0]?.state === "stale"
 					? "unavailable"
-					: records[0].state === "live"
+					: ordered[0]?.state === "live"
 						? "resolved"
 						: "unknown",
-		records,
+		records: ordered,
 		skipped,
 		truncated,
 	};
@@ -284,6 +311,15 @@ export function designateLead(view, selectedId) {
 	const automatic = exact.length === 1 ? exact[0] : undefined;
 	const lead = chosen ?? (selectedId ? undefined : automatic);
 	if (!lead) return selectedId ? { ...view, leadState: "unavailable" } : view;
+	const otherRoots = view.records.filter((row) => row.id !== lead.id && !row.parentId);
+	const ordered = [];
+	for (const root of [lead, ...otherRoots]) {
+		ordered.push(root);
+		ordered.push(...view.records.filter((row) => row.parentId === root.id));
+	}
+	const placed = new Set(ordered.map((r) => r.id));
+	const orphans = view.records.filter((row) => !placed.has(row.id));
+	ordered.push(...orphans);
 	return {
 		...view,
 		leadState:
@@ -292,7 +328,7 @@ export function designateLead(view, selectedId) {
 				: lead.state === "stale"
 					? "unavailable"
 					: "unknown",
-		records: [lead, ...view.records.filter((row) => row.id !== lead.id)],
+		records: ordered,
 	};
 }
 
