@@ -236,21 +236,20 @@ export function snapshot(registry, scope, state, navigation = false) {
 	}
 	// If rendering for display, group children under their parent;
 	// keep raw alphabetical sort for stable JSON snapshot contracts.
+	const byName = (a, b) =>
+		a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id);
+	const leadsFirst = (a, b) => Number(b.lead) - Number(a.lead) || byName(a, b);
 	let ordered = records;
 	if (navigation) {
 		const rootRows = records
 			.filter((r) => !r.parentId)
-			.sort(
-				(a, b) =>
-					Number(b.lead) - Number(a.lead) ||
-					(a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)),
-			);
+			.sort(leadsFirst);
 		const grouped = [];
 		for (const root of rootRows) {
 			grouped.push(root);
 			const children = records
 				.filter((r) => r.parentId === root.id)
-				.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)));
+				.sort(byName);
 			grouped.push(...children);
 		}
 		const placed = new Set(grouped.map((r) => r.id));
@@ -258,11 +257,7 @@ export function snapshot(registry, scope, state, navigation = false) {
 		grouped.push(...orphans);
 		ordered = grouped;
 	} else {
-		records.sort(
-			(a, b) =>
-				Number(b.lead) - Number(a.lead) ||
-				(a.name < b.name ? -1 : a.name > b.name ? 1 : a.id.localeCompare(b.id)),
-		);
+		records.sort(leadsFirst);
 		ordered = records;
 	}
 
@@ -344,6 +339,10 @@ const STATUS_SYMBOL = {
 	unknown: "?",
 };
 
+function statusSymbol(status) {
+	return Object.hasOwn(STATUS_SYMBOL, status) ? STATUS_SYMBOL[status] : "?";
+}
+
 // Hub role mapping: extensions/pi-agent-hub/ui/ui-format.ts STATUS_COLOR.
 // RGB values resolved from Pi's built-in dark.json; no runtime theme dependency.
 const STATUS_COLOR = {
@@ -382,7 +381,7 @@ function formatAge(startedAt) {
 
 function rowLines(row, width) {
 	const status = safeText(row.status);
-	const glyph = Object.hasOwn(STATUS_SYMBOL, status) ? STATUS_SYMBOL[status] : "?";
+	const glyph = statusSymbol(status);
 	const indent = row.parentId ? "  ↳ " : "";
 	const name = safeText(row.name);
 	const model = shortModel(row.model);
@@ -869,9 +868,7 @@ export function main(args = process.argv.slice(2)) {
 					paneId: hint.paneId,
 					expires: Date.now() + 5000,
 				};
-				const symbol = Object.hasOwn(STATUS_SYMBOL, row.status)
-					? STATUS_SYMBOL[row.status]
-					: "?";
+				const symbol = statusSymbol(row.status);
 				notice = `Close #${hint.paneId} [${symbol}] Y/n ${row.name}`;
 				draw();
 			} else if (event.type === "cancel") {

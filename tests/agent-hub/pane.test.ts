@@ -390,6 +390,14 @@ it.each([
 	expect(row.slice(`\x1b[38;2;${rgb}m`.length, -4)).toBe(plain.split("\n")[1]);
 });
 
+it("uses the unknown symbol for inherited property names", () => {
+	const view = { scope: "demo", leadState: "resolved", records: [{ name: "agent", status: "constructor" }] };
+	const output = JSON.parse(evaluate(
+		`process.stdout.write(JSON.stringify(pane.render(${JSON.stringify(view)}, 80)));`,
+	)) as string;
+	expect(output.split("\n")[1]).toBe("? agent │ constructor");
+});
+
 it.each([
 	28, 40, 80,
 ])("renders exact Hub-style compact rows at %i columns", (width) => {
