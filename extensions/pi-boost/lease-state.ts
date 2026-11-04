@@ -1,11 +1,4 @@
-/** Boost lease state machine: single global lease, 3-yield cap, configurable TTL. */
-
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-	BOOST_LEASE_TTL_MS,
-	resolveLeaseMinutes,
-	resolveMaxYields,
-} from "./boost-settings.js";
+/** Pure boost lease rules; callers supply time and configured TTL. */
 
 /** Minimal model shape used for boost switching (avoids pi's internal Model type). */
 export interface BoostCandidateModel {
@@ -14,7 +7,7 @@ export interface BoostCandidateModel {
 	readonly input: readonly string[];
 }
 
-interface BoostLeaseState {
+export interface BoostLeaseState {
 	yieldsUsed: number;
 	/** Original model to restore when the boost run settles. */
 	originalModel: BoostCandidateModel | undefined;
@@ -34,7 +27,7 @@ export function createLeaseState(): BoostLeaseState {
 }
 
 /** A started lease older than the TTL renews on the next idle human boost request. */
-function leaseExpired(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE_TTL_MS): boolean {
+function leaseExpired(lease: BoostLeaseState, nowMs: number, ttlMs: number): boolean {
 	return (
 		lease.yieldsUsed > 0 &&
 		lease.startedAtMs !== undefined &&
@@ -45,7 +38,7 @@ function leaseExpired(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE
 export type LeaseStatus = "blocked" | "active" | "expired" | "off";
 
 /** An in-flight turn stays active regardless of lease age; restoration has priority. */
-export function leaseState(lease: BoostLeaseState, nowMs: number, ttlMs = BOOST_LEASE_TTL_MS): LeaseStatus {
+export function leaseState(lease: BoostLeaseState, nowMs: number, ttlMs: number): LeaseStatus {
 	if (lease.revertFailed) return "blocked";
 	if (lease.originalModel) return "active";
 	if (leaseExpired(lease, nowMs, ttlMs)) return "expired";
@@ -58,38 +51,4 @@ export function renewExpiredLease(lease: BoostLeaseState, nowMs: number, ttlMs: 
 	lease.yieldsUsed = 0;
 	lease.startedAtMs = undefined;
 	return true;
-}
-
-/** Powerline labels (ADR-057 UX contract: state + remaining yields only). */
-const POWERLINE_LABELS = {
-	blocked: "blocked · restore failed",
-	expired: "expired",
-	active: "active",
-	off: "off",
-} satisfies Record<LeaseStatus, string>;
-
-/** /boost status labels. */
-export const STATUS_LABELS = {
-	blocked: "blocked (restore failed)",
-	expired: "expired (next /boost renews)",
-	active: "active",
-	off: "off",
-} satisfies Record<LeaseStatus, string>;
-
-// ── Lease presentation and settle ────────────────────────────────
-
-/** Powerline shows only lease state and remaining yields — never prompt or model text (ADR-057). */
-export async function updateStatus(
-	ctx: ExtensionContext,
-	lease: BoostLeaseState,
-): Promise<void> {
-	if (!ctx.hasUI) return;
-	const maxYields = await resolveMaxYields();
-	const remaining = Math.max(0, maxYields - lease.yieldsUsed);
-	const leaseMinutes = await resolveLeaseMinutes();
-	const state = leaseState(lease, Date.now(), leaseMinutes * 60_000);
-	ctx.ui.setStatus(
-		"boost",
-		`Boost ${POWERLINE_LABELS[state]} · ${remaining} left`,
-	);
 }

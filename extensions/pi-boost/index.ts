@@ -13,13 +13,12 @@ import {
 	resolveMaxYields,
 } from "./boost-settings.js";
 import {
-	STATUS_LABELS,
 	createLeaseState,
 	leaseState,
 	renewExpiredLease,
-	updateStatus,
 } from "./lease-state.js";
 import type { BoostCandidateModel } from "./lease-state.js";
+import { STATUS_LABELS, updateStatus } from "./lease-status.js";
 
 function modelId(model: unknown): string {
 	if (

@@ -221,6 +221,26 @@ describe("recentUserProblem", () => {
 });
 
 describe("leaseState and renewExpiredLease", () => {
+	it("uses the caller's TTL and expires exactly at its boundary", () => {
+		const lease = createLeaseState();
+		lease.yieldsUsed = 1;
+		lease.startedAtMs = 100;
+		expect(leaseState(lease, 1099, 1000)).toBe("off");
+		expect(leaseState(lease, 1100, 1000)).toBe("expired");
+		expect(leaseState(lease, 1100, 2000)).toBe("off");
+	});
+
+	it.each([false, true])("does not renew an aged in-flight lease (restore failed: %s)", (revertFailed) => {
+		const lease = createLeaseState();
+		lease.yieldsUsed = 2;
+		lease.startedAtMs = 100;
+		lease.originalModel = { provider: "p", id: "m", input: ["text"] };
+		lease.revertFailed = revertFailed;
+		const before = { ...lease };
+		expect(renewExpiredLease(lease, 10_000, 1000)).toBe(false);
+		expect(lease).toEqual(before);
+	});
+
 	it("identifies all four LeaseStatus states", () => {
 		const lease = createLeaseState();
 		const now = 1_000_000;
