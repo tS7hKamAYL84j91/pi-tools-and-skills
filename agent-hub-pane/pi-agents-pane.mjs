@@ -510,14 +510,23 @@ export function render(
 
 const USAGE =
 	"pi-agents-pane --scope <lead> [--registry <dir>] [--interval <seconds>] [--once] [--json] [--no-color]\n" +
-	"Refresh cadence: --interval beats PI_AGENTS_PANE_INTERVAL (0.25–3600), which beats the 10 s default.\n";
+	"Refresh cadence: --interval beats PI_AGENTS_PANE_INTERVAL (0.25–3600), which beats the 2 s default.\n" +
+	"PI_AGENTS_PANE_STARTUP_DELAY: pause automatic redraws initially (default 20 s, range 0–3600; 0 disables).\n";
 
 function defaultInterval() {
 	const raw = process.env.PI_AGENTS_PANE_INTERVAL;
-	if (raw === undefined || raw.trim() === "") return 10;
+	if (raw === undefined || raw.trim() === "") return 2;
 	const value = Number(raw);
 	if (!Number.isFinite(value))
 		throw new Error("PI_AGENTS_PANE_INTERVAL must be 0.25–3600 seconds");
+	return value;
+}
+
+function startupDelay() {
+	const raw = process.env.PI_AGENTS_PANE_STARTUP_DELAY;
+	const value = raw === undefined || raw.trim() === "" ? 20 : Number(raw);
+	if (!Number.isFinite(value) || value < 0 || value > 3600)
+		throw new Error("PI_AGENTS_PANE_STARTUP_DELAY must be 0–3600 seconds");
 	return value;
 }
 
@@ -525,6 +534,7 @@ export function parseArgs(args) {
 	const options = {
 		registry: join(homedir(), ".pi", "agents"),
 		interval: defaultInterval(),
+		startupDelay: startupDelay(),
 		once: false,
 		json: false,
 	};
@@ -611,6 +621,8 @@ export function main(args = process.argv.slice(2)) {
 	);
 	const parseInput = inputParser();
 	let timer,
+		startupTimer,
+		startupPaused = options.startupDelay > 0,
 		stopped = false,
 		enabled = false,
 		mouse = false,
@@ -658,7 +670,9 @@ export function main(args = process.argv.slice(2)) {
 			confirmation = undefined;
 			notice = "Close cancelled";
 		}
-		setMouse(enabled && context?.own.is_focused === true);
+		// Keep reporting across focus changes; each action revalidates focus.
+		// Otherwise returning clicks are lost until the next polling tick.
+		setMouse(enabled);
 		view = designateLead(
 			snapshot(options.registry, options.scope, undefined, input),
 			chosenLeadId,
@@ -712,6 +726,7 @@ export function main(args = process.argv.slice(2)) {
 		if (stopped) return;
 		stopped = true;
 		clearInterval(timer);
+		clearTimeout(startupTimer);
 		process.off("SIGINT", stop);
 		process.off("SIGTERM", stop);
 		process.off("exit", stop);
@@ -862,7 +877,6 @@ export function main(args = process.argv.slice(2)) {
 								...context,
 								own: { ...context.own, is_focused: false },
 							};
-						setMouse(false);
 					}
 				} else {
 					creation = undefined;
@@ -1014,7 +1028,6 @@ export function main(args = process.argv.slice(2)) {
 							...context,
 							own: { ...context.own, is_focused: false },
 						};
-					setMouse(false);
 				}
 			}
 		}
@@ -1028,7 +1041,9 @@ export function main(args = process.argv.slice(2)) {
 			checking = false;
 			if (!stopped && generation === focusGeneration) {
 				context = result;
-				draw();
+				enabled = Boolean(context);
+				setMouse(enabled);
+				if (!startupPaused) draw();
 				const queued = pendingInput;
 				pendingInput = [];
 				for (const data of queued) key(data, true);
@@ -1047,5 +1062,13 @@ export function main(args = process.argv.slice(2)) {
 	}
 	if (tty) process.stdout.write("\x1b[?25l");
 	refresh();
-	timer = setInterval(refresh, options.interval * 1000);
+	if (startupPaused) {
+		startupTimer = setTimeout(() => {
+			startupPaused = false;
+			refresh();
+			timer = setInterval(refresh, options.interval * 1000);
+		}, options.startupDelay * 1000);
+	} else {
+		timer = setInterval(refresh, options.interval * 1000);
+	}
 }

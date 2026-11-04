@@ -251,6 +251,31 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		},
 	);
 
+	it.skipIf(!hasScript)("keeps mouse reporting active between return clicks without waiting for a poll", () => {
+		const { registry, bin, log } = fixture();
+		const result = runInPty(
+			["--scope", "lead", "--registry", registry, "--interval", "60", "--no-color"],
+			"\x1b[<0;8;3M\x1b[<0;8;3Mq",
+			{
+				...process.env,
+				PI_AGENTS_PANE_STARTUP_DELAY: "20",
+				ZELLIJ: "0",
+				ZELLIJ_SESSION_NAME: "S",
+				ZELLIJ_PANE_ID: "1",
+				ZELLIJ_STUB_LOG: log,
+				PATH: `${bin}:${process.env.PATH ?? ""}`,
+			},
+		);
+		expect(result.status).toBe(0);
+		expect(calls(log).filter((argv) => argv.includes("focus-pane-id"))).toEqual([
+			["--session", "S", "action", "focus-pane-id", "terminal_7"],
+			["--session", "S", "action", "focus-pane-id", "terminal_7"],
+		]);
+		// Mouse reporting is disabled only as part of terminal cleanup on quit.
+		expect(result.stdout.split("\x1b[?1000l")).toHaveLength(2);
+		expect(result.stdout).toContain("\x1b[?1000l\x1b[?1006l\x1b[?2004l");
+	});
+
 	it.skipIf(!hasScript)("never touches zellij for --once or --json", () => {
 		const { registry, bin, log } = fixture();
 		const env = {

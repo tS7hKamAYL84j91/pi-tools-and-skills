@@ -13,15 +13,17 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const executable = resolve("agent-hub-pane/pi-agents-pane");
 const moduleUrl = pathToFileURL(resolve("agent-hub-pane/pi-agents-pane.mjs")).href;
 let dir: string;
 beforeEach(() => {
+	vi.stubEnv("PI_AGENTS_PANE_STARTUP_DELAY", "0");
 	dir = mkdtempSync(join(tmpdir(), "hub-pane-"));
 });
 afterEach(() => {
+	vi.unstubAllEnvs();
 	rmSync(dir, { recursive: true, force: true });
 });
 function record(id: string, fields: Record<string, unknown> = {}) {
@@ -39,15 +41,15 @@ function record(id: string, fields: Record<string, unknown> = {}) {
 		}),
 	);
 }
-it("refresh defaults to ten seconds but accepts an explicit override", () => {
+it("refresh defaults to two seconds but accepts an explicit override", () => {
 	const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
 		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
 		process.stdout.write(JSON.stringify([
 			parseArgs(["--scope", "lead"]).interval,
-			parseArgs(["--scope", "lead", "--interval", "2"]).interval,
+			parseArgs(["--scope", "lead", "--interval", "5"]).interval,
 		]));
 	`], { encoding: "utf8" });
-	expect(JSON.parse(output)).toEqual([10, 2]);
+	expect(JSON.parse(output)).toEqual([2, 5]);
 });
 
 it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", () => {
@@ -66,7 +68,7 @@ it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", 
 			}),
 		) as number[];
 	expect(run({ PI_AGENTS_PANE_INTERVAL: "5" })).toEqual([5, 2]);
-	expect(run({ PI_AGENTS_PANE_INTERVAL: "" })).toEqual([10, 2]);
+	expect(run({ PI_AGENTS_PANE_INTERVAL: "" })).toEqual([2, 2]);
 	const bad = spawnSync(
 		process.execPath,
 		[
@@ -793,9 +795,8 @@ try:
         with open(path,'w') as f: json.dump(record,f)
         data=b''
         until(b'updated-model')
+        assert b'\\x1b[?1000l' not in data, 'mouse reporting disabled while unfocused'
         os.unlink(flag)
-        data=b''
-        until(b'\\x1b[?1000h')
     os.write(master,b'q')
     until(b'\\x1b[?1000l')
     until(b'\\x1b[?1006l')
@@ -850,6 +851,71 @@ finally:
 			? []
 			: [["--session", "fixture", "action", "focus-pane-id", "terminal_17"]],
 	);
+});
+
+it("pauses startup redraws while input stays responsive, then resumes polling", () => {
+	record("lead");
+	const stub = join(dir, "zellij");
+	writeFileSync(stub, `#!${process.execPath}\nprocess.stdout.write(JSON.stringify([{id:99,tab_id:1,is_plugin:false,is_focused:true}]));\n`);
+	chmodSync(stub, 0o755);
+	const output = execFileSync("python3", ["-c", `
+import os, pty, subprocess, select, time, json, sys, fcntl, termios, struct
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 120, 0, 0))
+env = dict(os.environ, PI_AGENTS_PANE_STARTUP_DELAY='2', ZELLIJ='0', ZELLIJ_SESSION_NAME='fixture', ZELLIJ_PANE_ID='99', PATH=sys.argv[2]+os.pathsep+os.environ['PATH'])
+p = subprocess.Popen([sys.argv[1], '--scope', 'lead', '--registry', sys.argv[2], '--interval', '0.25'], stdin=slave, stdout=slave, stderr=slave, env=env)
+data=b''
+def until(text):
+    global data
+    deadline=time.monotonic()+4
+    while text not in data and time.monotonic()<deadline:
+        if select.select([master],[],[],0.05)[0]: data+=os.read(master,65536)
+    assert text in data, repr(data)
+def update(model):
+    path=os.path.join(sys.argv[2],'lead.json')
+    with open(path) as f: row=json.load(f)
+    row['model']=model
+    with open(path,'w') as f: json.dump(row,f)
+try:
+    until(b'model')
+    until(b'\\x1b[?1000h')
+    update('fixture/input-update')
+    assert not select.select([master],[],[],0.5)[0], 'automatic startup redraw'
+    data=b''
+    os.write(master,b'j')
+    until(b'input-update')
+    update('fixture/poll-update')
+    data=b''
+    assert not select.select([master],[],[],0.3)[0], 'input cancelled startup delay'
+    until(b'poll-update')
+    update('fixture/next-poll')
+    data=b''
+    until(b'next-poll')
+    os.write(master,b'q')
+    assert p.wait(timeout=2)==0
+    print('ok')
+finally:
+    if p.poll() is None: p.kill(); p.wait()
+    os.close(master); os.close(slave)
+`, executable, dir], { encoding: "utf8", timeout: 10000 });
+	expect(output.trim()).toBe("ok");
+});
+
+it.each([undefined, "", "0", "2.5", "-1", "NaN", "Infinity", "3601"])("validates startup delay %s", (value) => {
+	const env = { ...process.env };
+	if (value === undefined) delete env.PI_AGENTS_PANE_STARTUP_DELAY;
+	else env.PI_AGENTS_PANE_STARTUP_DELAY = value;
+	const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
+		process.stdout.write(String(parseArgs(["--scope", "lead"]).startupDelay));
+	`], { encoding: "utf8", env });
+	if (value === undefined || value === "" || value === "0" || value === "2.5") {
+		expect(result.status).toBe(0);
+		expect(Number(result.stdout)).toBe(value ? Number(value) : 20);
+	} else {
+		expect(result.status).not.toBe(0);
+		expect(result.stderr).toContain("PI_AGENTS_PANE_STARTUP_DELAY must be 0–3600 seconds");
+	}
 });
 
 it("prints help from a foreign cwd", () => {
