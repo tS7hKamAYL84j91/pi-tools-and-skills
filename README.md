@@ -66,6 +66,10 @@ make audit        # production dependency audit
 make ci           # full CI gate
 ```
 
-See [AGENTS.md](AGENTS.md) for contribution rules and [architecture](docs/architecture.md) for state and trust boundaries. Credentials and live deployment config stay outside this repo.
+See [AGENTS.md](AGENTS.md) and [architecture](docs/architecture.md).
+
+## Security
+
+Meant to run in a trusted environment. Pi runs in YOLO mode and nothing in this setup changes that — user beware :)
 
 [MIT license](LICENSE)

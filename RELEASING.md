@@ -27,12 +27,10 @@ together before tagging.
 
 ## Pre-release checklist
 
-1. `main` is green: CI (`npm run check`, `npm test`, `npm run build:fleet-mcp`)
-   and `npm audit --omit=dev --audit-level=high`.
+1. `main` is green (`make ci`).
 2. Update `CHANGELOG.md` with the release date and any migration notes.
-3. Confirm `SECURITY.md` supported versions are current.
-4. Bump `version` in the root and all `extensions/*/package.json`.
-5. Optional: run the manual Matrix homeserver smoke test if Matrix changed.
+3. Bump `version` in the root and all `extensions/*/package.json`.
+4. Optional: run the manual Matrix homeserver smoke test if Matrix changed.
 
 ## Tag the release
 

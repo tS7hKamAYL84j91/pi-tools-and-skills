@@ -1,30 +1,12 @@
-# Security Policy
+# Security
 
-## Supported versions
+Personal repo, provided as-is under the [MIT license](LICENSE).
 
-| Version | Supported Node.js | Status |
-| ------- | ----------------- | ------ |
-| >= 1.2.0 | Node.js 22, 24, 25 | Active |
-| 1.1.x | Node.js 22, 24, 25 | Maintenance only |
-| < 1.1.0 | — | Unsupported |
+This is meant to run in a trusted environment. Pi runs in YOLO mode and nothing in this setup changes that — user beware :)
 
-## Reporting a vulnerability
+## Checks
 
-Please report security vulnerabilities privately so we can coordinate a fix before public disclosure.
-
-- Report through GitHub's private vulnerability reporting for this repository. If it is unavailable, open a minimal issue asking for a private channel without disclosing details.
-- Do not open public issues for undisclosed vulnerabilities.
-- Include a minimal reproduction, affected versions, and suggested severity if possible.
-
-We aim to acknowledge reports within 5 business days and release a patched version within 30 days for critical issues.
-
-## Security practices
-
-- Production dependencies are audited with `npm audit --omit=dev --audit-level=high` in CI.
-- Pull requests are scanned with gitleaks for accidental secret commits.
-- Matrix credentials are read from environment variables only; this package never writes secrets.
-- Matrix attachments are size-bounded and MIME-filtered; encrypted attachments are not auto-downloaded.
-
-## Disclosure policy
-
-We follow coordinated disclosure. After a fix is released we will publish a security advisory and update this file with CVE references when applicable.
+- `make secret-scan` — gitleaks scan of git history and working tree.
+- `make semgrep-scan` — custom Semgrep rules (`rules/custom/`).
+- `make audit` — `npm audit --omit=dev --audit-level=high`.
+- Keep secrets and live config out of the repo.
