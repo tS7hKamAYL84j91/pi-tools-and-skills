@@ -200,6 +200,7 @@ export function snapshot(registry, scope, state, navigation = false) {
 				id: safeText(record.id),
 				name: safeText(record.name),
 				lead,
+				parentId: record.parentId ? safeText(record.parentId) : null,
 				pid: record.pid,
 				state: getState(record),
 				status: safeText(record.status),
@@ -332,7 +333,8 @@ function compactRow(row, width) {
 	const glyph = Object.hasOwn(STATUS_SYMBOL, status)
 		? STATUS_SYMBOL[status]
 		: "?";
-	const prefix = `${glyph} - `;
+	const indent = row.parentId ? "  ↳ " : "";
+	const prefix = `${indent}${glyph} - `;
 	let suffix = ` - ${status}`;
 	let room = width - prefix.length - suffix.length;
 	if (room < 2) {

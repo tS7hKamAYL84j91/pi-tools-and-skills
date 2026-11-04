@@ -162,6 +162,7 @@ export function createNavigator(identity, run = runZellij) {
 			return "navigation unavailable";
 		const nav = row?.navigation;
 		const hint = nav?.zellij;
+		if (nav?.parentId) return "subagent · no terminal";
 		if (!hint) return "no pane metadata; reload Hub";
 		const target = recordPane(row);
 		if (!target) return "invalid pane metadata";
