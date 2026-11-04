@@ -10,7 +10,7 @@ Compact, interactive terminal side pane for Zellij tabs. Shows the tab's lead ag
 
 - `--scope <name>`: canonical lead name to display (matches `declared_name` or `name` fallback, plus any agents whose `namespace == scope`).
 - `--registry <dir>`: override registry directory (defaults to `~/.pi/agents`).
-- `--interval <sec>`: refresh cadence in continuous mode (default: 2 s, range: 0.25..3600).
+- `--interval <sec>`: refresh cadence in continuous mode (default: 10 s, range: 0.25..3600). Keyboard/mouse actions remain immediate; the interval controls periodic refresh.
 - `--once`: render a single frame and exit.
 - `--json`: emit JSON snapshot and exit (implies `--once`).
 - `--no-color`: plain text output without ANSI colors.

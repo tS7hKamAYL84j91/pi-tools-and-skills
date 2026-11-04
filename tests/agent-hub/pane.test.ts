@@ -39,6 +39,17 @@ function record(id: string, fields: Record<string, unknown> = {}) {
 		}),
 	);
 }
+it("refresh defaults to ten seconds but accepts an explicit override", () => {
+	const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
+		const { parseArgs } = await import(${JSON.stringify(moduleUrl)});
+		console.log(JSON.stringify([
+			parseArgs(["--scope", "lead"]).interval,
+			parseArgs(["--scope", "lead", "--interval", "2"]).interval,
+		]));
+	`], { encoding: "utf8" });
+	expect(JSON.parse(output)).toEqual([10, 2]);
+});
+
 function cli(...args: string[]) {
 	return spawnSync(
 		executable,

@@ -512,7 +512,7 @@ const USAGE =
 export function parseArgs(args) {
 	const options = {
 		registry: join(homedir(), ".pi", "agents"),
-		interval: 2,
+		interval: 10,
 		once: false,
 		json: false,
 	};
