@@ -66,7 +66,7 @@ make audit        # production dependency audit
 make ci           # full CI gate
 ```
 
-See [AGENTS.md](AGENTS.md) and [architecture](docs/architecture.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [architecture](docs/architecture.md).
 
 ## Security
 
