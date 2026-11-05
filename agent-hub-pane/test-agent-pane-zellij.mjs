@@ -3,7 +3,7 @@
  * Never attaches to, configures, or sends input to an existing user session.
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	chmodSync,
@@ -19,6 +19,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNavigator } from "./pi-agents-pane-navigation.mjs";
 
+const useTermwright = process.argv.includes("--termwright");
+const load = process.argv.includes("--load") || useTermwright;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const session = `pi-hub-acceptance-${randomUUID()}`;
 const dir = mkdtempSync(join(tmpdir(), "pi-hub-acceptance-"));
@@ -28,6 +30,7 @@ const env = {
 	HOME: homedir(),
 	TERM: "xterm-256color",
 	SHELL: "/bin/sh",
+	PI_AGENTS_PANE_STARTUP_DELAY: "0",
 };
 if (process.env.XDG_RUNTIME_DIR)
 	env.XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
@@ -35,9 +38,11 @@ const registry = join(dir, "agents");
 mkdirSync(registry);
 const bin = join(dir, "bin");
 mkdirSync(bin);
+const realZellij = spawnSync("which", ["zellij"], { env, encoding: "utf8" }).stdout.trim();
+assert(realZellij, "zellij executable required");
 env.PATH = `${bin}:${env.PATH}`;
 function run(args) {
-	const result = spawnSync("zellij", args, {
+	const result = spawnSync(realZellij, args, {
 		env,
 		encoding: "utf8",
 		timeout: 5000,
@@ -89,7 +94,7 @@ function sendInput(paneId, text) {
 	);
 }
 
-let summary;
+let summary, terminal, attachment, attachmentExit;
 try {
 	const version = run(["--version"]).trim();
 	writeFileSync(join(dir, "config.kdl"), "session_serialization false\n");
@@ -116,16 +121,33 @@ save();setInterval(save,1000);
 	chmodSync(fakePi, 0o755);
 	const node = JSON.stringify(process.execPath),
 		cwd = JSON.stringify(dir);
+	let loadTabs = "";
+	const queryLog = join(dir, "pane-queries.jsonl");
+	if (load) {
+		// Log only action names from these fixture panes; never inherit user secrets.
+		writeFileSync(queryLog, "");
+		writeFileSync(join(bin, "zellij"), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs'; import {spawnSync} from 'node:child_process';\nconst args=process.argv.slice(2), start=Date.now(); appendFileSync(${JSON.stringify(queryLog)}, JSON.stringify({action:args[3]})+'\\n');\nconst r=spawnSync(${JSON.stringify(realZellij)},args,{encoding:'utf8'});process.stdout.write(r.stdout??'');process.stderr.write(r.stderr??'');let own;try {own=JSON.parse(r.stdout).find(p=>!p.is_plugin && String(p.id)===process.env.ZELLIJ_PANE_ID);}catch{} appendFileSync(${JSON.stringify(queryLog)},JSON.stringify({action:args[3],status:r.status,ms:Date.now()-start,pane:process.env.ZELLIJ_PANE_ID,focused:own?.is_focused,floating:own?.is_floating})+'\\n');process.exit(r.status??1);\n`);
+		chmodSync(join(bin, "zellij"), 0o755);
+		const noise = join(dir, "noise.mjs");
+		writeFileSync(noise, `let n=0;const t=setInterval(()=>{if(!process.stdout.writableNeedDrain) process.stdout.write(('fixture output '+(++n)+' '+'.'.repeat(60)+'\\n').repeat(10));},100);setTimeout(()=>{clearInterval(t);},45000);\n`);
+		// Eight Hub panes total; four bounded producers (~32 KiB/s), no model calls.
+		for (let i = 0; i < 7; i++) loadTabs += `tab name="load-${i}" {
+ pane name="load-hub-${i}" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "agent-hub-pane/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"; }
+ ${i < 2 ? `pane command=${node} cwd=${cwd} { args ${JSON.stringify(noise)}; }
+ pane command=${node} cwd=${cwd} { args ${JSON.stringify(noise)}; }` : ""}
+}\n`;
+	}
 	writeFileSync(
 		join(dir, "layout.kdl"),
 		`layout {
- tab name="fixture" {
+ tab name="fixture" focus=true {
   pane name="hub-view" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "agent-hub-pane/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"; }
   floating_panes {
    pane name="alpha" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "alpha"; width "60%"; height "60%"; x "30%"; y "20%"; }
    pane name="beta" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "beta"; width "60%"; height "60%"; x "30%"; y "20%"; }
   }
  }
+ ${loadTabs}
 }
 `,
 	);
@@ -140,8 +162,8 @@ save();setInterval(save,1000);
 	]);
 	const initial = await until(() => {
 		const rows = panes().filter((p) => !p.is_plugin);
-		return rows.length === 3 && rows.every((p) => !p.exited) ? rows : null;
-	}, "three fixture terminals");
+		return rows.length === (load ? 14 : 3) && rows.every((p) => !p.exited) ? rows : null;
+	}, "fixture terminals");
 	const view = initial.find((p) => p.title === "hub-view");
 	const alpha = initial.find((p) => p.title === "alpha");
 	const beta = initial.find((p) => p.title === "beta");
@@ -167,8 +189,8 @@ save();setInterval(save,1000);
 	);
 	const before = action("dump-screen", "--pane-id", `terminal_${view.id}`);
 	assert(
-		before.includes("W - alpha - waiting") &&
-			before.includes("W - beta - waiting"),
+		before.includes("W alpha │ waiting") &&
+			before.includes("W beta │ waiting"),
 	);
 	const betaRecord = JSON.parse(
 		readFileSync(join(registry, "beta.json"), "utf8"),
@@ -179,6 +201,81 @@ save();setInterval(save,1000);
 		run,
 	);
 	assert.equal(navigator.inspect()?.own.is_focused, true);
+	let performance;
+	if (load) {
+		if (useTermwright) {
+			const { launchTerminal } = await import("@termwright/driver");
+			terminal = await launchTerminal({
+				command: [realZellij, "--config", join(dir, "config.kdl"), "attach", session],
+				cwd: dir, columns: 120, rows: 40, envMode: "replace", env,
+			});
+			await terminal.waitForText("l:lead q:quit");
+		} else {
+			// Explicit stdlib PTY path, not a silent Termwright backend substitution.
+			attachment = spawn("python3", ["-c", `
+import os, pty, subprocess, select, sys, fcntl, termios, struct
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
+child = subprocess.Popen(sys.argv[1:], stdin=slave, stdout=slave, stderr=slave)
+os.close(slave)
+try:
+    while child.poll() is None:
+        ready, _, _ = select.select([master, sys.stdin.buffer], [], [], 0.1)
+        if master in ready:
+            try: data = os.read(master, 65536)
+            except OSError: break
+            if not data: break
+            sys.stdout.buffer.write(data); sys.stdout.buffer.flush()
+        if sys.stdin.buffer in ready:
+            data = os.read(sys.stdin.fileno(), 4096)
+            if not data: break
+            os.write(master, data)
+finally:
+    if child.poll() is None:
+        child.terminate()
+        try: child.wait(timeout=2)
+        except subprocess.TimeoutExpired: child.kill(); child.wait()
+    os.close(master)
+`, realZellij, "--config", join(dir, "config.kdl"), "attach", session], { env, cwd: dir, stdio: ["pipe", "pipe", "ignore"] });
+			attachmentExit = new Promise((resolveExit, reject) => {
+				attachment.once("exit", resolveExit);
+				attachment.once("error", reject);
+			});
+			let received = false;
+			attachment.stdout.on("data", () => { received = true; }); // drain, never retain raw terminal logs
+			await until(() => received, "attached PTY output");
+		}
+		const ready = () => until(() => action("dump-screen", "--pane-id", `terminal_${view.id}`).includes("l:lead q:quit"), "attached Hub controls");
+		await ready();
+		const hubs = initial.filter((p) => !p.is_plugin && (p.title === "hub-view" || p.title.startsWith("load-hub-")));
+		assert.equal(hubs.length, 8);
+		for (const hub of hubs) await until(() => action("dump-screen", "--pane-id", `terminal_${hub.id}`).includes("l:lead q:quit"), "every Hub ready after concurrent startup");
+		const producers = initial.filter((p) => !p.is_plugin && p.title.includes("noise.mjs"));
+		assert.equal(producers.length, 4);
+		const outputFrames = () => producers.map((p) => action("dump-screen", "--pane-id", `terminal_${p.id}`));
+		const beforeOutput = outputFrames();
+		const beforeIdle = readFileSync(queryLog, "utf8").length;
+		await delay(1000); // four refresh intervals under continuous output load
+		assert.equal(readFileSync(queryLog, "utf8").length, beforeIdle, "idle panes spawned Zellij queries");
+		const afterOutput = outputFrames();
+		assert(afterOutput.every((frame, i) => frame.includes("fixture output") && frame !== beforeOutput[i]), "all output producers must advance under load");
+		const latencyMs = [];
+		for (let i = 0; i < 4; i++) {
+			action("focus-pane-id", `terminal_${view.id}`);
+			await ready();
+			const target = i % 2 === 0 ? beta : alpha;
+			const started = Date.now();
+			if (terminal) {
+				await terminal.type(i % 2 === 0 ? "j" : "k");
+				await terminal.press("Enter");
+			} else attachment.stdin.write(i % 2 === 0 ? "j\r" : "k\r");
+			await until(() => visible(view.tab_id) && panes().find((p) => p.id === target.id && !p.is_plugin)?.is_focused, "PTY focus receipt");
+			latencyMs.push(Date.now() - started);
+		}
+		action("focus-pane-id", `terminal_${view.id}`);
+		await ready();
+		performance = { inputDriver: useTermwright ? "Termwright" : "Python stdlib PTY", hubPanes: 8, outputProducers: 4, configuredLinesPerSecond: 400, verifiedAdvancingProducers: 4, idleQueryCount: 0, idleWindowMs: 1000, focusLatencyMs: latencyMs };
+	}
 	// SGR left click on second agent row: header=1, alpha=2, beta=3.
 	sendInput(view.id, "\x1b[<0;8;3M");
 	await until(
@@ -227,6 +324,7 @@ save();setInterval(save,1000);
 	assert(panes().some((p) => !p.is_plugin && p.id === view.id && !p.exited));
 	assert(panes().some((p) => !p.is_plugin && p.id === alpha.id && !p.exited));
 	assert.equal(visible(view.tab_id), false);
+	await until(() => action("dump-screen", "--pane-id", `terminal_${view.id}`).includes("Pane closed: beta"), "close UI settled after verification");
 	// Start a fixture agent by typing a name; Pi is a no-model stub in this session.
 	sendInput(view.id, "n");
 	await until(
@@ -279,11 +377,12 @@ save();setInterval(save,1000);
 	await until(
 		() =>
 			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"W - gamma - waiting",
+				"W gamma │ waiting",
 			),
 		"new agent visible in Hub",
 	);
 	summary = {
+		...(performance ? { performance } : {}),
 		create:
 			"named fixture Pi started floating in same tab, without model override",
 		close: "hidden beta closed after confirmation; hub and alpha survive",
@@ -294,12 +393,27 @@ save();setInterval(save,1000);
 		identity: "captured by fixture agents in their own terminals",
 		cleanup: "passed",
 	};
+} catch (error) {
+	if (load) {
+		const rows = panes();
+		const view = rows.find((p) => p.title === "hub-view");
+		process.stderr.write(`${JSON.stringify({ queries: readFileSync(join(dir, "pane-queries.jsonl"), "utf8").split("\n").slice(-14), fixtureScreen: view ? action("dump-screen", "--pane-id", `terminal_${view.id}`).slice(0, 4096) : null, panes: rows.map((p) => ({ id: p.id, title: p.title, focused: p.is_focused, floating: p.is_floating })) })}\n`);
+	}
+	throw error;
 } finally {
 	// Unique generated session only; no kill-all, no existing-session operations.
 	try {
 		run(["kill-session", session]);
+		const gone = spawnSync(realZellij, ["--session", session, "action", "list-panes", "--json"], { env, timeout: 5000, stdio: "ignore" });
+		assert(gone.status !== null && gone.status !== 0, "scratch session still accessible after cleanup");
 	} finally {
-		rmSync(dir, { recursive: true, force: true });
+		try {
+			await terminal?.close();
+			attachment?.stdin.end();
+			if (attachmentExit) await attachmentExit;
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	}
 }
 process.stdout.write(`${JSON.stringify(summary)}\n`);

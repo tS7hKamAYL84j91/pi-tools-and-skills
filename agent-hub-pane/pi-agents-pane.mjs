@@ -635,6 +635,7 @@ export function main(args = process.argv.slice(2)) {
 		offset = 0,
 		notice = "",
 		view,
+		registryView,
 		visibleLines = [],
 		checking = false,
 		focusGeneration = 0,
@@ -648,7 +649,7 @@ export function main(args = process.argv.slice(2)) {
 			active ? "\x1b[?1000h\x1b[?1006h" : "\x1b[?1000l\x1b[?1006l",
 		);
 	};
-	const draw = () => {
+	const draw = (rescan = true) => {
 		if (stopped || outputBroken || process.stdout.writableNeedDrain) return;
 		enabled = Boolean(context);
 		if (
@@ -673,10 +674,9 @@ export function main(args = process.argv.slice(2)) {
 		// Keep reporting across focus changes; each action revalidates focus.
 		// Otherwise returning clicks are lost until the next polling tick.
 		setMouse(enabled);
-		view = designateLead(
-			snapshot(options.registry, options.scope, undefined, input),
-			chosenLeadId,
-		);
+		if (rescan || !registryView)
+			registryView = snapshot(options.registry, options.scope, undefined, input);
+		view = designateLead(registryView, chosenLeadId);
 		const rows = view.records ?? [];
 		let index = rows.findIndex((row) => row.id === selectedId);
 		if (!initialized && rows.length) {
@@ -717,7 +717,17 @@ export function main(args = process.argv.slice(2)) {
 			);
 		// Avoid making Zellij repaint unchanged frames; dimensions invalidate them.
 		if (tty && frame === lastFrame && width === lastWidth && height === lastHeight) return;
-		process.stdout.write((tty ? "\x1b[H\x1b[2J" : "") + frame);
+		if (tty && lastFrame !== undefined && width === lastWidth && height === lastHeight) {
+			// A status/selection change must not clear and repaint the entire pane.
+			const before = lastFrame.slice(0, -1).split("\n");
+			const after = frame.slice(0, -1).split("\n");
+			let update = "";
+			for (let i = 0; i < Math.max(before.length, after.length); i++) {
+				if (before[i] !== after[i])
+					update += `\x1b[${i + 1};1H\x1b[2K${after[i] ?? ""}`;
+			}
+			process.stdout.write(update);
+		} else process.stdout.write((tty ? "\x1b[H\x1b[2J" : "") + frame);
 		lastFrame = frame;
 		lastWidth = width;
 		lastHeight = height;
@@ -862,7 +872,8 @@ export function main(args = process.argv.slice(2)) {
 						!nameAvailable(options.registry, request.name)
 					)
 						notice = "Create cancelled: state changed";
-					else
+					else {
+						focusGeneration++;
 						notice =
 							navigator.create(
 								request.name,
@@ -870,8 +881,8 @@ export function main(args = process.argv.slice(2)) {
 								lead,
 								fresh.records ?? [],
 							) ?? `Requested: ${request.name}`;
+					}
 					if (notice.startsWith("Requested:")) {
-						focusGeneration++;
 						if (context)
 							context = {
 								...context,
@@ -893,6 +904,10 @@ export function main(args = process.argv.slice(2)) {
 			let index = view.records.findIndex((row) => row.id === selectedId);
 			if (event.type === "close") {
 				if (!visibleLines.includes(selectedId)) continue;
+				// Idle display context is advisory; arming requires current focus.
+				focusGeneration++;
+				const current = navigator.inspect();
+				if (current) context = current;
 				const row = view.records.find((item) => item.id === selectedId);
 				if (!row) {
 					notice = "selected agent left the registry";
@@ -901,7 +916,7 @@ export function main(args = process.argv.slice(2)) {
 				}
 				const hint = row.navigation?.zellij;
 				if (
-					context?.own.is_focused !== true ||
+					current?.own.is_focused !== true ||
 					!hint ||
 					!Number.isSafeInteger(hint.paneId)
 				) {
@@ -928,11 +943,15 @@ export function main(args = process.argv.slice(2)) {
 					notice = "Close cancelled";
 				} else if (
 					!replay &&
-					data.toString() === "n" &&
-					context?.own.is_focused === true
+					data.toString() === "n"
 				) {
-					newAgentName = "";
-					notice = "Name: ";
+					focusGeneration++;
+					const current = navigator.inspect();
+					if (current) context = current;
+					if (current?.own.is_focused === true) {
+						newAgentName = "";
+						notice = "Name: ";
+					}
 				}
 				draw();
 			} else if (
@@ -968,6 +987,9 @@ export function main(args = process.argv.slice(2)) {
 				} else if (!closeConfirmationMatches(request, row)) {
 					notice = "Close cancelled: agent changed";
 				} else {
+					// A modal background check may finish while close blocks the loop;
+					// it must not replace the post-action context with a stale timeout.
+					focusGeneration++;
 					notice =
 						navigator.close(row, fresh.records ?? []) ??
 						`Pane closed: ${row.name}`;
@@ -1035,15 +1057,24 @@ export function main(args = process.argv.slice(2)) {
 	const refresh = () => {
 		draw();
 		if (checking || stopped) return;
+		// Registry polling needs no Zellij subprocesses once navigation is known.
+		// Recheck modal focus while armed; every action validates again on input.
+		if (context && newAgentName === undefined && !creation && !confirmation) return;
 		checking = true;
 		const generation = focusGeneration;
 		void navigator.inspectAsync().then((result) => {
 			checking = false;
 			if (!stopped && generation === focusGeneration) {
-				context = result;
+				const wasEnabled = enabled;
+				// Discovery failure stays read-only; later modal failures cancel
+				// arming without disabling input or the already-discovered display.
+				context = result ?? (context
+					? { ...context, own: { ...context.own, is_focused: false } }
+					: null);
 				enabled = Boolean(context);
 				setMouse(enabled);
-				if (!startupPaused) draw();
+				// Finish initial controls immediately without rescanning paused data.
+				if (!startupPaused || enabled !== wasEnabled) draw(false);
 				const queued = pendingInput;
 				pendingInput = [];
 				for (const data of queued) key(data, true);

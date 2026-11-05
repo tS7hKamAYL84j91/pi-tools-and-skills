@@ -879,7 +879,8 @@ def update(model):
     with open(path,'w') as f: json.dump(row,f)
 try:
     until(b'model')
-    until(b'\\x1b[?1000h')
+    until(b'l:lead q:quit')
+    assert b'\\x1b[7m' in data, 'initial selection hidden during startup pause'
     update('fixture/input-update')
     assert not select.select([master],[],[],0.5)[0], 'automatic startup redraw'
     data=b''

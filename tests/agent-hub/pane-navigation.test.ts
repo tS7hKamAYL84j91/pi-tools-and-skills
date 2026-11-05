@@ -119,10 +119,11 @@ it("never closes a duplicate or stale target", () => {
 
 it("creates a floating named agent in the verified lead tab without a model override", () => {
 	const result = probe(
-		`row.heartbeat=Date.now();const run=args=>{calls.push(args);args.includes('new-pane')?(panes.push({id:40,tab_id:1,is_plugin:false,is_floating:true}),0):0;return args.includes('new-pane')?'terminal_40\\n':args.includes('are-floating-panes-visible')?'false':JSON.stringify(panes)};const result=createNavigator(identity,run).create('worker-1','lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.find(a=>a.includes('new-pane'))}));`,
+		`row.heartbeat=Date.now();const run=args=>{calls.push(args);args.includes('new-pane')?(panes.push({id:40,tab_id:1,is_plugin:false,is_floating:true}),0):0;return args.includes('new-pane')?'terminal_40\\n':args.includes('are-floating-panes-visible')?'false':JSON.stringify(panes)};const result=createNavigator(identity,run).create('worker-1','lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.find(a=>a.includes('new-pane')),preflightInspections:calls.slice(0,calls.findIndex(a=>a.includes('new-pane'))).filter(a=>a.includes('list-panes')).length}));`,
 	);
 	expect(result).toEqual({
 		result: null,
+		preflightInspections: 1,
 		launch: [
 			"--session",
 			"session",
@@ -268,6 +269,16 @@ it.each([
 			`panes[1][${JSON.stringify(flag)}]=true; const result=createNavigator(identity,runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,focus:calls.filter(a=>a.includes('focus-pane-id'))}));`,
 		),
 	).toEqual({ result: "pane is unavailable", focus: [] });
+});
+
+it("skips floating-layer queries when the Hub pane is already unfocused", () => {
+	expect(probe(`panes[0].is_focused=false; panes[1].is_floating=true;
+		const nav=createNavigator(identity,runner);
+		const result=nav.focus(row,[row],1001);
+		process.stdout.write(JSON.stringify({result,calls}));`)).toEqual({
+		result: "navigation unavailable",
+		calls: [["--session", "session", "action", "list-panes", "--json", "--all"]],
+	});
 });
 
 it("reports a failed close without retry or leaking stderr", () => {

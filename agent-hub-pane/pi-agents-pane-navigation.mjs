@@ -6,7 +6,8 @@ import { paneIdentity } from "../extensions/pi-agent-hub/registry/zellij-pane.mj
 function runZellij(args) {
 	return execFileSync("zellij", args, {
 		encoding: "utf8",
-		timeout: 1000,
+		// Metadata scans contend across tabs; mutations retain the tighter bound.
+		timeout: args.includes("list-panes") ? 3000 : 1000,
 		maxBuffer: 512 * 1024,
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -30,7 +31,9 @@ export function createNavigator(identity, run = runZellij) {
 				execFile(
 					"zellij",
 					args,
-					{ encoding: "utf8", timeout: 1000, maxBuffer: 512 * 1024 },
+					// Concurrent tab startups can exceed one second. This wait is
+					// asynchronous; the visibility query keeps its tighter bound.
+					{ encoding: "utf8", timeout: args.includes("list-panes") ? 3000 : 1000, maxBuffer: 512 * 1024 },
 					(error, stdout, stderr) =>
 						error
 							? reject(
@@ -55,6 +58,7 @@ export function createNavigator(identity, run = runZellij) {
 					return null;
 				const view = { ...own[0] };
 				if (
+					view.is_focused === true &&
 					panes.some(
 						(p) =>
 							p?.tab_id === view.tab_id &&
@@ -118,6 +122,7 @@ export function createNavigator(identity, run = runZellij) {
 			// Zellij reports a focused tiled pane AND a focused floating pane.
 			// Only the visible layer owns input; a hidden floating target stays listed.
 			if (
+				view.is_focused === true &&
 				panes.some(
 					(p) =>
 						p?.tab_id === view.tab_id &&
@@ -156,8 +161,7 @@ export function createNavigator(identity, run = runZellij) {
 			return null;
 		}
 	};
-	const act = (row, rows, action, now = Date.now()) => {
-		const context = inspect();
+	const act = (row, rows, action, now = Date.now(), context = inspect()) => {
 		if (!context || context.own.is_focused !== true)
 			return "navigation unavailable";
 		const nav = row?.navigation;
@@ -248,9 +252,9 @@ export function createNavigator(identity, run = runZellij) {
 			rows.some((row) => row.name.toLowerCase() === name.toLowerCase())
 		)
 			return "Name already in use";
-		const error = act(lead, rows, "verify");
-		if (error) return error;
 		const context = inspect();
+		const error = act(lead, rows, "verify", Date.now(), context);
+		if (error) return error;
 		if (!context || context.own.is_focused !== true)
 			return "navigation unavailable";
 		if (

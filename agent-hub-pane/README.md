@@ -12,7 +12,8 @@ Compact, interactive terminal side pane for Zellij tabs. Shows the tab's lead ag
 - `--registry <dir>`: override registry directory (defaults to `~/.pi/agents`).
 - `--interval <sec>`: refresh cadence in continuous mode (default: 2 s, range: 0.25..3600). Keyboard/mouse actions remain immediate; the interval controls periodic refresh.
 - `PI_AGENTS_PANE_INTERVAL`: env override of the default cadence (0.25..3600); an explicit `--interval` wins, unset or blank keeps the default.
-- `PI_AGENTS_PANE_STARTUP_DELAY`: seconds to pause automatic redraws after the initial frame (default: 20, range: 0..3600; `0` disables). Unset or blank uses the default. Keyboard/mouse and resize redraws remain immediate. At expiry the pane refreshes and starts normal polling. One-shot output is not delayed. Set this in the launcher environment; running panes require a restart.
+- Steady-state refresh reads the registry without spawning Zellij queries. Navigation checks run initially, retry if unavailable, and revalidate actions/active confirmations, including full pane identity and cwd. Unchanged frames emit nothing; small updates repaint only changed lines.
+- `PI_AGENTS_PANE_STARTUP_DELAY`: seconds to pause automatic redraws after the initial frame (default: 20, range: 0..3600; `0` disables). Unset or blank uses the default. Initial interactive controls, keyboard/mouse and resize redraws remain immediate. At expiry the pane refreshes and starts normal polling. One-shot output is not delayed. Set this in the launcher environment; running panes require a restart.
 - `--once`: render a single frame and exit.
 - `--json`: emit JSON snapshot and exit (implies `--once`).
 - `--no-color`: plain text output without ANSI colors.
@@ -43,3 +44,18 @@ Detached Zellij 0.44.1 acceptance test (creates and cleans up its own scratch se
 ```sh
 node agent-hub-pane/test-agent-pane-zellij.mjs
 ```
+
+Bounded attached load test: eight Hub panes across eight disposable tabs, four
+synthetic output producers (400 lines/s configured, 45-second lifetime), no model
+calls. Verifies all panes become interactive, output advances, idle polls launch
+no Zellij queries, and input-driven focus/close/create have real pane receipts.
+Reports focus latency including receipt polling; this is not a live-user benchmark.
+
+```sh
+node agent-hub-pane/test-agent-pane-zellij.mjs --load          # Python stdlib PTY
+node agent-hub-pane/test-agent-pane-zellij.mjs --termwright   # native Termwright PTY required
+```
+
+Both paths clean up only their generated session. The Termwright path fails
+explicitly if its platform-native addon is unavailable; it does not silently
+substitute another driver.
