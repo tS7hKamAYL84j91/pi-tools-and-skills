@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { paneChildEnv } from "./helpers.js";
 
 const executable = resolve("agent-hub-pane/pi-agents-pane");
 const moduleUrl = pathToFileURL(resolve("agent-hub-pane/pi-agents-pane.mjs")).href;
@@ -48,7 +49,7 @@ it("refresh defaults to two seconds but accepts an explicit override", () => {
 			parseArgs(["--scope", "lead"]).interval,
 			parseArgs(["--scope", "lead", "--interval", "5"]).interval,
 		]));
-	`], { encoding: "utf8" });
+	`], { encoding: "utf8", env: paneChildEnv() });
 	expect(JSON.parse(output)).toEqual([2, 5]);
 });
 
@@ -64,7 +65,7 @@ it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", 
 		JSON.parse(
 			execFileSync(process.execPath, ["--input-type=module", "-e", code], {
 				encoding: "utf8",
-				env: { ...process.env, ...env },
+				env: paneChildEnv(env),
 			}),
 		) as number[];
 	expect(run({ PI_AGENTS_PANE_INTERVAL: "5" })).toEqual([5, 2]);
@@ -76,7 +77,7 @@ it("PI_AGENTS_PANE_INTERVAL seeds the default but an explicit --interval wins", 
 			"-e",
 			`const { main } = await import(${JSON.stringify(moduleUrl)}); main(["--scope", "lead"]);`,
 		],
-		{ encoding: "utf8", env: { ...process.env, PI_AGENTS_PANE_INTERVAL: "banana" } },
+		{ encoding: "utf8", env: paneChildEnv({ PI_AGENTS_PANE_INTERVAL: "banana" }) },
 	);
 	expect(bad.status).toBe(2);
 	expect(bad.stderr).toContain("PI_AGENTS_PANE_INTERVAL must be 0.25–3600 seconds");
@@ -86,7 +87,7 @@ function cli(...args: string[]) {
 	return spawnSync(
 		executable,
 		["--scope", "lead", "--registry", dir, ...args],
-		{ encoding: "utf8", cwd: tmpdir(), timeout: 3000 },
+		{ encoding: "utf8", cwd: tmpdir(), timeout: 3000, env: paneChildEnv() },
 	);
 }
 function evaluate(code: string): string {
@@ -97,7 +98,7 @@ function evaluate(code: string): string {
 			"-e",
 			`import * as pane from ${JSON.stringify(moduleUrl)}; ${code}`,
 		],
-		{ encoding: "utf8" },
+		{ encoding: "utf8", env: paneChildEnv() },
 	).trim();
 }
 function tree(path: string): unknown {
@@ -172,7 +173,7 @@ it.each([
 			dir,
 			...(mode === "continuous" ? [] : [mode]),
 		],
-		{ stdio: ["ignore", "pipe", "pipe"] },
+		{ stdio: ["ignore", "pipe", "pipe"], env: paneChildEnv() },
 	);
 	let errors = "";
 	child.stderr.on("data", (data: Buffer) => {
@@ -554,7 +555,7 @@ it.each(
 		["--scope", "../bad"],
 	].map((args) => ({ args })),
 )("rejects invalid usage $args", ({ args }) => {
-	expect(spawnSync(executable, args, { encoding: "utf8" }).status).toBe(2);
+	expect(spawnSync(executable, args, { encoding: "utf8", env: paneChildEnv() }).status).toBe(2);
 });
 
 it.each([
@@ -603,7 +604,7 @@ finally:
 			dir,
 			String(noColor),
 		],
-		{ encoding: "utf8", timeout: 10000 },
+		{ encoding: "utf8", timeout: 10000, env: paneChildEnv() },
 	);
 	expect(output.trim()).toBe("restored");
 });
@@ -812,7 +813,7 @@ finally:
 			dir,
 			method,
 		],
-		{ encoding: "utf8", timeout: 12000 },
+		{ encoding: "utf8", timeout: 12000, env: paneChildEnv() },
 	);
 	expect(output.trim()).toBe("focused and restored");
 	const calls = readFileSync(log, "utf8")
@@ -897,12 +898,12 @@ try:
 finally:
     if p.poll() is None: p.kill(); p.wait()
     os.close(master); os.close(slave)
-`, executable, dir], { encoding: "utf8", timeout: 10000 });
+`, executable, dir], { encoding: "utf8", timeout: 10000, env: paneChildEnv() });
 	expect(output.trim()).toBe("ok");
 });
 
 it.each([undefined, "", "0", "2.5", "-1", "NaN", "Infinity", "3601"])("validates startup delay %s", (value) => {
-	const env = { ...process.env };
+	const env = paneChildEnv();
 	if (value === undefined) delete env.PI_AGENTS_PANE_STARTUP_DELAY;
 	else env.PI_AGENTS_PANE_STARTUP_DELAY = value;
 	const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
@@ -922,6 +923,7 @@ it("prints help from a foreign cwd", () => {
 	const result = spawnSync(executable, ["--help"], {
 		encoding: "utf8",
 		cwd: tmpdir(),
+		env: paneChildEnv(),
 	});
 	expect(result.status).toBe(0);
 	expect(result.stdout).toContain("--scope");
@@ -932,7 +934,7 @@ it("retries unreadable registry and exits cleanly on SIGTERM", async () => {
 	const child = spawn(
 		executable,
 		["--scope", "lead", "--registry", dir, "--interval", "0.25"],
-		{ stdio: ["ignore", "pipe", "pipe"] },
+		{ stdio: ["ignore", "pipe", "pipe"], env: paneChildEnv() },
 	);
 	let output = "";
 	let signalled = false;
