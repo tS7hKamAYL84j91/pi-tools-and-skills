@@ -239,7 +239,7 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 			expect(
 				calls(log).filter((argv) => argv.includes("focus-pane-id")),
 			).toEqual([]);
-			expect(calls(log).some((argv) => argv.includes("list-panes"))).toBe(true);
+			expect(calls(log)).toEqual([]); // no unsolicited metadata scan on startup/quit
 
 			writeFileSync(log, "");
 			const after = runInPty(args, "jj\rq", env);

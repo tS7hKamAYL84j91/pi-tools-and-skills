@@ -611,14 +611,13 @@ export function main(args = process.argv.slice(2)) {
 	const tty = Boolean(process.stdout.isTTY);
 	const input = Boolean(tty && process.stdin.isTTY);
 	const wasRaw = process.stdin.isRaw;
-	const navigator = createNavigator(
-		ownPaneIdentity({
-			inside: process.env.ZELLIJ,
-			sessionName: process.env.ZELLIJ_SESSION_NAME,
-			paneId: process.env.ZELLIJ_PANE_ID,
-			interactive: input,
-		}),
-	);
+	const identity = ownPaneIdentity({
+		inside: process.env.ZELLIJ,
+		sessionName: process.env.ZELLIJ_SESSION_NAME,
+		paneId: process.env.ZELLIJ_PANE_ID,
+		interactive: input,
+	});
+	const navigator = createNavigator(identity);
 	const parseInput = inputParser();
 	let timer,
 		startupTimer,
@@ -639,8 +638,9 @@ export function main(args = process.argv.slice(2)) {
 		visibleLines = [],
 		checking = false,
 		focusGeneration = 0,
-		context = null,
-		pendingInput = [];
+		// This enables display/input only, never a Zellij action. Every action and
+		// modal arming revalidates identity and focus before using the live pane.
+		context = identity ? { own: { id: identity.paneId, is_focused: false } } : null;
 	let lastFrame, lastWidth, lastHeight;
 	const setMouse = (active) => {
 		if (active === mouse || !input || outputBroken) return;
@@ -755,7 +755,7 @@ export function main(args = process.argv.slice(2)) {
 		if (tty && !outputBroken) process.stdout.write("\x1b[?25h");
 	};
 	cleanup = stop;
-	const key = (data, replay = false) => {
+	const key = (data) => {
 		if (newAgentName !== undefined) {
 			const input = data.toString();
 			if (input === "\x1b" || input === "\x03") {
@@ -806,15 +806,6 @@ export function main(args = process.argv.slice(2)) {
 			draw();
 			return;
 		}
-		if (
-			context === null &&
-			checking &&
-			data.toString() !== "q" &&
-			!data.includes(3)
-		) {
-			if (pendingInput.length < 16) pendingInput.push(data);
-			return;
-		}
 		const events = parseInput(data);
 		const raw = data.toString();
 		if (
@@ -833,16 +824,6 @@ export function main(args = process.argv.slice(2)) {
 		}
 		const confirmationAtStart = confirmation;
 		for (const event of events) {
-			if (
-				replay &&
-				(event.type === "close" ||
-					event.type === "confirm" ||
-					event.type === "focus")
-			) {
-				confirmation = undefined;
-				notice = "Repeat c after startup";
-				continue;
-			}
 			if (creation) {
 				// The name-entry Enter cannot be immediately repeated to launch.
 				if (event.type === "focus" && Date.now() - creation.armedAt < 300) {
@@ -852,8 +833,7 @@ export function main(args = process.argv.slice(2)) {
 				}
 				if (
 					((event.type === "confirm" && (raw === "y" || raw === "Y")) ||
-						(event.type === "focus" && (raw === "\r" || raw === "\n"))) &&
-					!replay
+						(event.type === "focus" && (raw === "\r" || raw === "\n")))
 				) {
 					const request = creation;
 					creation = undefined;
@@ -941,10 +921,7 @@ export function main(args = process.argv.slice(2)) {
 				if (confirmation) {
 					confirmation = undefined;
 					notice = "Close cancelled";
-				} else if (
-					!replay &&
-					data.toString() === "n"
-				) {
+				} else if (data.toString() === "n") {
 					focusGeneration++;
 					const current = navigator.inspect();
 					if (current) context = current;
@@ -1056,28 +1033,23 @@ export function main(args = process.argv.slice(2)) {
 	};
 	const refresh = () => {
 		draw();
-		if (checking || stopped) return;
-		// Registry polling needs no Zellij subprocesses once navigation is known.
-		// Recheck modal focus while armed; every action validates again on input.
-		if (context && newAgentName === undefined && !creation && !confirmation) return;
+		if (checking || stopped || !identity) return;
+		// No unsolicited metadata scans at startup/idle: concurrent Hub panes
+		// otherwise flood Zellij. Recheck focus only while a modal is armed.
+		if (newAgentName === undefined && !creation && !confirmation) return;
 		checking = true;
 		const generation = focusGeneration;
 		void navigator.inspectAsync().then((result) => {
 			checking = false;
 			if (!stopped && generation === focusGeneration) {
 				const wasEnabled = enabled;
-				// Discovery failure stays read-only; later modal failures cancel
-				// arming without disabling input or the already-discovered display.
+				// Failed modal checks cancel arming without disabling display/input.
 				context = result ?? (context
 					? { ...context, own: { ...context.own, is_focused: false } }
 					: null);
 				enabled = Boolean(context);
 				setMouse(enabled);
-				// Finish initial controls immediately without rescanning paused data.
 				if (!startupPaused || enabled !== wasEnabled) draw(false);
-				const queued = pendingInput;
-				pendingInput = [];
-				for (const data of queued) key(data, true);
 			}
 		});
 	};

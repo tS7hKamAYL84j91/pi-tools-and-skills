@@ -651,6 +651,7 @@ it.each([
 	});
 	if (method === "marker") writeFileSync(join(dir, "bad.json"), "{");
 	const log = join(dir, "calls");
+	writeFileSync(log, "");
 	const focused = join(dir, "focused");
 	const stub = join(dir, "zellij");
 	writeFileSync(
@@ -688,20 +689,15 @@ def until(needle):
     assert needle in data, repr(data)
 try:
     if sys.argv[3]=='startup':
-        until(b'q:quit')
-        deadline=time.monotonic()+3
-        while not os.path.exists(os.path.join(sys.argv[2],'inspect-started')) and time.monotonic()<deadline: time.sleep(0.01)
-        assert os.path.exists(os.path.join(sys.argv[2],'inspect-started'))
-        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
-        os.write(master,b'c')
-        time.sleep(0.1)
-        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
-        os.write(master,b'\\r')
-        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-finished'))
+        until(b'l:lead q:quit')
+        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-started')), 'startup spawned a metadata scan'
+        os.write(master,b'c\\r')
+        until(b'Use separate confirmation keys')
+        assert not os.path.exists(os.path.join(sys.argv[2],'inspect-started')), 'combined input armed a close'
     until(b'l:lead q:quit')
     if sys.argv[3]=='startup':
         time.sleep(0.3)
-        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'startup replay closed a pane'
+        assert not os.path.exists(os.path.join(sys.argv[2],'closed')), 'combined startup input closed a pane'
     assert b'\\x1b[?1000h' in data and b'\\x1b[?1006h' in data
     assert b'\\x1b[7m' in data
     assert b'\\x1b[?2004h' in data
@@ -819,6 +815,7 @@ finally:
 	const calls = readFileSync(log, "utf8")
 		.trim()
 		.split("\n")
+		.filter(Boolean)
 		.map((line) => JSON.parse(line) as string[]);
 	const launches = calls.filter((args) => args.includes("new-pane"));
 	expect(launches).toHaveLength(method === "new" ? 1 : 0);

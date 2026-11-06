@@ -12,7 +12,7 @@ Compact, interactive terminal side pane for Zellij tabs. Shows the tab's lead ag
 - `--registry <dir>`: override registry directory (defaults to `~/.pi/agents`).
 - `--interval <sec>`: refresh cadence in continuous mode (default: 2 s, range: 0.25..3600). Keyboard/mouse actions remain immediate; the interval controls periodic refresh.
 - `PI_AGENTS_PANE_INTERVAL`: env override of the default cadence (0.25..3600); an explicit `--interval` wins, unset or blank keeps the default.
-- Steady-state refresh reads the registry without spawning Zellij queries. Navigation checks run initially, retry if unavailable, and revalidate actions/active confirmations, including full pane identity and cwd. Unchanged frames emit nothing; small updates repaint only changed lines.
+- Startup and steady-state refresh read the registry without spawning Zellij queries. Valid terminal identity enables advisory controls only; actions/active confirmations still revalidate live focus, full pane identity and cwd. Unchanged frames emit nothing; small updates repaint only changed lines.
 - `PI_AGENTS_PANE_STARTUP_DELAY`: seconds to pause automatic redraws after the initial frame (default: 20, range: 0..3600; `0` disables). Unset or blank uses the default. Initial interactive controls, keyboard/mouse and resize redraws remain immediate. At expiry the pane refreshes and starts normal polling. One-shot output is not delayed. Set this in the launcher environment; running panes require a restart.
 - `--once`: render a single frame and exit.
 - `--json`: emit JSON snapshot and exit (implies `--once`).
@@ -59,3 +59,27 @@ node agent-hub-pane/test-agent-pane-zellij.mjs --termwright   # native Termwrigh
 Both paths clean up only their generated session. The Termwright path fails
 explicitly if its platform-native addon is unavailable; it does not silently
 substitute another driver.
+
+The combined Termwright scale test runs **all groups concurrently in one session**:
+one Hub with 10 standing fixture agents and ten Hubs with 1–5 each (40 agents,
+51 terminal panes total). All groups share one fixture registry. It verifies
+scope isolation, full-size rows, keyboard focus in every group, narrow two-line
+paging and mouse focus in the dense group, cancellation, and process cleanup.
+Display latency is observed through the attached terminal before querying the
+focus receipt, avoiding measurement-induced metadata contention.
+
+```sh
+node agent-hub-pane/test-agent-pane-scale.mjs
+```
+
+Fixtures are lightweight Python processes, not model workers. Registry polling
+uses the normal 2-second interval; only the fixture startup redraw delay is
+zeroed. The run has a 150-second deadline and never touches existing sessions.
+
+Termwright 0.7.7 officially supports Node 22/24. On this Node 25 ARM64 host its
+optional native addon was omitted by `npm ci`; the matching addon can be installed
+locally without changing the lockfile or defaults:
+
+```sh
+npm install --no-save --ignore-scripts --no-audit --no-fund @termwright/pty-linux-arm64@0.7.7
+```

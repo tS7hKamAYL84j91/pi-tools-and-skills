@@ -54,7 +54,7 @@ def until(needle):
         if select.select([master],[],[],0.05)[0]: data += os.read(master,65536)
     assert needle in data, repr(data)
 def calls():
-    return [json.loads(line) for line in (root/'calls').read_text().splitlines()]
+    return [json.loads(line) for line in (root/'calls').read_text().splitlines()] if (root/'calls').exists() else []
 def update(model):
     path = registry/'helper.json'
     row = json.loads(path.read_text())
@@ -64,7 +64,7 @@ try:
     until(b'l:lead q:quit')
     data = b''
     assert not select.select([master],[],[],0.8)[0], 'idle repaint'
-    assert calls() == [['--session', 'fixture', 'action', 'list-panes', '--json', '--all']], ('idle Zellij subprocesses', calls())
+    assert calls() == [], ('startup/idle Zellij subprocesses', calls())
     update('fixture/updated-model')
     until(b'updated-model')
     assert b'\\x1b[2J' not in data, 'small update cleared whole pane'
@@ -73,7 +73,7 @@ try:
     update('fixture/x')
     until(b'helper')
     assert b'\\x1b[2K' in data, 'shortened line not cleared'
-    assert len(calls()) == 1, 'registry updates spawned Zellij'
+    assert calls() == [], 'registry updates spawned Zellij'
     data = b''
     (registry/'helper.json').unlink()
     until(b'q:quit')
