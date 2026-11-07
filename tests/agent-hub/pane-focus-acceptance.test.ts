@@ -187,24 +187,38 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		return { registry, bin, log };
 	}
 
-	const runInPty = (args: string[], input: string, env: NodeJS.ProcessEnv) =>
-		spawnSync(
-			"sh",
-			[
-				"-c",
-				'(sleep 0.5; printf "%s" "$1") | script -qec "$2" /dev/null',
-				"fixture",
-				input,
-				[process.execPath, resolve("agent-hub-pane/pi-agents-pane"), ...args].join(
-					" ",
-				),
-			],
-			{
-				encoding: "utf8",
-				timeout: 10_000,
-				env,
-			},
-		);
+	const runInPty = (args: string[], input: string | string[], env: NodeJS.ProcessEnv) =>
+		spawnSync("python3", ["-c", `
+import json, os, select, shlex, subprocess, sys, time
+command=shlex.join(json.loads(sys.argv[1]))
+p=subprocess.Popen(['script','-qec',command,'/dev/null'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+data=b''; transcript=b''
+def until(needle):
+    global data, transcript
+    deadline=time.monotonic()+3
+    while needle not in data and time.monotonic()<deadline:
+        if select.select([p.stdout],[],[],0.02)[0]:
+            chunk=os.read(p.stdout.fileno(),65536)
+            if not chunk: break
+            data+=chunk; transcript+=chunk
+    assert needle in data, repr(data)
+try:
+    until(b'q:quit')
+    for text in json.loads(sys.argv[2]):
+        data=b''; p.stdin.write(text.encode()); p.stdin.flush()
+        if text=='q': until(b'\\x1b[?25h')
+        else:
+            # Wait for actual UI completion before another focus/quit input.
+            # Two rows: pending notice adds line 5; completion clears that line.
+            until(b'Checking pane')
+            until(b'\\x1b[4;1H\\x1b[2Kn:new c:close l:lead q:quit\\x1b[5;1H\\x1b[2K')
+    assert p.wait(timeout=2)==0
+    sys.stdout.buffer.write(transcript)
+finally:
+    if p.poll() is None: p.kill(); p.wait()
+`, JSON.stringify([process.execPath, resolve("agent-hub-pane/pi-agents-pane"), ...args]), JSON.stringify(Array.isArray(input) ? input : [input])], {
+			encoding: "utf8", timeout: 10_000, env,
+		});
 
 	const calls = (log: string) =>
 		readFileSync(log, "utf8")
@@ -242,7 +256,7 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 			expect(calls(log)).toEqual([]); // no unsolicited metadata scan on startup/quit
 
 			writeFileSync(log, "");
-			const after = runInPty(args, "jj\rq", env);
+			const after = runInPty(args, ["jj\r", "q"], env);
 			expect(after.status).toBe(0);
 			const focus = calls(log).filter((argv) => argv.includes("focus-pane-id"));
 			expect(focus).toEqual([
@@ -256,7 +270,7 @@ if (args.includes("list-panes")) process.stdout.write(JSON.stringify([
 		const { registry, bin, log } = fixture();
 		const result = runInPty(
 			["--scope", "lead", "--registry", registry, "--interval", "60", "--no-color"],
-			"\x1b[<0;8;3M\x1b[<0;8;3Mq",
+			["\x1b[<0;8;3M", "\x1b[<0;8;3M", "q"],
 			paneChildEnv({
 				PI_AGENTS_PANE_STARTUP_DELAY: "20",
 				ZELLIJ: "0",

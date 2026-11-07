@@ -200,7 +200,7 @@ save();setInterval(save,1000);
 		{ sessionName: session, paneId: view.id },
 		run,
 	);
-	assert.equal(navigator.inspect()?.own.is_focused, true);
+	assert.equal((await navigator.inspect())?.own.is_focused, true);
 	let performance;
 	if (load) {
 		if (useTermwright) {
@@ -284,7 +284,7 @@ finally:
 			panes().find((p) => p.id === beta.id && !p.is_plugin)?.is_focused,
 		"mouse reveals beta",
 	);
-	assert.equal(navigator.inspect()?.own.is_focused, false);
+	assert.equal((await navigator.inspect())?.own.is_focused, false);
 	action("focus-pane-id", `terminal_${view.id}`);
 	await until(() => !visible(view.tab_id), "return to view hides floats");
 	await delay(350); // view's bounded refresh resumes before keyboard input
@@ -295,7 +295,7 @@ finally:
 			panes().find((p) => p.id === alpha.id && !p.is_plugin)?.is_focused,
 		"keyboard reveals alpha",
 	);
-	assert.equal(navigator.inspect()?.own.is_focused, false);
+	assert.equal((await navigator.inspect())?.own.is_focused, false);
 	assert(
 		panes()
 			.filter((p) => p.is_floating)

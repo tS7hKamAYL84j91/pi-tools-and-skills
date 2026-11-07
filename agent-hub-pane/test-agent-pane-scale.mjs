@@ -12,6 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { launchTerminal } from "@termwright/driver";
+import { createNavigator } from "./pi-agents-pane-navigation.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const counts = [10, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5];
@@ -71,7 +72,7 @@ try {
 	writeFileSync(queryLog, "");
 	// Instrument only fixture Hub CLI calls; don't save command output or process argv.
 	const shellQuote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
-	writeFileSync(join(bin, "zellij"), `#!/bin/sh\nprintf '{"action":"%s","pane":"%s"}\\n' "$4" "$ZELLIJ_PANE_ID" >> ${shellQuote(queryLog)}\nexec ${shellQuote(zellij)} "$@"\n`);
+	writeFileSync(join(bin, "zellij"), `#!/bin/sh\nprintf '{"action":"%s","format":"%s","pane":"%s"}\\n' "$4" "$5" "$ZELLIJ_PANE_ID" >> ${shellQuote(queryLog)}\nexec ${shellQuote(zellij)} "$@"\n`);
 	chmodSync(join(bin, "zellij"), 0o755);
 	const fixture = join(dir, "agent.py"), hub = join(dir, "hub.mjs");
 	// Small standing processes, not forty V8 cold starts or model executors.
@@ -181,12 +182,36 @@ const scope=process.argv[2];writeFileSync(join(${JSON.stringify(dir)},scope+'.pi
 	const mouseLatencyMs = Math.round((await focused(dense.rows.at(-1))) - mouseStarted);
 	await terminal.resize({ columns: 120, rows: 40 });
 	await focusHub(dense);
+	const advisoryStart = queryCount();
+	const closeArmStarted = performance.now();
 	await terminal.type("c");
 	await terminal.waitForText(`Close #${dense.rows.at(-1).zellij.paneId}`);
+	const closeArmingMs = Math.round(performance.now() - closeArmStarted);
+	const advisoryCalls = () => readFileSync(queryLog, "utf8").trim().split("\n").slice(advisoryStart).map((line) => JSON.parse(line));
+	await until(() => advisoryCalls().some((call) => call.action === "list-panes" && call.format === "--state"), "cheap periodic modal inspection", 3000);
 	await terminal.type("n");
 	await terminal.waitForText("Close cancelled");
+	const createArmStarted = performance.now();
+	await terminal.type("n");
+	await terminal.waitForText("Name:");
+	const createArmingMs = Math.round(performance.now() - createArmStarted);
+	await terminal.press("Escape");
+	await terminal.waitForText("New agent cancelled");
+	const advisoryQueries = advisoryCalls();
+	assert(advisoryQueries.some((call) => call.action === "list-tabs"), "cheap advisory path not exercised");
+	assert.equal(advisoryQueries.filter((call) => call.action === "list-panes" && call.format === "--json").length, 2, "only the two arming operations may use full metadata; modal checks must stay cheap");
+	const metadataCalls = [];
+	const inspector = createNavigator({ sessionName: session, paneId: dense.hub.id }, async (args, { signal }) => {
+		metadataCalls.push(args);
+		return (await execute(zellij, args, { env, signal, timeout: 5000, maxBuffer: 1024 * 1024 })).stdout;
+	});
+	const metadataStarted = performance.now();
+	assert.equal((await inspector.inspect(undefined, true))?.own.is_focused, true);
+	const advisoryMetadataMs = Math.round(performance.now() - metadataStarted);
+	assert.equal(metadataCalls.length, 2);
+	assert(!metadataCalls.some((args) => args.includes("--all")));
 	assert.equal((await list()).filter((p) => !p.is_plugin && !p.exited).length, 51, "cancel changed fixture population");
-	summary = { version, driver: "Termwright", concurrentHubPanes: 11, agentsPerPane: counts, concurrentFixtureAgents: 40, firstObservedReadyMs: readyAt, idleWindowMs: 2500, idleZellijQueries: 0, totalHubIdleCpuMs: idleCpuMs, keyboardFocusLatencyMs: focusLatencyMs, denseNarrowMouseLatencyMs: mouseLatencyMs, verified: ["all group memberships and live processes", "all 40 rows visible at full size", "keyboard focus and displayed target in every group", "dense narrow paging and mouse focus", "close cancellation preserves all 51 terminals"], cleanup: "passed" };
+	summary = { version, driver: "Termwright", concurrentHubPanes: 11, agentsPerPane: counts, concurrentFixtureAgents: 40, firstObservedReadyMs: readyAt, idleWindowMs: 2500, idleZellijQueries: 0, totalHubIdleCpuMs: idleCpuMs, keyboardFocusLatencyMs: focusLatencyMs, denseNarrowMouseLatencyMs: mouseLatencyMs, closeArmingMs, createArmingMs, advisoryMetadataMs, modalFullScans: 0, verified: ["all group memberships and live processes", "all 40 rows visible at full size", "keyboard focus and displayed target in every group", "dense narrow paging and mouse focus", "modal checks use cheap metadata; arming retains full validation; cancellation preserves all 51 terminals"], cleanup: "passed" };
 } finally {
 	try {
 		if (created) {

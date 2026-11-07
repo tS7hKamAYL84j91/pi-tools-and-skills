@@ -636,7 +636,9 @@ export function main(args = process.argv.slice(2)) {
 		view,
 		registryView,
 		visibleLines = [],
-		checking = false,
+		inspection,
+		operation,
+		inputRevision = 0,
 		focusGeneration = 0,
 		// This enables display/input only, never a Zellij action. Every action and
 		// modal arming revalidates identity and focus before using the live pane.
@@ -732,9 +734,48 @@ export function main(args = process.argv.slice(2)) {
 		lastWidth = width;
 		lastHeight = height;
 	};
+	// Re-read registry authority after metadata awaits, never dispatch from an old
+	// row, confirmation, or duplicate-claim snapshot captured before the query.
+	const refreshTarget = (original, guard = () => true) => {
+		const fresh = designateLead(snapshot(options.registry, options.scope, undefined, true), chosenLeadId);
+		const row = fresh.records?.find((item) => item.id === original.id);
+		if (!row || row.pid !== original.pid ||
+			row.navigation?.startedAt !== original.navigation?.startedAt ||
+			row.navigation?.cwd !== original.navigation?.cwd ||
+			row.navigation?.parentId !== original.navigation?.parentId ||
+			JSON.stringify(row.navigation?.zellij) !== JSON.stringify(original.navigation?.zellij) ||
+			!guard(row, fresh)) return null;
+		return { row, rows: fresh.records };
+	};
+	const operate = async (work) => {
+		if (operation || stopped) return;
+		const ticket = { controller: new AbortController(), dispatched: false };
+		operation = ticket;
+		focusGeneration++;
+		const current = () => !stopped && operation === ticket && !ticket.controller.signal.aborted;
+		notice = "Checking pane; n cancels";
+		draw();
+		try {
+			// Let an existing modal read finish, then make a fresh action-time
+			// query. Killing its CLI cannot cancel work already on Zellij's server.
+			// Never promote that older snapshot into action authorization.
+			const background = inspection;
+			if (background) await background.promise;
+			if (!current()) return;
+			await work({ signal: ticket.controller.signal, current,
+				onDispatch: () => { ticket.dispatched = true; } });
+		} catch {
+			if (current()) notice = ticket.dispatched ? "Action outcome uncertain; check panes" : "Navigation unavailable";
+		} finally {
+			if (operation === ticket) operation = undefined;
+			if (!stopped) draw();
+		}
+	};
 	const stop = () => {
 		if (stopped) return;
 		stopped = true;
+		operation?.controller.abort();
+		inspection?.controller.abort();
 		clearInterval(timer);
 		clearTimeout(startupTimer);
 		process.off("SIGINT", stop);
@@ -755,7 +796,34 @@ export function main(args = process.argv.slice(2)) {
 		if (tty && !outputBroken) process.stdout.write("\x1b[?25h");
 	};
 	cleanup = stop;
-	const key = (data) => {
+	const key = async (data) => {
+		if (stopped) return;
+		const raw = data.toString();
+		const events = newAgentName === undefined ? parseInput(data) : [];
+		// Releases, partial CSI sequences and bracketed-paste payloads are not
+		// new actions and must not invalidate an awaiting input batch or repaint.
+		if (newAgentName === undefined && !events.length) return;
+		const revision = ++inputRevision;
+		if (operation) {
+			if (events.some((event) => event.type === "quit")) { stop(); return; }
+			const moves = events.filter((event) => event.type === "move");
+			if (moves.length || events.some((event) => event.type === "cancel" || event.type === "lead")) {
+				if (operation.dispatched) notice = "Action sent; verifying receipt";
+				else {
+					operation.controller.abort();
+					confirmation = undefined;
+					creation = undefined;
+					notice = "Action cancelled";
+					const rows = view?.records ?? [];
+					for (const event of moves) {
+						const index = rows.findIndex((row) => row.id === selectedId);
+						selectedId = rows[Math.max(0, Math.min(rows.length - 1, index + event.delta))]?.id;
+					}
+				}
+			} else notice = "Action pending; input not queued";
+			draw();
+			return;
+		}
 		if (newAgentName !== undefined) {
 			const input = data.toString();
 			if (input === "\x1b" || input === "\x03") {
@@ -806,8 +874,6 @@ export function main(args = process.argv.slice(2)) {
 			draw();
 			return;
 		}
-		const events = parseInput(data);
-		const raw = data.toString();
 		if (
 			events.some(
 				(event) => event.type === "close" || event.type === "confirm",
@@ -824,6 +890,9 @@ export function main(args = process.argv.slice(2)) {
 		}
 		const confirmationAtStart = confirmation;
 		for (const event of events) {
+			// Never replay the rest of an old input batch after newer input arrived
+			// while its action was awaiting metadata (including cancellation).
+			if (stopped || revision !== inputRevision) return;
 			if (creation) {
 				// The name-entry Enter cannot be immediately repeated to launch.
 				if (event.type === "focus" && Date.now() - creation.armedAt < 300) {
@@ -852,23 +921,15 @@ export function main(args = process.argv.slice(2)) {
 						!nameAvailable(options.registry, request.name)
 					)
 						notice = "Create cancelled: state changed";
-					else {
-						focusGeneration++;
-						notice =
-							navigator.create(
-								request.name,
-								options.scope.toLowerCase(),
-								lead,
-								fresh.records ?? [],
-							) ?? `Requested: ${request.name}`;
-					}
-					if (notice.startsWith("Requested:")) {
-						if (context)
-							context = {
-								...context,
-								own: { ...context.own, is_focused: false },
-							};
-					}
+					else await operate(async (operationOptions) => {
+						const result = await navigator.create(request.name, options.scope.toLowerCase(), lead, fresh.records ?? [], {
+							...operationOptions,
+							refresh: () => refreshTarget(lead, (_row, latest) => Date.now() <= request.expires && latest.leadState === "resolved" && latest.records[0]?.id === request.leadId && nameAvailable(options.registry, request.name)),
+						});
+						if (!operationOptions.current()) return;
+						notice = result ?? `Requested: ${request.name}`;
+						if (!result && context) context = { ...context, own: { ...context.own, is_focused: false } };
+					});
 				} else {
 					creation = undefined;
 					notice = "New agent cancelled";
@@ -884,51 +945,34 @@ export function main(args = process.argv.slice(2)) {
 			let index = view.records.findIndex((row) => row.id === selectedId);
 			if (event.type === "close") {
 				if (!visibleLines.includes(selectedId)) continue;
-				// Idle display context is advisory; arming requires current focus.
-				focusGeneration++;
-				const current = navigator.inspect();
-				if (current) context = current;
-				const row = view.records.find((item) => item.id === selectedId);
-				if (!row) {
-					notice = "selected agent left the registry";
-					draw();
-					continue;
-				}
-				const hint = row.navigation?.zellij;
-				if (
-					current?.own.is_focused !== true ||
-					!hint ||
-					!Number.isSafeInteger(hint.paneId)
-				) {
-					notice = "No verified pane to close";
-					draw();
-					continue;
-				}
-				confirmation = {
-					id: row.id,
-					pid: row.pid,
-					startedAt: row.navigation?.startedAt,
-					name: row.name,
-					status: row.status,
-					session: hint.sessionName,
-					paneId: hint.paneId,
-					expires: Date.now() + 5000,
-				};
-				const symbol = statusSymbol(row.status);
-				notice = `Close #${hint.paneId} [${symbol}] Y/n ${row.name}`;
-				draw();
+				const original = view.records.find((item) => item.id === selectedId);
+				if (!original) continue;
+				await operate(async (operationOptions) => {
+					const current = await navigator.inspect(operationOptions.signal);
+					if (!operationOptions.current()) return;
+					if (current) context = current;
+					const row = refreshTarget(original, (row) => selectedId === row.id && visibleLines.includes(row.id))?.row;
+					const hint = row?.navigation?.zellij;
+					if (current?.own.is_focused !== true || !row || !hint || !Number.isSafeInteger(hint.paneId)) {
+						notice = "No verified pane to close";
+						return;
+					}
+					confirmation = { id: row.id, pid: row.pid, startedAt: row.navigation?.startedAt,
+						name: row.name, status: row.status, session: hint.sessionName, paneId: hint.paneId, expires: Date.now() + 5000 };
+					notice = `Close #${hint.paneId} [${statusSymbol(row.status)}] Y/n ${row.name}`;
+				});
 			} else if (event.type === "cancel") {
 				if (confirmation) {
 					confirmation = undefined;
 					notice = "Close cancelled";
 				} else if (data.toString() === "n") {
-					focusGeneration++;
-					const current = navigator.inspect();
-					if (current) context = current;
-					if (current?.own.is_focused === true) {
-						newAgentName = "";
-						notice = "Name: ";
-					}
+					await operate(async (operationOptions) => {
+						const current = await navigator.inspect(operationOptions.signal);
+						if (!operationOptions.current()) return;
+						if (current) context = current;
+						if (current?.own.is_focused === true) { newAgentName = ""; notice = "Name: "; }
+						else notice = "Navigation unavailable";
+					});
 				}
 				draw();
 			} else if (
@@ -964,12 +1008,13 @@ export function main(args = process.argv.slice(2)) {
 				} else if (!closeConfirmationMatches(request, row)) {
 					notice = "Close cancelled: agent changed";
 				} else {
-					// A modal background check may finish while close blocks the loop;
-					// it must not replace the post-action context with a stale timeout.
-					focusGeneration++;
-					notice =
-						navigator.close(row, fresh.records ?? []) ??
-						`Pane closed: ${row.name}`;
+					await operate(async (operationOptions) => {
+						const result = await navigator.close(row, fresh.records ?? [], undefined, {
+							...operationOptions,
+							refresh: () => refreshTarget(row, (latest) => visibleLines.includes(latest.id) && closeConfirmationMatches(request, latest)),
+						});
+						if (operationOptions.current()) notice = result ?? `Pane closed: ${row.name}`;
+					});
 				}
 				draw();
 			} else if (event.type === "lead") {
@@ -1018,30 +1063,28 @@ export function main(args = process.argv.slice(2)) {
 					draw();
 					continue;
 				}
-				notice = navigator.focus(row, fresh.records ?? []) ?? "";
-				if (notice) draw();
-				else {
-					focusGeneration++;
-					if (context)
-						context = {
-							...context,
-							own: { ...context.own, is_focused: false },
-						};
-				}
+				await operate(async (operationOptions) => {
+					const result = await navigator.focus(row, fresh.records ?? [], undefined, {
+						...operationOptions,
+						refresh: () => refreshTarget(row, (latest) => selectedId === latest.id && visibleLines.includes(latest.id)),
+					});
+					if (!operationOptions.current()) return;
+					notice = result ?? "";
+					if (!result && context) context = { ...context, own: { ...context.own, is_focused: false } };
+				});
 			}
 		}
 	};
 	const refresh = () => {
 		draw();
-		if (checking || stopped || !identity) return;
-		// No unsolicited metadata scans at startup/idle: concurrent Hub panes
-		// otherwise flood Zellij. Recheck focus only while a modal is armed.
+		if (inspection || operation || stopped || !identity) return;
+		// No unsolicited metadata scans at startup/idle, or concurrent with an action.
 		if (newAgentName === undefined && !creation && !confirmation) return;
-		checking = true;
+		const check = { controller: new AbortController(), promise: undefined };
+		inspection = check;
 		const generation = focusGeneration;
-		void navigator.inspectAsync().then((result) => {
-			checking = false;
-			if (!stopped && generation === focusGeneration) {
+		check.promise = navigator.inspect(check.controller.signal, true).then((result) => {
+			if (!stopped && !operation && !check.controller.signal.aborted && generation === focusGeneration) {
 				const wasEnabled = enabled;
 				// Failed modal checks cancel arming without disabling display/input.
 				context = result ?? (context
@@ -1051,7 +1094,7 @@ export function main(args = process.argv.slice(2)) {
 				setMouse(enabled);
 				if (!startupPaused || enabled !== wasEnabled) draw(false);
 			}
-		});
+		}).finally(() => { if (inspection === check) inspection = undefined; });
 	};
 	process.on("SIGINT", stop);
 	process.on("SIGTERM", stop);

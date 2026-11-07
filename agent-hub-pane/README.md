@@ -10,7 +10,7 @@ Compact, interactive terminal side pane for Zellij tabs. Shows the tab's lead ag
 
 - `--scope <name>`: canonical lead name to display (matches `declared_name` or `name` fallback, plus any agents whose `namespace == scope`).
 - `--registry <dir>`: override registry directory (defaults to `~/.pi/agents`).
-- `--interval <sec>`: refresh cadence in continuous mode (default: 2 s, range: 0.25..3600). Keyboard/mouse actions remain immediate; the interval controls periodic refresh.
+- `--interval <sec>`: refresh cadence in continuous mode (default: 2 s, range: 0.25..3600). Input and resize handling stay responsive; the interval controls registry refresh, not action validation.
 - `PI_AGENTS_PANE_INTERVAL`: env override of the default cadence (0.25..3600); an explicit `--interval` wins, unset or blank keeps the default.
 - Startup and steady-state refresh read the registry without spawning Zellij queries. Valid terminal identity enables advisory controls only; actions/active confirmations still revalidate live focus, full pane identity and cwd. Unchanged frames emit nothing; small updates repaint only changed lines.
 - `PI_AGENTS_PANE_STARTUP_DELAY`: seconds to pause automatic redraws after the initial frame (default: 20, range: 0..3600; `0` disables). Unset or blank uses the default. Initial interactive controls, keyboard/mouse and resize redraws remain immediate. At expiry the pane refreshes and starts normal polling. One-shot output is not delayed. Set this in the launcher environment; running panes require a restart.
@@ -30,6 +30,29 @@ Footer: `n:new c:close l:lead q:quit` (`n+ c- l:lead q:quit` below 27 columns; r
 - **Close pane**: `c`, verify pane number in prompt, press `Enter` or `y` within 5 seconds to confirm (`n` cancels). Performs a Zellij pane close.
 - **Designate lead**: `l` sets the selected agent as the panel-local lead until exit.
 - **Quit**: `q` or `Ctrl-C` exits and restores terminal state.
+
+### Pending navigation
+
+Zellij checks run asynchronously, with one action in flight. While checking,
+`n` or selection movement cancels the pending action; `q` quits without waiting
+for the metadata deadline. Additional action/confirmation keys are not queued.
+Once an action has been sent, cancellation cannot undo it: the pane reports that
+it is verifying the receipt. Registry identity, duplicate claims and confirmation
+expiry are rechecked after metadata awaits, immediately before dispatch.
+
+An existing modal inspection finishes and is discarded before a fresh action
+inspection starts; the two never compete for IPC. Modal-only advisory checks use
+`list-tabs --json` plus `list-panes --state --tab`, avoiding Zellij 0.44.1's costly
+per-pane process scans. This unescaped table is bounded, anchored to structured
+tab metadata and never used to authorize arming/actions or verify success.
+Unsupported/ambiguous projections fall back to full JSON.
+
+Arming retains full JSON focus checks. Mutation preflights retain the actual
+claimed pane's cwd and identity checks; close/create receipts include unselectable
+panes through full JSON. Zellij 0.44.1 has
+no per-pane cwd CLI; checking `/proc/<agent-pid>/cwd` instead would not establish
+the claimed pane's identity. Full action latency therefore remains distinct from
+UI responsiveness and cheap background-check latency.
 
 ## Testing
 
@@ -66,7 +89,9 @@ one Hub with 10 standing fixture agents and ten Hubs with 1–5 each (40 agents,
 scope isolation, full-size rows, keyboard focus in every group, narrow two-line
 paging and mouse focus in the dense group, cancellation, and process cleanup.
 Display latency is observed through the attached terminal before querying the
-focus receipt, avoiding measurement-induced metadata contention.
+focus receipt, avoiding measurement-induced metadata contention. It also holds a
+confirmation open across a refresh tick, verifies modal checks avoid full scans,
+and times the advisory metadata path separately from arming and action latency.
 
 ```sh
 node agent-hub-pane/test-agent-pane-scale.mjs

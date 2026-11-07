@@ -57,7 +57,7 @@ it.each([
 it("closes only the uniquely validated same-tab terminal", () => {
 	expect(
 		probe(
-			`const run=args=>{calls.push(args);if(args.includes('close-pane')) panes.splice(1,1);return JSON.stringify(panes)};const result=createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify({result,calls}));`,
+			`const run=args=>{calls.push(args);if(args.includes('close-pane')) panes.splice(1,1);return JSON.stringify(panes)};const result=await createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify({result,calls}));`,
 		),
 	).toEqual({
 		result: null,
@@ -79,7 +79,7 @@ it("closes only the uniquely validated same-tab terminal", () => {
 it("does not report success when close returns zero but leaves pane present", () => {
 	expect(
 		probe(
-			`const result=createNavigator(identity,runner).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
+			`const result=await createNavigator(identity,runner).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
 		),
 	).toBe("Close not verified");
 });
@@ -87,7 +87,7 @@ it("does not report success when close returns zero but leaves pane present", ()
 it("reports an unverifiable close if the second listing fails", () => {
 	expect(
 		probe(
-			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)throw new Error('private failure');return runner(args)};const result=createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
+			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)throw new Error('private failure');return runner(args)};const result=await createNavigator(identity,run).close(row,[row],1001);process.stdout.write(JSON.stringify(result));`,
 		),
 	).toBe("Close not verified");
 });
@@ -100,7 +100,7 @@ it.each([
 ])("fails closed if post-close listing is malformed: %j", (bad) => {
 	expect(
 		probe(
-			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)return ${JSON.stringify(bad)};return runner(args)};process.stdout.write(JSON.stringify(createNavigator(identity,run).close(row,[row],1001)));`,
+			`let listed=0;const run=args=>{if(args.includes('list-panes') && ++listed===2)return ${JSON.stringify(bad)};return runner(args)};process.stdout.write(JSON.stringify(await createNavigator(identity,run).close(row,[row],1001)));`,
 		),
 	).toBe("Close not verified");
 });
@@ -108,7 +108,7 @@ it.each([
 it("never closes a duplicate or stale target", () => {
 	expect(
 		probe(
-			`const nav=createNavigator(identity,runner); const duplicate=nav.close(row,[row,{...row,id:'other'}],1001);row.heartbeat=-40000;const stale=nav.close(row,[row],1001);process.stdout.write(JSON.stringify({duplicate,stale,closed:calls.filter(a=>a.includes('close-pane'))}));`,
+			`const nav=createNavigator(identity,runner); const duplicate=await nav.close(row,[row,{...row,id:'other'}],1001);row.heartbeat=-40000;const stale=await nav.close(row,[row],1001);process.stdout.write(JSON.stringify({duplicate,stale,closed:calls.filter(a=>a.includes('close-pane'))}));`,
 		),
 	).toEqual({
 		duplicate: "ambiguous agent pane",
@@ -119,7 +119,7 @@ it("never closes a duplicate or stale target", () => {
 
 it("creates a floating named agent in the verified lead tab without a model override", () => {
 	const result = probe(
-		`row.heartbeat=Date.now();const run=args=>{calls.push(args);args.includes('new-pane')?(panes.push({id:40,tab_id:1,is_plugin:false,is_floating:true}),0):0;return args.includes('new-pane')?'terminal_40\\n':args.includes('are-floating-panes-visible')?'false':JSON.stringify(panes)};const result=createNavigator(identity,run).create('worker-1','lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.find(a=>a.includes('new-pane')),preflightInspections:calls.slice(0,calls.findIndex(a=>a.includes('new-pane'))).filter(a=>a.includes('list-panes')).length}));`,
+		`row.heartbeat=Date.now();const run=args=>{calls.push(args);args.includes('new-pane')?(panes.push({id:40,tab_id:1,is_plugin:false,is_floating:true}),0):0;return args.includes('new-pane')?'terminal_40\\n':args.includes('are-floating-panes-visible')?'false':JSON.stringify(panes)};const result=await createNavigator(identity,run).create('worker-1','lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.find(a=>a.includes('new-pane')),preflightInspections:calls.slice(0,calls.findIndex(a=>a.includes('new-pane'))).filter(a=>a.includes('list-panes')).length}));`,
 	);
 	expect(result).toEqual({
 		result: null,
@@ -169,7 +169,7 @@ it.each([
 	"",
 ])("refuses duplicate or invalid new-agent name %j without launching", (name) => {
 	const result = probe(
-		`const result=createNavigator(identity,runner).create(${JSON.stringify(name)},'lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.filter(a=>a.includes('new-pane'))}));`,
+		`const result=await createNavigator(identity,runner).create(${JSON.stringify(name)},'lead',row,[row]);process.stdout.write(JSON.stringify({result,launch:calls.filter(a=>a.includes('new-pane'))}));`,
 	) as { result: unknown; launch: unknown[] };
 	expect(result.result).toBeTruthy();
 	expect(result.launch).toEqual([]);
@@ -177,7 +177,7 @@ it.each([
 
 it("does not launch for stale leads, other tabs or launch errors", () => {
 	const result = probe(
-		`row.heartbeat=Date.now();const nav=createNavigator(identity,runner);row.state='stale';const stale=nav.create('worker','lead',row,[row]);row.state='live';panes[1].tab_id=2;const other=nav.create('worker','lead',row,[row]);process.stdout.write(JSON.stringify({stale,other,launch:calls.filter(a=>a.includes('new-pane'))}));`,
+		`row.heartbeat=Date.now();const nav=createNavigator(identity,runner);row.state='stale';const stale=await nav.create('worker','lead',row,[row]);row.state='live';panes[1].tab_id=2;const other=await nav.create('worker','lead',row,[row]);process.stdout.write(JSON.stringify({stale,other,launch:calls.filter(a=>a.includes('new-pane'))}));`,
 	) as { stale: string; other: string; launch: unknown[] };
 	expect(result.stale).toBeTruthy();
 	expect(result.other).toBeTruthy();
@@ -187,7 +187,7 @@ it("does not launch for stale leads, other tabs or launch errors", () => {
 it("same-tab exact identity focuses only terminal_2 with fixed argv", () => {
 	expect(
 		probe(
-			`const result = createNavigator(identity, runner).focus(row, [row], 1001); process.stdout.write(JSON.stringify({result,calls}));`,
+			`const result = await createNavigator(identity, runner).focus(row, [row], 1001); process.stdout.write(JSON.stringify({result,calls}));`,
 		),
 	).toEqual({
 		result: null,
@@ -216,7 +216,7 @@ it.each([
 	["own pane ambiguous", "panes.push({...panes[0], tab_id:2});"],
 ])("refuses %s without a focus invocation", (_label, setup) => {
 	const result = probe(
-		`${setup} const result=createNavigator(identity, runner).focus(row,[row],1001); process.stdout.write(JSON.stringify({result,focusCalls:calls.filter(a=>a.includes('focus-pane-id'))}));`,
+		`${setup} const result=await createNavigator(identity, runner).focus(row,[row],1001); process.stdout.write(JSON.stringify({result,focusCalls:calls.filter(a=>a.includes('focus-pane-id'))}));`,
 	) as { result: string; focusCalls: unknown[] };
 	expect(result.result).toBeTruthy();
 	expect(result.focusCalls).toEqual([]);
@@ -235,10 +235,10 @@ it("reveals a hidden floating target and treats the tiled view as unfocused afte
 			return JSON.stringify(panes);
 		};
 		const nav=createNavigator(identity,run);
-		const before=nav.inspect().own.is_focused;
-		const result=nav.focus(row,[row],1001);
-		const after=nav.inspect().own.is_focused;
-		const again=nav.focus(row,[row],1001);
+		const before=(await nav.inspect()).own.is_focused;
+		const result=await nav.focus(row,[row],1001);
+		const after=(await nav.inspect()).own.is_focused;
+		const again=await nav.focus(row,[row],1001);
 		process.stdout.write(JSON.stringify({before,result,after,again,focus:calls.filter(a=>a.includes('focus-pane-id'))}));
 	`);
 	expect(value).toEqual({
@@ -256,7 +256,7 @@ it.each([
 ])("disables navigation when floating-layer visibility is %s", (mode) => {
 	const value = probe(`panes[1].is_floating=true;
 		const nav=createNavigator(identity,args=>{calls.push(args); if(args.includes('are-floating-panes-visible')) {${mode === "error" ? "throw Object.assign(new Error('private'), {status:2,stdout:'',stderr:'private'});" : "return 'unknown';"}}return JSON.stringify(panes);});
-		process.stdout.write(JSON.stringify({result:nav.focus(row,[row],1001),focus:calls.filter(a=>a.includes('focus-pane-id'))}));`);
+		process.stdout.write(JSON.stringify({result:await nav.focus(row,[row],1001),focus:calls.filter(a=>a.includes('focus-pane-id'))}));`);
 	expect(value).toEqual({ result: "navigation unavailable", focus: [] });
 });
 
@@ -266,7 +266,7 @@ it.each([
 ])("refuses %s targets even with a fresh record", (flag) => {
 	expect(
 		probe(
-			`panes[1][${JSON.stringify(flag)}]=true; const result=createNavigator(identity,runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,focus:calls.filter(a=>a.includes('focus-pane-id'))}));`,
+			`panes[1][${JSON.stringify(flag)}]=true; const result=await createNavigator(identity,runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,focus:calls.filter(a=>a.includes('focus-pane-id'))}));`,
 		),
 	).toEqual({ result: "pane is unavailable", focus: [] });
 });
@@ -274,7 +274,7 @@ it.each([
 it("skips floating-layer queries when the Hub pane is already unfocused", () => {
 	expect(probe(`panes[0].is_focused=false; panes[1].is_floating=true;
 		const nav=createNavigator(identity,runner);
-		const result=nav.focus(row,[row],1001);
+		const result=await nav.focus(row,[row],1001);
 		process.stdout.write(JSON.stringify({result,calls}));`)).toEqual({
 		result: "navigation unavailable",
 		calls: [["--session", "session", "action", "list-panes", "--json", "--all"]],
@@ -284,7 +284,7 @@ it("skips floating-layer queries when the Hub pane is already unfocused", () => 
 it("reports a failed close without retry or leaking stderr", () => {
 	expect(
 		probe(
-			`const nav=createNavigator(identity,args=>{calls.push(args);if(args.includes('close-pane'))throw new Error('private stderr');return JSON.stringify(panes)});const result=nav.close(row,[row],1001);process.stdout.write(JSON.stringify({result,closed:calls.filter(a=>a.includes('close-pane'))}));`,
+			`const nav=createNavigator(identity,args=>{calls.push(args);if(args.includes('close-pane'))throw new Error('private stderr');return JSON.stringify(panes)});const result=await nav.close(row,[row],1001);process.stdout.write(JSON.stringify({result,closed:calls.filter(a=>a.includes('close-pane'))}));`,
 		),
 	).toEqual({
 		result: "pane gone or close failed",
@@ -304,28 +304,28 @@ it("reports a failed close without retry or leaking stderr", () => {
 it("refuses duplicate self-reported pane claims", () => {
 	expect(
 		probe(
-			`const result=createNavigator(identity, runner).focus(row,[row,{...row,id:'other'}],1001); process.stdout.write(JSON.stringify({result,calls:calls.length}));`,
+			`const result=await createNavigator(identity, runner).focus(row,[row,{...row,id:'other'}],1001); process.stdout.write(JSON.stringify({result,calls:calls.length}));`,
 		),
 	).toEqual({ result: "ambiguous agent pane", calls: 1 });
 });
 it("missing env makes no invocation; unavailable executable/listing fails quietly", () => {
 	expect(
 		probe(
-			`const missing=createNavigator(undefined, runner).inspect(); const failed=createNavigator(identity,()=>{throw new Error('private stderr');}).inspect(); process.stdout.write(JSON.stringify({missing,failed,calls}));`,
+			`const missing=await createNavigator(undefined, runner).inspect(); const failed=await createNavigator(identity,()=>{throw new Error('private stderr');}).inspect(); process.stdout.write(JSON.stringify({missing,failed,calls}));`,
 		),
 	).toEqual({ missing: null, failed: null, calls: [] });
 });
 it("focus failure reports a bounded notice, never raw stderr", () => {
 	expect(
 		probe(
-			`const nav=createNavigator(identity,args=>{if(args.includes('focus-pane-id'))throw new Error('private stderr');return runner(args);});process.stdout.write(JSON.stringify(nav.focus(row,[row],1001)));`,
+			`const nav=createNavigator(identity,args=>{if(args.includes('focus-pane-id'))throw new Error('private stderr');return runner(args);});process.stdout.write(JSON.stringify(await nav.focus(row,[row],1001)));`,
 		),
 	).toBe("pane gone or focus failed");
 });
 it("accepts normalized terminal metadata without changing the target", () => {
 	expect(
 		probe(
-			`row.navigation.zellij.paneId='terminal_2'; const result=createNavigator(identity, runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,target:calls.at(-1).at(-1)}));`,
+			`row.navigation.zellij.paneId='terminal_2'; const result=await createNavigator(identity, runner).focus(row,[row],1001);process.stdout.write(JSON.stringify({result,target:calls.at(-1).at(-1)}));`,
 		),
 	).toEqual({ result: null, target: "terminal_2" });
 });
