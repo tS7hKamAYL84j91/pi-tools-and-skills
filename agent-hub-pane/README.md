@@ -2,6 +2,10 @@
 
 Compact, interactive terminal side pane for Zellij tabs. Shows the tab's lead agent and its namespace helpers from Agent Hub (`~/.pi/agents`).
 
+An opt-in [native Rust index + fixed WASI view experiment](shared/README.md)
+shares collection across tabs. It is read-only and does not replace this pane's
+controls or change live layouts.
+
 ## Usage
 
 ```sh
