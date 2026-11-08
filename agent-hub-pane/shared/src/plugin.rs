@@ -1,6 +1,8 @@
-// Fixed scoped presentation only. No registry reads or Zellij state/mutation rights.
+// Fixed scoped presentation; optional intents go only to the native command owner.
 use cap_std::{ambient_authority, fs::Dir};
 use pi_shared_hub::{
+    action_view::{ActionView, Input},
+    command::Origin,
     frame::{now_ms, read_frame, Frame, Freshness, Watermark},
     scope_name, text, View,
 };
@@ -18,6 +20,8 @@ struct ScopedView {
     visible: bool,
     timer_armed: bool,
     now: u64,
+    actions: ActionView,
+    visible_ids: Vec<String>,
 }
 register_plugin!(ScopedView);
 impl ScopedView {
@@ -51,7 +55,14 @@ impl ScopedView {
                 self.error = Some("Scope directory unavailable".into());
             }
         }
-        old_error != self.error
+        let command_changed = if let Some(frame) = &self.frame {
+            self.actions.receive(frame, self.now)
+        } else {
+            self.actions.hidden();
+            false
+        };
+        command_changed
+            || old_error != self.error
             || match (previous.as_ref(), self.frame.as_ref()) {
                 (Some(old), Some(new)) => !old.same_presentation(old_now, new, self.now),
                 (None, None) => false,
@@ -61,7 +72,7 @@ impl ScopedView {
     fn arm(&mut self) {
         if self.visible && !self.timer_armed {
             self.timer_armed = true;
-            set_timeout(2.0);
+            set_timeout(if self.actions.active() { 0.25 } else { 2.0 });
         }
     }
 }
@@ -81,6 +92,13 @@ impl ZellijPlugin for ScopedView {
             self.error = Some("Mount this scope's directory".into());
             return;
         }
+        self.actions = ActionView::new(
+            configuration.get("actions").is_some_and(|v| v == "true"),
+            Origin {
+                plugin_id: ids.plugin_id,
+                client_id: ids.client_id,
+            },
+        );
         // These are local presentation events. No permission request, global tab
         // scan, session update, command, message, network or file-write API.
         subscribe(&[EventType::Visible, EventType::Timer, EventType::Key]);
@@ -92,6 +110,9 @@ impl ZellijPlugin for ScopedView {
         match event {
             Event::Visible(visible) => {
                 self.visible = visible;
+                if !visible {
+                    self.actions.hidden();
+                }
                 if visible {
                     self.reload();
                     self.arm();
@@ -109,6 +130,31 @@ impl ZellijPlugin for ScopedView {
                 }
             }
             Event::Key(key) if key.has_no_modifiers() => {
+                let action_key = match key.bare_key {
+                    BareKey::Enter => Some(Input::Enter),
+                    BareKey::Esc => Some(Input::Escape),
+                    BareKey::Backspace => Some(Input::Backspace),
+                    BareKey::Char(c) if self.actions.naming() || "nclyYN".contains(c) => {
+                        Some(Input::Char(c))
+                    }
+                    _ => None,
+                };
+                if self.actions.configured {
+                    if let (Some(input), Some(frame)) = (action_key, self.frame.as_ref()) {
+                        if let Some(request) = self.actions.handle(
+                            input,
+                            frame,
+                            self.view.selected.as_deref(),
+                            &self.visible_ids,
+                            now_ms(),
+                        ) {
+                            if pi_shared_hub::inbox::submit(&request).is_err() {
+                                self.actions.failed_submit();
+                            }
+                        }
+                        return true;
+                    }
+                }
                 if key.bare_key == BareKey::Char('r') {
                     return self.reload();
                 }
@@ -118,6 +164,7 @@ impl ZellijPlugin for ScopedView {
                     _ => return false,
                 };
                 if let Some(frame) = self.frame.as_ref() {
+                    self.actions.hidden();
                     self.view
                         .step(&frame.rows.iter().collect::<Vec<_>>(), delta);
                     true
@@ -129,7 +176,17 @@ impl ZellijPlugin for ScopedView {
         }
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        let mut lines = vec![format!("Hub: {} (read-only)", self.scope)];
+        let controls =
+            self.actions.configured && self.frame.as_ref().is_some_and(|f| f.controls.is_some());
+        let mut lines = vec![format!(
+            "Hub: {}{}",
+            self.scope,
+            if controls { "" } else { " (read-only)" }
+        )];
+        self.visible_ids.clear();
+        if !self.actions.notice.is_empty() {
+            lines.push(self.actions.notice.clone());
+        }
         if let Some(error) = self.error.as_ref() {
             lines.push(error.clone());
         } else if let Some(frame) = self.frame.as_ref() {
@@ -159,13 +216,30 @@ impl ZellijPlugin for ScopedView {
                     capacity,
                     cols,
                 ));
+                self.visible_ids = frame
+                    .rows
+                    .iter()
+                    .skip(self.view.offset)
+                    .take(capacity)
+                    .map(|r| r.id.clone())
+                    .collect();
                 if frame.rows.is_empty() {
                     lines.push("No agents in this scope".into());
                 }
             }
             lines.push(format!("{} agents", frame.rows.len()));
         }
-        lines.push("j/k select | r reload view".into());
+        lines.push(
+            if controls {
+                "n new c close l lead | j/k"
+            } else {
+                "j/k select | r reload view"
+            }
+            .into(),
+        );
+        if rows > 1 && !self.actions.notice.is_empty() {
+            self.actions.rendered();
+        }
         // A trailing newline at full height scrolls the header/staleness banner
         // out of Zellij's plugin grid. Emit one bounded frame without it.
         print!(

@@ -38,6 +38,8 @@ pub struct Frame {
     pub capped: bool,
     pub stopped: bool,
     pub error: Option<String>,
+    #[serde(default)]
+    pub controls: Option<crate::command::Controls>,
 }
 /// Retained across read failures. A new collector instance can restart its counter.
 #[derive(Default)]
@@ -64,12 +66,13 @@ pub enum Freshness {
 }
 impl Frame {
     pub fn validate(&self, scope: &str, now: u64) -> io::Result<()> {
-        if self.schema_version != 1
+        if self.schema_version != 2
             || self.scope != scope
             || !scope_name(scope)
             || !scope_name(&self.instance)
             || self.generation == 0
             || self.rows.len() > MAX_FILES
+            || self.controls.as_ref().is_some_and(|c| !c.valid())
             || !(250..=3_600_000).contains(&self.interval_ms)
             || self.scanned_at_ms == 0
             || self.scanned_at_ms > now.saturating_add(1000)
@@ -83,6 +86,7 @@ impl Frame {
         let mut ids = BTreeSet::new();
         for row in &self.rows {
             if !scope_name(&row.id)
+                || !crate::command::valid_version(&row.version)
                 || !ids.insert(&row.id)
                 || row.name.len() > 96
                 || row.model.len() > 96
@@ -101,6 +105,7 @@ impl Frame {
             && self.skipped == other.skipped
             && self.capped == other.capped
             && self.error == other.error
+            && self.controls == other.controls
             && self.freshness(now) == other.freshness(other_now)
     }
     pub fn freshness(&self, now: u64) -> Freshness {

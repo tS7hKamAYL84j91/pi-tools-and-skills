@@ -8,7 +8,7 @@ use serde_json::json;
 use std::{fs, path::Path};
 
 fn frame(scope: &str) -> Frame {
-    serde_json::from_value(json!({"schemaVersion":1,"scope":scope,"instance":"test-1","generation":1,"scannedAtMs":10000,"intervalMs":2000,"rows":[],"skipped":0,"capped":false,"stopped":false,"error":null})).unwrap()
+    serde_json::from_value(json!({"schemaVersion":2,"scope":scope,"instance":"test-1","generation":1,"scannedAtMs":10000,"intervalMs":2000,"rows":[],"skipped":0,"capped":false,"stopped":false,"error":null})).unwrap()
 }
 fn open(path: &Path) -> Dir {
     Dir::open_ambient_dir(path, ambient_authority()).unwrap()
@@ -31,7 +31,7 @@ fn strict_scope_freshness_and_schema_validation() {
     stopped.stopped = true;
     assert_eq!(stopped.freshness(10000), Freshness::Stopped);
     for bad in [
-        json!({"schemaVersion":2}),
+        json!({"schemaVersion":3}),
         json!({"generation":0}),
         json!({"intervalMs":0}),
     ] {
@@ -45,7 +45,7 @@ fn strict_scope_freshness_and_schema_validation() {
             .is_err());
     }
     let mut raw = serde_json::to_value(&value).unwrap();
-    raw["rows"] = json!([{"id":"a","name":"\u{1b}[31m", "model":"fixture", "status":"waiting", "lead":true,"state":"live"}]);
+    raw["rows"] = json!([{"id":"a","name":"\u{1b}[31m", "model":"fixture", "status":"waiting", "lead":true,"state":"live","version":"a".repeat(64)}]);
     assert!(serde_json::from_value::<Frame>(raw.clone())
         .unwrap()
         .validate("scope", 10000)

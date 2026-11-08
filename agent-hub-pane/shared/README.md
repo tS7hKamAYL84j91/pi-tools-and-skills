@@ -8,17 +8,24 @@ canonical agent records -> ONE native Rust collector -> private scoped snapshots
                                                           -> fixed WASI views
 ```
 
+Opt-in asynchronous **New/Close** are now available through the same native owner;
+see [the command contract](COMMANDS.md). Focus remains disabled pending a
+client-correct path; this is not yet full interaction parity or a live rollout.
+
 The native `pi-hub-index` process reads each canonical record once per scan,
 indexes scopes, checks Linux process existence/generation, and atomically
 publishes minimal presentation data. Each Rust/WASI view reads only its scope's
 `snapshot.json`. It never scans the registry, moves panes, queries global tab
-state, or controls agents. Multiple UI clients share the same native collector.
+state, or directly controls agents. Multiple UI clients share the same native collector.
+With both native `--actions` and plugin `actions "true"` explicitly enabled, the
+view submits scoped intents; only the serial native executor performs New/Close.
 
 ## Contract and limitations
 
-- Read-only presentation: `j/k` or arrows select; `r` rereads the scoped snapshot,
-  **not** the registry. Focus/create/close/message controls remain in the existing
-  Node pane and retain their fresh canonical validations. No capability is retired.
+- Read-only is still the default: `j/k` or arrows select; `r` rereads the scoped
+  snapshot, **not** the registry. Opt-in `n`/`c` use separate native-prepared
+  confirmation; `l` chooses a lead locally. Existing Node controls remain available;
+  no capability is retired while interaction parity is incomplete.
 - Zero Zellij permission requests: no application-state, mutation, command,
   network, messaging or full-disk permission. `/host` must be the prepared scope
   directory. A self-cwd basename fence catches a misconfigured parent mount before
@@ -27,6 +34,9 @@ state, or controls agents. Multiple UI clients share the same native collector.
   prefix/cwd inference or fallback to all agents. Tab rename, reorder and close
   do not change a surviving view's configured scope.
 - Defaults: collector scans every 2 seconds; visible views poll every 2 seconds.
+  An active command form polls its own scoped receipt at 250 ms. Native command
+  changes wake publication without another global scan or freshening the old
+  canonical capture timestamp.
   Visibility/input can reread a small scoped file, never trigger a global scan.
   Background views stop rearming timers when the host reports them invisible
   (one already-armed timer can still fire). Unchanged visible content is not
@@ -47,7 +57,8 @@ state, or controls agents. Multiple UI clients share the same native collector.
   There is no cross-record or cross-scope transaction.
 - Output uses owned `0700` directories, `0600` files, exclusive creation and atomic
   rename. Scope labels are hashed, never interpreted as paths. Frames contain
-  bounded ASCII display fields, at most 4,096 rows / 4 MiB; no cwd, task, transcript,
+  bounded ASCII display fields and rejection-only version hashes (frame schema v2),
+  at most 4,096 rows / 4 MiB; no cwd, task, transcript,
   mailbox or session-file data is exported. At most 128 explicitly supplied scopes.
 - Exactly one writer per output directory: `.owner` is exclusive and there is no
   PID/age takeover, election, restart loop or machine service. An explicit terminal
@@ -74,6 +85,7 @@ CARGO_BUILD_JOBS=1 cargo test --locked --tests -- --test-threads=1
 node test-zellij.mjs
 node test-zellij.mjs --scale
 node test-zellij.mjs --scale --crash
+node test-actions-zellij.mjs
 ```
 
 The WASI target requires the pinned nightly's `wasm32-wasip1` target; native code
@@ -95,7 +107,13 @@ INDEX=/absolute/path/to/target/release/pi-hub-index
 ```
 
 Run the same command **without `--prepare`** in one designated Zellij terminal
-pane. Keep that pane/process; do not launch a collector per scope. Use each returned
+pane. To explicitly enable the native command capability, add `--actions --session
+SESSION` to preparation and execution, and `actions "true"` to the scoped plugin
+configuration. This delegates fixed New/Close intent, not arbitrary commands;
+without either opt-in the view stays read-only. The view itself requests no
+Zellij command permission, so this native capability must not be mistaken for
+permissionless agent mutation. Keep that pane/process; do not launch a collector
+per scope. Use each returned
 directory as the view's cwd, with a fixed sidebar in its tab layout:
 
 ```kdl

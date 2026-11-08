@@ -2,7 +2,16 @@
 use cap_primitives::fs::{open_dir_nofollow, FollowSymlinks};
 use cap_std::fs::{Dir, OpenOptions};
 use serde::{Deserialize, Serialize};
+pub mod action_view;
+#[cfg(not(target_os = "wasi"))]
+pub mod authority;
+pub mod command;
+#[cfg(not(target_os = "wasi"))]
+pub mod executor;
 pub mod frame;
+#[cfg(not(target_os = "wasi"))]
+pub mod host;
+pub mod inbox;
 #[cfg(not(target_os = "wasi"))]
 pub mod publisher;
 use std::collections::{BTreeMap, BTreeSet};
@@ -59,23 +68,59 @@ pub fn registry_dir(mut dir: Dir, relative: &str) -> io::Result<Dir> {
     Ok(dir)
 }
 
-#[derive(Deserialize)]
-struct Record {
-    id: String,
-    name: String,
-    pid: u32,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Record {
+    pub id: String,
+    pub name: String,
+    pub pid: u32,
     #[serde(default, rename = "startedAt")]
-    started_at: Option<f64>,
+    pub started_at: Option<f64>,
     #[serde(default)]
-    namespace: Option<String>,
+    pub namespace: Option<String>,
     #[serde(default)]
-    declared_name: Option<String>,
+    pub declared_name: Option<String>,
     #[serde(default)]
-    status: String,
+    pub status: String,
     #[serde(default)]
-    model: String,
+    pub model: String,
     #[serde(default)]
-    kind: String,
+    pub kind: String,
+    #[serde(default)]
+    pub spawn_name: Option<String>,
+    #[serde(default)]
+    pub heartbeat: Option<f64>,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub zellij: serde_json::Value,
+}
+impl Record {
+    /// Rejection fingerprint only. Actual authorization always rereads canonical data.
+    pub fn version(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let identity = serde_json::json!([
+            self.id,
+            self.pid,
+            self.started_at,
+            self.name,
+            self.status,
+            self.namespace,
+            self.declared_name,
+            self.cwd,
+            self.parent_id,
+            self.zellij
+        ]);
+        format!("{:x}", Sha256::digest(identity.to_string().as_bytes()))
+    }
+    pub fn belongs_to(&self, scope: &str) -> bool {
+        if let Some(namespace) = &self.namespace {
+            namespace == &scope.to_ascii_lowercase()
+        } else {
+            self.declared_name.as_deref().unwrap_or(&self.name) == scope
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -96,17 +141,21 @@ pub struct Row {
     pub model: String,
     pub lead: bool,
     pub state: ProcessState,
+    pub version: String,
     #[serde(skip)]
     anchor: String,
 }
 
-#[derive(Default, Debug, Eq, PartialEq)]
+#[derive(Default, Debug)]
 pub struct Snapshot {
     groups: BTreeMap<String, Vec<Row>>,
     pub records: usize,
     pub reads: usize,
     pub skipped: usize,
     pub capped: bool,
+    pub captured_at_ms: u64,
+    /// Native authority input only; never serialized into presentation frames.
+    pub canonical: Vec<Record>,
 }
 
 impl Snapshot {
@@ -166,9 +215,11 @@ impl Snapshot {
                 snapshot.skipped += 1;
                 continue;
             }
+            snapshot.canonical.push(row.clone());
             if row.kind == "external" {
                 continue;
             }
+            let version = row.version();
             let lead = row.namespace.is_none();
             let anchor = if lead {
                 row.declared_name.unwrap_or_else(|| row.name.clone())
@@ -190,6 +241,7 @@ impl Snapshot {
                     model: text(&row.model, 96),
                     lead,
                     state: state(row.pid, row.started_at),
+                    version,
                     anchor,
                 });
             snapshot.records += 1;
@@ -202,6 +254,7 @@ impl Snapshot {
                     .then(a.id.cmp(&b.id))
             });
         }
+        snapshot.captured_at_ms = crate::frame::now_ms();
         Ok(snapshot)
     }
 

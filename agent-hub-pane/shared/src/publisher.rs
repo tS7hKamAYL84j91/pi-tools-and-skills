@@ -177,6 +177,15 @@ impl Publisher {
         error: Option<&str>,
         stopped: bool,
     ) -> io::Result<()> {
+        self.publish_controlled(snapshot, error, stopped, None)
+    }
+    pub fn publish_controlled(
+        &mut self,
+        snapshot: &Snapshot,
+        error: Option<&str>,
+        stopped: bool,
+        executor: Option<&crate::executor::Executor>,
+    ) -> io::Result<()> {
         self.generation = self
             .generation
             .checked_add(1)
@@ -184,11 +193,15 @@ impl Publisher {
         let time = now_ms();
         for scope in &self.scopes {
             let frame = Frame {
-                schema_version: 1,
+                schema_version: 2,
                 scope: scope.clone(),
                 instance: self.instance.clone(),
                 generation: self.generation,
-                scanned_at_ms: time,
+                scanned_at_ms: if snapshot.captured_at_ms == 0 {
+                    time
+                } else {
+                    snapshot.captured_at_ms
+                },
                 interval_ms: self.interval_ms,
                 rows: if error.is_some() {
                     vec![]
@@ -199,6 +212,7 @@ impl Publisher {
                 capped: snapshot.capped,
                 stopped,
                 error: error.map(str::to_owned),
+                controls: executor.map(|owner| owner.controls(scope)),
             };
             frame.validate(scope, time)?;
             let bytes = serde_json::to_vec(&frame).map_err(io::Error::other)?;
@@ -212,6 +226,9 @@ impl Publisher {
             atomic_write(&directory, &bytes, self.generation)?;
         }
         Ok(())
+    }
+    pub fn instance(&self) -> &str {
+        &self.instance
     }
     pub fn generation(&self) -> u64 {
         self.generation
@@ -300,6 +317,8 @@ pub struct Config {
     pub scopes: Vec<String>,
     pub interval_ms: u64,
     pub prepare: bool,
+    pub actions: bool,
+    pub session: Option<String>,
 }
 impl Config {
     pub fn parse(args: impl IntoIterator<Item = String>) -> io::Result<Self> {
@@ -310,6 +329,8 @@ impl Config {
         let mut interval = 2000;
         let mut interval_set = false;
         let mut prepare = false;
+        let mut actions = false;
+        let mut session = None;
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--registry" if registry.is_none() => registry = args.next().map(PathBuf::from),
@@ -327,18 +348,33 @@ impl Config {
                     interval_set = true;
                 }
                 "--prepare" if !prepare => prepare = true,
+                "--actions" if !actions => actions = true,
+                "--session" if session.is_none() => session = args.next(),
                 _ => return Err(io::Error::other("invalid or duplicate option")),
             }
         }
         let registry = registry.ok_or_else(|| io::Error::other("--registry required"))?;
         let output = output.ok_or_else(|| io::Error::other("--output required"))?;
         ensure_separate(&registry, &output)?;
+        if actions && session.is_none() {
+            session = std::env::var("ZELLIJ_SESSION_NAME").ok();
+        }
+        if actions && session.as_deref().is_none_or(|s| !scope_name(s)) {
+            return Err(io::Error::other(
+                "actions require an explicit valid Zellij session",
+            ));
+        }
+        if !actions && session.is_some() {
+            return Err(io::Error::other("--session requires --actions"));
+        }
         Ok(Self {
             registry,
             output,
             scopes,
             interval_ms: interval,
             prepare,
+            actions,
+            session,
         })
     }
 }
@@ -372,6 +408,14 @@ pub fn run(config: Config) -> io::Result<()> {
         }
     }
     let mut publisher = Publisher::open(&config.output, config.scopes, config.interval_ms)?;
+    let inboxes = if config.actions {
+        Some(crate::inbox::Inboxes::open(
+            &config.output,
+            &publisher.scopes,
+        )?)
+    } else {
+        None
+    };
     if config.prepare {
         let scopes=publisher.scopes.iter().map(|scope|Ok(serde_json::json!({"scope":scope,"directory":config.output.join(scope_directory(scope)?)}))).collect::<io::Result<Vec<_>>>()?;
         println!(
@@ -380,7 +424,20 @@ pub fn run(config: Config) -> io::Result<()> {
         );
         return Ok(());
     }
-    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+    let mut executor = config.session.map(|session| {
+        crate::executor::Executor::start(
+            config.registry.clone(),
+            session,
+            publisher.instance().to_owned(),
+            "zellij".into(),
+        )
+    });
+    if let Some(owner) = &executor {
+        owner.notify_on_change(std::thread::current());
+    }
+    let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_input = stopping.clone();
+    let parent = std::thread::current();
     std::thread::spawn(move || {
         let mut input = io::stdin().lock();
         let mut bytes = [0u8; 256];
@@ -389,14 +446,16 @@ pub fn run(config: Config) -> io::Result<()> {
         loop {
             match input.read(&mut bytes) {
                 Ok(0) | Err(_) => {
-                    let _ = stop_tx.send(());
+                    stop_input.store(true, std::sync::atomic::Ordering::Relaxed);
+                    parent.unpark();
                     break;
                 }
                 Ok(n) => {
                     for byte in &bytes[..n] {
                         if *byte == b'\n' {
                             if !overflow && line == b"q" {
-                                let _ = stop_tx.send(());
+                                stop_input.store(true, std::sync::atomic::Ordering::Relaxed);
+                                parent.unpark();
                                 return;
                             }
                             line.clear();
@@ -414,27 +473,48 @@ pub fn run(config: Config) -> io::Result<()> {
         }
     });
     let mut total_reads = 0;
+    let mut scans = 0;
+    let mut snapshot = Snapshot::default();
+    let mut error = None;
+    let mut next_scan = std::time::Instant::now();
     loop {
-        let (snapshot, error) = match scan_registry(&config.registry) {
-            Ok(snapshot) => (snapshot, None),
-            Err(_) => (Snapshot::default(), Some("Registry unavailable")),
-        };
-        total_reads += snapshot.reads;
-        publisher.publish(&snapshot, error, false)?;
-        println!(
-            "scan={} reads={} records={} | q Enter stops",
-            publisher.generation(),
-            total_reads,
-            snapshot.records
-        );
-        match stop_rx.recv_timeout(std::time::Duration::from_millis(config.interval_ms)) {
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-            _ => {
-                publisher.publish(&snapshot, error, true)?;
-                println!("Indexer stopped");
-                break;
+        if stopping.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Some(owner) = &mut executor {
+                owner.shutdown();
             }
+            publisher.publish_controlled(&snapshot, error, true, executor.as_ref())?;
+            println!("Indexer stopped");
+            break;
         }
+        if std::time::Instant::now() >= next_scan {
+            (snapshot, error) = match scan_registry(&config.registry) {
+                Ok(snapshot) => (snapshot, None),
+                Err(_) => (
+                    Snapshot {
+                        captured_at_ms: now_ms(),
+                        ..Snapshot::default()
+                    },
+                    Some("Registry unavailable"),
+                ),
+            };
+            total_reads += snapshot.reads;
+            scans += 1;
+            if let (Some(inboxes), Some(owner)) = (&inboxes, &mut executor) {
+                inboxes.drain(|scope, request| {
+                    owner.submit(scope, request);
+                })?;
+            }
+            println!(
+                "scan={} reads={} records={} | q Enter stops",
+                scans, total_reads, snapshot.records
+            );
+            next_scan =
+                std::time::Instant::now() + std::time::Duration::from_millis(config.interval_ms);
+        }
+        // Command changes can wake publication without another global scan.
+        // The frame retains the last actual canonical capture timestamp.
+        publisher.publish_controlled(&snapshot, error, false, executor.as_ref())?;
+        std::thread::park_timeout(next_scan.saturating_duration_since(std::time::Instant::now()));
     }
     Ok(())
 }

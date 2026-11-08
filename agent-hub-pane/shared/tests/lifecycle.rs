@@ -10,7 +10,7 @@ use std::{
 
 #[test]
 fn watermark_survives_errors_and_allows_a_new_collector_epoch() {
-    let mut frame:Frame=serde_json::from_value(json!({"schemaVersion":1,"scope":"a","instance":"collector-1","generation":2,"scannedAtMs":10000,"intervalMs":2000,"rows":[],"skipped":0,"capped":false,"stopped":false,"error":null})).unwrap();
+    let mut frame:Frame=serde_json::from_value(json!({"schemaVersion":2,"scope":"a","instance":"collector-1","generation":2,"scannedAtMs":10000,"intervalMs":2000,"rows":[],"skipped":0,"capped":false,"stopped":false,"error":null})).unwrap();
     let mut watermark = Watermark::default();
     watermark.accept(&frame).unwrap();
     frame.generation = 1;
