@@ -376,7 +376,8 @@ keybinds {
 	};
 	writeFileSync(transient, JSON.stringify(row), { mode: 0o600 });
 	await show(groups[0].scope);
-	await terminal.waitForText("transient | joined", { timeout: 6000 });
+	await terminal.waitForText("W transient", { timeout: 6000 });
+	await terminal.waitForText("waiting | joined");
 	row.namespace = groups.at(-1).scope;
 	row.name = "renamed";
 	writeFileSync(transient, JSON.stringify(row));
@@ -390,11 +391,12 @@ keybinds {
 	await terminal.getByScreenText(`Hub: ${groups[0].scope} (read-only)`).click();
 	await terminal.type("r");
 	await until(
-		() => !terminal.screen().text().includes("transient | joined"),
+		() => !terminal.screen().text().includes("W transient"),
 		"old scoped frame cleared",
 	);
 	await show(groups.at(-1).scope);
-	await terminal.waitForText("renamed | joined", { timeout: 6000 });
+	await terminal.waitForText("W renamed", { timeout: 6000 });
+	await terminal.waitForText("waiting | joined");
 	rmSync(transient);
 	await until(
 		() =>
@@ -404,7 +406,7 @@ keybinds {
 		"unregistered row removed",
 	);
 	await until(
-		() => !terminal.screen().text().includes("renamed | joined"),
+		() => !terminal.screen().text().includes("W renamed"),
 		"view unregister receipt",
 	);
 	await until(async () => {

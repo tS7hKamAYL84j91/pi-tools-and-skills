@@ -34,6 +34,7 @@ pub enum Intent {
     Focus {
         agent_id: String,
         version: String,
+        pane_pid: u32,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,9 +62,14 @@ impl Request {
             return false;
         }
         match &self.intent {
-            Intent::PrepareClose { agent_id, version } | Intent::Focus { agent_id, version } => {
+            Intent::PrepareClose { agent_id, version } => {
                 scope_name(agent_id) && valid_version(version)
             }
+            Intent::Focus {
+                agent_id,
+                version,
+                pane_pid,
+            } => scope_name(agent_id) && valid_version(version) && *pane_pid > 0,
             Intent::PrepareNew {
                 name,
                 lead_id,
@@ -104,6 +110,7 @@ pub fn namespace(value: &str) -> bool {
 pub enum Phase {
     Pending,
     AwaitingConfirmation,
+    FocusReady,
     Executing,
     Creating,
     Deleting,
@@ -119,6 +126,21 @@ pub struct Receipt {
     pub phase: Phase,
     pub summary: String,
     pub expires_at_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<FocusPermit>,
+}
+/// Short-lived native validation result, consumable once by the requesting view.
+/// No canonical cwd or session path is exported.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusPermit {
+    pub agent_id: String,
+    pub version: String,
+    pub pane_id: u32,
+    pub pane_pid: u32,
+    pub tab_id: u32,
+    pub floating: bool,
+    pub cwd_hash: String,
 }
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -132,8 +154,16 @@ impl Controls {
             && self.receipts.iter().all(|r| {
                 scope_name(&r.id)
                     && r.origin.client_id > 0
-                    && r.summary.len() <= 160
+                    && r.summary.len() <= 640
                     && text(&r.summary, 160) == r.summary
+                    && r.focus.as_ref().is_none_or(|p| {
+                        r.phase == Phase::FocusReady
+                            && scope_name(&p.agent_id)
+                            && valid_version(&p.version)
+                            && valid_version(&p.cwd_hash)
+                            && p.pane_pid > 0
+                    })
+                    && (r.phase != Phase::FocusReady || r.focus.is_some())
             })
     }
 }

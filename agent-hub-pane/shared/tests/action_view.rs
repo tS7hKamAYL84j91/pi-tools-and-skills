@@ -36,6 +36,7 @@ fn armed(frame: &mut Frame, id: &str) {
             phase: Phase::AwaitingConfirmation,
             summary: "Close Y/n".into(),
             expires_at_ms: 6000,
+            focus: None,
         }],
     });
 }
@@ -97,6 +98,20 @@ fn new_uses_name_entry_and_does_not_silently_replace_a_missing_chosen_lead() {
     }
     assert!(call(&mut other, Input::Enter, &frame, 1002).is_none());
     assert!(other.notice.contains("live lead"));
+}
+#[test]
+fn local_lead_choice_does_not_transfer_to_restarted_process() {
+    let mut ui = ui();
+    let mut frame = frame();
+    frame.rows[0].incarnation = "a".repeat(64);
+    call(&mut ui, Input::Char('l'), &frame, 1000);
+    frame.rows[0].incarnation = "b".repeat(64);
+    call(&mut ui, Input::Char('n'), &frame, 1001);
+    for c in "child".chars() {
+        call(&mut ui, Input::Char(c), &frame, 1002);
+    }
+    assert!(call(&mut ui, Input::Enter, &frame, 1003).is_none());
+    assert!(ui.notice.contains("live lead"));
 }
 #[test]
 fn stale_and_read_only_frames_never_submit_mutations() {

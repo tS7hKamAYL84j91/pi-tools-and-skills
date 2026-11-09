@@ -171,6 +171,41 @@ pub fn validate(
         target_pane,
     })
 }
+/// SDK pane PID is the terminal's root, not necessarily Pi itself (an interactive
+/// shell may be its parent). Never equate an unrelated live PID with the agent.
+pub fn process_descends_from(mut pid: u32, root: u32) -> bool {
+    if root == 0 {
+        return false;
+    }
+    for _ in 0..64 {
+        let Ok(file) = std::fs::File::open(format!("/proc/{pid}/stat")) else {
+            return false;
+        };
+        let mut stat = String::new();
+        if file.take(8193).read_to_string(&mut stat).is_err() || stat.len() > 8192 {
+            return false;
+        }
+        let Some((_, fields)) = stat.rsplit_once(')') else {
+            return false;
+        };
+        let fields = fields.split_whitespace().collect::<Vec<_>>();
+        if matches!(fields.first(), Some(&"Z" | &"X" | &"x")) {
+            return false;
+        }
+        if pid == root {
+            return true;
+        }
+        let Some(parent) = fields
+            .get(1)
+            .and_then(|v| v.parse::<u32>().ok())
+            .filter(|p| *p > 0 && *p != pid)
+        else {
+            return false;
+        };
+        pid = parent;
+    }
+    false
+}
 pub fn binding_matches(old: &Guard, current: &Guard) -> bool {
     old.own_tab == current.own_tab
         && old.origin == current.origin

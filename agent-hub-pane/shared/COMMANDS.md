@@ -3,8 +3,9 @@
 Jim requested existing-pane action parity, all Rust, a single native producer,
 asynchronous New/Close, and deployment after validation. This extends the
 read-only `b0374f4` baseline. Native New/Close and their WASI forms are implemented
-and fixture-tested. **Full interaction parity and deployment remain pending**;
-Focus is deliberately disabled until client-correct dispatch is verified.
+and fixture-tested. **2026-11-09 update:** client-local Focus and display parity
+are also implemented and validated; see [the parity audit](PARITY.md). Live
+installation/permission enablement remains separate and requires approval.
 
 ## Small CQRS split
 
@@ -81,11 +82,14 @@ following abrupt death. Real disposable Zellij tests cover New/Close with a fake
 `pi` executable, observed registration/unregister, multiple views, receipt failure,
 selection/paging and unchanged idle collection cost. No fixture starts a model.
 
-Current known gap: native Zellij CLI Focus uses the last-active client, so the
-executor refuses it. A client-local WASI path would need explicit permissions,
-a single-use native permit and fresh target/origin SDK checks; it is not implemented.
+Superseded gap (2026-11-09): native Zellij CLI Focus still uses the last-active
+client and is **never** dispatched. The implemented opt-in WASI path uses ordinary
+explicit application-state permission approval, a short-lived single-use native
+permit, pane-root process ancestry binding, scoped SDK membership/cwd checks and
+originating-client receipt verification. New/Close remain owned by the native
+executor; Focus changes client UI state only. See `PARITY.md` and
+`test-actions-zellij.mjs --focus` / `--reject-focus`.
 
-Then audit every existing-pane interaction (selection, focus, lead choice, New,
-Close, cancellation, mouse and narrow layouts), document any remaining differences,
-and perform a rollback-capable rollout without changing model defaults, schedules,
-permissions outside the explicit command capability, or human-relay privileges.
+The parity audit covers selection, focus, lead choice, New, Close, cancellation,
+mouse and narrow layouts. No live rollout, permission-cache edits, model-default,
+schedule or human-relay privilege changes are made by this implementation.

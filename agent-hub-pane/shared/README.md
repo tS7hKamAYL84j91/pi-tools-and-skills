@@ -9,14 +9,18 @@ canonical agent records -> ONE native Rust collector -> private scoped snapshots
 ```
 
 Opt-in asynchronous **New/Close** are now available through the same native owner;
-see [the command contract](COMMANDS.md). Focus remains disabled pending a
-client-correct path; this is not yet full interaction parity or a live rollout.
+see [the command contract](COMMANDS.md) and [feature parity audit](PARITY.md).
+Enter/mouse Focus is a separate opt-in client-local SDK path with an ordinary
+Zellij permission prompt. Interaction parity is fixture-validated; live rollout
+is separate and is not performed by these sources.
 
 The native `pi-hub-index` process reads each canonical record once per scan,
 indexes scopes, checks Linux process existence/generation, and atomically
 publishes minimal presentation data. Each Rust/WASI view reads only its scope's
-`snapshot.json`. It never scans the registry, moves panes, queries global tab
-state, or directly controls agents. Multiple UI clients share the same native collector.
+`snapshot.json`. It never scans the registry, moves pane geometry, or directly
+controls agents. Default views read no global tab state; opt-in Focus reads SDK
+metadata only for user actions and tracks pane membership events. Multiple UI
+clients share the same native collector.
 With both native `--actions` and plugin `actions "true"` explicitly enabled, the
 view submits scoped intents; only the serial native executor performs New/Close.
 
@@ -25,9 +29,13 @@ view submits scoped intents; only the serial native executor performs New/Close.
 - Read-only is still the default: `j/k` or arrows select; `r` rereads the scoped
   snapshot, **not** the registry. Opt-in `n`/`c` use separate native-prepared
   confirmation; `l` chooses a lead locally. Existing Node controls remain available;
-  no capability is retired while interaction parity is incomplete.
-- Zero Zellij permission requests: no application-state, mutation, command,
-  network, messaging or full-disk permission. `/host` must be the prepared scope
+  no capability is retired while interaction parity is incomplete. The WASI view
+  uses status colours by default; plugin configuration `no_color "true"` provides
+  a plain-text fallback.
+- Zero Zellij permission requests by default. Explicit `focus "true"` plus
+  `actions "true"` requests ReadApplicationState + ChangeApplicationState for
+  client-local Focus; denial leaves it disabled. No command, network, messaging
+  or full-disk permission is requested. `/host` must be the prepared scope
   directory. A self-cwd basename fence catches a misconfigured parent mount before
   file reads; it is a configuration check, not authentication.
 - Leads match exact declared scope; helpers match its lowercase namespace. No
@@ -57,7 +65,7 @@ view submits scoped intents; only the serial native executor performs New/Close.
   There is no cross-record or cross-scope transaction.
 - Output uses owned `0700` directories, `0600` files, exclusive creation and atomic
   rename. Scope labels are hashed, never interpreted as paths. Frames contain
-  bounded ASCII display fields and rejection-only version hashes (frame schema v2),
+  bounded printable display fields and rejection-only version hashes (frame schema v2),
   at most 4,096 rows / 4 MiB; no cwd, task, transcript,
   mailbox or session-file data is exported. At most 128 explicitly supplied scopes.
 - Exactly one writer per output directory: `.owner` is exclusive and there is no
@@ -69,8 +77,10 @@ view submits scoped intents; only the serial native executor performs New/Close.
   is gone. Never point output at the canonical registry or an unrelated directory.
 
 This supersedes the moving-overlay design **only in this experiment**. It avoids
-that design's pane-transfer ID/position bugs and broad permissions. ASCII rendering
-is deliberately minimal. Fewer global reads are not an 11x CPU or latency claim:
+that design's pane-transfer ID/position bugs and broad permissions. Rendering
+includes status colours, Unicode cell clipping, uptime, parent grouping, wrapped
+rows and line-based paging; mouse selects either line, and q/Ctrl-C closes only
+the view without a permission request. Fewer global reads are not an 11x CPU or latency claim:
 there are still global PID/file checks, scoped snapshot writes and per-client
 presentation work.
 
@@ -86,6 +96,9 @@ node test-zellij.mjs
 node test-zellij.mjs --scale
 node test-zellij.mjs --scale --crash
 node test-actions-zellij.mjs
+node test-actions-zellij.mjs --focus          # approve only the disposable fixture prompt
+node test-actions-zellij.mjs --reject-focus   # denial retains native New/Close
+bash check.sh                               # all Rust and disposable acceptance checks
 ```
 
 The WASI target requires the pinned nightly's `wasm32-wasip1` target; native code
@@ -110,9 +123,11 @@ Run the same command **without `--prepare`** in one designated Zellij terminal
 pane. To explicitly enable the native command capability, add `--actions --session
 SESSION` to preparation and execution, and `actions "true"` to the scoped plugin
 configuration. This delegates fixed New/Close intent, not arbitrary commands;
-without either opt-in the view stays read-only. The view itself requests no
-Zellij command permission, so this native capability must not be mistaken for
-permissionless agent mutation. Keep that pane/process; do not launch a collector
+without either opt-in the view stays read-only. To also enable Enter/mouse Focus,
+add plugin `focus "true"` and approve its normal Zellij application-state permission
+prompt. This changes only the requesting client's focus, never the last-active
+client through CLI. The view requests no RunCommands permission; the explicit
+native command capability must not be mistaken for permissionless agent mutation. Keep that pane/process; do not launch a collector
 per scope. Use each returned
 directory as the view's cwd, with a fixed sidebar in its tab layout:
 

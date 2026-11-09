@@ -93,15 +93,25 @@ function proc(pid) {
 	}
 }
 const denied = process.argv.includes("--deny");
+const focus = process.argv.includes("--focus");
+const rejectFocus = process.argv.includes("--reject-focus");
 const pids = [];
 function remember(pid) {
 	pids.push({ pid, start: proc(pid)?.start });
 }
 let terminal,
+	second,
 	started = false,
 	result;
 try {
 	assert(existsSync(wasm) && existsSync(indexer));
+	if (focus) {
+		writeFileSync(
+			join(dir, "bin/zellij"),
+			`#!/usr/bin/python3\nimport os,sys,time\nfrom pathlib import Path\nroot=Path(${JSON.stringify(dir)})\nif (root/'focus-delay').exists() and 'list-panes' in sys.argv:\n (root/'query-started').touch();time.sleep(.4)\nos.execv(${JSON.stringify(zellij)},[${JSON.stringify(zellij)}]+sys.argv[1:])\n`,
+		);
+		chmodSync(join(dir, "bin/zellij"), 0o700);
+	}
 	writeFileSync(
 		join(dir, "agent.py"),
 		`import json,os,sys,time,signal
@@ -110,7 +120,9 @@ root=Path(${JSON.stringify(dir)})
 name=sys.argv[1];lead=(name=='lead');record=root/'agents'/(name+'.json')
 row=dict(id=name,name=name,pid=os.getpid(),startedAt=int(time.time()*1000),heartbeat=int(time.time()*1000),cwd=str(root),status='waiting',model='fixture/model',zellij=dict(sessionName=os.environ['ZELLIJ_SESSION_NAME'],paneId=int(os.environ['ZELLIJ_PANE_ID'])))
 row['declared_name' if lead else 'namespace']='lead'
-def stop(*args):raise SystemExit(0)
+def stop(*args):
+ signal.signal(signal.SIGHUP,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
+ raise SystemExit(0)
 signal.signal(signal.SIGHUP,stop);signal.signal(signal.SIGTERM,stop)
 try:
  for tick in range(180):
@@ -155,6 +167,13 @@ os.execv('/usr/bin/python3',['python3',str(root/'agent.py'),name])
 		join(dir, "config.kdl"),
 		`session_serialization false
 mirror_session false
+keybinds {
+ normal {
+  bind "F6" { GoToPreviousTab; }
+  bind "F7" { GoToNextTab; }
+  bind "F8" { MoveTab "Left"; }
+ }
+}
 show_release_notes false
 show_startup_tips false
 `,
@@ -165,7 +184,7 @@ show_startup_tips false
 	);
 	writeFileSync(
 		join(dir, "view.kdl"),
-		`layout {\n tab name="lead" {\n  pane split_direction="vertical" {\n   pane name="lead" command="python3" cwd=${JSON.stringify(dir)} { args ${JSON.stringify(join(dir, "agent.py"))} "lead"; }\n   pane name="view" size=40 {\n    plugin location=${JSON.stringify(`file:${wasm}`)} { scope "lead"; actions "true"; }\n   }\n  }\n }\n}\n`,
+		`layout {\n tab name="lead" {\n  pane split_direction="vertical" {\n   pane name="lead" command="python3" cwd=${JSON.stringify(dir)} { args ${JSON.stringify(join(dir, "agent.py"))} "lead"; }\n   pane name="view" size=40 {\n    plugin location=${JSON.stringify(`file:${wasm}`)} { scope "lead"; actions "true"; ${focus || rejectFocus ? 'focus "true";' : ""} }\n   }\n  }\n }\n}\n`,
 	);
 	terminal = await launchTerminal({
 		command: [
@@ -185,10 +204,15 @@ show_startup_tips false
 	await terminal.waitForText("Pane #1");
 	await action("new-tab", "--layout", join(dir, "collector.kdl"));
 	await action("new-tab", "--layout", join(dir, "view.kdl"), "--cwd", scopeDir);
+	if (focus || rejectFocus) {
+		await terminal.waitForText("Allow?", { timeout: 10000 });
+		await terminal.getByScreenText("Allow?").click();
+		await terminal.type(rejectFocus ? "n" : "y");
+	}
 	await terminal.waitForText(denied ? "j/k select" : "n new c close l lead", {
 		timeout: 10000,
 	});
-	await terminal.waitForText("lead | model");
+	await terminal.waitForText("waiting | model");
 	remember(JSON.parse(readFileSync(join(registry, "lead.json"), "utf8")).pid);
 	remember(
 		Number(/pid=(\d+)/.exec(readFileSync(join(output, ".owner"), "utf8"))[1]),
@@ -203,7 +227,14 @@ show_startup_tips false
 		assert(!existsSync(join(registry, "born.json")));
 		assert(!existsSync(join(scopeDir, "inbox")));
 		assert(existsSync(join(registry, "lead.json")));
+		const view = (await list()).find((p) => p.is_plugin && p.title === "view");
+		await terminal.type("q");
+		await until(
+			async () => !(await list()).some((p) => p.is_plugin && p.id === view.id),
+			"permissionless local quit",
+		);
 		result = {
+			permissionlessQuit: true,
 			nativeCommandCapability: false,
 			viewOptIn: true,
 			mutations: 0,
@@ -212,6 +243,16 @@ show_startup_tips false
 		};
 	} else {
 		await terminal.getByScreenText("Hub: lead").click();
+		if (focus) {
+			await terminal.press("Enter");
+			await terminal.waitForText("Pending native validation");
+			await terminal.waitForText("Focused: client-local receipt");
+			const view = (await list()).find(
+				(p) => p.is_plugin && p.title === "view",
+			);
+			await action("focus-pane-id", `plugin_${view.id}`);
+			await terminal.getByScreenText("Hub: lead").click();
+		}
 		await terminal.type("n");
 		await terminal.waitForText("Name:");
 		await terminal.type("born");
@@ -247,10 +288,127 @@ show_startup_tips false
 		await terminal.waitForText("Active: live registration verified", {
 			timeout: 12000,
 		});
-		await terminal.waitForText("born | model");
+		await terminal.waitForText("born");
 		await terminal.getByScreenText("Hub: lead").click();
-		await terminal.type("j");
-		await terminal.waitForText(">W born");
+		if (rejectFocus) {
+			await terminal.press("Enter");
+			await terminal.waitForText("Focus disabled");
+			assert(
+				(await list()).find((p) => p.is_plugin && p.id === view.id)?.is_focused,
+			);
+		}
+		if (focus) {
+			// Focus the tiled lead: SDK must hide floating panes and retain processes.
+			await terminal.press("Enter");
+			await terminal.waitForText("Pending native validation");
+			await terminal.waitForText("Focused: client-local receipt");
+			await until(
+				async () =>
+					(await list()).some(
+						(p) =>
+							!p.is_plugin &&
+							p.id ===
+								JSON.parse(readFileSync(join(registry, "lead.json"), "utf8"))
+									.zellij.paneId &&
+							p.is_focused,
+					),
+				"client-local tiled focus",
+			);
+			await action("focus-pane-id", `plugin_${view.id}`);
+			await terminal.getByScreenText("Hub: lead").click();
+			await terminal.type("j");
+			await terminal.waitForText(">W born");
+			await terminal.press("Enter");
+			await terminal.waitForText("Pending native validation");
+			await terminal.waitForText("Focused: client-local receipt");
+			await until(
+				async () =>
+					(await list()).some(
+						(p) => !p.is_plugin && p.id === born.zellij.paneId && p.is_focused,
+					),
+				"client-local floating focus",
+			);
+			await action("focus-pane-id", `plugin_${view.id}`);
+			await terminal.waitForText("Focused: client-local receipt");
+			await terminal.getByScreenText("Hub: lead").click();
+			// Another client becomes last-active while native validation waits.
+			// Client-local SDK delivery must not retarget it or change its tab.
+			second = await launchTerminal({
+				command: [
+					zellij,
+					"--config",
+					join(dir, "config.kdl"),
+					"attach",
+					session,
+				],
+				cwd: dir,
+				columns: 140,
+				rows: 40,
+				envMode: "replace",
+				env,
+			});
+			await second.waitForText("Hub: lead");
+			await second.press("F6");
+			await second.waitForText("q Enter stops");
+			writeFileSync(join(dir, "focus-delay"), "");
+			await terminal.press("Enter");
+			await until(
+				() => existsSync(join(dir, "query-started")),
+				"cancellable native focus await",
+			);
+			await terminal.type("k");
+			await terminal.waitForText(">W lead");
+			await delay(900);
+			assert(
+				(await list()).some(
+					(p) => p.is_plugin && p.id === view.id && p.is_focused,
+				),
+				"cancelled focus was dispatched",
+			);
+			rmSync(join(dir, "query-started"));
+			await terminal.type("j");
+			await terminal.waitForText(">W born");
+			await terminal.getByScreenText(">W born").click();
+			await until(
+				() => existsSync(join(dir, "query-started")),
+				"native focus metadata await",
+			);
+			await second.type(" ");
+			await terminal.waitForText("Focused: client-local receipt", {
+				timeout: 10000,
+			});
+			assert(
+				second.screen().text().includes("q Enter stops"),
+				"focus navigated the other client",
+			);
+			assert(!second.screen().text().includes("Hub: lead"));
+			rmSync(join(dir, "focus-delay"));
+			await terminal.type(" "); // Fixture setup: make this client CLI-active again.
+			await action("focus-pane-id", `plugin_${view.id}`);
+			await terminal.getByScreenText("Hub: lead").click();
+			await second.press("Control+o");
+			await delay(100);
+			await second.press("d");
+			await second.waitForExit({ timeout: 5000 });
+			await second.close();
+			second = undefined;
+			// Stable tab ID no longer equals its position after reordering.
+			await terminal.press("F8");
+			await terminal.type("k");
+			await terminal.waitForText(">W lead");
+			await terminal.press("Enter");
+			await terminal.waitForText("Pending native validation");
+			await terminal.waitForText("Focused: client-local receipt");
+			await action("focus-pane-id", `plugin_${view.id}`);
+			await terminal.getByScreenText("Hub: lead").click();
+			await terminal.type("j");
+			await terminal.waitForText(">W born");
+		} else {
+			await terminal.getByScreenText("W born").click();
+			await terminal.waitForText(">W born");
+		}
+		await terminal.type("l");
+		await terminal.waitForText("Hub: lead lead: born");
 		await terminal.type("c");
 		await terminal.waitForText("Close #", { timeout: 12000 });
 		assert(
@@ -297,6 +455,14 @@ show_startup_tips false
 			liveRegistrationVerified: true,
 			environmentScrubbed: true,
 			modelDefaultsUnchanged: true,
+			focusOptIn: focus,
+			clientLocalKeyboardAndMouseFocus: focus,
+			otherClientUnaffected: focus,
+			focusAfterTabReorder: focus,
+			pendingFocusCancelled: focus,
+			focusDeniedFallback: rejectFocus,
+			mouseSelection: !focus,
+			localLead: true,
 			closeConfirmed: true,
 			staleApprovalRefused: true,
 			paneAndUnregisterVerified: true,
@@ -313,6 +479,7 @@ show_startup_tips false
 		if (started) await run(["kill-session", session]);
 	} finally {
 		try {
+			await second?.close();
 			await terminal?.close();
 			await until(
 				() =>

@@ -21,6 +21,7 @@ struct Pending {
     cancel_requested: bool,
     rendered: bool,
     target_id: Option<String>,
+    focus_version: Option<String>,
 }
 #[derive(Default)]
 pub struct ActionView {
@@ -28,6 +29,7 @@ pub struct ActionView {
     pub origin: Option<Origin>,
     pub notice: String,
     pub chosen_lead: Option<String>,
+    chosen_incarnation: Option<String>,
     name: Option<String>,
     pending: Option<Pending>,
     sequence: u64,
@@ -40,6 +42,18 @@ impl ActionView {
             origin: Some(origin),
             ..Self::default()
         }
+    }
+    pub fn chosen<'a>(&self, frame: &'a Frame) -> Option<&'a crate::Row> {
+        let id = self.chosen_lead.as_ref()?;
+        frame.rows.iter().find(|r| {
+            &r.id == id
+                && self.chosen_incarnation.as_deref()
+                    == Some(if r.incarnation.is_empty() {
+                        r.version.as_str()
+                    } else {
+                        r.incarnation.as_str()
+                    })
+        })
     }
     pub fn active(&self) -> bool {
         self.name.is_some() || self.pending.is_some()
@@ -77,7 +91,13 @@ impl ActionView {
     }
     fn prepare(&mut self, frame: &Frame, intent: Intent, now: u64) -> Request {
         let target_id = match &intent {
-            Intent::PrepareClose { agent_id, .. } => Some(agent_id.clone()),
+            Intent::PrepareClose { agent_id, .. } | Intent::Focus { agent_id, .. } => {
+                Some(agent_id.clone())
+            }
+            _ => None,
+        };
+        let focus_version = match &intent {
+            Intent::Focus { version, .. } => Some(version.clone()),
             _ => None,
         };
         let request = self.request(frame, intent, now);
@@ -90,9 +110,44 @@ impl ActionView {
             cancel_requested: false,
             rendered: false,
             target_id,
+            focus_version,
         });
         self.notice = "Pending native validation; confirmation is not queued".into();
         request
+    }
+    /// Consume only this view's current native permit. Clearing pending before
+    /// SDK dispatch prevents repeated snapshots or callbacks from replaying it.
+    pub fn take_focus(
+        &mut self,
+        frame: &Frame,
+        now: u64,
+    ) -> Option<(crate::command::FocusPermit, u64)> {
+        let pending = self.pending.as_ref()?;
+        if pending.cancel_requested || pending.epoch != frame.instance || !self.enabled(frame, now)
+        {
+            return None;
+        }
+        let receipt = frame.controls.as_ref()?.receipts.iter().find(|r| {
+            r.id == pending.id && Some(r.origin) == self.origin && r.phase == Phase::FocusReady
+        })?;
+        let permit = receipt.focus.as_ref()?;
+        if receipt.expires_at_ms < now
+            || receipt.expires_at_ms > now.saturating_add(1500)
+            || pending.target_id.as_ref() != Some(&permit.agent_id)
+            || pending.focus_version.as_ref() != Some(&permit.version)
+            || !frame.rows.iter().any(|r| {
+                r.id == permit.agent_id
+                    && r.version == permit.version
+                    && r.state == ProcessState::Live
+            })
+        {
+            self.pending = None;
+            self.notice = "Focus expired or target changed".into();
+            return None;
+        }
+        let result = (permit.clone(), receipt.expires_at_ms);
+        self.pending = None;
+        Some(result)
     }
     pub fn rendered(&mut self) {
         if let Some(p) = &mut self.pending {
@@ -122,6 +177,11 @@ impl ActionView {
                     .iter()
                     .find(|r| r.id == pending.id && Some(r.origin) == self.origin)
             }) {
+                if pending.cancel_requested && receipt.phase == Phase::FocusReady {
+                    self.pending = None;
+                    self.notice = "Focus cancelled before dispatch".into();
+                    return true;
+                }
                 let outdated =
                     matches!(receipt.phase, Phase::Pending | Phase::AwaitingConfirmation)
                         && (pending.cancel_requested
@@ -155,13 +215,19 @@ impl ActionView {
                     .pending
                     .as_ref()
                     .is_some_and(|p| p.phase == Phase::AwaitingConfirmation);
+                let focus = self
+                    .pending
+                    .as_ref()
+                    .is_some_and(|p| p.focus_version.is_some());
                 self.notice = if confirming {
                     "Confirmation expired"
+                } else if focus {
+                    "Focus expired; not dispatched"
                 } else {
                     "Command result overdue; inspect before retry"
                 }
                 .into();
-                self.blocked = !confirming;
+                self.blocked = !confirming && !focus;
                 self.pending = None;
             }
         }
@@ -171,11 +237,12 @@ impl ActionView {
         // Accepted confirmations are asynchronous and survive navigation. Unconfirmed
         // forms never acquire consent from later input in a different view.
         self.name = None;
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|p| matches!(p.phase, Phase::Pending | Phase::AwaitingConfirmation))
-        {
+        if self.pending.as_ref().is_some_and(|p| {
+            matches!(
+                p.phase,
+                Phase::Pending | Phase::AwaitingConfirmation | Phase::FocusReady
+            )
+        }) {
             self.pending = None;
             self.notice = "Unconfirmed action cancelled on navigation".into();
         }
@@ -210,8 +277,8 @@ impl ActionView {
                         self.notice = "Invalid name or actions unavailable".into();
                         return None;
                     }
-                    let lead = if let Some(id) = &self.chosen_lead {
-                        frame.rows.iter().find(|r| &r.id == id)
+                    let lead = if self.chosen_lead.is_some() {
+                        self.chosen(frame)
                     } else {
                         let leads = frame.rows.iter().filter(|r| r.lead).collect::<Vec<_>>();
                         if leads.len() == 1 {
@@ -302,10 +369,17 @@ impl ActionView {
             Input::Char('l') => {
                 if let Some(id) = selected.filter(|id| visible.iter().any(|v| v == id)) {
                     self.chosen_lead = Some(id.into());
+                    self.chosen_incarnation = frame.rows.iter().find(|r| r.id == id).map(|r| {
+                        if r.incarnation.is_empty() {
+                            r.version.clone()
+                        } else {
+                            r.incarnation.clone()
+                        }
+                    });
                     self.notice = "Lead selected for this view".into();
                 }
             }
-            Input::Char('c') => {
+            Input::Enter | Input::Char('c') => {
                 let Some(row) = selected
                     .filter(|id| visible.iter().any(|v| v == id))
                     .and_then(|id| frame.rows.iter().find(|r| r.id == id))
@@ -315,9 +389,17 @@ impl ActionView {
                 };
                 return Some(self.prepare(
                     frame,
-                    Intent::PrepareClose {
-                        agent_id: row.id.clone(),
-                        version: row.version.clone(),
+                    if matches!(input, Input::Enter) {
+                        Intent::Focus {
+                            agent_id: row.id.clone(),
+                            version: row.version.clone(),
+                            pane_pid: 0, // Filled from the permissioned SDK before transport.
+                        }
+                    } else {
+                        Intent::PrepareClose {
+                            agent_id: row.id.clone(),
+                            version: row.version.clone(),
+                        }
                     },
                     now,
                 ));

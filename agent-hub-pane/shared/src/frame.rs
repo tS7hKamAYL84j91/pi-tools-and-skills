@@ -91,6 +91,10 @@ impl Frame {
                 || row.name.len() > 96
                 || row.model.len() > 96
                 || row.status.len() > 16
+                || row.age.len() > 16
+                || !plain(&row.age)
+                || (!row.incarnation.is_empty() && !crate::command::valid_version(&row.incarnation))
+                || row.parent_id.as_ref().is_some_and(|id| !scope_name(id))
                 || !plain(&row.name)
                 || !plain(&row.model)
                 || !plain(&row.status)
@@ -121,7 +125,7 @@ impl Frame {
     }
 }
 fn plain(value: &str) -> bool {
-    value.bytes().all(|b| b == b' ' || b.is_ascii_graphic())
+    crate::text(value, value.len()) == value
 }
 
 pub fn read_frame(dir: &Dir, scope: &str, now: u64) -> io::Result<Frame> {

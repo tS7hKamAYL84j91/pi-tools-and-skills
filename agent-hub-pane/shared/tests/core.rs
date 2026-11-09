@@ -167,7 +167,7 @@ fn confines_directory_components_and_refuses_symlink_or_fifo_records() {
 }
 
 #[test]
-fn bounds_directory_work_and_ascii_rendering() {
+fn bounds_directory_work_and_safe_rendering() {
     let temp = tempfile::tempdir().unwrap();
     for i in 0..=MAX_FILES {
         record(temp.path(), &format!("a{i}"), json!({"namespace":"a"}));
@@ -177,9 +177,10 @@ fn bounds_directory_work_and_ascii_rendering() {
     assert_eq!(cache.reads, MAX_FILES);
     assert_eq!(cache.records, MAX_FILES);
     let safe = text("\u{1b}[31mname\n\u{202e}模型", 12);
-    assert!(safe.is_ascii());
-    assert!(safe.chars().all(|c| !c.is_control()));
-    assert!(safe.len() <= 12);
+    assert!(safe.chars().all(|c| !c.is_control() && c != '\u{202e}'));
+    assert!(unicode_width::UnicodeWidthStr::width(safe.as_str()) <= 12);
+    assert_eq!(text("模型", 3), "模");
+    assert_eq!(text("e\u{301}x", 2), "e\u{301}x");
     for value in ["", "../scope", "a/b", "x\ny"] {
         assert!(!scope_name(value));
     }

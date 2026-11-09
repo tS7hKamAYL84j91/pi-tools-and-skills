@@ -90,6 +90,37 @@ fn prepare(executor: &mut Executor, registry: &Path) {
 }
 
 #[test]
+fn focus_only_prepares_a_native_validation_permit_never_dispatches_cli_focus() {
+    let (temp, registry, host) = fixture();
+    let mut executor = Executor::start(registry.clone(), "test".into(), "epoch".into(), host);
+    let version = scan_registry(&registry).unwrap().canonical[0].version();
+    assert!(executor.submit(
+        "Lead",
+        request(
+            "prepare",
+            Intent::Focus {
+                agent_id: "agent".into(),
+                version,
+                pane_pid: std::process::id(),
+            }
+        )
+    ));
+    await_phase(&executor, Phase::FocusReady);
+    let controls = executor.controls("Lead");
+    let permit = controls.receipts[0].focus.as_ref().unwrap();
+    assert_eq!(permit.pane_id, 2);
+    assert_eq!(permit.tab_id, 1);
+    assert_eq!(
+        permit.cwd_hash,
+        pi_shared_hub::focus::cwd_hash(Path::new("/work")).unwrap()
+    );
+    assert!(!fs::read_to_string(temp.path().join("calls"))
+        .unwrap()
+        .contains("focus"));
+    assert!(!temp.path().join("closed").exists());
+    executor.shutdown();
+}
+#[test]
 fn requires_separate_confirmation_verifies_unregister_and_refuses_replay() {
     let (temp, registry, host) = fixture();
     let mut executor = Executor::start(registry.clone(), "test".into(), "epoch".into(), host);

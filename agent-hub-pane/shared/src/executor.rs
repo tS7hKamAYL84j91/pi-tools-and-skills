@@ -45,6 +45,7 @@ impl Shared {
                 phase,
                 summary: text(summary, 160),
                 expires_at_ms: expires,
+                focus: None,
             };
         } else {
             if controls.receipts.len() >= MAX_RECEIPTS {
@@ -56,6 +57,7 @@ impl Shared {
                 phase,
                 summary: text(summary, 160),
                 expires_at_ms: expires,
+                focus: None,
             });
         }
         if matches!(phase, Phase::Succeeded | Phase::Failed | Phase::Uncertain) {
@@ -606,7 +608,67 @@ fn handle(
                 thread::sleep(Duration::from_secs(2));
             }
         }
-        Intent::Focus { .. } => fail("Focus routing requires an explicit client-safe host path"),
+        Intent::Focus {
+            agent_id,
+            version,
+            pane_pid,
+        } => {
+            // The CLI must never deliver Focus: it selects the last-active client.
+            // Validate canonical authority here; the requesting permissioned WASI
+            // instance rechecks its own client's focus and the target via SDK.
+            let (guard, panes) = match preflight(host, registry, &job, agent_id, version, false) {
+                Ok(value) => value,
+                Err(error) => {
+                    fail(&error);
+                    return;
+                }
+            };
+            let Some(target) = panes
+                .iter()
+                .find(|p| !p.is_plugin && p.id == guard.target_pane)
+            else {
+                fail("Target disappeared");
+                return;
+            };
+            let Some(cwd_hash) = crate::focus::cwd_hash(std::path::Path::new(&guard.record.cwd))
+            else {
+                fail("Invalid cwd");
+                return;
+            };
+            if !authority::process_descends_from(guard.record.pid, *pane_pid) {
+                fail("Pane process identity changed");
+                return;
+            }
+            let permit = crate::command::FocusPermit {
+                agent_id: agent_id.clone(),
+                version: version.clone(),
+                pane_id: guard.target_pane,
+                pane_pid: *pane_pid,
+                tab_id: guard.own_tab,
+                floating: target.is_floating,
+                cwd_hash,
+            };
+            let mut state = state.lock().unwrap();
+            state.receipt(
+                &job.scope,
+                &id,
+                origin,
+                Phase::Pending,
+                "Validated; awaiting client-local focus",
+                now_ms() + 1000,
+            );
+            let receipt = state
+                .controls
+                .get_mut(&job.scope)
+                .unwrap()
+                .receipts
+                .iter_mut()
+                .find(|r| r.id == id)
+                .unwrap();
+            receipt.phase = Phase::FocusReady;
+            receipt.focus = Some(permit);
+            state.cancel.remove(&(job.scope.clone(), id));
+        }
         Intent::Cancel { .. } => {}
     }
 }

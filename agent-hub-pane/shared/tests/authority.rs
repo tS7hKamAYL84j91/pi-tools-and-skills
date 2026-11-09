@@ -141,6 +141,25 @@ fn new_name_checks_all_claims_journal_and_fixed_environment_scrub() {
     }
 }
 #[test]
+fn pane_root_pid_must_own_the_canonical_process() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("2")
+        .spawn()
+        .unwrap();
+    let descendant =
+        pi_shared_hub::authority::process_descends_from(child.id(), std::process::id());
+    let self_match = pi_shared_hub::authority::process_descends_from(child.id(), child.id());
+    let unrelated = pi_shared_hub::authority::process_descends_from(std::process::id(), child.id());
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(descendant && self_match);
+    assert!(!unrelated);
+    assert!(!pi_shared_hub::authority::process_descends_from(
+        std::process::id(),
+        0
+    ));
+}
+#[test]
 fn async_binding_allows_navigation_but_never_retargets() {
     let temp = tempfile::tempdir().unwrap();
     record(temp.path(), "id", json!({}));
