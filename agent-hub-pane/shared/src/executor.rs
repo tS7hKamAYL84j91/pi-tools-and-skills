@@ -191,7 +191,17 @@ impl Executor {
             let Some((origin, cancel)) = state.cancel.get(&root) else {
                 return false;
             };
-            if *origin != request.origin || !self.confirmed.insert(root.clone()) {
+            // Never queue confirmation behind preparation: only a published,
+            // unexpired native prompt may admit a separate confirmation request.
+            let ready = state.controls.get(scope).is_some_and(|controls| {
+                controls.receipts.iter().any(|receipt| {
+                    receipt.id == root.1
+                        && receipt.origin == request.origin
+                        && receipt.phase == Phase::AwaitingConfirmation
+                        && receipt.expires_at_ms >= now
+                })
+            });
+            if *origin != request.origin || !ready || !self.confirmed.insert(root.clone()) {
                 return false;
             }
             cancel.clone()

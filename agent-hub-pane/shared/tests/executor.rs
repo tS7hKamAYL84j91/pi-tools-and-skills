@@ -33,6 +33,10 @@ root=Path({root}); action=sys.argv[4]
 with (root/'calls').open('a') as f:f.write(action+'\n')
 if action=='list-panes':
  if (root/'slow').exists():time.sleep(.3)
+ if (root/'hold').exists():
+  (root/'query-started').touch()
+  deadline=time.monotonic()+2
+  while (root/'hold').exists() and time.monotonic()<deadline:time.sleep(.01)
  p=[dict(id=99,is_plugin=True,tab_id=1,is_focused=True)]
  if not (root/'closed').exists():p.append(dict(id=2,is_plugin=False,tab_id=1,pane_cwd='/work',is_selectable=True))
  print(json.dumps(p))
@@ -126,6 +130,19 @@ fn requires_separate_confirmation_verifies_unregister_and_refuses_replay() {
     let mut executor = Executor::start(registry.clone(), "test".into(), "epoch".into(), host);
     prepare(&mut executor, &registry);
     assert!(!temp.path().join("closed").exists());
+    for (plugin_id, client_id) in [(98, 1), (99, 2)] {
+        let mut wrong_origin = request(
+            &format!("wrong-origin-{plugin_id}-{client_id}"),
+            Intent::Confirm {
+                prepared_id: "prepare".into(),
+            },
+        );
+        wrong_origin.origin = Origin {
+            plugin_id,
+            client_id,
+        };
+        assert!(!executor.submit("Lead", wrong_origin));
+    }
     let confirmed = request(
         "confirm",
         Intent::Confirm {
@@ -158,6 +175,75 @@ fn requires_separate_confirmation_verifies_unregister_and_refuses_replay() {
             .filter(|l| *l == "close-pane")
             .count(),
         1
+    );
+    executor.shutdown();
+}
+#[test]
+fn confirmation_during_prepare_is_rejected_not_queued_for_later_dispatch() {
+    let (temp, registry, host) = fixture();
+    let mut executor = Executor::start(registry.clone(), "test".into(), "epoch".into(), host);
+    fs::write(temp.path().join("hold"), "").unwrap();
+    let version = scan_registry(&registry).unwrap().canonical[0].version();
+    assert!(executor.submit(
+        "Lead",
+        request(
+            "prepare",
+            Intent::PrepareClose {
+                agent_id: "agent".into(),
+                version,
+            },
+        ),
+    ));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !temp.path().join("query-started").exists() {
+        assert!(Instant::now() < deadline, "preflight never started");
+        thread::sleep(Duration::from_millis(10));
+    }
+    await_phase(&executor, Phase::Pending);
+    let early = request(
+        "early-confirm",
+        Intent::Confirm {
+            prepared_id: "prepare".into(),
+        },
+    );
+    let accepted = executor.submit("Lead", early.clone());
+    fs::remove_file(temp.path().join("hold")).unwrap();
+    // On a regression, wait for the unauthorized mutation's actual receipt.
+    await_phase(
+        &executor,
+        if accepted {
+            Phase::Succeeded
+        } else {
+            Phase::AwaitingConfirmation
+        },
+    );
+    assert!(
+        !accepted,
+        "confirmation was queued before native preparation completed"
+    );
+    assert!(
+        !executor.submit("Lead", early),
+        "early request ID was replayed"
+    );
+    assert!(!temp.path().join("closed").exists());
+    assert!(executor.submit(
+        "Lead",
+        request(
+            "fresh-confirm",
+            Intent::Confirm {
+                prepared_id: "prepare".into(),
+            },
+        ),
+    ));
+    await_phase(&executor, Phase::Succeeded);
+    assert!(temp.path().join("closed").exists());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("calls"))
+            .unwrap()
+            .lines()
+            .filter(|l| *l == "close-pane")
+            .count(),
+        1,
     );
     executor.shutdown();
 }

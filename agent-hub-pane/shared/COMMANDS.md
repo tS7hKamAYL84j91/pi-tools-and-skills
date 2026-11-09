@@ -42,7 +42,9 @@ There is no separate enduring `deleted` state. Closing means the agent pane/proc
   actual pane cwd and originating tab. Only the owner produces confirmation data.
 - Preserve separate confirmation input: c then y/Enter, and New name entry then
   separate default-model confirmation; existing expiry and anti-double-Enter
-  behavior remain. Cached row/version data can reject a request, never authorize it.
+  behavior remain. The native executor rejects confirmations while preparation is
+  pending or its confirmation receipt has expired; early input is never queued
+  for later dispatch. Cached row/version data can reject a request, never authorize it.
 - Immediately before mutation, refresh full host metadata and canonical data after
   blocking calls. Refuse changed identity/scope/cwd, ambiguous claims, missing or
   unavailable panes, unverified processes, stale heartbeats and invalid names.
