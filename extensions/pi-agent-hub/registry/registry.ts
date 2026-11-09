@@ -93,7 +93,7 @@ export default class Registry implements RegistryInterface {
 			selfId: this.selfId,
 			takeoverName: this.declaredName,
 		});
-		const { name, source } = pickActiveName({
+		const { name, source, declaredClaimed } = pickActiveName({
 			cwd,
 			records,
 			selfId: this.selfId,
@@ -128,7 +128,14 @@ export default class Registry implements RegistryInterface {
 			id: this.selfId,
 			name,
 			...(storedSpawnName ? { spawn_name: storedSpawnName } : {}),
-			...(this.declaredName ? { declared_name: this.declaredName } : {}),
+			// Publish the declared lead label only when it was actually claimable.
+			// A root whose declared label collided with a live peer or a reserved
+			// owner is suffixed (e.g. quartermaster-2) and must NOT advertise the
+			// collided label as its lead identity, or the Agent Hub pane sees two
+			// leads of one scope and ends up ambiguous (no create/close).
+			...(declaredClaimed && this.declaredName
+				? { declared_name: this.declaredName }
+				: {}),
 			name_source: source,
 			pid: process.pid,
 			cwd,
@@ -152,7 +159,7 @@ export default class Registry implements RegistryInterface {
 		// launch label, not the picked display name: a lead resuming a session with
 		// a pre-existing session name must still reserve its canonical label, or
 		// reservation/child-namespace protection would silently disengage.
-		if (this.declaredName && !nameTaken(this.declaredName, records, this.selfId)) {
+		if (declaredClaimed && !nameTaken(this.declaredName as string, records, this.selfId)) {
 			this.refreshOwnership(Date.now());
 		}
 

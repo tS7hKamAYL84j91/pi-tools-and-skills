@@ -199,27 +199,28 @@ describe("pickActiveName with declared and reserved names", () => {
 	it("prefers a claimable session name", () => {
 		expect(
 			pickActiveName({ ...base, sessionName: "user-name", spawnName: "spawned", declaredName: "declared" }),
-		).toEqual({ name: "user-name", source: "user" });
+		).toEqual({ name: "user-name", source: "user", declaredClaimed: false });
 	});
 
 	it("falls past a taken session name to the spawn name", () => {
 		const records = [makeAgentRecord({ id: "other", name: "user-name" })];
 		expect(
 			pickActiveName({ ...base, records, sessionName: "user-name", spawnName: "spawned" }),
-		).toEqual({ name: "spawned", source: "spawn" });
+		).toEqual({ name: "spawned", source: "spawn", declaredClaimed: false });
 	});
 
 	it("spawned agents never fall through to the project's declared lead label", () => {
 		const records = [makeAgentRecord({ id: "other", name: "spawned" })];
 		expect(
 			pickActiveName({ ...base, records, spawnName: "spawned", declaredName: "the-lead" }),
-		).toEqual({ name: "spawned-2", source: "spawn" });
+		).toEqual({ name: "spawned-2", source: "spawn", declaredClaimed: false });
 	});
 
 	it("root agents adopt the declared name", () => {
 		expect(pickActiveName({ ...base, declaredName: "the-lead" })).toEqual({
 			name: "the-lead",
 			source: "declared",
+			declaredClaimed: true,
 		});
 	});
 
@@ -228,27 +229,58 @@ describe("pickActiveName with declared and reserved names", () => {
 		expect(pickActiveName({ ...base, records, declaredName: "the-lead" })).toEqual({
 			name: "the-lead-2",
 			source: "generated",
+			declaredClaimed: false,
+		});
+	});
+
+	// Regression: a duplicate root claiming an already-held lead label (e.g. a
+	// second Quartermaster) must NOT advertise the collided label as its lead
+	// identity, or the Agent Hub pane reports an ambiguous scope and blocks
+	// create/close. The suffixed display name must remain the agent's only lead
+	// identity in that case.
+	it("does not claim a collided declared lead label (quartermaster duplicate)", () => {
+		const existing = makeAgentRecord({ id: "qm-1", name: "quartermaster" });
+		// The second root sees quartermaster already live -> suffix, never claim.
+		expect(
+			pickActiveName({
+				...base,
+				records: [existing],
+				declaredName: "quartermaster",
+			}),
+		).toEqual({
+			name: "quartermaster-2",
+			source: "generated",
+			declaredClaimed: false,
+		});
+		// The original holder keeps the label.
+		expect(
+			pickActiveName({ ...base, declaredName: "quartermaster" }),
+		).toEqual({
+			name: "quartermaster",
+			source: "declared",
+			declaredClaimed: true,
 		});
 	});
 
 	it("never picks a reserved lead label, even when no live agent holds it", () => {
 		expect(
 			pickActiveName({ ...base, sessionName: "eo-lead", reservedNames: ["eo-lead"] }),
-		).toEqual({ name: "proj", source: "generated" });
+		).toEqual({ name: "proj", source: "generated", declaredClaimed: false });
 		expect(
 			pickActiveName({ ...base, declaredName: "eo-lead", reservedNames: ["eo-lead"] }),
-		).toEqual({ name: "eo-lead-2", source: "generated" });
+		).toEqual({ name: "eo-lead-2", source: "generated", declaredClaimed: false });
 		expect(
 			pickActiveName({ ...base, spawnName: "eo-lead", reservedNames: ["eo-lead"] }),
-		).toEqual({ name: "eo-lead-2", source: "spawn" });
+		).toEqual({ name: "eo-lead-2", source: "spawn", declaredClaimed: false });
 	});
 
 	it("keeps legacy behaviour without declared/reserved inputs", () => {
 		expect(pickActiveName({ ...base, spawnName: "spawned" })).toEqual({
 			name: "spawned",
 			source: "spawn",
+			declaredClaimed: false,
 		});
-		expect(pickActiveName({ ...base })).toEqual({ name: "proj", source: "generated" });
+		expect(pickActiveName({ ...base })).toEqual({ name: "proj", source: "generated", declaredClaimed: false });
 	});
 });
 

@@ -172,6 +172,7 @@ describe("pickActiveName", () => {
 		).toEqual({
 			name: "user-name",
 			source: "user",
+			declaredClaimed: false,
 		});
 	});
 
@@ -186,6 +187,7 @@ describe("pickActiveName", () => {
 		).toEqual({
 			name: "spawned",
 			source: "spawn",
+			declaredClaimed: false,
 		});
 	});
 
@@ -195,6 +197,7 @@ describe("pickActiveName", () => {
 		).toEqual({
 			name: "proj",
 			source: "generated",
+			declaredClaimed: false,
 		});
 	});
 });

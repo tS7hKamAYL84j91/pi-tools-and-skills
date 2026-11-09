@@ -124,6 +124,13 @@ function uniqueName(
 export function pickActiveName(input: PickActiveNameInput): {
 	name: string;
 	source: AgentNameSource;
+	/**
+	 * True only when a declared lead label was present AND claimable, so the
+	 * agent actually holds it. When a declared label collides with a live peer
+	 * or a reserved owner, the display name is suffixed and this is false; the
+	 * agent must not publish or claim the collided label as its lead identity.
+	 */
+	declaredClaimed: boolean;
 } {
 	const reserved = input.reservedNames ?? [];
 	const isClaimable = (candidate: string) =>
@@ -137,27 +144,47 @@ export function pickActiveName(input: PickActiveNameInput): {
 		input.spawnName && isValidAgentName(input.spawnName) ? input.spawnName : undefined;
 	const safeDeclaredName =
 		input.declaredName && isValidAgentName(input.declaredName) ? input.declaredName : undefined;
+	// A root agent (no spawn name) claims its declared lead label when that
+	// label is actually claimable — even if its display name comes from a
+	// resumed session alias. A spawned helper never claims a declared label,
+	// and a label already held by a live peer or reserved for another owner is
+	// never claimed (the agent is suffixed instead).
+	const declaredClaimed =
+		!safeSpawnName &&
+		safeDeclaredName !== undefined &&
+		isClaimable(safeDeclaredName);
 	if (safeSessionName && isClaimable(safeSessionName)) {
-		return { name: safeSessionName, source: "user" };
+		return {
+			name: safeSessionName,
+			source: "user",
+			declaredClaimed,
+		};
 	}
 	if (safeSpawnName) {
 		return {
 			name: uniqueName(safeSpawnName, input),
 			source: "spawn",
+			declaredClaimed,
 		};
 	}
 	if (safeDeclaredName) {
 		if (isClaimable(safeDeclaredName)) {
-			return { name: safeDeclaredName, source: "declared" };
+			return {
+				name: safeDeclaredName,
+				source: "declared",
+				declaredClaimed,
+			};
 		}
 		return {
 			name: uniqueName(safeDeclaredName, input),
 			source: "generated",
+			declaredClaimed,
 		};
 	}
 	return {
 		name: uniqueName(basename(input.cwd) || "agent", input),
 		source: "generated",
+		declaredClaimed,
 	};
 }
 
