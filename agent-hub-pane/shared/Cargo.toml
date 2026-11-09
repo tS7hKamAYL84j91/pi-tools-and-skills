@@ -1,0 +1,32 @@
+[package]
+name = "pi-shared-hub"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cap-std = "=4.0.3"
+cap-primitives = "=4.0.3"
+sha2 = "=0.10.9"
+unicode-width = "=0.1.14"
+
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "wasi")'.dependencies]
+zellij-tile = "=0.44.1"
+zellij-utils = "=0.44.1"
+
+[[bin]]
+name = "pi-hub-index"
+path = "src/bin/indexer.rs"
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
