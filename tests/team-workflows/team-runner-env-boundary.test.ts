@@ -17,6 +17,7 @@ const STRIPPED_KEYS = [
 	"MATRIX_ACCESS_TOKEN",
 	"MATRIX_BOT_PASSWORD",
 	"MATRIX_RECOVERY_PASSPHRASE",
+	"HUB_SIDEBAR_TOKEN",
 ] as const;
 
 function fakeChild() {
@@ -95,11 +96,12 @@ describe("team member children are not handed Matrix credentials", () => {
 			command: "fixture-command",
 			args: [],
 			cwd: tmpdir(),
-			env: { MATRIX_ACCESS_TOKEN: "fixture-dummy-override-token" },
+			env: { MATRIX_ACCESS_TOKEN: "fixture-dummy-override-token", HUB_SIDEBAR_TOKEN: "fixture-sidebar-capability" },
 		});
 		proc.emit("close", 0);
 		await pending;
 		const opts = spawnOptionsOf();
 		expect(opts.env.MATRIX_ACCESS_TOKEN).toBeUndefined();
+		expect(opts.env.HUB_SIDEBAR_TOKEN).toBeUndefined();
 	});
 });

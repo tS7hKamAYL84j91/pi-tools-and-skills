@@ -6,7 +6,7 @@
  * matters more than agent count. Classification drives model selection
  * and topology routing at the spawn boundary.
  *
- * Consumed by: extensions/pi-agent-hub/spawner/spawner.ts
+ * Consumed by: extensions/pi-subagents/spawner/spawner.ts
  */
 
 import { Type, type Static } from "typebox";

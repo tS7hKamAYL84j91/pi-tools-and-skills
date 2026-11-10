@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { rpcCall } from "../../extensions/pi-agent-hub/spawner/spawn-rpc.js";
-import type { SpawnedAgent } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import { rpcCall } from "../../extensions/pi-subagents/spawner/spawn-rpc.js";
+import type { SpawnedAgent } from "../../extensions/pi-subagents/spawner/spawn-service.js";
 
 function fixture(
 	onWrite?: (

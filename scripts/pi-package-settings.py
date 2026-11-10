@@ -10,11 +10,13 @@ from typing import Any
 
 PACKAGE_EXTENSIONS = [
     "extensions/pi-agent-hub/**",
+    "extensions/pi-subagents/**",
     "extensions/pi-goal/**",
 ]
 
 USER_INSTALLABLE_PACKAGES = {
     "pi-agent-hub",
+    "pi-subagents",
     "pi-boost",
     "pi-goal",
     "pi-matrix",
@@ -30,6 +32,7 @@ PROJECT_ONLY_PACKAGES = {
 }
 
 OWNED_EXTENSION_DIRS = [
+    "pi-subagents",
     "pi-team-workflows",
     "pi-agent-hub",
     "pi-panopticon",  # Legacy direct registration; cleanup only.

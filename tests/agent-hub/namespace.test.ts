@@ -27,7 +27,7 @@ import {
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
 import {
 	parentNamespaceAnchor,
-} from "../../extensions/pi-agent-hub/spawner/spawner-launch.js";
+} from "../../extensions/pi-subagents/spawner/spawner-launch.js";
 import {
 	agentDisplayName,
 	findAgentByDisplayName,
@@ -233,33 +233,14 @@ describe("pickActiveName with declared and reserved names", () => {
 		});
 	});
 
-	// Regression: a duplicate root claiming an already-held lead label (e.g. a
-	// second Quartermaster) must NOT advertise the collided label as its lead
-	// identity, or the Agent Hub pane reports an ambiguous scope and blocks
-	// create/close. The suffixed display name must remain the agent's only lead
-	// identity in that case.
-	it("does not claim a collided declared lead label (quartermaster duplicate)", () => {
-		const existing = makeAgentRecord({ id: "qm-1", name: "quartermaster" });
-		// The second root sees quartermaster already live -> suffix, never claim.
-		expect(
-			pickActiveName({
-				...base,
-				records: [existing],
-				declaredName: "quartermaster",
-			}),
-		).toEqual({
-			name: "quartermaster-2",
-			source: "generated",
-			declaredClaimed: false,
-		});
-		// The original holder keeps the label.
-		expect(
-			pickActiveName({ ...base, declaredName: "quartermaster" }),
-		).toEqual({
-			name: "quartermaster",
-			source: "declared",
-			declaredClaimed: true,
-		});
+	it.each([
+		{ claim: "available", records: [], reservedNames: [], declaredClaimed: true },
+		{ claim: "live peer", records: [makeAgentRecord({ id: "peer", name: "the-lead" })], reservedNames: [], declaredClaimed: false },
+		{ claim: "reserved", records: [], reservedNames: ["the-lead"], declaredClaimed: false },
+	])("a resumed alias preserves the declared claim decision: $claim", ({ records, reservedNames, declaredClaimed }) => {
+		expect(pickActiveName({
+			...base, records, reservedNames, sessionName: "alias", declaredName: "the-lead",
+		})).toEqual({ name: "alias", source: "user", declaredClaimed });
 	});
 
 	it("never picks a reserved lead label, even when no live agent holds it", () => {
@@ -331,6 +312,24 @@ describe("Registry namespace + declared-name capture", () => {
 			expect(registry.getRecord()?.namespace).toBeUndefined();
 			registry.unregister();
 		} finally {
+			restoreCwd();
+		}
+	});
+
+	it.each([undefined, "resumed-alias"])("does not publish or journal a collided lead label (alias: %s)", async (alias) => {
+		const project = makeProject({ panopticonName: "eo-lead" });
+		const restoreCwd = chdirInto(project);
+		const registry = new Registry("2007-duplicate", () => alias);
+		try {
+			vi.useFakeTimers();
+			writePeerRecord({ id: "2008-lead", name: "eo-lead" });
+			registry.register(makeContext(project));
+			expect(registry.getRecord()?.name).toBe(alias ?? "eo-lead-2");
+			expect(registry.getRecord()?.declared_name).toBeUndefined();
+			await registry.awaitOwnershipWrite();
+			expect(loadNamespaceOwners()).toEqual([]);
+		} finally {
+			registry.unregister();
 			restoreCwd();
 		}
 	});
@@ -773,7 +772,7 @@ describe("spawn namespace inheritance", () => {
 	});
 
 	it("passes the namespace env to children alongside parent id and visibility", async () => {
-		const { buildSpawnEnv } = await import("../../extensions/pi-agent-hub/spawner/spawner-launch.js");
+		const { buildSpawnEnv } = await import("../../extensions/pi-subagents/spawner/spawner-launch.js");
 		const env = buildSpawnEnv("9001-parent", "child-x", "task", "eo-lead");
 		expect(env.PI_PANOPTICON_PARENT_ID).toBe("9001-parent");
 		expect(env.PI_PANOPTICON_VISIBILITY).toBe("scoped");

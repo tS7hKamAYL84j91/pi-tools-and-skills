@@ -1,8 +1,11 @@
 # Pi Agent Hub Extension
 
-![Integrated Agent Hub: registry, messaging, spawning, and peer workflows](../../docs/images/pi-agent-hub.jpeg)
+![Agent Hub: registry, messaging, and peer visibility](../../docs/images/pi-agent-hub.jpeg)
 
-Multi-agent visibility, messaging, spawning, health checks, and lifecycle controls for pi sessions.
+Peer discovery, messaging, health checks, and visibility for Pi sessions.
+Local RPC worker management lives in the separate [Subagents extension](../pi-subagents/README.md).
+Neither extension loads the other; enable both for the previous combined tool set.
+No live settings are migrated automatically.
 
 ## Rename compatibility
 
@@ -21,8 +24,6 @@ rename does not edit live settings.
 | `message_read` / `message_send` | Read and send messages across registered channels such as Matrix or agent transport. |
 | `agent_send` / `agent_broadcast` | Send direct or broadcast messages to registered peer agents. |
 | `agent_peek` / `agent_status` | Inspect peer activity and health; `agent_status` includes privacy-preserving aggregate counts for actionable states and pending messages. |
-| `spawn_agent` / `rpc_send` | Spawn local RPC workers and send commands to them. |
-| `list_spawned` / `kill_agent` | Inspect and stop workers spawned by this session. |
 | `get_name` / `set_name` | Read or set this session's display/registry name. |
 
 ### Commands
@@ -60,36 +61,6 @@ Reconciliation follow-ups are off by default. Enable them globally in `~/.pi/age
 
 A trusted project's `.pi/settings.json` can override the global value. The `/panopticon-reconcile on|off` command persists to the project setting when the project is trusted, or to the global setting otherwise. Health and status reporting remain enabled when notifications are off.
 
-## RPC completion
-
-On Pi 1.0.1, RPC waits for final `agent_settled`, not an intermediate
-`agent_end`. Responses are correlated by request ID, and rejected or handled
-prompts return without waiting for a nonexistent run. Listeners are installed
-before writing; deadlines still bound every wait.
-
-## Spawned-worker context capsule
-
-`spawn_agent` accepts an optional `capsule` — a compressed handoff from the
-spawning session (objective, current state, decisions, constraints, files in
-play). It is appended to the child's system prompt as an explicitly-labelled
-background block, passed through `lib/secret-redaction`, and capped at 4,000
-characters. The capsule is context, not authority: it cannot grant permissions
-and may be stale, so treat its claims as unverified. `brief.context` remains the
-task-scoped prose field.
-
-## Spawned-worker output bounds
-
-Recent output retains at most 100 events and 1 MiB of UTF-8 text across stdout,
-stderr, stdin errors, and process diagnostics. Individual stderr chunks are capped
-at 64 KiB with a truncation marker; RPC events larger than the history budget
-leave an omission marker but are delivered intact to RPC listeners.
-
-Stdout is newline-framed UTF-8. Frames up to 8 MiB are decoded only after their
-newline, preserving characters split across chunks. A frame exceeding 8 MiB,
-including an unterminated line, terminates that spawned child with SIGKILL and
-emits a bounded `process_error`; partial RPC frames are never forwarded. This
-limit does not delete persisted child session history.
-
 ## Provisional Surfaces
 
 - Agent stall heuristic thresholds.
@@ -98,17 +69,25 @@ limit does not delete persisted child session history.
 
 Public compatibility is the registered runtime surface: tools, commands, extension entrypoint/package wiring, documented settings, and Agent Hub-owned persisted session event names.
 
-Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging,spawner}/` are internal implementation modules. Tests import those modules directly for precision, but downstream users should not treat deep file paths as stable public API.
+Capability file paths under `extensions/pi-agent-hub/{ui,registry,messaging}/` are internal implementation modules. Tests import those modules directly for precision, but downstream users should not treat deep file paths as stable public API.
 
 ## Module and Cross-Extension Dependencies
 
-- Acts as a foundational registry used by `pi-matrix` for channel registration.
+- Owns local peer registration and the agent messaging channel; Matrix registers its own channel independently.
+- Subagents optionally reads this session's minimal routing identity through `lib/agent-identity.ts`; Agent Hub owns no child processes or RPC worker tools.
+- Before draining/closing peer messaging, Hub emits `pi-agent-hub:before-channel-shutdown` and awaits work synchronously registered via `waitUntil(promise)` (`lib/agent-shutdown.ts`). Subagents uses this optional barrier to finish child shutdown first in either extension load order; Hub also works without any listener.
 - Team workflows are owned by the independently installable `pi-team-workflows` extension; Agent Hub exposes no Team Workflows registration surface.
 
 ## Zellij integration
 
 An external agent-list pane ([`agent-hub-pane/pi-agents-pane`](../../agent-hub-pane/README.md)) can run in **each Zellij tab**. Agent Hub supplies
 agent locations; the extension itself does not spawn the side pane.
+
+The Node sidebar optionally exposes [tab-scoped MCP controls](../../agent-hub-pane/README.md#tab-scoped-mcp-opt-in)
+for listing, autonomous New, panel-local Lead, and human-confirmed Close requests.
+Keyboard and MCP use the same sidebar operations; this is not a worker-spawner
+API or a Rust-owner dependency. Enablement and per-tab capability provisioning
+are explicit; the extension does not configure MCP or distribute credentials.
 
 Read the optional `zellij` field in each native agent's local record at
 `~/.pi/agents/<id>.json`:
@@ -137,7 +116,7 @@ state, not a versioned remote API.
 
 ## State and UI
 
-Agent Hub registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, confirmed stale workers, and silent worker exits are surfaced; deliberate stops (`kill_agent`, session shutdown) are suppressed because their exit is expected; healthy idle peers are suppressed.
+Agent Hub registers this session in a local registry, updates heartbeats, and shows an `agents:` status/widget summary. Reconciliation alerts are intentionally sparse: pending messages, blocked peers, and confirmed stale peers are surfaced; healthy idle peers are suppressed. Silent child exits and deliberate child-stop suppression belong to Subagents.
 
 Design note: decision 022 in [`docs/decisions.md`](../../docs/decisions.md) defines the proposed advisory `MEMORY.md` snapshot boundary for future restart/debug/audit support. It remains design-only: the validated prototype modules were deleted under decision 054's no-exemptions rule, and Agent Hub does not currently write these snapshots.
 

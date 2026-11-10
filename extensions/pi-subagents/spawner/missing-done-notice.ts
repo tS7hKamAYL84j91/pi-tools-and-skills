@@ -12,7 +12,7 @@ export function setupMissingDoneNotice(
 		const minutes = Math.round(durationMs / 60_000);
 		pi.sendUserMessage(
 			`⚠️ Agent "${agentName}" (pid ${pid}) exited (code ${exitCode ?? "unknown"}) after ${minutes}m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
-				"Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.",
+				"Check its output with list_spawned. If it completed work, reconcile its results manually.",
 			{ deliverAs: "followUp" },
 		);
 	});

@@ -4,7 +4,7 @@
 
 import type { SpawnedAgent } from "./spawn-service.js";
 import type { TaskBrief } from "../../../lib/task-brief.js";
-import type { Registry } from "../types.js";
+import type { AgentIdentity } from "../../../lib/agent-identity.js";
 
 export interface ResultEnvelope {
 	tool: string;
@@ -29,6 +29,6 @@ export interface SpawnAgentParams {
 
 export interface SpawnerContext {
 	agents: Map<string, SpawnedAgent>;
-	registry: Registry;
+	getParentIdentity: () => AgentIdentity;
 	onAgentExit: (agent: SpawnedAgent) => void;
 }

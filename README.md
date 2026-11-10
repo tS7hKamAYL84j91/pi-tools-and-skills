@@ -16,7 +16,7 @@ npm ci
 make setup
 ```
 
-- `make setup` — enable this repo (Agent Hub, Goal, skills, and prompts) in your user Pi settings (`~/.pi/agent/settings.json`).
+- `make setup` — enable this repo (Agent Hub, Subagents, Goal, skills, and prompts) in your user Pi settings (`~/.pi/agent/settings.json`).
 - `make setup PROJECT=<dir>` — enable it for a single project (`<dir>/.pi/settings.json`).
 - `make setup-package PACKAGE=<name>` — enable one extension in your user Pi settings.
 - `make setup-clean` — remove the user or `PROJECT=<dir>` entry from Pi settings.
@@ -30,7 +30,8 @@ Each package README documents its commands, settings, install scope, and limits.
 
 | Package                                                  | Responsibility                                 |
 | -------------------------------------------------------- | ---------------------------------------------- |
-| [Agent Hub](extensions/pi-agent-hub/README.md)           | Agent registry, transport, spawning and health |
+| [Agent Hub](extensions/pi-agent-hub/README.md)           | Peer discovery, messaging and health           |
+| [Subagents](extensions/pi-subagents/README.md)           | Local RPC workers and child lifecycle          |
 | [Goal](extensions/pi-goal/README.md)                     | Owned goal execution and local completion hook |
 | [Team Workflows](extensions/pi-team-workflows/README.md) | Bounded consult, debate and research           |
 | [Boost](extensions/pi-boost/README.md)                   | Prompt-scoped model switching and restoration  |
@@ -46,7 +47,7 @@ Each package README documents its commands, settings, install scope, and limits.
 | Tool | Responsibility |
 | --- | --- |
 | [Fleet MCP](fleet-mcp/README.md) | Standalone MCP adapter |
-| [Agent Hub pane](agent-hub-pane/README.md) | Zellij side pane for Agent Hub |
+| [Agent Hub pane](agent-hub-pane/README.md) | Zellij sidebar with optional tab-scoped MCP controls |
 
 ## Layout
 

@@ -130,6 +130,7 @@ fn new_name_checks_all_claims_journal_and_fixed_environment_scrub() {
     let argv = authority::create_argv("test", "lead", "child", &guard, &panes()).unwrap();
     assert!(argv.windows(2).any(|v| v == ["--cwd", "/work"]));
     assert!(argv.windows(2).any(|v| v == ["-u", "MATRIX_ACCESS_TOKEN"]));
+    assert!(argv.windows(2).any(|v| v == ["-u", "HUB_SIDEBAR_TOKEN"]));
     assert!(argv
         .windows(2)
         .any(|v| v == ["-u", "PI_CODING_AGENT_SESSION_DIR"]));

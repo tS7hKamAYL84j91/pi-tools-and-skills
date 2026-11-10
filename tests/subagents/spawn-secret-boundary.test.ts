@@ -9,10 +9,10 @@ import { PassThrough } from "node:stream";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { buildArgList, safeSessionSlug } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
-import { recentOutputFromEvents } from "../../extensions/pi-agent-hub/spawner/spawn-events.js";
+import { buildArgList, safeSessionSlug } from "../../extensions/pi-subagents/spawner/spawn-service.js";
+import { recentOutputFromEvents } from "../../extensions/pi-subagents/spawner/spawn-events.js";
 import { CHILD_CREDENTIAL_ENV_KEYS } from "../../lib/child-env.js";
-import { spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import { spawnChild } from "../../extensions/pi-subagents/spawner/spawn-service.js";
 
 // ── Dummy fixtures only — never real credential material ─────────
 
@@ -118,6 +118,7 @@ const STRIPPED_KEYS = [
 	"MATRIX_ACCESS_TOKEN",
 	"MATRIX_BOT_PASSWORD",
 	"MATRIX_RECOVERY_PASSPHRASE",
+	"HUB_SIDEBAR_TOKEN",
 ];
 
 function spawnOptionsOf(index = 0): { env: NodeJS.ProcessEnv } {
@@ -126,7 +127,7 @@ function spawnOptionsOf(index = 0): { env: NodeJS.ProcessEnv } {
 	return call[2] as { env: NodeJS.ProcessEnv };
 }
 
-/** Overwrite the three credential keys with dummies, restoring prior values. */
+/** Overwrite credential/capability keys with dummies, restoring prior values. */
 function withDummyCredentials(run: () => void): void {
 	const saved = new Map<string, string | undefined>();
 	for (const key of STRIPPED_KEYS) {
@@ -152,7 +153,7 @@ describe("child env credential boundary", () => {
 		mock.spawn.mockReturnValue(proc);
 	});
 
-	it("strips exactly the three Matrix credential key names", () => {
+	it("strips the Matrix credential keys and sidebar capability", () => {
 		expect([...CHILD_CREDENTIAL_ENV_KEYS]).toEqual(STRIPPED_KEYS);
 	});
 
@@ -178,6 +179,7 @@ describe("child env credential boundary", () => {
 			MATRIX_ACCESS_TOKEN: DUMMY_TOKEN,
 			MATRIX_BOT_PASSWORD: DUMMY_PASSWORD,
 			MATRIX_RECOVERY_PASSPHRASE: "fixture-dummy-recovery",
+			HUB_SIDEBAR_TOKEN: "fixture-sidebar-capability",
 		};
 		spawnChild({ name: "helper", cwd: "/unused", args: [], env: callerEnv });
 		const opts = spawnOptionsOf();
@@ -191,6 +193,7 @@ describe("child env credential boundary", () => {
 		// The caller-owned env object is not mutated either.
 		expect(callerEnv.MATRIX_ACCESS_TOKEN).toBe(DUMMY_TOKEN);
 		expect(callerEnv.MATRIX_BOT_PASSWORD).toBe(DUMMY_PASSWORD);
+		expect(callerEnv.HUB_SIDEBAR_TOKEN).toBe("fixture-sidebar-capability");
 	});
 
 	it("keeps stripping across repeated spawns (no hidden state between calls)", () => {

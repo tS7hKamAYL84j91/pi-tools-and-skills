@@ -6,20 +6,20 @@
  * the tool execute paths rely on integration with the ExtensionAPI.
  */
 import { describe, expect, it } from "vitest";
-import { setupSpawner } from "../../extensions/pi-agent-hub/spawner/spawner.js";
+import { setupSpawner } from "../../extensions/pi-subagents/spawner/spawner.js";
 import { formatCompletionSignal } from "../../lib/completion-signal.js";
 import {
 	formatEvent,
 	hasCompletionSignal,
 	recentOutputFromEvents,
 	shouldNotifyMissingDone,
-} from "../../extensions/pi-agent-hub/spawner/spawn-events.js";
-import { buildArgList, type SpawnedAgent } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+} from "../../extensions/pi-subagents/spawner/spawn-events.js";
+import { buildArgList, type SpawnedAgent } from "../../extensions/pi-subagents/spawner/spawn-service.js";
 import {
 	CAPSULE_MAX_CHARS,
 	buildSystemPrompt,
-} from "../../extensions/pi-agent-hub/spawner/spawner-launch.js";
-import { asExtensionApi, makeMockExtensionApi, makeRegistry } from "./helpers.js";
+} from "../../extensions/pi-subagents/spawner/spawner-launch.js";
+import { asExtensionApi, makeMockExtensionApi } from "../agent-hub/helpers.js";
 
 function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
 	// Tests only exercise name and recentEvents in hasCompletionSignal.
@@ -28,7 +28,7 @@ function createSpawnedAgent(recentEvents: string[]): SpawnedAgent {
 
 function getSpawnAgentPrepareArguments(): (args: unknown) => unknown {
 	const api = makeMockExtensionApi();
-	setupSpawner(asExtensionApi(api), makeRegistry(undefined));
+	setupSpawner(asExtensionApi(api), () => ({ id: "self-id", name: "parent" }));
 	const tool = api.registeredTools.get("spawn_agent");
 	if (!tool?.prepareArguments) {
 		throw new Error("spawn_agent prepareArguments was not registered");

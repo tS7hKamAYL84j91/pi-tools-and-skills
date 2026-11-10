@@ -26,7 +26,7 @@ function plant(key: string): void {
 	process.env[key] = DUMMY;
 }
 
-it("strips every Matrix credential key from the inherited environment", () => {
+it("strips every named credential/capability key from the inherited environment", () => {
 	for (const key of CHILD_CREDENTIAL_ENV_KEYS) plant(key);
 	const env = paneChildEnv();
 	for (const key of CHILD_CREDENTIAL_ENV_KEYS) expect(key in env).toBe(false);
@@ -45,13 +45,13 @@ it("applies explicit overrides without mutating process.env", () => {
 });
 
 it("a spawned child never sees the planted credential (end to end)", () => {
-	plant("MATRIX_ACCESS_TOKEN");
+	plant("HUB_SIDEBAR_TOKEN");
 	const seen = execFileSync(
 		process.execPath,
 		[
 			"--input-type=module",
 			"-e",
-			"process.stdout.write(String('MATRIX_ACCESS_TOKEN' in process.env))",
+			"process.stdout.write(String('HUB_SIDEBAR_TOKEN' in process.env))",
 		],
 		{ encoding: "utf8", env: paneChildEnv() },
 	);

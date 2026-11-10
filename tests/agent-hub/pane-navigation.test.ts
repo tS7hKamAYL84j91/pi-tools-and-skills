@@ -147,6 +147,8 @@ it("creates a floating named agent in the verified lead tab without a model over
 			"-u",
 			"MATRIX_RECOVERY_PASSPHRASE",
 			"-u",
+			"HUB_SIDEBAR_TOKEN",
+			"-u",
 			"PI_PANOPTICON_PARENT_ID",
 			"-u",
 			"PI_CODING_AGENT_SESSION_DIR",
@@ -349,6 +351,44 @@ it.each(
 			`const parse=inputParser(); const events=[${calls}].flat(); process.stdout.write(JSON.stringify(events));`,
 		),
 	).toEqual([]);
+});
+
+it("delegates creation only to a pinned tab without weakening keyboard close confirmation", () => {
+	expect(probe(`
+row.heartbeat=Date.now();panes[0].is_focused=false;
+const run=async args=>{
+ calls.push(args);
+ if(args.includes('new-pane')){panes.push({id:7,tab_id:1,is_plugin:false,is_floating:true});return 'terminal_7'}
+ return JSON.stringify(panes);
+};
+const nav=createNavigator(identity,run);
+const keyboard=await nav.create('worker','lead',row,[row]);
+const close=await nav.close(row,[row],Date.now(),{tabId:1});
+const limited=await nav.create('worker','lead',row,[row],{tabId:1,paneLimit:2});
+const created=await nav.create('worker','lead',row,[row],{tabId:1,paneLimit:4});
+panes[0].tab_id=2;
+const moved=await nav.create('other','lead',row,[row],{tabId:1});
+process.stdout.write(JSON.stringify({keyboard,close,limited,created,moved,
+ launches:calls.filter(a=>a.includes('new-pane')).length,closes:calls.filter(a=>a.includes('close-pane')).length}));
+`)).toEqual({ keyboard: "navigation unavailable", close: "navigation unavailable", limited: "Tab pane limit reached",
+		created: null, moved: "navigation unavailable", launches: 1, closes: 0 });
+});
+
+it.each([
+	{ tabId: 1, own: {}, expected: null },
+	{ tabId: 0, own: {}, expected: "navigation unavailable" },
+	{ tabId: -1, own: {}, expected: "navigation unavailable" },
+	{ tabId: 1.5, own: {}, expected: "navigation unavailable" },
+	{ tabId: "1", own: {}, expected: "navigation unavailable" },
+	{ tabId: 1, own: { exited: true }, expected: "navigation unavailable" },
+	{ tabId: 1, own: { is_selectable: false }, expected: "navigation unavailable" },
+	{ tabId: 1, own: { is_suppressed: true }, expected: "navigation unavailable" },
+])("checks delegated tab and sidebar availability: %j", ({ tabId, own, expected }) => {
+	expect(probe(`
+const nav=createNavigator(identity,runner);
+const context={panes,own:{...panes[0],is_focused:false,...${JSON.stringify(own)}}};
+process.stdout.write(JSON.stringify(nav.check(row,[row],context,1001,{tabId:${JSON.stringify(tabId)}})));
+`)).toBe(expected);
 });
 
 it("incrementally parses arrows, mouse press/release and keyboard controls", () => {

@@ -34,14 +34,14 @@ help: ## Show available make targets
 setup: ## Enable this repo in Pi settings (user default, or PROJECT=<dir> for one project)
 	"$(ROOT_DIR)/scripts/setup-pi" $(SETUP_SCOPE_ARGS)
 
-setup-package: ## Enable one extension in user Pi settings (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-team-workflows)
+setup-package: ## Enable one extension in user Pi settings (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-subagents|pi-team-workflows)
 	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package PACKAGE=<name>; see 'make help'"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi" "$$PACKAGE"
 
 setup-clean: ## Remove this repo from Pi settings (user default, or PROJECT=<dir>)
 	"$(ROOT_DIR)/scripts/setup-pi-clean" $(SETUP_SCOPE_ARGS)
 
-setup-package-clean: ## Remove one extension from user Pi settings (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-team-workflows)
+setup-package-clean: ## Remove one extension from user Pi settings (PACKAGE=pi-agent-hub|pi-boost|pi-goal|pi-matrix|pi-ollama-models|pi-overview|pi-subagents|pi-team-workflows)
 	@test -n "$${PACKAGE:-}" || { echo "Usage: make setup-package-clean PACKAGE=<name>; see 'make help'"; exit 2; }
 	"$(ROOT_DIR)/scripts/setup-pi-clean" "$$PACKAGE"
 

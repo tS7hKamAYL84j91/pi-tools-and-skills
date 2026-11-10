@@ -5,7 +5,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { mkdirSync } from "node:fs";
-import { ok, fail, type ToolResult } from "../types.js";
+import { ok, fail, type ToolResult } from "../../../lib/tool-result.js";
 import {
 	buildArgList,
 	spawnChild,
@@ -47,9 +47,9 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			"Prefer 'brief' over 'task' — it enforces structure and auto-routes model/topology.",
 			"brief.classification: sequential (code, debug), parallelisable (research, scan), high-entropy-search, tool-heavy.",
 			"Sequential tasks: single agent always. Parallelisable: centralised-mas with WIP=3.",
-			"After spawn_agent, use rpc_send to give it a task (spawn only starts the process).",
-			"Or use agent_send once it registers in Agent Hub (takes 1–2 seconds).",
-			"Use agent_peek to monitor its activity log.",
+			"spawn_agent starts a supplied task/brief immediately; use rpc_send for idle workers or subsequent tasks.",
+			"When Agent Hub is also loaded, use agent_send for peer messaging and agent_peek for activity logs.",
+			"Without Agent Hub, use rpc_send and list_spawned to communicate and inspect output.",
 			"capsule: pass a compressed session handoff (objective, state, decisions, constraints, files) — context, not instructions; redacted and capped at 4,000 chars.",
 			"scope: 'task' (default) excludes the agent from workspace schedule delivery; 'workspace' opts in to receive workspace-level schedules per ADR-0008.",
 		],
@@ -145,6 +145,7 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 			if (params.sessionDir) mkdirSync(params.sessionDir, { recursive: true, mode: 0o700 });
 
 			const agentScope = params.scope ?? "task";
+			const parent = ctx.getParentIdentity();
 			const agent = spawnChild({
 				name: params.name,
 				cwd: agentCwd,
@@ -152,10 +153,10 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				model: params.model,
 				tempDir,
 				env: buildSpawnEnv(
-					ctx.registry.selfId,
-				params.name,
-				agentScope,
-					parentNamespaceAnchor(ctx.registry.getRecord()),
+					parent.id,
+					params.name,
+					agentScope,
+					parentNamespaceAnchor(parent),
 				),
 			});
 			if (!agent.pid) {
@@ -190,8 +191,8 @@ export function registerSpawnAgentTool(pi: ExtensionAPI, ctx: SpawnerContext): v
 				(taskPrompt
 					? `  task: ${taskPrompt.slice(0, 100)}${taskPrompt.length > 100 ? "…" : ""}\n`
 					: `  (idle — use rpc_send to give it a task)\n`) +
-				`\nAgent will register in Agent Hub within seconds.\n` +
-				`Use rpc_send for direct RPC commands, agent_send from any peer.`,
+				`\nUse rpc_send for direct RPC commands and list_spawned for output.\n` +
+				`When Agent Hub is also loaded in the child, it registers for peer messaging.`,
 				{
 					name: params.name,
 					pid: agent.pid,

@@ -4,7 +4,8 @@
  */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { createServer } from "node:net";
 import {
 	chmodSync,
 	mkdtempSync,
@@ -21,6 +22,7 @@ import { createNavigator } from "./pi-agents-pane-navigation.mjs";
 
 const useTermwright = process.argv.includes("--termwright");
 const load = process.argv.includes("--load") || useTermwright;
+const testMcp = process.argv.includes("--mcp");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const session = `pi-hub-acceptance-${randomUUID()}`;
 const dir = mkdtempSync(join(tmpdir(), "pi-hub-acceptance-"));
@@ -78,7 +80,7 @@ function visible(tabId) {
 async function until(check, label) {
 	const deadline = Date.now() + 10000;
 	while (Date.now() < deadline) {
-		const result = check();
+		const result = await check();
 		if (result) return result;
 		await delay(100);
 	}
@@ -94,9 +96,21 @@ function sendInput(paneId, text) {
 	);
 }
 
-let summary, terminal, attachment, attachmentExit;
+let summary, terminal, attachment, attachmentExit, mcpClient;
 try {
 	const version = run(["--version"]).trim();
+	let mcpConfig, mcpPort, mcpToken;
+	if (testMcp) {
+		const reserve = createServer();
+		await new Promise((ready) => reserve.listen(0, "127.0.0.1", ready));
+		mcpPort = reserve.address().port;
+		await new Promise((closed) => reserve.close(closed));
+		mcpToken = randomBytes(32).toString("hex");
+		mcpConfig = join(dir, "sidebar-mcp.json");
+		writeFileSync(mcpConfig, JSON.stringify({ port: mcpPort, bearerToken: mcpToken, maxPanes: 8 }), { mode: 0o600 });
+		// Fixture-only capability: test New strips even a server-inherited token.
+		env.HUB_SIDEBAR_TOKEN = mcpToken;
+	}
 	writeFileSync(join(dir, "config.kdl"), "session_serialization false\n");
 	const helper = join(dir, "fixture-agent.mjs");
 	writeFileSync(
@@ -116,7 +130,7 @@ save();setInterval(save,1000);
 	const fakePi = join(bin, "pi");
 	writeFileSync(
 		fakePi,
-		`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';\nconst name=process.argv[process.argv.indexOf('--name')+1];\nwriteFileSync(${JSON.stringify(join(dir, "new-agent.json"))},JSON.stringify({name,argv:process.argv.slice(2),namespace:process.env.PI_PANOPTICON_NAMESPACE,spawnName:process.env.PI_PANOPTICON_SPAWN_NAME,parent:process.env.PI_PANOPTICON_PARENT_ID??null,matrixDisabled:process.env.PI_MATRIX_DISABLED,cwd:process.cwd(),pane:process.env.ZELLIJ_PANE_ID}));\nconst start=Date.now(); const save=()=>writeFileSync(${JSON.stringify(join(registry, "gamma.json"))},JSON.stringify({id:'gamma',name,pid:process.pid,cwd:process.cwd(),startedAt:start,heartbeat:Date.now(),status:'waiting',namespace:process.env.PI_PANOPTICON_NAMESPACE,zellij:{sessionName:process.env.ZELLIJ_SESSION_NAME,paneId:Number(process.env.ZELLIJ_PANE_ID)}}));save();setInterval(save,1000);\n`,
+		`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';\nconst name=process.argv[process.argv.indexOf('--name')+1];\nwriteFileSync(${JSON.stringify(join(dir, "new-agent.json"))},JSON.stringify({name,argv:process.argv.slice(2),namespace:process.env.PI_PANOPTICON_NAMESPACE,spawnName:process.env.PI_PANOPTICON_SPAWN_NAME,parent:process.env.PI_PANOPTICON_PARENT_ID??null,matrixDisabled:process.env.PI_MATRIX_DISABLED,sidebarTokenPresent:'HUB_SIDEBAR_TOKEN' in process.env,cwd:process.cwd(),pane:process.env.ZELLIJ_PANE_ID}));\nconst start=Date.now(); const save=()=>writeFileSync(${JSON.stringify(registry)}+'/'+name+'.json',JSON.stringify({id:name,name,pid:process.pid,cwd:process.cwd(),startedAt:start,heartbeat:Date.now(),status:'waiting',namespace:process.env.PI_PANOPTICON_NAMESPACE,zellij:{sessionName:process.env.ZELLIJ_SESSION_NAME,paneId:Number(process.env.ZELLIJ_PANE_ID)}}));save();setInterval(save,1000);\n`,
 	);
 	chmodSync(fakePi, 0o755);
 	const node = JSON.stringify(process.execPath),
@@ -141,7 +155,7 @@ save();setInterval(save,1000);
 		join(dir, "layout.kdl"),
 		`layout {
  tab name="fixture" focus=true {
-  pane name="hub-view" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "agent-hub-pane/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"; }
+  pane name="hub-view" command=${node} cwd=${cwd} { args ${JSON.stringify(join(root, "agent-hub-pane/pi-agents-pane"))} "--scope" "fixture" "--registry" ${JSON.stringify(registry)} "--interval" "0.25"${testMcp ? ` "--mcp-config" ${JSON.stringify(mcpConfig)}` : ""}; }
   floating_panes {
    pane name="alpha" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "alpha"; width "60%"; height "60%"; x "30%"; y "20%"; }
    pane name="beta" command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "beta"; width "60%"; height "60%"; x "30%"; y "20%"; }
@@ -180,13 +194,12 @@ save();setInterval(save,1000);
 	// Focusing the tiled view hides the floating layer, without stopping its processes.
 	action("focus-pane-id", `terminal_${view.id}`);
 	await until(() => !visible(view.tab_id), "floating layer hidden");
-	await until(
-		() =>
-			action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(
-				"l:lead q:quit",
-			),
-		"interactive view ready",
-	);
+	await until(() => {
+		const screen = action("dump-screen", "--pane-id", `terminal_${view.id}`);
+		// The footer can render before either independent fixture has registered.
+		return screen.includes("l:lead q:quit") &&
+			screen.includes("W alpha │ waiting") && screen.includes("W beta │ waiting");
+	}, "interactive view and registered fixture rows ready");
 	const before = action("dump-screen", "--pane-id", `terminal_${view.id}`);
 	assert(
 		before.includes("W alpha │ waiting") &&
@@ -365,6 +378,7 @@ finally:
 	assert.equal(created.spawnName, "gamma");
 	assert.equal(created.parent, null);
 	assert.equal(created.matrixDisabled, "1");
+	assert.equal(created.sidebarTokenPresent, false);
 	assert.equal(created.cwd, dir);
 	const gamma = await until(
 		() => panes().find((p) => !p.is_plugin && p.title === "gamma"),
@@ -381,8 +395,98 @@ finally:
 			),
 		"new agent visible in Hub",
 	);
+	let mcpSummary;
+	if (testMcp) {
+		const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+		const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+		const endpoint = new URL(`http://127.0.0.1:${mcpPort}/mcp`);
+		assert.equal((await fetch(endpoint)).status, 401, "unauthenticated MCP request accepted");
+		mcpClient = new Client({ name: "isolated-sidebar-acceptance", version: "1" });
+		await mcpClient.connect(new StreamableHTTPClientTransport(endpoint, {
+			requestInit: { headers: { Authorization: `Bearer ${mcpToken}` } },
+		}));
+		assert.deepEqual((await mcpClient.listTools()).tools.map((tool) => tool.name).sort(),
+			["hub_close_agent", "hub_create_agent", "hub_list_agents", "hub_set_lead"]);
+		const call = (name, args = {}) => mcpClient.callTool({ name, arguments: args });
+		const listed = await call("hub_list_agents");
+		assert.equal(listed.structuredContent.status, "ok");
+		assert(listed.structuredContent.agents.some((agent) => agent.id === "alpha"));
+		assert(listed.structuredContent.agents.some((agent) => agent.id === "gamma"));
+		assert(!listed.structuredContent.agents.some((agent) => agent.id === "beta"));
+		const instance = listed.structuredContent.instance_id;
+		const request = (id, extra) => ({ instance_id: instance, request_id: id, ...extra });
+		assert.equal((await call("hub_set_lead", request("lead", { agent_id: "gamma" }))).structuredContent.status, "ok");
+		await until(() => action("dump-screen", "--pane-id", `terminal_${view.id}`).includes("lead: gamma"), "MCP local lead reflected in sidebar");
+
+		// A real terminal with the same namespace/cwd but another tab is not a target.
+		const foreignLayout = join(dir, "foreign.kdl");
+		writeFileSync(foreignLayout, `layout {
+ tab name="foreign" {
+  pane command=${node} cwd=${cwd} { args ${JSON.stringify(helper)} "foreign"; }
+ }
+}\n`);
+		action("new-tab", "--layout", foreignLayout);
+		const foreign = await until(() => {
+			try { return JSON.parse(readFileSync(join(registry, "foreign.json"), "utf8")); }
+			catch { return null; }
+		}, "foreign-tab fixture registered");
+		assert.notEqual(panes().find((pane) => !pane.is_plugin && pane.id === foreign.zellij.paneId)?.tab_id, view.tab_id);
+		assert(!(await call("hub_list_agents")).structuredContent.agents.some((agent) => agent.id === "foreign"));
+		assert.equal((await call("hub_set_lead", request("foreign-lead", { agent_id: "foreign" }))).isError, true);
+		assert.equal((await call("hub_close_agent", request("foreign-close", { agent_id: "foreign" }))).isError, true);
+
+		// CLI focus flags are per tab; explicitly focus a floating agent so the
+		// sidebar does not own keyboard input, then exercise delegated New.
+		action("focus-pane-id", `terminal_${alpha.id}`);
+		await until(() => visible(view.tab_id) && panes().find((pane) => !pane.is_plugin && pane.id === alpha.id)?.is_focused, "sidebar unfocused before MCP create");
+		assert.equal((await navigator.inspect())?.own.is_focused, false);
+		const createRequest = request("new", { name: "delta" });
+		const launched = await call("hub_create_agent", createRequest);
+		assert.equal(launched.structuredContent.status, "pane_created");
+		assert.equal(launched.structuredContent.registration, "not_yet_verified");
+		assert.deepEqual(await call("hub_create_agent", createRequest), launched, "identical request replayed creation");
+		assert.equal((await call("hub_create_agent", { ...createRequest, name: "epsilon" })).isError, true);
+		const delta = await until(() => panes().find((pane) => !pane.is_plugin && pane.title === "delta" && !pane.exited), "MCP-created real floating pane");
+		assert.equal(delta.tab_id, view.tab_id);
+		assert.equal(delta.is_floating, true);
+		assert.equal(panes().filter((pane) => !pane.is_plugin && pane.title === "delta").length, 1);
+		const deltaLaunch = JSON.parse(readFileSync(join(dir, "new-agent.json"), "utf8"));
+		assert.equal(deltaLaunch.name, "delta");
+		assert.deepEqual(deltaLaunch.argv, ["--name", "delta"]);
+		assert.equal(deltaLaunch.parent, null);
+		assert.equal(deltaLaunch.namespace, "fixture");
+		assert.equal(deltaLaunch.sidebarTokenPresent, false);
+		assert.equal(deltaLaunch.matrixDisabled, "1");
+		await until(async () => (await call("hub_list_agents")).structuredContent.agents?.some((agent) => agent.id === "delta"), "MCP observes live registration after pane receipt");
+		assert.equal((await call("hub_create_agent", { ...createRequest, instance_id: randomUUID(), request_id: "old-owner" })).isError, true);
+
+		const closeRequest = await call("hub_close_agent", request("close", { agent_id: "gamma" }));
+		assert.equal(closeRequest.structuredContent.status, "confirmation_required");
+		assert(panes().some((pane) => !pane.is_plugin && pane.id === gamma.id && !pane.exited), "MCP closed without human approval");
+		action("focus-pane-id", `terminal_${view.id}`);
+		await until(() => !visible(view.tab_id), "return to sidebar for human close");
+		sendInput(view.id, "c");
+		await until(() => action("dump-screen", "--pane-id", `terminal_${view.id}`).includes(`Close #${gamma.id} [W] Y/n`), "MCP target uses existing close prompt");
+		sendInput(view.id, "y");
+		await until(() => !panes().some((pane) => !pane.is_plugin && pane.id === gamma.id), "MCP-requested close completed after human confirmation");
+		await until(async () => (await call("hub_list_agents")).structuredContent.status === "ok", "shared operation slot released after close receipt");
+		await mcpClient.close();
+		mcpClient = undefined;
+		assert(panes().some((pane) => !pane.is_plugin && pane.id === delta.id && !pane.exited), "created agent died with MCP client");
+		sendInput(view.id, "q");
+		await until(async () => {
+			try { await fetch(endpoint, { signal: AbortSignal.timeout(1000) }); return false; }
+			catch { return true; }
+		}, "MCP listener stopped with sidebar");
+		assert(panes().some((pane) => !pane.is_plugin && pane.id === delta.id && !pane.exited), "created agent died with sidebar");
+		mcpSummary = { authentication: "required", create: "same-tab standing pane and live registration verified with real Zellij",
+			retries: "one pane for identical retries; mismatches and stale instances refused", scope: "other-tab targets refused",
+			close: "MCP requested; separate human c/y required", lead: "shared local designation reflected in sidebar",
+			credentials: "tab capability stripped from created process", lifetime: "agent survives client and sidebar exit; listener stops" };
+	}
 	summary = {
 		...(performance ? { performance } : {}),
+		...(mcpSummary ? { mcp: mcpSummary } : {}),
 		create:
 			"named fixture Pi started floating in same tab, without model override",
 		close: "hidden beta closed after confirmation; hub and alpha survive",
@@ -401,6 +505,7 @@ finally:
 	}
 	throw error;
 } finally {
+	await mcpClient?.close().catch(() => undefined);
 	// Unique generated session only; no kill-all, no existing-session operations.
 	try {
 		run(["kill-session", session]);

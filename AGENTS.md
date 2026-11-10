@@ -17,8 +17,11 @@ someone use or maintain the result, not to satisfy a workflow.
 Do not load or manage Kanban from project agents. Gravitas owns the optional
 human-facing oversight view. Do not duplicate project state or transcripts.
 
-Retained extensions include Agent Hub, Team Workflows, Goal, Ollama Models,
-Boost, Matrix, File Watch, Automations scheduling, and Gravitas's Kanban view.
+Retained extensions include Agent Hub, Subagents, Team Workflows, Goal, Ollama
+Models, Boost, Matrix, File Watch, Automations scheduling, and Gravitas's Kanban
+view. Agent Hub owns peer messaging; Subagents owns local RPC children. The Hub
+sidebar owns independent standing-pane operations shared by keyboard and optional
+MCP; tab capabilities and live enablement require explicit operator provisioning.
 Retire only when retained behavior is verified. Do not change live configuration as part of
 a code change without approval.
 

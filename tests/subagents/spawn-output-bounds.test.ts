@@ -2,7 +2,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { spawnChild } from "../../extensions/pi-agent-hub/spawner/spawn-service.js";
+import { spawnChild } from "../../extensions/pi-subagents/spawner/spawn-service.js";
 
 const mock = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: mock.spawn }));

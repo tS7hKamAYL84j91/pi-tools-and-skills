@@ -55,6 +55,14 @@ function createFakeContext(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+function createProblemContext() {
+	return createFakeContext({
+		sessionManager: {
+			getBranch: () => [{ type: "message", message: { role: "user", content: "existing problem" } }],
+		},
+	});
+}
+
 function createFakePi() {
 	const handlers = new Map<string, Handler>();
 	let command: CommandHandler | undefined;
@@ -140,28 +148,46 @@ describe("boost in-session model lease", () => {
 		await command()("again", ctx);
 		expect(setModel).toHaveBeenCalledTimes(1);
 		expect(setModel).toHaveBeenLastCalledWith(BOOST_MODEL);
+		await command()("status", ctx);
+		expect(lastNotify(ctx)).toContain("1/3 used");
 
 		await settled()({}, ctx);
 		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
 	});
 
-	it("denies after three yields and allows reset", async () => {
+	it("bounds omitted-prompt boosts by the lease budget and allows reset", async () => {
 		const { pi, settled, command } = createFakePi();
 		createBoostExtension()(pi);
-		const ctx = createFakeContext();
+		const ctx = createProblemContext();
 
 		for (let index = 0; index < 3; index++) {
-			await command()(`run ${index}`, ctx);
+			await command()("challenge", ctx);
 			await settled()({}, ctx);
 		}
-		await command()("run 4", ctx);
-		const denied = lastNotify(ctx);
-		expect(denied).toContain("lease exhausted");
+		await command()("plan", ctx);
+		expect(lastNotify(ctx)).toContain("lease exhausted");
 
 		await command()("reset", ctx);
 		expect(await lastStatus(ctx)).toContain("3 left");
-		await command()("run 5", ctx);
+		await command()("challenge", ctx);
 		expect(await lastStatus(ctx)).toContain("active");
+	});
+
+	it.each(["new task", "plan new task", "challenge new task"])("renews an unexpired exhausted lease for explicit prompt: %s", async (prompt) => {
+		const { pi, settled, sendUserMessage, command } = createFakePi();
+		createBoostExtension()(pi);
+		const ctx = createProblemContext();
+		for (let index = 0; index < 3; index++) {
+			await command()("challenge", ctx);
+			await settled()({}, ctx);
+		}
+		expect(await lastStatus(ctx)).toContain("0 left");
+
+		await command()(prompt, ctx);
+		expect(sendUserMessage).toHaveBeenCalledTimes(4);
+		expect(await lastStatus(ctx)).toContain("active · 2 left");
+		await command()("status", ctx);
+		expect(lastNotify(ctx)).toContain("1/3 used");
 	});
 
 	it("blocks after restore failure and reset retries restore only", async () => {
@@ -182,6 +208,8 @@ describe("boost in-session model lease", () => {
 		await command()("run again", ctx);
 		const blocked = lastNotify(ctx);
 		expect(blocked).toContain("blocked");
+		await command()("status", ctx);
+		expect(lastNotify(ctx)).toContain("1/3 used");
 
 		await command()("reset", ctx);
 		expect(setModel).toHaveBeenLastCalledWith(BASELINE);
@@ -223,6 +251,30 @@ describe("boost in-session model lease", () => {
 		expect(await lastStatus(ctx)).toContain("3 left");
 	});
 
+	it.each(["unavailable", "unauthenticated"])("keeps the previous lease when the new prompt's model is %s", async (failure) => {
+		vi.useFakeTimers();
+		try {
+			const { pi, setModel, settled, command } = createFakePi();
+			createBoostExtension()(pi);
+			const ctx = createProblemContext();
+			for (let index = 0; index < 2; index++) {
+				await command()("challenge", ctx);
+				await settled()({}, ctx);
+			}
+			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
+			if (failure === "unavailable") ctx.modelRegistry.getAvailable = () => [];
+			else setModel.mockResolvedValueOnce(false);
+
+			await command()("new task", ctx);
+			expect(lastNotify(ctx)).toContain("Boost denied");
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).toContain("2/3 used");
+			vi.setSystemTime(Date.now() + 1);
+			await command()("status", ctx);
+			expect(lastNotify(ctx)).toContain("expired");
+		} finally { vi.useRealTimers(); }
+	});
+
 	it("delivers with followUp when the agent is streaming", async () => {
 		const { pi, sendUserMessage, command } = createFakePi();
 		createBoostExtension()(pi);
@@ -235,7 +287,7 @@ describe("boost in-session model lease", () => {
 		);
 	});
 
-	it("restarts the TTL on each accepted prompt without clearing yields", async () => {
+	it("restarts the TTL and yield budget on each accepted explicit prompt", async () => {
 		vi.useFakeTimers();
 		try {
 			const { pi, settled, command } = createFakePi();
@@ -249,7 +301,7 @@ describe("boost in-session model lease", () => {
 			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
 			await command()("status", ctx);
 			expect(lastNotify(ctx)).not.toContain("expired");
-			expect(lastNotify(ctx)).toContain("2/3 used");
+			expect(lastNotify(ctx)).toContain("1/3 used");
 			vi.setSystemTime(Date.now() + 1);
 			await command()("status", ctx);
 			expect(lastNotify(ctx)).toContain("expired");
@@ -277,7 +329,7 @@ describe("boost in-session model lease", () => {
 			expect(await lastStatus(ctx)).toContain("2 left");
 			await settled()({}, ctx);
 			await command()("run 3", ctx);
-			expect(await lastStatus(ctx)).toContain("1 left");
+			expect(await lastStatus(ctx)).toContain("2 left");
 		} finally {
 			vi.useRealTimers();
 		}
@@ -288,9 +340,9 @@ describe("boost in-session model lease", () => {
 		try {
 			const { pi, settled, command } = createFakePi();
 			createBoostExtension()(pi);
-			const ctx = createFakeContext();
+			const ctx = createProblemContext();
 			for (let index = 0; index < 3; index++) {
-				await command()("run", ctx);
+				await command()("challenge", ctx);
 				await settled()({}, ctx);
 			}
 			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS);
@@ -455,15 +507,15 @@ describe("boost in-session model lease", () => {
 		try {
 			const { pi, settled, command } = createFakePi();
 			createBoostExtension()(pi);
-			const ctx = createFakeContext();
+			const ctx = createProblemContext();
 			for (let index = 0; index < 3; index++) {
-				await command()("run", ctx);
+				await command()("challenge", ctx);
 				await settled()({}, ctx);
 			}
 			expect(await lastStatus(ctx)).toContain("0 left");
 
 			vi.setSystemTime(Date.now() + BOOST_LEASE_TTL_MS - 1);
-			await command()("denied", ctx);
+			await command()("plan", ctx);
 			expect(lastNotify(ctx)).toContain("lease exhausted");
 			vi.setSystemTime(Date.now() + 1);
 			await command()("status", ctx);
@@ -473,21 +525,25 @@ describe("boost in-session model lease", () => {
 		}
 	});
 
-	it("restores the previous TTL when a dispatch fails", async () => {
+	it("restores the previous TTL and yield budget when a new-prompt dispatch fails", async () => {
 		vi.useFakeTimers();
 		try {
 			const { pi, settled, sendUserMessage, command } = createFakePi();
 			createBoostExtension()(pi);
-			const ctx = createFakeContext();
+			const ctx = createProblemContext();
 
 			await command()("first", ctx);
 			await settled()({}, ctx);
+			await command()("challenge", ctx);
+			await settled()({}, ctx);
+			expect(await lastStatus(ctx)).toContain("1 left");
 			vi.setSystemTime(Date.now() + 5 * 60_000);
 			sendUserMessage.mockImplementationOnce(() => {
 				throw new Error("send boom");
 			});
 			await command()("second", ctx);
 			expect(lastNotify(ctx)).toContain("Boost failed to dispatch");
+			expect(await lastStatus(ctx)).toContain("1 left");
 
 			// The refund rolls the TTL back, so the lease still expires on the
 			// original clock rather than 5 minutes later.

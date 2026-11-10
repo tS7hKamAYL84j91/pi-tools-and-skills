@@ -4,6 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
+import { BEFORE_AGENT_CHANNEL_SHUTDOWN, type AgentChannelShutdown } from "../../lib/agent-shutdown.js";
 import { resumeAgentApproval } from "../../lib/automations-approval-inbox.js";
 import { resolveAutomationsConfig } from "../../lib/automations-config.js";
 import type { AutomationsConfig } from "../../lib/automations-types.js";
@@ -20,9 +21,7 @@ import { getSelfName } from "./registry/peers.js";
 import { setupReconciler } from "./registry/reconciler.js";
 import Registry from "./registry/registry.js";
 import { OperationalStateStore } from "./registry/state.js";
-import { stopPeerAgent } from "./spawner/agent-stop.js";
-import { setupMissingDoneNotice } from "./spawner/missing-done-notice.js";
-import { setupSpawner } from "./spawner/spawner.js";
+import { stopPeerAgent } from "./registry/agent-stop.js";
 import type {
 	AgentMessageSender,
 	AgentStopper,
@@ -68,7 +67,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 		broadcast: maildir,
 		onMessage: (text) => reconciler.handleInboundMessage(text),
 	})(pi, registry);
-	const spawner = setupSpawner(pi, registry);
 	setupPeek(pi, registry, listMode);
 	setupHealth(pi, registry, listMode);
 	const ui = setupUI(pi, {
@@ -82,8 +80,6 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	});
 
 	// ── Lifecycle: start ────────────────────────────────────────
-
-	setupMissingDoneNotice(pi, spawner);
 
 	pi.on("session_start", async (event, ctx) => {
 		await externalPeers.refresh(ctx.cwd);
@@ -126,7 +122,10 @@ function setupPanopticon(pi: ExtensionAPI): void {
 	// ── Lifecycle: shutdown ─────────────────────────────────────
 
 	pi.on("session_shutdown", async () => {
-		await spawner.shutdownAll();
+		const pending: Promise<void>[] = [];
+		const shutdown: AgentChannelShutdown = { waitUntil: (work) => { pending.push(work); } };
+		pi.events.emit(BEFORE_AGENT_CHANNEL_SHUTDOWN, shutdown);
+		await Promise.all(pending);
 		reconciler.stop();
 		messaging.drainAll();
 		messaging.dispose();

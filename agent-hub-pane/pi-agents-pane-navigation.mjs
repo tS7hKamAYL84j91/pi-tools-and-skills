@@ -179,9 +179,16 @@ export function createNavigator(identity, run = runZellij) {
 			return null;
 		}
 	};
-	const validate = (row, rows, context, now) => {
-		if (!context || context.own.is_focused !== true)
-			return "navigation unavailable";
+	const validate = (row, rows, context, now, options = {}) => {
+		// Delegation is a capability held by this sidebar, never a tool-supplied tab.
+		if (!context) return "navigation unavailable";
+		const own = context.own;
+		if (options.tabId !== undefined) {
+			if (!Number.isSafeInteger(options.tabId) || options.tabId < 0 ||
+				own.tab_id !== options.tabId || own.exited === true ||
+				own.is_selectable === false || own.is_suppressed === true)
+				return "navigation unavailable";
+		} else if (own.is_focused !== true) return "navigation unavailable";
 		const nav = row?.navigation;
 		const hint = nav?.zellij;
 		if (nav?.parentId) return "subagent · no terminal";
@@ -288,14 +295,14 @@ export function createNavigator(identity, run = runZellij) {
 			fresh.rows.some((row) => row.name.toLowerCase() === name.toLowerCase())
 		)
 			return "Name already in use";
-		const error = validate(fresh.row, fresh.rows, context, Date.now());
+		const error = validate(fresh.row, fresh.rows, context, Date.now(), options);
 		if (error) return error;
-		if (!context || context.own.is_focused !== true)
-			return "navigation unavailable";
+		const limit = options.paneLimit ?? 32;
+		if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) return "Invalid tab pane limit";
 		if (
 			context.panes.filter(
 				(p) => p?.tab_id === context.own.tab_id && p.is_plugin === false,
-			).length >= 32
+			).length >= limit
 		)
 			return "Tab pane limit reached";
 		const cwd = fresh.row.navigation.cwd;
@@ -325,6 +332,8 @@ export function createNavigator(identity, run = runZellij) {
 				"-u",
 				"MATRIX_RECOVERY_PASSPHRASE",
 				"-u",
+				"HUB_SIDEBAR_TOKEN",
+				"-u",
 				"PI_PANOPTICON_PARENT_ID",
 				"-u",
 				"PI_CODING_AGENT_SESSION_DIR",
@@ -343,7 +352,7 @@ export function createNavigator(identity, run = runZellij) {
 			);
 			return created?.length === 1 &&
 				created[0].tab_id === context.own.tab_id &&
-				created[0].is_floating === true
+				created[0].is_floating === true && created[0].exited !== true
 				? null
 				: "Agent launch uncertain; check panes";
 		} catch {
@@ -353,6 +362,7 @@ export function createNavigator(identity, run = runZellij) {
 	return {
 		inspect,
 		create,
+		check: validate,
 		focus: (row, rows, now, options) => act(row, rows, "focus", now, options),
 		close: (row, rows, now, options) => act(row, rows, "close", now, options),
 	};

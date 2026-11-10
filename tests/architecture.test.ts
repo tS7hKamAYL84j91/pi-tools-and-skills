@@ -19,3 +19,4 @@ import "./architecture/clean-architecture.js";
 import "./architecture/adr047-shared-discovery.js";
 import "./architecture/adr051-goal-session-isolation.js";
 import "./architecture/pi-team-workflows-public-boundary.js";
+import "./architecture/subagents-boundary.js";

@@ -25,7 +25,7 @@ Removes pi-tools-and-skills package and legacy direct registrations. Without
 
 With package-name, removes one user-installable extension package registration
 (pi-agent-hub, pi-boost, pi-goal, pi-matrix, pi-ollama-models, pi-overview,
-pi-team-workflows).
+pi-subagents, pi-team-workflows).
 Runtime cleanup belongs in the workspace or infrastructure repo that uses it.
 HELP
 }

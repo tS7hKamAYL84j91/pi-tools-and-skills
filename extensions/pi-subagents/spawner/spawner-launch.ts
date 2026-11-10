@@ -1,7 +1,4 @@
-/**
- * Spawner launch helpers — isolated from tool registration to keep the
- * spawner-tools module within its line budget.
- */
+/** Child launch arguments, environment, and temporary system-prompt files. */
 
 import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

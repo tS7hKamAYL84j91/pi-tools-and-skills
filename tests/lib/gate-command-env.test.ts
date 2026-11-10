@@ -18,6 +18,7 @@ const STRIPPED_KEYS = [
 	"MATRIX_ACCESS_TOKEN",
 	"MATRIX_BOT_PASSWORD",
 	"MATRIX_RECOVERY_PASSPHRASE",
+	"HUB_SIDEBAR_TOKEN",
 ] as const;
 
 function fakeChild() {

@@ -156,7 +156,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					return;
 				}
 
-				// — Boost modes: challenge (default) or plan; first word selects the mode —
+				// Plain prompts are verbatim; plan/challenge opt into framing.
 				const { mode, prompt } = parseBoostMode(rest);
 				const resolvedPrompt = prompt || (await recentUserProblem(ctx)) || "";
 				if (!resolvedPrompt) {
@@ -186,9 +186,11 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				const maxYields = await resolveMaxYields();
-				if (lease.yieldsUsed >= maxYields) {
+				// An explicit human prompt grants a fresh lease; context-only modes
+				// continue spending the existing budget.
+				if (!prompt && lease.yieldsUsed >= maxYields) {
 					ctx.ui.notify(
-						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Run /boost reset to start a new lease.`,
+						`Boost denied: lease exhausted (${lease.yieldsUsed}/${maxYields} yields used). Supply /boost <prompt> or run /boost reset to start a new lease.`,
 						"warning",
 					);
 					return;
@@ -221,8 +223,9 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 				}
 
 				const previousStartedAtMs = lease.startedAtMs;
+				const previousYieldsUsed = lease.yieldsUsed;
 				lease.startedAtMs = Date.now();
-				lease.yieldsUsed++;
+				lease.yieldsUsed = prompt ? 1 : lease.yieldsUsed + 1;
 				await updateStatus(ctx, lease);
 
 				const message = formatBoostMessage(mode, resolvedPrompt);
@@ -235,7 +238,7 @@ export function createBoostExtension(): (pi: ExtensionAPI) => void {
 					}
 				} catch (error) {
 					// Failed dispatch consumes no yield; restore immediately (ADR-057 §3).
-					lease.yieldsUsed = Math.max(0, lease.yieldsUsed - 1);
+					lease.yieldsUsed = previousYieldsUsed;
 					lease.startedAtMs = previousStartedAtMs;
 					try {
 						await restoreBaseline();

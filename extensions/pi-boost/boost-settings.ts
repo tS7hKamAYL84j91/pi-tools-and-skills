@@ -49,7 +49,7 @@ export async function resolveBoostModel(): Promise<string | undefined> {
 		: undefined;
 }
 
-/** Get the max yields before reset is required (hard cap 3, ADR-057). */
+/** Yield budget per lease; explicit prompts renew it (hard cap 3). */
 export async function resolveMaxYields(): Promise<number> {
 	const maxYields = boostBlock(await readSettings()).maxYields;
 	return typeof maxYields === "number" && Number.isInteger(maxYields)

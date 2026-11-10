@@ -40,7 +40,7 @@ export async function openBoostSettingsOverlay(ctx: ExtensionContext): Promise<v
 				label: "Max Yields",
 				currentValue: String(maxYields),
 				values: ["1", "2", "3"],
-				description: "Maximum boost turns per lease (hard cap 3). Expired leases renew on /boost.",
+				description: "Maximum boost turns per lease (hard cap 3). An explicit prompt starts a fresh lease.",
 			},
 			{
 				id: "leaseMinutes",

@@ -71,7 +71,7 @@ There is no separate enduring `deleted` state. Closing means the agent pane/proc
   paths into presentation snapshots. Private directories are not a same-user
   authentication boundary.
 - New uses fixed argv and the existing child environment scrub: known Matrix
-  credentials, parent ID and inherited session-directory binding removed;
+  credentials, `HUB_SIDEBAR_TOKEN`, parent ID and inherited session-directory binding removed;
   `PI_MATRIX_DISABLED=1`; explicit namespace/name; no model override or model call
   during tests. Name availability is checked against complete canonical state.
 

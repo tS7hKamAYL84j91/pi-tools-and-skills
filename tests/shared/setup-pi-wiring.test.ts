@@ -38,6 +38,7 @@ const SETUP_PI_CLEAN_SCRIPT = join(process.cwd(), "scripts", "setup-pi-clean");
 const SHIPPED_EXTENSIONS_DIR = join(process.cwd(), "extensions");
 const GLOBAL_EXTENSION_ALLOWLIST = [
 	"extensions/pi-agent-hub/**",
+	"extensions/pi-subagents/**",
 	"extensions/pi-goal/**",
 ];
 
@@ -157,6 +158,12 @@ describeIfPython("setup-pi package wiring", () => {
 		expect(settings.packages).toEqual([{ source: join(packageDir, "extensions", "pi-matrix") }]);
 	});
 
+	it("registers standalone pi-subagents without Agent Hub", () => {
+		runSettingsHelper("register-package", "pi-subagents");
+
+		expect(readSettings().packages).toEqual([{ source: join(packageDir, "extensions", "pi-subagents") }]);
+	});
+
 	it("registers standalone pi-team-workflows independently", () => {
 		runSettingsHelper("register-package", "pi-team-workflows");
 
@@ -204,6 +211,7 @@ describeIfPython("setup-pi package wiring", () => {
 				{
 					extensions: [
 						join(extensionsDir, "pi-agent-hub"),
+						join(extensionsDir, "pi-subagents"),
 						join(extensionsDir, "pi-team-workflows"),
 						join(extensionsDir, "pi-kanban"),
 						join(extensionsDir, "pi-automations"),

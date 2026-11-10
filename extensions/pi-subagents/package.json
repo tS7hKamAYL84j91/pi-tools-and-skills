@@ -1,0 +1,19 @@
+{
+	"name": "@solo-visual/pi-subagents",
+	"version": "1.2.0",
+	"description": "Persistent local RPC subagents for Pi, independent of peer messaging",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tS7hKamAYL84j91/pi-tools-and-skills.git",
+		"directory": "extensions/pi-subagents"
+	},
+	"keywords": ["pi-package"],
+	"publishConfig": { "access": "public" },
+	"pi": { "extensions": ["./index.ts"] },
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"engines": { "node": ">=22.19" }
+}

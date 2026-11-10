@@ -3,15 +3,14 @@
  *
  * Spawns pi agents in --mode rpc, giving us:
  * 1. Bidirectional stdin/stdout JSON protocol (prompt, steer, abort, get_state)
- * 2. Global extensions inherited (agent hub → IPC from any agent)
+ * 2. Global extensions inherited (optional Agent Hub peer messaging)
  * 3. Agent stays alive — send multiple tasks without respawning
- * 4. Two communication channels:
- *    - RPC stdin  (from parent, structured commands)
- *    - Maildir    (from any peer, via agent_send)
+ * 4. RPC stdin from the owning parent; optional peer messaging is provided
+ *    separately by Agent Hub, never initialized here.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Registry } from "../types.js";
+import type { AgentIdentity } from "../../../lib/agent-identity.js";
 import {
 	gracefulKill,
 	type SpawnedAgent,
@@ -39,7 +38,7 @@ interface SpawnerModule {
 
 // ── Extension entry ─────────────────────────────────────────────
 
-export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModule {
+export function setupSpawner(pi: ExtensionAPI, getParentIdentity: () => AgentIdentity): SpawnerModule {
 	const agents = new Map<string, SpawnedAgent>();
 	const signalledAgents = new Set<string>();
 	const missingDoneListeners = new Set<MissingDoneCallback>();
@@ -55,7 +54,7 @@ export function setupSpawner(pi: ExtensionAPI, registry: Registry): SpawnerModul
 
 	const ctx: SpawnerContext = {
 		agents,
-		registry,
+		getParentIdentity,
 		onAgentExit,
 	};
 

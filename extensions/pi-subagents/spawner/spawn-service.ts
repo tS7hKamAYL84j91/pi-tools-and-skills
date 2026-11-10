@@ -146,10 +146,10 @@ export async function gracefulKill(
 
 /**
  * Child environment: the caller's env (or the parent process env) minus the
- * Matrix credential keys. A fresh object — the parent's process.env and any
+ * named Matrix credential and sidebar-capability keys. A fresh object — the parent's process.env and any
  * caller-owned env object are never mutated. Not an OS boundary between
  * same-UID processes; it only stops the spawner from gratuitously handing a
- * suppressed helper a Matrix credential.
+ * suppressed helper a Matrix credential or autonomous tab-control capability.
  */
 function childEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
 	return stripChildCredentials(env ?? process.env);

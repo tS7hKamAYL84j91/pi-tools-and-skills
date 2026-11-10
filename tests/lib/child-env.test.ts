@@ -17,6 +17,7 @@ const STRIPPED_KEYS = [
 	"MATRIX_ACCESS_TOKEN",
 	"MATRIX_BOT_PASSWORD",
 	"MATRIX_RECOVERY_PASSPHRASE",
+	"HUB_SIDEBAR_TOKEN",
 ] as const;
 
 describe("stripChildCredentials", () => {
@@ -37,7 +38,7 @@ describe("stripChildCredentials", () => {
 		}
 	});
 
-	it("pins the credential key list to exactly the three Matrix names", () => {
+	it("pins the credential key list to Matrix names and the sidebar capability", () => {
 		expect([...CHILD_CREDENTIAL_ENV_KEYS]).toEqual([...STRIPPED_KEYS]);
 	});
 
@@ -50,6 +51,7 @@ describe("stripChildCredentials", () => {
 			MATRIX_ACCESS_TOKEN: DUMMY_TOKEN,
 			MATRIX_BOT_PASSWORD: DUMMY_PASSWORD,
 			MATRIX_RECOVERY_PASSPHRASE: DUMMY_RECOVERY,
+			HUB_SIDEBAR_TOKEN: "fixture-sidebar-capability",
 		};
 		const child = stripChildCredentials(source);
 		for (const key of STRIPPED_KEYS) expect(child[key]).toBeUndefined();
@@ -60,6 +62,7 @@ describe("stripChildCredentials", () => {
 		// The caller-owned source object is not mutated.
 		expect(source.MATRIX_ACCESS_TOKEN).toBe(DUMMY_TOKEN);
 		expect(source.MATRIX_BOT_PASSWORD).toBe(DUMMY_PASSWORD);
+		expect(source.HUB_SIDEBAR_TOKEN).toBe("fixture-sidebar-capability");
 	});
 
 	it("strips credentials inherited from the real process env without mutating it", () => {

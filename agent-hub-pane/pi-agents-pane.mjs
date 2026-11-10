@@ -11,6 +11,7 @@ import {
 	readSync,
 	readFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -509,7 +510,7 @@ export function render(
 }
 
 const USAGE =
-	"pi-agents-pane --scope <lead> [--registry <dir>] [--interval <seconds>] [--once] [--json] [--no-color]\n" +
+	"pi-agents-pane --scope <lead> [--registry <dir>] [--interval <seconds>] [--once] [--json] [--no-color] [--mcp-config <private-json>]\n" +
 	"Refresh cadence: --interval beats PI_AGENTS_PANE_INTERVAL (0.25–3600), which beats the 2 s default.\n" +
 	"PI_AGENTS_PANE_STARTUP_DELAY: pause automatic redraws initially (default 20 s, range 0–3600; 0 disables).\n";
 
@@ -550,7 +551,7 @@ export function parseArgs(args) {
 			options.once = true;
 		} else if (arg === "--no-color") {
 			options.noColor = true;
-		} else if (["--scope", "--registry", "--interval"].includes(arg)) {
+		} else if (["--scope", "--registry", "--interval", "--mcp-config"].includes(arg)) {
 			const value = args[++i];
 			if (!value || value.startsWith("--"))
 				throw new Error("missing option value");
@@ -568,6 +569,7 @@ export function parseArgs(args) {
 		options.interval > 3600
 	)
 		throw new Error("interval must be 0.25–3600 seconds");
+	if (options.once && options["mcp-config"]) throw new Error("MCP requires an interactive sidebar");
 	return options;
 }
 
@@ -644,6 +646,10 @@ export function main(args = process.argv.slice(2)) {
 		// modal arming revalidates identity and focus before using the live pane.
 		context = identity ? { own: { id: identity.paneId, is_focused: false } } : null;
 	let lastFrame, lastWidth, lastHeight;
+	let mcp, paneLimit = 32, mutationsInhibited = false;
+	const actionView = () => designateLead(
+		snapshot(options.registry, options.scope, undefined, true), chosenLeadId,
+	);
 	const setMouse = (active) => {
 		if (active === mouse || !input || outputBroken) return;
 		mouse = active;
@@ -737,7 +743,7 @@ export function main(args = process.argv.slice(2)) {
 	// Re-read registry authority after metadata awaits, never dispatch from an old
 	// row, confirmation, or duplicate-claim snapshot captured before the query.
 	const refreshTarget = (original, guard = () => true) => {
-		const fresh = designateLead(snapshot(options.registry, options.scope, undefined, true), chosenLeadId);
+		const fresh = actionView();
 		const row = fresh.records?.find((item) => item.id === original.id);
 		if (!row || row.pid !== original.pid ||
 			row.navigation?.startedAt !== original.navigation?.startedAt ||
@@ -747,10 +753,39 @@ export function main(args = process.argv.slice(2)) {
 			!guard(row, fresh)) return null;
 		return { row, rows: fresh.records };
 	};
-	const operate = async (work) => {
-		if (operation || stopped) return;
+	const launchAgent = async (name, operationOptions, request) => {
+		const fresh = actionView();
+		const lead = fresh.leadState === "resolved" ? fresh.records?.[0] : undefined;
+		if (!lead || fresh.skipped || fresh.truncated || !nameAvailable(options.registry, name))
+			return "Create cancelled: lead or name unavailable";
+		if (request && (
+			Date.now() > request.expires || lead.id !== request.leadId || lead.pid !== request.pid ||
+			lead.navigation?.startedAt !== request.startedAt || JSON.stringify(lead.navigation?.zellij) !== request.pane
+		)) return "Create cancelled: state changed";
+		return navigator.create(name, options.scope.toLowerCase(), lead, fresh.records ?? [], {
+			...operationOptions,
+			paneLimit,
+			refresh: () => refreshTarget(lead, (_row, latest) => !latest.skipped && !latest.truncated &&
+				(!request || Date.now() <= request.expires) && latest.leadState === "resolved" &&
+				latest.records[0]?.id === lead.id && nameAvailable(options.registry, name)),
+		});
+	};
+	const chooseLead = (row) => {
+		chosenLeadId = row.id;
+		notice = `lead: ${row.name}`;
+	};
+	const operate = async (work, mutation = false, signal) => {
+		if (operation || stopped) return { status: "refused", reason: "Sidebar busy or stopped" };
+		if (mutation && mutationsInhibited) {
+			notice = "Uncertain mutation; inspect panes before recovery";
+			draw();
+			return { status: "refused", reason: notice };
+		}
 		const ticket = { controller: new AbortController(), dispatched: false };
 		operation = ticket;
+		const cancel = () => { if (!ticket.dispatched) ticket.controller.abort(); };
+		signal?.addEventListener("abort", cancel, { once: true });
+		if (signal?.aborted) cancel();
 		focusGeneration++;
 		const current = () => !stopped && operation === ticket && !ticket.controller.signal.aborted;
 		notice = "Checking pane; n cancels";
@@ -761,12 +796,22 @@ export function main(args = process.argv.slice(2)) {
 			// Never promote that older snapshot into action authorization.
 			const background = inspection;
 			if (background) await background.promise;
-			if (!current()) return;
-			await work({ signal: ticket.controller.signal, current,
-				onDispatch: () => { ticket.dispatched = true; } });
+			if (!current()) return { status: "refused", reason: "Cancelled before dispatch" };
+			return await work({
+				signal: ticket.controller.signal, current,
+				onDispatch: () => { ticket.dispatched = true; },
+				wasDispatched: () => ticket.dispatched,
+				failure: (reason) => {
+					if (mutation && ticket.dispatched) mutationsInhibited = true;
+					if (current()) notice = reason;
+				},
+			});
 		} catch {
+			if (mutation && ticket.dispatched) mutationsInhibited = true;
 			if (current()) notice = ticket.dispatched ? "Action outcome uncertain; check panes" : "Navigation unavailable";
+			return { status: ticket.dispatched ? "uncertain" : "refused", reason: "Sidebar operation unavailable; inspect panes before retrying" };
 		} finally {
+			signal?.removeEventListener("abort", cancel);
 			if (operation === ticket) operation = undefined;
 			if (!stopped) draw();
 		}
@@ -774,6 +819,7 @@ export function main(args = process.argv.slice(2)) {
 	const stop = () => {
 		if (stopped) return;
 		stopped = true;
+		mcp?.close();
 		operation?.controller.abort();
 		inspection?.controller.abort();
 		clearInterval(timer);
@@ -837,10 +883,7 @@ export function main(args = process.argv.slice(2)) {
 			else if (input === "\r" || input === "\n") {
 				const name = newAgentName;
 				newAgentName = undefined;
-				const fresh = designateLead(
-					snapshot(options.registry, options.scope, undefined, true),
-					chosenLeadId,
-				);
+				const fresh = actionView();
 				const lead =
 					fresh.leadState === "resolved" ? fresh.records?.[0] : undefined;
 				if (
@@ -906,30 +949,13 @@ export function main(args = process.argv.slice(2)) {
 				) {
 					const request = creation;
 					creation = undefined;
-					const fresh = designateLead(
-						snapshot(options.registry, options.scope, undefined, true),
-						chosenLeadId,
-					);
-					const lead = fresh.records?.find((row) => row.id === request.leadId);
-					if (
-						Date.now() > request.expires ||
-						fresh.leadState !== "resolved" ||
-						!lead ||
-						lead.pid !== request.pid ||
-						lead.navigation?.startedAt !== request.startedAt ||
-						JSON.stringify(lead.navigation?.zellij) !== request.pane ||
-						!nameAvailable(options.registry, request.name)
-					)
-						notice = "Create cancelled: state changed";
-					else await operate(async (operationOptions) => {
-						const result = await navigator.create(request.name, options.scope.toLowerCase(), lead, fresh.records ?? [], {
-							...operationOptions,
-							refresh: () => refreshTarget(lead, (_row, latest) => Date.now() <= request.expires && latest.leadState === "resolved" && latest.records[0]?.id === request.leadId && nameAvailable(options.registry, request.name)),
-						});
+					await operate(async (operationOptions) => {
+						const result = await launchAgent(request.name, operationOptions, request);
+						if (result) operationOptions.failure(result);
 						if (!operationOptions.current()) return;
-						notice = result ?? `Requested: ${request.name}`;
+						if (!result) notice = `Requested: ${request.name}`;
 						if (!result && context) context = { ...context, own: { ...context.own, is_focused: false } };
-					});
+					}, true);
 				} else {
 					creation = undefined;
 					notice = "New agent cancelled";
@@ -1013,8 +1039,9 @@ export function main(args = process.argv.slice(2)) {
 							...operationOptions,
 							refresh: () => refreshTarget(row, (latest) => visibleLines.includes(latest.id) && closeConfirmationMatches(request, latest)),
 						});
-						if (operationOptions.current()) notice = result ?? `Pane closed: ${row.name}`;
-					});
+						if (result) operationOptions.failure(result);
+						else if (operationOptions.current()) notice = `Pane closed: ${row.name}`;
+					}, true);
 				}
 				draw();
 			} else if (event.type === "lead") {
@@ -1026,8 +1053,7 @@ export function main(args = process.argv.slice(2)) {
 					draw();
 					continue;
 				}
-				chosenLeadId = row.id;
-				notice = `lead: ${row.name}`;
+				chooseLead(row);
 				draw();
 			} else if (event.type === "move") {
 				confirmation = undefined;
@@ -1096,6 +1122,74 @@ export function main(args = process.argv.slice(2)) {
 			}
 		}).finally(() => { if (inspection === check) inspection = undefined; });
 	};
+	const startMcp = async () => {
+		if (!input || !identity) throw new Error("MCP requires a verified interactive Zellij sidebar");
+		const { readMcpConfig, startHubMcp } = await import("./pi-agents-pane-mcp.mjs");
+		const config = readMcpConfig(options["mcp-config"]);
+		paneLimit = config.maxPanes;
+		let tabId;
+		const readView = async (operationOptions) => {
+			const current = await navigator.inspect(operationOptions.signal);
+			if (!operationOptions.current() || !current || current.own.tab_id !== tabId) return null;
+			const fresh = actionView();
+			if (fresh.error || fresh.skipped || fresh.truncated) return null;
+			const rows = fresh.records.filter((row) => /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(row.id) &&
+				!navigator.check(row, fresh.records, current, Date.now(), { tabId }));
+			return { rows, leadId: fresh.leadState === "resolved" ? fresh.records[0]?.id : undefined };
+		};
+		const dispatch = (work, mutation = false, signal) => {
+			if (newAgentName !== undefined || creation || confirmation)
+				return { status: "refused", reason: "Human interaction in progress" };
+			return operate(work, mutation, signal);
+		};
+		const withAgent = (agentId, signal, work) => dispatch(async (operationOptions) => {
+			const row = (await readView(operationOptions))?.rows.find((row) => row.id === agentId);
+			return row ? work(row) : { status: "refused", reason: "No verified agent in this tab" };
+		}, false, signal);
+		const started = await operate(async (operationOptions) => {
+			const current = await navigator.inspect(operationOptions.signal);
+			if (!operationOptions.current() || !current || current.own.exited === true ||
+				current.own.is_selectable === false || current.own.is_suppressed === true) throw new Error("Sidebar unavailable");
+			tabId = current.own.tab_id;
+			mcp = await startHubMcp(config, {
+				list: (signal) => dispatch(async (operationOptions) => {
+					const fresh = await readView(operationOptions);
+					if (!fresh) return { status: "refused", reason: "Tab or registry unavailable" };
+					return {
+						status: "ok", scope: options.scope, tab_id: tabId,
+						mutations_inhibited: mutationsInhibited, truncated: fresh.rows.length > 32,
+						agents: fresh.rows.slice(0, 32).map((row) => ({
+							id: row.id, name: row.name.slice(0, 128),
+							status: row.status.slice(0, 32), lead: row.id === fresh.leadId,
+						})),
+					};
+				}, false, signal),
+				create: ({ name }, signal) => dispatch(async (operationOptions) => {
+					const error = await launchAgent(name, { ...operationOptions, tabId });
+					if (error) {
+						operationOptions.failure(error);
+						return { status: operationOptions.wasDispatched() ? "uncertain" : "refused", reason: error };
+					}
+					notice = `Requested: ${name}`;
+					return { status: "pane_created", name, registration: "not_yet_verified" };
+				}, true, signal),
+				lead: ({ agent_id }, signal) => withAgent(agent_id, signal, (row) => {
+					chooseLead(row);
+					return { status: "ok", agent_id: row.id };
+				}),
+				close: ({ agent_id }, signal) => withAgent(agent_id, signal, (row) => {
+					selectedId = row.id;
+					initialized = true;
+					notice = `Close requested: ${row.name}; press c then y`;
+					return { status: "confirmation_required", agent_id: row.id };
+				}),
+			}, randomUUID());
+			if (!operationOptions.current()) { mcp.close(); throw new Error("Sidebar stopped"); }
+			notice = "Sidebar MCP enabled (tab-scoped)";
+			return { status: "ok" };
+		});
+		if (started?.status !== "ok") throw new Error("MCP startup refused");
+	};
 	process.on("SIGINT", stop);
 	process.on("SIGTERM", stop);
 	process.on("exit", stop);
@@ -1117,4 +1211,9 @@ export function main(args = process.argv.slice(2)) {
 	} else {
 		timer = setInterval(refresh, options.interval * 1000);
 	}
+	if (options["mcp-config"]) void startMcp().catch(() => {
+		process.stderr.write("Sidebar MCP unavailable; verify private config, tab identity, and loopback port\n");
+		process.exitCode = 2;
+		stop();
+	});
 }

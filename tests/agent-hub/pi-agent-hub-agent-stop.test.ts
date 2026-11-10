@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { stopPeerAgent } from "../../extensions/pi-agent-hub/spawner/agent-stop.js";
+import { stopPeerAgent } from "../../extensions/pi-agent-hub/registry/agent-stop.js";
 import type { AgentRecord } from "../../extensions/pi-agent-hub/types.js";
 
 const originalKill = process.kill;

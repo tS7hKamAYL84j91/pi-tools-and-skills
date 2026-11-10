@@ -6,7 +6,7 @@
  * drop registration calls while still leaving isolated unit tests green.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import automationsExtension from "../../extensions/pi-automations/index.js";
 import fileWatchExtension from "../../extensions/pi-file-watch/index.js";
@@ -17,6 +17,7 @@ import ollamaModelsExtension from "../../extensions/pi-ollama-models/index.js";
 import panopticonExtension from "../../extensions/pi-agent-hub/index.js";
 import boostExtension from "../../extensions/pi-boost/index.js";
 import teamExtension from "../../extensions/pi-team-workflows/index.js";
+import subagentsExtension from "../../extensions/pi-subagents/index.js";
 
 interface ToolParameters {
 	properties?: Record<string, unknown>;
@@ -37,6 +38,7 @@ interface CapturedRegistrations {
 }
 
 interface FakeExtensionApi {
+	events: ExtensionAPI["events"];
 	registerTool: (definition: NamedRegistration) => void;
 	registerCommand: (name: string, definition: unknown) => void;
 	registerShortcut: (key: string, definition: unknown) => void;
@@ -60,6 +62,7 @@ function createFakeApi(): {
 		events: new Set<string>(),
 	};
 	const api: FakeExtensionApi = {
+		events: createEventBus(),
 		registerTool(definition) {
 			registrations.tools.add(definition.name);
 			if (definition.parameters) {
@@ -293,13 +296,9 @@ describe("extension registration smoke tests", () => {
 			"agent_send",
 			"agent_status",
 			"get_name",
-			"kill_agent",
-			"list_spawned",
 			"message_read",
 			"message_send",
-			"rpc_send",
 			"set_name",
-			"spawn_agent",
 		]);
 		expectRegistered(registrations.commands, [
 			"agent-external-list",
@@ -322,6 +321,24 @@ describe("extension registration smoke tests", () => {
 			"tool_call",
 			// Turn boundary used to avoid re-queuing an unconsumed message reminder.
 			"turn_end",
+		]);
+	});
+
+	it("pi-subagents registers worker tools separately from Agent Hub", () => {
+		const { api, registrations } = createFakeApi();
+		subagentsExtension(api);
+		expectRegistered(registrations.tools, ["spawn_agent", "rpc_send", "list_spawned", "kill_agent"]);
+		expectRegistered(registrations.commands, []);
+		expectRegistered(registrations.events, ["session_start", "session_shutdown"]);
+	});
+
+	it.each([true, false])("combined Hub/Subagents preserves the former tool set (Hub first: %s)", (hubFirst) => {
+		const { api, registrations } = createFakeApi();
+		const extensions = hubFirst ? [panopticonExtension, subagentsExtension] : [subagentsExtension, panopticonExtension];
+		for (const extension of extensions) extension(api);
+		expectRegistered(registrations.tools, [
+			"agent_broadcast", "agent_peek", "agent_send", "agent_status", "get_name", "set_name",
+			"message_read", "message_send", "spawn_agent", "rpc_send", "list_spawned", "kill_agent",
 		]);
 	});
 

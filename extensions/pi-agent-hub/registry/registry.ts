@@ -128,11 +128,7 @@ export default class Registry implements RegistryInterface {
 			id: this.selfId,
 			name,
 			...(storedSpawnName ? { spawn_name: storedSpawnName } : {}),
-			// Publish the declared lead label only when it was actually claimable.
-			// A root whose declared label collided with a live peer or a reserved
-			// owner is suffixed (e.g. quartermaster-2) and must NOT advertise the
-			// collided label as its lead identity, or the Agent Hub pane sees two
-			// leads of one scope and ends up ambiguous (no create/close).
+			// Publishing a collided label would make the pane's lead scope ambiguous.
 			...(declaredClaimed && this.declaredName
 				? { declared_name: this.declaredName }
 				: {}),
@@ -155,11 +151,8 @@ export default class Registry implements RegistryInterface {
 		// Write to disk
 		this.flush();
 
-		// Journalled ownership for declared leads. The claim keys on the DECLARED
-		// launch label, not the picked display name: a lead resuming a session with
-		// a pre-existing session name must still reserve its canonical label, or
-		// reservation/child-namespace protection would silently disengage.
-		if (declaredClaimed && !nameTaken(this.declaredName as string, records, this.selfId)) {
+		// Reserve the claimable launch label even when resuming under a session alias.
+		if (declaredClaimed) {
 			this.refreshOwnership(Date.now());
 		}
 

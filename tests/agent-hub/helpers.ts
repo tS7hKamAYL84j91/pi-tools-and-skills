@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { vi, type MockedFunction } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { stripChildCredentials } from "../../lib/child-env.js";
@@ -45,6 +45,7 @@ export type ToolExecute = (toolCallId: string, params: Record<string, unknown>, 
 export type CommandHandler = (args: string | undefined, ctx: { ui: { notify: (msg: string, level: string) => void } }) => Promise<void>;
 
 export interface MockExtensionApi {
+	events: ExtensionAPI["events"];
 	registeredTools: Map<string, { execute: ToolExecute; prepareArguments?: (args: unknown) => unknown }>;
 	registeredCommands: Map<string, { handler: CommandHandler }>;
 	eventHandlers: Map<string, (() => Promise<void>)[]>;
@@ -56,6 +57,7 @@ export interface MockExtensionApi {
 
 export function makeMockExtensionApi(): MockExtensionApi {
 	const api: MockExtensionApi = {
+		events: createEventBus(),
 		registeredTools: new Map(),
 		registeredCommands: new Map(),
 		eventHandlers: new Map(),

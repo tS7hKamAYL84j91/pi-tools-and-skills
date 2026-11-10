@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../lib/agent-registry.js";
 import { findAgentByDisplayName } from "../../lib/agent-names.js";
 import Registry from "../../extensions/pi-agent-hub/registry/registry.js";
-import { parentNamespaceAnchor } from "../../extensions/pi-agent-hub/spawner/spawner-launch.js";
+import { parentNamespaceAnchor } from "../../extensions/pi-subagents/spawner/spawner-launch.js";
 import { loadNamespaceOwners } from "../../extensions/pi-agent-hub/registry/namespace-ownership.js";
 import { resolvePeer } from "../../extensions/pi-agent-hub/registry/peers.js";
 import { makeAgentRecord, makeRegistry } from "./helpers.js";

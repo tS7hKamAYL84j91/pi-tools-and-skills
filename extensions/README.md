@@ -11,7 +11,8 @@ make setup-package PACKAGE=<package>
 
 | Package | Responsibility |
 | --- | --- |
-| [`pi-agent-hub`](pi-agent-hub/README.md) | Agent registry, transport, spawning and health |
+| [`pi-agent-hub`](pi-agent-hub/README.md) | Peer discovery, messaging and health |
+| [`pi-subagents`](pi-subagents/README.md) | Local RPC workers and child lifecycle |
 | [`pi-automations`](pi-automations/README.md) | Pi-hosted scheduling and workspace context |
 | [`pi-boost`](pi-boost/README.md) | Prompt-scoped model switching and restoration |
 | [`pi-file-watch`](pi-file-watch/README.md) | Explicit, bounded file notifications |

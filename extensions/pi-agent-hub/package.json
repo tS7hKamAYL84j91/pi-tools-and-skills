@@ -1,7 +1,7 @@
 {
 	"name": "@solo-visual/pi-agent-hub",
 	"version": "1.2.0",
-	"description": "Agent registry, messaging, spawning and health for Pi",
+	"description": "Agent registry, peer messaging and health for Pi",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

@@ -29,7 +29,8 @@ when it is `plan` or `challenge`:
 
 ## Lease behavior
 
-- A lease covers up to 3 yields and expires after the configured duration from its latest accepted prompt (default 10 minutes). Each accepted prompt restarts the TTL without clearing the yield count; failed dispatch restores the previous TTL. The next `/boost` or `/boost <prompt>` automatically renews an idle expired lease; no manual reset needed. `/boost status` is read-only.
+- An accepted `/boost <prompt>` starts a fresh lease and yield budget, even before expiry or after exhaustion. This also applies to `/boost plan <prompt>` and `/boost challenge <prompt>`; the new prompt consumes the first yield. Failed dispatch restores the previous timer and yield count; unavailable/unauthenticated models do not reset an unexpired lease.
+- Context-only `/boost plan` and `/boost challenge` spend the existing budget. Every accepted boost restarts the expiry timer (default 10 minutes). The next `/boost` or boost request automatically renews an idle expired lease; `/boost status` is read-only.
 - Duration changes apply to the current lease too, measured from its latest accepted prompt. Settings persist as `boost.leaseMinutes`; integer values 1–60 are accepted, invalid values fall back to 10.
 - The lease is **not a model-switch timer**. Boost restores the baseline on Pi's
   `agent_settled` event, never in the middle of retries or queued follow-ups.
@@ -38,7 +39,7 @@ when it is `plan` or `challenge`:
   handler restores the baseline too, so the next session does not start on the
   boost model. Restoration stays best effort there because the UI may already be gone.
 - Powerline shows only lease state and remaining yields: `Boost off · 3 left`, `Boost active · 2 left`, `Boost expired · 2 left`, `Boost blocked · restore failed`.
-- Max yields is hard-capped at 3 per lease. Exhausting the count before expiry still requires `/boost reset`.
+- Max yields is hard-capped at 3 per lease. After exhaustion, supply a new explicit prompt, use `/boost reset`, or wait for expiry before another context-only boost.
 - If baseline restoration fails, boost blocks further dispatch until `/boost reset` retries the restore.
 
 ## What this does NOT do

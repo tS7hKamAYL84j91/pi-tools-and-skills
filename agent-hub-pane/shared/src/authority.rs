@@ -323,6 +323,7 @@ pub fn create_argv(
         "MATRIX_BOT_TOKEN",
         "MATRIX_BOT_PASSWORD",
         "MATRIX_RECOVERY_PASSPHRASE",
+        "HUB_SIDEBAR_TOKEN",
         "PI_PANOPTICON_PARENT_ID",
         "PI_CODING_AGENT_SESSION_DIR",
     ] {

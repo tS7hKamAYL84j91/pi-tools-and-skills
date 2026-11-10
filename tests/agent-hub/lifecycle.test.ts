@@ -5,7 +5,9 @@
  * during session_start, agent events, and session_shutdown.
  */
 
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { BEFORE_AGENT_CHANNEL_SHUTDOWN, type AgentChannelShutdown } from "../../lib/agent-shutdown.js";
 
 // ── Mock all modules before import ──────────────────────────────
 
@@ -65,16 +67,6 @@ vi.mock("../../lib/message-transport.js", () => ({
 	unregisterChannel: channelMocks.unregisterChannel,
 }));
 
-const mockShutdownAll = vi.fn(async () => {});
-
-type MissingDoneHandler = (agentName: string, pid: number, exitCode: number | null, durationMs: number) => void;
-
-const mockOnMissingDone = vi.fn<(handler: MissingDoneHandler) => () => void>(() => () => {});
-
-vi.mock("../../extensions/pi-agent-hub/spawner/spawner.js", () => ({
-	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll, onMissingDone: mockOnMissingDone })),
-}));
-
 vi.mock("../../extensions/pi-agent-hub/registry/peek.js", () => ({
 	setupPeek: vi.fn(),
 }));
@@ -94,7 +86,13 @@ vi.mock("../../extensions/pi-agent-hub/ui/ui.js", () => ({
 	setupUI: vi.fn(() => ({ start: mockUIStart, stop: mockUIStop, refresh: vi.fn() })),
 }));
 
+const mockShutdownAll = vi.fn(async () => {});
+vi.mock("../../extensions/pi-subagents/spawner/spawner.js", () => ({
+	setupSpawner: vi.fn(() => ({ shutdownAll: mockShutdownAll, onMissingDone: vi.fn() })),
+}));
+
 import piAgents from "../../extensions/pi-agent-hub/index.js";
+import subagents from "../../extensions/pi-subagents/index.js";
 
 // ── Mock ExtensionAPI ───────────────────────────────────────────
 
@@ -104,6 +102,7 @@ function makeMockPI() {
 	const handlers = new Map<string, Handler[]>();
 	return {
 		handlers,
+		events: createEventBus(),
 		on(event: string, handler: Handler) {
 			const list = handlers.get(event) ?? [];
 			list.push(handler);
@@ -148,31 +147,11 @@ let pi: ReturnType<typeof makeMockPI>;
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockShutdownAll.mockReset().mockResolvedValue();
 	externalRegistrarMocks.load.mockResolvedValue([]);
 	mockGetRecord.mockReturnValue({ task: undefined, sessionFile: "/tmp/s.jsonl" });
 	pi = makeMockPI();
 	piAgents(pi as unknown as Parameters<typeof piAgents>[0]);
-});
-
-describe("missing completion warning", () => {
-	it("sends a generic follow-up without tracker-specific guidance", () => {
-		const handler = mockOnMissingDone.mock.calls[0]?.[0];
-		if (!handler) {
-			throw new Error("missing-DONE handler was not registered");
-		}
-
-		handler("worker", 1234, 0, 125_000);
-
-		expect(pi.sendUserMessage).toHaveBeenCalledWith(
-			`⚠️ Agent "worker" (pid 1234) exited (code 0) after 2m without sending a completion signal (DONE/BLOCKED/FAILED). ` +
-			`Check its output with list_spawned or agent_peek. If it completed work, reconcile its results manually.`,
-			{ deliverAs: "followUp" },
-		);
-		expect(pi.sendUserMessage).not.toHaveBeenCalledWith(
-			expect.stringContaining("kanban"),
-			expect.anything(),
-		);
-	});
 });
 
 describe("session_start", () => {
@@ -256,9 +235,46 @@ describe("input", () => {
 });
 
 describe("session_shutdown", () => {
-	it("calls shutdownAll → drainAll → dispose → ui.stop → unregister in order", async () => {
+	it.each([true, false])("waits for children and drains their final peer messages (Hub first: %s)", async (hubFirst) => {
+		pi = makeMockPI();
+		const api = pi as unknown as Parameters<typeof piAgents>[0];
+		for (const extension of hubFirst ? [piAgents, subagents] : [subagents, piAgents]) extension(api);
 		const order: string[] = [];
-		mockShutdownAll.mockImplementation(async () => { order.push("shutdownAll"); });
+		const inbox: string[] = [];
+		const drained: string[] = [];
+		let release = () => {};
+		const childrenExiting = new Promise<void>((resolve) => { release = resolve; });
+		mockShutdownAll.mockImplementation(async () => {
+			order.push("children.stopping");
+			await childrenExiting;
+			inbox.push("DONE final peer message");
+			order.push("children.stopped");
+		});
+		mockDrainAll.mockImplementation(() => { drained.push(...inbox); order.push("drainAll"); });
+		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
+		channelMocks.unregisterChannel.mockImplementation(() => { order.push("channel-unregister"); });
+		mockUnregister.mockImplementation(() => { order.push("unregister"); });
+
+		const closing = fire(pi, "session_shutdown", {});
+		expect(mockShutdownAll).toHaveBeenCalledOnce();
+		expect(mockDrainAll).not.toHaveBeenCalled();
+		expect(mockMessagingDispose).not.toHaveBeenCalled();
+		expect(channelMocks.unregisterChannel).not.toHaveBeenCalled();
+		expect(mockUnregister).not.toHaveBeenCalled();
+		release();
+		await closing;
+
+		expect(mockShutdownAll).toHaveBeenCalledOnce();
+		expect(order).toEqual(["children.stopping", "children.stopped", "drainAll", "dispose", "channel-unregister", "unregister"]);
+		expect(drained).toEqual(["DONE final peer message"]);
+		const pending: Promise<void>[] = [];
+		const request: AgentChannelShutdown = { waitUntil: (work) => { pending.push(work); } };
+		pi.events.emit(BEFORE_AGENT_CHANNEL_SHUTDOWN, request);
+		expect(pending).toEqual([]); // No stale listener after shutdown/reload.
+	});
+
+	it("stops reconciliation → drainAll → dispose → ui.stop → unregister in order", async () => {
+		const order: string[] = [];
 		mockReconcilerStop.mockImplementation(() => { order.push("reconciler.stop"); });
 		mockDrainAll.mockImplementation(() => { order.push("drainAll"); });
 		mockMessagingDispose.mockImplementation(() => { order.push("dispose"); });
@@ -269,7 +285,6 @@ describe("session_shutdown", () => {
 		await fire(pi, "session_shutdown", {});
 
 		expect(order).toEqual([
-			"shutdownAll",
 			"reconciler.stop",
 			"drainAll",
 			"dispose",

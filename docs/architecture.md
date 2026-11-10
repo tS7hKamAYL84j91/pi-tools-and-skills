@@ -8,7 +8,9 @@ records decisions. Superseded diagrams and completed reviews remain in Git histo
 
 | Owner | Authority | Boundary |
 | --- | --- | --- |
-| [Agent Hub](../extensions/pi-agent-hub/README.md) | Agent registry, health, spawner lifecycle and Maildir transport | Messaging is coordination, not authorization |
+| [Agent Hub](../extensions/pi-agent-hub/README.md) | Peer registry, health and Maildir messaging | Messaging is coordination, not authorization |
+| [Subagents](../extensions/pi-subagents/README.md) | Local RPC workers and child lifecycle | Optional read-only Hub identity; no messaging ownership |
+| [Hub sidebar](../agent-hub-pane/README.md) | Independent Zellij agent panes; shared keyboard/MCP operations | Optional loopback MCP capability pinned to one startup tab; autonomous New, human-confirmed Close, no fleet supervision |
 | [Team Workflows](../extensions/pi-team-workflows/README.md) | `TeamStateManager`, session run events and private result artifacts | Direct bounded protocols; no parallel lifecycle registry |
 | [Goal](../extensions/pi-goal/README.md) | Session-bound `goal.json`, driver token/generation/revision | `GOAL.md` is a projection; source files and native sessions remain intact |
 | [Automations](../extensions/pi-automations/README.md) | Schedule files, slot admission, approval and workspace context | Runs inside Pi; no independent background scheduler |
